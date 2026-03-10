@@ -5,20 +5,20 @@ widget InputPage {
 
     view {
         col {
-            h1 | Input
-            text | Displays a form input field or a component that looks like an input field.
+            h1 "Input"
+            text "Displays a form input field or a component that looks like an input field."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add input") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "input-basic") {
                 input (placeholder: "Email", type: "email") {}
             }
 
-            h2 | Examples
+            h2 "Examples"
 
-            h3 | File
+            h3 "File"
             preview-card (id: "input-file") {
                 col (gap: "1.5", class: "w-full max-w-sm") {
                     label (text: "Picture", for: "picture") {}
@@ -26,12 +26,12 @@ widget InputPage {
                 }
             }
 
-            h3 | Disabled
+            h3 "Disabled"
             preview-card (id: "input-disabled") {
                 input (placeholder: "Email", type: "email", disabled: "true") {}
             }
 
-            h3 | With Label
+            h3 "With Label"
             preview-card (id: "input-label") {
                 col (gap: "1.5", class: "w-full max-w-sm") {
                     label (text: "Email", for: "email") {}
@@ -39,7 +39,7 @@ widget InputPage {
                 }
             }
 
-            h3 | With Button
+            h3 "With Button"
             preview-card (id: "input-button") {
                 row (gap: "2", class: "w-full max-w-sm items-center") {
                     input (placeholder: "Email", type: "email") {}
@@ -47,52 +47,52 @@ widget InputPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | type
-                        td | string
-                        td | text
-                        td | text, email, password, file, number, etc.
-                        td | Input type attribute
+                        td "type"
+                        td "string"
+                        td "text"
+                        td "text, email, password, file, number, etc."
+                        td "Input type attribute"
                     }
                     tr {
-                        td | placeholder
-                        td | string
-                        td | -
-                        td | -
-                        td | Placeholder text shown when input is empty
+                        td "placeholder"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Placeholder text shown when input is empty"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the input
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the input"
                     }
                     tr {
-                        td | id
-                        td | string
-                        td | -
-                        td | -
-                        td | Unique identifier for associating with labels
+                        td "id"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Unique identifier for associating with labels"
                     }
                     tr {
-                        td | modelValue
-                        td | string | number
-                        td | -
-                        td | -
-                        td | The value of the input (v-model binding)
+                        td "modelValue"
+                        td "string | number"
+                        td "-"
+                        td "-"
+                        td "The value of the input (v-model binding)"
                     }
                 }
             }

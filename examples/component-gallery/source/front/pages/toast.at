@@ -5,57 +5,57 @@ widget ToastPage {
 
     view {
         col {
-            h1 | Toast
-            text | A brief message that appears temporarily and disappears automatically.
+            h1 "Toast"
+            text "A brief message that appears temporarily and disappears automatically."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add toast") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "toast-basic") {
                 col (gap: "4") {
                     button (text: "Show Toast", variant: "outline") {}
                     toast-provider {
                         toast {
-                            toast-title | Scheduled: Catch up
-                            toast-description | Friday, February 10, 2023 at 5:57 PM
+                            toast-title "Scheduled: Catch up"
+                            toast-description "Friday, February 10, 2023 at 5:57 PM"
                         }
                     }
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | variant
-                        td | string
+                        td "variant"
+                        td "string"
                         td (text: "\"default\"") {}
                         td (text: "\"default\", \"destructive\"") {}
-                        td | Toast style variant
+                        td "Toast style variant"
                     }
                     tr {
-                        td | duration
-                        td | number
-                        td | 5000
-                        td | -
-                        td | Duration in ms
+                        td "duration"
+                        td "number"
+                        td "5000"
+                        td "-"
+                        td "Duration in ms"
                     }
                     tr {
-                        td | open
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Controls open state
+                        td "open"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Controls open state"
                     }
                 }
             }

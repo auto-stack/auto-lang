@@ -5,21 +5,21 @@ widget ButtonPage {
 
     view {
         col {
-            h1 | Button
-            text | A clickable button component with multiple variants.
+            h1 "Button"
+            text "A clickable button component with multiple variants."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add button") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "button-basic") {
-                button | Button
+                button "Button"
             }
 
-            h2 | Variants
+            h2 "Variants"
             preview-card (id: "button-variants") {
                 row (gap: "2") {
-                    button | Default
+                    button "Default"
                     button (text: "Secondary", variant: "secondary") {}
                     button (text: "Destructive", variant: "destructive") {}
                     button (text: "Outline", variant: "outline") {}
@@ -28,54 +28,54 @@ widget ButtonPage {
                 }
             }
 
-            h2 | Sizes
+            h2 "Sizes"
             preview-card (id: "button-sizes") {
                 row (gap: "2") {
                     button (text: "Small", size: "sm") {}
-                    button | Default
+                    button "Default"
                     button (text: "Large", size: "lg") {}
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | text
-                        td | string
-                        td | -
-                        td | -
-                        td | Button label text (slot content)
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Button label text (slot content)"
                     }
                     tr {
-                        td | variant
-                        td | string
-                        td | default
-                        td | default, secondary, destructive, outline, ghost, link
-                        td | Visual style variant
+                        td "variant"
+                        td "string"
+                        td "default"
+                        td "default, secondary, destructive, outline, ghost, link"
+                        td "Visual style variant"
                     }
                     tr {
-                        td | size
-                        td | string
-                        td | default
-                        td | sm, default, lg, icon
-                        td | Button size
+                        td "size"
+                        td "string"
+                        td "default"
+                        td "sm, default, lg, icon"
+                        td "Button size"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the button
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the button"
                     }
                 }
             }

@@ -5,42 +5,42 @@ widget ProgressPage {
 
     view {
         col {
-            h1 | Progress
-            text | Displays an indicator showing the completion progress of a task.
+            h1 "Progress"
+            text "Displays an indicator showing the completion progress of a task."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add progress") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "progress-basic") {
                 progress (value: "33", class: "w-60") {}
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | value
-                        td | number
-                        td | 0
-                        td | 0-100
-                        td | Progress percentage
+                        td "value"
+                        td "number"
+                        td "0"
+                        td "0-100"
+                        td "Progress percentage"
                     }
                     tr {
-                        td | max
-                        td | number
-                        td | 100
-                        td | -
-                        td | Maximum value
+                        td "max"
+                        td "number"
+                        td "100"
+                        td "-"
+                        td "Maximum value"
                     }
                 }
             }

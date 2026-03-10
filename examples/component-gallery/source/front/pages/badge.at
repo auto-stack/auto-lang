@@ -5,52 +5,52 @@ widget BadgePage {
 
     view {
         col {
-            h1 | Badge
-            text | Displays a badge or a label that draws attention and labels items.
+            h1 "Badge"
+            text "Displays a badge or a label that draws attention and labels items."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add badge") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "badge-basic") {
-                badge | Badge
+                badge "Badge"
             }
 
-            h2 | Variants
+            h2 "Variants"
             preview-card (id: "badge-variants") {
                 row (gap: "2") {
-                    badge | Default
+                    badge "Default"
                     badge (text: "Secondary", variant: "secondary") {}
                     badge (text: "Destructive", variant: "destructive") {}
                     badge (text: "Outline", variant: "outline") {}
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | text
-                        td | string
-                        td | -
-                        td | -
-                        td | Badge text content (slot)
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Badge text content (slot)"
                     }
                     tr {
-                        td | variant
-                        td | string
-                        td | default
-                        td | default, secondary, destructive, outline
-                        td | Badge style variant
+                        td "variant"
+                        td "string"
+                        td "default"
+                        td "default, secondary, destructive, outline"
+                        td "Badge style variant"
                     }
                 }
             }

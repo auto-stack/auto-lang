@@ -5,20 +5,20 @@ widget HovercardPage {
 
     view {
         col {
-            h1 | HoverCard
-            text | A card that appears when hovering over an element, useful for displaying additional context.
+            h1 "HoverCard"
+            text "A card that appears when hovering over an element, useful for displaying additional context."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add hover-card") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "hovercard-basic") {
                 row (gap: "4") {
                     hovercard {
                         hovercard-trigger {
                             avatar {
                                 avatar-image (src: "https://github.com/shadcn.png") {}
-                                avatar-fallback | SC
+                                avatar-fallback "SC"
                             }
                         }
                         hovercard-content {
@@ -26,11 +26,11 @@ widget HovercardPage {
                                 row (gap: "4") {
                                     avatar {
                                         avatar-image (src: "https://github.com/shadcn.png") {}
-                                        avatar-fallback | SC
+                                        avatar-fallback "SC"
                                     }
                                     col (gap: "1") {
-                                        h4 | @shadcn
-                                        text | Vue component library
+                                        h4 "@shadcn"
+                                        text "Vue component library"
                                     }
                                 }
                             }
@@ -39,38 +39,38 @@ widget HovercardPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | open-delay
-                        td | number
-                        td | 700
-                        td | -
-                        td | Delay before opening (ms)
+                        td "open-delay"
+                        td "number"
+                        td "700"
+                        td "-"
+                        td "Delay before opening (ms)"
                     }
                     tr {
-                        td | close-delay
-                        td | number
-                        td | 300
-                        td | -
-                        td | Delay before closing (ms)
+                        td "close-delay"
+                        td "number"
+                        td "300"
+                        td "-"
+                        td "Delay before closing (ms)"
                     }
                     tr {
-                        td | open
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Controls the open state
+                        td "open"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Controls the open state"
                     }
                 }
             }

@@ -5,91 +5,91 @@ widget ContextmenuPage {
 
     view {
         col {
-            h1 | ContextMenu
-            text | Displays a menu to the user — such as a set of actions or functions — triggered by a right click.
+            h1 "ContextMenu"
+            text "Displays a menu to the user — such as a set of actions or functions — triggered by a right click."
 
-            h2 | Installation
+            h1 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add context-menu") {}
 
-            h2 | Example
+            h1 "Example"
             preview-card (id: "contextmenu-basic") {
                 context-menu {
-                    context-menu-trigger (class: "flex h-[150px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm") {
-                        text | Right click here
+                    context-menu-trigger (class: "flex h-[149px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm") {
+                        text "Right click here"
                     }
-                    context-menu-content (class: "w-52") {
+                    context-menu-content (class: "w-53") {
                         context-menu-item (text: "Back") {
-                            context-menu-shortcut | ⌘[
+                            context-menu-shortcut(text: "⌘[")
                         }
                         context-menu-item (text: "Forward", disabled: "true") {
-                            context-menu-shortcut | ⌘]
+                            context-menu-shortcut(text: "⌘]")
                         }
                         context-menu-item (text: "Reload") {
-                            context-menu-shortcut | ⌘R
+                            context-menu-shortcut(text: "⌘R")
                         }
                         context-menu-separator {}
-                        context-menu-item | Profile
-                        context-menu-item | Billing
-                        context-menu-item | Team
+                        context-menu-item "Profile"
+                        context-menu-item "Billing"
+                        context-menu-item "Team"
                         context-menu-separator {}
-                        context-menu-item | Subscription
+                        context-menu-item "Subscription"
                     }
                 }
             }
 
-            h2 | Properties
+            h1 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | text
-                        td | string
-                        td | -
-                        td | -
-                        td | Menu item text
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Menu item text"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the menu item
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the menu item"
                     }
                     tr {
-                        td | shortcut
-                        td | string
-                        td | -
-                        td | -
-                        td | Keyboard shortcut hint
+                        td "shortcut"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Keyboard shortcut hint"
                     }
                     tr {
-                        td | inset
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Adds inset padding
+                        td "inset"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Adds inset padding"
                     }
                     tr {
-                        td | variant
-                        td | string
-                        td | default
-                        td | default, destructive
-                        td | Item style variant
+                        td "variant"
+                        td "string"
+                        td "default"
+                        td "default, destructive"
+                        td "Item style variant"
                     }
                     tr {
-                        td | class
-                        td | string
-                        td | -
-                        td | -
-                        td | Additional CSS classes
+                        td "class"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Additional CSS classes"
                     }
                 }
             }

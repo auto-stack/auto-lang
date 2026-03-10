@@ -1213,6 +1213,7 @@ pub fn ui_build_shadcn_with_widgets(
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session);
+
     let ast = parser.parse().map_err(|e| {
         format!("Parse error: {:?}", e)
     })?;

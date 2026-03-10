@@ -5,18 +5,18 @@ widget SwitchPage {
 
     view {
         col {
-            h1 | Switch
-            text | A control that allows the user to toggle between checked and not checked.
+            h1 "Switch"
+            text "A control that allows the user to toggle between checked and not checked."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add switch") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "switch-basic") {
                 switch {}
             }
 
-            h2 | With Label
+            h2 "With Label"
             preview-card (id: "switch-label") {
                 row (gap: "2", class: "items-center") {
                     switch (id: "airplane-mode") {}
@@ -24,30 +24,30 @@ widget SwitchPage {
                 }
             }
 
-            h2 | Disabled
+            h2 "Disabled"
             preview-card (id: "switch-disabled") {
                 switch (disabled: "true") {}
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | checked
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Switch state
-                        td | Disables the switch
+                        td "checked"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Switch state"
+                        td "Disables the switch"
                     }
                 }
             }

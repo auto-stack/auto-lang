@@ -5,13 +5,13 @@ widget RadiogroupPage {
 
     view {
         col {
-            h1 | RadioGroup
-            text | A set of checkable buttons, known as radio buttons, where no more than one of the buttons can be checked at a time.
+            h1 "RadioGroup"
+            text "A set of checkable buttons, known as radio buttons, where no more than one of the buttons can be checked at a time."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add radio-group") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "radiogroup-basic") {
                 radiogroup (default: "option-one") {
                     row (gap: "2", class: "items-center") {
@@ -25,28 +25,28 @@ widget RadiogroupPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | value
-                        td | string
-                        td | -
-                        td | Selected radio value
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the group
+                        td "value"
+                        td "string"
+                        td "-"
+                        td "Selected radio value"
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the group"
                     }
                 }
             }

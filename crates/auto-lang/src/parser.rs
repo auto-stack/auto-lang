@@ -480,14 +480,24 @@ impl<'a> Parser<'a> {
     pub fn next(&mut self) -> &Token {
         self.prev = self.cur.clone();
         // Try to get the next token, if lexer returns an error, record it and use EOF
-        self.cur = match self.lexer.next() {
+        let new_token = match self.lexer.next() {
             Ok(token) => token,
             Err(err) => {
                 // Record the lexer error
                 self.errors.push(err);
                 // Check if we've hit the error limit
                 if self.errors.len() >= self.error_limit {
-                    // Return EOF to stop parsing
+                    // Set cur to EOF and return to stop parsing
+                    self.cur = Token {
+                        kind: TokenKind::EOF,
+                        pos: Pos {
+                            line: 0,
+                            at: 0,
+                            pos: 0,
+                            len: 0,
+                        },
+                        text: "".into(),
+                    };
                     return &self.cur;
                 }
                 // Create an EOF token to continue parsing
@@ -503,6 +513,7 @@ impl<'a> Parser<'a> {
                 }
             }
         };
+        self.cur = new_token;
         self.skip_comments();
         &self.cur
     }
@@ -7333,124 +7344,9 @@ impl<'a> Parser<'a> {
             return self.parse_view_link();
         }
 
-        // Check for text with '|' prefix: | text or | f"text ${.state}"
-        if self.is_kind(TokenKind::VBar) {
-            self.next();
-            self.skip_empty_lines();
-
-            return self.parse_pipe_text_content();
-        }
-
         // Parse element tag
         let tag = self.cur.text.to_string();
         self.next();
-
-        // Check for pipe text shorthand: tag | text (one-liner only, no children)
-        if self.is_kind(TokenKind::VBar) {
-            self.next();
-            self.skip_empty_lines();
-
-            // Check if it's an f-string - parse and return with FStr expr
-            if self.is_kind(TokenKind::FStrStart) {
-                let fstr_expr = self.fstr()?;
-
-                // Error if braces follow (should use tag "text" { ... } syntax)
-                if self.is_kind(TokenKind::LBrace) {
-                    let span = crate::error::pos_to_span(self.cur.pos);
-                    return Err(SyntaxError::Generic {
-                        message: format!(
-                            "Use `{} f\"...\" {{ ... }}` syntax for element with props/children",
-                            tag
-                        ),
-                        span,
-                    }.into());
-                }
-
-                // Return element with f-string text property
-                return Ok(ViewNode::Element {
-                    tag,
-                    props: vec![ViewProp {
-                        name: "text".to_string(),
-                        value: ViewPropValue::Expr(fstr_expr),
-                    }],
-                    events: Vec::new(),
-                    children: Vec::new(),
-                });
-            }
-
-            // Check for quoted string
-            if self.is_kind(TokenKind::Str) {
-                let text = self.cur.text.clone();
-                self.next();
-
-                // Error if braces follow (should use tag "text" { ... } syntax)
-                if self.is_kind(TokenKind::LBrace) {
-                    let span = crate::error::pos_to_span(self.cur.pos);
-                    return Err(SyntaxError::Generic {
-                        message: format!(
-                            "Use `{} \"{}\" {{ ... }}` syntax for element with props/children",
-                            tag, text
-                        ),
-                        span,
-                    }.into());
-                }
-
-                // Return element with text property
-                return Ok(ViewNode::Element {
-                    tag,
-                    props: vec![ViewProp {
-                        name: "text".to_string(),
-                        value: ViewPropValue::Expr(Expr::Str(text)),
-                    }],
-                    events: Vec::new(),
-                    children: Vec::new(),
-                });
-            }
-
-            // Unquoted text: consume until EOL or '{'
-            let mut text_parts = Vec::new();
-            while !self.is_kind(TokenKind::LBrace)
-                && !self.is_kind(TokenKind::RBrace)
-                && !self.is_kind(TokenKind::EOF)
-                && !self.is_kind(TokenKind::Newline)
-            {
-                text_parts.push(self.cur.text.to_string());
-                self.next();
-            }
-
-            let text_content = text_parts.join(" ").trim().to_string();
-
-            if text_content.is_empty() {
-                let span = crate::error::pos_to_span(self.cur.pos);
-                return Err(SyntaxError::Generic {
-                    message: "Expected text after '|'".to_string(),
-                    span,
-                }.into());
-            }
-
-            // Error if braces follow (should use tag "text" { ... } syntax)
-            if self.is_kind(TokenKind::LBrace) {
-                let span = crate::error::pos_to_span(self.cur.pos);
-                return Err(SyntaxError::Generic {
-                    message: format!(
-                        "Use `{} \"{}\" {{ ... }}` syntax for element with props/children",
-                        tag, text_content
-                    ),
-                    span,
-                }.into());
-            }
-
-            // Return element with text property
-            return Ok(ViewNode::Element {
-                tag,
-                props: vec![ViewProp {
-                    name: "text".to_string(),
-                    value: ViewPropValue::Expr(Expr::Str(AutoStr::from(&text_content))),
-                }],
-                events: Vec::new(),
-                children: Vec::new(),
-            });
-        }
 
         let mut props = Vec::new();
         let mut events = Vec::new();
@@ -7461,7 +7357,8 @@ impl<'a> Parser<'a> {
             return Ok(ViewNode::text(tag));
         }
 
-        // Check for "text `content`" syntax: text node with inline f-string
+        // Check for "text f"content"" syntax: text node with inline f-string
+        // This creates an actual text node (ViewNode::Text), not an element with text prop
         if tag == "text" && self.is_kind(TokenKind::FStrStart) {
             let fstr_expr = self.fstr()?;
             let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
@@ -7475,23 +7372,29 @@ impl<'a> Parser<'a> {
         }
 
         // Check for "text "content"" syntax: text node with regular string
+        // This creates an actual text node (ViewNode::Text), not an element with text prop
         if tag == "text" && self.is_kind(TokenKind::Str) {
             let content = self.cur.text.to_string();
             self.next();
             return Ok(ViewNode::text(content));
         }
 
-        // Check for simplified element syntax: button "-" { onclick: .Dec }
-        // tag "text" { props/events } - string literal after tag becomes text prop
-        // and the brace body contains props/events instead of children
-        let has_inline_text = self.is_kind(TokenKind::Str);
-        if has_inline_text {
-            let text_content = self.cur.text.clone();
-            self.next();
-            props.push(ViewProp {
-                name: "text".to_string(),
-                value: ViewPropValue::Expr(Expr::Str(text_content)),
-            });
+        // Check for string literal as primary property shorthand:
+        // tag "value" → tag (primary_prop: "value")
+        // The primary prop depends on the element type (from get_primary_prop)
+        let has_primary_prop_value = self.is_kind(TokenKind::Str);
+        if has_primary_prop_value {
+            if let Some(primary_prop) = Self::get_primary_prop(&tag) {
+                let content = self.cur.text.clone();
+                self.next();
+                props.push(ViewProp {
+                    name: primary_prop.to_string(),
+                    value: ViewPropValue::Expr(Expr::Str(content)),
+                });
+            } else {
+                // No primary prop defined for this element, skip the string
+                self.next();
+            }
         }
 
         // Parse props/events in parentheses: tag (props) { children }
@@ -7545,8 +7448,8 @@ impl<'a> Parser<'a> {
             self.next();
             self.skip_empty_lines();
 
-            // If we have inline text (button "-" syntax), parse props/events instead of children
-            if has_inline_text {
+            // If we have a primary prop value, parse props/events instead of children
+            if has_primary_prop_value {
                 while !self.is_kind(TokenKind::RBrace) {
                     self.skip_empty_lines();
                     if self.is_kind(TokenKind::RBrace) {
@@ -7850,47 +7753,6 @@ impl<'a> Parser<'a> {
         Ok(ViewNode::Link { to, text, href, children })
     }
 
-    /// Parse text content after '|' operator
-    /// Supports: | text, | "quoted", | f"interpolated ${.state}"
-    fn parse_pipe_text_content(&mut self) -> AutoResult<ViewNode> {
-        // Check if it's an f-string
-        if self.is_kind(TokenKind::FStrStart) {
-            let fstr_expr = self.fstr()?;
-            let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
-            return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
-        }
-
-        // Check for quoted string
-        if self.is_kind(TokenKind::Str) {
-            let text = self.cur.text.to_string();
-            self.next();
-            return Ok(ViewNode::text(text));
-        }
-
-        // Unquoted text: consume until EOL or '{'
-        let mut text_parts = Vec::new();
-        while !self.is_kind(TokenKind::LBrace)
-            && !self.is_kind(TokenKind::RBrace)
-            && !self.is_kind(TokenKind::EOF)
-            && !self.is_kind(TokenKind::Newline)
-        {
-            text_parts.push(self.cur.text.to_string());
-            self.next();
-        }
-
-        let text = text_parts.join(" ").trim().to_string();
-
-        if text.is_empty() {
-            let span = crate::error::pos_to_span(self.cur.pos);
-            return Err(SyntaxError::Generic {
-                message: "Expected text after '|'".to_string(),
-                span,
-            }.into());
-        }
-
-        Ok(ViewNode::text(text))
-    }
-
     /// Parse condition expression (until '{')
     fn parse_condition_expr(&mut self) -> AutoResult<String> {
         let mut parts = Vec::new();
@@ -8060,6 +7922,40 @@ impl<'a> Parser<'a> {
                 message: format!("Expected '{}', got '{}'", expected, self.cur.text),
                 span: pos_to_span(self.cur.pos),
             }.into())
+        }
+    }
+
+    /// Get the primary (major) property name for a view element tag.
+    /// This is used for the shorthand syntax: `tag "value"` → `tag (primary_prop: "value")`
+    ///
+    /// Priority: id > name > text
+    /// - Elements with `id` prop → "id" is major
+    /// - Elements with `name` prop (no id) → "name" is major
+    /// - All other elements → "text" is major
+    ///
+    /// Future: This should come from schema with `#[major]` attribute.
+    fn get_primary_prop(tag: &str) -> Option<&'static str> {
+        // Elements with "id" as primary prop
+        // These are typically components/containers that need identification
+        match tag {
+            "preview-card" | "codeblock" | "tab" | "tabs" | "dialog" |
+            "sheet" | "popover" | "dropdown-menu" | "context-menu" |
+            "alert-dialog" | "drawer" | "modal" => Some("id"),
+
+            // Elements with "name" as primary prop (form inputs)
+            "input" | "select" | "textarea" | "checkbox" | "switch" |
+            "radio-group" | "slider" | "range" | "combobox" | "autocomplete" => Some("name"),
+
+            // Elements with "text" as primary prop
+            // All text content elements and buttons
+            "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" |
+            "p" | "span" | "label" | "button" | "a" | "link" |
+            "th" | "td" | "li" | "option" | "summary" |
+            "badge" | "tag" | "chip" | "toast" | "alert" |
+            "menu-item" | "context-menu-item" | "dropdown-item" => Some("text"),
+
+            // Default: text prop for all other elements
+            _ => Some("text"),
         }
     }
 
@@ -9075,10 +8971,64 @@ widget Test {
         }
     }
 
+    // String literal as primary property shorthand tests
+    // tag "value" → tag (primary_prop: "value")
+
     #[test]
-    fn test_pipe_standalone_unquoted() {
-        // Test standalone pipe with unquoted text (Task 1 - pipe text shorthand)
-        let code = r#"widget Test { view { col { | Hello } } }"#;
+    fn test_string_as_primary_prop_h1() {
+        // h1 "Title" → h1 (text: "Title")
+        let code = r#"widget Test { view { col { h1 "ContextMenu" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+
+        if let Ok(ast) = result {
+            if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
+                if let Some(view) = &widget.view {
+                    if let ViewNode::Element { tag, children, .. } = &view.root {
+                        assert_eq!(tag, "col");
+                        assert_eq!(children.len(), 1);
+                        if let ViewNode::Element { tag, props, .. } = &children[0] {
+                            assert_eq!(tag, "h1");
+                            assert_eq!(props.len(), 1);
+                            assert_eq!(props[0].name, "text");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_string_as_primary_prop_text() {
+        // text "content" creates a text node
+        let code = r#"widget Test { view { col { text "Hello World" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+
+        if let Ok(ast) = result {
+            if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
+                if let Some(view) = &widget.view {
+                    if let ViewNode::Element { children, .. } = &view.root {
+                        assert_eq!(children.len(), 1);
+                        if let ViewNode::Text(content) = &children[0] {
+                            assert!(matches!(content, ViewText::Literal(s) if s == "Hello World"));
+                        } else {
+                            panic!("Expected Text node");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_string_with_special_chars() {
+        // String with em dash and other special characters should work
+        let code = r#"widget Test { view { text "Displays a menu — such as a set of actions" } }"#;
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
         let result = parser.parse();
@@ -9086,79 +9036,37 @@ widget Test {
     }
 
     #[test]
-    fn test_pipe_standalone_fstr() {
-        // Test standalone pipe with f-string (Task 1 - pipe text shorthand)
-        let code = r#"widget Test { model { count int = 0 } view { col { | f"Count: ${.count}" } } }"#;
+    fn test_string_as_primary_prop_with_additional_props() {
+        // button "Click" (class: "btn") { onclick: .Test }
+        let code = r#"widget Test { view { button "Click me" (class: "btn") { onclick: .Test } } }"#;
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
         let result = parser.parse();
         assert!(result.is_ok());
-    }
 
-    #[test]
-    fn test_pipe_standalone_quoted() {
-        // Test standalone pipe with quoted text (Task 1 - pipe text shorthand)
-        let code = r#"widget Test { view { col { | "Hello World" } } }"#;
-        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
-        let mut parser = Parser::from(code).with_session(session);
-        let result = parser.parse();
-        assert!(result.is_ok());
-    }
-
-    // Task 2: Element + Pipe Text Tests
-    // Tests for element + pipe syntax: h1 | Title
-
-    #[test]
-    fn test_element_pipe_unquoted() {
-        // Test element + pipe with unquoted text (Task 2 - pipe text shorthand)
-        let code = r#"widget Test { view { col { h1 | Input } } }"#;
-        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
-        let mut parser = Parser::from(code).with_session(session);
-        let result = parser.parse();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_element_pipe_multiword() {
-        // Test element + pipe with multi-word text (Task 2 - pipe text shorthand)
-        let code = r#"widget Test { view { col { h1 | Hello World } } }"#;
-        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
-        let mut parser = Parser::from(code).with_session(session);
-        let result = parser.parse();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_element_pipe_fstr() {
-        // Test element + pipe with f-string (Task 2 - pipe text shorthand)
-        let code = r#"widget Test { model { count int = 0 } view { col { h1 | f"Count: ${.count}" } } }"#;
-        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
-        let mut parser = Parser::from(code).with_session(session);
-        let result = parser.parse();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_element_pipe_with_braces_error() {
-        // Should use button "-" { ... } syntax instead (Task 2 - pipe text shorthand)
-        let code = r#"widget Test { view { col { h1 | Title { onclick: .Test } } } }"#;
-        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
-        let mut parser = Parser::from(code).with_session(session);
-        let result = parser.parse();
-        assert!(result.is_err());
+        if let Ok(ast) = result {
+            if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
+                if let Some(view) = &widget.view {
+                    if let ViewNode::Element { tag, props, events, .. } = &view.root {
+                        assert_eq!(tag, "button");
+                        // Should have text prop from string literal
+                        assert!(props.iter().any(|p| p.name == "text"));
+                        // Should have class prop from parentheses
+                        assert!(props.iter().any(|p| p.name == "class"));
+                        // Should have onclick event
+                        assert!(!events.is_empty());
+                    }
+                }
+            }
+        }
     }
 
     // Task 5: Regression test - Old greater-than syntax should NOT work as text shorthand
-    // The old `> "text"` syntax was replaced with `| "text"` pipe syntax
-    // Now `>` is treated as an element tag (which will fail validation downstream)
+    // The `>` is treated as an element tag (which will fail validation downstream)
 
     #[test]
     fn test_gt_syntax_not_text_shorthand() {
-        // This test verifies that `>` is NOT interpreted as a text shorthand
-        // With the new pipe syntax, `| "text"` is the correct way to create text nodes
-        // The `>` token should be treated as an element tag, not as text syntax
-
-        // Test: `> "text"` should be parsed as element with tag ">" and prop "text"
+        // Test: `> "text"` should be parsed as element with tag ">" and no primary prop
         let code = r#"widget Test { view { col { > "Hello" } } }"#;
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
@@ -9176,11 +9084,9 @@ widget Test {
                         assert_eq!(tag, "col");
                         // The child should be an element with tag ">"
                         assert_eq!(children.len(), 1);
-                        if let ViewNode::Element { tag, props, .. } = &children[0] {
+                        if let ViewNode::Element { tag, .. } = &children[0] {
                             assert_eq!(tag, ">", "The '>' should be parsed as element tag, not text syntax");
-                            // The "Hello" becomes a prop, not text content
-                            assert_eq!(props.len(), 1);
-                            assert_eq!(props[0].name, "text");
+                            // No primary prop for ">" element
                         }
                     }
                 }

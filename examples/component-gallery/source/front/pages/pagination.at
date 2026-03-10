@@ -5,51 +5,51 @@ widget PaginationPage {
 
     view {
         col {
-            h1 | Pagination
-            text | A navigation component for paginating through content.
+            h1 "Pagination"
+            text "A navigation component for paginating through content."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add pagination") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "pagination-basic") {
                 row (gap: "2", class: "items-center") {
                     pagination {}
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | total
-                        td | number
-                        td | -
-                        td | -
-                        td | Total number of pages
+                        td "total"
+                        td "number"
+                        td "-"
+                        td "-"
+                        td "Total number of pages"
                     }
                     tr {
-                        td | page
-                        td | number
-                        td | 1
-                        td | -
-                        td | Current page number
+                        td "page"
+                        td "number"
+                        td "1"
+                        td "-"
+                        td "Current page number"
                     }
                     tr {
-                        td | sibling-count
-                        td | number
-                        td | -
-                        td | -
-                        td | Number of visible page buttons
+                        td "sibling-count"
+                        td "number"
+                        td "-"
+                        td "-"
+                        td "Number of visible page buttons"
                     }
                 }
             }

@@ -5,13 +5,13 @@ widget BreadcrumbPage {
 
     view {
         col {
-            h1 | Breadcrumb
-            text | "Shows the user's current location within a navigational hierarchy."
+            h1 "Breadcrumb"
+            text "Shows the user's current location within a navigational hierarchy."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add breadcrumb") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "breadcrumb-basic") {
                 breadcrumb {
                     breadcrumb-list {
@@ -24,37 +24,37 @@ widget BreadcrumbPage {
                         }
                         breadcrumb-separator {}
                         breadcrumb-item {
-                            breadcrumb-page | Breadcrumb
+                            breadcrumb-page "Breadcrumb"
                         }
                     }
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | text
-                        td | string
-                        td | -
-                        td | -
-                        td | Item text content
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Item text content"
                     }
                     tr {
-                        td | href
-                        td | string
-                        td | -
-                        td | -
-                        td | Link destination
+                        td "href"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Link destination"
                     }
                 }
             }

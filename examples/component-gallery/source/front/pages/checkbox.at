@@ -5,13 +5,13 @@ widget CheckboxPage {
 
     view {
         col {
-            h1 | Checkbox
-            text | A control that allows the user to toggle between checked and not checked.
+            h1 "Checkbox"
+            text "A control that allows the user to toggle between checked and not checked."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add checkbox") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "checkbox-basic") {
                 row (gap: "2", class: "items-center") {
                     checkbox (id: "terms1") {}
@@ -19,7 +19,7 @@ widget CheckboxPage {
                 }
             }
 
-            h2 | Disabled
+            h2 "Disabled"
             preview-card (id: "checkbox-disabled") {
                 row (gap: "2", class: "items-center") {
                     checkbox (id: "terms2", disabled: "true") {}
@@ -27,7 +27,7 @@ widget CheckboxPage {
                 }
             }
 
-            h2 | Checked
+            h2 "Checked"
             preview-card (id: "checkbox-checked") {
                 row (gap: "2", class: "items-center") {
                     checkbox (id: "terms3", checked: "true") {}
@@ -35,38 +35,38 @@ widget CheckboxPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | checked
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Checkbox state
+                        td "checked"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Checkbox state"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the checkbox
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the checkbox"
                     }
                     tr {
-                        td | id
-                        td | string
-                        td | -
-                        td | -
-                        td | ID for label association
+                        td "id"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "ID for label association"
                     }
                 }
             }

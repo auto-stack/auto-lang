@@ -5,24 +5,24 @@ widget FormPage {
 
     view {
         col {
-            h1 | Form
-            text | A form component with validation support using VeeValidate and Zod schemas.
+            h1 "Form"
+            text "A form component with validation support using VeeValidate and Zod schemas."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add form") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "form-basic") {
                 form {
                     col (gap: "4") {
                         form-item {
-                            form-label | Username
+                            form-label "Username"
                             input (placeholder: "Enter username") {}
-                            form-description | This is your public display name.
+                            form-description "This is your public display name."
                             form-message {}
                         }
                         form-item {
-                            form-label | Email
+                            form-label "Email"
                             input (type: "email", placeholder: "Enter email") {}
                             form-message {}
                         }
@@ -31,38 +31,38 @@ widget FormPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | schema
-                        td | ZodSchema
-                        td | -
-                        td | -
-                        td | Validation schema
+                        td "schema"
+                        td "ZodSchema"
+                        td "-"
+                        td "-"
+                        td "Validation schema"
                     }
                     tr {
-                        td | initial-values
-                        td | object
-                        td | "{}"
-                        td | -
-                        td | Initial form values
+                        td "initial-values"
+                        td "object"
+                        td "{}"
+                        td "-"
+                        td "Initial form values"
                     }
                     tr {
-                        td | on-submit
-                        td | function
-                        td | -
-                        td | -
-                        td | Submit handler
+                        td "on-submit"
+                        td "function"
+                        td "-"
+                        td "-"
+                        td "Submit handler"
                     }
                 }
             }

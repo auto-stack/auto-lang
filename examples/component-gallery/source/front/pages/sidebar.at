@@ -5,13 +5,13 @@ widget SidebarPage {
 
     view {
         col {
-            h1 | Sidebar
-            text | A composable sidebar component with support for different sections and navigation items.
+            h1 "Sidebar"
+            text "A composable sidebar component with support for different sections and navigation items."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sidebar") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "sidebar-basic") {
                 sidebar-provider {
                     sidebar {
@@ -19,24 +19,24 @@ widget SidebarPage {
                             sidebar-menu {
                                 sidebar-menu-item {
                                     sidebar-menu-button {
-                                        text | Dashboard
+                                        text "Dashboard"
                                     }
                                 }
                             }
                         }
                         sidebar-content {
                             sidebar-group {
-                                sidebar-group-label | Main
+                                sidebar-group-label "Main"
                                 sidebar-group-content {
                                     sidebar-menu {
                                         sidebar-menu-item {
                                             sidebar-menu-button {
-                                                text | Home
+                                                text "Home"
                                             }
                                         }
                                         sidebar-menu-item {
                                             sidebar-menu-button {
-                                                text | Settings
+                                                text "Settings"
                                             }
                                         }
                                     }
@@ -44,44 +44,44 @@ widget SidebarPage {
                             }
                         }
                         sidebar-footer {
-                            text | Footer
+                            text "Footer"
                         }
                     }
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | side
-                        td | string
+                        td "side"
+                        td "string"
                         td (text: "\"left\"") {}
                         td (text: "\"left\", \"right\"") {}
-                        td | Which side the sidebar appears
+                        td "Which side the sidebar appears"
                     }
                     tr {
-                        td | variant
-                        td | string
+                        td "variant"
+                        td "string"
                         td (text: "\"sidebar\"") {}
                         td (text: "\"sidebar\", \"floating\", \"inset\"") {}
-                        td | Sidebar style variant
+                        td "Sidebar style variant"
                     }
                     tr {
-                        td | collapsible
-                        td | string
+                        td "collapsible"
+                        td "string"
                         td (text: "\"offcanvas\"") {}
                         td (text: "\"offcanvas\", \"icon\", \"none\"") {}
-                        td | Collapsible behavior
+                        td "Collapsible behavior"
                     }
                 }
             }

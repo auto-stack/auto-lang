@@ -5,52 +5,52 @@ widget DrawerPage {
 
     view {
         col {
-            h1 | Drawer
-            text | A drawer that slides in from the side of the screen.
+            h1 "Drawer"
+            text "A drawer that slides in from the side of the screen."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add drawer") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "drawer-basic") {
                 row (gap: "4") {
                     drawer {}
-                    drawer-trigger | Open Drawer
+                    drawer-trigger "Open Drawer"
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | open
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Controls drawer visibility
+                        td "open"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Controls drawer visibility"
                     }
                     tr {
-                        td | direction
-                        td | string
-                        td | right
-                        td | left, right, top, bottom
-                        td | Drawer slide direction
+                        td "direction"
+                        td "string"
+                        td "right"
+                        td "left, right, top, bottom"
+                        td "Drawer slide direction"
                     }
                     tr {
-                        td | title
-                        td | string
-                        td | -
-                        td | -
-                        td | Drawer title
+                        td "title"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Drawer title"
                     }
                 }
             }

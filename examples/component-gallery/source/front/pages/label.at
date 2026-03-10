@@ -5,18 +5,18 @@ widget LabelPage {
 
     view {
         col {
-            h1 | Label
-            text | Renders an accessible label associated with controls.
+            h1 "Label"
+            text "Renders an accessible label associated with controls."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add label") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "label-basic") {
-                label | Email
+                label "Email"
             }
 
-            h2 | With Input
+            h2 "With Input"
             preview-card (id: "label-input") {
                 col (gap: "1.5", class: "w-64") {
                     label (text: "Email", for: "email") {}
@@ -24,31 +24,31 @@ widget LabelPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | text
-                        td | string
-                        td | -
-                        td | -
-                        td | Label text content (slot)
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Label text content (slot)"
                     }
                     tr {
-                        td | for
-                        td | string
-                        td | -
-                        td | -
-                        td | ID of the associated form control
+                        td "for"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "ID of the associated form control"
                     }
                 }
             }

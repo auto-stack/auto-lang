@@ -5,110 +5,110 @@ widget TablePage {
 
     view {
         col {
-            h1 | Table
-            text | A responsive table component.
+            h1 "Table"
+            text "A responsive table component."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}
 
-            h2 | Example
+            h2 "Example"
             preview-card (id: "table-basic") {
                 table {
-                    table-caption | A list of your recent invoices.
+                    table-caption "A list of your recent invoices."
                     table-header {
                         table-row {
                             table-head (text: "Invoice", class: "w-[100px]") {}
-                            table-head | Status
-                            table-head | Method
+                            table-head "Status"
+                            table-head "Method"
                             table-head (text: "Amount", class: "text-right") {}
                         }
                     }
                     table-body {
                         table-row {
                             table-cell (text: "INV001", class: "font-medium") {}
-                            table-cell | Paid
-                            table-cell | Credit Card
+                            table-cell "Paid"
+                            table-cell "Credit Card"
                             table-cell (text: "$250.00", class: "text-right") {}
                         }
                         table-row {
                             table-cell (text: "INV002", class: "font-medium") {}
-                            table-cell | Pending
-                            table-cell | PayPal
+                            table-cell "Pending"
+                            table-cell "PayPal"
                             table-cell (text: "$150.00", class: "text-right") {}
                         }
                         table-row {
                             table-cell (text: "INV003", class: "font-medium") {}
-                            table-cell | Unpaid
-                            table-cell | Bank Transfer
+                            table-cell "Unpaid"
+                            table-cell "Bank Transfer"
                             table-cell (text: "$350.00", class: "text-right") {}
                         }
                         table-row {
                             table-cell (text: "INV004", class: "font-medium") {}
-                            table-cell | Paid
-                            table-cell | Credit Card
+                            table-cell "Paid"
+                            table-cell "Credit Card"
                             table-cell (text: "$450.00", class: "text-right") {}
                         }
                         table-row {
                             table-cell (text: "INV005", class: "font-medium") {}
-                            table-cell | Paid
-                            table-cell | PayPal
+                            table-cell "Paid"
+                            table-cell "PayPal"
                             table-cell (text: "$550.00", class: "text-right") {}
                         }
                         table-row {
                             table-cell (text: "INV006", class: "font-medium") {}
-                            table-cell | Pending
-                            table-cell | Bank Transfer
+                            table-cell "Pending"
+                            table-cell "Bank Transfer"
                             table-cell (text: "$200.00", class: "text-right") {}
                         }
                         table-row {
                             table-cell (text: "INV007", class: "font-medium") {}
-                            table-cell | Unpaid
-                            table-cell | Credit Card
+                            table-cell "Unpaid"
+                            table-cell "Credit Card"
                             table-cell (text: "$300.00", class: "text-right") {}
                         }
                     }
                 }
             }
 
-            h2 | Data Table
+            h2 "Data Table"
             text (text: "You can use the Table component to build more complex data tables. Combine it with @tanstack/vue-table to create tables with sorting, filtering and pagination.", class: "text-muted-foreground") {}
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Component
-                        th | Description
+                        th "Component"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | Table
-                        td | Main table container
+                        td "Table"
+                        td "Main table container"
                     }
                     tr {
-                        td | TableHeader
-                        td | Header section
+                        td "TableHeader"
+                        td "Header section"
                     }
                     tr {
-                        td | TableBody
-                        td | Body section
+                        td "TableBody"
+                        td "Body section"
                     }
                     tr {
-                        td | TableCaption
-                        td | Table caption/description
+                        td "TableCaption"
+                        td "Table caption/description"
                     }
                     tr {
-                        td | TableRow
-                        td | Table row
+                        td "TableRow"
+                        td "Table row"
                     }
                     tr {
-                        td | TableHead
-                        td | Header cell
+                        td "TableHead"
+                        td "Header cell"
                     }
                     tr {
-                        td | TableCell
-                        td | Data cell
+                        td "TableCell"
+                        td "Data cell"
                     }
                 }
             }

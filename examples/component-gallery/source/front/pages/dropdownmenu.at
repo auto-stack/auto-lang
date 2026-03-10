@@ -5,51 +5,51 @@ widget DropdownmenuPage {
 
     view {
         col {
-            h1 | DropdownMenu
-            text | A menu that drops down from a trigger element.
+            h1 "DropdownMenu"
+            text "A menu that drops down from a trigger element."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add dropdown-menu") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "dropdownmenu-basic") {
                 row (gap: "4") {
                     dropdown-menu {}
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | text
-                        td | string
-                        td | -
-                        td | -
-                        td | Menu item text
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Menu item text"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the menu item
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the menu item"
                     }
                     tr {
-                        td | shortcut
-                        td | string
-                        td | -
-                        td | -
-                        td | Keyboard shortcut hint
+                        td "shortcut"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Keyboard shortcut hint"
                     }
                 }
             }

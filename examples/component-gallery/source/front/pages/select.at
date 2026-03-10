@@ -5,13 +5,13 @@ widget SelectPage {
 
     view {
         col {
-            h1 | Select
-            text | Displays a list of options for the user to pick from.
+            h1 "Select"
+            text "Displays a list of options for the user to pick from."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add select") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "select-basic") {
                 select {
                     select-trigger {
@@ -19,7 +19,7 @@ widget SelectPage {
                     }
                     select-content {
                         select-group {
-                            select-label | Fruits
+                            select-label "Fruits"
                             select-item (text: "Apple", value: "apple") {}
                             select-item (text: "Banana", value: "banana") {}
                             select-item (text: "Blueberry", value: "blueberry") {}
@@ -30,7 +30,7 @@ widget SelectPage {
                 }
             }
 
-            h2 | Scrollable
+            h2 "Scrollable"
             preview-card (id: "select-scrollable") {
                 select {
                     select-trigger (class: "w-[280px]") {
@@ -53,31 +53,31 @@ widget SelectPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | placeholder
-                        td | string
-                        td | -
-                        td | -
-                        td | Placeholder text for select-value
+                        td "placeholder"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Placeholder text for select-value"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the select
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the select"
                     }
                 }
             }

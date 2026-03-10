@@ -5,13 +5,13 @@ widget PopoverPage {
 
     view {
         col {
-            h1 | Popover
-            text | A floating content that appears near a trigger element.
+            h1 "Popover"
+            text "A floating content that appears near a trigger element."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add popover") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "popover-basic") {
                 row (gap: "4") {
                     popover {
@@ -21,45 +21,45 @@ widget PopoverPage {
                         popover-content {
                             col (gap: "4") {
                                 h4 (text: "Dimensions", class: "font-medium") {}
-                                text | Set the dimensions for the layer.
+                                text "Set the dimensions for the layer."
                             }
                         }
                     }
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | side
-                        td | string
+                        td "side"
+                        td "string"
                         td (text: "\"bottom\"") {}
                         td (text: "\"top\", \"right\", \"bottom\", \"left\"") {}
-                        td | Preferred side of the trigger
+                        td "Preferred side of the trigger"
                     }
                     tr {
-                        td | align
-                        td | string
+                        td "align"
+                        td "string"
                         td (text: "\"center\"") {}
                         td (text: "\"start\", \"center\", \"end\"") {}
-                        td | Preferred alignment
+                        td "Preferred alignment"
                     }
                     tr {
-                        td | open
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Controls the open state
+                        td "open"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Controls the open state"
                     }
                 }
             }

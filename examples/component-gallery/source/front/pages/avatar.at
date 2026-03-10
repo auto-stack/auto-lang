@@ -5,13 +5,13 @@ widget AvatarPage {
 
     view {
         col {
-            h1 | Avatar
-            text | An image element with a fallback for representing the user.
+            h1 "Avatar"
+            text "An image element with a fallback for representing the user."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add avatar") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "avatar-basic") {
                 row (gap: "4") {
                     avatar (src: "https://github.com/shadcn.png", alt: "@shadcn") {}
@@ -19,38 +19,38 @@ widget AvatarPage {
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | src
-                        td | string
-                        td | -
-                        td | -
-                        td | Image source URL
+                        td "src"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Image source URL"
                     }
                     tr {
-                        td | alt
-                        td | string
-                        td | -
-                        td | -
-                        td | Alt text for accessibility
+                        td "alt"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Alt text for accessibility"
                     }
                     tr {
-                        td | fallback
-                        td | string
-                        td | -
-                        td | -
-                        td | Fallback text when image fails
+                        td "fallback"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Fallback text when image fails"
                     }
                 }
             }

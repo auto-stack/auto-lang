@@ -5,56 +5,56 @@ widget CalendarPage {
 
     view {
         col {
-            h1 | Calendar
-            text | A date field component that allows users to select a date or date range.
+            h1 "Calendar"
+            text "A date field component that allows users to select a date or date range."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add calendar") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "calendar-basic") {
                 calendar {}
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | v-model
-                        td | Date
-                        td | -
-                        td | -
-                        td | Selected date value
+                        td "v-model"
+                        td "Date"
+                        td "-"
+                        td "-"
+                        td "Selected date value"
                     }
                     tr {
-                        td | locale
-                        td | string
+                        td "locale"
+                        td "string"
                         td (text: "\"en\"") {}
-                        td | -
-                        td | Locale for formatting
+                        td "-"
+                        td "Locale for formatting"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the calendar
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the calendar"
                     }
                     tr {
-                        td | mode
-                        td | string
+                        td "mode"
+                        td "string"
                         td (text: "\"single\"") {}
                         td (text: "\"single\", \"range\"") {}
-                        td | Selection mode
+                        td "Selection mode"
                     }
                 }
             }

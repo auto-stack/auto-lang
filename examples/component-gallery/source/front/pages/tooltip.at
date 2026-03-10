@@ -5,13 +5,13 @@ widget TooltipPage {
 
     view {
         col {
-            h1 | Tooltip
-            text | A popup that displays information related to an element when hovering or focusing.
+            h1 "Tooltip"
+            text "A popup that displays information related to an element when hovering or focusing."
 
-            h2 | Installation
+            h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add tooltip") {}
 
-            h2 | Simple
+            h2 "Simple"
             preview-card (id: "tooltip-basic") {
                 row (gap: "4") {
                     tooltip-provider {
@@ -20,45 +20,45 @@ widget TooltipPage {
                                 button (text: "Hover me", variant: "outline") {}
                             }
                             tooltip-content {
-                                text | Add to library
+                                text "Add to library"
                             }
                         }
                     }
                 }
             }
 
-            h2 | Properties
+            h2 "Properties"
             table {
                 thead {
                     tr {
-                        th | Property
-                        th | Type
-                        th | Default
-                        th | Values
-                        th | Description
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td | side
-                        td | string
+                        td "side"
+                        td "string"
                         td (text: "\"top\"") {}
                         td (text: "\"top\", \"right\", \"bottom\", \"left\"") {}
-                        td | Which side the tooltip appears
+                        td "Which side the tooltip appears"
                     }
                     tr {
-                        td | delay-duration
-                        td | number
-                        td | 700
-                        td | -
-                        td | Delay before showing (ms)
+                        td "delay-duration"
+                        td "number"
+                        td "700"
+                        td "-"
+                        td "Delay before showing (ms)"
                     }
                     tr {
-                        td | disabled
-                        td | boolean
-                        td | false
-                        td | true, false
-                        td | Disables the tooltip
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the tooltip"
                     }
                 }
             }

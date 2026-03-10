@@ -651,10 +651,10 @@ impl<'a> Lexer<'a> {
                     if let Some(next_char) = iter_copy.peek() {
                         if *next_char == '"' {
                             return Ok(self.cstr());
-                        } else {
-                            return self.identifier();
                         }
                     }
+                    // If not followed by ", treat as identifier
+                    return self.identifier();
                 }
                 'f' => {
                     let mut iter_copy = self.chars.clone();
@@ -662,10 +662,10 @@ impl<'a> Lexer<'a> {
                     if let Some(next_char) = iter_copy.peek() {
                         if *next_char == '"' {
                             return self.fstr();
-                        } else {
-                            return self.identifier();
                         }
                     }
+                    // If not followed by ", treat as identifier
+                    return self.identifier();
                 }
                 ':' => {
                     return Ok(self.single(TokenKind::Colon, c));
