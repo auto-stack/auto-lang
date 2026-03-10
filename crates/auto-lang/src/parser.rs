@@ -8937,4 +8937,34 @@ widget Test {
             }
         }
     }
+
+    #[test]
+    fn test_pipe_standalone_unquoted() {
+        // Test standalone pipe with unquoted text (Task 1 - pipe text shorthand)
+        let code = r#"widget Test { view { col { | Hello } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_pipe_standalone_fstr() {
+        // Test standalone pipe with f-string (Task 1 - pipe text shorthand)
+        let code = r#"widget Test { model { count int = 0 } view { col { | f"Count: ${.count}" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_pipe_standalone_quoted() {
+        // Test standalone pipe with quoted text (Task 1 - pipe text shorthand)
+        let code = r#"widget Test { view { col { | "Hello World" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+    }
 }
