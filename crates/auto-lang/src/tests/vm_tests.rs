@@ -2174,3 +2174,41 @@ fn test_compound_assignment_div_eq_oneline() {
     println!("Result: {} (expected: 5)", result);
     assert_eq!(result, "5");
 }
+
+// ===== Plan 117: Type Coercion Regression Tests =====
+
+#[test]
+fn test_int_plus_float() {
+    let result = run("2 + 3.5").unwrap();
+    assert_eq!(result, "5.5");
+}
+
+#[test]
+fn test_float_plus_int() {
+    let result = run("3.5 + 2").unwrap();
+    assert_eq!(result, "5.5");
+}
+
+#[test]
+fn test_int_times_float() {
+    let result = run("4 * 2.5").unwrap();
+    assert_eq!(result, "10");
+}
+
+#[test]
+fn test_float_times_int() {
+    let result = run("2.5 * 4").unwrap();
+    assert_eq!(result, "10");
+}
+
+#[test]
+fn test_mixed_arithmetic_complex() {
+    let result = run("(2 + 3.5) * 5").unwrap();
+    assert_eq!(result, "27.5");
+}
+
+#[test]
+fn test_mixed_arithmetic_with_variable() {
+    let result = run("let x = 2; x + 3.5").unwrap();
+    assert_eq!(result, "5.5");
+}

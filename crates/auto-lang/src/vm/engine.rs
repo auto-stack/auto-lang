@@ -415,7 +415,6 @@ impl AutoVM {
 
             let op_byte = self.flash.read_u8(task.ip);
             task.ip += 1;
-
             let op: OpCode = op_byte.into();
 
             // 2. Decode & Execute
@@ -451,6 +450,7 @@ impl AutoVM {
                     let val = self.flash.read_f32(task.ip);
                     task.ip += 4;
                     task.ram.push_f32(val);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
                 OpCode::CONST_F64 => {
                     // Plan 073: Double precision constant
@@ -1692,16 +1692,19 @@ impl AutoVM {
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a + b);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
                 OpCode::SUB_F => {
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a - b);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
                 OpCode::MUL_F => {
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a * b);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
                 OpCode::DIV_F => {
                     let b = task.ram.pop_f32();
@@ -1710,10 +1713,12 @@ impl AutoVM {
                         return Err(VMError::DivisionByZero);
                     }
                     task.ram.push_f32(a / b);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
                 OpCode::NEG_F => {
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(-a);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
 
                 // Plan 073 Stage A: Double precision arithmetic (f64)
@@ -1749,10 +1754,12 @@ impl AutoVM {
                 OpCode::I32_TO_F32 => {
                     let val = task.ram.pop_i32();
                     task.ram.push_f32(val as f32);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
                 OpCode::I64_TO_F64 => {
                     let val = task.ram.pop_i64();
                     task.ram.push_f64(val as f64);
+                    task.last_result_is_float = true; // Plan 117: Mark result as float
                 }
 
                 OpCode::NOT => {

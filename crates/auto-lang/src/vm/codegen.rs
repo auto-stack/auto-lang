@@ -2385,8 +2385,20 @@ impl Codegen {
                     let is_string = self.is_string_operation(lhs, rhs);
 
                     // Normal binary operation: compile both operands, then apply operator
+                    // Plan 117: Emit type coercion for mixed int/float arithmetic
                     self.compile_expr(lhs)?;
+                    if is_float && !is_double && self.needs_float_coercion(lhs) {
+                        self.emit(OpCode::I32_TO_F32);
+                    } else if is_double && self.needs_double_coercion(lhs) {
+                        self.emit(OpCode::I64_TO_F64);
+                    }
+
                     self.compile_expr(rhs)?;
+                    if is_float && !is_double && self.needs_float_coercion(rhs) {
+                        self.emit(OpCode::I32_TO_F32);
+                    } else if is_double && self.needs_double_coercion(rhs) {
+                        self.emit(OpCode::I64_TO_F64);
+                    }
 
                     // For arithmetic operations, use float/double opcodes if operands are floats
                     match op {
@@ -3175,17 +3187,66 @@ impl Codegen {
     }
 
     // Plan 073 Stage A.5: Check if we should use float/double arithmetic
-    // Returns true if either operand is a float/double
+    // Returns true if either operand is a float/double or contains one recursively
     fn is_float_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
-        // Check if either operand is a float/double literal
-        matches!(lhs, Expr::Float(_, _) | Expr::Double(_, _))
-            || matches!(rhs, Expr::Float(_, _) | Expr::Double(_, _))
+        // Check if either operand is a float/double literal or contains one recursively
+        self.contains_float(lhs) || self.contains_float(rhs)
+    }
+
+    // Plan 117: Recursively check if expression contains float/double literals
+    fn contains_float(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Float(_, _) | Expr::Double(_, _) => true,
+            Expr::Bina(lhs, _, rhs) => {
+                self.contains_float(lhs) || self.contains_float(rhs)
+            }
+            Expr::Unary(_, inner) => self.contains_float(inner),
+            Expr::Block(body) => {
+                // Check if any statement in the block contains float
+                body.stmts.iter().any(|s| self.stmt_contains_float(s))
+            }
+            _ => false,
+        }
+    }
+
+    // Plan 117: Check if a statement contains float expressions
+    fn stmt_contains_float(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(e) => self.contains_float(e),
+            Stmt::Store(s) => self.contains_float(&s.expr),
+            _ => false,
+        }
     }
 
     // Plan 073 Stage A.5: Check if we should use double precision (f64) vs float (f32)
     fn is_double_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
-        // If either operand is double, use double precision
-        matches!(lhs, Expr::Double(_, _)) || matches!(rhs, Expr::Double(_, _))
+        // If either operand is double or contains one recursively, use double precision
+        self.contains_double(lhs) || self.contains_double(rhs)
+    }
+
+    // Plan 117: Recursively check if expression contains double literals
+    fn contains_double(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Double(_, _) => true,
+            Expr::Bina(lhs, _, rhs) => {
+                self.contains_double(lhs) || self.contains_double(rhs)
+            }
+            Expr::Unary(_, inner) => self.contains_double(inner),
+            Expr::Block(body) => {
+                // Check if any statement in the block contains double
+                body.stmts.iter().any(|s| self.stmt_contains_double(s))
+            }
+            _ => false,
+        }
+    }
+
+    // Plan 117: Check if a statement contains double expressions
+    fn stmt_contains_double(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(e) => self.contains_double(e),
+            Stmt::Store(s) => self.contains_double(&s.expr),
+            _ => false,
+        }
     }
 
     // Plan 117: Check if expression is an integer type that needs coercion to float

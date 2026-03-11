@@ -25,6 +25,8 @@ pub struct AutoTask {
     // Plan 088 Phase 4: Function metadata from FN_PROLOG instruction
     pub current_fn_n_args: usize, // Number of arguments in current function
     pub current_fn_n_locals: usize, // Number of local variables in current function (from prologue)
+    // Plan 117: Track if last result is a float (for proper result extraction)
+    pub last_result_is_float: bool,
 }
 
 impl AutoTask {
@@ -40,6 +42,7 @@ impl AutoTask {
             current_closure_id: None,
             current_fn_n_args: 0, // Plan 088 Phase 4: Initialize to 0
             current_fn_n_locals: 0, // Plan 088 Phase 4: Initialize to 0
+            last_result_is_float: false, // Plan 117: Initialize to false
         }
     }
 }
