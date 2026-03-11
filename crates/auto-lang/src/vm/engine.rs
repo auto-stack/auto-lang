@@ -1745,6 +1745,16 @@ impl AutoVM {
                     task.ram.push_f64(-a);
                 }
 
+                // Plan 117: Type coercion for mixed arithmetic
+                OpCode::I32_TO_F32 => {
+                    let val = task.ram.pop_i32();
+                    task.ram.push_f32(val as f32);
+                }
+                OpCode::I64_TO_F64 => {
+                    let val = task.ram.pop_i64();
+                    task.ram.push_f64(val as f64);
+                }
+
                 OpCode::NOT => {
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(!a);
