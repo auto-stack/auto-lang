@@ -1,4 +1,4 @@
-# Pipe (`|`) Text Shorthand Syntax
+# Plan 116: Pipe (`|`) Text Shorthand Syntax
 
 **Date:** 2026-03-10
 **Status:** Approved
@@ -70,7 +70,7 @@ In view context (`view { }` blocks), the `|` operator:
 | `h1 | ` (empty after pipe) | Error - text required |
 | `h1 |` at end of line | Error - text required |
 
-## Migration Plan
+## Migration
 
 ### Removed Syntax
 
@@ -105,18 +105,90 @@ Any element with:
 
 → Convert to `tag | text_content`
 
-## Implementation Changes
+---
 
-### Parser (`parser.rs`)
+## Implementation
 
-1. Replace `TokenKind::Gt` check with `TokenKind::Pipe` in `parse_view_node()`
-2. After `|`, parse content until EOL or `{`
-3. For element + `|`: validate no `{` follows (one-liner only)
-4. Remove old `>` syntax handling
+### Task 1: Add Tests for Pipe Syntax
 
-### Lexer (`lexer.rs`)
+**Files:** `crates/auto-lang/src/parser.rs` (test section)
 
-- `|` already tokenized as `TokenKind::Pipe` ✓ (no changes needed)
+Add tests for:
+- Standalone pipe with unquoted text: `| Hello`
+- Standalone pipe with f-string: `| f"Count: ${.count}"`
+- Standalone pipe with quoted text: `| "Hello World"`
+- Element + pipe unquoted: `h1 | Input`
+- Element + pipe multi-word: `h1 | Hello World`
+- Element + pipe f-string: `h1 | f"Count: ${.count}"`
+- Element + pipe error when braces follow: `h1 | Title { onclick: .Test }`
+
+### Task 2: Implement Standalone Pipe Text Parsing
+
+**Files:** `crates/auto-lang/src/parser.rs`
+
+In `parse_view_node()`, replace `TokenKind::Gt` check with `TokenKind::VBar`:
+
+```rust
+// Check for text with '|' prefix: | text or | f"text ${.state}"
+if self.is_kind(TokenKind::VBar) {
+    self.next();
+    self.skip_empty_lines();
+    return self.parse_pipe_text_content();
+}
+```
+
+Add helper method `parse_pipe_text_content()`:
+- Check for f-string (`FStrStart`) → return interpolated text
+- Check for quoted string (`Str`) → return literal text
+- Otherwise → consume unquoted text until EOL/`{`/`EOF`
+- Error if empty text
+
+### Task 3: Implement Element + Pipe Text Parsing
+
+**Files:** `crates/auto-lang/src/parser.rs`
+
+In `parse_view_node()`, after parsing tag name, check for `VBar`:
+
+```rust
+// Check for pipe text shorthand: tag | text (one-liner only, no children)
+if self.is_kind(TokenKind::VBar) {
+    self.next();
+    self.skip_empty_lines();
+
+    let text_node = self.parse_pipe_text_content()?;
+
+    // Extract text and create element with text prop only
+    // Error if LBrace follows (should use tag "text" { ... } syntax)
+
+    return Ok(ViewNode::Element { tag, props: vec![text_prop], events: vec![], children: vec![] });
+}
+```
+
+### Task 4: Remove Old Greater-Than Syntax
+
+**Files:** `crates/auto-lang/src/parser.rs`
+
+- Verify no `TokenKind::Gt` usage remains in view parsing
+- Add regression test that `>` no longer works for text nodes
+
+### Task 5: Migrate Example Files
+
+**Files:**
+- `examples/counter_full.at`
+- `examples/component-gallery/source/front/pages/*.at`
+- `examples/component-gallery/source/front/components/*.at`
+
+Apply migration pattern:
+- `h1 (text: "Input") {}` → `h1 | Input`
+- `> f"Count: ${.count}"` → `| f"Count: ${.count}"`
+
+### Task 6: Final Verification
+
+- Run all parser tests: `cargo test -p auto-lang -- parser`
+- Run full test suite: `cargo test -p auto-lang`
+- Run clippy: `cargo clippy -p auto-lang -- -D warnings`
+
+---
 
 ## Examples
 
