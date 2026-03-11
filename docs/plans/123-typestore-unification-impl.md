@@ -1,12 +1,33 @@
 # TypeStore Unification Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status**: ✅ **COMPLETE** (2026-03-12)
 
 **Goal:** Consolidate all type registries into TypeStore as the single source of truth, fixing enum type reference in codegen.
 
 **Architecture:** Add EnumDecl to TypeStore, then merge infer/registry.rs, type_registry.rs, and Database.type_info_store into TypeStore. Use Rc<T> for shared immutable references.
 
 **Tech Stack:** Rust, Arc<RwLock<...>>, Rc<T>, existing TypeStore in types.rs
+
+---
+
+## Completion Summary
+
+| Task | Description | Status | Commit |
+|------|-------------|--------|--------|
+| 1 | Add EnumDecl to TypeStore | ✅ | `45d5d02` |
+| 2 | Register enums in Parser | ✅ | `7790f25` |
+| 3 | Handle enum variant access in Codegen | ✅ | `d3cd33b` |
+| 4 | Enable tests | ✅ | `f846e89` |
+| 5 | Add is_type helper | ✅ | `b50c3fb` |
+| 6 | Use Rc<TypeDecl> | ✅ | `860c399` |
+| 7 | Deprecate type_registry.rs | ✅ | `b9778ad` |
+| 8 | Deprecate infer/registry.rs | ✅ | `b9778ad` |
+| 9 | Verify all tests | ✅ | `b2f7e60` |
+
+### Tests Fixed
+- `test_enum_decl_compiles` - Now passes
+- `test_combined_type_enum_spec_compiles` - Now passes
+- `test_int_enums` - Now passes
 
 ---
 
