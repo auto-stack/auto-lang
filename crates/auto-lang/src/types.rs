@@ -77,9 +77,10 @@
 //! - `infer::registry` - 类型注册表（将被替换）
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use auto_val::AutoStr;
-use crate::ast::{Type, TypeDecl, Fn, SpecDecl, Name, GenericInstance};
+use crate::ast::{Type, TypeDecl, Fn, SpecDecl, Name, GenericInstance, EnumDecl};
 
 /// 泛型模板
 ///
@@ -144,6 +145,9 @@ pub struct TypeStore {
 
     /// 类型别名：别名 -> 目标类型名（Plan 090）
     type_aliases: HashMap<AutoStr, AutoStr>,
+
+    /// Enum 声明：enum 名 -> EnumDecl
+    enum_decls: HashMap<AutoStr, Rc<EnumDecl>>,
 }
 
 impl TypeStore {
@@ -155,6 +159,7 @@ impl TypeStore {
             spec_decls: HashMap::new(),
             generic_templates: HashMap::new(),
             type_aliases: HashMap::new(),
+            enum_decls: HashMap::new(),
         }
     }
 
@@ -216,6 +221,43 @@ impl TypeStore {
     /// 查找 spec 声明（字符串参数）
     pub fn lookup_spec_decl_str(&self, name: &str) -> Option<&SpecDecl> {
         self.spec_decls.get(&AutoStr::from(name))
+    }
+
+    /// 注册 Enum 声明
+    pub fn register_enum_decl(&mut self, decl: EnumDecl) {
+        let name = decl.name.clone();
+        self.enum_decls.insert(name, Rc::new(decl));
+    }
+
+    /// 查找 Enum 声明
+    pub fn lookup_enum_decl(&self, name: &AutoStr) -> Option<Rc<EnumDecl>> {
+        self.enum_decls.get(name).cloned()
+    }
+
+    /// 查找 Enum 声明（字符串参数）
+    pub fn lookup_enum_decl_str(&self, name: &str) -> Option<Rc<EnumDecl>> {
+        self.enum_decls.get(&AutoStr::from(name)).cloned()
+    }
+
+    /// 检查名称是否为 Enum 类型
+    pub fn is_enum(&self, name: &str) -> bool {
+        self.enum_decls.contains_key(&AutoStr::from(name))
+    }
+
+    /// 获取 Enum 变体的值
+    pub fn get_enum_variant_value(&self, enum_name: &str, variant_name: &str) -> Option<i32> {
+        self.enum_decls.get(&AutoStr::from(enum_name))
+            .and_then(|decl| decl.items.iter()
+                .find(|item| item.name.as_ref() == variant_name)
+                .map(|item| item.value))
+    }
+
+    /// 统一的类型检查（包含 type、enum、spec）
+    pub fn is_type(&self, name: &str) -> bool {
+        let key = AutoStr::from(name);
+        self.type_decls.contains_key(&key)
+            || self.enum_decls.contains_key(&key)
+            || self.spec_decls.contains_key(&key)
     }
 
     /// 获取泛型模板
