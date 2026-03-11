@@ -132,7 +132,7 @@ pub enum GenericParamType {
 #[derive(Debug, Clone)]
 pub struct TypeStore {
     /// 类型声明：类型名 -> 完整的类型声明
-    type_decls: HashMap<AutoStr, TypeDecl>,
+    type_decls: HashMap<AutoStr, Rc<TypeDecl>>,
 
     /// 函数声明：函数名 -> 函数声明
     fn_decls: HashMap<Name, Fn>,
@@ -165,7 +165,8 @@ impl TypeStore {
 
     /// 注册类型声明
     pub fn register_type_decl(&mut self, decl: &TypeDecl) {
-        self.type_decls.insert(decl.name.clone(), decl.clone());
+        let name = decl.name.clone();
+        self.type_decls.insert(name, Rc::new(decl.clone()));
 
         // 如果是泛型，注册为泛型模板
         if !decl.generic_params.is_empty() {
@@ -194,13 +195,13 @@ impl TypeStore {
     }
 
     /// 查找类型声明
-    pub fn lookup_type_decl(&self, name: &AutoStr) -> Option<&TypeDecl> {
-        self.type_decls.get(name)
+    pub fn lookup_type_decl(&self, name: &AutoStr) -> Option<Rc<TypeDecl>> {
+        self.type_decls.get(name).cloned()
     }
 
     /// 查找类型声明（字符串参数）
-    pub fn lookup_type_decl_str(&self, name: &str) -> Option<&TypeDecl> {
-        self.type_decls.get(&AutoStr::from(name))
+    pub fn lookup_type_decl_str(&self, name: &str) -> Option<Rc<TypeDecl>> {
+        self.type_decls.get(&AutoStr::from(name)).cloned()
     }
 
     /// 查找函数声明
@@ -299,7 +300,7 @@ impl TypeStore {
 
         // 查找类型声明
         if let Some(type_decl) = self.type_decls.get(&resolved_name) {
-            return Some(Type::User(type_decl.clone()));
+            return Some(Type::User(type_decl.as_ref().clone()));
         }
 
         None

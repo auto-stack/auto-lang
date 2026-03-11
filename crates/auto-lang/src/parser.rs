@@ -739,7 +739,7 @@ impl<'a> Parser<'a> {
                 return Some(Rc::new(Meta::Spec(spec_decl.clone())));
             }
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
-                return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+                return Some(Rc::new(Meta::Type(Type::User(type_decl.as_ref().clone()))));
             }
         }
 
@@ -754,7 +754,7 @@ impl<'a> Parser<'a> {
         // Plan 091: 首先从 TypeStore 查找类型声明
         if let Ok(store) = self.type_store.read() {
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
-                return shared(Type::User(type_decl.clone()));
+                return shared(Type::User(type_decl.as_ref().clone()));
             }
         }
 
@@ -792,7 +792,7 @@ impl<'a> Parser<'a> {
     fn lookup_ident_type(&self, name: &str) -> Option<Type> {
         if let Ok(store) = self.type_store.read() {
             if let Some(decl) = store.lookup_type_decl_str(name) {
-                return Some(Type::User(decl.clone()));
+                return Some(Type::User(decl.as_ref().clone()));
             }
             // 也检查类型别名
             if store.lookup_type_alias_str(name).is_some() {

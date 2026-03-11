@@ -203,7 +203,7 @@ impl InferenceContext {
     pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<crate::ast::TypeDecl> {
         if let Ok(store) = self.type_store.read() {
             if let Some(decl) = store.lookup_type_decl(name) {
-                return Some(decl.clone());
+                return Some(decl.as_ref().clone());
             }
         }
         None
@@ -246,7 +246,7 @@ impl InferenceContext {
 
             // 查找类型声明
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
-                return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+                return Some(Rc::new(Meta::Type(Type::User(type_decl.as_ref().clone()))));
             }
         }
 
