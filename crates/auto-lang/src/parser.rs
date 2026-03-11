@@ -2956,6 +2956,8 @@ impl<'a> Parser<'a> {
         // make enum ast node
         let enum_decl = EnumDecl { name, items };
         self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
+        // Register enum in type_store for type lookup
+        self.type_store.write().unwrap().register_enum_decl(enum_decl.clone());
         Ok(Stmt::EnumDecl(enum_decl))
     }
 
