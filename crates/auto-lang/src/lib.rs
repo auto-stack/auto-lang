@@ -339,7 +339,19 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         // Check arrays registry (for array literals)
         if let Some(arr_arc) = vm.arrays.get(&result_u64) {
             let arr = arr_arc.read().unwrap();
-            let formatted: Vec<String> = arr.iter().map(|v| v.repr().to_string()).collect();
+            let strings = vm.strings.read().unwrap();
+            let formatted: Vec<String> = arr.iter().map(|v| {
+                // Check if value is a tagged string index
+                if let auto_val::Value::Int(bits) = v {
+                    if *bits < 0 && *bits > -1000000 && *bits != -2147483648 && *bits != -2147483647 {
+                        let str_idx = (-bits - 1) as usize;
+                        if let Some(bytes) = strings.get(str_idx) {
+                            return format!("\"{}\"", String::from_utf8_lossy(bytes));
+                        }
+                    }
+                }
+                v.repr().to_string()
+            }).collect();
             return Ok(format!("[{}]", formatted.join(", ")));
         }
 

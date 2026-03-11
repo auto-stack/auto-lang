@@ -1565,7 +1565,13 @@ impl AutoVM {
                 OpCode::SET_FIELD => {
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
-                    let field_idx = task.ram.pop_i32() as usize;
+                    let tagged = task.ram.pop_i32();
+                    // Decode negative-tagged string index
+                    let field_idx = if tagged < 0 {
+                        (-tagged - 1) as usize
+                    } else {
+                        tagged as usize
+                    };
                     // Pop object_id
                     let obj_id = task.ram.pop_i32() as u64;
                     // Pop value (bottom of stack)
@@ -1586,8 +1592,19 @@ impl AutoVM {
                     // Get object from registry
                     if let Some(obj_ref) = self.objects.get(&obj_id) {
                         let mut obj = obj_ref.write().unwrap();
-                        // Set field value (convert i32 to Value)
-                        let key = auto_val::ValueKey::Str(field_name.into());
+                        // Try multiple key formats: string, integer, boolean (same as GET_FIELD)
+                        let key = if obj.get(&auto_val::ValueKey::Str(field_name.clone().into())).is_some() {
+                            auto_val::ValueKey::Str(field_name.into())
+                        } else if let Ok(int_key) = field_name.parse::<i32>() {
+                            auto_val::ValueKey::Int(int_key)
+                        } else if field_name == "true" {
+                            auto_val::ValueKey::Bool(true)
+                        } else if field_name == "false" {
+                            auto_val::ValueKey::Bool(false)
+                        } else {
+                            // Default to string key for new fields
+                            auto_val::ValueKey::Str(field_name.into())
+                        };
                         obj.set(key, auto_val::Value::Int(value));
                     } else {
                         // Object not found - silent fail for now
@@ -1617,20 +1634,32 @@ impl AutoVM {
                     // Get object from registry
                     if let Some(obj_ref) = self.objects.get(&obj_id) {
                         let obj = obj_ref.read().unwrap();
-                        // Look up field by name (convert to ValueKey)
-                        let key = auto_val::ValueKey::Str(field_name.into());
 
-                        if let Some(value) = obj.get(&key) {
+                        // Try multiple key formats: string, integer, boolean
+                        // This handles cases like { 1: 2, 3: 4 } accessed as a.3
+                        let value = if let Some(v) = obj.get(&auto_val::ValueKey::Str(field_name.clone().into())) {
+                            Some(v.clone())
+                        } else if let Ok(int_key) = field_name.parse::<i32>() {
+                            obj.get(&auto_val::ValueKey::Int(int_key)).cloned()
+                        } else if field_name == "true" {
+                            obj.get(&auto_val::ValueKey::Bool(true)).cloned()
+                        } else if field_name == "false" {
+                            obj.get(&auto_val::ValueKey::Bool(false)).cloned()
+                        } else {
+                            None
+                        };
+
+                        if let Some(value) = value {
                             // Push field value onto stack based on type
                             match value {
-                                auto_val::Value::Int(i) => task.ram.push_i32(*i),
-                                auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
-                                auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
-                                auto_val::Value::Double(d) => task.ram.push_f64(*d),
+                                auto_val::Value::Int(i) => task.ram.push_i32(i),
+                                auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
+                                auto_val::Value::Float(f) => task.ram.push_f32(f as f32),
+                                auto_val::Value::Double(d) => task.ram.push_f64(d),
                                 auto_val::Value::Bool(b) => {
-                                    task.ram.push_i32(if *b { 1 } else { 0 })
+                                    task.ram.push_i32(if b { 1 } else { 0 })
                                 }
-                                auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
+                                auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
                                 auto_val::Value::Str(s) => {
                                     // Push tagged string index (negative to distinguish from integers)
                                     let str_bytes = s.as_bytes().to_vec();

@@ -1,8 +1,21 @@
-use crate::vm::collections::AutoVMHashMap;
+use crate::vm::collections::{AutoVMHashMap, SpecializedHashMap, SpecializedHashSet, SpecializedStringBuilder, SpecializedVecDeque, SpecializedBTreeMap};
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
+use auto_val::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Decode a tagged string index from stack value.
+/// LOAD_STR pushes string indices as negative tagged values: -(str_idx as i32) - 1
+/// This function decodes the tag to get the actual string pool index.
+#[inline]
+fn decode_str_idx(bits: i32) -> usize {
+    if bits < 0 {
+        (-bits - 1) as usize
+    } else {
+        bits as usize
+    }
+}
 
 // Plan 094: ID ranges for hybrid FFI
 /// Maximum ID for static FFI bindings
@@ -149,6 +162,50 @@ impl NativeInterface {
         self.register(NATIVE_HASHMAP_CLEAR, shim_hashmap_clear);
         self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
 
+        // HashSet functions
+        self.register(NATIVE_HASHSET_NEW, shim_hashset_new);
+        self.register(NATIVE_HASHSET_INSERT, shim_hashset_insert);
+        self.register(NATIVE_HASHSET_CONTAINS, shim_hashset_contains);
+        self.register(NATIVE_HASHSET_REMOVE, shim_hashset_remove);
+        self.register(NATIVE_HASHSET_SIZE, shim_hashset_size);
+        self.register(NATIVE_HASHSET_CLEAR, shim_hashset_clear);
+        self.register(NATIVE_HASHSET_DROP, shim_hashset_drop);
+
+        // StringBuilder functions
+        self.register(NATIVE_STRINGBUILDER_NEW, shim_stringbuilder_new);
+        self.register(NATIVE_STRINGBUILDER_APPEND, shim_stringbuilder_append);
+        self.register(NATIVE_STRINGBUILDER_APPEND_INT, shim_stringbuilder_append_int);
+        self.register(NATIVE_STRINGBUILDER_APPEND_CHAR, shim_stringbuilder_append_char);
+        self.register(NATIVE_STRINGBUILDER_LEN, shim_stringbuilder_len);
+        self.register(NATIVE_STRINGBUILDER_CLEAR, shim_stringbuilder_clear);
+        self.register(NATIVE_STRINGBUILDER_DROP, shim_stringbuilder_drop);
+
+        // VecDeque functions
+        self.register(NATIVE_VECDEQUE_NEW, shim_vecdeque_new);
+        self.register(NATIVE_VECDEQUE_PUSH_BACK, shim_vecdeque_push_back);
+        self.register(NATIVE_VECDEQUE_PUSH_FRONT, shim_vecdeque_push_front);
+        self.register(NATIVE_VECDEQUE_POP_BACK, shim_vecdeque_pop_back);
+        self.register(NATIVE_VECDEQUE_POP_FRONT, shim_vecdeque_pop_front);
+        self.register(NATIVE_VECDEQUE_FRONT, shim_vecdeque_front);
+        self.register(NATIVE_VECDEQUE_BACK, shim_vecdeque_back);
+        self.register(NATIVE_VECDEQUE_SIZE, shim_vecdeque_size);
+        self.register(NATIVE_VECDEQUE_IS_EMPTY, shim_vecdeque_is_empty);
+        self.register(NATIVE_VECDEQUE_CLEAR, shim_vecdeque_clear);
+        self.register(NATIVE_VECDEQUE_DROP, shim_vecdeque_drop);
+
+        // BTreeMap functions
+        self.register(NATIVE_BTREEMAP_NEW, shim_btreemap_new);
+        self.register(NATIVE_BTREEMAP_INSERT, shim_btreemap_insert);
+        self.register(NATIVE_BTREEMAP_GET, shim_btreemap_get);
+        self.register(NATIVE_BTREEMAP_CONTAINS, shim_btreemap_contains);
+        self.register(NATIVE_BTREEMAP_REMOVE, shim_btreemap_remove);
+        self.register(NATIVE_BTREEMAP_SIZE, shim_btreemap_size);
+        self.register(NATIVE_BTREEMAP_IS_EMPTY, shim_btreemap_is_empty);
+        self.register(NATIVE_BTREEMAP_CLEAR, shim_btreemap_clear);
+        self.register(NATIVE_BTREEMAP_FIRST_KEY, shim_btreemap_first_key);
+        self.register(NATIVE_BTREEMAP_LAST_KEY, shim_btreemap_last_key);
+        self.register(NATIVE_BTREEMAP_DROP, shim_btreemap_drop);
+
         // String functions
         self.register(NATIVE_STR_LEN, shim_str_len);
         self.register(NATIVE_STRING_LEN, shim_string_len);
@@ -194,9 +251,53 @@ pub const NATIVE_HASHMAP_SIZE: u16 = 126;
 pub const NATIVE_HASHMAP_CLEAR: u16 = 127;
 pub const NATIVE_HASHMAP_DROP: u16 = 128;
 
-// === String Native Function IDs (132+) ===
-pub const NATIVE_STR_LEN: u16 = 132;
-pub const NATIVE_STRING_LEN: u16 = 133;
+// === HashSet Native Function IDs (129+) ===
+pub const NATIVE_HASHSET_NEW: u16 = 129;
+pub const NATIVE_HASHSET_INSERT: u16 = 130;
+pub const NATIVE_HASHSET_CONTAINS: u16 = 131;
+pub const NATIVE_HASHSET_REMOVE: u16 = 132;
+pub const NATIVE_HASHSET_SIZE: u16 = 133;
+pub const NATIVE_HASHSET_CLEAR: u16 = 134;
+pub const NATIVE_HASHSET_DROP: u16 = 135;
+
+// === VecDeque Native Function IDs (136+) ===
+pub const NATIVE_VECDEQUE_NEW: u16 = 136;
+pub const NATIVE_VECDEQUE_PUSH_BACK: u16 = 137;
+pub const NATIVE_VECDEQUE_PUSH_FRONT: u16 = 138;
+pub const NATIVE_VECDEQUE_POP_BACK: u16 = 139;
+pub const NATIVE_VECDEQUE_POP_FRONT: u16 = 140;
+pub const NATIVE_VECDEQUE_FRONT: u16 = 141;
+pub const NATIVE_VECDEQUE_BACK: u16 = 142;
+pub const NATIVE_VECDEQUE_SIZE: u16 = 143;
+pub const NATIVE_VECDEQUE_IS_EMPTY: u16 = 144;
+pub const NATIVE_VECDEQUE_CLEAR: u16 = 145;
+pub const NATIVE_VECDEQUE_DROP: u16 = 146;
+
+// === BTreeMap Native Function IDs (147+) ===
+pub const NATIVE_BTREEMAP_NEW: u16 = 147;
+pub const NATIVE_BTREEMAP_INSERT: u16 = 148;
+pub const NATIVE_BTREEMAP_GET: u16 = 149;
+pub const NATIVE_BTREEMAP_CONTAINS: u16 = 150;
+pub const NATIVE_BTREEMAP_REMOVE: u16 = 151;
+pub const NATIVE_BTREEMAP_SIZE: u16 = 152;
+pub const NATIVE_BTREEMAP_IS_EMPTY: u16 = 153;
+pub const NATIVE_BTREEMAP_CLEAR: u16 = 154;
+pub const NATIVE_BTREEMAP_FIRST_KEY: u16 = 155;
+pub const NATIVE_BTREEMAP_LAST_KEY: u16 = 156;
+pub const NATIVE_BTREEMAP_DROP: u16 = 157;
+
+// === StringBuilder Native Function IDs (160+) ===
+pub const NATIVE_STRINGBUILDER_NEW: u16 = 160;
+pub const NATIVE_STRINGBUILDER_APPEND: u16 = 161;
+pub const NATIVE_STRINGBUILDER_APPEND_INT: u16 = 162;
+pub const NATIVE_STRINGBUILDER_APPEND_CHAR: u16 = 163;
+pub const NATIVE_STRINGBUILDER_LEN: u16 = 164;
+pub const NATIVE_STRINGBUILDER_CLEAR: u16 = 165;
+pub const NATIVE_STRINGBUILDER_DROP: u16 = 166;
+
+// === String Native Function IDs (170+) ===
+pub const NATIVE_STR_LEN: u16 = 170;
+pub const NATIVE_STRING_LEN: u16 = 171;
 
 // === Standard Shims ===
 
@@ -250,18 +351,17 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    // Calculate the target stack pointer
-    // For main() (bp=0): stack layout is [local0, local1, ..., localN-1, temps...]
-    //                    where local0..N-1 are the reserved zeros, temps start after them
-    // For regular functions: [ret_addr, old_bp, local0, local1, ..., localN, temps...]
-    //                        bp points to old_bp, locals at bp+1..bp+N, temps start after
+    // Calculate the target stack pointer (where temps start)
+    // RESERVE_STACK pushes n_locals + 1 zeros, so temps start at:
+    // - Main task (bp=0): position num_locals + 1
+    // - Functions (bp!=0): position bp + 1 + num_locals + 1
     let target_sp = if task.bp == 0 {
-        // Main function: locals are at addresses 0..num_locals-1, temps start at num_locals
-        task.num_locals
+        // Main function: padding + locals at 0..num_locals, temps start at num_locals + 1
+        task.num_locals + 1
     } else {
-        // Regular function: bp points to saved BP, locals at bp+1..bp+num_locals
-        // Temps start at bp + 1 + num_locals
-        task.bp + 1 + task.num_locals
+        // Regular function: bp points to old_bp, ret_addr at bp-1, old_bp at bp
+        // locals at bp+1..bp+num_locals, padding at bp+num_locals+1, temps at bp+num_locals+2
+        task.bp + task.num_locals + 2
     };
 
     // Collect all argument values from the stack
@@ -356,7 +456,7 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -905,39 +1005,44 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Create a new HashMap
 /// Stack: -> hashmap_id
 pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
 
-    let map = AutoVMHashMap::new();
+
+    let map = SpecializedHashMap::new("value");  // Use StringValue variant for generic storage
     let map_id = vm.insert_heap_object(map);
 
     task.ram.push_i32(map_id as i32);
     Ok(())
 }
 
-/// Insert a string key with i32 value
-/// Stack: hashmap_id, key_str_id, value -> result (0)
+/// Insert a string key with string value
+/// Stack: hashmap_id, key_str_id, value_str_id -> result (0)
 pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
-    let value = task.ram.pop_i32();
-    let key_str_id = task.ram.pop_i32() as u64;
+
+    let value_str_bits = task.ram.pop_i32();
+    let key_str_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
 
+    // Decode tagged string indices
+    let key_str_idx = decode_str_idx(key_str_bits);
+    let value_str_idx = decode_str_idx(value_str_bits);
+
     if let Some(obj) = vm.get_heap_object(map_id) {
-        let guard = obj.read().unwrap();
-        if let Some(_map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
-            // Get string from strings pool
-            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
-                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
-            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        // Get strings from strings pool
+        let strings = vm.strings.read().unwrap();
+        let key_bytes = strings.get(key_str_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+        let value_bytes = strings.get(value_str_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid value string ID".into()))?;
+        drop(strings);
 
-            // We need to drop the read guard before we can get a write guard
-            drop(guard);
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        let value_str = auto_val::AutoStr::from(String::from_utf8_lossy(&value_bytes).as_ref());
 
-            // Get write guard and insert
-            let mut guard = obj.write().unwrap();
-            if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
-                map.data.insert(key_str, value);
-            }
+        // Get write guard and insert
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            map.insert(key_str, Value::Str(value_str))
+                .map_err(|e| VMError::RuntimeError(e))?;
         }
     }
 
@@ -945,19 +1050,28 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     Ok(())
 }
 
-/// Insert an integer key (as string) with i32 value
-/// Stack: hashmap_id, key_int, value -> result (0)
+/// Insert a string key with i32 value
+/// Stack: hashmap_id, key_str_id, value -> result (0)
 pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
+
     let value = task.ram.pop_i32();
-    let key_int = task.ram.pop_i32();
+    let key_str_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
 
+    // Decode tagged string index for key
+    let key_str_idx = decode_str_idx(key_str_bits);
+
     if let Some(obj) = vm.get_heap_object(map_id) {
+        // Get key string from pool
+        let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        drop(key_bytes);
+
         let mut guard = obj.write().unwrap();
-        if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
-            let key_str = key_int.to_string();
-            map.data.insert(key_str, value);
+        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            map.insert(key_str, Value::Int(value))
+                .map_err(|e| VMError::RuntimeError(e))?;
         }
     }
 
@@ -968,41 +1082,64 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Get value by string key
 /// Stack: hashmap_id, key_str_id -> value (0 if not found)
 pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
-    let key_str_id = task.ram.pop_i32() as u64;
+
+    let key_str_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
 
-    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+    // Decode tagged string index
+    let key_str_idx = decode_str_idx(key_str_bits);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
-        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
-            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
                 .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
             let key_str = String::from_utf8_lossy(&key_bytes).to_string();
 
-            map.data.get(&key_str).copied().unwrap_or(0)
-        } else {
-            0
+            // Get the value from map
+            if let Some(value) = map.get(&key_str) {
+                // If it's a string, push as tagged string index
+                if let auto_val::Value::Str(s) = value {
+                    // Add string to strings pool and get index
+                    let mut strings = vm.strings.write().unwrap();
+                    let str_idx = strings.len() as u16;
+                    strings.push(s.as_bytes().to_vec());
+                    // Push as tagged string index: -(idx + 1)
+                    task.ram.push_i32(-((str_idx as i32) + 1));
+                    return Ok(());
+                }
+            }
         }
-    } else {
-        0
-    };
+    }
 
-    task.ram.push_i32(result);
+    // Not found or not a string - push 0
+    task.ram.push_i32(0);
     Ok(())
 }
 
-/// Get value by integer key (as string)
-/// Stack: hashmap_id, key_int -> value (0 if not found)
+/// Get value by string key (returns i32)
+/// Stack: hashmap_id, key_str_id -> value (0 if not found)
 pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
-    let key_int = task.ram.pop_i32();
+
+    let key_str_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let key_str_idx = decode_str_idx(key_str_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
-        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
-            let key_str = key_int.to_string();
-            map.data.get(&key_str).copied().unwrap_or(0)
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            drop(key_bytes);
+
+            if let Some(value) = map.get(&key_str) {
+                if let auto_val::Value::Int(i) = value { i } else { 0 }
+            } else {
+                0
+            }
         } else {
             0
         }
@@ -1017,15 +1154,631 @@ pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Check if key exists
 /// Stack: hashmap_id, key_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
-    let key_str_id = task.ram.pop_i32() as u64;
+
+    let key_str_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let key_str_idx = decode_str_idx(key_str_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
-        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
-            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
                 .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if map.contains_key(&key_str) { 1 } else { 0 }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Remove a key-value pair
+/// Stack: hashmap_id, key_str_id -> result (0)
+pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+
+    let key_str_bits = task.ram.pop_i32();
+    let map_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let key_str_idx = decode_str_idx(key_str_bits);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            map.remove(&key_str);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the number of entries
+/// Stack: hashmap_id -> size
+pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+
+    let map_id = task.ram.pop_i32() as u64;
+
+    let size = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            map.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Clear all entries
+/// Stack: hashmap_id -> result (0)
+pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            map.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the HashMap (no-op for now, heap objects are managed by Arc)
+/// Stack: hashmap_id -> result (0)
+pub fn shim_hashmap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // No-op: heap objects are managed by Arc<RwLock<>>
+    // When the last reference is dropped, the object is automatically freed
+    Ok(())
+}
+
+// ============================================================================
+// HashSet Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new HashSet
+/// Stack: -> hashset_id
+pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let set = SpecializedHashSet::new();
+    let set_id = vm.insert_heap_object(set);
+
+    task.ram.push_i32(set_id as i32);
+    Ok(())
+}
+
+/// Insert a string element into the set
+/// Stack: hashset_id, elem_str_id -> result (0)
+pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem_str_bits = task.ram.pop_i32();
+    let set_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let elem_str_idx = decode_str_idx(elem_str_bits);
+
+    if let Some(obj) = vm.get_heap_object(set_id) {
+        // Get string from pool
+        let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid element string ID".into()))?;
+        let elem_str = String::from_utf8_lossy(&elem_bytes).to_string();
+        drop(elem_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
+            set.data.insert(elem_str, ());
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Check if element exists in the set
+/// Stack: hashset_id, elem_str_id -> result (1 if exists, 0 otherwise)
+pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem_str_bits = task.ram.pop_i32();
+    let set_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let elem_str_idx = decode_str_idx(elem_str_bits);
+
+    let result = if let Some(obj) = vm.get_heap_object(set_id) {
+        let guard = obj.read().unwrap();
+        if let Some(set) = guard.as_any().downcast_ref::<SpecializedHashSet>() {
+            let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid element string ID".into()))?;
+            let elem_str = String::from_utf8_lossy(&elem_bytes).to_string();
+
+            if set.data.contains_key(&elem_str) { 1 } else { 0 }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Remove an element from the set
+/// Stack: hashset_id, elem_str_id -> result (0)
+pub fn shim_hashset_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem_str_bits = task.ram.pop_i32();
+    let set_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let elem_str_idx = decode_str_idx(elem_str_bits);
+
+    if let Some(obj) = vm.get_heap_object(set_id) {
+        let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid element string ID".into()))?;
+        let elem_str = String::from_utf8_lossy(&elem_bytes).to_string();
+        drop(elem_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
+            set.data.remove(&elem_str);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the number of elements
+/// Stack: hashset_id -> size
+pub fn shim_hashset_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let set_id = task.ram.pop_i32() as u64;
+
+    let size = if let Some(obj) = vm.get_heap_object(set_id) {
+        let guard = obj.read().unwrap();
+        if let Some(set) = guard.as_any().downcast_ref::<SpecializedHashSet>() {
+            set.data.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Clear all elements
+/// Stack: hashset_id -> result (0)
+pub fn shim_hashset_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let set_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(set_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
+            set.data.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the HashSet (no-op for now, heap objects are managed by Arc)
+/// Stack: hashset_id -> result (0)
+pub fn shim_hashset_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // No-op: heap objects are managed by Arc<RwLock<>>
+    Ok(())
+}
+
+// ============================================================================
+// StringBuilder Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new StringBuilder
+/// Stack: capacity -> sb_id
+pub fn shim_stringbuilder_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _capacity = task.ram.pop_i32() as usize;
+
+    let sb = crate::vm::collections::SpecializedStringBuilder::with_capacity(_capacity.max(16));
+    let sb_id = vm.insert_heap_object(sb);
+
+    task.ram.push_i32(sb_id as i32);
+    Ok(())
+}
+
+/// Append a string to the StringBuilder
+/// Stack: sb_id, str_id -> result (0)
+pub fn shim_stringbuilder_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_bits = task.ram.pop_i32();
+    let sb_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let str_idx = decode_str_idx(str_bits);
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let bytes = vm.strings.read().unwrap().get(str_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        drop(bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.push_str(&s);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Append an integer to the StringBuilder
+/// Stack: sb_id, int_val -> result (0)
+pub fn shim_stringbuilder_append_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let int_val = task.ram.pop_i32();
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.push_str(&int_val.to_string());
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Append a character to the StringBuilder
+/// Stack: sb_id, char_val -> result (0)
+pub fn shim_stringbuilder_append_char(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_bits = task.ram.pop_i32();
+    let sb_id = task.ram.pop_i32() as u64;
+
+    // Decode character (char is stored as i32 representing a Unicode code point)
+    if let Some(ch) = char::from_u32(char_bits as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+                sb.buffer.push(ch);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the length of the StringBuilder content
+/// Stack: sb_id -> length
+pub fn shim_stringbuilder_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = task.ram.pop_i32() as u64;
+
+    let len = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(len);
+    Ok(())
+}
+
+/// Clear the StringBuilder
+/// Stack: sb_id -> result (0)
+pub fn shim_stringbuilder_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the StringBuilder (no-op, managed by Arc)
+/// Stack: sb_id -> result (0)
+pub fn shim_stringbuilder_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Ok(())
+}
+
+// ============================================================================
+// VecDeque Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new VecDeque
+/// Stack: -> deque_id
+pub fn shim_vecdeque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque = crate::vm::collections::SpecializedVecDeque::new();
+    let deque_id = vm.insert_heap_object(deque);
+
+    task.ram.push_i32(deque_id as i32);
+    Ok(())
+}
+
+/// Push an element to the back
+/// Stack: deque_id, elem -> result (0)
+pub fn shim_vecdeque_push_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let deque_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedVecDeque>() {
+            deque.data.push_back(elem);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Push an element to the front
+/// Stack: deque_id, elem -> result (0)
+pub fn shim_vecdeque_push_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let deque_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedVecDeque>() {
+            deque.data.push_front(elem);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Pop an element from the back
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_pop_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedVecDeque>() {
+            deque.data.pop_back().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Pop an element from the front
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_pop_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedVecDeque>() {
+            deque.data.pop_front().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the front element
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedVecDeque>() {
+            *deque.data.front().unwrap_or(&0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the back element
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedVecDeque>() {
+            *deque.data.back().unwrap_or(&0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the size
+/// Stack: deque_id -> size
+pub fn shim_vecdeque_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    let size = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedVecDeque>() {
+            deque.data.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Check if empty
+/// Stack: deque_id -> is_empty (1 or 0)
+pub fn shim_vecdeque_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    let is_empty = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedVecDeque>() {
+            if deque.data.is_empty() { 1 } else { 0 }
+        } else {
+            1
+        }
+    } else {
+        1
+    };
+
+    task.ram.push_i32(is_empty);
+    Ok(())
+}
+
+/// Clear the deque
+/// Stack: deque_id -> result (0)
+pub fn shim_vecdeque_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedVecDeque>() {
+            deque.data.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the VecDeque (no-op, managed by Arc)
+/// Stack: deque_id -> result (0)
+pub fn shim_vecdeque_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Ok(())
+}
+
+// ============================================================================
+// BTreeMap Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new BTreeMap
+/// Stack: -> btreemap_id
+pub fn shim_btreemap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map = crate::vm::collections::SpecializedBTreeMap::new();
+    let map_id = vm.insert_heap_object(map);
+
+    task.ram.push_i32(map_id as i32);
+    Ok(())
+}
+
+/// Insert a key-value pair
+/// Stack: btreemap_id, key_str_id, value -> result (0)
+pub fn shim_btreemap_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value = task.ram.pop_i32();
+    let key_bits = task.ram.pop_i32();
+    let map_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let key_idx = decode_str_idx(key_bits);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        drop(key_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedBTreeMap>() {
+            map.data.insert(key_str, value);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get a value by key
+/// Stack: btreemap_id, key_str_id -> value (0 if not found)
+pub fn shim_btreemap_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_bits = task.ram.pop_i32();
+    let map_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let key_idx = decode_str_idx(key_bits);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            map.data.get(&key_str).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Check if key exists
+/// Stack: btreemap_id, key_str_id -> result (1 if exists, 0 otherwise)
+pub fn shim_btreemap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_bits = task.ram.pop_i32();
+    let map_id = task.ram.pop_i32() as u64;
+
+    // Decode tagged string index
+    let key_idx = decode_str_idx(key_bits);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
             let key_str = String::from_utf8_lossy(&key_bytes).to_string();
 
             if map.data.contains_key(&key_str) { 1 } else { 0 }
@@ -1041,19 +1794,22 @@ pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 }
 
 /// Remove a key-value pair
-/// Stack: hashmap_id, key_str_id -> result (0)
-pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
-    let key_str_id = task.ram.pop_i32() as u64;
+/// Stack: btreemap_id, key_str_id -> result (0)
+pub fn shim_btreemap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
 
-    if let Some(obj) = vm.get_heap_object(map_id) {
-        let mut guard = obj.write().unwrap();
-        if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
-            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
-                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
-            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+    // Decode tagged string index
+    let key_idx = decode_str_idx(key_bits);
 
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
+            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        drop(key_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedBTreeMap>() {
             map.data.remove(&key_str);
         }
     }
@@ -1062,15 +1818,14 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     Ok(())
 }
 
-/// Get the number of entries
-/// Stack: hashmap_id -> size
-pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
+/// Get the size
+/// Stack: btreemap_id -> size
+pub fn shim_btreemap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let map_id = task.ram.pop_i32() as u64;
 
     let size = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
-        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+        if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
             map.data.len() as i32
         } else {
             0
@@ -1083,15 +1838,34 @@ pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     Ok(())
 }
 
-/// Clear all entries
-/// Stack: hashmap_id -> result (0)
-pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    
+/// Check if empty
+/// Stack: btreemap_id -> is_empty (1 or 0)
+pub fn shim_btreemap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = task.ram.pop_i32() as u64;
+
+    let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
+            if map.data.is_empty() { 1 } else { 0 }
+        } else {
+            1
+        }
+    } else {
+        1
+    };
+
+    task.ram.push_i32(is_empty);
+    Ok(())
+}
+
+/// Clear the map
+/// Stack: btreemap_id -> result (0)
+pub fn shim_btreemap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let map_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let mut guard = obj.write().unwrap();
-        if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
+        if let Some(map) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedBTreeMap>() {
             map.data.clear();
         }
     }
@@ -1100,11 +1874,69 @@ pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     Ok(())
 }
 
-/// Drop the HashMap (no-op for now, heap objects are managed by Arc)
-/// Stack: hashmap_id -> result (0)
-pub fn shim_hashmap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // No-op: heap objects are managed by Arc<RwLock<>>
-    // When the last reference is dropped, the object is automatically freed
+/// Get the first (smallest) key
+/// Stack: btreemap_id -> key_str_id (or -1 if empty)
+pub fn shim_btreemap_first_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
+            if let Some(first_key) = map.data.keys().next() {
+                // Add string to pool and return tagged index
+                let mut strings = vm.strings.write().unwrap();
+                let str_idx = strings.len() as u16;
+                strings.push(first_key.as_bytes().to_vec());
+                drop(strings);
+                // Return as tagged string index
+                -((str_idx as i32) + 1)
+            } else {
+                -1  // Empty map
+            }
+        } else {
+            -1
+        }
+    } else {
+        -1
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the last (largest) key
+/// Stack: btreemap_id -> key_str_id (or -1 if empty)
+pub fn shim_btreemap_last_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
+            if let Some(last_key) = map.data.keys().next_back() {
+                // Add string to pool and return tagged index
+                let mut strings = vm.strings.write().unwrap();
+                let str_idx = strings.len() as u16;
+                strings.push(last_key.as_bytes().to_vec());
+                drop(strings);
+                // Return as tagged string index
+                -((str_idx as i32) + 1)
+            } else {
+                -1  // Empty map
+            }
+        } else {
+            -1
+        }
+    } else {
+        -1
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Drop the BTreeMap (no-op, managed by Arc)
+/// Stack: btreemap_id -> result (0)
+pub fn shim_btreemap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 

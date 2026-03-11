@@ -196,6 +196,132 @@ impl HeapObject for SpecializedHashMap {
 }
 
 // ============================================================================
+// Specialized HashSet Implementation (Plan 118 Phase 3)
+// ============================================================================
+
+/// A simple HashSet that stores String values, for use with VM native shims
+#[derive(Debug)]
+pub struct SpecializedHashSet {
+    pub data: StdHashMap<String, ()>,
+}
+
+impl SpecializedHashSet {
+    pub fn new() -> Self {
+        Self {
+            data: StdHashMap::new(),
+        }
+    }
+}
+
+impl HeapObject for SpecializedHashSet {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::HashSet
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+// ============================================================================
+// Specialized StringBuilder Implementation (Plan 118 Phase 3)
+// ============================================================================
+
+/// A simple StringBuilder for use with VM native shims
+#[derive(Debug)]
+pub struct SpecializedStringBuilder {
+    pub buffer: String,
+}
+
+impl SpecializedStringBuilder {
+    pub fn new() -> Self {
+        Self { buffer: String::new() }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { buffer: String::with_capacity(capacity) }
+    }
+}
+
+impl HeapObject for SpecializedStringBuilder {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::StringBuilder
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+// ============================================================================
+// Specialized VecDeque Implementation (Plan 118 Phase 3)
+// ============================================================================
+
+/// A simple VecDeque for use with VM native shims
+#[derive(Debug)]
+pub struct SpecializedVecDeque {
+    pub data: std::collections::VecDeque<i32>,
+}
+
+impl SpecializedVecDeque {
+    pub fn new() -> Self {
+        Self { data: std::collections::VecDeque::new() }
+    }
+}
+
+impl HeapObject for SpecializedVecDeque {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::VecDeque
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+// ============================================================================
+// Specialized BTreeMap Implementation (Plan 118 Phase 3)
+// ============================================================================
+
+/// A simple BTreeMap for use with VM native shims
+#[derive(Debug)]
+pub struct SpecializedBTreeMap {
+    pub data: std::collections::BTreeMap<String, i32>,
+}
+
+impl SpecializedBTreeMap {
+    pub fn new() -> Self {
+        Self { data: std::collections::BTreeMap::new() }
+    }
+}
+
+impl HeapObject for SpecializedBTreeMap {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::TreeMap
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+// ============================================================================
 // HashMap Implementation
 // ============================================================================
 

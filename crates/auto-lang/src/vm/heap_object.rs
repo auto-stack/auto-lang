@@ -99,6 +99,14 @@ pub enum TypeTag {
     /// Byte string / bytes object
     Bytes,
 
+    // StringBuilder (Plan 118 Phase 3)
+    /// StringBuilder for efficient string concatenation
+    StringBuilder,
+
+    // VecDeque (Plan 118 Phase 3)
+    /// Double-ended queue for FIFO/LIFO operations
+    VecDeque,
+
     // Generic instances (Plan 087)
     /// User-defined generic instance (e.g., Pair<int, string>)
     /// Stores mono_name for identification
@@ -130,6 +138,8 @@ impl TypeTag {
             TypeTag::TreeSet => "TreeSet".into(),
             TypeTag::String => "String".into(),
             TypeTag::Bytes => "Bytes".into(),
+            TypeTag::StringBuilder => "StringBuilder".into(),
+            TypeTag::VecDeque => "VecDeque".into(),
             TypeTag::GenericInstance(name) => format!("<{}>", name).into(),
             TypeTag::SpecializedPair(name) => format!("[Specialized:{}]", name).into(),
             TypeTag::CustomType => "CustomType".into(),

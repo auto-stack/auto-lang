@@ -2601,6 +2601,78 @@ impl Codegen {
                     // Fallback to regular call if something went wrong
                 }
 
+                // Plan 118 Phase 2: Check if this is a type constructor call (e.g., Inner(x: 10))
+                // If the call name is a registered type, treat it as a type instance creation
+                if let Expr::Ident(type_name) = call.name.as_ref() {
+                    let type_name_str = type_name.to_string();
+
+                    // Check if this type is registered
+                    if self.generic_registry.has_template(&type_name_str) || self.get_type(&type_name_str).is_some() {
+                        // This is a type constructor call - compile as type instance
+                        eprintln!("DEBUG: Compiling type constructor call for '{}'", type_name_str);
+
+                        // Get type info
+                        let member_names = if self.generic_registry.has_template(&type_name_str) {
+                            let type_args = Vec::new();
+                            if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_name_str, type_args) {
+                                class_type.template.fields.iter().map(|f| f.name.clone()).collect()
+                            } else {
+                                Vec::new()
+                            }
+                        } else if let Some(type_info) = self.get_type(&type_name_str) {
+                            type_info.member_names.clone()
+                        } else {
+                            Vec::new()
+                        };
+
+                        // Compile arguments (push values onto stack)
+                        let arg_count = call.args.args.len() as u8;
+                        for arg in &call.args.args {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                crate::ast::Arg::Pair(_key, expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                crate::ast::Arg::Name(_) => {
+                                    // Name-only arg - placeholder
+                                }
+                            }
+                        }
+
+                        // Create object keys using type member names
+                        let keys: Vec<auto_val::ValueKey> = member_names
+                            .iter()
+                            .take(arg_count as usize)
+                            .map(|name| auto_val::ValueKey::Str(name.clone().into()))
+                            .collect();
+
+                        let key_index = self.object_keys.len() as u16;
+                        self.object_keys.push(keys);
+
+                        // Infer field types from args
+                        let types: Vec<ObjectType> = call.args.args
+                            .iter()
+                            .take(arg_count as usize)
+                            .map(|arg| match arg {
+                                crate::ast::Arg::Pos(expr) => self.infer_object_type(expr),
+                                crate::ast::Arg::Pair(_, expr) => self.infer_object_type(expr),
+                                crate::ast::Arg::Name(_) => ObjectType::Int,
+                            })
+                            .collect();
+                        self.object_types.push(types);
+
+                        // Emit CREATE_OBJ
+                        let field_count = arg_count.min(member_names.len() as u8);
+                        self.emit(OpCode::CREATE_OBJ);
+                        self.code.extend_from_slice(&key_index.to_le_bytes());
+                        self.code.push(field_count);
+
+                        return Ok(());
+                    }
+                }
+
                 // Regular function/method call (existing code)
                 // Extract function name and determine if it's a method call
                 // Plan 073: Support both static methods (Type.method) and instance methods (obj.method)

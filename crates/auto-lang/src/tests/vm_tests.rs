@@ -705,7 +705,7 @@ fn test_atom_query() {
 #[test]
 fn test_object_field_mutation() {
     let code = r#"
-            mut obj = {x: 10, y: 20}
+            var obj = {x: 10, y: 20}
             obj.x = 30
             obj.x
         "#;
@@ -716,7 +716,7 @@ fn test_object_field_mutation() {
 #[test]
 fn test_array_element_mutation() {
     let code = r#"
-            mut arr = [1, 2, 3]
+            var arr = [1, 2, 3]
             arr[0] = 10
             arr[0]
         "#;
@@ -727,7 +727,7 @@ fn test_array_element_mutation() {
 #[test]
 fn test_multiple_field_mutations() {
     let code = r#"
-            mut obj = {x: 10, y: 20, z: 30}
+            var obj = {x: 10, y: 20, z: 30}
             obj.x = 100
             obj.y = 200
             obj.z = 300
@@ -740,7 +740,7 @@ fn test_multiple_field_mutations() {
 #[test]
 fn test_multiple_array_mutations() {
     let code = r#"
-            mut arr = [1, 2, 3]
+            var arr = [1, 2, 3]
             arr[0] = 10
             arr[1] = 20
             arr[2] = 30
@@ -757,7 +757,7 @@ fn test_type_field_mutation() {
                 x int
                 y int
             }
-            mut p = Point(x: 10, y: 20)
+            var p = Point(x: 10, y: 20)
             p.x = 30
             p.x
         "#;
@@ -770,7 +770,7 @@ fn test_type_field_mutation() {
 #[test]
 fn test_nested_object_field_mutation() {
     let code = r#"
-            mut obj = { inner: { x: 10, y: 20 } }
+            var obj = { inner: { x: 10, y: 20 } }
             obj.inner.x = 30
             obj.inner.x
         "#;
@@ -781,7 +781,7 @@ fn test_nested_object_field_mutation() {
 #[test]
 fn test_array_element_field_mutation() {
     let code = r#"
-            mut arr = [{x: 1}, {x: 2}, {x: 3}]
+            var arr = [{x: 1}, {x: 2}, {x: 3}]
             arr[0].x = 10
             arr[0].x
         "#;
@@ -792,7 +792,7 @@ fn test_array_element_field_mutation() {
 #[test]
 fn test_object_array_element_mutation() {
     let code = r#"
-            mut obj = { items: [1, 2, 3] }
+            var obj = { items: [1, 2, 3] }
             obj.items[0] = 10
             obj.items[0]
         "#;
@@ -803,7 +803,7 @@ fn test_object_array_element_mutation() {
 #[test]
 fn test_nested_array_element_mutation() {
     let code = r#"
-            mut matrix = [[1, 2], [3, 4]]
+            var matrix = [[1, 2], [3, 4]]
             matrix[0][1] = 20
             matrix[0][1]
         "#;
@@ -818,7 +818,7 @@ fn test_type_instance_nested_field_mutation() {
     let code = r#"
             type Inner { x int }
             type Outer { inner Inner }
-            mut obj = Outer(inner: Inner(x: 10))
+            var obj = Outer(inner: Inner(x: 10))
             obj.inner.x = 20
             obj.inner.x
         "#;
@@ -831,7 +831,7 @@ fn test_type_instance_nested_field_mutation() {
 #[test]
 fn test_three_level_object_nesting() {
     let code = r#"
-            mut obj = { level1: { level2: { value: 100 } } }
+            var obj = { level1: { level2: { value: 100 } } }
             obj.level1.level2.value = 200
             obj.level1.level2.value
         "#;
@@ -842,7 +842,7 @@ fn test_three_level_object_nesting() {
 #[test]
 fn test_deep_array_of_objects_mutation() {
     let code = r#"
-            mut data = [
+            var data = [
                 { info: { name: "Alice", age: 20 } },
                 { info: { name: "Bob", age: 21 } }
             ]
@@ -858,7 +858,7 @@ fn test_deep_array_of_objects_mutation() {
 #[test]
 fn test_nested_structure_preservation() {
     let code = r#"
-            mut obj = { a: { x: 1, y: 2 }, b: { x: 3, y: 4 } }
+            var obj = { a: { x: 1, y: 2 }, b: { x: 3, y: 4 } }
             obj.a.x = 10
             [obj.a.y, obj.b.x, obj.b.y]
         "#;
@@ -871,7 +871,7 @@ fn test_nested_structure_preservation() {
 #[test]
 fn test_nested_out_of_bounds_index() {
     let code = r#"
-            mut obj = { items: [1, 2, 3] }
+            var obj = { items: [1, 2, 3] }
             obj.items[10] = 100
         "#;
     let result = run(code);
@@ -881,7 +881,7 @@ fn test_nested_out_of_bounds_index() {
 #[test]
 fn test_nested_invalid_field_access() {
     let code = r#"
-            mut obj = { inner: { x: 10 } }
+            var obj = { inner: { x: 10 } }
             obj.inner.nonexistent = 20
         "#;
     let result = run(code);
@@ -891,7 +891,7 @@ fn test_nested_invalid_field_access() {
 #[test]
 fn test_nested_type_mismatch() {
     let code = r#"
-            mut obj = { items: [1, 2, 3] }
+            var obj = { items: [1, 2, 3] }
             obj.items.invalid_field = 10
         "#;
     let result = run(code);
@@ -1893,7 +1893,7 @@ fn test_list_oop_for_iteration() {
     let code = r#"
         fn main() {
             let list = List.new(1, 2, 3, 4, 5)
-            mut sum = 0
+            var sum = 0
             for v in list {
                 sum = sum + v
             }
@@ -1909,7 +1909,7 @@ fn test_list_oop_for_empty() {
     let code = r#"
         fn main() {
             let list = List.new()
-            mut count = 0
+            var count = 0
             for v in list {
                 count = count + 1
             }

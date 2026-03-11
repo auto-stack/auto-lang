@@ -155,45 +155,54 @@ pub fn register_builtin_natives() {
     registry.register("HashMap.clear");
     registry.register("HashMap.drop");
 
-    // HashSet functions
-    registry.register("HashSet.new");
-    registry.register("HashSet.insert");
-    registry.register("HashSet.contains");
-    registry.register("HashSet.remove");
-    registry.register("HashSet.size");
-    registry.register("HashSet.clear");
-    registry.register("HashSet.drop");
+    // HashSet functions (129-135)
+    registry.register_with_id("HashSet.new", 129);
+    registry.register_with_id("HashSet.insert", 130);
+    registry.register_with_id("HashSet.contains", 131);
+    registry.register_with_id("HashSet.remove", 132);
+    registry.register_with_id("HashSet.size", 133);
+    registry.register_with_id("HashSet.clear", 134);
+    registry.register_with_id("HashSet.drop", 135);
 
-    // VecDeque functions (Plan 085)
-    registry.register("VecDeque.new");
-    registry.register("VecDeque.push_back");
-    registry.register("VecDeque.push_front");
-    registry.register("VecDeque.pop_back");
-    registry.register("VecDeque.pop_front");
-    registry.register("VecDeque.front");
-    registry.register("VecDeque.back");
-    registry.register("VecDeque.size");
-    registry.register("VecDeque.is_empty");
-    registry.register("VecDeque.clear");
-    registry.register("VecDeque.drop");
+    // VecDeque functions (Plan 085) - 136-146
+    registry.register_with_id("VecDeque.new", 136);
+    registry.register_with_id("VecDeque.push_back", 137);
+    registry.register_with_id("VecDeque.push_front", 138);
+    registry.register_with_id("VecDeque.pop_back", 139);
+    registry.register_with_id("VecDeque.pop_front", 140);
+    registry.register_with_id("VecDeque.front", 141);
+    registry.register_with_id("VecDeque.back", 142);
+    registry.register_with_id("VecDeque.size", 143);
+    registry.register_with_id("VecDeque.is_empty", 144);
+    registry.register_with_id("VecDeque.clear", 145);
+    registry.register_with_id("VecDeque.drop", 146);
 
-    // BTreeMap functions (Plan 085)
-    registry.register("BTreeMap.new");
-    registry.register("BTreeMap.insert");
-    registry.register("BTreeMap.get");
-    registry.register("BTreeMap.contains");
-    registry.register("BTreeMap.remove");
-    registry.register("BTreeMap.size");
-    registry.register("BTreeMap.is_empty");
-    registry.register("BTreeMap.clear");
-    registry.register("BTreeMap.first_key");
-    registry.register("BTreeMap.last_key");
-    registry.register("BTreeMap.drop");
+    // BTreeMap functions (Plan 085) - 147-157
+    registry.register_with_id("BTreeMap.new", 147);
+    registry.register_with_id("BTreeMap.insert", 148);
+    registry.register_with_id("BTreeMap.get", 149);
+    registry.register_with_id("BTreeMap.contains", 150);
+    registry.register_with_id("BTreeMap.remove", 151);
+    registry.register_with_id("BTreeMap.size", 152);
+    registry.register_with_id("BTreeMap.is_empty", 153);
+    registry.register_with_id("BTreeMap.clear", 154);
+    registry.register_with_id("BTreeMap.first_key", 155);
+    registry.register_with_id("BTreeMap.last_key", 156);
+    registry.register_with_id("BTreeMap.drop", 157);
+
+    // StringBuilder functions - 160-166
+    registry.register_with_id("StringBuilder.new", 160);
+    registry.register_with_id("StringBuilder.append", 161);
+    registry.register_with_id("StringBuilder.append_int", 162);
+    registry.register_with_id("StringBuilder.append_char", 163);
+    registry.register_with_id("StringBuilder.len", 164);
+    registry.register_with_id("StringBuilder.clear", 165);
+    registry.register_with_id("StringBuilder.drop", 166);
 
     // String functions (for string method calls like "hello".len())
     // Use explicit IDs to match NATIVE_* constants in native.rs
-    registry.register_with_id("str.len", 132);    // NATIVE_STR_LEN
-    registry.register_with_id("String.len", 133);  // NATIVE_STRING_LEN
+    registry.register_with_id("str.len", 170);    // NATIVE_STR_LEN
+    registry.register_with_id("String.len", 171);  // NATIVE_STRING_LEN
 
     // =========================================================================
     // FFI Shim Registrations (Plan 094)
