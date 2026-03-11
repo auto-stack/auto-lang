@@ -17,7 +17,7 @@ use crate::types;
 use auto_val::Op;
 use miette::SourceSpan;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// Plan 073: Type tags for object field values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,7 +123,8 @@ pub struct Codegen {
 
     /// Plan 084 Phase 3: Unified TypeStore for type declaration management
     /// Centralized storage for types, functions, specs, and generic templates
-    pub type_store: Arc<types::TypeStore>,
+    /// Plan 123: Use RwLock for shared access with Parser
+    pub type_store: Arc<RwLock<types::TypeStore>>,
 
     /// Plan 088 Phase 4: Jump placeholder tracking for multi-function compilation
     /// Tracks all jump_over placeholder indices to update them when FN_PROLOG is inserted
@@ -178,7 +179,7 @@ impl Codegen {
             fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
-            type_store: Arc::new(types::TypeStore::new()), // Plan 084 Phase 3: Unified TypeStore
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
             max_locals: 0,
             should_pop_expr_result: false,
@@ -187,7 +188,8 @@ impl Codegen {
 
     /// Plan 084 Phase 3: Create Codegen with custom TypeStore
     /// Allows Parser and Codegen to share the same TypeStore instance
-    pub fn new_with_type_store(type_store: Arc<types::TypeStore>) -> Self {
+    /// Plan 123: Accept Arc<RwLock<TypeStore>> for shared access with Parser
+    pub fn new_with_type_store(type_store: Arc<RwLock<types::TypeStore>>) -> Self {
         // Initialize the global native registry
         crate::vm::native_registry::register_builtin_natives();
 
@@ -1971,6 +1973,19 @@ impl Codegen {
             // Plan 073: Dot expression field access (obj.field)
             // Plan 087 Phase 2: Support generic instance field access
             Expr::Dot(obj, field) => {
+                // Plan 123: Check if this is enum variant access (e.g., Color.Red)
+                if let Expr::Ident(type_name) = obj.as_ref() {
+                    // Extract value from type_store to release the borrow before emitting
+                    let variant_value = self.type_store.read().unwrap()
+                        .get_enum_variant_value(type_name.as_ref(), field.as_ref());
+                    if let Some(value) = variant_value {
+                        // Enum variant access - emit the variant value as integer
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(value);
+                        return Ok(());
+                    }
+                }
+
                 // Check if this is the .type property - returns type name as string
                 if field.as_str() == "type" {
                     // Get the type of the object expression using infer module

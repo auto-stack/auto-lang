@@ -1624,7 +1624,6 @@ fn main() -> int {
 }
 
 #[test]
-#[ignore = "enum type reference not fully implemented in codegen"]
 fn test_enum_decl_compiles() {
     let source = r#"
 enum Color {
@@ -1638,10 +1637,19 @@ fn main() -> int {
     0
 }
 "#;
-    let bytecode = compile_to_bytecode(source);
+    // Parse the source code
+    let mut parser = Parser::from(source);
+    let code = parser.parse().expect("Parse failed");
+
+    // Create Codegen with shared TypeStore from Parser
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    for stmt in code.stmts {
+        codegen.compile_stmt(&stmt).expect("Codegen failed");
+    }
+
     // Enum declarations don't generate bytecode
     // But the code should compile without errors
-    assert!(bytecode.len() > 0, "Bytecode should be generated");
+    assert!(codegen.code.len() > 0, "Bytecode should be generated");
 }
 
 #[test]
