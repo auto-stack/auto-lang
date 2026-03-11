@@ -900,11 +900,10 @@ fn main() -> int {
 }
 
 #[test]
-#[ignore = "for ever syntax not fully implemented in codegen"]
 fn test_break_in_infinite_loop_compiles() {
     let source = r#"
 fn main() -> int {
-    for ever {
+    for {
         break
     }
     0
