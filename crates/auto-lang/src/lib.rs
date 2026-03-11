@@ -277,6 +277,9 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     let mut vm = AutoVM::new(flash, 1024); // 1KB RAM
     vm.load_strings(strings);
 
+    // Plan 118: Store the codegen's result type for formatting
+    let result_type = codegen.last_expr_type.clone();
+
     // 5. Execute - Find main/test entry point
     let entry_point = codegen
         .exports
@@ -296,10 +299,36 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             return Ok("".to_string());
         }
 
-        // Plan 117: Check if result is a float
-        if task.last_result_is_float {
-            let result = task.ram.pop_f32();
-            return Ok(format!("{}", result));
+        // Plan 117/118: Check result type for proper formatting
+        use crate::vm::codegen::ObjectType;
+        use crate::vm::task::ResultType;
+
+        // Check VM runtime result type first (set during execution)
+        match task.last_result_type {
+            ResultType::Float => {
+                let result = task.ram.pop_f32();
+                return Ok(format!("{}", result));
+            }
+            _ => {}
+        }
+
+        // Then check codegen's compile-time result type
+        match result_type {
+            ObjectType::Float | ObjectType::Double => {
+                let result = task.ram.pop_f32();
+                return Ok(format!("{}", result));
+            }
+            ObjectType::Byte => {
+                let result = task.ram.pop_i32();
+                // Format as hex with 0x prefix
+                return Ok(format!("0x{:02X}", result as u8));
+            }
+            ObjectType::Uint => {
+                let result = task.ram.pop_i32();
+                // Format with 'u' suffix
+                return Ok(format!("{}u", result as u32));
+            }
+            _ => {} // Fall through to default handling
         }
 
         let result = task.ram.pop_i32();

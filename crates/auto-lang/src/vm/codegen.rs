@@ -29,6 +29,7 @@ pub enum ObjectType {
     String,
     Bool,
     Char,
+    Byte, // Plan 118: Byte type for hex formatting
     // Plan 073: Nested types for object/array fields
     NestedObject,
     Array,
@@ -139,6 +140,10 @@ pub struct Codegen {
     /// Plan 089: Whether to pop the result of an expression statement
     /// Used to ensure stack cleanliness for script evaluation
     pub should_pop_expr_result: bool,
+
+    /// Plan 118: Track the type of the last compiled expression for result formatting
+    /// Used to format output correctly (e.g., byte as hex, uint with suffix)
+    pub last_expr_type: ObjectType,
 }
 
 impl Codegen {
@@ -183,6 +188,7 @@ impl Codegen {
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
             max_locals: 0,
             should_pop_expr_result: false,
+            last_expr_type: ObjectType::Int, // Plan 118: Default to Int
         }
     }
 
@@ -230,6 +236,7 @@ impl Codegen {
             jump_placeholders: Vec::new(),
             max_locals: 0,
             should_pop_expr_result: false,
+            last_expr_type: ObjectType::Int, // Plan 118: Default to Int
         }
     }
 
@@ -593,6 +600,9 @@ impl Codegen {
                                 inst.base_name
                             );
                         }
+                    } else {
+                        // Plan 118: Always store the explicit type annotation for proper output formatting
+                        self.var_types.insert(name_str.clone(), store.ty.clone());
                     }
                 }
 
@@ -1529,7 +1539,9 @@ impl Codegen {
                 self.emit_i32(if *b { 1 } else { 0 });
             }
             // Plan 073 Stage A.5: Float literal support
+            // Plan 118: Track type for output formatting
             Expr::Float(f, _) => {
+                self.last_expr_type = ObjectType::Float;
                 self.emit(OpCode::CONST_F32);
                 self.emit_f32(*f as f32);
             }
@@ -1549,7 +1561,9 @@ impl Codegen {
                 self.emit_u64(*u);
             }
             // Plan 073 Stage B: Uint literal support (use CONST_I32)
+            // Plan 118: Track type for output formatting
             Expr::Uint(u) => {
+                self.last_expr_type = ObjectType::Uint;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(*u as i32);
             }
@@ -1564,9 +1578,11 @@ impl Codegen {
                 self.emit_i32(*u as i32);
             }
             // Plan 073 Stage B: Byte literal support (use CONST_I32)
-            Expr::Byte(b) => {
+            // Plan 118: Track type for output formatting (hex display)
+            Expr::Byte(_b) => {
+                self.last_expr_type = ObjectType::Byte;
                 self.emit(OpCode::CONST_I32);
-                self.emit_i32(*b as i32);
+                self.emit_i32(*_b as i32);
             }
             // Plan 073 Stage B: Char literal support (use CONST_I32 for UTF-32 codepoint)
             Expr::Char(c) => {
@@ -1954,6 +1970,17 @@ impl Codegen {
                 let name_str = name.to_string();
                 eprintln!("DEBUG: Compiling Ident: {}", name_str);
 
+                // Plan 118: Check variable type for result formatting
+                if let Some(var_type) = self.var_types.get(&name_str) {
+                    self.last_expr_type = match var_type {
+                        Type::Byte => ObjectType::Byte,
+                        Type::Uint | Type::U64 => ObjectType::Uint,
+                        Type::Float => ObjectType::Float,
+                        Type::Double => ObjectType::Double,
+                        _ => ObjectType::Int,
+                    };
+                }
+
                 // Check if this is a captured variable (Plan 071)
                 if let Some(_capture_index) = self.current_captured_vars().get(&name_str) {
                     // Variable is captured - emit LOAD_CAPTURED
@@ -2187,7 +2214,17 @@ impl Codegen {
                             self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
-                            // Variable found in local scope - store value to it
+                            // Variable found in local scope - check mutability
+                            // Plan 118: Check if variable is immutable (declared with 'let')
+                            if let Some(&is_mutable) = self.var_mutability.get(&name_str) {
+                                if !is_mutable {
+                                    return Err(crate::error::AutoError::Msg(format!(
+                                        "Cannot reassign to immutable variable '{}' (declared with 'let')",
+                                        name_str
+                                    )));
+                                }
+                            }
+                            // Variable is mutable - store value to it
                             self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_loc(var_index);
                         } else {
@@ -3302,7 +3339,8 @@ impl Codegen {
             Expr::Float(_, _) => ObjectType::Float,
             Expr::Double(_, _) => ObjectType::Double,
             Expr::Int(_) | Expr::I8(_) | Expr::I64(_) => ObjectType::Int,
-            Expr::Uint(_) | Expr::U8(_) | Expr::U64(_) | Expr::Byte(_) => ObjectType::Uint,
+            Expr::Uint(_) | Expr::U8(_) | Expr::U64(_) => ObjectType::Uint,
+            Expr::Byte(_) => ObjectType::Byte, // Plan 118: Byte has its own type for hex formatting
             Expr::Str(_) | Expr::CStr(_) => ObjectType::String,
             Expr::Char(_) => ObjectType::Char,
             Expr::Bool(_) => ObjectType::Bool,

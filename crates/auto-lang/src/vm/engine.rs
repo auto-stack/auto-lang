@@ -3,7 +3,7 @@ use crate::vm::codegen::ObjectType;
 use crate::vm::heap_object::HeapObject;
 use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
-use crate::vm::task::{AutoTask, TaskId, TaskStatus};
+use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
 use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -450,7 +450,7 @@ impl AutoVM {
                     let val = self.flash.read_f32(task.ip);
                     task.ip += 4;
                     task.ram.push_f32(val);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::CONST_F64 => {
                     // Plan 073: Double precision constant
@@ -579,6 +579,11 @@ impl AutoVM {
                             ObjectType::Uint => {
                                 let bits = task.ram.pop_i32();
                                 auto_val::Value::Uint(bits as u32)
+                            }
+                            // Plan 118: Byte type for object fields
+                            ObjectType::Byte => {
+                                let bits = task.ram.pop_i32();
+                                auto_val::Value::Byte(bits as u8)
                             }
                             ObjectType::Float => {
                                 let bits = task.ram.pop_f32();
@@ -1692,19 +1697,19 @@ impl AutoVM {
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a + b);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::SUB_F => {
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a - b);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::MUL_F => {
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a * b);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::DIV_F => {
                     let b = task.ram.pop_f32();
@@ -1713,12 +1718,12 @@ impl AutoVM {
                         return Err(VMError::DivisionByZero);
                     }
                     task.ram.push_f32(a / b);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::NEG_F => {
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(-a);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
 
                 // Plan 073 Stage A: Double precision arithmetic (f64)
@@ -1754,12 +1759,12 @@ impl AutoVM {
                 OpCode::I32_TO_F32 => {
                     let val = task.ram.pop_i32();
                     task.ram.push_f32(val as f32);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::I64_TO_F64 => {
                     let val = task.ram.pop_i64();
                     task.ram.push_f64(val as f64);
-                    task.last_result_is_float = true; // Plan 117: Mark result as float
+                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
 
                 OpCode::NOT => {
