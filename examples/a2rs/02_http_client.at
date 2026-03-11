@@ -1,0 +1,125 @@
+/// Example 2: HTTP Client - Web Scraper
+///
+/// Demonstrates fetching web pages and extracting data
+///
+/// Usage:
+///   auto build examples/a2rs/02_http_client.at
+///   ./build/02_http_client
+
+use auto.http
+use auto.str
+use auto.json
+
+// Configuration
+let USER_AGENT = "AutoLang-Scraper/1.0"
+
+fn main() {
+    // Example 1: Simple GET request
+    print("=== Example 1: Simple GET ===")
+    let res = http.get("https://httpbin.org/get")
+    
+    if res != nil {
+        print(f"Status: ${res.status()}")
+        print(f"Content-Type: ${res.header("content-type")}")
+        print(f"Body length: ${str.len(res.body())} bytes")
+    } else {
+        print("Request failed!")
+    }
+    
+    // Example 2: POST request with JSON
+    print("\n=== Example 2: POST with JSON ===")
+    
+    let payload = json.encode({
+        name: "AutoLang",
+        version: "1.0",
+        features: ["fast", "safe", "simple"]
+    })
+    
+    let res2 = http.request("POST", "https://httpbin.org/post")
+        .header("Content-Type", "application/json")
+        .header("User-Agent", USER_AGENT)
+        .body(payload)
+        .timeout(5000)  // 5 second timeout
+        .send()
+    
+    if res2 != nil {
+        print(f"Status: ${res2.status()}")
+        
+        // Parse JSON response
+        let body = res2.body()
+        let data = json.parse(body)
+        
+        // Access nested data
+        if data != nil {
+            print(f"Response JSON: ${json.prettify(data)}")
+        }
+    }
+    
+    // Example 3: Fetch and parse HTML
+    print("\n=== Example 3: HTML Parsing ===")
+    scrape_example_page()
+}
+
+/// Scrape example.com and extract title
+fn scrape_example_page() {
+    let res = http.get("https://example.com")
+    
+    if res == nil {
+        print("Failed to fetch page")
+        return
+    }
+    
+    let html = res.body()
+    
+    // Extract title using string operations
+    let title = extract_tag_content(html, "title")
+    print(f"Page title: ${title}")
+    
+    // Extract all links
+    let links = extract_links(html)
+    print(f"Found ${list.len(links)} links:")
+    
+    for link in links {
+        print(f"  - ${link}")
+    }
+}
+
+/// Extract content between HTML tags
+fn extract_tag_content(html str, tag str) str {
+    let open_tag = f"<${tag}>"
+    let close_tag = f"</${tag}>"
+    
+    let start = str.find(html, open_tag)
+    if start < 0 { return "" }
+    
+    let content_start = start + str.len(open_tag)
+    let end = str.find_from(html, close_tag, content_start)
+    
+    if end < 0 { return "" }
+    
+    str.substr(html, content_start, end)
+}
+
+/// Extract all href links from HTML
+fn extract_links(html str) List<str> {
+    let links = List.new()
+    
+    var pos = 0
+    loop {
+        // Find <a href="
+        let href_start = str.find_from(html, "<a href=\"", pos)
+        if href_start < 0 { break }
+        
+        let url_start = href_start + 9
+        let url_end = str.find_from(html, "\"", url_start)
+        
+        if url_end < 0 { break }
+        
+        let url = str.substr(html, url_start, url_end)
+        links.push(url)
+        
+        pos = url_end
+    }
+    
+    links
+}

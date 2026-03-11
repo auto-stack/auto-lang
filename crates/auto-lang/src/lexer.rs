@@ -174,7 +174,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn char(&mut self) -> AutoResult<Token> {
-        let start_pos = self.pos;  // Record position BEFORE skipping '
+        let start_pos = self.pos; // Record position BEFORE skipping '
         self.chars.next(); // skip '
         if let Some(&c) = self.chars.peek() {
             // deal with escapes
@@ -405,24 +405,30 @@ impl<'a> Lexer<'a> {
         // Check if it's a property keyword
         match lookahead.as_str() {
             "view" => {
-                // Consume the identifier characters
-                for _ in 0..4 { self.chars.next(); }
+                for _ in 0..4 {
+                    self.chars.next();
+                }
                 return Token::new(TokenKind::DotView, self.pos(5), ".view ".into());
             }
             "mut" => {
-                // Consume the identifier characters
-                for _ in 0..3 { self.chars.next(); }
+                for _ in 0..3 {
+                    self.chars.next();
+                }
                 return Token::new(TokenKind::DotMut, self.pos(4), ".mut ".into());
             }
+            "move" => {
+                for _ in 0..4 {
+                    self.chars.next();
+                }
+                return Token::new(TokenKind::DotMove, self.pos(5), ".move ".into());
+            }
             "take" => {
-                // Consume the identifier characters
-                for _ in 0..4 { self.chars.next(); }
+                for _ in 0..4 {
+                    self.chars.next();
+                }
                 return Token::new(TokenKind::DotTake, self.pos(5), ".take ".into());
             }
-            _ => {
-                // Not a property keyword, return regular Dot
-                // This includes "type" which will be handled specially in codegen/eval
-            }
+            _ => {}
         }
 
         Token::new(TokenKind::Dot, self.pos(1), ".".into())

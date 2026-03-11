@@ -1,0 +1,261 @@
+/// Example 4: Redis Client
+///
+/// Demonstrates Redis operations: strings, lists, hashes, sets
+///
+/// Prerequisites:
+///   - Redis server running on localhost:6379
+///   - Install Redis: docker run -d -p 6379:6379 redis
+///
+/// Usage:
+///   auto build examples/a2rs/04_redis_demo.at
+///   ./build/04_redis_demo
+
+use auto.redis
+use auto.time
+use auto.json
+
+let REDIS_URL = "redis://127.0.0.1:6379"
+
+fn main() {
+    // Connect to Redis
+    print("Connecting to Redis...")
+    let client = redis.connect(REDIS_URL)
+    
+    if client == nil {
+        print("ERROR: Failed to connect to Redis")
+        print("Make sure Redis is running: docker run -d -p 6379:6379 redis")
+        process.exit(1)
+    }
+    
+    print("✓ Connected to Redis!\n")
+    
+    // Run demonstrations
+    demo_string_operations(client)
+    demo_expiration(client)
+    demo_counters(client)
+    demo_lists(client)
+    demo_hashes(client)
+    demo_sets(client)
+    demo_json_storage(client)
+    
+    // Cleanup
+    client.close()
+    print("\n✓ Connection closed")
+}
+
+// ═══════════════════════════════════════════════════════════
+// String Operations
+// ═══════════════════════════════════════════════════════════
+
+fn demo_string_operations(client RedisClient) {
+    print("=== String Operations ===")
+    
+    // Set and get
+    client.set("demo:greeting", "Hello, Redis!")
+    let greeting = client.get("demo:greeting")
+    print(f"  SET/GET: ${greeting}")
+    
+    // Delete
+    client.del("demo:greeting")
+    let deleted = client.get("demo:greeting")
+    print(f"  After DEL: ${if deleted == nil { "nil" } else { deleted }}")
+    
+    // Exists
+    client.set("demo:exists", "test")
+    print(f"  EXISTS: ${client.exists("demo:exists")}")
+    client.del("demo:exists")
+    print(f"  After DEL EXISTS: ${client.exists("demo:exists")}")
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Expiration
+// ═══════════════════════════════════════════════════════════
+
+fn demo_expiration(client RedisClient) {
+    print("=== Expiration ===")
+    
+    // Set with expiration (SETEX)
+    client.setex("demo:session", "user_123", 5)
+    print("  SETEX demo:session with 5s TTL")
+    
+    // Check exists
+    print(f"  Immediately after: ${client.get("demo:session")}")
+    
+    // Wait and check
+    print("  Waiting 6 seconds...")
+    time.sleep_ms(6000)
+    
+    let expired = client.get("demo:session")
+    print(f"  After 6 seconds: ${if expired == nil { "nil (expired)" } else { expired }}")
+    
+    // Manual expiration
+    client.set("demo:manual", "value")
+    client.expire("demo:manual", 10)
+    print("  Set manual expiration to 10s")
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Counters
+// ═══════════════════════════════════════════════════════════
+
+fn demo_counters(client RedisClient) {
+    print("=== Counters ===")
+    
+    client.del("demo:counter")
+    
+    // Increment
+    for i in 0..5 {
+        let count = client.incr("demo:counter")
+        print(f"  INCR: ${count}")
+    }
+    
+    // Decrement
+    let count = client.decr("demo:counter")
+    print(f"  DECR: ${count}")
+    
+    // Get current value
+    print(f"  Current: ${client.get("demo:counter")}")
+    
+    client.del("demo:counter")
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Lists
+// ═══════════════════════════════════════════════════════════
+
+fn demo_lists(client RedisClient) {
+    print("=== Lists ===")
+    
+    client.del("demo:tasks")
+    
+    // Push items
+    client.rpush("demo:tasks", "Task 1")
+    client.rpush("demo:tasks", "Task 2")
+    client.rpush("demo:tasks", "Task 3")
+    print("  RPUSH: Task 1, Task 2, Task 3")
+    
+    // Get range (all items)
+    let all_tasks = client.lrange("demo:tasks", 0, -1)
+    print(f"  LRANGE 0 -1: ${list.len(all_tasks)} items")
+    for task in all_tasks {
+        print(f"    - ${task}")
+    }
+    
+    // Pop from left
+    let popped = client.lpop("demo:tasks")
+    print(f"  LPOP: ${popped}")
+    
+    // Remaining items
+    let remaining = client.lrange("demo:tasks", 0, -1)
+    print(f"  Remaining: ${list.len(remaining)} items")
+    
+    client.del("demo:tasks")
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Hashes
+// ═══════════════════════════════════════════════════════════
+
+fn demo_hashes(client RedisClient) {
+    print("=== Hashes ===")
+    
+    client.del("demo:user:1")
+    
+    // Set hash fields
+    client.hset("demo:user:1", "name", "Alice")
+    client.hset("demo:user:1", "email", "alice@example.com")
+    client.hset("demo:user:1", "age", "30")
+    print("  HSET: name, email, age")
+    
+    // Get single field
+    let name = client.hget("demo:user:1", "name")
+    print(f"  HGET name: ${name}")
+    
+    // Get all fields
+    let user_data = client.hgetall("demo:user:1")
+    print("  HGETALL:")
+    for key, value in user_data {
+        print(f"    ${key}: ${value}")
+    }
+    
+    // Check field exists
+    print(f"  HEXISTS name: ${client.hexists("demo:user:1", "name")}")
+    print(f"  HEXISTS phone: ${client.hexists("demo:user:1", "phone")}")
+    
+    client.del("demo:user:1")
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sets
+// ═══════════════════════════════════════════════════════════
+
+fn demo_sets(client RedisClient) {
+    print("=== Sets ===")
+    
+    client.del("demo:tags")
+    
+    // Add members
+    client.sadd("demo:tags", "rust")
+    client.sadd("demo:tags", "autolang")
+    client.sadd("demo:tags", "programming")
+    client.sadd("demo:tags", "rust")  // Duplicate - won't be added
+    print("  SADD: rust, autolang, programming, rust (duplicate)")
+    
+    // Check membership
+    print(f"  SISMEMBER rust: ${client.sismember("demo:tags", "rust")}")
+    print(f"  SISMEMBER python: ${client.sismember("demo:tags", "python")}")
+    
+    // Get all members
+    let tags = client.smembers("demo:tags")
+    print(f"  SMEMBERS: ${list.len(tags)} items")
+    for tag in tags {
+        print(f"    - ${tag}")
+    }
+    
+    client.del("demo:tags")
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// JSON Storage Pattern
+// ═══════════════════════════════════════════════════════════
+
+fn demo_json_storage(client RedisClient) {
+    print("=== JSON Storage Pattern ===")
+    
+    // Store complex data as JSON
+    let user = {
+        id: 1,
+        name: "Bob",
+        email: "bob@example.com",
+        roles: ["admin", "user"],
+        settings: {
+            theme: "dark",
+            notifications: true
+        }
+    }
+    
+    let json_str = json.encode(user)
+    client.set("demo:user:json", json_str)
+    print("  Stored JSON:")
+    print(f"    ${json_str}")
+    
+    // Retrieve and parse
+    let stored = client.get("demo:user:json")
+    let parsed = json.parse(stored)
+    
+    print("  Retrieved and parsed:")
+    print(f"    name: ${parsed.name}")
+    print(f"    roles: ${parsed.roles}")
+    print(f"    theme: ${parsed.settings.theme}")
+    
+    client.del("demo:user:json")
+    print("")
+}

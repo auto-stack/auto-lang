@@ -18,8 +18,8 @@ pub enum TokenKind {
     Uint,
     U8,
     I8,
-    Bool,  // ADDED: bool literal
-    Byte,  // ADDED: byte literal
+    Bool, // ADDED: bool literal
+    Byte, // ADDED: byte literal
     Float,
     Double,
     Str,  // "hello"
@@ -28,50 +28,50 @@ pub enum TokenKind {
     Ident,
 
     // Operators
-    LParen,         // (
-    RParen,         // )
-    LSquare,        // [
-    RSquare,        // ]
-    LBrace,         // {
-    RBrace,         // }
-    Comma,          // ,
-    Semi,           // ;
-    Newline,        // \n
-    Add,            // +
-    Sub,            // -
-    Star,           // *
-    Div,            // /
-    Mod,            // %
-    Not,            // !
-    Lt,             // <
-    Gt,             // >
-    Le,             // <=
-    Ge,             // >=
-    Asn,            // =
-    Eq,             // ==
-    Neq,            // !=
-    AddEq,          // +=
-    SubEq,          // -=
-    MulEq,          // *=
-    DivEq,          // /=
-    ModEq,          // %=
-    Dot,            // .
-    Range,          // ..
-    RangeEq,        // ..=
-    Colon,          // :
-    VBar,           // |
-    CommentLine,    // //
-    CommentContent, // any text in comment
-    CommentStart,   // /*
-    CommentEnd,     // */
-    Arrow,          // ->
-    DoubleArrow,    // =>
-    Question,       // ?
+    LParen,           // (
+    RParen,           // )
+    LSquare,          // [
+    RSquare,          // ]
+    LBrace,           // {
+    RBrace,           // }
+    Comma,            // ,
+    Semi,             // ;
+    Newline,          // \n
+    Add,              // +
+    Sub,              // -
+    Star,             // *
+    Div,              // /
+    Mod,              // %
+    Not,              // !
+    Lt,               // <
+    Gt,               // >
+    Le,               // <=
+    Ge,               // >=
+    Asn,              // =
+    Eq,               // ==
+    Neq,              // !=
+    AddEq,            // +=
+    SubEq,            // -=
+    MulEq,            // *=
+    DivEq,            // /=
+    ModEq,            // %=
+    Dot,              // .
+    Range,            // ..
+    RangeEq,          // ..=
+    Colon,            // :
+    VBar,             // |
+    CommentLine,      // //
+    CommentContent,   // any text in comment
+    CommentStart,     // /*
+    CommentEnd,       // */
+    Arrow,            // ->
+    DoubleArrow,      // =>
+    Question,         // ?
     QuestionQuestion, // ??
-    DotQuestion,    // ?.
-    At,             // @
-    Hash,           // #
-    Tilde,          // ~
+    DotQuestion,      // ?.
+    At,               // @
+    Hash,             // #
+    Tilde,            // ~
 
     // Keywords
     True,
@@ -93,11 +93,12 @@ pub enum TokenKind {
     Tag,
     Let,
     Mut,
-    Copy,   // ADDED: copy keyword for explicit value passing (Plan 088 Phase 3)
-    Const, // ADDED: const keyword for const generics (Plan 052)
-    View,  // ADDED: view keyword for immutable borrow (Phase 3)
-    Take,  // ADDED: take keyword for move semantics (Phase 3)
-    Hold,  // ADDED: hold keyword for temporary path binding (Phase 3)
+    Move,
+    Copy,
+    Const,
+    View,
+    Take,
+    Hold,
     Has,
     Spec,
     Use,
@@ -105,8 +106,8 @@ pub enum TokenKind {
     Enum,
     On,
     Alias,
-    Node, // ADDED: node keyword for typed node definitions
-    Ext,   // ADDED: ext keyword for type extensions (Plan 035)
+    Node,   // ADDED: node keyword for typed node definitions
+    Ext,    // ADDED: ext keyword for type extensions (Plan 035)
     Static, // ADDED: static keyword for static methods (Plan 035)
     Impl,   // ADDED: impl keyword for trait implementations (Plan 059)
     And,    // ADDED: logical and keyword (Plan 066)
@@ -120,10 +121,10 @@ pub enum TokenKind {
     Route,
     Nav,
 
-    // Property Keywords (Phase 3: postfix property syntax)
-    DotView,  // .view
-    DotMut,   // .mut
-    DotTake,  // .take
+    DotView,
+    DotMut,
+    DotMove,
+    DotTake,
     // .type is handled as a special field name in codegen/eval, not as a special token
 
     // Format Str
@@ -189,6 +190,7 @@ impl fmt::Display for Token {
             TokenKind::Mut => write!(f, "<mut>"),
             TokenKind::View => write!(f, "<view>"),
             TokenKind::Take => write!(f, "<take>"),
+            TokenKind::Move => write!(f, "<move>"),
             TokenKind::Hold => write!(f, "<hold>"),
             TokenKind::In => write!(f, "<in>"),
             TokenKind::Fn => write!(f, "<fn>"),
@@ -307,7 +309,7 @@ impl Token {
             "tag" => Some(TokenKind::Tag),
             "let" => Some(TokenKind::Let),
             "mut" => Some(TokenKind::Mut),
-            "copy" => Some(TokenKind::Copy), // ADDED: copy keyword for explicit value passing (Plan 088 Phase 3)
+            "move" => Some(TokenKind::Move),
             "view" => Some(TokenKind::View),
             "take" => Some(TokenKind::Take),
             "hold" => Some(TokenKind::Hold),
@@ -326,8 +328,8 @@ impl Token {
             "const" => Some(TokenKind::Const),
             "and" => Some(TokenKind::And),
             "or" => Some(TokenKind::Or),
-            "dep" => Some(TokenKind::Dep),  // Plan 092: dependency declaration
-            "routes" => Some(TokenKind::Routes),  // Plan 105: router keywords
+            "dep" => Some(TokenKind::Dep), // Plan 092: dependency declaration
+            "routes" => Some(TokenKind::Routes), // Plan 105: router keywords
             "outlet" => Some(TokenKind::Outlet),
             "link" => Some(TokenKind::Link),
             "route" => Some(TokenKind::Route),

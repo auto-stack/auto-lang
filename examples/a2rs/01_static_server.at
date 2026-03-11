@@ -1,0 +1,75 @@
+/// Example 1: Static File Server
+/// 
+/// Similar to `python -m http.server`
+/// Serves files from the ./public directory
+///
+/// Usage:
+///   auto build examples/a2rs/01_static_server.at
+///   ./build/01_static_server
+///   
+/// Then open http://localhost:8080 in your browser
+
+use auto.http
+use auto.file
+
+fn main() {
+    // Create public directory if it doesn't exist
+    if !file.exists("./public") {
+        file.create_dir("./public")
+        
+        // Create a sample index.html
+        file.write_text("./public/index.html", "
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AutoLang Server</title>
+    <link rel=\"stylesheet\" href=\"/style.css\">
+</head>
+<body>
+    <h1>Hello from AutoLang!</h1>
+    <p>This page is served by an AutoLang HTTP server.</p>
+    <img src=\"/logo.png\" alt=\"Logo\">
+</body>
+</html>
+        ")
+        
+        // Create a sample CSS file
+        file.write_text("./public/style.css", "
+body {
+    font-family: system-ui, sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: #f5f5f5;
+}
+h1 { color: #333; }
+        ")
+    }
+    
+    // Create HTTP server
+    let server = http.server()
+    
+    // Serve static files from ./public under /
+    server.static("/", "./public")
+    
+    // Add a custom API endpoint
+    server.get("/api/time", fn(req) {
+        let now = time.now_sec()
+        http.ok(f"{\"time\": ${now}}")
+    })
+    
+    // Health check endpoint
+    server.get("/health", fn(req) {
+        http.ok("OK")
+    })
+    
+    // Start server
+    print("========================================")
+    print("  AutoLang Static File Server")
+    print("========================================")
+    print("  Serving: ./public")
+    print("  URL: http://localhost:8080")
+    print("========================================")
+    
+    server.listen("0.0.0.0:8080")
+}

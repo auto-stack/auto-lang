@@ -1,0 +1,305 @@
+/// Example 3: Image Scraper
+///
+/// Downloads all images from a webpage
+///
+/// Usage:
+///   auto build examples/a2rs/03_image_scraper.at
+///   ./build/03_image_scraper https://example.com/gallery
+
+use auto.http
+use auto.file
+use auto.str
+use auto.path
+use auto.time
+
+// Configuration
+let OUTPUT_DIR = "./downloaded_images"
+let MAX_IMAGES = 50
+let REQUEST_TIMEOUT = 10000  // 10 seconds
+
+fn main() {
+    // Get URL from command line or use default
+    let args = process.args()
+    let url = if list.len(args) > 1 {
+        args[1]
+    } else {
+        "https://picsum.photos"  // Default: lorem picsum
+    }
+    
+    print("========================================")
+    print("  AutoLang Image Scraper")
+    print("========================================")
+    print(f"  URL: ${url}")
+    print(f"  Output: ${OUTPUT_DIR}")
+    print(f"  Max images: ${MAX_IMAGES}")
+    print("========================================")
+    
+    // Create output directory
+    if !file.exists(OUTPUT_DIR) {
+        file.create_dir(OUTPUT_DIR)
+        print("Created output directory")
+    }
+    
+    // Fetch page
+    print(f"\nFetching page: ${url}")
+    let res = http.get(url)
+    
+    if res == nil {
+        print("ERROR: Failed to fetch page")
+        process.exit(1)
+    }
+    
+    print(f"Status: ${res.status()}")
+    
+    let html = res.body()
+    
+    // Extract image URLs
+    let image_urls = extract_image_urls(html, url)
+    print(f"Found ${list.len(image_urls)} images")
+    
+    // Download images
+    let downloaded = 0
+    let failed = 0
+    
+    for img_url in image_urls {
+        if downloaded >= MAX_IMAGES {
+            print(f"\nReached maximum of ${MAX_IMAGES} images")
+            break
+        }
+        
+        if download_image(img_url, OUTPUT_DIR) {
+            downloaded += 1
+        } else {
+            failed += 1
+        }
+    }
+    
+    // Summary
+    print("\n========================================")
+    print("  Download Complete")
+    print("========================================")
+    print(f"  Downloaded: ${downloaded}")
+    print(f"  Failed: ${failed}")
+    print(f"  Location: ${OUTPUT_DIR}")
+    print("========================================")
+}
+
+/// Extract all image URLs from HTML
+fn extract_image_urls(html str, base_url str) List<str> {
+    let images = List.new()
+    
+    // Extract from <img src="...">
+    var pos = 0
+    loop {
+        let img_start = str.find_from(html, "<img", pos)
+        if img_start < 0 { break }
+        
+        // Find the end of the tag
+        let tag_end = str.find_from(html, ">", img_start)
+        if tag_end < 0 { break }
+        
+        let tag = str.substr(html, img_start, tag_end + 1)
+        
+        // Extract src attribute
+        let src = extract_attribute(tag, "src")
+        if str.len(src) > 0 {
+            // Handle data URIs (skip)
+            if str.starts_with(src, "data:") {
+                pos = tag_end
+                continue
+            }
+            
+            // Resolve relative URLs
+            let full_url = resolve_url(src, base_url)
+            images.push(full_url)
+        }
+        
+        pos = tag_end
+    }
+    
+    // Also check for <a> tags linking to images
+    pos = 0
+    loop {
+        let a_start = str.find_from(html, "<a", pos)
+        if a_start < 0 { break }
+        
+        let tag_end = str.find_from(html, ">", a_start)
+        if tag_end < 0 { break }
+        
+        let tag = str.substr(html, a_start, tag_end + 1)
+        let href = extract_attribute(tag, "href")
+        
+        if str.len(href) > 0 && is_image_url(href) {
+            let full_url = resolve_url(href, base_url)
+            if !list.contains(images, full_url) {
+                images.push(full_url)
+            }
+        }
+        
+        pos = tag_end
+    }
+    
+    images
+}
+
+/// Extract an attribute value from an HTML tag
+fn extract_attribute(tag str, attr str) str {
+    let search = f"${attr}=\""
+    let start = str.find(tag, search)
+    
+    if start < 0 {
+        // Try single quotes
+        search = f"${attr}='"
+        start = str.find(tag, search)
+    }
+    
+    if start < 0 { return "" }
+    
+    let value_start = start + str.len(search)
+    let value_end = str.find_from(tag, "\"", value_start)
+    
+    if value_end < 0 {
+        value_end = str.find_from(tag, "'", value_start)
+    }
+    
+    if value_end < 0 { return "" }
+    
+    str.substr(tag, value_start, value_end)
+}
+
+/// Check if URL points to an image
+fn is_image_url(url str) bool {
+    let lower = str.lower(url)
+    str.ends_with(lower, ".jpg") ||
+    str.ends_with(lower, ".jpeg") ||
+    str.ends_with(lower, ".png") ||
+    str.ends_with(lower, ".gif") ||
+    str.ends_with(lower, ".webp") ||
+    str.ends_with(lower, ".svg") ||
+    str.ends_with(lower, ".bmp")
+}
+
+/// Resolve relative URL to absolute URL
+fn resolve_url(url str, base_url str) str {
+    // Already absolute
+    if str.starts_with(url, "http://") || str.starts_with(url, "https://") {
+        return url
+    }
+    
+    // Protocol-relative
+    if str.starts_with(url, "//") {
+        let protocol_end = str.find(base_url, "://")
+        if protocol_end > 0 {
+            let protocol = str.substr(base_url, 0, protocol_end)
+            return f"${protocol}:${url}"
+        }
+        return f"https:${url}"
+    }
+    
+    // Absolute path
+    if str.starts_with(url, "/") {
+        let proto_end = str.find(base_url, "://")
+        if proto_end > 0 {
+            let after_proto = str.substr(base_url, proto_end + 3)
+            let path_start = str.find(after_proto, "/")
+            
+            let domain = if path_start > 0 {
+                str.substr(after_proto, 0, path_start)
+            } else {
+                after_proto
+            }
+            
+            return f"https://${domain}${url}"
+        }
+    }
+    
+    // Relative path - just append to base
+    let base = str.trim_end(base_url, "/")
+    return f"${base}/${str.trim_start(url, "/")}"
+}
+
+/// Download an image and save to disk
+fn download_image(url str, output_dir str) bool {
+    print(f"\n  Downloading: ${url}")
+    
+    // Make request
+    let res = http.request("GET", url)
+        .header("User-Agent", "AutoLang-ImageScraper/1.0")
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+    
+    if res == nil {
+        print("    ✗ Request failed")
+        return false
+    }
+    
+    if res.status() != 200 {
+        print(f"    ✗ HTTP ${res.status()}")
+        return false
+    }
+    
+    // Check content type
+    let content_type = res.header("content-type")
+    if !str.starts_with(content_type, "image/") {
+        print(f"    ✗ Not an image: ${content_type}")
+        return false
+    }
+    
+    // Extract filename from URL
+    let filename = generate_filename(url, content_type)
+    let output_path = path.join(output_dir, filename)
+    
+    // Save binary data
+    let bytes = res.bytes()
+    
+    match file.write_bytes(output_path, bytes) {
+        Ok(_) => {
+            let size_kb = list.len(bytes) / 1024
+            print(f"    ✓ Saved: ${filename} (${size_kb}KB)")
+            true
+        }
+        Err(e) => {
+            print(f"    ✗ Save failed: ${e}")
+            false
+        }
+    }
+}
+
+/// Generate a unique filename for an image
+fn generate_filename(url str, content_type str) str {
+    // Try to get filename from URL
+    let url_filename = path.filename(url)
+    
+    // Remove query string
+    let qmark = str.find(url_filename, "?")
+    if qmark > 0 {
+        url_filename = str.substr(url_filename, 0, qmark)
+    }
+    
+    // If we have a valid filename with extension
+    if str.len(url_filename) > 0 && str.contains(url_filename, ".") {
+        return url_filename
+    }
+    
+    // Generate from timestamp and content type
+    let ext = extension_from_content_type(content_type)
+    let timestamp = time.now_ms()
+    f"image_${timestamp}.${ext}"
+}
+
+/// Get file extension from content type
+fn extension_from_content_type(content_type str) str {
+    if str.contains(content_type, "jpeg") || str.contains(content_type, "jpg") {
+        "jpg"
+    } else if str.contains(content_type, "png") {
+        "png"
+    } else if str.contains(content_type, "gif") {
+        "gif"
+    } else if str.contains(content_type, "webp") {
+        "webp"
+    } else if str.contains(content_type, "svg") {
+        "svg"
+    } else {
+        "bin"
+    }
+}

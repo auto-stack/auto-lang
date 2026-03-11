@@ -1,0 +1,324 @@
+/// Example 5: SQLite Database
+///
+/// Demonstrates SQLite operations: tables, queries, transactions
+///
+/// Usage:
+///   auto build examples/a2rs/05_sqlite_demo.at
+///   ./build/05_sqlite_demo
+
+use auto.sqlite
+use auto.file
+use auto.time
+use auto.json
+
+fn main() {
+    // Clean up any existing database
+    file.delete("demo.db")
+    
+    // Open database (creates if not exists)
+    print("Opening database...")
+    let db = sqlite.open("demo.db")
+    
+    if db == nil {
+        print("ERROR: Failed to open database")
+        process.exit(1)
+    }
+    
+    print("✓ Database opened\n")
+    
+    // Run demonstrations
+    create_tables(db)
+    insert_data(db)
+    query_data(db)
+    update_data(db)
+    query_with_params(db)
+    demo_transactions(db)
+    demo_aggregates(db)
+    
+    // Cleanup
+    db.close()
+    file.delete("demo.db")
+    
+    print("\n✓ Done! Database closed and cleaned up.")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Schema Creation
+// ═══════════════════════════════════════════════════════════
+
+fn create_tables(db Database) {
+    print("=== Creating Tables ===")
+    
+    // Users table
+    db.exec("
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            age INTEGER,
+            created_at INTEGER NOT NULL
+        )
+    ")
+    print("  ✓ Created 'users' table")
+    
+    // Posts table
+    db.exec("
+        CREATE TABLE posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT,
+            published INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ")
+    print("  ✓ Created 'posts' table")
+    
+    // Create index
+    db.exec("CREATE INDEX idx_posts_user ON posts(user_id)")
+    print("  ✓ Created index on posts.user_id")
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Insert Data
+// ═══════════════════════════════════════════════════════════
+
+fn insert_data(db Database) {
+    print("=== Inserting Data ===")
+    
+    let now = time.now_sec()
+    
+    // Insert users with parameterized queries
+    let users = [
+        ("Alice", "alice@example.com", 28),
+        ("Bob", "bob@example.com", 35),
+        ("Charlie", "charlie@example.com", 22),
+        ("Diana", "diana@example.com", 31),
+    ]
+    
+    for user in users {
+        let name = user.0
+        let email = user.1
+        let age = user.2
+        
+        db.exec_params(
+            "INSERT INTO users (name, email, age, created_at) VALUES (?, ?, ?, ?)",
+            [name, email, f"${age}", f"${now}"]
+        )
+        
+        let id = db.last_insert_rowid()
+        print(f"  ✓ Inserted user: ${name} (ID: ${id})")
+    }
+    
+    // Insert posts
+    let posts = [
+        (1, "First Post", "Hello, this is my first post!", true),
+        (1, "Second Post", "Another day, another post.", true),
+        (2, "Bob's Thoughts", "Here's what I think...", false),
+        (3, "Hello World", "My first blog post!", true),
+        (4, "Tech Tips", "Some useful tech tips.", true),
+    ]
+    
+    for post in posts {
+        let user_id = post.0
+        let title = post.1
+        let content = post.2
+        let published = post.3
+        
+        db.exec_params(
+            "INSERT INTO posts (user_id, title, content, published, created_at) VALUES (?, ?, ?, ?, ?)",
+            [f"${user_id}", title, content, f"${if published { 1 } else { 0 }}", f"${now}"]
+        )
+    }
+    
+    print(f"  ✓ Inserted ${list.len(posts)} posts")
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Query Data
+// ═══════════════════════════════════════════════════════════
+
+fn query_data(db Database) {
+    print("=== Querying Data ===")
+    
+    // Query all users
+    print("  All users:")
+    let rows = db.query("SELECT id, name, email, age FROM users ORDER BY name")
+    
+    loop {
+        let row = rows.next()
+        if row == nil { break }
+        
+        let id = row.get_int(0)
+        let name = row.get(1)
+        let email = row.get(2)
+        let age = row.get_int(3)
+        
+        print(f"    [${id}] ${name} (${email}) - Age: ${age}")
+    }
+    
+    // Count posts
+    let count_row = db.query_one("SELECT COUNT(*) as count FROM posts")
+    let post_count = count_row.get_int(0)
+    print(f"\n  Total posts: ${post_count}")
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Update Data
+// ═══════════════════════════════════════════════════════════
+
+fn update_data(db Database) {
+    print("=== Updating Data ===")
+    
+    // Update a user's email
+    db.exec_params(
+        "UPDATE users SET email = ? WHERE name = ?",
+        ["alice.new@example.com", "Alice"]
+    )
+    print("  ✓ Updated Alice's email")
+    
+    // Publish Bob's draft
+    db.exec_params(
+        "UPDATE posts SET published = 1 WHERE user_id = (SELECT id FROM users WHERE name = ?)",
+        ["Bob"]
+    )
+    print("  ✓ Published Bob's post")
+    
+    // Verify update
+    let row = db.query_one("SELECT email FROM users WHERE name = ?", ["Alice"])
+    print(f"  Alice's new email: ${row.get(0)}")
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Parameterized Queries
+// ═══════════════════════════════════════════════════════════
+
+fn query_with_params(db Database) {
+    print("=== Parameterized Queries ===")
+    
+    // Query users by age range
+    print("  Users aged 25-35:")
+    let rows = db.query_params(
+        "SELECT name, age FROM users WHERE age >= ? AND age <= ? ORDER BY age",
+        ["25", "35"]
+    )
+    
+    loop {
+        let row = rows.next()
+        if row == nil { break }
+        
+        let name = row.get(0)
+        let age = row.get_int(1)
+        print(f"    ${name} (${age})")
+    }
+    
+    // Search posts by title
+    print("\n  Posts containing 'first':")
+    let rows2 = db.query_params(
+        "SELECT title, content FROM posts WHERE title LIKE ?",
+        ["%first%"]
+    )
+    
+    loop {
+        let row = rows2.next()
+        if row == nil { break }
+        
+        let title = row.get(0)
+        print(f"    ${title}")
+    }
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Transactions
+// ═══════════════════════════════════════════════════════════
+
+fn demo_transactions(db Database) {
+    print("=== Transactions ===")
+    
+    // Successful transaction
+    print("  Committing transaction...")
+    db.begin()
+    
+    db.exec_params(
+        "INSERT INTO users (name, email, age, created_at) VALUES (?, ?, ?, ?)",
+        ["Eve", "eve@example.com", "27", f"${time.now_sec()}"]
+    )
+    
+    let eve_id = db.last_insert_rowid()
+    
+    db.exec_params(
+        "INSERT INTO posts (user_id, title, content, published, created_at) VALUES (?, ?, ?, ?, ?)",
+        [f"${eve_id}", "Eve's Intro", "Hi everyone!", "1", f"${time.now_sec()}"]
+    )
+    
+    db.commit()
+    print("  ✓ Transaction committed")
+    
+    // Verify
+    let row = db.query_one("SELECT name FROM users WHERE email = ?", ["eve@example.com"])
+    print(f"  ✓ Verified: ${row.get(0)} was inserted")
+    
+    // Rollback demo
+    print("\n  Demonstrating rollback...")
+    db.begin()
+    
+    db.exec("UPDATE users SET age = 999 WHERE name = 'Eve'")
+    print("  Changed Eve's age to 999")
+    
+    // Oops, rollback!
+    db.rollback()
+    print("  ✓ Transaction rolled back")
+    
+    // Verify rollback
+    let row2 = db.query_one("SELECT age FROM users WHERE name = 'Eve'")
+    print(f"  ✓ Eve's age is still: ${row2.get_int(0)}")
+    
+    print("")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Aggregates
+// ═══════════════════════════════════════════════════════════
+
+fn demo_aggregates(db Database) {
+    print("=== Aggregate Queries ===")
+    
+    // Average age
+    let avg_row = db.query_one("SELECT AVG(age) as avg_age FROM users")
+    print(f"  Average age: ${avg_row.get_float(0)}")
+    
+    // Posts per user
+    print("  Posts per user:")
+    let rows = db.query("
+        SELECT u.name, COUNT(p.id) as post_count
+        FROM users u
+        LEFT JOIN posts p ON u.id = p.user_id
+        GROUP BY u.id
+        ORDER BY post_count DESC
+    ")
+    
+    loop {
+        let row = rows.next()
+        if row == nil { break }
+        
+        let name = row.get(0)
+        let count = row.get_int(1)
+        print(f"    ${name}: ${count} posts")
+    }
+    
+    // Published vs draft
+    let pub_row = db.query_one("SELECT published, COUNT(*) as count FROM posts GROUP BY published")
+    print(f"\n  Published posts: (see above)")
+    
+    print("")
+}

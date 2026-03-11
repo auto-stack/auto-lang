@@ -1,0 +1,331 @@
+/// Example 6: TODO REST API
+///
+/// A complete REST API for a TODO application
+/// Combines HTTP server with SQLite database
+///
+/// Usage:
+///   auto build examples/a2rs/06_todo_api.at
+///   ./build/06_todo_api
+///
+/// API Endpoints:
+///   GET    /todos          - List all todos
+///   GET    /todos/:id      - Get a single todo
+///   POST   /todos          - Create a new todo
+///   PUT    /todos/:id      - Update a todo
+///   DELETE /todos/:id      - Delete a todo
+///   PATCH  /todos/:id/toggle - Toggle todo completion
+///
+/// Test with curl:
+///   curl http://localhost:8080/todos
+///   curl -X POST -d '{"title":"Buy milk"}' http://localhost:8080/todos
+///   curl -X PUT -d '{"title":"Buy almond milk"}' http://localhost:8080/todos/1
+///   curl -X PATCH http://localhost:8080/todos/1/toggle
+///   curl -X DELETE http://localhost:8080/todos/1
+
+use auto.http
+use auto.sqlite
+use auto.json
+use auto.file
+use auto.time
+
+// Database connection (global for handlers)
+let db = nil
+
+fn main() {
+    // Initialize database
+    db = init_database()
+    
+    if db == nil {
+        print("ERROR: Failed to initialize database")
+        process.exit(1)
+    }
+    
+    print("✓ Database initialized\n")
+    
+    // Create server
+    let server = http.server()
+    
+    // Register routes
+    server.get("/todos", handle_list_todos)
+    server.get("/todos/:id", handle_get_todo)
+    server.post("/todos", handle_create_todo)
+    server.put("/todos/:id", handle_update_todo)
+    server.delete("/todos/:id", handle_delete_todo)
+    server.patch("/todos/:id/toggle", handle_toggle_todo)
+    
+    // Health check
+    server.get("/health", fn(req) {
+        json_response(200, { status: "ok", timestamp: time.now_sec() })
+    })
+    
+    // Print startup info
+    print("========================================")
+    print("  TODO REST API")
+    print("========================================")
+    print("  Server: http://localhost:8080")
+    print("")
+    print("  Endpoints:")
+    print("    GET    /todos              List all todos")
+    print("    GET    /todos/:id          Get a todo")
+    print("    POST   /todos              Create a todo")
+    print("    PUT    /todos/:id          Update a todo")
+    print("    DELETE /todos/:id          Delete a todo")
+    print("    PATCH  /todos/:id/toggle   Toggle completion")
+    print("    GET    /health             Health check")
+    print("========================================")
+    
+    // Start server
+    server.listen("0.0.0.0:8080")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Database Initialization
+// ═══════════════════════════════════════════════════════════
+
+fn init_database() Database {
+    // Use in-memory database for demo (change to file for persistence)
+    let database = sqlite.open("todos.db")
+    
+    if database == nil {
+        return nil
+    }
+    
+    // Create todos table
+    database.exec("
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            completed INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+    ")
+    
+    // Add some sample data
+    let now = time.now_sec()
+    
+    let existing = database.query_one("SELECT COUNT(*) FROM todos")
+    if existing.get_int(0) == 0 {
+        database.exec_params(
+            "INSERT INTO todos (title, completed, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ["Learn AutoLang", "0", f"${now}", f"${now}"]
+        )
+        database.exec_params(
+            "INSERT INTO todos (title, completed, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ["Build a TODO app", "0", f"${now}", f"${now}"]
+        )
+        database.exec_params(
+            "INSERT INTO todos (title, completed, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ["Deploy to production", "1", f"${now}", f"${now}"]
+        )
+        print("  Added sample todos")
+    }
+    
+    database
+}
+
+// ═══════════════════════════════════════════════════════════
+// Route Handlers
+// ═══════════════════════════════════════════════════════════
+
+/// GET /todos - List all todos
+fn handle_list_todos(req Request) Response {
+    let rows = db.query("
+        SELECT id, title, completed, created_at, updated_at
+        FROM todos
+        ORDER BY created_at DESC
+    ")
+    
+    let todos = List.new()
+    
+    loop {
+        let row = rows.next()
+        if row == nil { break }
+        
+        let todo = {
+            id: row.get_int(0),
+            title: row.get(1),
+            completed: row.get_int(2) == 1,
+            created_at: row.get_int(3),
+            updated_at: row.get_int(4)
+        }
+        
+        todos.push(todo)
+    }
+    
+    json_response(200, { todos: todos, count: list.len(todos) })
+}
+
+/// GET /todos/:id - Get a single todo
+fn handle_get_todo(req Request) Response {
+    let id = req.param("id")
+    
+    let row = db.query_one(
+        "SELECT id, title, completed, created_at, updated_at FROM todos WHERE id = ?",
+        [id]
+    )
+    
+    if row == nil {
+        return json_response(404, { error: "Todo not found" })
+    }
+    
+    let todo = {
+        id: row.get_int(0),
+        title: row.get(1),
+        completed: row.get_int(2) == 1,
+        created_at: row.get_int(3),
+        updated_at: row.get_int(4)
+    }
+    
+    json_response(200, todo)
+}
+
+/// POST /todos - Create a new todo
+fn handle_create_todo(req Request) Response {
+    // Parse JSON body
+    let body = req.text()
+    let data = json.parse(body)
+    
+    if data == nil {
+        return json_response(400, { error: "Invalid JSON" })
+    }
+    
+    let title = data.title
+    
+    if title == nil || str.len(str.trim(title)) == 0 {
+        return json_response(400, { error: "Title is required" })
+    }
+    
+    let now = time.now_sec()
+    
+    db.exec_params(
+        "INSERT INTO todos (title, completed, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        [title, "0", f"${now}", f"${now}"]
+    )
+    
+    let id = db.last_insert_rowid()
+    
+    // Return created todo
+    json_response(201, {
+        id: id,
+        title: title,
+        completed: false,
+        created_at: now,
+        updated_at: now
+    })
+}
+
+/// PUT /todos/:id - Update a todo
+fn handle_update_todo(req Request) Response {
+    let id = req.param("id")
+    
+    // Check if exists
+    let existing = db.query_one("SELECT id FROM todos WHERE id = ?", [id])
+    if existing == nil {
+        return json_response(404, { error: "Todo not found" })
+    }
+    
+    // Parse JSON body
+    let body = req.text()
+    let data = json.parse(body)
+    
+    if data == nil {
+        return json_response(400, { error: "Invalid JSON" })
+    }
+    
+    let title = data.title
+    
+    if title == nil || str.len(str.trim(title)) == 0 {
+        return json_response(400, { error: "Title is required" })
+    }
+    
+    let now = time.now_sec()
+    
+    db.exec_params(
+        "UPDATE todos SET title = ?, updated_at = ? WHERE id = ?",
+        [title, f"${now}", id]
+    )
+    
+    // Return updated todo
+    let row = db.query_one(
+        "SELECT id, title, completed, created_at, updated_at FROM todos WHERE id = ?",
+        [id]
+    )
+    
+    json_response(200, {
+        id: row.get_int(0),
+        title: row.get(1),
+        completed: row.get_int(2) == 1,
+        created_at: row.get_int(3),
+        updated_at: row.get_int(4)
+    })
+}
+
+/// DELETE /todos/:id - Delete a todo
+fn handle_delete_todo(req Request) Response {
+    let id = req.param("id")
+    
+    // Check if exists
+    let existing = db.query_one("SELECT id FROM todos WHERE id = ?", [id])
+    if existing == nil {
+        return json_response(404, { error: "Todo not found" })
+    }
+    
+    db.exec_params("DELETE FROM todos WHERE id = ?", [id])
+    
+    json_response(200, { message: "Todo deleted", id: str.to_int(id) })
+}
+
+/// PATCH /todos/:id/toggle - Toggle todo completion
+fn handle_toggle_todo(req Request) Response {
+    let id = req.param("id")
+    
+    // Check if exists and get current state
+    let row = db.query_one(
+        "SELECT id, title, completed, created_at FROM todos WHERE id = ?",
+        [id]
+    )
+    
+    if row == nil {
+        return json_response(404, { error: "Todo not found" })
+    }
+    
+    let current_completed = row.get_int(2)
+    let new_completed = if current_completed == 1 { 0 } else { 1 }
+    
+    let now = time.now_sec()
+    
+    db.exec_params(
+        "UPDATE todos SET completed = ?, updated_at = ? WHERE id = ?",
+        [f"${new_completed}", f"${now}", id]
+    )
+    
+    json_response(200, {
+        id: row.get_int(0),
+        title: row.get(1),
+        completed: new_completed == 1,
+        created_at: row.get_int(3),
+        updated_at: now
+    })
+}
+
+// ═══════════════════════════════════════════════════════════
+// Helper Functions
+// ═══════════════════════════════════════════════════════════
+
+/// Create a JSON response with proper headers
+fn json_response(status int, data any) Response {
+    http.response()
+        .status(status)
+        .header("Content-Type", "application/json")
+        .header("Access-Control-Allow-Origin", "*")
+        .text(json.encode(data))
+}
+
+// Cleanup on exit (if possible)
+fn cleanup() {
+    if db != nil {
+        db.close()
+    }
+    file.delete("todos.db")
+}

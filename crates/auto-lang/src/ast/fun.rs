@@ -1,5 +1,5 @@
-use super::{Body, Expr, Name, Type};
 use super::types::TypeParam;
+use super::{Body, Expr, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
 use std::{fmt, io as stdio};
@@ -23,7 +23,7 @@ pub struct Fn {
     pub body: Body,
     pub ret: Type,
     pub ret_name: Option<Name>, // Original return type name (for unresolved types)
-    pub is_static: bool,         // Plan 035 Phase 4: true for static methods, false for instance methods
+    pub is_static: bool, // Plan 035 Phase 4: true for static methods, false for instance methods
     pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
     pub span: Option<(usize, usize)>, // Source location for error reporting
 }
@@ -39,10 +39,8 @@ impl Serialize for Fn {
 
 impl PartialEq for Fn {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.params == other.params
-            && self.is_static == other.is_static
-            // Note: type_params not compared (TypeParam doesn't implement PartialEq)
+        self.name == other.name && self.params == other.params && self.is_static == other.is_static
+        // Note: type_params not compared (TypeParam doesn't implement PartialEq)
     }
 }
 
@@ -84,7 +82,7 @@ impl Fn {
             body,
             ret,
             ret_name: None,
-            is_static: false, // Default to instance method
+            is_static: false,        // Default to instance method
             type_params: Vec::new(), // Default to no generic parameters
             span: None,
         }
@@ -107,41 +105,52 @@ impl Fn {
             body,
             ret,
             ret_name: Some(ret_name),
-            is_static: false, // Default to instance method
+            is_static: false,        // Default to instance method
             type_params: Vec::new(), // Default to no generic parameters
             span: None,
         }
     }
 }
 
-/// Plan 088: Parameter passing mode
+/// Plan 088/122: Parameter passing mode
 ///
 /// Defines how parameters are passed to functions:
-/// - `Copy`: Explicit value passing (caller value is copied)
-/// - `View`: Immutable reference (default, read-only borrow)
-/// - `Mut`: Mutable reference (read-write borrow)
-/// - `Take`: Move semantics (ownership transferred)
+/// - `View`: Immutable reference (DEFAULT, O(1) - read-only borrow)
+/// - `Mut`: Mutable reference (O(1) - read-write borrow)
+/// - `Move`: Ownership transfer (O(1) - renamed from Take)
+/// - `Copy`: DEPRECATED - Use Move + explicit .clone() at call site
+///
+/// The "Trinity of Resources" (Plan 122):
+/// | Mode   | Call Site  | Def Site           | Cost  |
+/// |--------|------------|--------------------|-------|
+/// | view   | obj.view   | fn foo(x T)        | O(1)  |
+/// | mut    | obj.mut    | fn foo(x mut T)    | O(1)  |
+/// | move   | obj.move   | fn foo(x move T)   | O(1)  |
+/// | clone  | obj.clone()| N/A                | O(N)  |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParamMode {
-    Copy,  // Explicit value passing
-    View,  // Immutable reference (DEFAULT)
-    Mut,   // Mutable reference
-    Take,  // Move semantics
+    View, // Immutable reference (DEFAULT) - O(1)
+    Mut,  // Mutable reference - O(1)
+    Move, // Ownership transfer (renamed from Take) - O(1)
+    Copy, // DEPRECATED - Use Move + explicit .clone() at call site
+    #[deprecated(note = "Use 'move' instead of 'take'")]
+    Take, // DEPRECATED - Alias for Move (backward compatibility)
 }
 
 impl Default for ParamMode {
     fn default() -> Self {
-        Self::View  // Default is View per Plan 088 ABO-01
+        Self::View // Default is View per Plan 088 ABO-01 and Plan 122
     }
 }
 
 impl fmt::Display for ParamMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ParamMode::Copy => write!(f, "copy"),
             ParamMode::View => write!(f, "view"),
             ParamMode::Mut => write!(f, "mut"),
-            ParamMode::Take => write!(f, "take"),
+            ParamMode::Move => write!(f, "move"),
+            ParamMode::Copy => write!(f, "copy"), // DEPRECATED
+            ParamMode::Take => write!(f, "move"), // DEPRECATED - display as 'move'
         }
     }
 }
@@ -163,7 +172,11 @@ impl PartialEq for Param {
 
 impl fmt::Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(param (name {}) (type {}) (mode {})", self.name, self.ty, self.mode)?;
+        write!(
+            f,
+            "(param (name {}) (type {}) (mode {})",
+            self.name, self.ty, self.mode
+        )?;
         if let Some(default) = &self.default {
             write!(f, " (default {})", default)?;
         }
@@ -177,7 +190,7 @@ impl Param {
             name,
             ty,
             default,
-            mode: ParamMode::default(),  // Plan 088: default to View
+            mode: ParamMode::default(), // Plan 088: default to View
         }
     }
 
@@ -354,7 +367,7 @@ impl ToAtom for Fn {
 #[derive(Debug, Clone)]
 pub struct ClosureParam {
     pub name: Name,
-    pub ty: Option<Type>,  // None means type should be inferred
+    pub ty: Option<Type>, // None means type should be inferred
 }
 
 impl ClosureParam {
@@ -408,7 +421,9 @@ impl fmt::Display for Closure {
             // Multiple params: (a, b) => ...
             write!(f, "(")?;
             for (i, param) in self.params.iter().enumerate() {
-                if i > 0 { write!(f, ", ")?; }
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
                 write!(f, "{}", param.name)?;
             }
             write!(f, ")")?;
@@ -428,18 +443,21 @@ impl fmt::Display for Closure {
 impl PartialEq for Closure {
     fn eq(&self, other: &Self) -> bool {
         // Compare params by name only (types may not be set)
-        let params_equal = self.params.len() == other.params.len() &&
-                          self.params.iter().zip(other.params.iter())
-                              .all(|(a, b)| a.name == b.name);
+        let params_equal = self.params.len() == other.params.len()
+            && self
+                .params
+                .iter()
+                .zip(other.params.iter())
+                .all(|(a, b)| a.name == b.name);
 
         // Compare ret by reference (both None or both Some)
         let ret_equal = match (&self.ret, &other.ret) {
             (None, None) => true,
-            (Some(_), Some(_)) => true,  // Can't compare Type, just check both exist
+            (Some(_), Some(_)) => true, // Can't compare Type, just check both exist
             _ => false,
         };
 
-        params_equal && ret_equal  // Skip body comparison (Expr doesn't have PartialEq)
+        params_equal && ret_equal // Skip body comparison (Expr doesn't have PartialEq)
     }
 }
 
@@ -457,7 +475,9 @@ impl AtomWriter for Closure {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(f, "|")?;
         for (i, param) in self.params.iter().enumerate() {
-            if i > 0 { write!(f, " ")?; }
+            if i > 0 {
+                write!(f, " ")?;
+            }
             param.write_atom(f)?;
         }
         write!(f, "|")?;
