@@ -4183,13 +4183,15 @@ impl Codegen {
         self.infer_ctx = infer_ctx;
     }
 
-    /// Check if a name is a registered type or a variable with a type
+    /// Check if a name is a registered type (type, enum, or spec)
     ///
-    /// Plan 087 Phase 3 incorrectly added `|| self.var_types.contains_key(name)` here,
+    /// Plan 123: Now delegates to TypeStore.is_type() which checks all type categories.
+    ///
+    /// Note: Plan 087 Phase 3 incorrectly added `|| self.var_types.contains_key(name)` here,
     /// which caused variables (like "l" for a List) to be treated as Types,
     /// breaking instance method calls (treated as static method calls).
     pub fn is_type(&self, name: &str) -> bool {
-        self.types.contains_key(name)
+        self.type_store.read().unwrap().is_type(name)
     }
 
     /// Get type information by name
