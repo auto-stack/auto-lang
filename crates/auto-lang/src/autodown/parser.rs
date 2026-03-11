@@ -80,6 +80,8 @@ impl<'a> AdocParser<'a> {
                     ) {
                         if let Some(block) = self.parse_block()? {
                             section.content.push(block);
+                        } else {
+                            self.advance()?; // Advance for unrecognized tokens (e.g., BlankLine)
                         }
                     }
 
