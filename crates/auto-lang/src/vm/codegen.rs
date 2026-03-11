@@ -3188,6 +3188,35 @@ impl Codegen {
         matches!(lhs, Expr::Double(_, _)) || matches!(rhs, Expr::Double(_, _))
     }
 
+    // Plan 117: Check if expression is an integer type that needs coercion to float
+    fn needs_float_coercion(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Int(_) | Expr::I8(_) | Expr::Byte(_) | Expr::U8(_) => true,
+            Expr::Ident(name) => {
+                // Check variable type from type inference
+                self.var_types
+                    .get(name.as_ref())
+                    .map(|t| matches!(t, Type::Int | Type::Byte))
+                    .unwrap_or(false)
+            }
+            _ => false,
+        }
+    }
+
+    // Plan 117: Check if expression is an i64 type that needs coercion to f64
+    fn needs_double_coercion(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::I64(_) => true,
+            Expr::Ident(name) => {
+                self.var_types
+                    .get(name.as_ref())
+                    .map(|t| matches!(t, Type::I64))
+                    .unwrap_or(false)
+            }
+            _ => false,
+        }
+    }
+
     // Check if this is a string operation (either operand is a string type)
     // Used to emit STR_CAT instead of ADD for string concatenation
     fn is_string_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
