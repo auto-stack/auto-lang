@@ -194,8 +194,9 @@ pub fn str_new(s: &str, _capacity: usize) -> String {
 
 /// Get string length
 /// In AutoLang: str_len(s)
-pub fn str_len(s: &str) -> usize {
-    s.len()
+/// Accepts both String and &str for transpiler convenience
+pub fn str_len<S: AsRef<str>>(s: S) -> usize {
+    s.as_ref().len()
 }
 
 /// Append to string
