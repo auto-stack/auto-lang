@@ -188,8 +188,8 @@ impl<'db> DepScanner<'db> {
                 self.walk_expr(&hold.path, deps);
             }
 
-            // Take expressions - walk taken expression
-            Expr::Take(expr) => {
+            // Take/Move expressions - walk taken expression
+            Expr::Take(expr) | Expr::Move(expr) => {
                 self.walk_expr(expr, deps);
             }
 

@@ -260,9 +260,10 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             // TODO: 实现 mut 借用类型推导 (Phase 3 Week 1)
             infer_expr(ctx, expr)
         }
-        Expr::Take(expr) => {
-            // Take/move: 类型与被移动的表达式相同 (like Rust move)
-            // TODO: 实现 take 移动类型推导 (Phase 3 Week 1)
+        Expr::Move(expr) | Expr::Take(expr) => {
+            // Move/take: 类型与被移动的表达式相同 (like Rust move)
+            // Plan 122: .move is the preferred syntax, .take is deprecated
+            // TODO: 实现 move 移动类型推导 (Phase 3 Week 1)
             infer_expr(ctx, expr)
         }
 

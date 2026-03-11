@@ -312,6 +312,7 @@ impl Token {
             "move" => Some(TokenKind::Move),
             "view" => Some(TokenKind::View),
             "take" => Some(TokenKind::Take),
+            "copy" => Some(TokenKind::Copy), // Plan 122: Deprecated - emit warning in parser
             "hold" => Some(TokenKind::Hold),
             "has" => Some(TokenKind::Has),
             "spec" => Some(TokenKind::Spec),

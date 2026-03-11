@@ -87,8 +87,8 @@ impl Target {
             // Base case: simple identifier
             Expr::Ident(name) => Target::Variable(name.to_string()),
 
-            // Unwrap borrow expressions to get the inner target
-            Expr::View(inner) | Expr::Mut(inner) | Expr::Take(inner) => {
+            // Unwrap borrow/move expressions to get the inner target
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => {
                 Self::from_expr(inner)
             }
 

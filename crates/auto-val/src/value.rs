@@ -470,7 +470,8 @@ pub enum Op {
     // Property keywords (Phase 3: postfix property syntax)
     DotView,
     DotMut,
-    DotTake,
+    DotMove,  // Plan 122: .move accessor (ownership transfer)
+    DotTake,  // DEPRECATED - use DotMove instead
     // May type operators (Phase 1b.3)
     QuestionQuestion,  // ?? - null-coalescing operator
     DotQuestion,       // ?. - error propagation operator
@@ -774,6 +775,7 @@ impl fmt::Display for Op {
             Op::In => write!(f, "(op in)"),
             Op::DotView => write!(f, "(op .view)"),
             Op::DotMut => write!(f, "(op .mut)"),
+            Op::DotMove => write!(f, "(op .move)"),
             Op::DotTake => write!(f, "(op .take)"),
             Op::QuestionQuestion => write!(f, "(op ??)"),
             Op::DotQuestion => write!(f, "(op ?.)"),
@@ -820,6 +822,7 @@ impl Op {
             Op::In => "in",
             Op::DotView => ".view",
             Op::DotMut => ".mut",
+            Op::DotMove => ".move",
             Op::DotTake => ".take",
             Op::QuestionQuestion => "??",
             Op::DotQuestion => "?.",

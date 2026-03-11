@@ -1295,8 +1295,9 @@ impl CTrans {
                 self.expr(e, out)?;
                 out.write_all(b")").to()
             }
-            Expr::Take(e) => {
+            Expr::Move(e) | Expr::Take(e) => {
                 // Move semantics: in C, this is just the value itself
+                // Plan 122: .move is preferred, .take is deprecated
                 // The borrow checker ensures the source isn't used again
                 self.expr(e, out)
             }

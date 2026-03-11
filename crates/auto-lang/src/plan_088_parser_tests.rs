@@ -1,6 +1,8 @@
 // Plan 088 Phase 3: Parser parameter mode parsing tests
+// Plan 122: Updated for Trinity of Resources (view, mut, move)
 //
-// Tests for parsing parameter modes (copy, view, mut, take)
+// Tests for parsing parameter modes (view, mut, move)
+// Deprecated: copy (removed), take (use move instead)
 
 use crate::ast::{Param, ParamMode};
 use crate::Parser;
@@ -35,14 +37,14 @@ mod plan_088_parser_tests {
     }
 
     #[test]
-    fn test_explicit_copy_mode() {
-        // Explicit copy mode
-        let params = parse_params("copy a int, copy b int");
+    fn test_explicit_move_mode() {
+        // Plan 122: Explicit move mode (replaces copy/take)
+        let params = parse_params("move a int, move b int");
         assert_eq!(params.len(), 2);
         assert_eq!(params[0].name.as_str(), "a");
-        assert_eq!(params[0].mode, ParamMode::Copy);
+        assert_eq!(params[0].mode, ParamMode::Move);
         assert_eq!(params[1].name.as_str(), "b");
-        assert_eq!(params[1].mode, ParamMode::Copy);
+        assert_eq!(params[1].mode, ParamMode::Move);
     }
 
     #[test]
@@ -69,22 +71,22 @@ mod plan_088_parser_tests {
 
     #[test]
     fn test_explicit_take_mode() {
-        // Explicit take mode
+        // Plan 122: 'take' is deprecated, maps to Move
         let params = parse_params("take s str");
         assert_eq!(params.len(), 1);
         assert_eq!(params[0].name.as_str(), "s");
-        assert_eq!(params[0].mode, ParamMode::Take);
+        assert_eq!(params[0].mode, ParamMode::Move); // take now maps to move
     }
 
     #[test]
     fn test_mixed_param_modes() {
-        // Mix of different modes
-        let params = parse_params("copy a int, view b int, mut c int, take d int");
+        // Plan 122: Mix of different modes (view, mut, move)
+        let params = parse_params("move a int, view b int, mut c int, move d int");
         assert_eq!(params.len(), 4);
-        assert_eq!(params[0].mode, ParamMode::Copy);
+        assert_eq!(params[0].mode, ParamMode::Move);
         assert_eq!(params[1].mode, ParamMode::View);
         assert_eq!(params[2].mode, ParamMode::Mut);
-        assert_eq!(params[3].mode, ParamMode::Take);
+        assert_eq!(params[3].mode, ParamMode::Move);
     }
 
     #[test]
@@ -113,22 +115,22 @@ mod plan_088_parser_tests {
 
     #[test]
     fn test_param_mode_with_type_annotation() {
-        // Parameter mode with type annotation
-        let params = parse_params("copy a: int, mut b: int");
+        // Plan 122: Parameter mode with type annotation (using move, not copy)
+        let params = parse_params("move a: int, mut b: int");
         assert_eq!(params.len(), 2);
         assert_eq!(params[0].name.as_str(), "a");
-        assert_eq!(params[0].mode, ParamMode::Copy);
+        assert_eq!(params[0].mode, ParamMode::Move);
         assert_eq!(params[1].name.as_str(), "b");
         assert_eq!(params[1].mode, ParamMode::Mut);
     }
 
     #[test]
     fn test_param_mode_with_default_value() {
-        // Parameter mode with default value
-        let params = parse_params("copy a int = 5, view b int = 10");
+        // Plan 122: Parameter mode with default value (using move, not copy)
+        let params = parse_params("move a int = 5, view b int = 10");
         assert_eq!(params.len(), 2);
         assert_eq!(params[0].name.as_str(), "a");
-        assert_eq!(params[0].mode, ParamMode::Copy);
+        assert_eq!(params[0].mode, ParamMode::Move);
         assert!(params[0].default.is_some());
         assert_eq!(params[1].name.as_str(), "b");
         assert_eq!(params[1].mode, ParamMode::View);
@@ -157,19 +159,19 @@ mod plan_088_parser_tests {
 
     #[test]
     fn test_complex_function_signature() {
-        // Complex function signature with mixed modes
+        // Plan 122: Complex function signature with mixed modes
         let params = parse_params(
-            "mut self Point, copy x int, view y float, take s str, flag bool"
+            "mut self Point, move x int, view y float, move s str, flag bool"
         );
         assert_eq!(params.len(), 5);
         assert_eq!(params[0].name.as_str(), "self");
         assert_eq!(params[0].mode, ParamMode::Mut);
         assert_eq!(params[1].name.as_str(), "x");
-        assert_eq!(params[1].mode, ParamMode::Copy);
+        assert_eq!(params[1].mode, ParamMode::Move);
         assert_eq!(params[2].name.as_str(), "y");
         assert_eq!(params[2].mode, ParamMode::View);
         assert_eq!(params[3].name.as_str(), "s");
-        assert_eq!(params[3].mode, ParamMode::Take);
+        assert_eq!(params[3].mode, ParamMode::Move);
         assert_eq!(params[4].name.as_str(), "flag");
         assert_eq!(params[4].mode, ParamMode::View); // Default
     }
@@ -183,11 +185,11 @@ mod plan_088_parser_tests {
 
     #[test]
     fn test_single_param() {
-        // Single parameter with different modes
-        let params = parse_params("copy x int");
+        // Plan 122: Single parameter with different modes
+        let params = parse_params("move x int");
         assert_eq!(params.len(), 1);
         assert_eq!(params[0].name.as_str(), "x");
-        assert_eq!(params[0].mode, ParamMode::Copy);
+        assert_eq!(params[0].mode, ParamMode::Move);
 
         let params2 = parse_params("mut x int");
         assert_eq!(params2.len(), 1);

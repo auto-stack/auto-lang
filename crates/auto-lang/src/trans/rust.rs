@@ -459,8 +459,9 @@ impl RustTrans {
                 Ok(())
             }
 
-            Expr::Take(expr) => {
-                // e.take -> e (move semantics, default in Rust)
+            Expr::Move(expr) | Expr::Take(expr) => {
+                // e.move / e.take -> e (move semantics, default in Rust)
+                // Plan 122: .move is preferred, .take is deprecated
                 self.expr(expr, out)?;
                 Ok(())
             }

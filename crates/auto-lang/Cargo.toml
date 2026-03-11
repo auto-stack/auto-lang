@@ -182,8 +182,8 @@ name = "024_fstring"
 path = "test/a2r/024_fstring/fstring.expected.rs"
 
 [[example]]
-name = "025_borrow_take"
-path = "test/a2r/025_borrow_take/borrow_take.expected.rs"
+name = "025_borrow_move"
+path = "test/a2r/025_borrow_move/borrow_move.expected.rs"
 
 [[example]]
 name = "025_fstring_edge"

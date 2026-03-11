@@ -1,7 +1,8 @@
 // Plan 088 Phase 1: Type system extension tests
+// Plan 122: Updated for Trinity of Resources (view, mut, move)
 //
 // Tests for parameter passing mode implementation:
-// - ParamMode enum (Copy, View, Mut, Take)
+// - ParamMode enum (View, Mut, Move) - Copy deprecated, Take deprecated
 // - is_optimized_by_value() method
 // - Param::with_mode() constructor
 
@@ -20,10 +21,13 @@ mod plan_088_tests {
 
     #[test]
     fn test_param_mode_display() {
-        assert_eq!(format!("{}", ParamMode::Copy), "copy");
+        // Plan 122: Display for modes
         assert_eq!(format!("{}", ParamMode::View), "view");
         assert_eq!(format!("{}", ParamMode::Mut), "mut");
-        assert_eq!(format!("{}", ParamMode::Take), "take");
+        assert_eq!(format!("{}", ParamMode::Move), "move");
+        // Deprecated modes:
+        assert_eq!(format!("{}", ParamMode::Copy), "copy"); // Still displays as "copy" for backwards compat
+        assert_eq!(format!("{}", ParamMode::Take), "move"); // Displays as "move" per Plan 122
     }
 
     #[test]
@@ -35,15 +39,15 @@ mod plan_088_tests {
 
     #[test]
     fn test_param_with_mode() {
-        // Param constructed with with_mode() should have specified mode
-        let param_copy = Param::with_mode("x".into(), Type::Int, None, ParamMode::Copy);
-        assert_eq!(param_copy.mode, ParamMode::Copy);
+        // Plan 122: Param constructed with with_mode() should have specified mode
+        let param_move = Param::with_mode("x".into(), Type::Int, None, ParamMode::Move);
+        assert_eq!(param_move.mode, ParamMode::Move);
 
         let param_mut = Param::with_mode("x".into(), Type::Int, None, ParamMode::Mut);
         assert_eq!(param_mut.mode, ParamMode::Mut);
 
-        let param_take = Param::with_mode("x".into(), Type::Int, None, ParamMode::Take);
-        assert_eq!(param_take.mode, ParamMode::Take);
+        let param_view = Param::with_mode("x".into(), Type::Int, None, ParamMode::View);
+        assert_eq!(param_view.mode, ParamMode::View);
     }
 
     #[test]

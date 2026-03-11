@@ -2951,8 +2951,8 @@ impl Codegen {
                 // Plan 071: Compile closure with captured environment
                 self.compile_closure(closure)?;
             }
-            Expr::View(inner) | Expr::Mut(inner) | Expr::Take(inner) => {
-                // Plan 060: Ownership operators (.view, .mut, .take)
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => {
+                // Plan 060/122: Ownership operators (.view, .mut, .move, .take)
                 // For MVP, just compile the inner expression
                 // TODO: In future, implement proper borrow checking and ownership semantics
                 self.compile_expr(inner)?;
@@ -3510,6 +3510,11 @@ impl Codegen {
                             }
                             ParamMode::Take => {
                                 // Take mode: move semantics (value passing)
+                                // DEPRECATED: Use Move instead
+                                self.emit_load_loc(var_index);
+                            }
+                            ParamMode::Move => {
+                                // Move mode: ownership transfer (value passing)
                                 self.emit_load_loc(var_index);
                             }
                         }
@@ -3641,7 +3646,7 @@ impl Codegen {
                 self.collect_free_vars(&inner_closure.body, &inner_exclude, free_vars);
             }
             // Dot expressions - check object (e.g., x in x.view)
-            Expr::View(inner) | Expr::Mut(inner) | Expr::Take(inner) => {
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => {
                 self.collect_free_vars(inner, exclude, free_vars);
             }
             Expr::Dot(obj, _method) => {

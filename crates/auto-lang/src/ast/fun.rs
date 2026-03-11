@@ -155,6 +155,45 @@ impl fmt::Display for ParamMode {
     }
 }
 
+/// Plan 122: Call-site access mode
+///
+/// Used when accessing a value at a call site to specify how the value should be passed.
+///
+/// | Mode  | Call Site   | Semantics              | Cost  |
+/// |-------|-------------|------------------------|-------|
+/// | View  | `obj.view`  | Immutable borrow (&T)  | O(1)  |
+/// | Mut   | `obj.mut`   | Mutable borrow (&mut T)| O(1)  |
+/// | Move  | `obj.move`  | Ownership transfer     | O(1)  |
+/// | Clone | `obj.clone()`| Deep copy             | O(N)  |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessMode {
+    /// Immutable borrow (&T) - O(1)
+    View,
+    /// Mutable borrow (&mut T) - O(1)
+    Mut,
+    /// Ownership transfer - O(1)
+    Move,
+    /// Deep copy via .clone() method - O(N)
+    Clone,
+}
+
+impl Default for AccessMode {
+    fn default() -> Self {
+        Self::View // Default is View (implicit borrow)
+    }
+}
+
+impl fmt::Display for AccessMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AccessMode::View => write!(f, "view"),
+            AccessMode::Mut => write!(f, "mut"),
+            AccessMode::Move => write!(f, "move"),
+            AccessMode::Clone => write!(f, "clone"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: Name,

@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::database::Database;
-use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError};
+use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError, Warning};
 use crate::infer::{check_field_type, InferenceContext};
 use crate::lexer::Lexer;
 use crate::parser_helpers::{LambdaIdGenerator, ModuleTracker};
@@ -126,7 +126,7 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         Op::Dot => Ok(PREC_DOT),
         // Property keywords (Phase 3): same precedence as dot
         // Error propagation (Phase 1b..3): ?. same precedence as dot
-        Op::DotView | Op::DotMut | Op::DotTake | Op::DotQuestion => Ok(PREC_DOT),
+        Op::DotView | Op::DotMut | Op::DotMove | Op::DotTake | Op::DotQuestion => Ok(PREC_DOT),
         // May type operators (Phase 1b.3)
         Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
         // Logical operators (Plan 072)
@@ -169,6 +169,8 @@ pub struct Parser<'a> {
     pub compile_dest: CompileDest,
     /// Error recovery: collected errors during parsing
     pub errors: Vec<AutoError>,
+    /// Plan 122: Collected warnings during parsing
+    pub warnings: Vec<Warning>,
     /// Maximum number of errors to collect before aborting
     pub error_limit: usize,
     /// Current type parameters being parsed (for generic type definitions)
@@ -221,6 +223,7 @@ impl<'a> Parser<'a> {
             special_blocks: HashMap::new(),
             skip_check: false,
             errors: Vec::new(),
+            warnings: Vec::new(), // Plan 122: Warnings collection
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -282,6 +285,7 @@ impl<'a> Parser<'a> {
             special_blocks: HashMap::new(),
             skip_check: false,
             errors: Vec::new(),
+            warnings: Vec::new(), // Plan 122: Warnings collection
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -322,6 +326,7 @@ impl<'a> Parser<'a> {
             special_blocks: HashMap::new(),
             skip_check: false,
             errors: Vec::new(),
+            warnings: Vec::new(), // Plan 122: Warnings collection
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -868,6 +873,11 @@ impl<'a> Parser<'a> {
     fn add_error(&mut self, error: AutoError) -> bool {
         self.errors.push(error);
         self.errors.len() < self.error_limit
+    }
+
+    /// Plan 122: Add a warning to the warnings collection
+    fn warn(&mut self, warning: Warning) {
+        self.warnings.push(warning);
     }
 }
 
@@ -1459,9 +1469,10 @@ impl<'a> Parser<'a> {
                 | TokenKind::ModEq => self.op(),
                 TokenKind::DotView
                 | TokenKind::DotMut
+                | TokenKind::DotMove
                 | TokenKind::DotTake
                 | TokenKind::DotQuestion => {
-                    // Property keywords: .view, .mut, .take, .type (Phase 3)
+                    // Property keywords: .view, .mut, .move, .take (Phase 3 / Plan 122)
                     // Error propagation: ?. (Phase 1b.3)
                     // These are postfix operators with same precedence as dot
                     self.op()
@@ -1598,8 +1609,19 @@ impl<'a> Parser<'a> {
                     lhs = Expr::Mut(Box::new(lhs));
                     continue;
                 }
+                Op::DotMove => {
+                    // Plan 122: .move accessor for ownership transfer
+                    lhs = Expr::Move(Box::new(lhs));
+                    continue;
+                }
                 Op::DotTake => {
-                    lhs = Expr::Take(Box::new(lhs));
+                    // Plan 122: Deprecated - emit warning and treat as .move
+                    self.warnings.push(Warning::DeprecatedFeature {
+                        name: ".take".to_string(),
+                        message: "use '.move' instead".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    });
+                    lhs = Expr::Move(Box::new(lhs));
                     continue;
                 }
                 // May type operators (Phase 1b.3): ?. error propagation
@@ -1731,6 +1753,7 @@ impl<'a> Parser<'a> {
             TokenKind::Colon => Op::Colon,
             TokenKind::DotView => Op::DotView,
             TokenKind::DotMut => Op::DotMut,
+            TokenKind::DotMove => Op::DotMove,
             TokenKind::DotTake => Op::DotTake,
             TokenKind::QuestionQuestion => Op::QuestionQuestion,
             TokenKind::DotQuestion => Op::DotQuestion,
@@ -4446,24 +4469,41 @@ impl<'a> Parser<'a> {
     pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
         let mut params = Vec::new();
 
-        // Plan 088 Phase 3: Support parameter mode keywords (copy, view, mut, take)
+        // Plan 088 Phase 3, Plan 122: Support parameter mode keywords
+        // Trinity of Resources: view, mut, move (copy deprecated, take deprecated)
         // Loop until we hit a non-parameter (non-ident or non-mode keyword)
         loop {
             // 1. Check for parameter mode keyword (optional, defaults to View)
             let mut mode = ParamMode::default(); // Default: View
 
-            if self.is_kind(TokenKind::Copy) {
-                mode = ParamMode::Copy;
-                self.next(); // skip 'copy'
-            } else if self.is_kind(TokenKind::View) {
+            if self.is_kind(TokenKind::View) {
                 mode = ParamMode::View;
                 self.next(); // skip 'view'
             } else if self.is_kind(TokenKind::Mut) {
                 mode = ParamMode::Mut;
                 self.next(); // skip 'mut'
+            } else if self.is_kind(TokenKind::Move) {
+                mode = ParamMode::Move;
+                self.next(); // skip 'move'
             } else if self.is_kind(TokenKind::Take) {
-                mode = ParamMode::Take;
+                // Plan 122: 'take' is deprecated, use 'move' instead
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "take".to_string(),
+                    message: "use 'move' instead".to_string(),
+                    span,
+                });
+                mode = ParamMode::Move;
                 self.next(); // skip 'take'
+            } else if self.is_kind(TokenKind::Copy) {
+                // Plan 122: 'copy' is removed from param mode, use 'move' + .clone() at call site
+                let span = pos_to_span(self.cur.pos);
+                self.add_error(SyntaxError::Generic {
+                    message: "'copy' parameter mode is removed. Use 'move' and explicit .clone() at the call site.".to_string(),
+                    span,
+                }.into());
+                mode = ParamMode::Move; // Error recovery: use Move
+                self.next(); // skip 'copy'
             }
 
             // 2. Check for parameter name (required)
@@ -8190,7 +8230,8 @@ mod tests {
         let code = "fn say(msg str) { print(msg) }";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str))) (ret void) (body (call (name print) (args (name msg)))))");
+        // Plan 122: Default mode is now included in param display
+        assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str) (mode view))) (ret void) (body (call (name print) (args (name msg)))))");
     }
 
     #[test]

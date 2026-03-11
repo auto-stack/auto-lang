@@ -330,10 +330,13 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             }
         }
 
-        // Check strings pool (for string field results)
-        if result >= 0 {
+        // Check strings pool (for string results)
+        // Strings are tagged as negative: -(index+1)
+        // E.g., string index 0 -> -1, string index 1 -> -2
+        if result < 0 && result > -1000000 && result != -2147483648 && result != -2147483647 {
+            let str_idx = (-result - 1) as usize;
             let strings = vm.strings.read().unwrap();
-            if let Some(bytes) = strings.get(result as usize) {
+            if let Some(bytes) = strings.get(str_idx) {
                 let str_val = String::from_utf8_lossy(bytes).to_string();
                 return Ok(str_val);
             }

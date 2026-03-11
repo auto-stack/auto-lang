@@ -994,11 +994,11 @@ fn test_borrow_mut_basic() {
 }
 
 #[test]
-fn test_borrow_take_basic() {
-    // Test basic take (move semantics)
+fn test_borrow_move_basic() {
+    // Test basic move (ownership transfer) - Plan 122: .move replaces .take
     let code = r#"
             let s1 = "hello"
-            let s2 = s1.take
+            let s2 = s1.move
             s2
         "#;
     let result = run(code).unwrap();
@@ -1089,13 +1089,13 @@ fn test_borrow_different_types() {
 }
 
 #[test]
-fn test_borrow_take_chaining() {
-    // Test chaining take operations on different values
+fn test_borrow_move_chaining() {
+    // Test chaining move operations on different values - Plan 122: .move replaces .take
     let code = r#"
             let s1 = "first"
             let s2 = "second"
-            let t1 = s1.take
-            let t2 = s2.take
+            let t1 = s1.move
+            let t2 = s2.move
             t1  // should be "first"
         "#;
     let result = run(code).unwrap();

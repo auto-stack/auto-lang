@@ -1,6 +1,17 @@
 # Plan 122: Value Access and Assignment Refactoring
 
-## Status: 📋 PLANNING
+## Status: ✅ COMPLETE (2025-03-11)
+
+## Summary
+
+Implemented the `.move` accessor as the replacement for deprecated `.take`:
+- Added `Op::DotMove` and `Expr::Move` to AST
+- Updated lexer to recognize `.move` keyword
+- Updated parser to parse `.move` as postfix operator
+- Added deprecation warning when `.take` is used (suggests `.move`)
+- Updated transpilers (C/Rust) to handle `Expr::Move`
+- Fixed string result conversion bug in `lib.rs`
+- Renamed test files from `borrow_take` to `borrow_move`
 
 ## Objective
 

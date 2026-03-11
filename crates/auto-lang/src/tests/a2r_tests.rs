@@ -258,8 +258,8 @@ fn test_024_borrow_mut() {
 }
 
 #[test]
-fn test_025_borrow_take() {
-    test_a2r("025_borrow_take").unwrap();
+fn test_025_borrow_move() {
+    test_a2r("025_borrow_move").unwrap();
 }
 
 #[test]

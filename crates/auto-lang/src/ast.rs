@@ -279,7 +279,8 @@ pub enum Expr {
     // Borrow expressions (Phase 3)
     View(Box<Expr>),    // Immutable borrow (like Rust &T)
     Mut(Box<Expr>),     // Mutable borrow (like Rust &mut T)
-    Take(Box<Expr>),    // Move semantics (like Rust move or std::mem::take)
+    Move(Box<Expr>),    // Ownership transfer (Plan 122: renamed from Take)
+    Take(Box<Expr>),    // DEPRECATED - use Move instead
     Hold(Hold),         // Hold path binding (temporary borrow with syntax sugar)
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
@@ -364,6 +365,7 @@ impl fmt::Display for Expr {
             Expr::Ref(n) => write!(f, "(ref {})", n),
             Expr::View(e) => write!(f, "({}.view)", e),
             Expr::Mut(e) => write!(f, "({}.mut)", e),
+            Expr::Move(e) => write!(f, "({}.move)", e),
             Expr::Take(e) => write!(f, "({}.take)", e),
             Expr::Hold(hold) => write!(f, "{}", hold),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
@@ -743,6 +745,11 @@ impl ToNode for Expr {
             }
             Expr::Mut(e) => {
                 let mut node = AutoNode::new("mut");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Move(e) => {
+                let mut node = AutoNode::new("move");
                 node.add_kid(e.to_node());
                 node
             }
