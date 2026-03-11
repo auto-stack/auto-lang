@@ -112,7 +112,11 @@
       "Bash(rtk cargo build -p auto-lang)",
       "Bash(rtk cargo test -p auto-lang -- ffi)",
       "mcp__web-reader__webReader",
-      "Bash(rtk cargo check -p auto-man)"
+      "Bash(rtk cargo check -p auto-man)",
+      "Read(//d/autostack/**)"
+    ],
+    "additionalDirectories": [
+      "d:\\autostack\\auto-lang\\docs\\plans"
     ]
   }
 }

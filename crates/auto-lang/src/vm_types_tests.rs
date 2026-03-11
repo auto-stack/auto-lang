@@ -12,8 +12,8 @@ fn compile_to_bytecode(source: &str) -> Vec<u8> {
     let mut parser = Parser::from(source);
     let code = parser.parse().expect("Parse failed");
 
-    // Compile to bytecode
-    let mut codegen = Codegen::new();
+    // Compile to bytecode - share TypeStore with Parser for enum/type lookup
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
     for stmt in code.stmts {
         codegen.compile_stmt(&stmt).expect("Codegen failed");
     }
@@ -26,7 +26,8 @@ fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKe
     let mut parser = Parser::from(source);
     let code = parser.parse().expect("Parse failed");
 
-    let mut codegen = Codegen::new();
+    // Share TypeStore with Parser for enum/type lookup
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
     for stmt in code.stmts {
         codegen.compile_stmt(&stmt).expect("Codegen failed");
     }
@@ -1686,7 +1687,6 @@ fn main() -> int {
 }
 
 #[test]
-#[ignore = "enum type reference not fully implemented in codegen"]
 fn test_combined_type_enum_spec_compiles() {
     let source = r#"
 type Point {
