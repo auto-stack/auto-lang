@@ -172,16 +172,8 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
 
     // 2. Compile to bytecode
     // Plan 091: Wrap script-level code with FN_PROLOG/RESERVE_STACK for proper local variable support
-    let mut codegen = Codegen::new();
-
-    // Plan 089: Transfer type registry from parser to codegen
-    // This ensures types registered during parsing are available during compilation
-    if let Some(_type_registry) = parser.type_registry.clone() {
-        // TODO: Set type_registry in Codegen for field lookup support
-        // Currently, Parser types are registered to Parser.type_registry
-        // but Codegen needs access to them. For now, we keep this code
-        // but it doesn't fully solve the problem without more refactoring.
-    }
+    // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
     
     // Separate type declarations from other statements
     // Type declarations stay at global level, other code goes into script wrapper
