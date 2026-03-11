@@ -1,3 +1,18 @@
+//! **DEPRECATED**: This module is deprecated.
+//!
+//! Use `types::TypeStore` instead, which is the single source of truth
+//! for type information. This module will be removed in a future version.
+//!
+//! ## Migration Guide
+//!
+//! | Old API | New API |
+//! |---------|---------|
+//! | `TypeRegistry::register_type_decl(decl)` | `TypeStore::register_type_decl(&decl)` |
+//! | `TypeRegistry::lookup_type_decl(name)` | `TypeStore::lookup_type_decl(name)` or `lookup_type_decl_str(name)` |
+//! | `TypeRegistry::get_template(name)` | `TypeStore::get_template(name)` or use `vm::generic_registry::GenericRegistry` |
+//!
+//! ## Context
+//!
 // Plan 089: Type Registry - Unified Type Declaration Storage
 //
 // This module provides a centralized type declaration management system

@@ -1,3 +1,19 @@
+//! **DEPRECATED**: This module is deprecated.
+//!
+//! Use `types::TypeStore` instead, which is the single source of truth
+//! for type information. This module will be removed in a future version.
+//!
+//! ## Migration Guide
+//!
+//! | Old API | New API |
+//! |---------|---------|
+//! | `TypeRegistry::is_type(name)` | `TypeStore::is_type(name)` |
+//! | `TypeRegistry::get_type(name)` | `TypeStore::lookup_type_decl_str(name)` |
+//! | `TypeRegistry::register_type(name, ty)` | `TypeStore::register_type_decl()` or `register_enum_decl()` |
+//! | `SharedTypeRegistry` (Rc<RefCell<TypeRegistry>>) | `Arc<RwLock<TypeStore>>` |
+//!
+//! ## Context
+//!
 /// Type Registry for REPL
 ///
 /// This module provides a simple type registry that persists type definitions
