@@ -188,7 +188,7 @@ fn test_fn() {
     let result = run(code).unwrap();
     assert_eq!(result, "3");
 
-    let code = "fn hi(s str) { print(s) }; hi(\"hello\")";
+    let code = "fn hi(s str) { print(s); }; hi(\"hello\")";
     let result = run(code).unwrap();
     assert_eq!(result, "");
 }

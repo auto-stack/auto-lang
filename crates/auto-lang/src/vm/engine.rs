@@ -151,6 +151,15 @@ impl AutoVM {
         self.strings = Arc::new(RwLock::new(strings));
     }
 
+    /// Plan 118 Phase 4: Add a new string to the string pool
+    /// Returns the index of the newly added string
+    pub fn add_string(&self, bytes: Vec<u8>) -> usize {
+        let mut strings = self.strings.write().unwrap();
+        let idx = strings.len();
+        strings.push(bytes);
+        idx
+    }
+
     // ============================================================================
     // Plan 077 Phase 4: Unified Object Registry Helper Methods
     // ============================================================================
@@ -630,6 +639,11 @@ impl AutoVM {
                             ObjectType::Array => {
                                 let array_id = task.ram.pop_i32() as usize;
                                 auto_val::Value::VmRef(auto_val::VmRef { id: array_id })
+                            }
+                            // Plan 118 Phase 4: Void type - should not appear in object fields, but handle gracefully
+                            ObjectType::Void => {
+                                let _ = task.ram.pop_i32(); // Pop the void value
+                                auto_val::Value::Nil
                             }
                         };
                         values.push(value);
@@ -1444,93 +1458,120 @@ impl AutoVM {
                 }
                 // Plan 073: Array element access (arr[index])
                 // Plan 080: Also supports heap objects (lists like List<int>)
+                // Plan 118 Phase 4: Also supports string indexing (str[index])
                 OpCode::GET_ELEM => {
-                    // Stack: array_id/list_id, index
+                    // Stack: array_id/list_id/str_id, index
                     // Pop index first (top of stack)
                     let index = task.ram.pop_i32() as usize;
-                    // Pop array_id/list_id
-                    let obj_id = task.ram.pop_i32() as u64;
+                    // Pop array_id/list_id or str_id (tagged)
+                    let obj_or_str_bits = task.ram.pop_i32();
 
-                    eprintln!("DEBUG GET_ELEM: obj_id={}, index={}", obj_id, index);
+                    eprintln!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}", obj_or_str_bits, index);
 
-                    // First, try heap_objects registry (Plan 077 unified registry)
-                    if let Some(obj) = self.get_heap_object(obj_id) {
-                        use crate::vm::types::ListData;
-                        let guard = obj.read().unwrap();
-
-                        // Try List<int>
-                        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                            eprintln!(
-                                "DEBUG GET_ELEM: Found List<int> with {} elems",
-                                list.elems.len()
-                            );
-                            if let Some(&elem) = list.elems.get(index) {
-                                eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", index, elem);
-                                task.ram.push_i32(elem);
+                    // Check if this is a tagged string index (negative value)
+                    if obj_or_str_bits < 0 && obj_or_str_bits > -1000000 && obj_or_str_bits != -2147483648 {
+                        // This is a tagged string index - string indexing operation
+                        let str_idx = (-obj_or_str_bits - 1) as usize;
+                        let strings = self.strings.read().unwrap();
+                        if let Some(bytes) = strings.get(str_idx) {
+                            // Get the character at the specified index
+                            // Convert bytes to string and get char
+                            let s = String::from_utf8_lossy(bytes);
+                            if let Some(ch) = s.chars().nth(index) {
+                                eprintln!("DEBUG GET_ELEM: String[{}] = '{}'", index, ch);
+                                // Push character as i32 (Unicode code point)
+                                task.ram.push_i32(ch as i32);
                             } else {
-                                eprintln!("DEBUG GET_ELEM: Index {} out of bounds", index);
-                                task.ram.push_i32(0); // Out of bounds
-                            }
-                        }
-                        // Try List<String>
-                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>()
-                        {
-                            eprintln!("DEBUG GET_ELEM: Found List<String>");
-                            if let Some(_elem) = list.elems.get(index) {
-                                // TODO: Support string elements (currently push placeholder)
-                                task.ram.push_i32(0);
-                            } else {
-                                task.ram.push_i32(0); // Out of bounds
-                            }
-                        }
-                        // Try List<bool>
-                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
-                            eprintln!("DEBUG GET_ELEM: Found List<bool>");
-                            if let Some(&elem) = list.elems.get(index) {
-                                task.ram.push_i32(if elem { 1 } else { 0 });
-                            } else {
+                                eprintln!("DEBUG GET_ELEM: String index {} out of bounds", index);
                                 task.ram.push_i32(0); // Out of bounds
                             }
                         } else {
-                            eprintln!("DEBUG GET_ELEM: Unknown heap object type");
-                            task.ram.push_i32(0); // Unknown heap object type
-                        }
-                    }
-                    // Fallback to legacy arrays registry
-                    else if let Some(array_ref) = self.arrays.get(&obj_id) {
-                        let array = array_ref.read().unwrap();
-
-                        // Check bounds
-                        if index < array.len() {
-                            // Get element value
-                            let elem = &array[index];
-
-                            // Push element value onto stack based on type
-                            match elem {
-                                auto_val::Value::Int(i) => task.ram.push_i32(*i),
-                                auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
-                                auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
-                                auto_val::Value::Double(d) => task.ram.push_f64(*d),
-                                auto_val::Value::Bool(b) => {
-                                    task.ram.push_i32(if *b { 1 } else { 0 })
-                                }
-                                auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
-                                auto_val::Value::Nil => task.ram.push_i32(0),
-                                _ => {
-                                    // Unsupported type - push 0 as placeholder
-                                    task.ram.push_i32(0);
-                                }
-                            }
-                        } else {
-                            // Index out of bounds - push 0 as error sentinel
-                            // TODO: Proper error handling for out-of-bounds access
-                            task.ram.push_i32(0);
+                            eprintln!("DEBUG GET_ELEM: Invalid string index {}", str_idx);
+                            task.ram.push_i32(0); // Invalid string index
                         }
                     } else {
-                        // Object not found - push 0 as error sentinel
-                        // TODO: Proper error handling for invalid object IDs
-                        task.ram.push_i32(0);
-                    }
+                        // Regular array/list access
+                        let obj_id = obj_or_str_bits as u64;
+
+                        // First, try heap_objects registry (Plan 077 unified registry)
+                        if let Some(obj) = self.get_heap_object(obj_id) {
+                            use crate::vm::types::ListData;
+                            let guard = obj.read().unwrap();
+
+                            // Try List<int>
+                            if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                                eprintln!(
+                                    "DEBUG GET_ELEM: Found List<int> with {} elems",
+                                    list.elems.len()
+                                );
+                                if let Some(&elem) = list.elems.get(index) {
+                                    eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", index, elem);
+                                    task.ram.push_i32(elem);
+                                } else {
+                                    eprintln!("DEBUG GET_ELEM: Index {} out of bounds", index);
+                                    task.ram.push_i32(0); // Out of bounds
+                                }
+                            }
+                            // Try List<String>
+                            else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>()
+                            {
+                                eprintln!("DEBUG GET_ELEM: Found List<String>");
+                                if let Some(_elem) = list.elems.get(index) {
+                                    // TODO: Support string elements (currently push placeholder)
+                                    task.ram.push_i32(0);
+                                } else {
+                                    task.ram.push_i32(0); // Out of bounds
+                                }
+                            }
+                            // Try List<bool>
+                            else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                                eprintln!("DEBUG GET_ELEM: Found List<bool>");
+                                if let Some(&elem) = list.elems.get(index) {
+                                    task.ram.push_i32(if elem { 1 } else { 0 });
+                                } else {
+                                    task.ram.push_i32(0); // Out of bounds
+                                }
+                            } else {
+                                eprintln!("DEBUG GET_ELEM: Unknown heap object type");
+                                task.ram.push_i32(0); // Unknown heap object type
+                            }
+                        }
+                        // Fallback to legacy arrays registry
+                        else if let Some(array_ref) = self.arrays.get(&obj_id) {
+                            let array = array_ref.read().unwrap();
+
+                            // Check bounds
+                            if index < array.len() {
+                                // Get element value
+                                let elem = &array[index];
+
+                                // Push element value onto stack based on type
+                                match elem {
+                                    auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                    auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
+                                    auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
+                                    auto_val::Value::Double(d) => task.ram.push_f64(*d),
+                                    auto_val::Value::Bool(b) => {
+                                        task.ram.push_i32(if *b { 1 } else { 0 })
+                                    }
+                                    auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
+                                    auto_val::Value::Nil => task.ram.push_i32(0),
+                                    _ => {
+                                        // Unsupported type - push 0 as placeholder
+                                        task.ram.push_i32(0);
+                                    }
+                                }
+                            } else {
+                                // Index out of bounds - push 0 as error sentinel
+                                // TODO: Proper error handling for out-of-bounds access
+                                task.ram.push_i32(0);
+                            }
+                        } else {
+                            // Object not found - push 0 as error sentinel
+                            // TODO: Proper error handling for invalid object IDs
+                            task.ram.push_i32(0);
+                        }
+                    } // end of else block for non-string case
                 }
                 // Plan 073: Array element assignment (arr[index] = value)
                 OpCode::SET_ELEM => {

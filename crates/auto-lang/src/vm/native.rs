@@ -4,6 +4,8 @@ use crate::vm::task::AutoTask;
 use auto_val::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::RwLock;
 
 /// Decode a tagged string index from stack value.
 /// LOAD_STR pushes string indices as negative tagged values: -(str_idx as i32) - 1
@@ -15,6 +17,13 @@ fn decode_str_idx(bits: i32) -> usize {
     } else {
         bits as usize
     }
+}
+
+/// Encode a string pool index as a tagged value (negative).
+/// This function encodes the index so it can be identified as a string reference.
+#[inline]
+fn encode_str_idx(idx: i32) -> i32 {
+    -(idx + 1)
 }
 
 // Plan 094: ID ranges for hybrid FFI
@@ -179,6 +188,7 @@ impl NativeInterface {
         self.register(NATIVE_STRINGBUILDER_LEN, shim_stringbuilder_len);
         self.register(NATIVE_STRINGBUILDER_CLEAR, shim_stringbuilder_clear);
         self.register(NATIVE_STRINGBUILDER_DROP, shim_stringbuilder_drop);
+        self.register(NATIVE_STRINGBUILDER_BUILD, shim_stringbuilder_build);
 
         // VecDeque functions
         self.register(NATIVE_VECDEQUE_NEW, shim_vecdeque_new);
@@ -209,6 +219,10 @@ impl NativeInterface {
         // String functions
         self.register(NATIVE_STR_LEN, shim_str_len);
         self.register(NATIVE_STRING_LEN, shim_string_len);
+        self.register(NATIVE_STR_NEW, shim_str_new);
+        self.register(NATIVE_STR_APPEND, shim_str_append);
+        self.register(NATIVE_INT_STR, shim_int_str);
+        self.register(NATIVE_STR_UPPER, shim_str_upper);
     }
 }
 
@@ -294,10 +308,15 @@ pub const NATIVE_STRINGBUILDER_APPEND_CHAR: u16 = 163;
 pub const NATIVE_STRINGBUILDER_LEN: u16 = 164;
 pub const NATIVE_STRINGBUILDER_CLEAR: u16 = 165;
 pub const NATIVE_STRINGBUILDER_DROP: u16 = 166;
+pub const NATIVE_STRINGBUILDER_BUILD: u16 = 167;
 
 // === String Native Function IDs (170+) ===
 pub const NATIVE_STR_LEN: u16 = 170;
 pub const NATIVE_STRING_LEN: u16 = 171;
+pub const NATIVE_STR_NEW: u16 = 172;      // Plan 118: String creation with capacity
+pub const NATIVE_STR_APPEND: u16 = 173;   // Plan 118: String append
+pub const NATIVE_INT_STR: u16 = 174;      // Plan 118 Phase 4: int to string
+pub const NATIVE_STR_UPPER: u16 = 175;    // Plan 118 Phase 4: string to uppercase
 
 // === Standard Shims ===
 
@@ -1507,6 +1526,32 @@ pub fn shim_stringbuilder_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
     Ok(())
 }
 
+/// Build the final string from StringBuilder
+/// Stack: sb_id -> str_id (tagged string index)
+pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = task.ram.pop_i32() as u64;
+
+    let result_str = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.clone()
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    // Store the string in the string pool and return tagged index
+    let str_idx = vm.strings.read().unwrap().len() as i32;
+    vm.strings.write().unwrap().push(result_str.into_bytes());
+
+    // Return as tagged string index (negative)
+    let tagged_idx = encode_str_idx(str_idx);
+    task.ram.push_i32(tagged_idx);
+    Ok(())
+}
+
 // ============================================================================
 // VecDeque Shims (Plan 118 Phase 3)
 // ============================================================================
@@ -1941,9 +1986,11 @@ pub fn shim_btreemap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
 }
 
 /// Get the length of a string from the constant pool.
-/// Stack: str_idx -> length (as i32)
+/// Stack: str_idx (tagged) -> length (as i32)
 pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_i32() as u16;
+    let str_bits = task.ram.pop_i32();
+    // Decode tagged string index
+    let str_idx = decode_str_idx(str_bits) as u16;
 
     if let Some(bytes) = vm.get_string(str_idx) {
         task.ram.push_i32(bytes.len() as i32);
@@ -1954,14 +2001,124 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Get the length of a string from the constant pool (String.len alias).
-/// Stack: str_idx -> length (as i32)
+/// Stack: str_idx (tagged) -> length (as i32)
 pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_i32() as u16;
+    let str_bits = task.ram.pop_i32();
+    // Decode tagged string index
+    let str_idx = decode_str_idx(str_bits) as u16;
 
     if let Some(bytes) = vm.get_string(str_idx) {
         task.ram.push_i32(bytes.len() as i32);
     } else {
         task.ram.push_i32(0);
     }
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Create a new mutable string with initial content and capacity.
+/// Stack: capacity (i32), initial_str_idx (tagged) -> mut_str_id (i32)
+/// The mutable string is stored in heap_objects as a SpecializedStringBuilder.
+pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop capacity (not used in this simple implementation)
+    let _capacity = task.ram.pop_i32();
+
+    // Pop initial string index
+    let str_bits = task.ram.pop_i32();
+    let str_idx = decode_str_idx(str_bits) as u16;
+
+    // Get initial string content
+    let initial_content = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_string()
+    } else {
+        String::new()
+    };
+
+    // Create a SpecializedStringBuilder with initial content
+    let mut builder = crate::vm::collections::SpecializedStringBuilder::new();
+    builder.buffer = initial_content;
+
+    // Store in heap_objects
+    let obj_id = vm.heap_object_id_gen.fetch_add(1, Ordering::SeqCst);
+    let obj: Arc<RwLock<dyn crate::vm::heap_object::HeapObject>> = Arc::new(RwLock::new(builder));
+    vm.heap_objects.insert(obj_id, obj);
+
+    // Return object ID
+    task.ram.push_i32(obj_id as i32);
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Append a string to a mutable string.
+/// Stack: str_idx (tagged), mut_str_id (i32) -> mut_str_id (i32)
+pub fn shim_str_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop string to append
+    let str_bits = task.ram.pop_i32();
+    let str_idx = decode_str_idx(str_bits) as u16;
+
+    // Pop mutable string ID
+    let obj_id = task.ram.pop_i32() as u64;
+
+    // Get string to append
+    let to_append = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_string()
+    } else {
+        String::new()
+    };
+
+    // Get and modify the mutable string
+    if let Some(obj_arc) = vm.heap_objects.get(&obj_id) {
+        let mut obj = obj_arc.write().unwrap();
+        if let Some(builder) = obj
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            builder.buffer.push_str(&to_append);
+        }
+    }
+
+    // Return the same mutable string ID
+    task.ram.push_i32(obj_id as i32);
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Convert integer to string.
+/// Stack: int_val (i32) -> str_idx (tagged)
+pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop integer value
+    let val = task.ram.pop_i32();
+
+    // Convert to string
+    let str_val = val.to_string();
+    let bytes = str_val.into_bytes();
+
+    // Add to string pool
+    let str_idx = vm.add_string(bytes);
+
+    // Return tagged string index
+    let tagged = encode_str_idx(str_idx as i32);
+    task.ram.push_i32(tagged);
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Convert string to uppercase.
+/// Stack: str_idx (tagged) -> str_idx (tagged)
+pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop string index
+    let str_bits = task.ram.pop_i32();
+    let str_idx = decode_str_idx(str_bits) as u16;
+
+    // Get string content
+    let upper_str = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_uppercase()
+    } else {
+        String::new()
+    };
+
+    // Add to string pool
+    let bytes = upper_str.into_bytes();
+    let new_idx = vm.add_string(bytes);
+
+    // Return tagged string index
+    let tagged = encode_str_idx(new_idx as i32);
+    task.ram.push_i32(tagged);
     Ok(())
 }

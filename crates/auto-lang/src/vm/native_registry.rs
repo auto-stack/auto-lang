@@ -190,7 +190,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("BTreeMap.last_key", 156);
     registry.register_with_id("BTreeMap.drop", 157);
 
-    // StringBuilder functions - 160-166
+    // StringBuilder functions - 160-167
     registry.register_with_id("StringBuilder.new", 160);
     registry.register_with_id("StringBuilder.append", 161);
     registry.register_with_id("StringBuilder.append_int", 162);
@@ -198,11 +198,16 @@ pub fn register_builtin_natives() {
     registry.register_with_id("StringBuilder.len", 164);
     registry.register_with_id("StringBuilder.clear", 165);
     registry.register_with_id("StringBuilder.drop", 166);
+    registry.register_with_id("StringBuilder.build", 167);
 
     // String functions (for string method calls like "hello".len())
     // Use explicit IDs to match NATIVE_* constants in native.rs
     registry.register_with_id("str.len", 170);    // NATIVE_STR_LEN
     registry.register_with_id("String.len", 171);  // NATIVE_STRING_LEN
+    registry.register_with_id("str_new", 172);    // NATIVE_STR_NEW - Plan 118 Phase 4
+    registry.register_with_id("str_append", 173); // NATIVE_STR_APPEND - Plan 118 Phase 4
+    registry.register_with_id("int.str", 174);    // NATIVE_INT_STR - Plan 118 Phase 4
+    registry.register_with_id("str.upper", 175);  // NATIVE_STR_UPPER - Plan 118 Phase 4
 
     // =========================================================================
     // FFI Shim Registrations (Plan 094)

@@ -30,6 +30,7 @@ pub enum ObjectType {
     Bool,
     Char,
     Byte, // Plan 118: Byte type for hex formatting
+    Void, // Plan 118 Phase 4: Void type for functions that don't return a value
     // Plan 073: Nested types for object/array fields
     NestedObject,
     Array,
@@ -133,6 +134,12 @@ pub struct Codegen {
     /// and all jump_over placeholders after the insertion point need their indices updated
     pub jump_placeholders: Vec<usize>,
 
+    /// Plan 118 Phase 5: Track jump targets for offset recalculation after FN_PROLOG insertion
+    /// Each entry is (placeholder_idx, target_idx) where target_idx is the code position at patch time
+    /// When FN_PROLOG is inserted, we need to recalculate offsets based on whether
+    /// placeholder and target are before or after the insertion point
+    pub jump_targets: Vec<(usize, usize)>,
+
     /// Plan 089: Maximum number of locals across all nested scopes
     /// Used to emit RESERVE_STACK with correct total size
     pub max_locals: usize,
@@ -186,6 +193,7 @@ impl Codegen {
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
+            jump_targets: Vec::new(),      // Plan 118 Phase 5: Initialize jump target tracking
             max_locals: 0,
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
@@ -234,6 +242,7 @@ impl Codegen {
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
             jump_placeholders: Vec::new(),
+            jump_targets: Vec::new(),      // Plan 118 Phase 5: Initialize jump target tracking
             max_locals: 0,
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
@@ -324,18 +333,27 @@ impl Codegen {
                 }
             }
             Stmt::Block(body) => {
+                // Plan 118 Phase 5: Blocks create a new scope for variable shadowing
+                // Variables declared inside the block are scoped to the block
+                self.push_scope();
+
                 let n = body.stmts.len();
                 for (i, s) in body.stmts.iter().enumerate() {
                     let is_last = i == n - 1;
                     let old_pop = self.should_pop_expr_result;
-                    // If not the last statement in block, we should pop expression results
-                    // to prevent stack growing indefinitely.
-                    if !is_last {
+                    // Plan 118 Phase 5: For the last statement in a block, we should NOT pop
+                    // the result because it's the block's return value.
+                    // For non-last statements, we should pop to prevent stack growth.
+                    if is_last {
+                        self.should_pop_expr_result = false;
+                    } else {
                         self.should_pop_expr_result = true;
                     }
                     self.compile_stmt(s)?;
                     self.should_pop_expr_result = old_pop;
                 }
+
+                self.pop_scope();
             }
             Stmt::If(if_stmt) => {
                 let mut jumps_to_end = Vec::new();
@@ -516,6 +534,62 @@ impl Codegen {
                     self.code.insert(entry_point as usize + 4, n_locals as u8);
                 }
 
+                // Plan 118 Phase 5: Recalculate jump offsets after FN_PROLOG insertion
+                // After inserting FN_PROLOG (+ RESERVE_STACK if any), all jump targets have shifted.
+                // We need to recalculate all jump offsets for jumps that were patched before this insertion.
+                //
+                // For each (placeholder_idx, target_idx) pair in jump_targets:
+                // - Both placeholder and target may have shifted if they were after entry_point
+                // - The offset needs to be recalculated using the new positions
+                //
+                // Cases:
+                // 1. placeholder > entry_point, target > entry_point: Both shifted by `shift` bytes
+                //    New offset = (target + shift) - (placeholder + shift + 2) = target - placeholder - 2
+                //    Same as before! No change needed.
+                // 2. placeholder <= entry_point, target > entry_point: Only target shifted
+                //    New offset = (target + shift) - (placeholder + 2) = old_offset + shift
+                // 3. placeholder > entry_point, target <= entry_point: Only placeholder shifted
+                //    This shouldn't happen for forward jumps (target is always after placeholder)
+                // 4. placeholder <= entry_point, target <= entry_point: Neither shifted
+                //    No change needed.
+                //
+                // So we only need to fix case 2: jumps that START BEFORE entry_point and END AFTER entry_point
+                let shift_amount = shift as isize;
+                for (old_placeholder, old_target) in &self.jump_targets {
+                    // Calculate new positions
+                    let new_placeholder = if *old_placeholder > entry_point as usize {
+                        old_placeholder + shift as usize
+                    } else {
+                        *old_placeholder
+                    };
+                    let new_target = if *old_target > entry_point as usize {
+                        old_target + shift as usize
+                    } else {
+                        *old_target
+                    };
+
+                    // Check if this jump crosses the insertion point
+                    // (placeholder before or at entry_point, target after entry_point)
+                    if *old_placeholder <= entry_point as usize && *old_target > entry_point as usize {
+                        // Recalculate offset with shifted target
+                        let new_anchor = new_placeholder + 2;
+                        let new_offset = (new_target as isize) - (new_anchor as isize);
+
+                        eprintln!(
+                            "DEBUG: Recalculating jump at {} (was {}): old_target={}, new_target={}, new_offset={}",
+                            new_placeholder, old_placeholder, old_target, new_target, new_offset
+                        );
+
+                        if new_offset > i16::MAX as isize || new_offset < i16::MIN as isize {
+                            panic!("Jump offset too large after recalculation: {}", new_offset);
+                        }
+
+                        let bytes = (new_offset as i16).to_le_bytes();
+                        self.code[new_placeholder] = bytes[0];
+                        self.code[new_placeholder + 1] = bytes[1];
+                    }
+                }
+
                 // Restore max_locals
                 self.max_locals = old_max_locals;
 
@@ -600,9 +674,28 @@ impl Codegen {
                                 inst.base_name
                             );
                         }
-                    } else {
-                        // Plan 118: Always store the explicit type annotation for proper output formatting
+                    } else if !matches!(store.ty, Type::Unknown) {
+                        // Plan 118: Store the explicit type annotation for proper output formatting
                         self.var_types.insert(name_str.clone(), store.ty.clone());
+                    } else {
+                        // Plan 118 Phase 4: Infer type from expression when annotation is Unknown
+                        let inferred_type = match &store.expr {
+                            Expr::Str(s) => Type::Str(s.len()),
+                            Expr::CStr(_) => Type::CStr,
+                            Expr::Char(_) => Type::Char,
+                            Expr::Int(_) => Type::Int,
+                            Expr::I8(_) => Type::Int,  // I8 maps to Int
+                            Expr::I64(_) => Type::I64,
+                            Expr::Uint(_) => Type::Uint,
+                            Expr::U8(_) => Type::Int,  // U8 maps to Int (result is plain integer)
+                            Expr::U64(_) => Type::U64,
+                            Expr::Byte(_) => Type::Byte,
+                            Expr::Float(_, _) => Type::Float,
+                            Expr::Double(_, _) => Type::Double,
+                            Expr::Bool(_) => Type::Bool,
+                            _ => store.ty.clone(),
+                        };
+                        self.var_types.insert(name_str.clone(), inferred_type);
                     }
                 }
 
@@ -685,6 +778,21 @@ impl Codegen {
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
+                            } else if type_name == "StringBuilder" && method == "new" {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from("StringBuilder"),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::User(type_decl));
                             }
                             // Plan 087 Phase 3: Track user-defined type instances
                             // Example: let c = Counter.new()
@@ -707,6 +815,30 @@ impl Codegen {
                                         .insert(store.name.to_string(), Type::User(type_decl));
                                 }
                             }
+                        }
+                    }
+                    // Plan 118 Phase 4: Track type instances from type constructor calls
+                    // Example: var duck = Duck(), var wing = Wing()
+                    else if let Expr::Ident(type_name) = call.name.as_ref() {
+                        if self.is_type(type_name) {
+                            let type_decl = crate::ast::TypeDecl {
+                                name: crate::ast::Name::from(type_name),
+                                kind: crate::ast::TypeDeclKind::UserType,
+                                parent: None,
+                                has: vec![],
+                                specs: vec![],
+                                spec_impls: vec![],
+                                generic_params: vec![],
+                                members: vec![],
+                                delegations: vec![],
+                                methods: vec![],
+                            };
+                            self.var_types
+                                .insert(store.name.to_string(), Type::User(type_decl));
+                            eprintln!(
+                                "DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
+                                store.name, type_name
+                            );
                         }
                     }
                 }
@@ -2138,13 +2270,38 @@ impl Codegen {
                 }
             }
             // Plan 073: Array indexing (arr[index])
+            // Plan 118 Phase 4: Also supports string indexing (str[index] -> char)
             Expr::Index(arr, idx) => {
-                // Compile array expression (should push array_id onto stack)
+                // Compile array/string expression (should push array_id or tagged_str_idx onto stack)
                 self.compile_expr(arr)?;
                 // Compile index expression (should push index onto stack)
                 self.compile_expr(idx)?;
-                // Emit GET_ELEM (pops array_id and index, pushes element value)
+                // Emit GET_ELEM (pops array_id/str_idx and index, pushes element value)
                 self.emit(OpCode::GET_ELEM);
+
+                // Plan 118 Phase 4: Set last_expr_type based on array element type or string char
+                // Check if indexing a string literal
+                if let Expr::Str(_) = arr.as_ref() {
+                    // String indexing returns a character
+                    self.last_expr_type = ObjectType::Char;
+                } else {
+                    // For arrays, try to infer element type
+                    let arr_type = self.infer_object_type(arr);
+                    match arr_type {
+                        ObjectType::Array => {
+                            // Could enhance this to track array element types
+                            // For now, default to Int
+                            self.last_expr_type = ObjectType::Int;
+                        }
+                        ObjectType::String => {
+                            // String indexing returns char
+                            self.last_expr_type = ObjectType::Char;
+                        }
+                        _ => {
+                            self.last_expr_type = ObjectType::Int;
+                        }
+                    }
+                }
             }
             Expr::Bina(lhs, op, rhs) => {
                 // Assignment is special: compile RHS first, then store to LHS
@@ -2487,6 +2644,34 @@ impl Codegen {
                         Op::Ge => self.emit(OpCode::GE),
                         _ => unimplemented!("Binary Op {:?}", op),
                     }
+
+                    // Plan 118 Phase 4: Track result type for binary operations
+                    // For arithmetic ops, result type matches operand type
+                    // For comparison ops, result is always bool (Int)
+                    let is_comparison = matches!(op, Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge);
+                    if !is_comparison {
+                        // Check operand types to determine result type
+                        if is_double {
+                            self.last_expr_type = ObjectType::Double;
+                        } else if is_float {
+                            self.last_expr_type = ObjectType::Float;
+                        } else {
+                            // For integer types, check if operands are Uint/Byte/U8/I8
+                            // by looking at the expression types
+                            let lhs_type = self.infer_object_type(lhs);
+                            let rhs_type = self.infer_object_type(rhs);
+                            if lhs_type == ObjectType::Uint || rhs_type == ObjectType::Uint {
+                                self.last_expr_type = ObjectType::Uint;
+                            } else if lhs_type == ObjectType::Byte || rhs_type == ObjectType::Byte {
+                                self.last_expr_type = ObjectType::Byte;
+                            } else {
+                                self.last_expr_type = ObjectType::Int;
+                            }
+                        }
+                    } else {
+                        // Comparison results are always bool (Int for now)
+                        self.last_expr_type = ObjectType::Int;
+                    }
                 }
             }
             Expr::Unary(op, rhs) => {
@@ -2750,21 +2935,25 @@ impl Codegen {
                             }
                             _ => {
                                 // Complex expression (e.g., arr[0].push, foo().method)
-                                // We cannot determine the type at compile time without type inference
-                                // For now, generate a generic name that may fail at link time
-                                // Special case: for len() method, try str.len/String.len first (most common)
-                                if method.as_str() == "len" {
-                                    if BIGVM_NATIVES.lock().unwrap().get_id("str.len").is_some()
-                                        || BIGVM_NATIVES
-                                            .lock()
-                                            .unwrap()
-                                            .get_id("String.len")
-                                            .is_some()
-                                    {
-                                        Some("str.len".to_string())
-                                    } else {
-                                        Some(format!("Unknown_{}", method))
-                                    }
+                                // Or literal expressions (e.g., 1.str(), "hello".upper())
+                                // Plan 118 Phase 4: Handle literal method calls
+                                let inferred_type = self.infer_object_type(obj.as_ref());
+                                let type_name = match inferred_type {
+                                    ObjectType::Int | ObjectType::Uint | ObjectType::Byte => "int",
+                                    ObjectType::Float | ObjectType::Double => "float",
+                                    ObjectType::String => "str",
+                                    ObjectType::Char => "char",
+                                    ObjectType::Bool => "bool",
+                                    _ => "Unknown",
+                                };
+                                let native_name = format!("{}.{}", type_name, method);
+
+                                // Check if this native exists
+                                if BIGVM_NATIVES.lock().unwrap().get_id(&native_name).is_some() {
+                                    Some(native_name)
+                                } else if method.as_str() == "len" {
+                                    // Fallback for len() - most common
+                                    Some("str.len".to_string())
                                 } else {
                                     Some(format!("Unknown_{}", method))
                                 }
@@ -3038,9 +3227,17 @@ impl Codegen {
 
                 self.relocs.push(RelocEntry {
                     offset: placeholder_idx as u32,
-                    symbol_name: reloc_name,
+                    symbol_name: reloc_name.clone(),
                     reloc_type: RelocType::FuncCall,
                 });
+
+                // Plan 118 Phase 4: Check function return type and set last_expr_type
+                if let Some(ret_type) = self.fn_return_types.get(&reloc_name) {
+                    if matches!(ret_type, Type::Void) {
+                        self.last_expr_type = ObjectType::Void;
+                        eprintln!("DEBUG: Function '{}' returns void, setting last_expr_type to Void", reloc_name);
+                    }
+                }
             }
             Expr::If(if_expr) => {
                 // If expression: each branch must leave a value on the stack
@@ -3056,11 +3253,10 @@ impl Codegen {
 
                     // Compile body (should push result)
                     // Body is a Block, compile all statements
-                    for stmt in &branch.body.stmts {
-                        self.compile_stmt(stmt)?;
-                    }
+                    // Plan 118 Phase 5: Use compile_stmt on Block to handle should_pop_expr_result correctly
                     // The last expression in the block should be left on stack
-                    // For simplicity, we assume the last statement leaves a value
+                    let body_block = Stmt::Block(branch.body.clone());
+                    self.compile_stmt(&body_block)?;
 
                     // Jump to end
                     self.emit(OpCode::JMP);
@@ -3073,9 +3269,9 @@ impl Codegen {
 
                 // Else branch (if any)
                 if let Some(else_body) = &if_expr.else_ {
-                    for stmt in &else_body.stmts {
-                        self.compile_stmt(stmt)?;
-                    }
+                    // Plan 118 Phase 5: Use compile_stmt on Block to handle should_pop_expr_result correctly
+                    let else_block = Stmt::Block(else_body.clone());
+                    self.compile_stmt(&else_block)?;
                 }
 
                 // Patch all jumps to end
@@ -3411,7 +3607,8 @@ impl Codegen {
             Expr::Float(_, _) => ObjectType::Float,
             Expr::Double(_, _) => ObjectType::Double,
             Expr::Int(_) | Expr::I8(_) | Expr::I64(_) => ObjectType::Int,
-            Expr::Uint(_) | Expr::U8(_) | Expr::U64(_) => ObjectType::Uint,
+            Expr::Uint(_) | Expr::U64(_) => ObjectType::Uint,
+            Expr::U8(_) => ObjectType::Int,  // U8 arithmetic returns plain int
             Expr::Byte(_) => ObjectType::Byte, // Plan 118: Byte has its own type for hex formatting
             Expr::Str(_) | Expr::CStr(_) => ObjectType::String,
             Expr::Char(_) => ObjectType::Char,
@@ -3419,6 +3616,26 @@ impl Codegen {
             // Plan 073: Nested object, node, pair and array types
             Expr::Object(_) | Expr::Node(_) | Expr::Call(_) | Expr::Bina(_, _, _) | Expr::If(_) | Expr::Lambda(_) | Expr::Closure(_) | Expr::Pair(_) => ObjectType::NestedObject,
             Expr::Array(_) => ObjectType::Array,
+            // Plan 118 Phase 4: Check variable types for identifier expressions
+            Expr::Ident(name) => {
+                let name_str = name.to_string();
+                if let Some(var_type) = self.var_types.get(&name_str) {
+                    match var_type {
+                        Type::Str(_) | Type::CStr | Type::StrSlice => ObjectType::String,
+                        Type::Char => ObjectType::Char,
+                        Type::Int | Type::I64 => ObjectType::Int,
+                        Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                        Type::Byte => ObjectType::Byte,
+                        Type::Float => ObjectType::Float,
+                        Type::Double => ObjectType::Double,
+                        Type::Bool => ObjectType::Bool,
+                        Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
+                        _ => ObjectType::Int,
+                    }
+                } else {
+                    ObjectType::Int
+                }
+            }
             // For other expressions, default to Int
             _ => ObjectType::Int,
         }
@@ -3461,6 +3678,11 @@ impl Codegen {
             "DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
             placeholder_idx, target, anchor, offset
         );
+
+        // Plan 118 Phase 5: Track (placeholder, target) for offset recalculation after FN_PROLOG insertion
+        // When FN_PROLOG is inserted, both placeholder and target positions may shift
+        // and the offset needs to be recalculated
+        self.jump_targets.push((placeholder_idx, target));
 
         // Check bounds
         if offset > i16::MAX as isize || offset < i16::MIN as isize {

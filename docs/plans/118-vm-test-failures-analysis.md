@@ -1,6 +1,8 @@
 # Plan 118: VM Test Failures Analysis & Fix Plan
 
-## Status: In Progress
+## Status: Phase 4 In Progress
+
+**Current Progress: 164 passing, 30 failing, 3 ignored**
 
 ## Phase 1: Quick Wins (3 tests) - Status: COMPLETE
 
@@ -36,14 +38,9 @@
 - test_simple_nested_type_instance_creation
 - test_nested_type_instance_field_access
 - test_nested_type_instance_positional_args
-- test_type_compose (partially)
+- test_type_compose
 
-### Remaining (deferred to later phase):
-- test_fn - Function return value propagation (complex, needs deeper investigation)
-  - Issue: Function parameters not being passed correctly (n_args=1 instead of 2)
-  - Issue: Return value not being captured properly
-
-## Phase 3: OOP APIs - Status: IN PROGRESS
+## Phase 3: OOP APIs - Status: COMPLETE
 
 ### Fixed:
 1. **List OOP (15 tests)** - ✅ COMPLETE (previous fix for target_sp calculation)
@@ -63,37 +60,75 @@
    - Registered with explicit IDs in native_registry.rs
    - Tests passing: new, insert, contains, remove, size, clear, drop
 
-### In Progress:
-4. **StringBuilder OOP (6 tests)** - 🔄 IN PROGRESS
+4. **StringBuilder OOP (6 tests)** - ✅ COMPLETE
    - Added `SpecializedStringBuilder` type in collections.rs
    - Added TypeTag::StringBuilder in heap_object.rs
-   - Added constants NATIVE_STRINGBUILDER_* (160-166)
-   - Added shim implementations
-   - Issue: Codegen not recognizing StringBuilder type for OOP method calls
-   - Next: Add StringBuilder type detection in codegen.rs
+   - Added constants NATIVE_STRINGBUILDER_* (160-167)
+   - Added shim implementations: new, append, append_int, append_char, len, clear, drop, build
+   - Added `encode_str_idx()` helper function for build() to return tagged string index
+   - Added StringBuilder type detection in codegen.rs for var_types tracking
+   - Registered StringBuilder.build in native_registry.rs (ID 167)
+   - Tests passing: new, append, append_int, append_char, len, clear
 
-5. **VecDeque OOP (11 tests)** - 🔄 IN PROGRESS
+### No Tests (Infrastructure Ready):
+5. **VecDeque OOP** - ✅ INFRASTRUCTURE READY
    - Added `SpecializedVecDeque` type in collections.rs
    - Added TypeTag::VecDeque in heap_object.rs
    - Added constants NATIVE_VECDEQUE_* (136-146)
-   - Issue: Missing shim registration
+   - Shims registered in native.rs and native_registry.rs
+   - Note: No tests exist in vm_tests.rs for VecDeque
 
-6. **BTreeMap OOP (11 tests)** - 🔄 IN PROGRESS
+6. **BTreeMap OOP** - ✅ INFRASTRUCTURE READY
    - Added `SpecializedBTreeMap` type in collections.rs
    - Added constants NATIVE_BTREEMAP_* (147-157)
-   - Issue: Missing shim registration
+   - Shims registered in native.rs and native_registry.rs
+   - Note: No tests exist in vm_tests.rs for BTreeMap
 
-### Remaining (Phase 4):
-- Closures (2 tests)
-- Borrow (2 tests)
-- Str Slice (5 tests)
-- Node (4 tests)
-- Array Mutation (6 tests)
-- For Loop with Object (1 test)
-- Grid (1 test)
-- Misc Type (5 tests)
-- Block (1 test)
-- Method access (1 test)
+## Phase 4: Advanced Features - Status: IN PROGRESS
+
+### 4.1: Type Constructor var_types Tracking - Status: COMPLETE
+- Added tracking for `var duck = Duck()` style type constructor calls
+- Added `ObjectType::Void` for void function returns
+- Fixed `test_type_compose` - type constructor calls now properly track variable types
+
+### Remaining (Phase 4.2+):
+
+#### Closures (2 tests) - BLOCKED
+- `test_closure` and `test_closure_with_type_annotations`
+- **Issue**: Closure stored in variable cannot be called
+- **Root Cause**: When `let sub = (a, b) => a - b` is compiled:
+  - Closure function is created with name `closure_5`
+  - Variable `sub` stores closure ID
+  - Call `sub(12, 5)` tries to find function named `sub` instead of calling through closure ID
+- **Fix Required**: Detect closure variable calls and use CALL_CLOSURE opcode instead of CALL
+
+#### Block/Scope (1 test) - NEEDS INVESTIGATION
+- `test_simple_block`
+- **Issue**: Inner block variable shadows outer, but outer value not restored
+- **Root Cause**: Stack not properly cleaned up after inner block
+
+#### Variable/If Expression (1 test) - NEEDS INVESTIGATION
+- `test_var_if`
+- **Issue**: If expression result not properly assigned to variable
+
+#### Node AST (4 tests) - BLOCKED (Parser Support)
+- `test_nodes`, `test_node_store`, `test_node_arg_ident`, `test_node_newline`
+- **Issue**: Node AST syntax not fully supported in VM
+
+#### Borrow (2 tests) - BLOCKED
+- `test_borrow_mut_basic`, `test_borrow_different_types`
+- **Issue**: `str_new` symbol undefined - needs native shim registration
+
+#### String Methods (1 test) - NEEDS NATIVE SHIM
+- `test_to_string`
+- **Issue**: `1.str()` and `"hello".upper()` methods not implemented
+
+#### Array Mutation (1 test) - NEEDS INVESTIGATION
+- `test_array`
+- **Issue**: Array mutation not working correctly
+
+#### Other (15 tests) - Various Issues
+- Type field mutation, nested type instance creation, string slice, grid, atom, etc.
 <system-reminder>**Note: The TodoWrite tool hasn't been used recently. If you're not working on tasks that would benefit from tracking progress, consider use the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer relevant. If it is irrelevant, feel free to ignore it. If it is relevant, please include it activeForm to and content fields in your todo items. If items in your todo list become stale, please clean it up. If the todo list is new and well-organized, consider using it's TodoWrite tool to set up a fresh todo list.</system-reminder>
 
 ## Overview

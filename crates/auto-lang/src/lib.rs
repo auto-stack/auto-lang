@@ -328,6 +328,20 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
                 // Format with 'u' suffix
                 return Ok(format!("{}u", result as u32));
             }
+            ObjectType::Char => {
+                let result = task.ram.pop_i32();
+                // Format as character with single quotes
+                if let Some(ch) = char::from_u32(result as u32) {
+                    return Ok(format!("'{}'", ch));
+                } else {
+                    return Ok(format!("{}", result));
+                }
+            }
+            ObjectType::Void => {
+                // Void functions return nothing - pop the dummy value and return empty string
+                let _ = task.ram.pop_i32();
+                return Ok("".to_string());
+            }
             _ => {} // Fall through to default handling
         }
 
