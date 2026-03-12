@@ -2,7 +2,7 @@
 
 ## Status: Phase 4 In Progress
 
-**Current Progress: 164 passing, 30 failing, 3 ignored**
+**Current Progress: 167 passing, 27 failing, 3 ignored**
 
 ## Phase 1: Quick Wins (3 tests) - Status: COMPLETE
 
@@ -91,44 +91,217 @@
 - Added `ObjectType::Void` for void function returns
 - Fixed `test_type_compose` - type constructor calls now properly track variable types
 
-### Remaining (Phase 4.2+):
+---
 
-#### Closures (2 tests) - BLOCKED
-- `test_closure` and `test_closure_with_type_annotations`
-- **Issue**: Closure stored in variable cannot be called
-- **Root Cause**: When `let sub = (a, b) => a - b` is compiled:
-  - Closure function is created with name `closure_5`
-  - Variable `sub` stores closure ID
-  - Call `sub(12, 5)` tries to find function named `sub` instead of calling through closure ID
-- **Fix Required**: Detect closure variable calls and use CALL_CLOSURE opcode instead of CALL
+## 当前失败测试详细分析 (27 tests)
 
-#### Block/Scope (1 test) - NEEDS INVESTIGATION
-- `test_simple_block`
-- **Issue**: Inner block variable shadows outer, but outer value not restored
-- **Root Cause**: Stack not properly cleaned up after inner block
+**更新时间: 2026-03-12**
 
-#### Variable/If Expression (1 test) - NEEDS INVESTIGATION
-- `test_var_if`
-- **Issue**: If expression result not properly assigned to variable
+以下是对 27 个失败测试的详细分析和分组。
 
-#### Node AST (4 tests) - BLOCKED (Parser Support)
-- `test_nodes`, `test_node_store`, `test_node_arg_ident`, `test_node_newline`
-- **Issue**: Node AST syntax not fully supported in VM
+---
 
-#### Borrow (2 tests) - BLOCKED
-- `test_borrow_mut_basic`, `test_borrow_different_types`
-- **Issue**: `str_new` symbol undefined - needs native shim registration
+### Category A: Type Instance 字段访问 (7 tests) - GET_GENERIC_FIELD 问题
 
-#### String Methods (1 test) - NEEDS NATIVE SHIM
-- `test_to_string`
-- **Issue**: `1.str()` and `"hello".upper()` methods not implemented
+**根本原因**: 类型实例创建后，GET_GENERIC_FIELD 无法正确获取字段值
+- 错误信息: `RuntimeError("Invalid instance ID: 1000000")` 或 `RuntimeError("Invalid instance ID: 1000001")`
+- 问题: CREATE_OBJ 创建了实例但 GET_GENERIC_FIELD 无法正确解析 instance ID
 
-#### Array Mutation (1 test) - NEEDS INVESTIGATION
-- `test_array`
-- **Issue**: Array mutation not working correctly
+| 测试 | 代码片段 | 期望 | 实际 | 错误 |
+|------|---------|------|------|------|
+| `test_type_field_mutation` | `p.x = 30; p.x` | `"30"` | `"1000000"` | Invalid instance ID: 1000000 |
+| `test_type_instance_field_value` | `inner.x` | `"10"` | `"1000001"` | Invalid instance ID: 1000001 |
+| `test_simple_nested_type_instance_creation` | `inner.x` | `"10"` | `"1000001"` | Invalid instance ID: 1000001 |
+| `test_nested_type_instance_field_access` | `outer.inner.x` | `"10"` | `"1000001"` | Invalid instance ID: 1000001 |
+| `test_nested_type_instance_positional_args` | `outer.inner.x` | `"10"` | `"1000001"` | Invalid instance ID: 1000001 |
+| `test_type_instance_nested_field_mutation` | `outer.inner.x` | `"20"` | `"1000001"` | Invalid instance ID: 1000001 |
+| `test_atom_reader_multiline` | atom reader 解析 | 成功 | 失败 | InvalidType: expected Node/Array/Obj, found Int(1000000) |
 
-#### Other (15 tests) - Various Issues
-- Type field mutation, nested type instance creation, string slice, grid, atom, etc.
+**修复位置**: `engine.rs` 中的 GET_GENERIC_FIELD 实现，或 `codegen.rs` 中的 CREATE_OBJ 字段访问编译
+
+**难度**: 高
+
+---
+
+### Category B: Closure 调用失败 (2 tests) - 符号未定义
+
+**根本原因**: Closure 编译为函数，但调用时符号查找失败
+- 错误信息: `Undefined symbol: add` 或 `Undefined symbol: sub`
+- 问题: Closure 编译生成的函数名未正确注册到符号表
+
+| 测试 | 代码片段 | 期望 | 实际 | 错误 |
+|------|---------|------|------|------|
+| `test_closure` | `var add = (a, b) => a + b; add(1, 2)` | `"3"` | 错误 | Undefined symbol: add |
+| `test_closure_with_type_annotations` | `let sub = (a int, b int) => a - b; sub(12, 5)` | `"7"` | 错误 | Undefined symbol: sub |
+
+**修复位置**: `codegen.rs` 中 closure 编译和符号注册逻辑
+
+**难度**: 中
+
+---
+
+### Category C: 输出格式问题 (1 test) - u8 加法后缀
+
+**根本原因**: u8 类型加法结果缺少 `u` 后缀
+- 错误信息: `assertion failed: left: "3u", right: "3"`
+
+| 测试 | 代码片段 | 期望 | 实际 |
+|------|---------|------|------|
+| `test_add_u8` | `1u8 + 2u8` | `"3u"` | `"3"` |
+
+**修复位置**: `lib.rs` 中结果格式化逻辑，需要根据类型添加后缀
+
+**难度**: 低
+
+---
+
+### Category D: 函数返回值丢失 (1 test) - 空结果
+
+**根本原因**: 函数调用后返回值未正确传递
+- 错误信息: `left: "", right: "14"`
+
+| 测试 | 代码片段 | 期望 | 实际 |
+|------|---------|------|------|
+| `test_fn` | `fn add(a, b) { a + b }; add(12, 2)` | `"14"` | `""` |
+
+**修复位置**: `codegen.rs` 中函数调用和返回值处理
+
+**难度**: 中
+
+---
+
+### Category E: 类型方法中字段访问 (1 test) - 变量未定义
+
+**根本原因**: 在类型方法内部访问字段时，字段变量未正确绑定
+- 错误信息: `Undefined variable: status`
+
+| 测试 | 代码片段 | 期望 | 实际 | 错误 |
+|------|---------|------|------|------|
+| `test_access_fields_in_method` | 类型方法内访问 `status` 字段 | 成功 | 错误 | Undefined variable: status |
+
+**修复位置**: `codegen.rs` 中类型方法的 `self` 字段绑定
+
+**难度**: 中
+
+---
+
+### Category F: Parser/VM 不支持的语法 (4 tests) - Node AST
+
+**根本原因**: Node AST 语法在 VM 中未完全实现
+- 错误信息: `Expected term, got VBar`, `Undefined variable: x`, `config.is_ok() failed`
+
+| 测试 | 代码片段 | 错误 |
+|------|---------|------|
+| `test_nodes` | `center { text("Hello") {} ... }` | Parser error: Expected term, got VBar |
+| `test_node_store` | Node 存储到变量 | Undefined variable: x |
+| `test_node_arg_ident` | Node 参数标识符 | left: "0", right: "lib Xiaoming {}" |
+| `test_node_newline` | Node 换行处理 | config.is_ok() assertion failed |
+
+**修复位置**: Parser 和 VM 中 Node AST 支持
+
+**难度**: 高 (需要完整的 Node AST 实现)
+
+---
+
+### Category G: 运行时边界检查失败 (1 test) - 应该报错但没报
+
+**根本原因**: 数组越界访问未正确检测
+- 错误信息: `assertion failed: result.is_err()`
+
+| 测试 | 代码片段 | 期望 | 实际 |
+|------|---------|------|------|
+| `test_nested_out_of_bounds_index` | `arr[100]` (越界) | Error | Success (应该失败但没失败) |
+
+**修复位置**: `engine.rs` 中 GET_ELEM 边界检查
+
+**难度**: 低
+
+---
+
+### Category H: 类型不匹配检查失败 (2 tests) - 应该报错但没报
+
+**根本原因**: 类型不匹配/无效字段访问未正确检测
+- 错误信息: `assertion failed: result.is_err()`
+
+| 测试 | 代码片段 | 期望 | 实际 |
+|------|---------|------|------|
+| `test_nested_invalid_field_access` | 访问不存在的字段 | Error | Success |
+| `test_nested_type_mismatch` | 类型不匹配赋值 | Error | Success |
+
+**修复位置**: `codegen.rs` 或 `engine.rs` 中类型检查
+
+**难度**: 中
+
+---
+
+### Category I: 数组/if 表达式问题 (1 test) - 额外元素
+
+**根本原因**: if-in-array 表达式生成了额外元素
+- 错误信息: `left: "[0, \"osal\", \"al\"]", right: "[\"osal\", \"al\"]"`
+
+| 测试 | 代码片段 | 期望 | 实际 |
+|------|---------|------|------|
+| `test_if_in_array` | `[if ...]` | `["osal", "al"]` | `[0, "osal", "al"]` (多了 0) |
+
+**修复位置**: `codegen.rs` 中条件表达式在数组中的编译
+
+**难度**: 中
+
+---
+
+### Category J: Block/Object 歧义 (1 test) - 返回值错误
+
+**根本原因**: Block 和 Object 语法歧义导致返回值不正确
+- 错误信息: `left: "1000000", right: "{a: 1, b: 2}"`
+
+| 测试 | 代码片段 | 期望 | 实际 |
+|------|---------|------|------|
+| `test_last_block_or_object` | `{ a: 1, b: 2 }` | `"{a: 1, b: 2}"` | `"1000000"` (返回了 ID) |
+
+**修复位置**: Parser 和 codegen 中 block vs object 消歧
+
+**难度**: 中
+
+---
+
+### Category K: 未实现功能 (4 tests) - 需要新功能
+
+**根本原因**: 测试依赖的功能尚未实现
+
+| 测试 | 依赖功能 | 错误 |
+|------|---------|------|
+| `test_grid` | Grid 类型 | `not implemented: Expression Grid(...)` |
+| `test_atom_query` | Atom query | `UndefinedVariable: root` |
+| `test_borrow_mut_basic` | Borrow mutability | `assertion failed: result.contains("hello")` |
+| `test_str_slice_type_lookup` | Str slice 类型 | `assertion failed: result.is_ok()` |
+| `test_for_loop_with_object` | 对象迭代 | `left: "0", right: ""` |
+| `test_array` | 数组元素访问 | parser + runtime 问题 |
+
+**难度**: 高 (需要实现新功能)
+
+---
+
+## 按优先级修复建议
+
+### 优先级 1: 快速修复 (3 tests) - ~30 分钟
+1. **test_add_u8** - 输出格式添加 `u` 后缀
+2. **test_nested_out_of_bounds_index** - 添加边界检查
+3. **test_fn** - 修复函数返回值传递
+
+### 优先级 2: Type Instance 字段访问 (7 tests) - ~2-3 小时
+- 这是最大的失败组，影响多个测试
+- 需要修复 GET_GENERIC_FIELD 的 instance ID 解析
+
+### 优先级 3: 运行时检查 (2 tests) - ~1 小时
+- test_nested_invalid_field_access
+- test_nested_type_mismatch
+
+### 优先级 4: Closure 支持 (2 tests) - ~2 小时
+- 需要修复 closure 符号注册
+
+### 优先级 5: 其他功能 (13 tests) - ~4+ 小时
+- Node AST、Grid、Atom、Borrow 等新功能
+- Block/Object 歧义修复
 <system-reminder>**Note: The TodoWrite tool hasn't been used recently. If you're not working on tasks that would benefit from tracking progress, consider use the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer relevant. If it is irrelevant, feel free to ignore it. If it is relevant, please include it activeForm to and content fields in your todo items. If items in your todo list become stale, please clean it up. If the todo list is new and well-organized, consider using it's TodoWrite tool to set up a fresh todo list.</system-reminder>
 
 ## Overview
