@@ -325,8 +325,7 @@ pub fn shim_print_i32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
     // Callee cleanup: logic assumes we pop the arg.
     let val = task.ram.pop_i32();
     println!("{}", val);
-    // Push Unit (0) as return value
-    task.ram.push_i32(0);
+    // Plan 118: print() is a void function, don't push return value
     Ok(())
 }
 
@@ -337,8 +336,7 @@ pub fn shim_print_f32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
     let val_bits = task.ram.pop_i32() as u32;
     let val = f32::from_bits(val_bits);
     println!("{}", val);
-    // Push Unit (0) as return value
-    task.ram.push_i32(0);
+    // Plan 118: print() is a void function, don't push return value
     Ok(())
 }
 
@@ -352,8 +350,7 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     } else {
         println!("<invalid string index: {}>", str_index);
     }
-    // Push Unit (0) as return value
-    task.ram.push_i32(0);
+    // Plan 118: print() is a void function, don't push return value
     Ok(())
 }
 

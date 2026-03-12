@@ -370,7 +370,10 @@ impl AutoVM {
                         task.status = new_status;
                     }
                     Err(e) => {
-                        println!("Task {} Error: {:?}", task.id, e);
+                        // Plan 118: Store error for proper error propagation
+                        let error_msg = format!("{:?}", e);
+                        task.last_error = Some(error_msg.clone());
+                        eprintln!("Task {} Error: {}", task.id, error_msg);
                         task.status = TaskStatus::Terminated;
                     }
                 }
@@ -1594,12 +1597,18 @@ impl AutoVM {
                             // For now, store as Int (we can enhance this later with type tracking)
                             array[index] = auto_val::Value::Int(value);
                         } else {
-                            // Index out of bounds - silent fail for now
-                            // TODO: Proper error handling for out-of-bounds assignment
+                            // Plan 118: Return error for out-of-bounds assignment
+                            return Err(VMError::RuntimeError(format!(
+                                "Array index {} out of bounds (array length: {})",
+                                index, array.len()
+                            )));
                         }
                     } else {
-                        // Array not found - silent fail for now
-                        // TODO: Proper error handling for invalid array IDs
+                        // Plan 118: Return error for invalid array IDs
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid array ID: {}",
+                            array_id
+                        )));
                     }
                 }
                 // Plan 075: Object field assignment (obj.field = value)
@@ -1637,19 +1646,47 @@ impl AutoVM {
                         let key = if obj.get(&auto_val::ValueKey::Str(field_name.clone().into())).is_some() {
                             auto_val::ValueKey::Str(field_name.into())
                         } else if let Ok(int_key) = field_name.parse::<i32>() {
-                            auto_val::ValueKey::Int(int_key)
+                            if obj.get(&auto_val::ValueKey::Int(int_key)).is_some() {
+                                auto_val::ValueKey::Int(int_key)
+                            } else {
+                                // Plan 118: Integer field not found - return error
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            }
                         } else if field_name == "true" {
-                            auto_val::ValueKey::Bool(true)
+                            if obj.get(&auto_val::ValueKey::Bool(true)).is_some() {
+                                auto_val::ValueKey::Bool(true)
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            }
                         } else if field_name == "false" {
-                            auto_val::ValueKey::Bool(false)
+                            if obj.get(&auto_val::ValueKey::Bool(false)).is_some() {
+                                auto_val::ValueKey::Bool(false)
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            }
                         } else {
-                            // Default to string key for new fields
-                            auto_val::ValueKey::Str(field_name.into())
+                            // Plan 118: Field not found - return error instead of creating new field
+                            return Err(VMError::RuntimeError(format!(
+                                "Field '{}' not found on object",
+                                field_name
+                            )));
                         };
                         obj.set(key, auto_val::Value::Int(value));
                     } else {
-                        // Object not found - silent fail for now
-                        // TODO: Proper error handling for invalid object IDs
+                        // Plan 118: Return error for invalid object IDs
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid object ID: {}",
+                            obj_id
+                        )));
                     }
                 }
                 // Plan 073: Object field access (obj.field)
@@ -1721,9 +1758,11 @@ impl AutoVM {
                                 }
                             }
                         } else {
-                            // Field not found - push 0 as error sentinel
-                            // TODO: Proper error handling for missing fields
-                            task.ram.push_i32(0);
+                            // Plan 118: Field not found - return error
+                            return Err(VMError::RuntimeError(format!(
+                                "Field '{}' not found on object",
+                                field_name
+                            )));
                         }
                     } else {
                         // Object not found - push 0 as error sentinel

@@ -37,6 +37,8 @@ pub struct AutoTask {
     pub current_fn_n_locals: usize, // Number of local variables in current function (from prologue)
     // Plan 117/118: Track result type for proper output formatting
     pub last_result_type: ResultType,
+    // Plan 118: Store last error for proper error propagation
+    pub last_error: Option<String>,
 }
 
 impl AutoTask {
@@ -53,6 +55,7 @@ impl AutoTask {
             current_fn_n_args: 0, // Plan 088 Phase 4: Initialize to 0
             current_fn_n_locals: 0, // Plan 088 Phase 4: Initialize to 0
             last_result_type: ResultType::default(), // Plan 118: Initialize to Int
+            last_error: None, // Plan 118: Initialize to None
         }
     }
 }

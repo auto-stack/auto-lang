@@ -295,6 +295,11 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
         let mut task = task_arc.lock().await;
 
+        // Plan 118: Check if task had an error
+        if let Some(error) = &task.last_error {
+            return Err(crate::error::AutoError::Msg(error.clone()));
+        }
+
         if task.ram.sp == 0 {
             return Ok("".to_string());
         }

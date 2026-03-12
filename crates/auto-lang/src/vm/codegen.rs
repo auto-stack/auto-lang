@@ -3057,6 +3057,15 @@ impl Codegen {
 
                     self.emit(OpCode::CALL_NAT);
                     self.code.extend_from_slice(&id.to_le_bytes());
+
+                    // Plan 118: Mark print functions as void (they don't push return values)
+                    // This tells run() to return empty string instead of trying to pop a value
+                    if let Some(ref name) = func_name {
+                        if name.starts_with("print") || name == "say" {
+                            self.last_expr_type = ObjectType::Void;
+                        }
+                    }
+
                     return Ok(()).into();
                 }
 
@@ -3231,13 +3240,11 @@ impl Codegen {
                     reloc_type: RelocType::FuncCall,
                 });
 
-                // Plan 118 Phase 4: Check function return type and set last_expr_type
-                if let Some(ret_type) = self.fn_return_types.get(&reloc_name) {
-                    if matches!(ret_type, Type::Void) {
-                        self.last_expr_type = ObjectType::Void;
-                        eprintln!("DEBUG: Function '{}' returns void, setting last_expr_type to Void", reloc_name);
-                    }
-                }
+                // Plan 118 Phase 4: Function return type inference
+                // NOTE: We do NOT set last_expr_type to Void based on fn_return_types,
+                // because functions without explicit return types are defaulted to Void
+                // in the parser, but they may actually return values.
+                // The return type will be inferred from the actual value on the stack.
             }
             Expr::If(if_expr) => {
                 // If expression: each branch must leave a value on the stack
