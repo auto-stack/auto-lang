@@ -267,6 +267,10 @@ impl AutoVM {
                 drop(strings);
                 ram.push_i32(-(idx as i32) - 1);
             }
+            Value::VmRef(vmref) => {
+                // Push heap object ID as i32
+                ram.push_i32(vmref.id as i32);
+            }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
                 ram.push_i32(0);
@@ -674,11 +678,18 @@ impl AutoVM {
                     task.ip += 1;
 
                     // Pop elements from stack (in reverse order since last element is on top)
+                    // Plan 118: Filter out nil marker values for if-in-array support
+                    // When if expression has no else branch, it pushes nil (i32::MIN + 1 = -2147483647)
+                    // which should be excluded from the array
                     let mut elems = Vec::with_capacity(elem_count as usize);
                     for _ in 0..elem_count {
                         // Pop element and convert to Value
                         let bits = task.ram.pop_i32();
-                        elems.push(auto_val::Value::Int(bits));
+                        // Filter out nil marker (special value: i32::MIN + 1 = -2147483647)
+                        // Note: We do NOT filter 0 because 0 is a valid false value, not nil
+                        if bits != -2147483647 {
+                            elems.push(auto_val::Value::Int(bits));
+                        }
                     }
 
                     // Reverse to get correct order (elements were popped LIFO)
@@ -1038,7 +1049,7 @@ impl AutoVM {
                     );
 
                     // Pop values from stack (in reverse order)
-                    // For Phase 2, we assume all values are basic types (int, float, bool, etc.)
+                    // For Phase 2, detect if value is a heap object ID or basic type
                     let mut field_values = Vec::with_capacity(field_count);
                     for i in 0..field_count {
                         eprintln!(
@@ -1047,11 +1058,20 @@ impl AutoVM {
                             field_count,
                             task.ram.sp
                         );
-                        // Pop value as i32 (basic type)
+                        // Pop value as i32
                         let val_i32 = task.ram.pop_i32();
                         eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
-                        // For Phase 2, convert to Int (simplified)
-                        field_values.push(Value::Int(val_i32));
+
+                        // Check if this looks like a heap object ID (>= 4000000)
+                        // Heap objects start at 4000000
+                        let value = if val_i32 >= 4000000 {
+                            // This is likely a heap object reference
+                            Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
+                        } else {
+                            // Basic integer type
+                            Value::Int(val_i32)
+                        };
+                        field_values.push(value);
                     }
                     field_values.reverse(); // Reverse to get correct order
 
@@ -1177,26 +1197,34 @@ impl AutoVM {
                 }
                 OpCode::SET_GENERIC_FIELD => {
                     // Plan 087 Phase 2: Set field value in generic instance
+                    // Plan 118 Phase 7: Stack layout changed to [..., value, instance_id]
                     // Code layout: [opcode, field_index:u32]
-                    // Stack layout: [..., instance_id, value]
+                    // Stack layout: [..., value, instance_id] (value pushed first, then instance_id)
                     // Stack after: [...]
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::TypeTag;
+
+                    eprintln!("DEBUG: SET_GENERIC_FIELD executing at IP={}", task.ip);
 
                     // Read field_index from code stream (not stack!)
                     let field_index = self.flash.read_u32(task.ip) as usize;
                     task.ip += 4;
 
-                    // Pop value (for Phase 2, assume it's a basic int)
-                    let val_i32 = task.ram.pop_i32();
-                    let value = Value::Int(val_i32);
-
-                    // Pop instance_id
+                    // Pop instance_id (stack top)
                     let instance_id = task.ram.pop_i32() as u64;
 
+                    // Pop value (below instance_id)
+                    let val_i32 = task.ram.pop_i32();
+                    // Check if value is a heap object reference (>= 4000000)
+                    let value = if val_i32 >= 4000000 {
+                        Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
+                    } else {
+                        Value::Int(val_i32)
+                    };
+
                     eprintln!(
-                        "DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={}",
-                        instance_id, field_index, val_i32
+                        "DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={:?}",
+                        instance_id, field_index, value
                     );
 
                     // Get instance and set field

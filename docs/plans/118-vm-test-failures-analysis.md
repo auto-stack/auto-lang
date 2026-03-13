@@ -1,10 +1,46 @@
 # Plan 118: VM Test Failures Analysis & Fix Plan
 
-## Status: Phase 4 Complete + Quick Fixes Applied
+## Status: Phase 6 - If-In-Array Fixes Applied
 
-**Progress: 123 passing, 23 failing, 3 ignored** (5 quick fixes applied on 2026-03-13)
+**Progress: 133 passing, 13 failing, 3 ignored** (2026-03-13)
 
-## Quick Fixes Applied (2026-03-13)
+### Phase 6 Fixes Applied (2026-03-13)
+
+#### Fix 8: If-In-Array Support (Category I - 2 tests) ✅
+**Problem**: `test_if_in_array` returned `[0, "osal", "al"]` instead of `["osal", "al"]`
+**Root Cause**: If expressions without else branch didn't push any value when condition was false, leaving garbage on stack. The JMP to end had offset=0 (jumping to same position) because no code was generated for the else branch.
+**Fix**:
+1. Modified if expression compilation to push nil marker (i32::MIN + 1 = -2147483647) when no else branch exists
+2. Modified CREATE_ARRAY opcode to filter out nil markers from array elements
+3. Nil marker is a special value that won't conflict with legitimate 0/false values
+**Files**: `crates/auto-lang/src/vm/codegen.rs`, `crates/auto-lang/src/vm/engine.rs`
+**Tests Fixed**: test_if_in_array, test_if_with_bool (partially)
+
+### Phase 5 Fixes Applied (2026-03-13)
+
+#### Fix 6: Type Instance Field Access (Category A - 7+ tests) ✅
+**Problem**: GET_GENERIC_FIELD returned "Invalid instance ID" errors
+**Root Cause**: Type instances were created with CREATE_OBJ (heap objects) instead of NEW_INSTANCE (generic instances)
+**Fix**:
+1. Changed type constructor compilation to use NEW_INSTANCE + CONSTRUCT_INSTANCE opcodes
+2. Fixed CONSTRUCT_INSTANCE to use correct field order (reversed from stack)
+3. Fixed SET_GENERIC_FIELD stack handling (pop instance_id first, then value)
+4. Fixed opcode emission order (opcode first, then operands)
+5. Added field_type method to ClassType for type inference
+**Files**: `crates/auto-lang/src/vm/codegen.rs`, `crates/auto-lang/src/vm/engine.rs`, `crates/auto-lang/src/vm/generic_registry.rs`
+**Tests Fixed**: test_type_field_mutation, test_type_instance_field_value, test_simple_nested_type_instance_creation, test_nested_type_instance_field_access, test_nested_type_instance_positional_args, test_type_instance_nested_field_mutation, test_type_compose
+
+#### Fix 7: Void Function Return Type Detection ✅
+**Problem**: `test_fn` and `test_type_compose` - void functions returned "0" instead of ""
+**Root Cause**: Codegen didn't check fn_return_types for type methods to set last_expr_type
+**Fix**:
+1. Added check for void return type in fn_return_types after CALL instruction
+2. Only applies to type methods (function names containing '.') to avoid false positives
+**Files**: `crates/auto-lang/src/vm/codegen.rs`
+
+---
+
+## Quick Fixes Applied Earlier (2026-03-13)
 
 ### Fix 1: test_add_u8 ✅
 **Problem**: `u8` type inference in `infer/expr.rs` incorrectly returned `Type::Uint` instead of `Type::Int`

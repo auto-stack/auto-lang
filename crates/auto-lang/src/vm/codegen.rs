@@ -832,17 +832,58 @@ impl Codegen {
                     // Example: var duck = Duck(), var wing = Wing()
                     else if let Expr::Ident(type_name) = call.name.as_ref() {
                         if self.is_type(type_name) {
-                            let type_decl = crate::ast::TypeDecl {
-                                name: crate::ast::Name::from(type_name),
-                                kind: crate::ast::TypeDeclKind::UserType,
-                                parent: None,
-                                has: vec![],
-                                specs: vec![],
-                                spec_impls: vec![],
-                                generic_params: vec![],
-                                members: vec![],
-                                delegations: vec![],
-                                methods: vec![],
+                            // Create a TypeDecl with proper members from generic_registry
+                            let type_decl = if self.generic_registry.has_template(type_name) {
+                                // Create a TypeDecl from the template
+                                let template = self.generic_registry.get_template(type_name).unwrap();
+                                crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from(type_name),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: template.fields.iter().map(|f| crate::ast::Member {
+                                        name: crate::ast::Name::from(f.name.as_str()),
+                                        ty: f.field_type.clone(),
+                                        value: None,
+                                    }).collect(),
+                                    delegations: vec![],
+                                    methods: vec![],
+                                }
+                            } else if let Some(type_info) = self.get_type(type_name) {
+                                // Create TypeDecl from TypeInfo (only has member names, use Unknown type)
+                                crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from(type_name),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: type_info.member_names.iter().map(|name| crate::ast::Member {
+                                        name: crate::ast::Name::from(name.as_str()),
+                                        ty: Type::Unknown,
+                                        value: None,
+                                    }).collect(),
+                                    delegations: vec![],
+                                    methods: vec![],
+                                }
+                            } else {
+                                // Fallback: create minimal type decl
+                                crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from(type_name),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                }
                             };
                             self.var_types
                                 .insert(store.name.to_string(), Type::User(type_decl));
@@ -2236,6 +2277,26 @@ impl Codegen {
                                     // Emit GET_GENERIC_FIELD with field index
                                     self.emit(OpCode::GET_GENERIC_FIELD);
                                     self.emit_u32(field_index as u32);
+
+                                    // Plan 118 Phase 7: Set last_expr_type based on field type
+                                    // This is crucial for nested field access (obj.inner.x)
+                                    if let Some(field_type) = class_type.field_type(&field_str) {
+                                        self.last_expr_type = match field_type {
+                                            Type::User(_) | Type::GenericInstance(_) => ObjectType::NestedObject,
+                                            Type::Str(_) | Type::CStr | Type::StrSlice => ObjectType::String,
+                                            Type::Char => ObjectType::Char,
+                                            Type::Int | Type::I64 => ObjectType::Int,
+                                            Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                                            Type::Byte => ObjectType::Byte,
+                                            Type::Float => ObjectType::Float,
+                                            Type::Double => ObjectType::Double,
+                                            Type::Bool => ObjectType::Bool,
+                                            Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
+                                            _ => ObjectType::Int,
+                                        };
+                                        eprintln!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
+                                            field, field_type, self.last_expr_type);
+                                    }
                                 } else {
                                     eprintln!(
                                         "Warning: Field '{}' not found in type '{}'",
@@ -2267,17 +2328,76 @@ impl Codegen {
                     }
                 } else {
                     // Regular field access (Plan 073)
+                    // Or nested field access on user type (Plan 118 Phase 7)
                     // Compile object expression (should push object_id onto stack)
                     self.compile_expr(obj)?;
 
-                    // Add field name to string pool and emit GET_FIELD <field_idx>
-                    let field_str = field.to_string();
-                    let field_bytes = field_str.as_bytes().to_vec();
-                    let field_idx = self.strings.len() as u16;
-                    self.strings.push(field_bytes);
+                    // Plan 118 Phase 7: Check if the result is a heap object (VmRef)
+                    // If last_expr_type is NestedObject, we should use GET_GENERIC_FIELD
+                    let is_heap_object = self.last_expr_type == ObjectType::NestedObject;
 
-                    self.emit(OpCode::GET_FIELD);
-                    self.code.extend_from_slice(&field_idx.to_le_bytes());
+                    if is_heap_object {
+                        // For heap objects (user type instances), use GET_GENERIC_FIELD
+                        // Need to get type info from infer_expr_type
+                        let obj_expr_type = self.infer_expr_type(obj);
+                        let type_name = match &obj_expr_type {
+                            Type::User(type_decl) => type_decl.name.to_string(),
+                            Type::GenericInstance(inst) => {
+                                self.generic_registry
+                                    .get_template(&inst.base_name.to_string())
+                                    .map(|t| t.mono_name_from_args(&inst.args))
+                                    .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
+                            }
+                            _ => "Unknown".to_string(),
+                        };
+
+                        if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                            let field_str = field.to_string();
+                            if let Some(field_index) = class_type.field_index(&field_str) {
+                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                self.emit_u32(field_index as u32);
+
+                                // Set last_expr_type based on field type
+                                if let Some(field_type) = class_type.field_type(&field_str) {
+                                    self.last_expr_type = match field_type {
+                                        Type::User(_) | Type::GenericInstance(_) => ObjectType::NestedObject,
+                                        Type::Str(_) | Type::CStr | Type::StrSlice => ObjectType::String,
+                                        Type::Char => ObjectType::Char,
+                                        Type::Int | Type::I64 => ObjectType::Int,
+                                        Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                                        Type::Byte => ObjectType::Byte,
+                                        Type::Float => ObjectType::Float,
+                                        Type::Double => ObjectType::Double,
+                                        Type::Bool => ObjectType::Bool,
+                                        Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
+                                        _ => ObjectType::Int,
+                                    };
+                                }
+                            } else {
+                                eprintln!("Warning: Field '{}' not found in type '{}' (nested access)",
+                                    field, type_name);
+                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                self.emit_u32(0);
+                            }
+                        } else {
+                            // Type not in registry, fall back to GET_FIELD
+                            let field_str = field.to_string();
+                            let field_bytes = field_str.as_bytes().to_vec();
+                            let field_idx = self.strings.len() as u16;
+                            self.strings.push(field_bytes);
+                            self.emit(OpCode::GET_FIELD);
+                            self.code.extend_from_slice(&field_idx.to_le_bytes());
+                        }
+                    } else {
+                        // Add field name to string pool and emit GET_FIELD <field_idx>
+                        let field_str = field.to_string();
+                        let field_bytes = field_str.as_bytes().to_vec();
+                        let field_idx = self.strings.len() as u16;
+                        self.strings.push(field_bytes);
+
+                        self.emit(OpCode::GET_FIELD);
+                        self.code.extend_from_slice(&field_idx.to_le_bytes());
+                    }
                 }
             }
             // Plan 073: Array indexing (arr[index])
@@ -2523,15 +2643,15 @@ impl Codegen {
                                         if let Some(field_index) =
                                             class_type.field_index(&field_str)
                                         {
-                                            // Emit SET_GENERIC_FIELD: expects value, instance_id, field_index
-                                            self.emit_u32(field_index as u32);
+                                            // Emit SET_GENERIC_FIELD: code layout [opcode, field_index:u32]
                                             self.emit(OpCode::SET_GENERIC_FIELD);
+                                            self.emit_u32(field_index as u32);
                                         } else {
                                             eprintln!("Warning: Field '{}' not found in generic type '{}' (assignment)",
                                                 field, inst.base_name);
                                             // Fallback: emit placeholder
-                                            self.emit_u32(0);
                                             self.emit(OpCode::SET_GENERIC_FIELD);
+                                            self.emit_u32(0);
                                         }
                                     } else {
                                         eprintln!("Warning: Generic type '{}' not found in registry (assignment)", mono_name);
@@ -2566,19 +2686,90 @@ impl Codegen {
                             }
                         } else {
                             // Regular field assignment (Plan 075)
+                            // Or nested field assignment on user type (Plan 118 Phase 7)
                             // Compile object expression
                             self.compile_expr(obj)?;
-                            // Now stack has: value, object_id
-                            // Load field name
-                            let field_str = field.to_string();
-                            let field_bytes = field_str.as_bytes().to_vec();
-                            let field_idx = self.strings.len() as u16;
-                            self.strings.push(field_bytes);
 
-                            self.emit(OpCode::LOAD_STR);
-                            self.code.extend_from_slice(&field_idx.to_le_bytes());
-                            // Emit SET_FIELD: expects value, object_id, field_name_idx
-                            self.emit(OpCode::SET_FIELD);
+                            // Check if the result is a heap object (nested user type)
+                            let obj_expr_type = self.infer_expr_type(obj);
+                            eprintln!("DEBUG ASSIGN: obj={:?}, field={}, obj_expr_type={:?}", obj, field, obj_expr_type);
+                            let is_user_type = matches!(obj_expr_type, Type::User(_) | Type::GenericInstance(_));
+                            let is_heap_object = is_user_type || self.last_expr_type == ObjectType::NestedObject;
+                            eprintln!("DEBUG ASSIGN: is_user_type={}, is_heap_object={}, last_expr_type={:?}",
+                                is_user_type, is_heap_object, self.last_expr_type);
+
+                            if is_heap_object || is_user_type {
+                                // Get type name from inferred type
+                                let type_name = match &obj_expr_type {
+                                    Type::User(type_decl) => type_decl.name.to_string(),
+                                    Type::GenericInstance(inst) => {
+                                        self.generic_registry
+                                            .get_template(&inst.base_name.to_string())
+                                            .map(|t| t.mono_name_from_args(&inst.args))
+                                            .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
+                                    }
+                                    _ => {
+                                        // Fallback: try var_types for Ident
+                                        if let Expr::Ident(var_name) = obj.as_ref() {
+                                            if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                                                match var_type {
+                                                    Type::User(type_decl) => type_decl.name.to_string(),
+                                                    Type::GenericInstance(inst) => {
+                                                        self.generic_registry
+                                                            .get_template(&inst.base_name.to_string())
+                                                            .map(|t| t.mono_name_from_args(&inst.args))
+                                                            .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
+                                                    }
+                                                    _ => "Unknown".to_string(),
+                                                }
+                                            } else {
+                                                "Unknown".to_string()
+                                            }
+                                        } else {
+                                            "Unknown".to_string()
+                                        }
+                                    }
+                                };
+
+                                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                    let field_str = field.to_string();
+                                    if let Some(field_index) = class_type.field_index(&field_str) {
+                                        // Stack: [value, instance_id]
+                                        // SET_GENERIC_FIELD code layout: [opcode, field_index:u32]
+                                        eprintln!("DEBUG: Emitting SET_GENERIC_FIELD for field '{}' with index {} at code position {}",
+                                            field_str, field_index, self.code.len());
+                                        self.emit(OpCode::SET_GENERIC_FIELD);
+                                        self.emit_u32(field_index as u32);
+                                        eprintln!("DEBUG: After emit, code position = {}", self.code.len());
+                                    } else {
+                                        eprintln!("Warning: Field '{}' not found in type '{}' (nested assignment)",
+                                            field, type_name);
+                                        self.emit(OpCode::SET_GENERIC_FIELD);
+                                        self.emit_u32(0);
+                                    }
+                                } else {
+                                    // Type not in registry, fall back to SET_FIELD
+                                    let field_str = field.to_string();
+                                    let field_bytes = field_str.as_bytes().to_vec();
+                                    let field_idx = self.strings.len() as u16;
+                                    self.strings.push(field_bytes);
+                                    self.emit(OpCode::LOAD_STR);
+                                    self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                    self.emit(OpCode::SET_FIELD);
+                                }
+                            } else {
+                                // Now stack has: value, object_id
+                                // Load field name
+                                let field_str = field.to_string();
+                                let field_bytes = field_str.as_bytes().to_vec();
+                                let field_idx = self.strings.len() as u16;
+                                self.strings.push(field_bytes);
+
+                                self.emit(OpCode::LOAD_STR);
+                                self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                // Emit SET_FIELD: expects value, object_id, field_name_idx
+                                self.emit(OpCode::SET_FIELD);
+                            }
                         }
                     } else {
                         unimplemented!("Assignment to complex LHS not supported yet");
@@ -2859,11 +3050,39 @@ impl Codegen {
                             .collect();
                         self.object_types.push(types);
 
-                        // Emit CREATE_OBJ
+                        // Plan 118 Phase 7: Use NEW_INSTANCE + CONSTRUCT_INSTANCE for user types
+                        // This ensures objects are stored in heap_objects (4000000+) instead of objects (1000000+)
                         let field_count = arg_count.min(member_names.len() as u8);
-                        self.emit(OpCode::CREATE_OBJ);
-                        self.code.extend_from_slice(&key_index.to_le_bytes());
-                        self.code.push(field_count);
+
+                        // NEW_INSTANCE expects:
+                        // - Stack: mono_name_len (i32)
+                        // - Flash: mono_name_bytes
+                        // After execution: instance_id pushed to stack
+
+                        let mono_name_bytes = type_name_str.as_bytes().to_vec();
+
+                        // Push mono_name length to stack
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(mono_name_bytes.len() as i32);
+
+                        // Emit NEW_INSTANCE opcode
+                        self.emit(OpCode::NEW_INSTANCE);
+
+                        // Emit mono_name bytes directly to flash (code stream)
+                        for byte in &mono_name_bytes {
+                            self.code.push(*byte);
+                        }
+
+                        // Stack now has: [..., field_value1, ..., field_valueN, instance_id]
+                        // CONSTRUCT_INSTANCE expects:
+                        // - Stack: field_count, instance_id, field_value1, ..., field_valueN
+                        // So we need to: push field_count, then CONSTRUCT_INSTANCE
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(field_count as i32);
+                        self.emit(OpCode::CONSTRUCT_INSTANCE);
+
+                        // Track variable type for this instance
+                        self.last_expr_type = ObjectType::NestedObject;
 
                         return Ok(());
                     }
@@ -3307,10 +3526,17 @@ impl Codegen {
                 });
 
                 // Plan 118 Phase 4: Function return type inference
-                // NOTE: We do NOT set last_expr_type to Void based on fn_return_types,
-                // because functions without explicit return types are defaulted to Void
-                // in the parser, but they may actually return values.
-                // The return type will be inferred from the actual value on the stack.
+                // Check if function has an explicit void return type
+                // For methods with explicit void return (like fn fly() { print(...) }), mark as void
+                // BUT: Only do this for type methods (containing '.') because standalone functions
+                // like "fn add(a, b) { a + b }" may have implicit return even without explicit type.
+                if reloc_name.contains('.') {
+                    if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
+                        if matches!(ret_ty, Type::Void) {
+                            self.last_expr_type = ObjectType::Void;
+                        }
+                    }
+                }
             }
             Expr::If(if_expr) => {
                 // If expression: each branch must leave a value on the stack
@@ -3345,6 +3571,12 @@ impl Codegen {
                     // Plan 118 Phase 5: Use compile_stmt on Block to handle should_pop_expr_result correctly
                     let else_block = Stmt::Block(else_body.clone());
                     self.compile_stmt(&else_block)?;
+                } else {
+                    // No else branch - push nil marker as default value
+                    // This ensures JMP to end has a valid target and if expression always has a value
+                    // Nil is represented as i32::MIN + 1 = -2147483647, which CREATE_ARRAY will filter out
+                    self.emit(OpCode::CONST_I32);
+                    self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
                 }
 
                 // Patch all jumps to end

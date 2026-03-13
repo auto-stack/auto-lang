@@ -258,6 +258,14 @@ impl ClassType {
         self.template.field_index(field_name)
     }
 
+    /// Get field type by name (Plan 118 Phase 7: for nested field access type inference)
+    pub fn field_type(&self, field_name: &str) -> Option<Type> {
+        let fields = self.fields();
+        fields.iter()
+            .find(|f| f.name == field_name)
+            .map(|f| f.field_type.clone())
+    }
+
     /// Get method index by name
     pub fn method_index(&self, method_name: &str) -> Option<usize> {
         self.template.method_index(method_name)
