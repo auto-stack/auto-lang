@@ -1,8 +1,27 @@
 # Plan 118: VM Test Failures Analysis & Fix Plan
 
-## Status: Phase 6 - If-In-Array Fixes Applied
+## Status: Phase 7 - Generic & Void Function Fixes Applied
 
-**Progress: 133 passing, 13 failing, 3 ignored** (2026-03-13)
+**Progress: 183 passing, 11 failing, 3 ignored** (2026-03-13)
+
+### Phase 7 Fixes Applied (2026-03-13)
+
+#### Fix 9: Generic Field Access Panic (Category B - 4 tests) ✅
+**Problem**: `test_generic_field_access_x` and related tests panicked with "index out of bounds: the len is 0 but the index is 0"
+**Root Cause**: `Type::substitute()` panicked when `params` matched a type parameter but `args` was empty (when type arguments weren't provided)
+**Fix**: Added bounds check in `Type::substitute()` - if `idx >= args.len()`, keep the type parameter as-is instead of panicking
+**Files**: `crates/auto-lang/src/ast/types.rs`
+**Tests Fixed**: test_generic_field_access_x, test_generic_field_access_y, test_generic_field_addition, test_generic_type_instantiation
+
+#### Fix 10: Void Function Return Type Inference ✅
+**Problem**: `test_fn` - void functions like `fn hi(s str) { print(s); }` returned "0" instead of ""
+**Root Cause**: Parser defaults all functions without explicit return type to `Void`, but standalone functions with implicit returns (like `fn add(a, b) { a + b }`) need to be distinguished from truly void functions
+**Fix**:
+1. After compiling function body, check `last_expr_type` to detect if body has implicit return
+2. If parser set return type to Void but `last_expr_type != ObjectType::Void`, update `fn_return_types` to `Type::Unknown`
+3. At call site, check `fn_return_types` for all functions (not just type methods) to set `last_expr_type = Void`
+**Files**: `crates/auto-lang/src/vm/codegen.rs`
+**Tests Fixed**: test_fn (all 3 assertions now pass)
 
 ### Phase 6 Fixes Applied (2026-03-13)
 

@@ -328,7 +328,8 @@ impl Codegen {
                 self.compile_expr(expr)?;
                 // Plan 089: Evaluate and discard result if this is not the last expression
                 // of a block or script. This keeps the stack clean for subsequent ops.
-                if self.should_pop_expr_result {
+                // Plan 118 Phase 7: Don't pop if expression is void (no value on stack)
+                if self.should_pop_expr_result && self.last_expr_type != ObjectType::Void {
                     self.emit(OpCode::POP);
                 }
             }
@@ -465,6 +466,18 @@ impl Codegen {
 
                 // 5. Compile body FIRST to count locals
                 self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
+
+                // Plan 118 Phase 7: Update function return type based on body inference
+                // If parser defaulted to Void but body has implicit return, update the type
+                // This allows proper void detection for calls like: fn hi(s str) { print(s); }; hi("hello")
+                if matches!(fn_decl.ret, Type::Void) {
+                    // Check if body actually returns a value (has implicit return)
+                    if self.last_expr_type != ObjectType::Void {
+                        // Body has implicit return - mark as non-void
+                        // Use Unknown to indicate "has value but type unknown"
+                        self.fn_return_types.insert(fn_decl.name.to_string(), Type::Unknown);
+                    }
+                }
 
                 // 6. Get number of locals and INSERT stack reservation at function entry
                 let n_args = fn_decl.params.len();
@@ -1715,10 +1728,12 @@ impl Codegen {
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
         match expr {
             Expr::Int(i) => {
+                self.last_expr_type = ObjectType::Int;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(*i);
             }
             Expr::Bool(b) => {
+                self.last_expr_type = ObjectType::Bool;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(if *b { 1 } else { 0 });
             }
@@ -1731,11 +1746,13 @@ impl Codegen {
             }
             // Plan 073 Stage A.5: Double literal support
             Expr::Double(d, _) => {
+                self.last_expr_type = ObjectType::Double;
                 self.emit(OpCode::CONST_F64);
                 self.emit_f64(*d);
             }
             // Plan 073 Stage B: I64 literal support
             Expr::I64(i) => {
+                self.last_expr_type = ObjectType::Int;
                 self.emit(OpCode::CONST_I64);
                 self.emit_i64(*i);
             }
@@ -1753,11 +1770,13 @@ impl Codegen {
             }
             // Plan 073 Stage B: I8 literal support (use CONST_I32)
             Expr::I8(i) => {
+                self.last_expr_type = ObjectType::Int;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(*i as i32);
             }
             // Plan 073 Stage B: U8 literal support (use CONST_I32)
             Expr::U8(u) => {
+                self.last_expr_type = ObjectType::Int;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(*u as i32);
             }
@@ -1770,6 +1789,7 @@ impl Codegen {
             }
             // Plan 073 Stage B: Char literal support (use CONST_I32 for UTF-32 codepoint)
             Expr::Char(c) => {
+                self.last_expr_type = ObjectType::Char;
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(*c as i32);
             }
@@ -2149,6 +2169,8 @@ impl Codegen {
                 self.strings.push(bytes);
                 self.emit(OpCode::LOAD_STR);
                 self.code.extend_from_slice(&idx.to_le_bytes());
+                // Plan 118 Phase 7: Track expression type for proper result formatting
+                self.last_expr_type = ObjectType::String;
             }
             Expr::Ident(name) => {
                 let name_str = name.to_string();
@@ -3526,15 +3548,13 @@ impl Codegen {
                 });
 
                 // Plan 118 Phase 4: Function return type inference
-                // Check if function has an explicit void return type
-                // For methods with explicit void return (like fn fly() { print(...) }), mark as void
-                // BUT: Only do this for type methods (containing '.') because standalone functions
-                // like "fn add(a, b) { a + b }" may have implicit return even without explicit type.
-                if reloc_name.contains('.') {
-                    if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
-                        if matches!(ret_ty, Type::Void) {
-                            self.last_expr_type = ObjectType::Void;
-                        }
+                // After function body compilation, fn_return_types is updated with actual return type:
+                // - Type::Void: truly void (body ends with void call or no expression)
+                // - Type::Unknown: has implicit return value (body ends with non-void expression)
+                // - Other: explicit return type
+                if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
+                    if matches!(ret_ty, Type::Void) {
+                        self.last_expr_type = ObjectType::Void;
                     }
                 }
             }
@@ -3583,6 +3603,12 @@ impl Codegen {
                 for jump in jumps_to_end {
                     self.patch_jump(jump);
                 }
+
+                // Plan 118 Phase 7: If expression produces a value
+                // Set last_expr_type to indicate the result is not void
+                // For now, assume Int as a generic result type
+                // TODO: Proper type inference for if expressions
+                self.last_expr_type = ObjectType::Int;
             }
             Expr::Closure(closure) => {
                 // Plan 071: Compile closure with captured environment

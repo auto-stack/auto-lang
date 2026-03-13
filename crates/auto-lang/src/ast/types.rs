@@ -160,7 +160,13 @@ impl Type {
             // Type parameters: lookup and replace
             Type::User(type_decl) => {
                 if let Some(idx) = params.iter().position(|p| p == &type_decl.name) {
-                    args[idx].clone()
+                    // Safety check: ensure args has enough elements
+                    if idx < args.len() {
+                        args[idx].clone()
+                    } else {
+                        // Type argument not provided, keep the type parameter as-is
+                        self.clone()
+                    }
                 } else {
                     self.clone()
                 }
