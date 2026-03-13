@@ -1,0 +1,12 @@
+name: "jetdemo"
+version: "1.0.0"
+backend: "jet"
+
+app("jetdemo") {
+    // Jetpack Compose Android project
+    // Package: com.example.jetdemo
+
+    // To build: ./gradlew assembleDebug
+    // To run: ./gradlew installDebug
+    // Or open in Android Studio: auto open
+}

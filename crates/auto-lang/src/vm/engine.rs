@@ -1494,11 +1494,24 @@ impl AutoVM {
                 OpCode::GET_ELEM => {
                     // Stack: array_id/list_id/str_id, index
                     // Pop index first (top of stack)
-                    let index = task.ram.pop_i32() as usize;
+                    let index_i32 = task.ram.pop_i32();
                     // Pop array_id/list_id or str_id (tagged)
                     let obj_or_str_bits = task.ram.pop_i32();
 
-                    eprintln!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}", obj_or_str_bits, index);
+                    // Helper function to convert negative index to actual index
+                    // e.g., for array of length 3: -1 -> 2, -2 -> 1, -3 -> 0
+                    let normalize_index = |idx: i32, len: usize| -> Option<usize> {
+                        if idx >= 0 {
+                            let uidx = idx as usize;
+                            if uidx < len { Some(uidx) } else { None }
+                        } else {
+                            // Negative index: -1 means last element, -2 means second-to-last, etc.
+                            let from_end = (-idx) as usize;
+                            if from_end <= len && from_end > 0 { Some(len - from_end) } else { None }
+                        }
+                    };
+
+                    eprintln!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}", obj_or_str_bits, index_i32);
 
                     // Check if this is a tagged string index (negative value)
                     if obj_or_str_bits < 0 && obj_or_str_bits > -1000000 && obj_or_str_bits != -2147483648 {
@@ -1509,12 +1522,18 @@ impl AutoVM {
                             // Get the character at the specified index
                             // Convert bytes to string and get char
                             let s = String::from_utf8_lossy(bytes);
-                            if let Some(ch) = s.chars().nth(index) {
-                                eprintln!("DEBUG GET_ELEM: String[{}] = '{}'", index, ch);
-                                // Push character as i32 (Unicode code point)
-                                task.ram.push_i32(ch as i32);
+                            let char_count = s.chars().count();
+                            if let Some(normalized_idx) = normalize_index(index_i32, char_count) {
+                                if let Some(ch) = s.chars().nth(normalized_idx) {
+                                    eprintln!("DEBUG GET_ELEM: String[{}] = '{}'", normalized_idx, ch);
+                                    // Push character as i32 (Unicode code point)
+                                    task.ram.push_i32(ch as i32);
+                                } else {
+                                    eprintln!("DEBUG GET_ELEM: String index {} out of bounds", normalized_idx);
+                                    task.ram.push_i32(0); // Out of bounds
+                                }
                             } else {
-                                eprintln!("DEBUG GET_ELEM: String index {} out of bounds", index);
+                                eprintln!("DEBUG GET_ELEM: String index {} out of bounds", index_i32);
                                 task.ram.push_i32(0); // Out of bounds
                             }
                         } else {
@@ -1536,11 +1555,12 @@ impl AutoVM {
                                     "DEBUG GET_ELEM: Found List<int> with {} elems",
                                     list.elems.len()
                                 );
-                                if let Some(&elem) = list.elems.get(index) {
-                                    eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", index, elem);
+                                if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
+                                    let elem = list.elems[normalized_idx];
+                                    eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", normalized_idx, elem);
                                     task.ram.push_i32(elem);
                                 } else {
-                                    eprintln!("DEBUG GET_ELEM: Index {} out of bounds", index);
+                                    eprintln!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
                                     task.ram.push_i32(0); // Out of bounds
                                 }
                             }
@@ -1548,8 +1568,9 @@ impl AutoVM {
                             else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>()
                             {
                                 eprintln!("DEBUG GET_ELEM: Found List<String>");
-                                if let Some(_elem) = list.elems.get(index) {
+                                if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     // TODO: Support string elements (currently push placeholder)
+                                    let _elem = &list.elems[normalized_idx];
                                     task.ram.push_i32(0);
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
@@ -1558,7 +1579,8 @@ impl AutoVM {
                             // Try List<bool>
                             else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
                                 eprintln!("DEBUG GET_ELEM: Found List<bool>");
-                                if let Some(&elem) = list.elems.get(index) {
+                                if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
+                                    let elem = list.elems[normalized_idx];
                                     task.ram.push_i32(if elem { 1 } else { 0 });
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
@@ -1572,10 +1594,10 @@ impl AutoVM {
                         else if let Some(array_ref) = self.arrays.get(&obj_id) {
                             let array = array_ref.read().unwrap();
 
-                            // Check bounds
-                            if index < array.len() {
+                            // Use normalized index for negative index support
+                            if let Some(normalized_idx) = normalize_index(index_i32, array.len()) {
                                 // Get element value
-                                let elem = &array[index];
+                                let elem = &array[normalized_idx];
 
                                 // Push element value onto stack based on type
                                 match elem {
