@@ -33,7 +33,8 @@ mod test_generic_parse;
 mod test_generic_simple;
 mod test_let_generic;
 mod vm_functions_tests;
+// vm_tests and autovm_tests merged - Plan 118
+// autovm_tests removed - tests consolidated into vm_tests
 mod vm_tests;
-mod autovm_tests;
 mod infer_tests;
 mod autodown_tests;

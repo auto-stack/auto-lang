@@ -2212,3 +2212,625 @@ fn test_mixed_arithmetic_with_variable() {
     let result = run("let x = 2; x + 3.5").unwrap();
     assert_eq!(result, "5.5");
 }
+
+// ===== Merged from autovm_tests.rs (Plan 118) =====
+// Direct Bytecode Tests and Generic Type Tests
+
+#[test]
+fn test_vm_ret_constant() {
+    // Direct bytecode test: FN_PROLOG(0,0), CONST_I32(42), RET(0)
+    use crate::vm::opcode::OpCode;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let bytecode = vec![
+        OpCode::FN_PROLOG as u8, 0, 0,      // FN_PROLOG with n_args=0
+        OpCode::CONST_I32 as u8, 42, 0, 0, 0,  // CONST_I32(42)
+        OpCode::RET as u8, 0,                   // RET with n_args=0
+    ];
+
+    let flash = VirtualFlash::new_with_code(bytecode);
+    let vm = AutoVM::new(flash, 1024);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let task_id = vm.spawn_task(0, 1024);
+    rt.block_on(async { vm.run_task_loop().await; });
+
+    if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
+        let mut task = task_arc.blocking_lock();
+        let result = task.ram.pop_i32();
+        assert_eq!(result, 42, "Should return 42");
+    }
+}
+
+#[test]
+fn test_vm_const_i32_add() {
+    // Direct bytecode test: FN_PROLOG(0,0), CONST_I32(10), CONST_I32(20), ADD, RET(0)
+    use crate::vm::opcode::OpCode;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let bytecode = vec![
+        OpCode::FN_PROLOG as u8, 0, 0,      // FN_PROLOG
+        OpCode::CONST_I32 as u8, 10, 0, 0, 0,   // 10
+        OpCode::CONST_I32 as u8, 20, 0, 0, 0,  // 20
+        OpCode::ADD as u8,                        // 10 + 20
+        OpCode::RET as u8, 0,                   // RET
+    ];
+
+    let flash = VirtualFlash::new_with_code(bytecode);
+    let vm = AutoVM::new(flash, 1024);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let task_id = vm.spawn_task(0, 1024);
+    rt.block_on(async { vm.run_task_loop().await; });
+
+    if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
+        let mut task = task_arc.blocking_lock();
+        let result = task.ram.pop_i32();
+        assert_eq!(result, 30, "Should return 30");
+    }
+}
+
+#[test]
+fn test_generic_type_instantiation() {
+    // Test basic generic type instantiation
+    let code = r#"
+type Point<T> {
+    x T
+    y T
+}
+
+fn main() int {
+    let p = Point { x: 100, y: 200 }
+    p.x + p.y
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Generic type instantiation should work: {:?}", result);
+    assert_eq!(result.unwrap(), "300", "Should return sum of fields (100 + 200 = 300)");
+}
+
+#[test]
+fn test_generic_field_access_x() {
+    // Test accessing x field of generic type
+    let code = r#"
+type Point<T> {
+    x T
+    y T
+}
+
+fn main() int {
+    let p = Point { x: 100, y: 200 }
+    p.x
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Field access x should work: {:?}", result);
+    assert_eq!(result.unwrap(), "100", "Should return field value");
+}
+
+#[test]
+fn test_generic_field_access_y() {
+    // Test accessing y field of generic type
+    let code = r#"
+type Point<T> {
+    x T
+    y T
+}
+
+fn main() int {
+    let p = Point { x: 100, y: 200 }
+    p.y
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Field access y should work: {:?}", result);
+    assert_eq!(result.unwrap(), "200", "Should return field value");
+}
+
+#[test]
+fn test_generic_field_addition() {
+    // Test adding two field values of generic type
+    let code = r#"
+type Point<T> {
+    x T
+    y T
+}
+
+fn main() int {
+    let p = Point { x: 100, y: 200 }
+    p.x + p.y
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Generic field addition should work: {:?}", result);
+    assert_eq!(result.unwrap(), "300", "Should return sum");
+}
+
+#[test]
+fn test_field_addition_nongeneric() {
+    // Test adding two field values
+    let code = r#"
+type Point {
+    x int
+    y int
+}
+
+fn main() int {
+    let p = Point { x: 100, y: 200 }
+    p.x + p.y
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Field addition should work: {:?}", result);
+    assert_eq!(result.unwrap(), "300", "Should return sum");
+}
+
+#[test]
+fn test_type_instance_property() {
+    let code = r#"
+type A {
+    x int
+    y int
+}
+
+let a = A {x:1, y:2}
+a.x.type
+    "#;
+
+    let result = run(code);
+    assert_eq!(result.unwrap(), "int", "instance of type A should have type 'int'");
+}
+
+#[test]
+fn test_simple_int_main() {
+    // Test simple integer return with main function
+    let code = r#"
+fn main() int {
+    42
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Simple int return should work");
+    assert_eq!(result.unwrap(), "42", "Should return 42");
+}
+
+#[test]
+fn test_two_ints_main() {
+    // Test two integer variables with main function
+    let code = r#"
+fn main() int {
+    let a = 10000
+    let b = 20000
+    a + b
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Two ints should work: {:?}", result);
+    assert_eq!(result.unwrap(), "30000", "Should return 30000");
+}
+
+#[test]
+fn test_basic_add_main() {
+    // Test simplest case: 1 + 1 = 2
+    let code = r#"
+fn main() int {
+    1 + 1
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Basic addition should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_arithmetic_main() {
+    // Test operator precedence: 1+2*3 = 7
+    let code = r#"
+fn main() int {
+    1 + 2 * 3
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Arithmetic should work");
+    assert_eq!(result.unwrap(), "7", "Should return 7 (1+2*3=7)");
+}
+
+#[test]
+fn test_unary_main() {
+    // Test unary operator: -2*3 = -6
+    let code = r#"
+fn main() int {
+    -2 * 3
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Unary should work");
+    assert_eq!(result.unwrap(), "-6", "Should return -6");
+}
+
+#[test]
+fn test_group_main() {
+    // Test parentheses: (1+2)*3 = 9
+    let code = r#"
+fn main() int {
+    (1 + 2) * 3
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Grouping should work");
+    assert_eq!(result.unwrap(), "9", "Should return 9");
+}
+
+#[test]
+fn test_var_arithmetic_main() {
+    // Test variable with arithmetic: var a = 12312; a * 10 = 123120
+    let code = r#"
+fn main() int {
+    let a = 12312
+    a * 10
+}
+"#;
+
+    let result = run(code);
+    assert!(result.is_ok(), "Var arithmetic should work");
+    assert_eq!(result.unwrap(), "123120", "Should return 123120");
+}
+
+#[test]
+fn test_comp_false_main() {
+    // Test comparison that returns false
+    let code = r#"
+fn main() int {
+    2 < 1
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Comparison false should work: {:?}", result);
+    assert_eq!(result.unwrap(), "false", "Should return false");
+}
+
+#[test]
+fn test_eq_main() {
+    // Test equality operator - returns "true" for true
+    let code = r#"
+fn main() int {
+    1 == 1
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Equality should work: {:?}", result);
+    assert_eq!(result.unwrap(), "true", "Should return true");
+}
+
+#[test]
+fn test_eq_false_main() {
+    // Test inequality - returns "false" for false
+    let code = r#"
+fn main() int {
+    1 == 2
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Inequality should work: {:?}", result);
+    assert_eq!(result.unwrap(), "false", "Should return false");
+}
+
+#[test]
+fn test_compound_assignment_add_main() {
+    // Test compound assignment +=
+    let code = r#"
+fn main() int {
+    var a = 1
+    a += 1
+    a
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "+= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_compound_assignment_sub_main() {
+    // Test compound assignment -=
+    let code = r#"
+fn main() int {
+    var a = 10
+    a -= 3
+    a
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "-= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "7", "Should return 7");
+}
+
+#[test]
+fn test_compound_assignment_mul_main() {
+    // Test compound assignment *=
+    let code = r#"
+fn main() int {
+    var a = 5
+    a *= 3
+    a
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "*= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "15", "Should return 15");
+}
+
+#[test]
+fn test_compound_assignment_div_main() {
+    // Test compound assignment /=
+    let code = r#"
+fn main() int {
+    var a = 20
+    a /= 4
+    a
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "/= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "5", "Should return 5");
+}
+
+#[test]
+fn test_compound_assignment_chained_main() {
+    // Test chained compound assignments
+    let code = r#"
+fn main() int {
+    var a = 1
+    a += 1
+    a += 2
+    a += 3
+    a
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Chained += should work: {:?}", result);
+    assert_eq!(result.unwrap(), "7", "Should return 7");
+}
+
+#[test]
+fn test_array_main() {
+    // Test array literal
+    let code = r#"
+fn main() int {
+    [1, 2, 3]
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Array should work: {:?}", result);
+    assert_eq!(result.unwrap(), "[1, 2, 3]", "Should return [1, 2, 3]");
+}
+
+#[test]
+fn test_array_element_main() {
+    // Test array element access
+    let code = r#"
+fn main() int {
+    var a = [1, 2, 3]
+    a[0]
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Array element should work: {:?}", result);
+    assert_eq!(result.unwrap(), "1", "Should return 1");
+}
+
+#[test]
+fn test_array_element_1_main() {
+    // Test array element access at index 1
+    let code = r#"
+fn main() int {
+    var a = [1, 2, 3]
+    a[1]
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Array element 1 should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_array_element_2_main() {
+    // Test array element access at index 2
+    let code = r#"
+fn main() int {
+    var a = [1, 2, 3]
+    a[2]
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Array element 2 should work: {:?}", result);
+    assert_eq!(result.unwrap(), "3", "Should return 3");
+}
+
+#[test]
+fn test_object_main() {
+    // Test object literal
+    let code = r#"
+fn main() int {
+    var a = { name: "auto", age: 18 }
+    a.age
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Object should work: {:?}", result);
+    assert_eq!(result.unwrap(), "18", "Should return 18");
+}
+
+#[test]
+fn test_object_name_main() {
+    // Test object field access for string field
+    let code = r#"
+fn main() int {
+    var a = { name: "auto", age: 18 }
+    a.name
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Object name should work: {:?}", result);
+    assert_eq!(result.unwrap(), "auto", "Should return auto");
+}
+
+#[test]
+fn test_object_name_len_main() {
+    // Test object string field method call
+    let code = r#"
+fn main() int {
+    var a = { name: "auto", age: 18 }
+    a.name.len()
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Object name len should work: {:?}", result);
+    assert_eq!(result.unwrap(), "4", "Should return 4");
+}
+
+#[test]
+fn test_nested_object_main() {
+    // Test nested object access
+    let code = r#"
+fn main() int {
+    var obj = { inner: { x: 10, y: 20 } }
+    obj.inner.x
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Nested object should work: {:?}", result);
+    assert_eq!(result.unwrap(), "10", "Should return 10");
+}
+
+#[test]
+fn test_nested_object_y_main() {
+    // Test nested object y field
+    let code = r#"
+fn main() int {
+    var obj = { inner: { x: 10, y: 20 } }
+    obj.inner.y
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Nested object y should work: {:?}", result);
+    assert_eq!(result.unwrap(), "20", "Should return 20");
+}
+
+#[test]
+fn test_fn_main() {
+    // Test simple function call
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    add(12, 2)
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Function call should work: {:?}", result);
+    assert_eq!(result.unwrap(), "14", "Should return 14");
+}
+
+#[test]
+fn test_fn_with_args_main() {
+    // Test function with named arguments
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    add(a: 12, b: 2)
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Function with args should work: {:?}", result);
+    assert_eq!(result.unwrap(), "14", "Should return 14");
+}
+
+#[test]
+fn test_fn_multiple_main() {
+    // Test multiple function calls
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    add(add(1, 2), add(3, 4))
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Multiple function calls should work: {:?}", result);
+    assert_eq!(result.unwrap(), "10", "Should return 10");
+}
+
+#[test]
+fn test_fn_in_expression_main() {
+    // Test function call in expression
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    10 + add(5, 3)
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Function in expression should work: {:?}", result);
+    assert_eq!(result.unwrap(), "18", "Should return 18");
+}
+
+#[test]
+fn test_fn_nested_main() {
+    // Test nested function calls
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn mul(a int, b int) int {
+    a * b
+}
+
+fn main() int {
+    add(mul(2, 3), mul(4, 5))
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Nested function calls should work: {:?}", result);
+    assert_eq!(result.unwrap(), "26", "Should return 26");
+}
+
+#[test]
+fn test_fn_with_local_var_main() {
+    // Test function with local variable
+    let code = r#"
+fn double(a int) int {
+    let x = a + a
+    x
+}
+
+fn main() int {
+    double(5)
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Function with local var should work: {:?}", result);
+    assert_eq!(result.unwrap(), "10", "Should return 10");
+}
