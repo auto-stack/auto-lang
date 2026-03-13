@@ -273,6 +273,19 @@ impl AutovmReplSession {
         // Clear previous bytecode (IMPORTANT: don't accumulate!)
         codegen.code.clear();
 
+        // Plan 118 Phase 7: Emit FN_PROLOG and RESERVE_STACK for proper local variable support
+        // This matches what execute_autovm does in lib.rs
+        let n_locals = 16; // Reserve space for up to 16 locals
+
+        // Emit FN_PROLOG to set up BP
+        codegen.code.push(OpCode::FN_PROLOG as u8);
+        codegen.code.push(0); // n_args
+        codegen.code.push(n_locals); // n_locals
+
+        // Emit RESERVE_STACK to reserve space for locals
+        codegen.code.push(OpCode::RESERVE_STACK as u8);
+        codegen.code.push(n_locals);
+
         // 3. Compile new statements (reuses locals, exports, strings, etc.)
         // Plan 080: Ensure codegen is returned even on compilation failure
         let compile_result: AutoResult<()> = (|| {

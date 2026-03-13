@@ -679,6 +679,7 @@ impl Codegen {
                         self.var_types.insert(name_str.clone(), store.ty.clone());
                     } else {
                         // Plan 118 Phase 4: Infer type from expression when annotation is Unknown
+                        // Plan 118 Phase 7: Add closure type inference
                         let inferred_type = match &store.expr {
                             Expr::Str(s) => Type::Str(s.len()),
                             Expr::CStr(_) => Type::CStr,
@@ -693,6 +694,16 @@ impl Codegen {
                             Expr::Float(_, _) => Type::Float,
                             Expr::Double(_, _) => Type::Double,
                             Expr::Bool(_) => Type::Bool,
+                            // Plan 118 Phase 7: Closure type inference
+                            // Infer fn(params) return_type for closure expressions
+                            Expr::Closure(closure) => {
+                                let param_types: Vec<Type> = closure.params.iter()
+                                    .map(|p| p.ty.clone().unwrap_or(Type::Unknown))
+                                    .collect();
+                                // Infer return type from body expression
+                                let ret_type = self.infer_expr_type(&closure.body);
+                                Type::Fn(param_types, Box::new(ret_type))
+                            }
                             _ => store.ty.clone(),
                         };
                         self.var_types.insert(name_str.clone(), inferred_type);
@@ -2979,6 +2990,61 @@ impl Codegen {
                     None
                 };
 
+                // Plan 118 Phase 7: Check if calling a closure variable
+                // If call.name is Ident and the variable has Fn type, use CALL_CLOSURE
+                let is_closure_call = if let Expr::Ident(name) = call.name.as_ref() {
+                    let name_str = name.to_string();
+                    if let Some(var_type) = self.var_types.get(&name_str) {
+                        matches!(var_type, Type::Fn(_, _))
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if is_closure_call {
+                    // Closure variable call: load closure_id, then use CALL_CLOSURE
+                    // Stack layout for CALL_CLOSURE: [..., arg1, arg2, closure_id]
+                    // (closure_id should be on top of stack when CALL_CLOSURE executes)
+                    if let Expr::Ident(name) = call.name.as_ref() {
+                        let name_str = name.to_string();
+                        eprintln!("DEBUG: Closure variable call: {}", name_str);
+
+                        // Compile arguments FIRST (push them to stack)
+                        for arg in &call.args.args {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                crate::ast::Arg::Pair(_, expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                crate::ast::Arg::Name(name) => {
+                                    self.compile_expr(&Expr::Ident(name.clone()))?;
+                                }
+                            }
+                        }
+
+                        // Load the closure_id from the variable LAST (so it's on top)
+                        if let Some(var_index) = self.lookup_var(&name_str) {
+                            self.emit_load_loc(var_index);
+                        } else {
+                            return Err(AutoError::Msg(format!(
+                                "Undefined closure variable: {}",
+                                name_str
+                            )));
+                        }
+
+                        // Emit CALL_CLOSURE with arg_count
+                        self.emit(OpCode::CALL_CLOSURE);
+                        self.code.push(call.args.args.len() as u8);
+
+                        // Skip the rest of the function call logic
+                        return Ok(());
+                    }
+                }
+
                 if let Some(id) = native_id {
                     // Native function call
                     // For instance methods, compile receiver (self) FIRST, then arguments
@@ -4351,12 +4417,20 @@ impl Codegen {
         let func_addr_offset = self.code.len() as u32; // Position where func_addr will be
         self.code.extend_from_slice(&(0u32).to_le_bytes()); // Placeholder - will be filled later
         self.code.push(free_vars.len() as u8); // capture_count
+        self.code.push(closure.params.len() as u8); // n_args (for CALL_CLOSURE)
 
         // Emit variable name indices for each captured variable
         for var_name in &free_vars {
             let var_idx = self.add_string(var_name);
             self.code.extend_from_slice(&var_idx.to_le_bytes());
         }
+
+        // Step 3.5: Emit JMP to skip closure body during normal execution
+        // After CLOSURE opcode, we need to jump over the closure body
+        // JMP offset will be patched later after we know body size
+        self.emit(OpCode::JMP);
+        let jmp_offset_pos = self.code.len();
+        self.code.extend_from_slice(&(0i16).to_le_bytes()); // Placeholder - will be filled after body
 
         // Step 4: Compile closure body as separate function (Plan 071 Phase 6.2)
         // Closure body is compiled AFTER the CLOSURE opcode (at the end of current code)
@@ -4372,6 +4446,10 @@ impl Codegen {
 
         // Compile closure body at the END of current code
         let func_addr = self.code.len() as u32;
+
+        // Save old current_fn_n_args and set new value for closure
+        let old_fn_n_args = self.current_fn_n_args;
+        self.current_fn_n_args = closure.params.len();
 
         // Enter new scope for closure parameters
         self.push_scope();
@@ -4389,21 +4467,25 @@ impl Codegen {
         // Exit closure scope
         self.pop_scope();
 
+        // Restore old current_fn_n_args
+        self.current_fn_n_args = old_fn_n_args;
+
         // Pop captured_vars (restore outer closure's captured vars)
         self.pop_captured_vars();
+
+        // Step 4.5: Back-fill JMP offset to skip closure body during normal execution
+        let body_end_addr = self.code.len() as u32;
+        let jmp_offset = ((body_end_addr as i32) - (jmp_offset_pos as i32 + 2)) as i16; // +2 for the i16 offset itself
+        let jmp_bytes = jmp_offset.to_le_bytes();
+        for (i, byte) in jmp_bytes.iter().enumerate() {
+            self.code[jmp_offset_pos as usize + i] = *byte;
+        }
 
         // Step 5: Back-fill the func_addr in the CLOSURE opcode
         // Now we know the actual function address, so we can fill it in
         let func_addr_bytes = func_addr.to_le_bytes();
-        eprintln!(
-            "DEBUG: Closure back-fill: func_addr_offset={}, func_addr={}, writing {} bytes",
-            func_addr_offset,
-            func_addr,
-            func_addr_bytes.len()
-        );
         for (i, byte) in func_addr_bytes.iter().enumerate() {
             let idx = func_addr_offset as usize + i;
-            eprintln!("DEBUG:   code[{}] = {} (was {})", idx, byte, self.code[idx]);
             self.code[idx] = *byte;
         }
 

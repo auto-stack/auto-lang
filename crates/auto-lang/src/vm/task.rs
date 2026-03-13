@@ -32,6 +32,7 @@ pub struct AutoTask {
     pub status: TaskStatus,
     pub wake_time: Option<Instant>, // For SLEEP opcode
     pub current_closure_id: Option<u32>, // Plan 071: Current closure being executed
+    pub saved_closure_id: Option<u32>,   // Saved closure ID for restoration on RET
     // Plan 088 Phase 4: Function metadata from FN_PROLOG instruction
     pub current_fn_n_args: usize, // Number of arguments in current function
     pub current_fn_n_locals: usize, // Number of local variables in current function (from prologue)
@@ -52,6 +53,7 @@ impl AutoTask {
             status: TaskStatus::Ready,
             wake_time: None,
             current_closure_id: None,
+            saved_closure_id: None,
             current_fn_n_args: 0, // Plan 088 Phase 4: Initialize to 0
             current_fn_n_locals: 0, // Plan 088 Phase 4: Initialize to 0
             last_result_type: ResultType::default(), // Plan 118: Initialize to Int

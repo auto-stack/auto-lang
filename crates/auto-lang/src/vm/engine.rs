@@ -53,6 +53,7 @@ use auto_val::Value;
 pub struct Closure {
     pub func_addr: u32,              // Bytecode address
     pub env: HashMap<String, Value>, // Direct captured values (no upvalues!)
+    pub n_args: usize,               // Number of parameters (for CALL_CLOSURE to set current_fn_n_args)
 }
 
 #[derive(Debug)]
@@ -1944,20 +1945,8 @@ impl AutoVM {
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
 
-                    // Plan 071 Phase 5: Restore previous closure (if any)
-                    // Stack layout: [..., old_closure_id, ret_ip, old_bp, args...]
-                    //               bp-2          bp-1    bp
-                    // Only restore if bp - 2 is valid (not in main task)
-                    let old_closure_id_val = if task.bp >= 2 {
-                        task.ram.read_i32(task.bp - 2)
-                    } else {
-                        0
-                    };
-                    task.current_closure_id = if old_closure_id_val == 0 {
-                        None
-                    } else {
-                        Some(old_closure_id_val as u32)
-                    };
+                    // Plan 071 Phase 5: Restore previous closure from saved_closure_id
+                    task.current_closure_id = task.saved_closure_id;
 
                     let new_sp = task.bp - n_args;
 
@@ -1979,11 +1968,15 @@ impl AutoVM {
                 // === Closures (Plan 071: Direct Capture) ===
                 OpCode::CLOSURE => {
                     // Stack: capture_count × value -> closure_id
-                    // Immediate: func_addr (u32), capture_count (u8)
+                    // Immediate: func_addr (u32), capture_count (u8), n_args (u8)
                     let func_addr = self.flash.read_u32(task.ip);
                     task.ip += 4;
                     let capture_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
+                    let n_args = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    eprintln!("DEBUG CLOSURE: func_addr={}, capture_count={}, n_args={}, ip after header={}, sp before={}", func_addr, capture_count, n_args, task.ip, task.ram.sp);
 
                     // Pop captured values from stack and build environment
                     let mut env = HashMap::new();
@@ -2011,7 +2004,9 @@ impl AutoVM {
 
                     // Create closure
                     let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
-                    let closure = Closure { func_addr, env };
+                    let closure = Closure { func_addr, env, n_args };
+
+                    eprintln!("DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}", closure_id, task.ip, task.ram.sp);
 
                     self.closures.insert(closure_id, closure);
                     task.ram.push_i32(closure_id as i32);
@@ -2137,10 +2132,12 @@ impl AutoVM {
                         let old_closure_id = task.current_closure_id;
                         task.current_closure_id = Some(closure_id);
 
-                        // Push old closure ID to stack (to restore on RET)
-                        // We'll use a special marker value: -1 means "no closure"
-                        let old_closure_val = old_closure_id.unwrap_or(0);
-                        task.ram.push_i32(old_closure_val as i32);
+                        // Set current_fn_n_args for LOAD_LOCAL parameter access
+                        task.current_fn_n_args = _closure.n_args;
+
+                        // Store old closure ID in task (not on stack) to avoid breaking parameter layout
+                        // The RET opcode will restore it from task.saved_closure_id
+                        task.saved_closure_id = old_closure_id;
 
                         // Push Return Address (IP)
                         task.ram.push_i32(task.ip as i32);
@@ -2427,7 +2424,9 @@ impl AutoVM {
                 }
                 OpCode::LOAD_LOC_0 => {
                     // Load from bp+1 (first local variable)
-                    let val = task.ram.read_i32(task.bp + 1);
+                    let addr = task.bp + 1;
+                    eprintln!("DEBUG LOAD_LOC_0: bp={}, addr={}, sp={}", task.bp, addr, task.ram.sp);
+                    let val = task.ram.read_i32(addr);
                     task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_1 => {
@@ -2479,11 +2478,15 @@ impl AutoVM {
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
+                    eprintln!("DEBUG RESERVE_STACK: n_locals={}, sp before={}", n_locals, task.ram.sp);
+
                     // Push n_locals+1 zeros to reserve space for local variables + 1 extra slot
                     // The extra slot ensures SP starts beyond all local variable addresses
                     for _ in 0..n_locals + 1 {
                         task.ram.push_i32(0);
                     }
+
+                    eprintln!("DEBUG RESERVE_STACK: sp after={}", task.ram.sp);
 
                     // Track num_locals for native shims
                     task.num_locals = n_locals;
