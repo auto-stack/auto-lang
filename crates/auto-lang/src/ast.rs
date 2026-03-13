@@ -312,6 +312,11 @@ pub enum Expr {
     // May type operators (Phase 1b.3)
     NullCoalesce(Box<Expr>, Box<Expr>),  // left ?? right
     ErrorPropagate(Box<Expr>),            // expression.?
+    // Plan 120: Option and Result constructors
+    Some(Box<Expr>),                      // Some(value)
+    None,                                 // None
+    Ok(Box<Expr>),                        // Ok(value)
+    Err(Box<Expr>),                       // Err(message)
     // Router navigation (Plan 105)
     NavCall {
         path: Box<Expr>,
@@ -391,6 +396,11 @@ impl fmt::Display for Expr {
             Expr::Range(r) => write!(f, "{}", r),
             Expr::NullCoalesce(l, r) => write!(f, "(?? {} {})", l, r),
             Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
+            // Plan 120: Option and Result constructors
+            Expr::Some(e) => write!(f, "(Some {})", e),
+            Expr::None => write!(f, "None"),
+            Expr::Ok(e) => write!(f, "(Ok {})", e),
+            Expr::Err(e) => write!(f, "(Err {})", e),
             Expr::NavCall { path, params } => {
                 write!(f, "(nav {} ", path)?;
                 for (i, param) in params.iter().enumerate() {
@@ -841,6 +851,23 @@ impl ToNode for Expr {
                 for pair in params {
                     node.add_kid(pair.to_node());
                 }
+                node
+            }
+            // Plan 120: Option and Result constructors
+            Expr::Some(e) => {
+                let mut node = AutoNode::new("Some");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::None => AutoNode::new("None"),
+            Expr::Ok(e) => {
+                let mut node = AutoNode::new("Ok");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Err(e) => {
+                let mut node = AutoNode::new("Err");
+                node.add_kid(e.to_node());
                 node
             }
         }

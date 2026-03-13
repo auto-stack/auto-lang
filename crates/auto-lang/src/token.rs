@@ -69,6 +69,7 @@ pub enum TokenKind {
     Question,         // ?
     QuestionQuestion, // ??
     DotQuestion,      // ?.
+    DotQuest,         // .? (Plan 120: error propagation operator)
     At,               // @
     Hash,             // #
     Tilde,            // ~
@@ -223,6 +224,7 @@ impl fmt::Display for Token {
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::QuestionQuestion => write!(f, "??"),
             TokenKind::DotQuestion => write!(f, "?."),
+            TokenKind::DotQuest => write!(f, ".?"),
             TokenKind::Use => write!(f, "<use>"),
             TokenKind::Spec => write!(f, "<spec>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),

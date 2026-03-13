@@ -177,6 +177,10 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
 
         // 其他类型
         Type::Union(_) | Type::Tag(_) | Type::Enum(_) | Type::Storage(_) => false,
+
+        // Plan 120: Option 和 Result 类型 - 递归检查内部类型
+        Type::Option(inner) => occurs_in(var_name, inner),
+        Type::Result(inner) => occurs_in(var_name, inner),
     }
 }
 

@@ -383,10 +383,19 @@ impl<'a> Lexer<'a> {
             return Token::new(TokenKind::Range, self.pos(2), "..".into());
         }
 
-        // Check for ?. (error propagate operator)
+        // Check for ?. (error propagate operator - legacy May<T> style)
         if self.peek('?') {
             self.chars.next();
             return Token::new(TokenKind::DotQuestion, self.pos(2), "?.".into());
+        }
+
+        // Plan 120: Check for .? (error propagation operator - new Option/Result style)
+        // This is handled by peeking ahead for '?' after the dot
+        // We need to check if the next char is '?' (not peek, since we already consumed the dot)
+        let iter_for_quest = self.chars.clone();
+        if let Some('?') = iter_for_quest.clone().next() {
+            self.chars.next(); // consume '?'
+            return Token::new(TokenKind::DotQuest, self.pos(2), ".?".into());
         }
 
         // Check for property keywords: .view, .mut, .take

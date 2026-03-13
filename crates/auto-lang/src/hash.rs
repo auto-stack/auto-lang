@@ -166,6 +166,8 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::CStruct(_) => hasher.update(b"CStruct"),
         Type::Linear(_) => hasher.update(b"Linear"),
         Type::Variadic => hasher.update(b"Variadic"),
+        Type::Option(_) => hasher.update(b"Option"),  // Plan 120
+        Type::Result(_) => hasher.update(b"Result"),  // Plan 120
     };
 }
 

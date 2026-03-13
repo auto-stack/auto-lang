@@ -147,6 +147,15 @@ pub enum Value {
     ValueRef(ValueID),
     /// Closure value: captured environment + function body (Plan 060 Phase 3)
     Closure(Closure),
+    // Plan 120: Option and Result types
+    /// Optional value - Some(value) or None
+    /// Represents ?T type - value might not exist
+    Some(Box<Value>),
+    None,
+    /// Result value - Ok(value) or Err(message)
+    /// Represents !T type - operation might have failed
+    Ok(Box<Value>),
+    Err(AutoStr),
 }
 
 // constructors
@@ -432,6 +441,11 @@ impl Display for Value {
             Value::VmRef(_) => write!(f, "<vmref>"),
             Value::ValueRef(vid) => write!(f, "{}", vid), // NEW: Display ValueID
             Value::Closure(closure) => write!(f, "<closure {}>", closure.name),
+            // Plan 120: Option and Result display
+            Value::Some(inner) => write!(f, "Some({})", inner),
+            Value::None => write!(f, "None"),
+            Value::Ok(inner) => write!(f, "Ok({})", inner),
+            Value::Err(msg) => write!(f, "Err(\"{}\")", msg),
         }
     }
 }
@@ -474,7 +488,8 @@ pub enum Op {
     DotTake,  // DEPRECATED - use DotMove instead
     // May type operators (Phase 1b.3)
     QuestionQuestion,  // ?? - null-coalescing operator
-    DotQuestion,       // ?. - error propagation operator
+    DotQuestion,       // ?. - error propagation operator (legacy May<T>)
+    DotQuest,          // .? - error propagation operator (Plan 120: Option/Result)
 }
 
 impl Value {
@@ -779,6 +794,7 @@ impl fmt::Display for Op {
             Op::DotTake => write!(f, "(op .take)"),
             Op::QuestionQuestion => write!(f, "(op ??)"),
             Op::DotQuestion => write!(f, "(op ?.)"),
+            Op::DotQuest => write!(f, "(op .?)"),
         }
     }
 }
@@ -826,6 +842,7 @@ impl Op {
             Op::DotTake => ".take",
             Op::QuestionQuestion => "??",
             Op::DotQuestion => "?.",
+            Op::DotQuest => ".?",
         }
     }
 }

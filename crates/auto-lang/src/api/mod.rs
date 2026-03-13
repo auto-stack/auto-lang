@@ -211,6 +211,8 @@ fn type_to_string(ty: &Type) -> String {
         }
         Type::Storage(storage) => storage.to_string(),
         Type::Union(union) => format!("union({})", union.name),
+        Type::Option(inner) => format!("?{}", type_to_string(inner)),  // Plan 120
+        Type::Result(inner) => format!("!{}", type_to_string(inner)),  // Plan 120
     }
 }
 

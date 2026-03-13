@@ -126,7 +126,8 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         Op::Dot => Ok(PREC_DOT),
         // Property keywords (Phase 3): same precedence as dot
         // Error propagation (Phase 1b..3): ?. same precedence as dot
-        Op::DotView | Op::DotMut | Op::DotMove | Op::DotTake | Op::DotQuestion => Ok(PREC_DOT),
+        // Plan 120: .? same precedence as dot
+        Op::DotView | Op::DotMut | Op::DotMove | Op::DotTake | Op::DotQuestion | Op::DotQuest => Ok(PREC_DOT),
         // May type operators (Phase 1b.3)
         Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
         // Logical operators (Plan 072)
@@ -1629,6 +1630,11 @@ impl<'a> Parser<'a> {
                     lhs = Expr::ErrorPropagate(Box::new(lhs));
                     continue;
                 }
+                // Plan 120: .? error propagation (new Option/Result style)
+                Op::DotQuest => {
+                    lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    continue;
+                }
                 _ => {
                     // Regular infix operators need rhs
                     let rhs = self.expr_pratt(power.r)?;
@@ -1757,6 +1763,7 @@ impl<'a> Parser<'a> {
             TokenKind::DotTake => Op::DotTake,
             TokenKind::QuestionQuestion => Op::QuestionQuestion,
             TokenKind::DotQuestion => Op::DotQuestion,
+            TokenKind::DotQuest => Op::DotQuest,  // Plan 120: .? error propagation
             TokenKind::And => Op::And,
             TokenKind::Or => Op::Or,
             _ => {
@@ -1988,10 +1995,38 @@ impl<'a> Parser<'a> {
 
     pub fn ident(&mut self) -> AutoResult<Expr> {
         let name = self.cur.text.clone();
-        // // check for existence
-        // if !self.exists(&name) {
-        //     return Err(format!("Undefined variable: {}", name));
-        // }
+
+        // Plan 120: Check for Option and Result constructors
+        match name.as_str() {
+            "Some" => {
+                self.next(); // consume 'Some'
+                self.expect(TokenKind::LParen)?;
+                let value = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                return Ok(Expr::Some(Box::new(value)));
+            }
+            "None" => {
+                self.next(); // consume 'None'
+                return Ok(Expr::None);
+            }
+            "Ok" => {
+                self.next(); // consume 'Ok'
+                self.expect(TokenKind::LParen)?;
+                let value = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                return Ok(Expr::Ok(Box::new(value)));
+            }
+            "Err" => {
+                self.next(); // consume 'Err'
+                self.expect(TokenKind::LParen)?;
+                let msg = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                return Ok(Expr::Err(Box::new(msg)));
+            }
+            _ => {}
+        }
+
+        // Regular identifier
         Ok(Expr::Ident(name))
     }
 
@@ -6149,79 +6184,16 @@ impl<'a> Parser<'a> {
     pub fn parse_type(&mut self) -> AutoResult<Type> {
         match self.cur.kind {
             TokenKind::Question => {
-                // Parse ?T as syntax sugar for May<T> generic tag
+                // Plan 120: Parse ?T as Type::Option(T)
                 self.next(); // Consume '?'
                 let inner_type = self.parse_type()?;
-
-                // Look up generic May tag definition from stdlib
-                let may_tag_ref = self.lookup_type(&Name::from("May"));
-                let (subst_name, substituted_fields, methods) = match &*may_tag_ref.borrow() {
-                    Type::Tag(t) if !t.borrow().generic_params.is_empty() => {
-                        // Use stdlib May<T> tag with substitution
-                        let tag = t.borrow().clone();
-                        let param_names: Vec<_> = tag
-                            .generic_params
-                            .iter()
-                            .map(|gp| match gp {
-                                crate::ast::GenericParam::Type(tp) => tp.name.clone(),
-                                crate::ast::GenericParam::Const(cp) => cp.name.clone(),
-                            })
-                            .collect();
-                        let type_args = vec![inner_type.clone()];
-
-                        let fields: Vec<_> = tag
-                            .fields
-                            .iter()
-                            .map(|field| TagField {
-                                name: field.name.clone(),
-                                ty: field.ty.substitute(&param_names, &type_args),
-                            })
-                            .collect();
-
-                        // Use underscore naming for stdlib tags (May_int, May_string)
-                        let inner_name = type_args[0].unique_name().to_string();
-                        (format!("May_{}", inner_name), fields, tag.methods)
-                    }
-                    _ => {
-                        // Fallback: Create builtin May<T> directly (no substitution needed)
-                        // For C transpilation tests that don't load stdlib
-                        let inner_name = inner_type.unique_name().to_string();
-                        let subst_name = format!("May{}", capitalize_first(&inner_name));
-
-                        let fields = vec![
-                            TagField {
-                                name: Name::from("nil"),
-                                ty: Type::Unknown,
-                            },
-                            TagField {
-                                name: Name::from("val"),
-                                ty: inner_type.clone(),
-                            },
-                            TagField {
-                                name: Name::from("err"),
-                                ty: Type::Int,
-                            },
-                        ];
-
-                        (subst_name, fields, Vec::new())
-                    }
-                };
-
-                // Create new substituted tag
-                let substituted_tag = Tag {
-                    name: subst_name.clone().into(),
-                    generic_params: Vec::new(), // No type params in instantiated tag
-                    fields: substituted_fields,
-                    methods,
-                };
-
-                // Register the substituted tag in scope
-                self.define(
-                    subst_name.as_str(),
-                    Meta::Type(Type::Tag(shared(substituted_tag.clone()))),
-                );
-
-                Ok(Type::Tag(shared(substituted_tag)))
+                Ok(Type::Option(Box::new(inner_type)))
+            }
+            TokenKind::Not => {
+                // Plan 120: Parse !T as Type::Result(T)
+                self.next(); // Consume '!'
+                let inner_type = self.parse_type()?;
+                Ok(Type::Result(Box::new(inner_type)))
             }
             TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),

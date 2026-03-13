@@ -268,6 +268,9 @@ impl RustTrans {
             }
             Type::I64 => "i64".to_string(),
             Type::U64 => "u64".to_string(),
+            // Plan 120: Option and Result types
+            Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
+            Type::Result(inner) => format!("Result<{}, String>", self.rust_type_name(inner)),
         }
     }
 

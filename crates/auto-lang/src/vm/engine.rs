@@ -912,6 +912,72 @@ impl AutoVM {
 
                     task.ram.push_i32(-(result_idx as i32) - 1);
                 }
+                // Plan 120: Option type constructor - Some(value)
+                OpCode::CREATE_SOME => {
+                    // Value is already on stack, just tag it as Some
+                    // We use a special encoding: Some values are positive, None is -1
+                    // The value is already on stack, no change needed for now
+                    // This opcode is a marker for type tracking
+                    // TODO: Implement proper Option<T> type tracking in VM
+                }
+                // Plan 120: Option type constructor - None
+                OpCode::CREATE_NONE => {
+                    // Push None onto stack (represented as -1)
+                    task.ram.push_i32(-1);
+                }
+                // Plan 120: Result type constructor - Ok(value)
+                OpCode::CREATE_OK => {
+                    // Value is already on stack, just tag it as Ok
+                    // We use a special encoding: Ok values are positive, Err is negative (< -1)
+                    // The value is already on stack, no change needed for now
+                    // This opcode is a marker for type tracking
+                    // TODO: Implement proper Result<T> type tracking in VM
+                }
+                // Plan 120: Result type constructor - Err(message)
+                OpCode::CREATE_ERR => {
+                    // Pop error message string index from stack
+                    let _msg_bits = task.ram.pop_i32();
+
+                    // Encode Err as a special negative value
+                    // For now, we use -2 to distinguish from None (-1)
+                    // The actual error message is stored in strings pool
+                    // TODO: Implement proper Err storage with message tracking
+                    task.ram.push_i32(-2);
+                }
+                // Plan 120: Check if Option is Some
+                OpCode::IS_SOME => {
+                    let value = task.ram.pop_i32();
+                    // Some: value >= 0, None: value == -1
+                    let is_some = if value >= 0 { 1 } else { 0 };
+                    task.ram.push_i32(is_some);
+                }
+                // Plan 120: Check if Result is Ok
+                OpCode::IS_OK => {
+                    let value = task.ram.pop_i32();
+                    // Ok: value >= 0, Err: value < 0
+                    let is_ok = if value >= 0 { 1 } else { 0 };
+                    task.ram.push_i32(is_ok);
+                }
+                // Plan 120: Unwrap Option (panic if None)
+                OpCode::UNWRAP_SOME => {
+                    let value = task.ram.pop_i32();
+                    if value == -1 {
+                        // Panic on None
+                        return Err(VMError::RuntimeError("called unwrap on None".to_string()));
+                    }
+                    // Push the unwrapped value back
+                    task.ram.push_i32(value);
+                }
+                // Plan 120: Unwrap Result (panic if Err)
+                OpCode::UNWRAP_OK => {
+                    let value = task.ram.pop_i32();
+                    if value < 0 {
+                        // Panic on Err
+                        return Err(VMError::RuntimeError("called unwrap on Err".to_string()));
+                    }
+                    // Push the unwrapped value back
+                    task.ram.push_i32(value);
+                }
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
                 OpCode::CREATE_LIST_INT => {
                     // Plan 077 Phase 5: Create List<int> in unified registry

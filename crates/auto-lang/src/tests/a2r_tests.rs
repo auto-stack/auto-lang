@@ -281,3 +281,9 @@ fn test_017_spec() {
 fn test_117_list_storage() {
     test_a2r("117_list_storage").unwrap();
 }
+
+// Plan 120: Option and Result type tests
+#[test]
+fn test_120_option() {
+    test_a2r("120_option").unwrap();
+}

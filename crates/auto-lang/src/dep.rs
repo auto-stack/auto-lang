@@ -232,6 +232,11 @@ impl<'db> DepScanner<'db> {
             | Expr::NullCoalesce(_, _) => {}
             | Expr::ErrorPropagate(_) => {}
             | Expr::NavCall { .. } => {}  // Plan 105: Navigation has no dependencies
+            // Plan 120: Option and Result constructors - walk inner expressions
+            | Expr::Some(e) => { self.walk_expr(e, deps); }
+            | Expr::None => {}
+            | Expr::Ok(e) => { self.walk_expr(e, deps); }
+            | Expr::Err(e) => { self.walk_expr(e, deps); }
         }
     }
 

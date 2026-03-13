@@ -1653,16 +1653,65 @@ impl Codegen {
                 for branch in &is_stmt.branches {
                     match branch {
                         crate::ast::IsBranch::EqBranch(pattern, body) => {
-                            // Duplicate target for comparison
-                            self.emit(OpCode::DUP);
+                            // Plan 120: Check for Option/Result pattern matching
+                            match pattern {
+                                crate::ast::Expr::None => {
+                                    // Duplicate target for comparison
+                                    self.emit(OpCode::DUP);
+                                    // Check if value is None (-1)
+                                    self.emit(OpCode::IS_NIL);
+                                }
+                                crate::ast::Expr::Some(inner) => {
+                                    // Duplicate target for checking
+                                    self.emit(OpCode::DUP);
+                                    // Check if value is Some (not None)
+                                    self.emit(OpCode::IS_SOME);
 
-                            // Evaluate pattern expression
-                            self.compile_expr(pattern)?;
+                                    // TODO: For now, we don't bind the inner value
+                                    // Full pattern matching with binding would require
+                                    // extending the IsBranch structure
+                                    let _ = inner; // Suppress unused warning
+                                }
+                                crate::ast::Expr::Ok(inner) => {
+                                    // Duplicate target for checking
+                                    self.emit(OpCode::DUP);
+                                    // Check if value is Ok (not Err)
+                                    self.emit(OpCode::IS_OK);
 
-                            // Compare target with pattern
-                            self.emit(OpCode::EQ);
+                                    let _ = inner; // Suppress unused warning
+                                }
+                                crate::ast::Expr::Err(msg) => {
+                                    // Duplicate target for checking
+                                    self.emit(OpCode::DUP);
+                                    // Check if value is Err (not Ok)
+                                    // IS_OK returns 1 if Ok, 0 if Err
+                                    // We want to match Err, so we need to negate
+                                    self.emit(OpCode::IS_OK);
+                                    // Now: 1 = Ok (should not match), 0 = Err (should match)
+                                    // JMP_IF_Z jumps if value is 0, so Err will NOT jump
+                                    // But we want Err to continue (match), so we need to invert
+                                    // Use XOR with 1 to invert: 1->0, 0->1
+                                    self.emit(OpCode::CONST_I32);
+                                    self.emit_i32(1);
+                                    self.emit(OpCode::XOR);
+                                    // Now: 0 = Ok (will jump, no match), 1 = Err (will not jump, match)
 
-                            // Jump to next branch if not equal
+                                    let _ = msg; // Suppress unused warning
+                                }
+                                _ => {
+                                    // Standard equality comparison for other patterns
+                                    // Duplicate target for comparison
+                                    self.emit(OpCode::DUP);
+
+                                    // Evaluate pattern expression
+                                    self.compile_expr(pattern)?;
+
+                                    // Compare target with pattern
+                                    self.emit(OpCode::EQ);
+                                }
+                            }
+
+                            // Jump to next branch if not matched
                             self.emit(OpCode::JMP_IF_Z);
                             let jump_to_next = self.emit_placeholder_i16();
                             branch_jumps.push(jump_to_next);
@@ -3635,6 +3684,33 @@ impl Codegen {
                 self.compile_expr(expr)?;
                 // Emit ERROR_PROPAGATE (pops May<T>, pushes unwrapped value or early returns)
                 self.emit(OpCode::ERROR_PROPAGATE);
+            }
+            // Plan 120: Option type constructor - Some(value)
+            Expr::Some(inner) => {
+                // Compile inner expression (pushes value onto stack)
+                self.compile_expr(inner)?;
+                // Emit CREATE_SOME (wraps value in Some)
+                self.emit(OpCode::CREATE_SOME);
+            }
+            // Plan 120: Option type constructor - None
+            Expr::None => {
+                // Emit CREATE_NONE (pushes None onto stack)
+                self.emit(OpCode::CREATE_NONE);
+            }
+            // Plan 120: Result type constructor - Ok(value)
+            Expr::Ok(inner) => {
+                // Compile inner expression (pushes value onto stack)
+                self.compile_expr(inner)?;
+                // Emit CREATE_OK (wraps value in Ok)
+                self.emit(OpCode::CREATE_OK);
+            }
+            // Plan 120: Result type constructor - Err(message)
+            Expr::Err(msg) => {
+                // Compile error message expression (should be a string)
+                self.compile_expr(msg)?;
+                // The message should be on stack as a string index
+                // Emit CREATE_ERR (creates Err from string)
+                self.emit(OpCode::CREATE_ERR);
             }
             Expr::Pair(pair) => {
                 // Handle Pair as a single-element object for config syntax like: name: "value"

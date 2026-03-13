@@ -110,6 +110,10 @@ impl TypeScriptTrans {
 
             // Storage → type name
             Type::Storage(storage) => storage.to_string(),
+
+            // Plan 120: Option and Result types
+            Type::Option(inner) => format!("{} | null", Self::type_to_ts(inner)),
+            Type::Result(inner) => format!("{} | Error", Self::type_to_ts(inner)),
         }
     }
 

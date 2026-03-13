@@ -39,6 +39,15 @@ pub enum OpCode {
     NULL_COALESCE = 0x78, // Plan 073: May<T> null coalesce: ?? operator (left ?? right) -> value
     ERROR_PROPAGATE = 0x79, // Plan 073: May<T> error propagate: .? operator (expr.?) -> unwrapped_value
     CREATE_NODE = 0x74,   // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
+    // Plan 120: Option and Result type opcodes
+    CREATE_SOME = 0x7D,   // value -> Some(value) (wrap value in Some)
+    CREATE_NONE = 0x7E,   // -> None (push None onto stack)
+    CREATE_OK = 0x7F,     // value -> Ok(value) (wrap value in Ok)
+    CREATE_ERR = 0xE0,    // str_idx -> Err(msg) (create error from string index)
+    IS_SOME = 0xE1,       // option -> bool (check if Option is Some)
+    IS_OK = 0xE2,         // result -> bool (check if Result is Ok)
+    UNWRAP_SOME = 0xE3,   // Some(value) -> value (unwrap Option, panic if None)
+    UNWRAP_OK = 0xE4,     // Ok(value) -> value (unwrap Result, panic if Err)
     // Plan 075: Template string opcodes
     TO_STR = 0x7A,        // Convert any value to string
     IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)

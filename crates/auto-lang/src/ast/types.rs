@@ -39,6 +39,9 @@ pub enum Type {
     CStruct(TypeDecl),
     Linear(Box<Type>),  // Linear type (move-only semantics)
     Variadic,  // C variadic functions (...)
+    // Plan 120: Option and Result types
+    Option(Box<Type>),  // ?T - Optional value (None is valid state)
+    Result(Box<Type>),  // !T - Error-propagating value (Err is exceptional)
 }
 
 impl Type {
@@ -93,7 +96,10 @@ impl Type {
             }
             Type::Void => "void".into(),
             Type::Unknown => "<unknown>".into(),
-            _ => format!("undefined_type_name<{}>", self).into(),
+            Type::Option(inner) => format!("?{}", inner.unique_name()).into(),
+            Type::Result(inner) => format!("!{}", inner.unique_name()).into(),
+            Type::Union(u) => u.name.clone(),
+            Type::Tag(t) => t.borrow().name.clone(),
         }
     }
 
@@ -102,7 +108,10 @@ impl Type {
             Type::Int => "0".into(),
             Type::Uint => "0".into(),
             Type::USize => "0".into(),
+            Type::I64 => "0".into(),
+            Type::U64 => "0".into(),
             Type::Float => "0.0".into(),
+            Type::Double => "0.0".into(),
             Type::Bool => "false".into(),
             Type::Byte => "0".into(),
             Type::Char => "0".into(),
@@ -116,6 +125,8 @@ impl Type {
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::Reference(inner) => format!("&{}", inner.default_value()).into(),  // Plan 052
             Type::User(_) => "{}".into(),
+            Type::Union(_) => "{}".into(),
+            Type::Tag(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
             Type::GenericInstance(_) => "{}".into(),  // Generic instances default to empty object
@@ -125,7 +136,9 @@ impl Type {
             Type::Fn(_, _) => "{}".into(),  // Function type has no default value
             Type::CStruct(_) => "{}".into(),
             Type::Unknown => "<unknown>".into(),
-            _ => "<unknown_type>".into(),
+            Type::Void => "void".into(),
+            Type::Option(_) => "None".into(),  // Plan 120: Option default is None
+            Type::Result(_) => "Err(\"default error\")".into(),  // Plan 120: Result default is Err
         }
     }
 
@@ -217,6 +230,10 @@ impl Type {
             // Complex types: clone as-is (no substitution in metadata)
             Type::Enum(_) | Type::Spec(_) | Type::Tag(_) | Type::Union(_) |
             Type::CStruct(_) | Type::Storage(_) | Type::I64 | Type::U64 => self.clone(),  // Storage types are not generic
+
+            // Plan 120: Option and Result types - recursive substitution
+            Type::Option(inner) => Type::Option(Box::new(inner.substitute(params, args))),
+            Type::Result(inner) => Type::Result(Box::new(inner.substitute(params, args))),
         }
     }
 
@@ -266,6 +283,9 @@ impl Type {
             // Complex types - use reference passing
             Type::Spec(_) | Type::Storage(_) | Type::Fn(_, _) => false,
             Type::Linear(_) | Type::Void | Type::Unknown | Type::Variadic => false,
+
+            // Plan 120: Option and Result use reference passing
+            Type::Option(_) | Type::Result(_) => false,
         }
     }
 }
@@ -464,6 +484,8 @@ impl fmt::Display for Type {
             Type::Unknown => write!(f, "unknown"),
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name),
             Type::Storage(storage) => write!(f, "{}", storage),
+            Type::Option(inner) => write!(f, "?{}", inner),
+            Type::Result(inner) => write!(f, "!{}", inner),
         }
     }
 }
@@ -503,6 +525,8 @@ impl From<Type> for auto_val::Type {
             Type::CStruct(_) => auto_val::Type::Void,
             Type::GenericInstance(_) => auto_val::Type::Void,  // TODO: Handle generic instances properly
             Type::Storage(_) => auto_val::Type::Void,  // Storage types are marker types
+            Type::Option(inner) => (*inner).into(),  // Option<T> maps to T's auto_val type
+            Type::Result(inner) => (*inner).into(),  // Result<T> maps to T's auto_val type
         }
     }
 }
@@ -834,6 +858,12 @@ impl AtomWriter for Type {
                     }
                     write!(f, ">")?;
                 }
+            }
+            Type::Option(inner) => {
+                write!(f, "option({})", inner.to_atom_str())?;
+            }
+            Type::Result(inner) => {
+                write!(f, "result({})", inner.to_atom_str())?;
             }
         }
         Ok(())

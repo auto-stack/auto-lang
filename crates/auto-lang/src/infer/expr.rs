@@ -386,6 +386,16 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // ========== Router Navigation (Plan 105) ==========
         // nav() returns void (navigation is a side effect)
         Expr::NavCall { .. } => Type::Void,
+
+        // ========== Plan 120: Option and Result Constructors ==========
+        // Some(x) returns ?T (Option type)
+        Expr::Some(e) => Type::Option(Box::new(infer_expr(ctx, e))),
+        // None is a literal, return ?unknown for now (type inference should determine T)
+        Expr::None => Type::Option(Box::new(Type::Unknown)),
+        // Ok(x) returns !T (Result type)
+        Expr::Ok(e) => Type::Result(Box::new(infer_expr(ctx, e))),
+        // Err(msg) returns !never (Result type with unknown success type)
+        Expr::Err(e) => Type::Result(Box::new(Type::Unknown)),
     }
 }
 
