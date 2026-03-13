@@ -2306,6 +2306,71 @@ impl<'a> Parser<'a> {
             TokenKind::Star => Expr::Ident("*".into()),
             TokenKind::Nil => Expr::Nil,
             TokenKind::Null => Expr::Null,
+            // Plan 120: Option and Result constructors
+            TokenKind::NoneKW => Expr::None,
+            TokenKind::SomeKW => {
+                // Some(value) - expect parentheses
+                self.next(); // consume 'Some'
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    if !self.is_kind(TokenKind::RParen) {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::UnexpectedToken {
+                            expected: ")".to_string(),
+                            found: format!("{}", self.cur.text),
+                            span,
+                        }.into());
+                    }
+                    self.next(); // consume ')'
+                    // Return early - don't let the final self.next() run
+                    return Ok(Expr::Some(Box::new(value)));
+                } else {
+                    // `Some` without parens - treat as identifier (variable reference)
+                    // Return early since we already consumed 'Some'
+                    return Ok(Expr::Ident("Some".into()));
+                }
+            }
+            TokenKind::OkKW => {
+                // Ok(value) - expect parentheses
+                self.next(); // consume 'Ok'
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    if !self.is_kind(TokenKind::RParen) {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::UnexpectedToken {
+                            expected: ")".to_string(),
+                            found: format!("{}", self.cur.text),
+                            span,
+                        }.into());
+                    }
+                    self.next(); // consume ')'
+                    return Ok(Expr::Ok(Box::new(value)));
+                } else {
+                    return Ok(Expr::Ident("Ok".into()));
+                }
+            }
+            TokenKind::ErrKW => {
+                // Err(message) - expect parentheses
+                self.next(); // consume 'Err'
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let msg = self.parse_expr()?;
+                    if !self.is_kind(TokenKind::RParen) {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::UnexpectedToken {
+                            expected: ")".to_string(),
+                            found: format!("{}", self.cur.text),
+                            span,
+                        }.into());
+                    }
+                    self.next(); // consume ')'
+                    return Ok(Expr::Err(Box::new(msg)));
+                } else {
+                    return Ok(Expr::Ident("Err".into()));
+                }
+            }
             // Allow 'type' keyword as identifier in certain contexts (e.g., expr.type)
             TokenKind::Type => Expr::Ident(self.cur.text.clone()),
             _ => {
@@ -6174,7 +6239,8 @@ impl<'a> Parser<'a> {
 
     fn is_type_name(&mut self) -> bool {
         self.is_kind(TokenKind::Ident) // normal types like `int`
-        || self.is_kind(TokenKind::Question) // May types like `?int`
+        || self.is_kind(TokenKind::Question) // Option types like `?int` (Plan 120)
+        || self.is_kind(TokenKind::Not) // Result types like `!int` (Plan 120)
         || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
         || self.is_kind(TokenKind::Star) // ptr types like `*int`
         || self.is_kind(TokenKind::At) // ref types like `@int`

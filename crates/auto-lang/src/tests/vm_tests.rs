@@ -2834,3 +2834,73 @@ fn main() int {
     assert!(result.is_ok(), "Function with local var should work: {:?}", result);
     assert_eq!(result.unwrap(), "10", "Should return 10");
 }
+
+// ============================================================================
+// Plan 120: Option and Result Type Tests
+// ============================================================================
+
+#[test]
+fn test_option_type_annotation() {
+    // Test ?T type annotation parses correctly
+    let code = r#"
+let x ?int = None
+1
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Option type annotation should parse: {:?}", result);
+}
+
+#[test]
+fn test_result_type_annotation() {
+    // Test !T type annotation parses correctly
+    let code = r#"
+let x !int = Ok(42)
+1
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Result type annotation should parse: {:?}", result);
+}
+
+#[test]
+fn test_none_literal() {
+    // Test None literal parses correctly
+    let code = r#"
+let x = None
+1
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "None literal should parse: {:?}", result);
+}
+
+#[test]
+fn test_some_constructor() {
+    // Test Some() constructor parses
+    let code = r#"
+let x = Some(42)
+1
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Some constructor should parse: {:?}", result);
+}
+
+#[test]
+fn test_ok_constructor() {
+    // Test Ok() constructor parses
+    let code = r#"
+let x = Ok(100)
+1
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Ok constructor should parse: {:?}", result);
+}
+
+#[test]
+fn test_err_constructor() {
+    // Test Err() constructor parses
+    let code = r#"
+let x = Err("error message")
+1
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "Err constructor should parse: {:?}", result);
+}

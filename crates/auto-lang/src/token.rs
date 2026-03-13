@@ -122,6 +122,12 @@ pub enum TokenKind {
     Route,
     Nav,
 
+    // Plan 120: Option and Result type keywords
+    NoneKW,  // None literal
+    SomeKW,  // Some(value) constructor
+    OkKW,    // Ok(value) constructor
+    ErrKW,   // Err(message) constructor
+
     DotView,
     DotMut,
     DotMove,
@@ -337,6 +343,11 @@ impl Token {
             "link" => Some(TokenKind::Link),
             "route" => Some(TokenKind::Route),
             "nav" => Some(TokenKind::Nav),
+            // Plan 120: Option and Result type keywords (PascalCase like Rust)
+            "None" => Some(TokenKind::NoneKW),
+            "Some" => Some(TokenKind::SomeKW),
+            "Ok" => Some(TokenKind::OkKW),
+            "Err" => Some(TokenKind::ErrKW),
             _ => None,
         }
     }
