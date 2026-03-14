@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_task_handle_try_send() {
-        let instance = TaskInstance::new("TestTask".to_string(), 2);
+        let mut instance = TaskInstance::new("TestTask".to_string(), 2);
         let handle = instance.handle.clone();
 
         // Try send should succeed
