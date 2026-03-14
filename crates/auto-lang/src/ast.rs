@@ -36,6 +36,8 @@ mod store;
 pub use store::*;
 mod tag;
 pub use tag::*;
+mod task;
+pub use task::*;
 mod spec;
 pub use spec::*;
 mod types;
