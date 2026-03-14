@@ -138,6 +138,13 @@ pub const NATIVE_HTTP_POST: u16 = 2231;
 pub const NATIVE_HTTP_PUT: u16 = 2232;
 pub const NATIVE_HTTP_DELETE: u16 = 2233;
 
+// Task/Msg functions (Plan 121): 2300-2399
+pub const NATIVE_TASK_SPAWN: u16 = 2300;
+pub const NATIVE_TASK_SEND: u16 = 2301;
+pub const NATIVE_TASK_HANDLE_IS_NULL: u16 = 2302;
+pub const NATIVE_TASK_HANDLE_TYPE: u16 = 2303;
+pub const NATIVE_TASK_HANDLE_ID: u16 = 2304;
+
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
 pub const NATIVE_PATH_PARENT: u16 = 1401;
@@ -1396,6 +1403,155 @@ fn extract_body(response: &str) -> String {
 }
 
 // ============================================================================
+// Task/Msg Functions (Plan 121)
+// ============================================================================
+
+use crate::vm::task_system::{TaskHandle, TaskInstance};
+
+/// TaskHandle wrapper for passing through VM
+/// The handle is stored as a tuple: (task_type: String, instance_id: u64, tx_ptr: u64)
+/// We use a thread-local storage to keep actual handles alive
+thread_local! {
+    static TASK_HANDLES: std::cell::RefCell<std::collections::HashMap<u64, TaskHandle>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    // Keep TaskInstance alive so the receiver (rx) doesn't get dropped
+    static TASK_INSTANCES: std::cell::RefCell<std::collections::HashMap<u64, TaskInstance>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Spawn a new task instance
+///
+/// Creates a new TaskInstance with its own mailbox and returns a handle.
+/// The handle can be used to send messages to the task.
+///
+/// # Arguments
+/// * `task_type` - The name of the task type (e.g., "CounterTask")
+/// * `capacity` - The mailbox capacity (default: 64)
+///
+/// # Returns
+/// A handle ID (u64) that can be used to reference the task
+#[auto_macros::rust_fn("Task.spawn")]
+pub fn shim_task_spawn(task_type: String, capacity: i64) -> Result<u64, String> {
+    let cap = if capacity <= 0 { 64 } else { capacity as usize };
+
+    // Create a new task instance
+    let instance = TaskInstance::new(task_type.clone(), cap);
+    let handle = instance.handle.clone();
+
+    // Generate a unique handle ID
+    let handle_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+
+    // Store the handle in thread-local storage
+    TASK_HANDLES.with(|handles| {
+        handles.borrow_mut().insert(handle_id, handle);
+    });
+
+    // Store the instance to keep the receiver alive
+    // In a full implementation, we would spawn a tokio task to process messages.
+    TASK_INSTANCES.with(|instances| {
+        instances.borrow_mut().insert(handle_id, instance);
+    });
+
+    Ok(handle_id)
+}
+
+/// Send a message to a task
+///
+/// # Arguments
+/// * `handle_id` - The handle ID returned by Task.spawn
+/// * `msg` - The message value to send
+///
+/// # Returns
+/// 1 on success, 0 on failure
+#[auto_macros::rust_fn("TaskHandle.send")]
+pub fn shim_task_send(handle_id: i64, msg: String) -> Result<i32, String> {
+    let id = handle_id as u64;
+
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&id) {
+            let auto_str: auto_val::AutoStr = msg.into();
+            match handle.try_send(auto_val::Value::Str(auto_str)) {
+                Ok(()) => Ok(1),
+                Err(e) => Err(format!("TaskHandle.send failed: {}", e)),
+            }
+        } else {
+            Err(format!("TaskHandle.send failed: invalid handle ID {}", id))
+        }
+    })
+}
+
+/// Check if a task handle is null/empty
+///
+/// # Arguments
+/// * `handle_id` - The handle ID to check
+///
+/// # Returns
+/// 1 if null, 0 otherwise
+#[auto_macros::rust_fn("TaskHandle.is_null")]
+pub fn shim_task_handle_is_null(handle_id: i64) -> Result<i32, String> {
+    let id = handle_id as u64;
+
+    if id == 0 {
+        return Ok(1);
+    }
+
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&id) {
+            Ok(if handle.is_null() { 1 } else { 0 })
+        } else {
+            // Invalid handle ID is treated as null
+            Ok(1)
+        }
+    })
+}
+
+/// Get the task type from a handle
+///
+/// # Arguments
+/// * `handle_id` - The handle ID
+///
+/// # Returns
+/// The task type name
+#[auto_macros::rust_fn("TaskHandle.task_type")]
+pub fn shim_task_handle_type(handle_id: i64) -> Result<String, String> {
+    let id = handle_id as u64;
+
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&id) {
+            Ok(handle.task_type.clone())
+        } else {
+            Err(format!("TaskHandle.task_type failed: invalid handle ID {}", id))
+        }
+    })
+}
+
+/// Get the instance ID from a handle
+///
+/// # Arguments
+/// * `handle_id` - The handle ID
+///
+/// # Returns
+/// The instance ID
+#[auto_macros::rust_fn("TaskHandle.instance_id")]
+pub fn shim_task_handle_id(handle_id: i64) -> Result<u64, String> {
+    let id = handle_id as u64;
+
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&id) {
+            Ok(handle.instance_id)
+        } else {
+            Err(format!("TaskHandle.instance_id failed: invalid handle ID {}", id))
+        }
+    })
+}
+
+// ============================================================================
 // Registration Function
 // ============================================================================
 
@@ -1525,6 +1681,13 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_HTTP_POST, shim_http_post);
     natives.register_static(NATIVE_HTTP_PUT, shim_http_put);
     natives.register_static(NATIVE_HTTP_DELETE, shim_http_delete);
+
+    // Task/Msg functions (Plan 121)
+    natives.register_static(NATIVE_TASK_SPAWN, __shim_Task_spawn);
+    natives.register_static(NATIVE_TASK_SEND, __shim_TaskHandle_send);
+    natives.register_static(NATIVE_TASK_HANDLE_IS_NULL, __shim_TaskHandle_is_null);
+    natives.register_static(NATIVE_TASK_HANDLE_TYPE, __shim_TaskHandle_task_type);
+    natives.register_static(NATIVE_TASK_HANDLE_ID, __shim_TaskHandle_instance_id);
 }
 
 // ============================================================================
@@ -1597,5 +1760,105 @@ mod tests {
         assert!((1700..1800).contains(&NATIVE_MATH_MIN));
         assert!((1700..1800).contains(&NATIVE_MATH_MAX));
         assert!((1700..1800).contains(&NATIVE_MATH_SQRT));
+
+        // Task/Msg: 2300-2399
+        assert!((2300..2400).contains(&NATIVE_TASK_SPAWN));
+        assert!((2300..2400).contains(&NATIVE_TASK_SEND));
+        assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_IS_NULL));
+        assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_TYPE));
+        assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_ID));
+    }
+
+    // Plan 121: Task spawn tests
+    #[test]
+    fn test_task_spawn() {
+        let result = shim_task_spawn("TestTask".to_string(), 64);
+        assert!(result.is_ok());
+        let handle_id = result.unwrap();
+        assert!(handle_id > 0);
+    }
+
+    #[test]
+    fn test_task_spawn_default_capacity() {
+        // Test with negative capacity (should use default 64)
+        let result = shim_task_spawn("TestTask".to_string(), -1);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_task_handle_is_null() {
+        // Handle ID 0 should be null
+        let result = shim_task_handle_is_null(0);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+
+        // Non-existent handle should also be treated as null
+        let result = shim_task_handle_is_null(999999);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+
+        // A spawned task should not be null
+        let spawn_result = shim_task_spawn("TestTask".to_string(), 64);
+        assert!(spawn_result.is_ok());
+        let handle_id = spawn_result.unwrap() as i64;
+
+        let result = shim_task_handle_is_null(handle_id);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_task_handle_type() {
+        let spawn_result = shim_task_spawn("MyCounterTask".to_string(), 64);
+        assert!(spawn_result.is_ok());
+        let handle_id = spawn_result.unwrap() as i64;
+
+        let result = shim_task_handle_type(handle_id);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "MyCounterTask");
+    }
+
+    #[test]
+    fn test_task_handle_id() {
+        let spawn_result = shim_task_spawn("TestTask".to_string(), 64);
+        assert!(spawn_result.is_ok());
+        let handle_id = spawn_result.unwrap();
+
+        let result = shim_task_handle_id(handle_id as i64);
+        assert!(result.is_ok());
+        // Instance ID should be > 0 (global counter)
+        assert!(result.unwrap() > 0);
+    }
+
+    #[test]
+    fn test_task_send() {
+        let spawn_result = shim_task_spawn("TestTask".to_string(), 64);
+        assert!(spawn_result.is_ok());
+        let handle_id = spawn_result.unwrap() as i64;
+
+        let result = shim_task_send(handle_id, "hello".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_task_send_invalid_handle() {
+        let result = shim_task_send(999999, "hello".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_multiple_spawn_unique_ids() {
+        let result1 = shim_task_spawn("Task1".to_string(), 64);
+        let result2 = shim_task_spawn("Task2".to_string(), 64);
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+
+        let id1 = result1.unwrap();
+        let id2 = result2.unwrap();
+
+        // Each spawn should return a unique handle ID
+        assert_ne!(id1, id2);
     }
 }

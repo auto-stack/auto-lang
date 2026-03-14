@@ -276,6 +276,13 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.math.min", 1701);
     registry.register_with_id("auto.math.max", 1702);
     registry.register_with_id("auto.math.sqrt", 1703);
+
+    // Task/Msg functions (Plan 121) - 2300-2304
+    registry.register_with_id("auto.task.spawn", 2300);
+    registry.register_with_id("auto.task.send", 2301);
+    registry.register_with_id("auto.task.handle_is_null", 2302);
+    registry.register_with_id("auto.task.handle_type", 2303);
+    registry.register_with_id("auto.task.handle_id", 2304);
 }
 
 #[cfg(test)]

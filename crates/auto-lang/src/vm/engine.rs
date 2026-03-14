@@ -4,6 +4,7 @@ use crate::vm::heap_object::HeapObject;
 use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
+use crate::vm::task_system::TaskRegistry;
 use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -108,6 +109,10 @@ pub struct AutoVM {
     // Single registry for all heap-allocated objects (lists, maps, sets, etc.)
     pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
     pub heap_object_id_gen: AtomicU64,
+
+    // Plan 121: Task/Msg Registry for Actor model
+    // Manages singleton tasks and task instances
+    pub task_registry: Arc<TaskRegistry>,
 }
 
 impl AutoVM {
@@ -144,6 +149,8 @@ impl AutoVM {
             // Note: IDs start at 4000000 to avoid confusion with nodes
             heap_objects: DashMap::new(),
             heap_object_id_gen: AtomicU64::new(4000000),
+            // Plan 121: Task/Msg registry for Actor model
+            task_registry: Arc::new(TaskRegistry::new()),
         }
     }
 
