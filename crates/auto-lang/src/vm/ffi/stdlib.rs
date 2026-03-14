@@ -144,6 +144,7 @@ pub const NATIVE_TASK_SEND: u16 = 2301;
 pub const NATIVE_TASK_HANDLE_IS_NULL: u16 = 2302;
 pub const NATIVE_TASK_HANDLE_TYPE: u16 = 2303;
 pub const NATIVE_TASK_HANDLE_ID: u16 = 2304;
+pub const NATIVE_TASK_SYSTEM_START: u16 = 2305;
 
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
@@ -1406,7 +1407,7 @@ fn extract_body(response: &str) -> String {
 // Task/Msg Functions (Plan 121)
 // ============================================================================
 
-use crate::vm::task_system::{TaskHandle, TaskInstance};
+use crate::vm::task_system::{TaskHandle, TaskInstance, TaskRegistry};
 
 /// TaskHandle wrapper for passing through VM
 /// The handle is stored as a tuple: (task_type: String, instance_id: u64, tx_ptr: u64)
@@ -1551,6 +1552,28 @@ pub fn shim_task_handle_id(handle_id: i64) -> Result<u64, String> {
     })
 }
 
+/// Global TaskRegistry for TaskSystem operations
+static GLOBAL_TASK_REGISTRY: std::sync::OnceLock<TaskRegistry> = std::sync::OnceLock::new();
+
+/// Get or initialize the global TaskRegistry
+fn get_global_task_registry() -> &'static TaskRegistry {
+    GLOBAL_TASK_REGISTRY.get_or_init(TaskRegistry::new)
+}
+
+/// Start the task system scheduler
+///
+/// This method blocks the main thread and waits for Ctrl+C signal.
+/// When Ctrl+C is received, all registered stop hooks are executed in LIFO order.
+///
+/// # Note
+/// This is a blocking call that will not return until Ctrl+C is received.
+#[auto_macros::rust_fn("TaskSystem.start")]
+pub fn shim_task_system_start() -> Result<(), String> {
+    let registry = get_global_task_registry();
+    registry.start_scheduler();
+    Ok(())
+}
+
 // ============================================================================
 // Registration Function
 // ============================================================================
@@ -1688,6 +1711,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_TASK_HANDLE_IS_NULL, __shim_TaskHandle_is_null);
     natives.register_static(NATIVE_TASK_HANDLE_TYPE, __shim_TaskHandle_task_type);
     natives.register_static(NATIVE_TASK_HANDLE_ID, __shim_TaskHandle_instance_id);
+    natives.register_static(NATIVE_TASK_SYSTEM_START, __shim_TaskSystem_start);
 }
 
 // ============================================================================
@@ -1767,6 +1791,7 @@ mod tests {
         assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_IS_NULL));
         assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_TYPE));
         assert!((2300..2400).contains(&NATIVE_TASK_HANDLE_ID));
+        assert!((2300..2400).contains(&NATIVE_TASK_SYSTEM_START));
     }
 
     // Plan 121: Task spawn tests

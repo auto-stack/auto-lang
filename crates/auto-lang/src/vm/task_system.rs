@@ -513,6 +513,45 @@ impl Default for TaskRegistry {
     }
 }
 
+impl TaskRegistry {
+    /// Start the task scheduler and block until Ctrl+C is received
+    ///
+    /// This method:
+    /// 1. Creates a Tokio runtime
+    /// 2. Waits for Ctrl+C signal
+    /// 3. Executes all stop hooks in LIFO order
+    /// 4. Prints any errors from stop hooks
+    ///
+    /// # Panics
+    /// Panics if the Tokio runtime fails to create or if Ctrl+C handler fails.
+    pub fn start_scheduler(&self) {
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+
+        rt.block_on(async {
+            // Wait for Ctrl+C signal
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => {
+                    // Execute stop hooks in LIFO order
+                    let results = self.execute_stop_hooks();
+
+                    // Print results
+                    for result in results {
+                        if !result.success {
+                            eprintln!(
+                                "Task {}.{} failed: {:?}",
+                                result.task_type, result.hook_type, result.error
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to listen for Ctrl+C: {}", e);
+                }
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -941,5 +980,22 @@ mod tests {
         // Verify order: instances first, then singletons
         let order = execution_order.lock().unwrap();
         assert_eq!(*order, vec!["Instance_stop", "Singleton_stop"]);
+    }
+
+    // ========== start_scheduler Tests ==========
+
+    #[test]
+    fn test_task_registry_start_scheduler_exists() {
+        // Test that start_scheduler method exists and compiles
+        // We can't actually test the blocking behavior in a unit test
+        let registry = TaskRegistry::new();
+
+        // Just verify the registry has no tasks
+        assert_eq!(registry.get_all_handles().len(), 0);
+
+        // The actual start_scheduler() call would block forever,
+        // so we only test execute_stop_hooks here
+        let results = registry.execute_stop_hooks();
+        assert_eq!(results.len(), 0);
     }
 }
