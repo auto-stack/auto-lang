@@ -2808,9 +2808,15 @@ impl<'a> Parser<'a> {
                 } else if self.is_kind(TokenKind::Let) {
                     // Let statement with annotation
                     self.parse_store_stmt()?
+                } else if self.is_kind(TokenKind::Task) {
+                    // Plan 121: Task with #[single] annotation
+                    // Parse single annotation - we already consumed #[single], now check what annotation it was
+                    // For now, we just treat any annotation before task as single
+                    // TODO: Parse specific annotation types
+                    self.parse_task_with_attrs(vec![TaskAttr::Single])?
                 } else {
                     return Err(SyntaxError::Generic {
-                        message: "Expected 'fn', 'type', 'use', or 'let' after annotation"
+                        message: "Expected 'fn', 'type', 'use', 'let', or 'task' after annotation"
                             .to_string(),
                         span: pos_to_span(self.cur.pos),
                     }
@@ -2841,6 +2847,8 @@ impl<'a> Parser<'a> {
             }
             // Enum Definition
             TokenKind::Enum => self.enum_stmt()?,
+            // Plan 121: Task Definition
+            TokenKind::Task => self.parse_task()?,
             // On Events Switch
             TokenKind::On => Stmt::OnEvents(self.parse_on_events()?),
             // Alias stmt
@@ -3131,6 +3139,223 @@ impl<'a> Parser<'a> {
         // Register enum in type_store for type lookup
         self.type_store.write().unwrap().register_enum_decl(enum_decl.clone());
         Ok(Stmt::EnumDecl(enum_decl))
+    }
+
+    // ========================================================================
+    // Plan 121: Task/Msg System - Task Definition Parsing
+    // ========================================================================
+
+    /// Parse task definition: `#[single] task Name { ... }`
+    ///
+    /// ```auto
+    /// #[single]
+    /// task CounterTask {
+    ///     count mut = 0
+    ///
+    ///     fn start() ! { self.count = 0 }
+    ///     fn stop() ! { print("stopping") }
+    ///
+    ///     on {
+    ///         Add(val) => { self.count += val }
+    ///         Reset => { self.count = 0 }
+    ///         else => { }
+    ///     }
+    /// }
+    /// ```
+    pub fn parse_task(&mut self) -> AutoResult<Stmt> {
+        self.parse_task_with_attrs(Vec::new())
+    }
+
+    /// Parse task with pre-parsed attributes (e.g., #[single])
+    pub fn parse_task_with_attrs(&mut self, attrs: Vec<TaskAttr>) -> AutoResult<Stmt> {
+        self.expect(TokenKind::Task)?;
+        let name = self.parse_name()?;
+        let pos = self.prev.pos;
+
+        let mut task = TaskDef::new(name.clone(), attrs, pos);
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        // Parse task body
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            match self.kind() {
+                TokenKind::Fn => {
+                    // Parse lifecycle hook: fn start() ! { ... } or fn stop() ! { ... }
+                    let hook_fn = self.parse_task_lifecycle_hook(&name)?;
+                    let fn_name = hook_fn.name.as_str();
+                    if fn_name == "start" {
+                        task.set_start_hook(hook_fn);
+                    } else if fn_name == "stop" {
+                        task.set_stop_hook(hook_fn);
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Unknown lifecycle hook '{}'. Only 'start' and 'stop' are allowed in task.", fn_name),
+                            span: pos_to_span(self.prev.pos),
+                        }.into());
+                    }
+                }
+                TokenKind::Ident if self.cur.text.as_str() == "on" => {
+                    // Parse on block: on { ... }
+                    let on_block = self.parse_task_on_block()?;
+                    task.on_block = on_block;
+                }
+                TokenKind::Ident => {
+                    // Parse state field: name [mut] = expr
+                    let (field_name, mutable, init_expr) = self.parse_task_state_field()?;
+                    task.add_state(field_name, mutable, init_expr);
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected state field, lifecycle hook, or on block in task, got {:?}", self.kind()),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Register task in scope
+        self.define(name.as_str(), Meta::Task(task.clone()));
+
+        Ok(Stmt::TaskDef(task))
+    }
+
+    /// Parse task state field: `name [mut] = expr`
+    fn parse_task_state_field(&mut self) -> AutoResult<(Name, bool, Expr)> {
+        let name = self.parse_name()?;
+        let pos = self.prev.pos;
+
+        // Check for 'mut' keyword
+        let mutable = if self.is_kind(TokenKind::Mut) {
+            self.next();
+            true
+        } else {
+            false
+        };
+
+        // Expect '='
+        self.expect(TokenKind::Asn)?;
+
+        // Parse initial value expression
+        let init_expr = self.parse_expr()?;
+
+        Ok((name, mutable, init_expr))
+    }
+
+    /// Parse task lifecycle hook: `fn start() ! { ... }` or `fn stop() ! { ... }`
+    fn parse_task_lifecycle_hook(&mut self, task_name: &Name) -> AutoResult<Fn> {
+        self.next(); // skip 'fn'
+
+        let fn_name = self.parse_name()?;
+
+        // Parse parameters - lifecycle hooks have no parameters
+        self.expect(TokenKind::LParen)?;
+        self.expect(TokenKind::RParen)?;
+
+        // Expect '!' postfix (async marker for lifecycle hooks)
+        if !self.is_kind(TokenKind::Not) {
+            return Err(SyntaxError::Generic {
+                message: format!("Lifecycle hook '{}' must have '!' postfix (e.g., fn {}() ! {{ ... }})", fn_name, fn_name),
+                span: pos_to_span(self.cur.pos),
+            }.into());
+        }
+        self.next(); // consume '!'
+
+        // Skip empty lines before body
+        self.skip_empty_lines();
+
+        // Parse body
+        let body = self.body()?;
+
+        // Create Fn struct
+        let hook = Fn::new(
+            FnKind::Method,  // Lifecycle hooks are methods on the task
+            fn_name,
+            Some(task_name.clone()),
+            Vec::new(), // Lifecycle hooks have no params
+            body,
+            Type::Void,
+        );
+
+        Ok(hook)
+    }
+
+    /// Parse task on block: `on { Pattern => { ... } else => { ... } }`
+    fn parse_task_on_block(&mut self) -> AutoResult<TaskOnBlock> {
+        self.expect_ident("on")?;
+        let pos = self.prev.pos;
+        let mut on_block = TaskOnBlock::new(pos);
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Check for 'else' handler
+            if self.is_kind(TokenKind::Else) {
+                self.next(); // consume 'else'
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.body()?;
+                on_block.set_else(body);
+            } else {
+                // Parse message pattern: Name or Name(args)
+                let pattern = self.parse_task_msg_pattern()?;
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.body()?;
+                on_block.add_handler(pattern, body);
+            }
+
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(on_block)
+    }
+
+    /// Parse task message pattern: `Add(val)` or `Reset`
+    fn parse_task_msg_pattern(&mut self) -> AutoResult<TaskMsgPattern> {
+        let name = self.parse_name()?;
+        let pos = self.prev.pos;
+
+        // Check for parentheses with bindings
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            let mut bindings = Vec::new();
+
+            // Parse bindings
+            while !self.is_kind(TokenKind::RParen) {
+                let binding = self.parse_name()?;
+                bindings.push(binding);
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next(); // consume ','
+                } else if !self.is_kind(TokenKind::RParen) {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected ',' or ')' in message pattern, got {:?}", self.kind()),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+
+            self.expect(TokenKind::RParen)?;
+
+            Ok(TaskMsgPattern::with_bindings(name, bindings))
+        } else {
+            Ok(TaskMsgPattern::simple(name))
+        }
     }
 
     fn expect_ident_str(&mut self) -> AutoResult<AutoStr> {

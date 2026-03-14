@@ -110,6 +110,9 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         Stmt::WidgetDecl(_) | Stmt::MsgDecl(_) | Stmt::ModelBlock(_) | Stmt::ViewBlock(_) => {
             Ok(Type::Void)
         }
+
+        // Plan 121: Task/Msg system - no type checking needed
+        Stmt::TaskDef(_) => Ok(Type::Void),
     }
 }
 

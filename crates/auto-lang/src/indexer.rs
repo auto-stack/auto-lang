@@ -152,6 +152,12 @@ impl<'db> Indexer<'db> {
                     // For now, skip UI declarations
                     // Phase 2: Could index widget declarations
                 }
+
+                // Plan 121: Task/Msg system
+                Stmt::TaskDef(_) => {
+                    // For now, skip task declarations
+                    // Phase 2: Could index task declarations
+                }
             }
         }
 

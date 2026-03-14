@@ -120,6 +120,8 @@ impl<'db> DepScanner<'db> {
             Stmt::MsgDecl(_) => {}
             Stmt::ModelBlock(_) => {}
             Stmt::ViewBlock(_) => {}
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(_) => {}
         }
     }
 

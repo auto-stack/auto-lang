@@ -387,6 +387,8 @@ pub enum Meta {
     Use(String),
     Node(ast::Node),
     Alias(AutoStr),
+    // Plan 121: Task/Msg system
+    Task(ast::TaskDef),
 }
 
 impl fmt::Display for Meta {
@@ -404,6 +406,7 @@ impl fmt::Display for Meta {
             Meta::Node(nd) => write!(f, "{}", nd),
             Meta::Use(name) => write!(f, "USE {}", name),
             Meta::Alias(alias) => write!(f, "ALIAS {}", alias),
+            Meta::Task(task) => write!(f, "TASK {}", task.name),
         }
     }
 }

@@ -189,6 +189,8 @@ pub enum Stmt {
     MsgDecl(MsgDecl),
     ModelBlock(ModelBlock),
     ViewBlock(ViewBlock),
+    // Plan 121: Task/Msg system
+    TaskDef(TaskDef),
 }
 
 impl Stmt {
@@ -254,6 +256,8 @@ impl fmt::Display for Stmt {
             Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
             Stmt::ViewBlock(view) => write!(f, "(view)"),
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(task) => write!(f, "{}", task),
         }
     }
 }
@@ -942,6 +946,8 @@ impl ToNode for Stmt {
                 node
             }
             Stmt::ViewBlock(_) => AutoNode::new("view"),
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(task) => task.to_node(),
         }
     }
 }
@@ -985,6 +991,8 @@ impl ToAtom for Stmt {
             Stmt::MsgDecl(msg) => format!("(msg {})", msg.name).into(),
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
             Stmt::ViewBlock(_) => "(view)".into(),
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(task) => task.to_atom(),
         }
     }
 }
