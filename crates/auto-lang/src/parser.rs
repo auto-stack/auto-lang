@@ -2301,6 +2301,8 @@ impl<'a> Parser<'a> {
             TokenKind::CStr => Expr::CStr(self.cur.text.clone()),
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
+            // Plan 121: Treat 'spawn' as identifier in expressions (e.g., Task.spawn())
+            TokenKind::Spawn => Expr::Ident(self.cur.text.clone()),
             // Allow @ and * as special identifiers for pointer operations
             TokenKind::At => Expr::Ident("@".into()),
             TokenKind::Star => Expr::Ident("*".into()),
@@ -4567,11 +4569,12 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
         // TODO: determine return type with last stmt if it's not specified
-        // Support: Ident (int, str), LSquare ([]int), Star (*int)
+        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121)
         else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
+            || self.is_kind(TokenKind::Not)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -4768,11 +4771,12 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
         // TODO: determine return type with last stmt if it's not specified
-        // Support: Ident (int, str), LSquare ([]int), Star (*int)
+        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121)
         else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
+            || self.is_kind(TokenKind::Not)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -6608,9 +6612,16 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Not => {
                 // Plan 120: Parse !T as Type::Result(T)
+                // Plan 121: ! without type means Result<void> (e.g., fn main() !)
                 self.next(); // Consume '!'
-                let inner_type = self.parse_type()?;
-                Ok(Type::Result(Box::new(inner_type)))
+                // Check if there's a type following the '!'
+                if self.is_type_name() {
+                    let inner_type = self.parse_type()?;
+                    Ok(Type::Result(Box::new(inner_type)))
+                } else {
+                    // ! without inner type means Result<void>
+                    Ok(Type::Result(Box::new(Type::Void)))
+                }
             }
             TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),
@@ -8617,12 +8628,42 @@ mod tests {
     }
 
     #[test]
+    fn test_fn_with_never_return_type() {
+        // Plan 121: fn main() ! means Result<void> (function that can throw but returns no value)
+        let code = r#"fn main() ! { print("hello") }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        // ! without type means Result<void>
+        assert!(last.to_string().contains("(ret !void)"));
+    }
+
+    #[test]
+    fn test_fn_with_result_return_type() {
+        // Plan 120: fn foo() !int means Result<int>
+        let code = r#"fn foo() !int { 42 }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert!(last.to_string().contains("(ret !int)"));
+    }
+
+    #[test]
     fn test_fn_with_param_type() {
         let code = "fn say(msg str) { print(msg) }";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         // Plan 122: Default mode is now included in param display
         assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str) (mode view))) (ret void) (body (call (name print) (args (name msg)))))");
+    }
+
+    #[test]
+    fn test_spawn_method_call() {
+        // Plan 121: Task.spawn() should be parsed as method call
+        let code = "fn main() ! { let h = CounterTask.spawn() }";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        // Should be parsed as: Call { name: Dot(Ident("CounterTask"), "spawn"), args: [] }
+        let str = last.to_string();
+        assert!(str.contains(".spawn"), "Expected .spawn in output, got: {}", str);
     }
 
     #[test]
