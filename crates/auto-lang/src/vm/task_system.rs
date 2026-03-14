@@ -29,8 +29,24 @@
 //! │  - instance_id: u64                                         │
 //! │  - rx: mpsc::Receiver<Value> (message receiver)             │
 //! │  - handle: TaskHandle (self-reference)                      │
+//! │  - start_hook: Option<LifecycleHook>                        │
+//! │  - stop_hook: Option<LifecycleHook>                         │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
+//!
+//! ## Lifecycle Hooks
+//!
+//! Tasks support lifecycle hooks for initialization and cleanup:
+//!
+//! ```auto
+//! task CounterTask {
+//!     fn start() ! { print("Task started") }
+//!     fn stop() ! { print("Task stopped") }
+//! }
+//! ```
+//!
+//! - `start()` - Called when the task is spawned
+//! - `stop()` - Called during system shutdown (LIFO order)
 //!
 //! ## Usage
 //!
@@ -57,8 +73,30 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+/// Lifecycle hook callback type
+///
+/// Hooks are closures that take no arguments and return Result<(), String>.
+/// The closure is called during task lifecycle events (start/stop).
+pub type LifecycleHook = Box<dyn Fn() -> Result<(), String> + Send + Sync>;
+
+/// Hook execution result
+#[derive(Debug, Clone)]
+pub struct HookResult {
+    /// The task type that executed the hook
+    pub task_type: String,
+    /// The hook type ("start" or "stop")
+    pub hook_type: String,
+    /// Whether the hook execution succeeded
+    pub success: bool,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
 /// Global task instance ID counter
 static TASK_INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Global creation order counter (for LIFO shutdown)
+static CREATION_ORDER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Task handle - reference to a task instance
 ///
@@ -141,12 +179,19 @@ pub struct TaskInstance {
     pub rx: mpsc::Receiver<Value>,
     /// Handle to self
     pub handle: TaskHandle,
+    /// Lifecycle hook: start()
+    pub start_hook: Option<Arc<LifecycleHook>>,
+    /// Lifecycle hook: stop()
+    pub stop_hook: Option<Arc<LifecycleHook>>,
+    /// Creation order (for LIFO shutdown)
+    pub creation_order: u64,
 }
 
 impl TaskInstance {
     /// Create a new task instance
     pub fn new(task_type: String, capacity: usize) -> Self {
         let instance_id = TASK_INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let creation_order = CREATION_ORDER_COUNTER.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = mpsc::channel(capacity);
         let handle = TaskHandle::new(task_type.clone(), instance_id, tx);
 
@@ -155,6 +200,79 @@ impl TaskInstance {
             instance_id,
             rx,
             handle,
+            start_hook: None,
+            stop_hook: None,
+            creation_order,
+        }
+    }
+
+    /// Set the start hook
+    pub fn set_start_hook(&mut self, hook: LifecycleHook) {
+        self.start_hook = Some(Arc::new(hook));
+    }
+
+    /// Set the stop hook
+    pub fn set_stop_hook(&mut self, hook: LifecycleHook) {
+        self.stop_hook = Some(Arc::new(hook));
+    }
+
+    /// Execute the start hook
+    ///
+    /// Returns a HookResult indicating success or failure.
+    pub fn execute_start_hook(&self) -> HookResult {
+        if let Some(hook) = &self.start_hook {
+            match hook() {
+                Ok(()) => HookResult {
+                    task_type: self.task_type.clone(),
+                    hook_type: "start".to_string(),
+                    success: true,
+                    error: None,
+                },
+                Err(e) => HookResult {
+                    task_type: self.task_type.clone(),
+                    hook_type: "start".to_string(),
+                    success: false,
+                    error: Some(e),
+                },
+            }
+        } else {
+            // No hook registered, consider it successful
+            HookResult {
+                task_type: self.task_type.clone(),
+                hook_type: "start".to_string(),
+                success: true,
+                error: None,
+            }
+        }
+    }
+
+    /// Execute the stop hook
+    ///
+    /// Returns a HookResult indicating success or failure.
+    pub fn execute_stop_hook(&self) -> HookResult {
+        if let Some(hook) = &self.stop_hook {
+            match hook() {
+                Ok(()) => HookResult {
+                    task_type: self.task_type.clone(),
+                    hook_type: "stop".to_string(),
+                    success: true,
+                    error: None,
+                },
+                Err(e) => HookResult {
+                    task_type: self.task_type.clone(),
+                    hook_type: "stop".to_string(),
+                    success: false,
+                    error: Some(e),
+                },
+            }
+        } else {
+            // No hook registered, consider it successful
+            HookResult {
+                task_type: self.task_type.clone(),
+                hook_type: "stop".to_string(),
+                success: true,
+                error: None,
+            }
         }
     }
 }
@@ -166,6 +284,11 @@ pub struct TaskRegistry {
     singletons: DashMap<String, TaskHandle>,
     /// All task instances: (task_type, instance_id) -> handle
     instances: DashMap<(String, u64), TaskHandle>,
+    /// Instance stop hooks: (task_type, instance_id) -> stop_hook
+    /// Stored separately to allow execution during shutdown
+    stop_hooks: DashMap<(String, u64), Arc<LifecycleHook>>,
+    /// Creation order tracking: creation_order -> (task_type, instance_id)
+    creation_order: DashMap<u64, (String, u64)>,
     /// Instance counter per task type
     instance_counts: DashMap<String, AtomicU64>,
 }
@@ -176,12 +299,28 @@ impl TaskRegistry {
         Self {
             singletons: DashMap::new(),
             instances: DashMap::new(),
+            stop_hooks: DashMap::new(),
+            creation_order: DashMap::new(),
             instance_counts: DashMap::new(),
         }
     }
 
     /// Register a singleton task
     pub fn register_singleton(&self, task_type: String, handle: TaskHandle) {
+        self.singletons.insert(task_type, handle);
+    }
+
+    /// Register a singleton task with stop hook
+    pub fn register_singleton_with_hook(
+        &self,
+        task_type: String,
+        handle: TaskHandle,
+        stop_hook: Option<Arc<LifecycleHook>>,
+    ) {
+        if let Some(hook) = stop_hook {
+            let key = (task_type.clone(), 0u64); // instance_id = 0 for singletons
+            self.stop_hooks.insert(key, hook);
+        }
         self.singletons.insert(task_type, handle);
     }
 
@@ -199,6 +338,37 @@ impl TaskRegistry {
     pub fn register_instance(&self, handle: TaskHandle) {
         let key = (handle.task_type.clone(), handle.instance_id);
         self.instances.insert(key, handle.clone());
+
+        // Update instance count
+        self.instance_counts
+            .entry(handle.task_type.clone())
+            .or_insert_with(|| AtomicU64::new(0))
+            .fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Register a task instance with lifecycle hooks
+    ///
+    /// Stores the handle and optional stop hook for later shutdown.
+    pub fn register_instance_with_hooks(
+        &self,
+        handle: TaskHandle,
+        creation_order: u64,
+        stop_hook: Option<Arc<LifecycleHook>>,
+    ) {
+        let key = (handle.task_type.clone(), handle.instance_id);
+        let order_key = creation_order;
+
+        // Store instance handle
+        self.instances.insert(key.clone(), handle.clone());
+
+        // Store stop hook if present
+        if let Some(hook) = stop_hook {
+            self.stop_hooks.insert(key, hook);
+        }
+
+        // Track creation order for LIFO shutdown
+        self.creation_order
+            .insert(order_key, (handle.task_type.clone(), handle.instance_id));
 
         // Update instance count
         self.instance_counts
@@ -256,10 +426,83 @@ impl TaskRegistry {
         self.singletons.iter().map(|h| h.clone()).collect()
     }
 
+    /// Execute all stop hooks in LIFO order
+    ///
+    /// This method should be called during system shutdown to properly
+    /// clean up all tasks. Hooks are executed in reverse creation order:
+    /// 1. Task instances (LIFO - last created first)
+    /// 2. Singleton tasks
+    ///
+    /// # Returns
+    /// A vector of HookResult for each hook executed.
+    pub fn execute_stop_hooks(&self) -> Vec<HookResult> {
+        let mut results = Vec::new();
+
+        // Collect all creation orders and sort in reverse (LIFO)
+        let mut orders: Vec<u64> = self.creation_order.iter().map(|e| *e.key()).collect();
+        orders.sort_by(|a, b| b.cmp(a)); // Reverse order
+
+        // Execute stop hooks for instances in LIFO order
+        for order in orders {
+            if let Some(entry) = self.creation_order.get(&order) {
+                let (task_type, instance_id) = entry.clone();
+                let key = (task_type.clone(), instance_id);
+
+                if let Some(hook_entry) = self.stop_hooks.get(&key) {
+                    let hook = hook_entry.clone();
+                    let result = match hook() {
+                        Ok(()) => HookResult {
+                            task_type: task_type.clone(),
+                            hook_type: "stop".to_string(),
+                            success: true,
+                            error: None,
+                        },
+                        Err(e) => HookResult {
+                            task_type: task_type.clone(),
+                            hook_type: "stop".to_string(),
+                            success: false,
+                            error: Some(e),
+                        },
+                    };
+                    results.push(result);
+                }
+            }
+        }
+
+        // Execute stop hooks for singletons (last)
+        for entry in self.singletons.iter() {
+            let task_type = entry.key().clone();
+            let key = (task_type.clone(), 0u64);
+
+            if let Some(hook_entry) = self.stop_hooks.get(&key) {
+                let hook = hook_entry.clone();
+                let result = match hook() {
+                    Ok(()) => HookResult {
+                        task_type: task_type.clone(),
+                        hook_type: "stop".to_string(),
+                        success: true,
+                        error: None,
+                    },
+                    Err(e) => HookResult {
+                        task_type: task_type.clone(),
+                        hook_type: "stop".to_string(),
+                        success: false,
+                        error: Some(e),
+                    },
+                };
+                results.push(result);
+            }
+        }
+
+        results
+    }
+
     /// Clear all registered tasks (for shutdown/reset)
     pub fn clear(&self) {
         self.singletons.clear();
         self.instances.clear();
+        self.stop_hooks.clear();
+        self.creation_order.clear();
         self.instance_counts.clear();
     }
 }
@@ -458,5 +701,245 @@ mod tests {
 
         // Third send might fail if channel is full (depends on timing)
         // Just check that try_send returns without blocking
+    }
+
+    // ========== Lifecycle Hooks Tests ==========
+
+    #[test]
+    fn test_task_instance_creation_order() {
+        let i1 = TaskInstance::new("Task1".to_string(), 64);
+        let i2 = TaskInstance::new("Task2".to_string(), 64);
+        let i3 = TaskInstance::new("Task3".to_string(), 64);
+
+        // Creation order should be sequential
+        assert!(i1.creation_order < i2.creation_order);
+        assert!(i2.creation_order < i3.creation_order);
+    }
+
+    #[test]
+    fn test_task_instance_set_hooks() {
+        let mut instance = TaskInstance::new("TestTask".to_string(), 64);
+
+        // Initially no hooks
+        assert!(instance.start_hook.is_none());
+        assert!(instance.stop_hook.is_none());
+
+        // Set hooks
+        instance.set_start_hook(Box::new(|| Ok(())));
+        instance.set_stop_hook(Box::new(|| Ok(())));
+
+        // Now hooks are set
+        assert!(instance.start_hook.is_some());
+        assert!(instance.stop_hook.is_some());
+    }
+
+    #[test]
+    fn test_task_instance_execute_start_hook_success() {
+        let mut instance = TaskInstance::new("TestTask".to_string(), 64);
+
+        let called = Arc::new(AtomicU64::new(0));
+        let called_clone = called.clone();
+        instance.set_start_hook(Box::new(move || {
+            called_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }));
+
+        let result = instance.execute_start_hook();
+
+        assert!(result.success);
+        assert_eq!(result.task_type, "TestTask");
+        assert_eq!(result.hook_type, "start");
+        assert!(result.error.is_none());
+        assert_eq!(called.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_task_instance_execute_start_hook_failure() {
+        let mut instance = TaskInstance::new("TestTask".to_string(), 64);
+
+        instance.set_start_hook(Box::new(|| {
+            Err("Start hook failed!".to_string())
+        }));
+
+        let result = instance.execute_start_hook();
+
+        assert!(!result.success);
+        assert_eq!(result.task_type, "TestTask");
+        assert_eq!(result.hook_type, "start");
+        assert_eq!(result.error, Some("Start hook failed!".to_string()));
+    }
+
+    #[test]
+    fn test_task_instance_execute_stop_hook_success() {
+        let mut instance = TaskInstance::new("TestTask".to_string(), 64);
+
+        let called = Arc::new(AtomicU64::new(0));
+        let called_clone = called.clone();
+        instance.set_stop_hook(Box::new(move || {
+            called_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }));
+
+        let result = instance.execute_stop_hook();
+
+        assert!(result.success);
+        assert_eq!(result.task_type, "TestTask");
+        assert_eq!(result.hook_type, "stop");
+        assert!(result.error.is_none());
+        assert_eq!(called.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_task_instance_no_hook() {
+        let instance = TaskInstance::new("TestTask".to_string(), 64);
+
+        // No hooks set - should return success
+        let start_result = instance.execute_start_hook();
+        assert!(start_result.success);
+        assert!(start_result.error.is_none());
+
+        let stop_result = instance.execute_stop_hook();
+        assert!(stop_result.success);
+        assert!(stop_result.error.is_none());
+    }
+
+    #[test]
+    fn test_task_registry_register_instance_with_hooks() {
+        let registry = TaskRegistry::new();
+        let mut instance = TaskInstance::new("TestTask".to_string(), 64);
+
+        instance.set_stop_hook(Box::new(|| Ok(())));
+
+        registry.register_instance_with_hooks(
+            instance.handle.clone(),
+            instance.creation_order,
+            instance.stop_hook.clone(),
+        );
+
+        // Verify instance is registered
+        let handle = registry.get_instance("TestTask", instance.instance_id);
+        assert!(handle.is_some());
+    }
+
+    #[test]
+    fn test_task_registry_execute_stop_hooks_lifo_order() {
+        let registry = TaskRegistry::new();
+        let execution_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        // Create multiple tasks with hooks
+        let i1 = TaskInstance::new("Task1".to_string(), 64);
+        let order1 = execution_order.clone();
+        let hook1: LifecycleHook = Box::new(move || {
+            order1.lock().unwrap().push("Task1_stop");
+            Ok(())
+        });
+        registry.register_instance_with_hooks(
+            i1.handle.clone(),
+            i1.creation_order,
+            Some(Arc::new(hook1)),
+        );
+
+        let i2 = TaskInstance::new("Task2".to_string(), 64);
+        let order2 = execution_order.clone();
+        let hook2: LifecycleHook = Box::new(move || {
+            order2.lock().unwrap().push("Task2_stop");
+            Ok(())
+        });
+        registry.register_instance_with_hooks(
+            i2.handle.clone(),
+            i2.creation_order,
+            Some(Arc::new(hook2)),
+        );
+
+        let i3 = TaskInstance::new("Task3".to_string(), 64);
+        let order3 = execution_order.clone();
+        let hook3: LifecycleHook = Box::new(move || {
+            order3.lock().unwrap().push("Task3_stop");
+            Ok(())
+        });
+        registry.register_instance_with_hooks(
+            i3.handle.clone(),
+            i3.creation_order,
+            Some(Arc::new(hook3)),
+        );
+
+        // Execute stop hooks
+        let results = registry.execute_stop_hooks();
+
+        // All hooks should succeed
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|r| r.success));
+
+        // Verify LIFO order: Task3 -> Task2 -> Task1
+        let order = execution_order.lock().unwrap();
+        assert_eq!(*order, vec!["Task3_stop", "Task2_stop", "Task1_stop"]);
+    }
+
+    #[test]
+    fn test_task_registry_singleton_with_stop_hook() {
+        let registry = TaskRegistry::new();
+        let instance = TaskInstance::new("SingletonTask".to_string(), 64);
+
+        let called = Arc::new(AtomicU64::new(0));
+        let called_clone = called.clone();
+        let hook: LifecycleHook = Box::new(move || {
+            called_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        });
+
+        registry.register_singleton_with_hook(
+            "SingletonTask".to_string(),
+            instance.handle.clone(),
+            Some(Arc::new(hook)),
+        );
+
+        // Verify singleton is registered
+        assert!(registry.is_singleton("SingletonTask"));
+
+        // Execute stop hooks (singleton hook should be called last)
+        let results = registry.execute_stop_hooks();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert_eq!(called.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_task_registry_mixed_instances_and_singletons() {
+        let registry = TaskRegistry::new();
+        let execution_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        // Create instance
+        let i1 = TaskInstance::new("InstanceTask".to_string(), 64);
+        let order1 = execution_order.clone();
+        let hook1: LifecycleHook = Box::new(move || {
+            order1.lock().unwrap().push("Instance_stop");
+            Ok(())
+        });
+        registry.register_instance_with_hooks(
+            i1.handle.clone(),
+            i1.creation_order,
+            Some(Arc::new(hook1)),
+        );
+
+        // Create singleton
+        let singleton = TaskInstance::new("SingletonTask".to_string(), 64);
+        let order2 = execution_order.clone();
+        let hook2: LifecycleHook = Box::new(move || {
+            order2.lock().unwrap().push("Singleton_stop");
+            Ok(())
+        });
+        registry.register_singleton_with_hook(
+            "SingletonTask".to_string(),
+            singleton.handle.clone(),
+            Some(Arc::new(hook2)),
+        );
+
+        // Execute stop hooks
+        let results = registry.execute_stop_hooks();
+        assert_eq!(results.len(), 2);
+
+        // Verify order: instances first, then singletons
+        let order = execution_order.lock().unwrap();
+        assert_eq!(*order, vec!["Instance_stop", "Singleton_stop"]);
     }
 }
