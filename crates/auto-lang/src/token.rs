@@ -128,6 +128,10 @@ pub enum TokenKind {
     OkKW,    // Ok(value) constructor
     ErrKW,   // Err(message) constructor
 
+    // Plan 121: Task/Msg system keywords
+    Task,  // task keyword
+    Spawn, // spawn method name (reserved)
+
     DotView,
     DotMut,
     DotMove,
@@ -236,6 +240,8 @@ impl fmt::Display for Token {
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
             TokenKind::At => write!(f, "<@>"),
             TokenKind::Tilde => write!(f, "<~>"),
+            TokenKind::Task => write!(f, "<task>"),
+            TokenKind::Spawn => write!(f, "<spawn>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }
@@ -348,6 +354,9 @@ impl Token {
             "Some" => Some(TokenKind::SomeKW),
             "Ok" => Some(TokenKind::OkKW),
             "Err" => Some(TokenKind::ErrKW),
+            // Plan 121: Task/Msg system keywords
+            "task" => Some(TokenKind::Task),
+            "spawn" => Some(TokenKind::Spawn),
             _ => None,
         }
     }
