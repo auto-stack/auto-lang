@@ -1891,6 +1891,37 @@ impl Codegen {
                     self.patch_jump(jump_to_end);
                 }
             }
+            // Plan 121: Task/Msg support - register task definition
+            Stmt::TaskDef(task_def) => {
+                // Task definitions register metadata at compile time
+                // They don't generate bytecode - spawn/send are runtime FFI calls
+
+                // Register task type in the local types registry for lookup
+                let task_name = task_def.name.to_string();
+
+                // Store task metadata in local types HashMap
+                // The TypeInfo struct stores member_names, but for tasks we use it
+                // to mark this as a task type and track if it's a singleton
+                // (member_names is empty for tasks)
+                self.types.insert(
+                    task_name.clone(),
+                    TypeInfo {
+                        _name: if task_def.is_single() {
+                            format!("{}#single", task_name)
+                        } else {
+                            task_name
+                        },
+                        member_names: Vec::new(),
+                    },
+                );
+
+                // Note: Lifecycle hooks (start/stop) and message handlers (on block)
+                // are stored in the AST and will be accessed during Task.spawn()
+                // at runtime via the parser's type_store.
+                //
+                // The FFI shim_task_spawn function creates a TaskInstance and
+                // registers it in the TaskRegistry.
+            }
             _ => {
                 // TODO: Implement other statements
             }
@@ -5596,5 +5627,75 @@ mod tests {
         // ADD_I (0x30)
         assert_eq!(codegen.code[0], OpCode::LOAD_LOC_0 as u8);
         assert_eq!(codegen.code[1], OpCode::CONST_I32 as u8);
+    }
+
+    // Plan 121: Task/Msg statement compilation tests
+    #[test]
+    fn test_codegen_task_def_basic() {
+        use crate::ast::{TaskDef, TaskOnBlock};
+        use crate::token::Pos;
+
+        let mut codegen = Codegen::new();
+
+        // Create a basic task definition: task CounterTask { on { } }
+        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let task_def = TaskDef::new("CounterTask".into(), vec![], pos);
+
+        let stmt = Stmt::TaskDef(task_def);
+        let result = codegen.compile_stmt(&stmt);
+
+        // Should compile successfully (no bytecode generated, just metadata)
+        assert!(result.is_ok());
+
+        // Task should be registered in types registry
+        assert!(codegen.types.contains_key("CounterTask"));
+
+        // No bytecode should be generated for task definitions
+        assert_eq!(codegen.code.len(), 0);
+    }
+
+    #[test]
+    fn test_codegen_task_def_singleton() {
+        use crate::ast::{TaskAttr, TaskDef};
+        use crate::token::Pos;
+
+        let mut codegen = Codegen::new();
+
+        // Create a singleton task: #[single] task SingletonTask { on { } }
+        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let task_def = TaskDef::new("SingletonTask".into(), vec![TaskAttr::Single], pos);
+
+        let stmt = Stmt::TaskDef(task_def);
+        let result = codegen.compile_stmt(&stmt);
+
+        // Should compile successfully
+        assert!(result.is_ok());
+
+        // Task should be registered with #single marker
+        let type_info = codegen.types.get("SingletonTask");
+        assert!(type_info.is_some());
+        assert!(type_info.unwrap()._name.contains("#single"));
+    }
+
+    #[test]
+    fn test_codegen_task_def_with_state() {
+        use crate::ast::TaskDef;
+        use crate::token::Pos;
+
+        let mut codegen = Codegen::new();
+
+        // Create a task with state: task CounterTask { count mut = 0 }
+        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let mut task_def = TaskDef::new("CounterTask".into(), vec![], pos);
+        task_def.add_state("count".into(), true, Expr::Int(0));
+
+        let stmt = Stmt::TaskDef(task_def);
+        let result = codegen.compile_stmt(&stmt);
+
+        // Should compile successfully
+        assert!(result.is_ok());
+
+        // Task should be registered
+        assert!(codegen.types.contains_key("CounterTask"));
     }
 }
