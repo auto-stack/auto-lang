@@ -978,6 +978,17 @@ impl AutoVM {
                     // Push the unwrapped value back
                     task.ram.push_i32(value);
                 }
+                // Plan 120: Unwrap Result error (panic if Ok)
+                OpCode::UNWRAP_ERR => {
+                    let value = task.ram.pop_i32();
+                    if value >= 0 {
+                        // Panic on Ok
+                        return Err(VMError::RuntimeError("called unwrap_err on Ok".to_string()));
+                    }
+                    // Push the error message index back
+                    // Err values are encoded as negative (not -1 which is None)
+                    task.ram.push_i32(value);
+                }
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
                 OpCode::CREATE_LIST_INT => {
                     // Plan 077 Phase 5: Create List<int> in unified registry

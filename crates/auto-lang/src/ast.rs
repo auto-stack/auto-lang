@@ -6,7 +6,7 @@ mod branch;
 pub use branch::*;
 mod call;
 pub use call::*;
-mod cover;
+pub mod cover;
 pub use cover::*;
 mod dep_;
 pub use dep_::*;
@@ -305,6 +305,11 @@ pub enum Expr {
     Grid(Grid),
     Cover(Cover),
     Uncover(TagUncover),
+    // Plan 120: Pattern matching for Option/Result in is statements
+    OptionPattern(crate::ast::cover::OptionCover),   // Some(x) or None in is branch
+    ResultPattern(crate::ast::cover::ResultCover),   // Ok(x) or Err(e) in is branch
+    OptionUncover(crate::ast::cover::OptionUncover), // Extract value from Some
+    ResultUncover(crate::ast::cover::ResultUncover), // Extract value from Ok/Err
     // stmt exprs
     If(If),
     Nil,
@@ -390,6 +395,11 @@ impl fmt::Display for Expr {
             Expr::Grid(grid) => write!(f, "{}", grid),
             Expr::Cover(cover) => write!(f, "{}", cover),
             Expr::Uncover(uncover) => write!(f, "{}", uncover),
+            // Plan 120: Option/Result patterns for is statement
+            Expr::OptionPattern(cover) => write!(f, "{}", cover),
+            Expr::ResultPattern(cover) => write!(f, "{}", cover),
+            Expr::OptionUncover(uncover) => write!(f, "{}", uncover),
+            Expr::ResultUncover(uncover) => write!(f, "{}", uncover),
             Expr::GenName(name) => write!(f, "(gen-name {})", name),
             Expr::Nil => write!(f, "(nil)"),
             Expr::Null => write!(f, "(null)"),
@@ -812,6 +822,11 @@ impl ToNode for Expr {
             Expr::Grid(grid) => grid.to_node(),
             Expr::Cover(cover) => cover.to_node(),
             Expr::Uncover(uncover) => uncover.to_node(),
+            // Plan 120: Option/Result patterns for is statement
+            Expr::OptionPattern(cover) => cover.to_node(),
+            Expr::ResultPattern(cover) => cover.to_node(),
+            Expr::OptionUncover(uncover) => uncover.to_node(),
+            Expr::ResultUncover(uncover) => uncover.to_node(),
             Expr::GenName(name) => {
                 let mut node = AutoNode::new("gen-name");
                 node.add_arg(auto_val::Arg::Pos(Value::Str(name.clone())));

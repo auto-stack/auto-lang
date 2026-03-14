@@ -48,6 +48,7 @@ pub enum OpCode {
     IS_OK = 0xE2,         // result -> bool (check if Result is Ok)
     UNWRAP_SOME = 0xE3,   // Some(value) -> value (unwrap Option, panic if None)
     UNWRAP_OK = 0xE4,     // Ok(value) -> value (unwrap Result, panic if Err)
+    UNWRAP_ERR = 0xE5,    // Err(msg) -> msg (unwrap Result error, panic if Ok)
     // Plan 075: Template string opcodes
     TO_STR = 0x7A,        // Convert any value to string
     IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)

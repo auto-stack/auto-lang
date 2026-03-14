@@ -2471,6 +2471,26 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_branch_cond_expr(&mut self) -> AutoResult<Expr> {
+        // Plan 120: Check for Option/Result patterns first
+        // Some(binding) => ...  or None => ...
+        // Ok(binding) => ...    or Err(binding) => ...
+        if self.is_kind(TokenKind::SomeKW) {
+            return self.parse_option_pattern();
+        }
+        if self.is_kind(TokenKind::NoneKW) {
+            self.next(); // consume None
+            return Ok(Expr::OptionPattern(OptionCover {
+                variant: OptionVariant::None,
+                binding: None,
+            }));
+        }
+        if self.is_kind(TokenKind::OkKW) {
+            return self.parse_result_pattern(ResultVariant::Ok);
+        }
+        if self.is_kind(TokenKind::ErrKW) {
+            return self.parse_result_pattern(ResultVariant::Err);
+        }
+
         // Parse the left-hand side expression (identifier or tag)
         let lhs = if self.is_kind(TokenKind::Ident) {
             self.lhs_expr()?
@@ -2481,6 +2501,58 @@ impl<'a> Parser<'a> {
         // Continue parsing to handle member access (e.g., Msg.Inc)
         // This allows expressions like "Msg.Inc" in is branches
         self.expr_pratt_with_left(lhs, 0)
+    }
+
+    /// Parse Option pattern: Some(binding) for is statement
+    fn parse_option_pattern(&mut self) -> AutoResult<Expr> {
+        self.next(); // consume 'Some'
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            // Expect an identifier (binding variable)
+            if !self.is_kind(TokenKind::Ident) {
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic {
+                    message: "Pattern Some(x) expects an identifier".to_string(),
+                    span,
+                }.into());
+            }
+            let binding = self.parse_name()?;
+            self.expect(TokenKind::RParen)?; // consume ')'
+
+            Ok(Expr::OptionPattern(OptionCover {
+                variant: OptionVariant::Some,
+                binding: Some(binding),
+            }))
+        } else {
+            // Some without parens - treat as identifier
+            Ok(Expr::Ident("Some".into()))
+        }
+    }
+
+    /// Parse Result pattern: Ok(binding) or Err(binding) for is statement
+    fn parse_result_pattern(&mut self, variant: ResultVariant) -> AutoResult<Expr> {
+        self.next(); // consume 'Ok' or 'Err'
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            // Expect an identifier (binding variable)
+            if !self.is_kind(TokenKind::Ident) {
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic {
+                    message: format!("Pattern {}(x) expects an identifier", variant),
+                    span,
+                }.into());
+            }
+            let binding = self.parse_name()?;
+            self.expect(TokenKind::RParen)?; // consume ')'
+
+            Ok(Expr::ResultPattern(ResultCover {
+                variant,
+                binding: Some(binding),
+            }))
+        } else {
+            // Ok/Err without parens - treat as identifier
+            Ok(Expr::Ident(variant.to_string().into()))
+        }
     }
 
     pub fn lhs_expr(&mut self) -> AutoResult<Expr> {
@@ -3699,7 +3771,10 @@ impl<'a> Parser<'a> {
             _ => {
                 let expr = self.is_branch_cond_expr()?;
                 self.expect(TokenKind::DoubleArrow)?;
+
+                // Check for pattern binding cases
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
+                    // Tag pattern: Msg.Inc(value) => ...
                     self.enter_scope();
                     let tag_typ = self.lookup_type(&cover.kind);
                     let tag_field_type = match *tag_typ.borrow() {
@@ -3728,10 +3803,61 @@ impl<'a> Parser<'a> {
                     let body = self.parse_expr_or_body()?;
                     self.exit_scope();
                     body
+                } else if let Expr::OptionPattern(opt_cover) = &expr {
+                    // Plan 120: Option pattern: Some(x) => ... or None => ...
+                    if let Some(binding) = &opt_cover.binding {
+                        self.enter_scope();
+                        // Define variable with unknown type (will be inferred)
+                        self.define(
+                            binding.as_str(),
+                            Meta::Store(Store {
+                                name: binding.clone(),
+                                kind: StoreKind::Let,
+                                ty: Type::Unknown, // TODO: Infer from Option<T>
+                                expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
+                                    src: tgt.repr(),
+                                    variant: opt_cover.variant,
+                                    binding: binding.clone(),
+                                }),
+                            }),
+                        );
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else {
+                        // None pattern - no binding
+                        self.parse_expr_or_body()?
+                    }
+                } else if let Expr::ResultPattern(res_cover) = &expr {
+                    // Plan 120: Result pattern: Ok(x) => ... or Err(e) => ...
+                    if let Some(binding) = &res_cover.binding {
+                        self.enter_scope();
+                        // Define variable with unknown type (will be inferred)
+                        self.define(
+                            binding.as_str(),
+                            Meta::Store(Store {
+                                name: binding.clone(),
+                                kind: StoreKind::Let,
+                                ty: Type::Unknown, // TODO: Infer from Result<T, E>
+                                expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
+                                    src: tgt.repr(),
+                                    variant: res_cover.variant,
+                                    binding: binding.clone(),
+                                }),
+                            }),
+                        );
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else {
+                        // Pattern without binding (shouldn't happen for Ok/Err but handle gracefully)
+                        self.parse_expr_or_body()?
+                    }
                 } else {
-                    let body = self.parse_expr_or_body()?;
-                    body
+                    // Default case: simple expression match
+                    self.parse_expr_or_body()?
                 };
+
                 let branch = IsBranch::EqBranch(expr, body);
                 self.skip_empty_lines();
                 return Ok(branch);

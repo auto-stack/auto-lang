@@ -1655,21 +1655,152 @@ impl Codegen {
                         crate::ast::IsBranch::EqBranch(pattern, body) => {
                             // Plan 120: Check for Option/Result pattern matching
                             match pattern {
+                                // Legacy: None as expression (for backward compatibility)
                                 crate::ast::Expr::None => {
                                     // Duplicate target for comparison
                                     self.emit(OpCode::DUP);
                                     // Check if value is None (-1)
                                     self.emit(OpCode::IS_NIL);
                                 }
+                                // Plan 120: OptionPattern - Some(x) or None in is statement
+                                crate::ast::Expr::OptionPattern(opt_cover) => {
+                                    match opt_cover.variant {
+                                        crate::ast::OptionVariant::Some => {
+                                            // Duplicate target for checking
+                                            self.emit(OpCode::DUP);
+                                            // Check if value is Some (not None)
+                                            self.emit(OpCode::IS_SOME);
+
+                                            // Jump to next branch if not matched
+                                            self.emit(OpCode::JMP_IF_Z);
+                                            let jump_to_next = self.emit_placeholder_i16();
+                                            branch_jumps.push(jump_to_next);
+
+                                            // If we have a binding, extract the value and store it
+                                            if let Some(binding) = &opt_cover.binding {
+                                                // The target is still on stack (from DUP)
+                                                // Unwrap the Some value
+                                                self.emit(OpCode::UNWRAP_SOME);
+                                                // Store in local variable
+                                                let var_idx = self.add_var(binding.as_str());
+                                                self.emit(OpCode::STORE_LOCAL);
+                                                self.emit_u16(var_idx as u16);
+                                            } else {
+                                                // Pop the duplicated target
+                                                self.emit(OpCode::POP);
+                                            }
+
+                                            // Compile branch body
+                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                            // Jump to end of is statement
+                                            self.emit(OpCode::JMP);
+                                            let jump_to_end = self.emit_placeholder_i16();
+                                            branch_jumps.push(jump_to_end);
+
+                                            // Patch jump to next branch
+                                            self.patch_jump(jump_to_next);
+                                            continue; // Skip the default handling
+                                        }
+                                        crate::ast::OptionVariant::None => {
+                                            // Duplicate target for comparison
+                                            self.emit(OpCode::DUP);
+                                            // Check if value is None (-1)
+                                            self.emit(OpCode::IS_NIL);
+                                        }
+                                    }
+                                }
+                                // Plan 120: ResultPattern - Ok(x) or Err(e) in is statement
+                                crate::ast::Expr::ResultPattern(res_cover) => {
+                                    match res_cover.variant {
+                                        crate::ast::ResultVariant::Ok => {
+                                            // Duplicate target for checking
+                                            self.emit(OpCode::DUP);
+                                            // Check if value is Ok
+                                            self.emit(OpCode::IS_OK);
+
+                                            // Jump to next branch if not matched
+                                            self.emit(OpCode::JMP_IF_Z);
+                                            let jump_to_next = self.emit_placeholder_i16();
+                                            branch_jumps.push(jump_to_next);
+
+                                            // If we have a binding, extract the value and store it
+                                            if let Some(binding) = &res_cover.binding {
+                                                // The target is still on stack (from DUP)
+                                                // Unwrap the Ok value
+                                                self.emit(OpCode::UNWRAP_OK);
+                                                // Store in local variable
+                                                let var_idx = self.add_var(binding.as_str());
+                                                self.emit(OpCode::STORE_LOCAL);
+                                                self.emit_u16(var_idx as u16);
+                                            } else {
+                                                // Pop the duplicated target
+                                                self.emit(OpCode::POP);
+                                            }
+
+                                            // Compile branch body
+                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                            // Jump to end of is statement
+                                            self.emit(OpCode::JMP);
+                                            let jump_to_end = self.emit_placeholder_i16();
+                                            branch_jumps.push(jump_to_end);
+
+                                            // Patch jump to next branch
+                                            self.patch_jump(jump_to_next);
+                                            continue; // Skip the default handling
+                                        }
+                                        crate::ast::ResultVariant::Err => {
+                                            // Duplicate target for checking
+                                            self.emit(OpCode::DUP);
+                                            // Check if value is Err (not Ok)
+                                            // IS_OK returns 1 if Ok, 0 if Err
+                                            self.emit(OpCode::IS_OK);
+                                            // Invert: 0 = Err (match), 1 = Ok (no match)
+                                            self.emit(OpCode::CONST_I32);
+                                            self.emit_i32(1);
+                                            self.emit(OpCode::XOR);
+
+                                            // Jump to next branch if not matched
+                                            self.emit(OpCode::JMP_IF_Z);
+                                            let jump_to_next = self.emit_placeholder_i16();
+                                            branch_jumps.push(jump_to_next);
+
+                                            // If we have a binding, extract the error and store it
+                                            if let Some(binding) = &res_cover.binding {
+                                                // The target is still on stack (from DUP)
+                                                // Unwrap the Err value (error message)
+                                                self.emit(OpCode::UNWRAP_ERR);
+                                                // Store in local variable
+                                                let var_idx = self.add_var(binding.as_str());
+                                                self.emit(OpCode::STORE_LOCAL);
+                                                self.emit_u16(var_idx as u16);
+                                            } else {
+                                                // Pop the duplicated target
+                                                self.emit(OpCode::POP);
+                                            }
+
+                                            // Compile branch body
+                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                            // Jump to end of is statement
+                                            self.emit(OpCode::JMP);
+                                            let jump_to_end = self.emit_placeholder_i16();
+                                            branch_jumps.push(jump_to_end);
+
+                                            // Patch jump to next branch
+                                            self.patch_jump(jump_to_next);
+                                            continue; // Skip the default handling
+                                        }
+                                    }
+                                }
+                                // Legacy: Some/Ok/Err as expressions (for backward compatibility)
                                 crate::ast::Expr::Some(inner) => {
                                     // Duplicate target for checking
                                     self.emit(OpCode::DUP);
                                     // Check if value is Some (not None)
                                     self.emit(OpCode::IS_SOME);
 
-                                    // TODO: For now, we don't bind the inner value
-                                    // Full pattern matching with binding would require
-                                    // extending the IsBranch structure
                                     let _ = inner; // Suppress unused warning
                                 }
                                 crate::ast::Expr::Ok(inner) => {
@@ -1684,17 +1815,10 @@ impl Codegen {
                                     // Duplicate target for checking
                                     self.emit(OpCode::DUP);
                                     // Check if value is Err (not Ok)
-                                    // IS_OK returns 1 if Ok, 0 if Err
-                                    // We want to match Err, so we need to negate
                                     self.emit(OpCode::IS_OK);
-                                    // Now: 1 = Ok (should not match), 0 = Err (should match)
-                                    // JMP_IF_Z jumps if value is 0, so Err will NOT jump
-                                    // But we want Err to continue (match), so we need to invert
-                                    // Use XOR with 1 to invert: 1->0, 0->1
                                     self.emit(OpCode::CONST_I32);
                                     self.emit_i32(1);
                                     self.emit(OpCode::XOR);
-                                    // Now: 0 = Ok (will jump, no match), 1 = Err (will not jump, match)
 
                                     let _ = msg; // Suppress unused warning
                                 }

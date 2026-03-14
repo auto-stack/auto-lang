@@ -237,6 +237,11 @@ impl<'db> DepScanner<'db> {
             | Expr::None => {}
             | Expr::Ok(e) => { self.walk_expr(e, deps); }
             | Expr::Err(e) => { self.walk_expr(e, deps); }
+            // Plan 120: Option/Result patterns in is statements - no dependencies
+            | Expr::OptionPattern(_) => {}
+            | Expr::ResultPattern(_) => {}
+            | Expr::OptionUncover(_) => {}
+            | Expr::ResultUncover(_) => {}
         }
     }
 

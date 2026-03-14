@@ -20,6 +20,48 @@ pub struct TagUncover {
     pub cover: TagCover,
 }
 
+// Plan 120: Option and Result pattern matching
+// Some(x) or None
+#[derive(Debug, Clone)]
+pub struct OptionCover {
+    pub variant: OptionVariant,
+    pub binding: Option<AutoStr>,  // Variable name to bind (Some(x) => x)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OptionVariant {
+    Some,
+    None,
+}
+
+// Ok(x) or Err(e)
+#[derive(Debug, Clone)]
+pub struct ResultCover {
+    pub variant: ResultVariant,
+    pub binding: Option<AutoStr>,  // Variable name to bind (Ok(x) => x, Err(e) => e)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResultVariant {
+    Ok,
+    Err,
+}
+
+// Unwrap expressions for is statement pattern matching
+#[derive(Debug, Clone)]
+pub struct OptionUncover {
+    pub src: AutoStr,
+    pub variant: OptionVariant,
+    pub binding: AutoStr,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResultUncover {
+    pub src: AutoStr,
+    pub variant: ResultVariant,
+    pub binding: AutoStr,
+}
+
 impl fmt::Display for TagCover {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -41,6 +83,54 @@ impl fmt::Display for Cover {
 impl fmt::Display for TagUncover {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.cover)
+    }
+}
+
+impl fmt::Display for OptionVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OptionVariant::Some => write!(f, "Some"),
+            OptionVariant::None => write!(f, "None"),
+        }
+    }
+}
+
+impl fmt::Display for ResultVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResultVariant::Ok => write!(f, "Ok"),
+            ResultVariant::Err => write!(f, "Err"),
+        }
+    }
+}
+
+impl fmt::Display for OptionCover {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.binding {
+            Some(b) => write!(f, "({} {})", self.variant, b),
+            None => write!(f, "{}", self.variant),
+        }
+    }
+}
+
+impl fmt::Display for ResultCover {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.binding {
+            Some(b) => write!(f, "({} {})", self.variant, b),
+            None => write!(f, "{}", self.variant),
+        }
+    }
+}
+
+impl fmt::Display for OptionUncover {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(option-uncover {} {})", self.src, self.binding)
+    }
+}
+
+impl fmt::Display for ResultUncover {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(result-uncover {} {})", self.src, self.binding)
     }
 }
 
@@ -79,6 +169,48 @@ impl ToNode for TagUncover {
         let mut node = AutoNode::new("tag-uncover");
         node.set_prop("src", Value::Str(self.src.clone()));
         node.add_kid(self.cover.to_node());
+        node
+    }
+}
+
+impl ToNode for OptionCover {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("option-cover");
+        node.set_prop("variant", Value::Str(self.variant.to_string().into()));
+        if let Some(b) = &self.binding {
+            node.set_prop("binding", Value::Str(b.clone()));
+        }
+        node
+    }
+}
+
+impl ToNode for ResultCover {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("result-cover");
+        node.set_prop("variant", Value::Str(self.variant.to_string().into()));
+        if let Some(b) = &self.binding {
+            node.set_prop("binding", Value::Str(b.clone()));
+        }
+        node
+    }
+}
+
+impl ToNode for OptionUncover {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("option-uncover");
+        node.set_prop("src", Value::Str(self.src.clone()));
+        node.set_prop("binding", Value::Str(self.binding.clone()));
+        node.set_prop("variant", Value::Str(self.variant.to_string().into()));
+        node
+    }
+}
+
+impl ToNode for ResultUncover {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("result-uncover");
+        node.set_prop("src", Value::Str(self.src.clone()));
+        node.set_prop("binding", Value::Str(self.binding.clone()));
+        node.set_prop("variant", Value::Str(self.variant.to_string().into()));
         node
     }
 }

@@ -396,6 +396,14 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::Ok(e) => Type::Result(Box::new(infer_expr(ctx, e))),
         // Err(msg) returns !never (Result type with unknown success type)
         Expr::Err(e) => Type::Result(Box::new(Type::Unknown)),
+
+        // Plan 120: Option/Result patterns in is statements
+        // These are used in pattern matching context, return Bool for the pattern check
+        Expr::OptionPattern(_) => Type::Bool,
+        Expr::ResultPattern(_) => Type::Bool,
+        // Unwrap expressions return the inner type
+        Expr::OptionUncover(_) => Type::Unknown,  // Type depends on Option<T>
+        Expr::ResultUncover(_) => Type::Unknown,  // Type depends on Result<T, E>
     }
 }
 
