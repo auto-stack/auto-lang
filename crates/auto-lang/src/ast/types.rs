@@ -42,6 +42,10 @@ pub enum Type {
     // Plan 120: Option and Result types
     Option(Box<Type>),  // ?T - Optional value (None is valid state)
     Result(Box<Type>),  // !T - Error-propagating value (Err is exceptional)
+    // Plan 121: Task handle type
+    Handle {
+        task_type: Box<Type>,  // The task type this handle references
+    },
 }
 
 impl Type {
@@ -98,6 +102,7 @@ impl Type {
             Type::Unknown => "<unknown>".into(),
             Type::Option(inner) => format!("?{}", inner.unique_name()).into(),
             Type::Result(inner) => format!("!{}", inner.unique_name()).into(),
+            Type::Handle { task_type } => format!("Handle<{}>", task_type.unique_name()).into(),
             Type::Union(u) => u.name.clone(),
             Type::Tag(t) => t.borrow().name.clone(),
         }
@@ -139,6 +144,7 @@ impl Type {
             Type::Void => "void".into(),
             Type::Option(_) => "None".into(),  // Plan 120: Option default is None
             Type::Result(_) => "Err(\"default error\")".into(),  // Plan 120: Result default is Err
+            Type::Handle { .. } => "Handle.null()".into(),  // Plan 121: Handle default is null handle
         }
     }
 
@@ -234,6 +240,11 @@ impl Type {
             // Plan 120: Option and Result types - recursive substitution
             Type::Option(inner) => Type::Option(Box::new(inner.substitute(params, args))),
             Type::Result(inner) => Type::Result(Box::new(inner.substitute(params, args))),
+
+            // Plan 121: Handle type - recursive substitution
+            Type::Handle { task_type } => Type::Handle {
+                task_type: Box::new(task_type.substitute(params, args)),
+            },
         }
     }
 
@@ -286,6 +297,9 @@ impl Type {
 
             // Plan 120: Option and Result use reference passing
             Type::Option(_) | Type::Result(_) => false,
+
+            // Plan 121: Handle is small (just an ID + sender), use value passing
+            Type::Handle { .. } => true,
         }
     }
 }
@@ -486,6 +500,7 @@ impl fmt::Display for Type {
             Type::Storage(storage) => write!(f, "{}", storage),
             Type::Option(inner) => write!(f, "?{}", inner),
             Type::Result(inner) => write!(f, "!{}", inner),
+            Type::Handle { task_type } => write!(f, "Handle<{}>", task_type),
         }
     }
 }
@@ -527,6 +542,7 @@ impl From<Type> for auto_val::Type {
             Type::Storage(_) => auto_val::Type::Void,  // Storage types are marker types
             Type::Option(inner) => (*inner).into(),  // Option<T> maps to T's auto_val type
             Type::Result(inner) => (*inner).into(),  // Result<T> maps to T's auto_val type
+            Type::Handle { .. } => auto_val::Type::Ptr,  // Plan 121: Handle maps to Ptr (internal reference)
         }
     }
 }
@@ -864,6 +880,9 @@ impl AtomWriter for Type {
             }
             Type::Result(inner) => {
                 write!(f, "result({})", inner.to_atom_str())?;
+            }
+            Type::Handle { task_type } => {
+                write!(f, "handle({})", task_type.to_atom_str())?;
             }
         }
         Ok(())

@@ -271,6 +271,8 @@ impl RustTrans {
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
             Type::Result(inner) => format!("Result<{}, String>", self.rust_type_name(inner)),
+            // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
+            Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
         }
     }
 

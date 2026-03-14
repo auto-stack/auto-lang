@@ -181,6 +181,9 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // Plan 120: Option 和 Result 类型 - 递归检查内部类型
         Type::Option(inner) => occurs_in(var_name, inner),
         Type::Result(inner) => occurs_in(var_name, inner),
+
+        // Plan 121: Handle 类型 - 递归检查内部类型
+        Type::Handle { task_type } => occurs_in(var_name, task_type),
     }
 }
 

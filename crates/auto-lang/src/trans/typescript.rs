@@ -114,6 +114,8 @@ impl TypeScriptTrans {
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("{} | null", Self::type_to_ts(inner)),
             Type::Result(inner) => format!("{} | Error", Self::type_to_ts(inner)),
+            // Plan 121: Handle type - maps to TaskHandle<T> interface
+            Type::Handle { task_type } => format!("TaskHandle<{}>", Self::type_to_ts(task_type)),
         }
     }
 

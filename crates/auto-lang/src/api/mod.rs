@@ -213,6 +213,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Union(union) => format!("union({})", union.name),
         Type::Option(inner) => format!("?{}", type_to_string(inner)),  // Plan 120
         Type::Result(inner) => format!("!{}", type_to_string(inner)),  // Plan 120
+        Type::Handle { task_type } => format!("Handle<{}>", type_to_string(task_type)),  // Plan 121
     }
 }
 
