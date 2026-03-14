@@ -1,6 +1,27 @@
 # Plan 121: AutoLang Task/Msg 基础系统
 
-## Status: 📋 PLANNING
+## Status: ✅ COMPLETED
+
+### Implementation Summary
+
+**完成日期**: 2026-03-15
+
+**已实现功能**:
+1. ✅ Lexer: Task/Spawn 关键字
+2. ✅ AST: TaskDef, TaskOnBlock, TaskMsgPattern 结构
+3. ✅ Parser: task 定义解析，spawn/send 方法调用
+4. ✅ AST: Handle<T> 类型
+5. ✅ AutoVM: TaskRegistry, TaskHandle, TaskInstance
+6. ✅ FFI: spawn(), send(), TaskSystem.start()
+7. ✅ 生命周期钩子: start(), stop() (LIFO 顺序)
+8. ✅ Codegen: TaskDef 语句编译
+9. ✅ 集成测试
+
+**测试覆盖**:
+- 10 AST task tests
+- 25 task_system tests
+- 8 FFI task tests
+- 3 codegen task tests
 
 ## Objective
 
