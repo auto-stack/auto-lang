@@ -3202,7 +3202,7 @@ impl<'a> Parser<'a> {
                         }.into());
                     }
                 }
-                TokenKind::Ident if self.cur.text.as_str() == "on" => {
+                TokenKind::On => {
                     // Parse on block: on { ... }
                     let on_block = self.parse_task_on_block()?;
                     task.on_block = on_block;
@@ -3292,7 +3292,7 @@ impl<'a> Parser<'a> {
 
     /// Parse task on block: `on { Pattern => { ... } else => { ... } }`
     fn parse_task_on_block(&mut self) -> AutoResult<TaskOnBlock> {
-        self.expect_ident("on")?;
+        self.expect(TokenKind::On)?;
         let pos = self.prev.pos;
         let mut on_block = TaskOnBlock::new(pos);
 
@@ -4362,6 +4362,10 @@ impl<'a> Parser<'a> {
                         "vm" => has_vm = true,
                         "rs" => has_rs = true,
                         "pub" => has_pub = true,
+                        "single" => {
+                            // Plan 121: #[single] annotation for singleton tasks
+                            // This is handled by the caller, just skip here
+                        }
                         "with" => {
                             // Plan 061: Parse #[with(T, U as Spec<V>)]
                             self.next(); // skip 'with'
@@ -4369,7 +4373,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => {
                             return Err(SyntaxError::Generic {
-                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[pub], #[with(...)], #[c,vm,rs]", annot),
+                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[pub], #[single], #[with(...)], #[c,vm,rs]", annot),
                                 span: pos_to_span(self.cur.pos),
                             }.into());
                         }
