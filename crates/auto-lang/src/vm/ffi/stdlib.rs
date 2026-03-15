@@ -259,13 +259,23 @@ pub fn shim_env_get(key: String) -> String {
 /// Set an environment variable
 #[auto_macros::rust_fn("Env.set")]
 pub fn shim_env_set(key: String, value: String) {
-    std::env::set_var(&key, &value);
+    // SAFETY: Environment variable modification is safe in single-threaded context
+    // In multi-threaded context, this could cause data races
+    #[allow(deprecated)]
+    unsafe {
+        std::env::set_var(&key, &value);
+    }
 }
 
 /// Remove an environment variable
 #[auto_macros::rust_fn("Env.remove")]
 pub fn shim_env_remove(key: String) {
-    std::env::remove_var(&key);
+    // SAFETY: Environment variable modification is safe in single-threaded context
+    // In multi-threaded context, this could cause data races
+    #[allow(deprecated)]
+    unsafe {
+        std::env::remove_var(&key);
+    }
 }
 
 // ============================================================================
