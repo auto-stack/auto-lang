@@ -12,6 +12,8 @@ pub mod expr;
 pub mod functions;
 pub mod registry;
 pub mod stmt;
+// Plan 125 Phase 3.6: Task type checking
+pub mod task_types;
 pub mod unification;
 
 // Re-export public API
@@ -22,6 +24,8 @@ pub use expr::infer_expr;
 pub use functions::check_fn;
 pub use registry::TypeRegistry;
 pub use stmt::check_stmt;
+// Plan 125 Phase 3.6: Task type checking
+pub use task_types::{EnvelopeInfo, TaskTypeChecker, literal_to_type};
 
 use crate::ast::{Member, Type};
 use crate::error::{AutoError, TypeError};
