@@ -22,6 +22,7 @@ mod mem_tests;
 mod memory_quick_test;
 mod memory_tests;
 mod ownership_tests;
+mod phase3_tests; // Plan 125: Phase 3 polymorphic routing tests
 mod pointer_tests; // Plan 052: Pointer type tests
 mod stdlib_tests;
 mod storage_integration_tests;
