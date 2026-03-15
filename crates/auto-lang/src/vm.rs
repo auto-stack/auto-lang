@@ -31,6 +31,8 @@ pub mod loader;
 pub mod memory;
 // Plan 125 Phase 3.4: MessageContext for task message handling
 pub mod message_context;
+// Plan 125 Phase 3.5: Pattern matcher for task message routing
+pub mod pattern_matcher;
 pub mod native;
 pub mod native_registry;
 pub mod opcode;
