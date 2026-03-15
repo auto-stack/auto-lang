@@ -39,6 +39,7 @@ pub mod ffi;
 // Plan 073 Phase 9.3: Execution engine selection (AutoVM vs Evaluator)
 pub mod execution_engine;
 pub mod hash;
+pub mod implicit_union; // Plan 125 Phase 3.3: Implicit union generator
 pub mod infer;
 pub use crate::infer::InferenceContext;
 pub use crate::type_registry::SharedTypeRegistry;
