@@ -1,5 +1,32 @@
 # Plan 125: Phase 3 - 多态路由、隐式联合体与显式消息上下文
 
+## 实现状态 (2025-03-15)
+
+| 阶段 | 内容 | 状态 | 提交 |
+|------|------|------|------|
+| Phase 3.1-3.2 | AST 和 Parser 扩展 | ✅ 完成 | `64a0e0b` |
+| Phase 3.3 | 隐式联合体生成器 | ✅ 完成 | `7e5ca93` |
+| Phase 3.4 | MessageContext 运行时 | ✅ 完成 | `fb41735` |
+| Phase 3.5 | VM 层集成 (pattern_matcher) | ✅ 完成 | `7e8eb98` |
+| Phase 3.6 | 静态类型检查 (TaskTypeChecker) | ✅ 完成 | `805b2c5` |
+| Phase 3.7 | 测试与文档 | 🔄 进行中 | - |
+
+**已实现模块**：
+- `crates/auto-lang/src/ast/task.rs` - TaskMsgPattern, LiteralValue, TaskOnBlock 扩展
+- `crates/auto-lang/src/implicit_union.rs` - ImplicitUnionInfo 生成器
+- `crates/auto-lang/src/vm/message_context.rs` - MessageContext 运行时
+- `crates/auto-lang/src/vm/pattern_matcher.rs` - PatternMatcher 模式匹配
+- `crates/auto-lang/src/infer/task_types.rs` - TaskTypeChecker 类型检查
+
+**测试覆盖**：
+- Phase 3 解析测试: 19 passing
+- implicit_union 测试: 16 passing
+- message_context 测试: 15 passing
+- pattern_matcher 测试: 15 passing
+- task_types 测试: 9 passing
+
+---
+
 ## 概述
 
 本文档描述 Auto 语言 Task/Msg 系统的 Phase 3 实现计划。Phase 3 的核心目标是：
@@ -148,10 +175,10 @@ pub struct MessageContextType {
 为新增的枚举变体实现格式化输出。
 
 **验收标准**：
-- [ ] `TaskMsgPattern::Literal` 正确解析和显示
-- [ ] `TaskMsgPattern::TypeBinding` 正确解析和显示
-- [ ] `TaskOnBlock.context_param` 正确存储和访问
-- [ ] 所有新增类型有完整的单元测试
+- [x] `TaskMsgPattern::Literal` 正确解析和显示
+- [x] `TaskMsgPattern::TypeBinding` 正确解析和显示
+- [x] `TaskOnBlock.context_param` 正确存储和访问
+- [x] 所有新增类型有完整的单元测试
 
 ---
 
@@ -257,12 +284,12 @@ fn collect_pattern_types(&self, on_block: &TaskOnBlock) -> ImplicitUnionInfo {
 ```
 
 **验收标准**：
-- [ ] `on(ctx)` 语法正确解析
-- [ ] `on` (无参数) 语法仍然有效
-- [ ] 字面量模式 `"ping"`, `404`, `true` 正确解析
-- [ ] 类型绑定模式 `msg string`, `u User` 正确解析
-- [ ] 守卫表达式 `if amount > 10000` 正确解析
-- [ ] 双遍扫描正确收集模式类型
+- [x] `on(ctx)` 语法正确解析
+- [x] `on` (无参数) 语法仍然有效
+- [x] 字面量模式 `"ping"`, `404`, `true` 正确解析
+- [x] 类型绑定模式 `msg string`, `u User` 正确解析
+- [x] 守卫表达式 `if amount > 10000` 正确解析
+- [x] 双遍扫描正确收集模式类型
 
 ---
 
@@ -364,10 +391,10 @@ pub struct {task_name}Message {{
 ```
 
 **验收标准**：
-- [ ] 从简单模式正确生成枚举
-- [ ] 从混合模式正确生成联合体
-- [ ] 生成的 Rust 代码语法正确
-- [ ] 信封结构包含 MessageContext
+- [x] 从简单模式正确生成枚举
+- [x] 从混合模式正确生成联合体
+- [x] 生成的 Rust 代码语法正确
+- [x] 信封结构包含 MessageContext
 
 ---
 
@@ -471,11 +498,11 @@ impl AutoVM {
 ```
 
 **验收标准**：
-- [ ] `MessageContext::new()` 正确创建上下文
-- [ ] `MessageContext::for_ask()` 正确创建带回复通道的上下文
-- [ ] `ctx.reply(payload)` 在 ask 模式下成功发送回复
-- [ ] `ctx.reply()` 在非 ask 模式下返回错误
-- [ ] `ctx.can_reply()` 正确返回可回复状态
+- [x] `MessageContext::new()` 正确创建上下文
+- [x] `MessageContext::for_ask()` 正确创建带回复通道的上下文
+- [x] `ctx.reply(payload)` 在 ask 模式下成功发送回复
+- [x] `ctx.reply()` 在非 ask 模式下返回错误
+- [x] `ctx.can_reply()` 正确返回可回复状态
 
 ---
 
@@ -599,11 +626,11 @@ impl AutoTask {
 ```
 
 **验收标准**：
-- [ ] `dispatch_with_context` 正确分发带上下文的消息
-- [ ] 模式匹配正确匹配字面量和类型绑定
-- [ ] 守卫表达式正确求值
-- [ ] `ctx` 变量正确注入到处理器作用域
-- [ ] `ctx.reply()` 在处理器中正确工作
+- [x] `dispatch_with_context` 正确分发带上下文的消息
+- [x] 模式匹配正确匹配字面量和类型绑定
+- [x] 守卫表达式正确求值
+- [x] `ctx` 变量正确注入到处理器作用域
+- [x] `ctx.reply()` 在处理器中正确工作
 
 ---
 
@@ -688,10 +715,10 @@ impl TypeChecker {
 ```
 
 **验收标准**：
-- [ ] 从 `on` 块正确推导信封类型
-- [ ] `Task.send(wrong_type)` 编译期报错
-- [ ] `ask` 返回类型正确推导
-- [ ] 跨 Task 类型一致性检查
+- [x] 从 `on` 块正确推导信封类型
+- [x] `Task.send(wrong_type)` 编译期报错
+- [x] `ask` 返回类型正确推导
+- [x] 跨 Task 类型一致性检查
 
 ---
 
@@ -860,10 +887,10 @@ async fn test_phase3_full_example() {
 ```
 
 **验收标准**：
-- [ ] 所有 AST 测试通过
-- [ ] 所有隐式联合体测试通过
-- [ ] 所有运行时测试通过
-- [ ] 所有类型检查测试通过
+- [x] 所有 AST 测试通过
+- [x] 所有隐式联合体测试通过
+- [x] 所有运行时测试通过
+- [x] 所有类型检查测试通过
 - [ ] 集成测试完整运行
 
 ---
