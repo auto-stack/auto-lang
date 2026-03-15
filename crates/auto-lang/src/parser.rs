@@ -752,6 +752,23 @@ impl<'a> Parser<'a> {
     ///
     /// Plan 091: Use TypeStore + InferenceContext (removed Universe fallback)
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
+        // Plan 125: Check for built-in type aliases first
+        match name {
+            "string" | "str" => return shared(Type::Str(0)),
+            "int" => return shared(Type::Int),
+            "uint" => return shared(Type::Uint),
+            "i64" => return shared(Type::I64),
+            "u64" => return shared(Type::U64),
+            "float" => return shared(Type::Float),
+            "double" => return shared(Type::Double),
+            "bool" => return shared(Type::Bool),
+            "byte" => return shared(Type::Byte),
+            "char" => return shared(Type::Char),
+            "void" => return shared(Type::Void),
+            "usize" => return shared(Type::USize),
+            _ => {}
+        }
+
         // Plan 091: 首先从 TypeStore 查找类型声明
         if let Ok(store) = self.type_store.read() {
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
@@ -3327,10 +3344,28 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse task on block: `on { Pattern => { ... } else => { ... } }`
+    /// Phase 3 (Plan 125): Also supports `on(ctx) { ... }` with context parameter
+    /// and guard expressions: `amount int if amount > 10000 => { ... }`
     fn parse_task_on_block(&mut self) -> AutoResult<TaskOnBlock> {
         self.expect(TokenKind::On)?;
         let pos = self.prev.pos;
-        let mut on_block = TaskOnBlock::new(pos);
+
+        // Phase 3: Check for context parameter: on(ctx) or on { ... }
+        let context_param = if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            let name = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            Some(name)
+        } else {
+            None
+        };
+
+        let mut on_block = TaskOnBlock::with_context_and_handlers(
+            context_param,
+            Vec::new(),
+            None,
+            pos,
+        );
 
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -3348,11 +3383,20 @@ impl<'a> Parser<'a> {
                 let body = self.body()?;
                 on_block.set_else(body);
             } else {
-                // Parse message pattern: Name or Name(args)
+                // Parse message pattern: Name, Literal, or TypeBinding
                 let pattern = self.parse_task_msg_pattern()?;
+
+                // Phase 3: Parse optional guard expression
+                let guard = if self.is_kind(TokenKind::If) {
+                    self.next(); // consume 'if'
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+
                 self.expect(TokenKind::DoubleArrow)?;
                 let body = self.body()?;
-                on_block.add_handler(pattern, body);
+                on_block.add_handler_with_guard(pattern, guard, body);
             }
 
             self.skip_empty_lines();
@@ -3363,12 +3407,58 @@ impl<'a> Parser<'a> {
         Ok(on_block)
     }
 
-    /// Parse task message pattern: `Add(val)` or `Reset`
+    /// Parse task message pattern
+    ///
+    /// Phase 1/2 patterns:
+    /// - `Reset` - Simple variant
+    /// - `Add(val)` - Variant with bindings
+    ///
+    /// Phase 3 patterns (Plan 125):
+    /// - `"ping"` - String literal
+    /// - `404` - Integer literal
+    /// - `true` / `false` - Boolean literal
+    /// - `msg string` - Type binding (identifier followed by type)
     fn parse_task_msg_pattern(&mut self) -> AutoResult<TaskMsgPattern> {
+        use crate::ast::LiteralValue;
+
+        // Phase 3: Check for literal patterns first
+        match &self.cur.kind {
+            TokenKind::Str => {
+                let s = self.cur.text.clone();
+                let lit = LiteralValue::String(s);
+                self.next();
+                return Ok(TaskMsgPattern::Literal(lit));
+            }
+            TokenKind::Int | TokenKind::I8 => {
+                // Parse as integer literal
+                let n = self.cur.text.parse::<i64>().unwrap_or(0);
+                let lit = LiteralValue::Int(n);
+                self.next();
+                return Ok(TaskMsgPattern::Literal(lit));
+            }
+            TokenKind::Uint | TokenKind::U8 | TokenKind::Byte => {
+                // Parse as unsigned integer literal
+                let n = self.cur.text.parse::<u64>().unwrap_or(0);
+                let lit = LiteralValue::Uint(n);
+                self.next();
+                return Ok(TaskMsgPattern::Literal(lit));
+            }
+            TokenKind::True => {
+                self.next();
+                return Ok(TaskMsgPattern::Literal(LiteralValue::Bool(true)));
+            }
+            TokenKind::False => {
+                self.next();
+                return Ok(TaskMsgPattern::Literal(LiteralValue::Bool(false)));
+            }
+            _ => {}
+        }
+
+        // Phase 1/2: Parse identifier-based pattern
         let name = self.parse_name()?;
         let pos = self.prev.pos;
 
-        // Check for parentheses with bindings
+        // Check for parentheses with bindings: Add(val)
         if self.is_kind(TokenKind::LParen) {
             self.next(); // consume '('
             let mut bindings = Vec::new();
@@ -3391,7 +3481,16 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RParen)?;
 
             Ok(TaskMsgPattern::with_bindings(name, bindings))
+        } else if self.is_type_name() {
+            // Phase 3: Type binding pattern: msg string, u User
+            // Next token is a type, so this is a TypeBinding pattern
+            let type_expr = self.parse_type()?;
+            Ok(TaskMsgPattern::TypeBinding {
+                name,
+                type_expr: Box::new(type_expr),
+            })
         } else {
+            // Simple variant: Reset
             Ok(TaskMsgPattern::simple(name))
         }
     }
