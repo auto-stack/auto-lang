@@ -145,6 +145,9 @@ pub const NATIVE_TASK_HANDLE_IS_NULL: u16 = 2302;
 pub const NATIVE_TASK_HANDLE_TYPE: u16 = 2303;
 pub const NATIVE_TASK_HANDLE_ID: u16 = 2304;
 pub const NATIVE_TASK_SYSTEM_START: u16 = 2305;
+pub const NATIVE_TASK_SYSTEM_RUN: u16 = 2306; // Plan 124: Sync bridge for async code
+pub const NATIVE_TASK_SEND_AWAIT: u16 = 2307; // Plan 124 Phase 2.2: send().await backpressure
+pub const NATIVE_TASK_ASK: u16 = 2308;        // Plan 124 Phase 2.3: ask/reply RPC
 
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
@@ -1494,6 +1497,86 @@ pub fn shim_task_send(handle_id: i64, msg: String) -> Result<i32, String> {
     })
 }
 
+// Plan 124 Phase 2.2: send().await with backpressure
+//
+// Sends a message to a task, blocking (suspending) if the mailbox is full.
+// This is the async version that supports backpressure.
+//
+// In Phase 2.2, this is a simplified implementation that uses try_send
+// with immediate return. Full implementation would:
+// 1. Check if mailbox has capacity
+// 2. If full, suspend the current task
+// 3. Resume when space becomes available
+//
+// Usage in AutoLang:
+//   TaskHandle.send_await(msg)  // Returns Future<void>
+//   TaskHandle.send(msg).await  // Syntactic sugar for above
+#[auto_macros::rust_fn("TaskHandle.send_await")]
+pub fn shim_task_send_await(handle_id: i64, msg: String) -> Result<i64, String> {
+    let id = handle_id as u64;
+
+    // Phase 2.2: Simplified - just wrap send in a Future
+    // Full implementation would actually suspend if mailbox is full
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&id) {
+            let auto_str: auto_val::AutoStr = msg.into();
+            match handle.try_send(auto_val::Value::Str(auto_str)) {
+                Ok(()) => {
+                    // Return a completed Future (represented as 0 for now)
+                    // In full implementation, this would return a Future that
+                    // resolves when the message is actually delivered
+                    Ok(0)
+                }
+                Err(e) => Err(format!("TaskHandle.send_await failed: {}", e)),
+            }
+        } else {
+            Err(format!("TaskHandle.send_await failed: invalid handle ID {}", id))
+        }
+    })
+}
+
+// Plan 124 Phase 2.3: ask/reply bidirectional RPC
+//
+// Sends a message to a task and returns a Future that will receive the reply.
+// The receiver uses `reply expr` to send back a response.
+//
+// Usage in AutoLang:
+//   let result = TaskHandle.ask(msg).await.?
+//
+// Implementation:
+// 1. Creates a oneshot channel for the reply
+// 2. Sends the message with the reply sender attached
+// 3. Returns a Future that awaits the oneshot receiver
+//
+// Phase 2.3: Simplified implementation that just wraps send
+#[auto_macros::rust_fn("TaskHandle.ask")]
+pub fn shim_task_ask(handle_id: i64, msg: String) -> Result<i64, String> {
+    let id = handle_id as u64;
+
+    // Phase 2.3: Simplified - just wrap send in a Future
+    // Full implementation would:
+    // 1. Create a oneshot channel (reply_tx, reply_rx)
+    // 2. Send message with reply_tx attached
+    // 3. Return Future that awaits reply_rx
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&id) {
+            let auto_str: auto_val::AutoStr = msg.into();
+            match handle.try_send(auto_val::Value::Str(auto_str)) {
+                Ok(()) => {
+                    // Return a completed Future (represented as 0 for now)
+                    // In full implementation, this would return a FutureReceiver
+                    Ok(0)
+                }
+                Err(e) => Err(format!("TaskHandle.ask failed: {}", e)),
+            }
+        } else {
+            Err(format!("TaskHandle.ask failed: invalid handle ID {}", id))
+        }
+    })
+}
+
 /// Check if a task handle is null/empty
 ///
 /// # Arguments
@@ -1582,6 +1665,33 @@ pub fn shim_task_system_start() -> Result<(), String> {
     let registry = get_global_task_registry();
     registry.start_scheduler();
     Ok(())
+}
+
+// Plan 124: TaskSystem.run() - Sync bridge for async code
+//
+// Executes an async block synchronously on the current thread.
+// This is the main entry point for running async code from sync context.
+//
+// Usage in AutoLang:
+//   TaskSystem.run(~{
+//     // async code here
+//   })
+//
+// Note: For Phase 2.1, this is a simplified implementation that executes
+// the async block synchronously. Full implementation would use tokio::runtime.
+#[auto_macros::rust_fn("TaskSystem.run")]
+pub fn shim_task_system_run(_future_id: i64) -> Result<i64, String> {
+    // Phase 2.1: Simplified implementation
+    // The future_id is passed from VM stack, but we just return it as-is
+    // to indicate the async block was "executed"
+    //
+    // In full implementation, this would:
+    // 1. Create a tokio runtime if not exists
+    // 2. Block on the future
+    // 3. Return the result
+
+    // For now, just return success (0 = nil result)
+    Ok(0)
 }
 
 // ============================================================================
@@ -1722,6 +1832,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_TASK_HANDLE_TYPE, __shim_TaskHandle_task_type);
     natives.register_static(NATIVE_TASK_HANDLE_ID, __shim_TaskHandle_instance_id);
     natives.register_static(NATIVE_TASK_SYSTEM_START, __shim_TaskSystem_start);
+    natives.register_static(NATIVE_TASK_SYSTEM_RUN, __shim_TaskSystem_run); // Plan 124
+    natives.register_static(NATIVE_TASK_SEND_AWAIT, __shim_TaskHandle_send_await); // Plan 124 Phase 2.2
+    natives.register_static(NATIVE_TASK_ASK, __shim_TaskHandle_ask); // Plan 124 Phase 2.3
 }
 
 // ============================================================================

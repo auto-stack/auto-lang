@@ -132,6 +132,10 @@ pub enum TokenKind {
     Task,  // task keyword
     Spawn, // spawn method name (reserved)
 
+    // Plan 124: Async/Future/Await system keywords
+    Await, // await keyword (postfix operator)
+    Reply, // reply keyword (in on blocks)
+
     DotView,
     DotMut,
     DotMove,
@@ -242,6 +246,8 @@ impl fmt::Display for Token {
             TokenKind::Tilde => write!(f, "<~>"),
             TokenKind::Task => write!(f, "<task>"),
             TokenKind::Spawn => write!(f, "<spawn>"),
+            TokenKind::Await => write!(f, "<await>"),
+            TokenKind::Reply => write!(f, "<reply>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }
@@ -357,6 +363,9 @@ impl Token {
             // Plan 121: Task/Msg system keywords
             "task" => Some(TokenKind::Task),
             "spawn" => Some(TokenKind::Spawn),
+            // Plan 124: Async/Future/Await system keywords
+            "await" => Some(TokenKind::Await),
+            "reply" => Some(TokenKind::Reply),
             _ => None,
         }
     }

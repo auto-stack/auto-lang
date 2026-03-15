@@ -64,6 +64,11 @@ impl<'db> DepScanner<'db> {
                 self.walk_expr(ret, deps);
             }
 
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            Stmt::Reply(expr) => {
+                self.walk_expr(expr, deps);
+            }
+
             // If statements - walk branches
             Stmt::If(if_) => {
                 for branch in &if_.branches {
@@ -244,6 +249,15 @@ impl<'db> DepScanner<'db> {
             | Expr::ResultPattern(_) => {}
             | Expr::OptionUncover(_) => {}
             | Expr::ResultUncover(_) => {}
+            // Plan 124: Async/Future/Await - walk inner expressions
+            | Expr::AsyncBlock { body, .. } => {
+                for stmt in &body.stmts {
+                    self.walk_stmt(stmt, deps);
+                }
+            }
+            | Expr::Await { expr } => {
+                self.walk_expr(expr, deps);
+            }
         }
     }
 

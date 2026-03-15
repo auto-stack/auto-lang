@@ -404,6 +404,34 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // Unwrap expressions return the inner type
         Expr::OptionUncover(_) => Type::Unknown,  // Type depends on Option<T>
         Expr::ResultUncover(_) => Type::Unknown,  // Type depends on Result<T, E>
+
+        // ========== Plan 124: Async/Future/Await ==========
+        // Async block returns Future<T> where T is the return type of the block
+        Expr::AsyncBlock { body, return_type } => {
+            // If explicit return type is provided, use it
+            if let Some(ty) = return_type {
+                return ty.clone();
+            }
+            // Otherwise, infer from the block's return statement or last expression
+            // For now, return Unknown (full inference requires analyzing the block)
+            // TODO: Walk body.stmts to find return statements and infer type
+            Type::Unknown
+        }
+        // Await unwraps Future<T> to T
+        Expr::Await { expr } => {
+            let future_ty = infer_expr(ctx, expr);
+            // Extract inner type from Future<T>
+            match future_ty {
+                Type::GenericInstance(inst) if inst.base_name.as_str() == "Future" => {
+                    if let Some(inner) = inst.args.first() {
+                        return inner.clone();
+                    }
+                }
+                _ => {}
+            }
+            // If not a Future type, return Unknown
+            Type::Unknown
+        }
     }
 }
 

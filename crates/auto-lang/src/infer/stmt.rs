@@ -113,6 +113,12 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
 
         // Plan 121: Task/Msg system - no type checking needed
         Stmt::TaskDef(_) => Ok(Type::Void),
+
+        // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+        Stmt::Reply(expr) => {
+            let ty = infer_expr(ctx, expr);
+            Ok(ty)
+        }
     }
 }
 

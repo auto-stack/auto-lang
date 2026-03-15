@@ -34,6 +34,49 @@ pub struct Closure {
     pub name: String,
 }
 
+/// Plan 124: Future value for async operations
+/// Represents a value that will be available later (~T type)
+#[derive(Debug, Clone, PartialEq)]
+pub struct FutureData {
+    /// Unique future ID for tracking
+    pub id: usize,
+
+    /// Current state of the future
+    pub state: FutureState,
+
+    /// The result value when Ready
+    pub result: Option<Box<Value>>,
+}
+
+/// State of a Future value
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureState {
+    /// Future is still being computed
+    Pending,
+    /// Future has completed with a value
+    Ready,
+    /// Future computation failed
+    Failed,
+}
+
+impl FutureData {
+    pub fn new(id: usize) -> Self {
+        Self {
+            id,
+            state: FutureState::Pending,
+            result: None,
+        }
+    }
+
+    pub fn with_value(id: usize, value: Value) -> Self {
+        Self {
+            id,
+            state: FutureState::Ready,
+            result: Some(Box::new(value)),
+        }
+    }
+}
+
 /// Actual value data (stored in Universe, separate from ID)
 /// This is the same as Value but with nested references replaced by ValueIDs
 #[derive(Debug, Clone)]
@@ -156,6 +199,10 @@ pub enum Value {
     /// Represents !T type - operation might have failed
     Ok(Box<Value>),
     Err(AutoStr),
+    // Plan 124: Future type for async operations
+    /// Future value - represents a value that will be available later
+    /// ~T type - async computation that produces T
+    Future(FutureData),
 }
 
 // constructors
@@ -446,6 +493,20 @@ impl Display for Value {
             Value::None => write!(f, "None"),
             Value::Ok(inner) => write!(f, "Ok({})", inner),
             Value::Err(msg) => write!(f, "Err(\"{}\")", msg),
+            // Plan 124: Future display
+            Value::Future(future) => {
+                match &future.state {
+                    FutureState::Pending => write!(f, "<future#{}:pending>", future.id),
+                    FutureState::Ready => {
+                        if let Some(ref result) = future.result {
+                            write!(f, "<future#{}:ready:{}>", future.id, result)
+                        } else {
+                            write!(f, "<future#{}:ready>", future.id)
+                        }
+                    }
+                    FutureState::Failed => write!(f, "<future#{}:failed>", future.id),
+                }
+            }
         }
     }
 }

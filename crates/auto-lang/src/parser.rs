@@ -814,6 +814,15 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Return(Box::new(expr)))
     }
 
+    /// Plan 124 Phase 2.3: Parse reply statement for ask/reply RPC
+    ///
+    /// reply expr
+    fn reply_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip reply keyword
+        let expr = self.parse_expr()?;
+        Ok(Stmt::Reply(Box::new(expr)))
+    }
+
     /// Synchronize parser state after encountering an error
     ///
     /// This method skips tokens until we reach a statement boundary,
@@ -1637,6 +1646,13 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     // Regular infix operators need rhs
+                    // Plan 124: Special case for Dot operator - check for .await before parsing rhs
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::Await) {
+                        // .await suffix - consume the 'await' token
+                        self.next();
+                        lhs = Expr::Await { expr: Box::new(lhs) };
+                        continue;
+                    }
                     let rhs = self.expr_pratt(power.r)?;
                     match op {
                         Op::Range => {
@@ -2375,6 +2391,25 @@ impl<'a> Parser<'a> {
             }
             // Allow 'type' keyword as identifier in certain contexts (e.g., expr.type)
             TokenKind::Type => Expr::Ident(self.cur.text.clone()),
+            // Plan 124: Async block: ~{ stmts }
+            TokenKind::Tilde => {
+                self.next(); // consume '~'
+                // Expect a block { ... }
+                if !self.is_kind(TokenKind::LBrace) {
+                    let span = pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::UnexpectedToken {
+                        expected: "{".to_string(),
+                        found: format!("{}", self.cur.text),
+                        span,
+                    }.into());
+                }
+                let body = self.body()?;
+                // Return early since we already consumed '~' and the block
+                return Ok(Expr::AsyncBlock {
+                    body,
+                    return_type: None,  // Will be inferred later
+                });
+            }
             _ => {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected term, got {:?}", self.kind()),
@@ -2692,6 +2727,7 @@ impl<'a> Parser<'a> {
         let stmt = match self.kind() {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Return => self.return_stmt()?,
+            TokenKind::Reply => self.reply_stmt()?,  // Plan 124 Phase 2.3: reply statement
             TokenKind::Use => self.use_stmt()?,
             TokenKind::Dep => self.dep_stmt()?, // Plan 092: Dependency declaration
             TokenKind::If => self.if_stmt()?,
@@ -6600,6 +6636,7 @@ impl<'a> Parser<'a> {
         self.is_kind(TokenKind::Ident) // normal types like `int`
         || self.is_kind(TokenKind::Question) // Option types like `?int` (Plan 120)
         || self.is_kind(TokenKind::Not) // Result types like `!int` (Plan 120)
+        || self.is_kind(TokenKind::Tilde) // Future types like `~int` (Plan 124)
         || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
         || self.is_kind(TokenKind::Star) // ptr types like `*int`
         || self.is_kind(TokenKind::At) // ref types like `@int`
@@ -6626,6 +6663,17 @@ impl<'a> Parser<'a> {
                     // ! without inner type means Result<void>
                     Ok(Type::Result(Box::new(Type::Void)))
                 }
+            }
+            TokenKind::Tilde => {
+                // Plan 124: Parse ~T as Future<T>
+                // ~ is syntactic sugar for the Future generic type
+                self.next(); // Consume '~'
+                let inner_type = self.parse_type()?;
+                // Create Future<T> as a GenericInstance
+                Ok(Type::GenericInstance(GenericInstance {
+                    base_name: "Future".into(),
+                    args: vec![inner_type],
+                }))
             }
             TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),

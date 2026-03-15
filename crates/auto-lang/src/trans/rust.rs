@@ -1038,6 +1038,49 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 124: Async/Future/Await system
+            Expr::AsyncBlock { body, return_type: _ } => {
+                // ~{ stmts } -> async { stmts }
+                write!(out, "async {{ ")?;
+                for stmt in &body.stmts {
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::Store(store) => {
+                            self.store(store, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::Return(ret_expr) => {
+                            write!(out, "return ")?;
+                            self.expr(ret_expr, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::Reply(expr) => {
+                            // Plan 124 Phase 2.3: reply expr
+                            // In async context, reply sends to oneshot channel
+                            write!(out, "let _ = reply_tx.send(")?;
+                            self.expr(expr, out)?;
+                            write!(out, "); ")?;
+                        }
+                        _ => {
+                            // For other statements, use stmt method (which requires Sink)
+                            // For now, skip complex statements in async blocks
+                        }
+                    }
+                }
+                write!(out, "}}")?;
+                Ok(())
+            }
+
+            Expr::Await { expr } => {
+                // expr.await -> expr.await
+                self.expr(expr, out)?;
+                write!(out, ".await")?;
+                Ok(())
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported expression: {}", expr).into()),
         }
     }
@@ -1047,6 +1090,44 @@ impl RustTrans {
         if let Expr::Ident(name) = call.name.as_ref() {
             if name == "print" {
                 return self.print_call(call, out);
+            }
+        }
+
+        // Plan 124 Phase 2.2: Handle TaskHandle.send_await(msg) -> tx.send(msg).await
+        // This transforms the method call to use Rust's async send pattern
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                if let Expr::Ident(method_name) = rhs.as_ref() {
+                    if method_name.as_str() == "send_await" {
+                        // Transform: obj.send_await(msg) -> obj.send(msg).await
+                        self.expr(lhs, out)?;
+                        write!(out, ".send(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            self.arg(arg, out)?;
+                            if i < call.args.args.len() - 1 {
+                                write!(out, ", ")?;
+                            }
+                        }
+                        write!(out, ").await")?;
+                        return Ok(());
+                    }
+                    // Plan 124 Phase 2.3: Handle TaskHandle.ask(msg) -> ask pattern
+                    // obj.ask(msg).await -> (oneshot channel + send + recv).await
+                    if method_name.as_str() == "ask" {
+                        // Simplified: just generate method call
+                        // Full implementation would inject oneshot channel creation
+                        self.expr(lhs, out)?;
+                        write!(out, ".ask(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            self.arg(arg, out)?;
+                            if i < call.args.args.len() - 1 {
+                                write!(out, ", ")?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -1363,6 +1444,17 @@ impl RustTrans {
                 sink.body.write(b"return ")?;
                 self.expr(expr, &mut sink.body)?;
                 sink.body.write(b";")?;
+                Ok(true)
+            }
+
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            // reply expr -> reply_tx.send(expr).unwrap()
+            Stmt::Reply(expr) => {
+                // In Rust, reply is implemented via oneshot channel send
+                // The compiler should inject a `reply_tx` parameter into the message handler
+                sink.body.write(b"let _ = reply_tx.send(")?;
+                self.expr(expr, &mut sink.body)?;
+                sink.body.write(b");")?;
                 Ok(true)
             }
 

@@ -177,6 +177,18 @@ pub enum OpCode {
                              // Function prologue: record argument and local count
                              // Used by LOAD_LOCAL/STORE_LOCAL to calculate stack offsets
 
+    // === Plan 124: Async/Future/Await Opcodes ===
+    // Future type operations for async system
+    CREATE_FUTURE = 0xC0,    // body_code_offset: u32 -> future_id
+                             // Create a Future from async block body
+                             // The body is compiled separately and stored
+    AWAIT_FUTURE = 0xC1,     // future_id -> value (or suspend)
+                             // Wait for future completion, returns inner value
+                             // If future is pending, suspends current task
+    POLL_FUTURE = 0xC2,      // future_id -> (is_ready: bool, value_or_nil)
+                             // Non-blocking poll: check if future is ready
+                             // Returns (true, value) if ready, (false, nil) if pending
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,

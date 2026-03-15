@@ -1031,6 +1031,18 @@ impl Codegen {
                 self.emit(OpCode::RET);
                 self.code.push(0); // TODO: Fix this
             }
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            // reply expr -> compile expr, then send to oneshot channel
+            Stmt::Reply(expr) => {
+                // Phase 2.3: Simplified implementation
+                // Full implementation would:
+                // 1. Look up the reply channel from the current message context
+                // 2. Compile the expression
+                // 3. Send the value through the channel
+                // For now, just compile the expression and leave it on stack
+                self.compile_expr(expr)?;
+                // TODO: Implement actual channel send when oneshot channels are ready
+            }
             // Plan 073: TypeDecl support - register type metadata
             Stmt::TypeDecl(type_decl) => {
                 // Register the type in the type registry
@@ -3866,6 +3878,36 @@ impl Codegen {
                 // The message should be on stack as a string index
                 // Emit CREATE_ERR (creates Err from string)
                 self.emit(OpCode::CREATE_ERR);
+            }
+            // Plan 124: Async block - ~{ stmts }
+            Expr::AsyncBlock { body, return_type: _ } => {
+                // Create a Future value wrapping the async block body
+                // The body will be executed when .await is called
+                // For now, we store the body's code offset and compile it inline
+                // In Phase 2.1, we use a simplified approach:
+                // The async block immediately returns a Future that wraps the body
+                // When .await is called, the body is executed
+
+                // Store the current code position as the body's start
+                let body_offset = self.code.len() as u32;
+
+                // Compile the body statements
+                for stmt in &body.stmts {
+                    self.compile_stmt(stmt)?;
+                }
+
+                // Emit CREATE_FUTURE with body offset
+                // Note: In a full implementation, the body would be compiled separately
+                // For Phase 2.1, we use a placeholder approach
+                self.emit(OpCode::CREATE_FUTURE);
+                self.code.extend_from_slice(&0u32.to_le_bytes()); // placeholder offset
+            }
+            // Plan 124: Await expression - expr.await
+            Expr::Await { expr } => {
+                // Compile the inner expression (should evaluate to a Future)
+                self.compile_expr(expr)?;
+                // Emit AWAIT_FUTURE to wait for the future's completion
+                self.emit(OpCode::AWAIT_FUTURE);
             }
             Expr::Pair(pair) => {
                 // Handle Pair as a single-element object for config syntax like: name: "value"

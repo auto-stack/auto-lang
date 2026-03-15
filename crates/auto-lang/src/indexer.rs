@@ -121,7 +121,7 @@ impl<'db> Indexer<'db> {
                 }
 
                 // Control flow statements (shouldn't appear at top level)
-                Stmt::If(_) | Stmt::For(_) | Stmt::Is(_) | Stmt::Break | Stmt::Return(_) => {
+                Stmt::If(_) | Stmt::For(_) | Stmt::Is(_) | Stmt::Break | Stmt::Return(_) | Stmt::Reply(_) => {
                     // These shouldn't appear at top level, but skip them if they do
                 }
 

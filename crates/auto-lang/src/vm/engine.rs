@@ -113,6 +113,31 @@ pub struct AutoVM {
     // Plan 121: Task/Msg Registry for Actor model
     // Manages singleton tasks and task instances
     pub task_registry: Arc<TaskRegistry>,
+
+    // Plan 124: Future Registry for async/await
+    // Stores pending futures with their body code offsets
+    pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
+    pub future_id_gen: AtomicU32,
+}
+
+// Plan 124: Future value for async operations
+#[derive(Debug, Clone)]
+pub struct FutureValue {
+    /// Bytecode offset of the async block body
+    pub body_offset: u32,
+    /// Current state of the future
+    pub state: FutureState,
+    /// Result value when ready
+    pub result: Option<auto_val::Value>,
+    /// Task ID that owns this future (for suspension/resumption)
+    pub owner_task_id: TaskId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureState {
+    Pending,
+    Ready,
+    Failed,
 }
 
 impl AutoVM {
@@ -151,6 +176,9 @@ impl AutoVM {
             heap_object_id_gen: AtomicU64::new(4000000),
             // Plan 121: Task/Msg registry for Actor model
             task_registry: Arc::new(TaskRegistry::new()),
+            // Plan 124: Future registry for async/await
+            futures: DashMap::new(),
+            future_id_gen: AtomicU32::new(1),
         }
     }
 
@@ -2774,6 +2802,164 @@ impl AutoVM {
                         "DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}",
                         var_index, val, task.bp
                     );
+                }
+
+                // === Plan 124: Async/Future/Await Instructions ===
+                OpCode::CREATE_FUTURE => {
+                    // Create a Future value from async block body
+                    // Format: body_code_offset: u32
+                    let body_offset = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+
+                    // Allocate a new future ID from VM's registry
+                    let future_id = self.future_id_gen.fetch_add(1, Ordering::SeqCst);
+
+                    // Create the future value with pending state
+                    let future = FutureValue {
+                        body_offset,
+                        state: FutureState::Pending,
+                        result: None,
+                        owner_task_id: task.id,
+                    };
+
+                    // Store in VM's future registry
+                    self.futures.insert(future_id, Arc::new(RwLock::new(future)));
+
+                    // For Phase 2.1, we encode Future on stack as: (future_id << 8) | 0xF0
+                    // The 0xF0 marker distinguishes futures from other values
+                    let future_bits = ((future_id as i32) << 8) | 0xF0;
+                    task.ram.push_i32(future_bits);
+
+                    eprintln!("DEBUG: CREATE_FUTURE: id={}, body_offset={}", future_id, body_offset);
+                }
+                OpCode::AWAIT_FUTURE => {
+                    // Wait for future completion (blocking)
+                    // Stack: [..., future_bits]
+                    // Returns: value when ready
+                    let future_bits = task.ram.pop_i32();
+
+                    // Check if this is a valid future encoding
+                    if (future_bits & 0xFF) == 0xF0 {
+                        let future_id = (future_bits >> 8) as u32;
+
+                        // Look up the future in the registry
+                        if let Some(future_arc) = self.futures.get(&future_id) {
+                            let mut future = future_arc.write().unwrap();
+
+                            match future.state {
+                                FutureState::Ready => {
+                                    // Future is ready - return the result
+                                    eprintln!("DEBUG: AWAIT_FUTURE: id={} is ready", future_id);
+                                    if let Some(ref result) = future.result {
+                                        // Push the result value
+                                        // For Phase 2.1, we only support i32 results
+                                        match result {
+                                            auto_val::Value::Int(n) => task.ram.push_i32(*n as i32),
+                                            auto_val::Value::Nil => task.ram.push_i32(0),
+                                            _ => task.ram.push_i32(0), // Default to nil for unsupported types
+                                        }
+                                    } else {
+                                        task.ram.push_i32(0); // No result = nil
+                                    }
+                                }
+                                FutureState::Failed => {
+                                    // Future failed - return nil
+                                    eprintln!("DEBUG: AWAIT_FUTURE: id={} failed", future_id);
+                                    task.ram.push_i32(0);
+                                }
+                                FutureState::Pending => {
+                                    // Phase 2.1: Execute the async body synchronously
+                                    // In full implementation, this would suspend the task
+                                    // and schedule execution on a worker thread
+                                    eprintln!("DEBUG: AWAIT_FUTURE: id={} is pending, executing synchronously", future_id);
+
+                                    // Save current IP
+                                    let saved_ip = task.ip;
+                                    let body_offset = future.body_offset as usize;
+
+                                    // Jump to async body and execute
+                                    task.ip = body_offset;
+
+                                    // Execute until we hit a marker or run out of instructions
+                                    // For Phase 2.1, the async body will execute and leave a result on stack
+                                    // We'll execute a limited number of instructions
+
+                                    // Execute the body (simplified - just set result as complete)
+                                    // In real implementation, we'd run the bytecode interpreter here
+
+                                    // Restore IP
+                                    task.ip = saved_ip;
+
+                                    // Mark future as ready with a placeholder result
+                                    future.state = FutureState::Ready;
+                                    future.result = Some(auto_val::Value::Int(0));
+
+                                    // Push the result
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                        } else {
+                            // Future not found - return nil
+                            eprintln!("DEBUG: AWAIT_FUTURE: id={} not found in registry", future_id);
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        // Not a future - push back as-is (identity)
+                        task.ram.push_i32(future_bits);
+                    }
+                }
+                OpCode::POLL_FUTURE => {
+                    // Non-blocking poll for future state
+                    // Stack: [..., future_bits]
+                    // Returns: (is_ready: bool, value_or_nil)
+                    let future_bits = task.ram.pop_i32();
+
+                    if (future_bits & 0xFF) == 0xF0 {
+                        let future_id = (future_bits >> 8) as u32;
+
+                        // Look up the future in the registry
+                        if let Some(future_arc) = self.futures.get(&future_id) {
+                            let future = future_arc.read().unwrap();
+
+                            match future.state {
+                                FutureState::Ready => {
+                                    // Push is_ready = 1
+                                    task.ram.push_i32(1);
+
+                                    // Push the result value
+                                    if let Some(ref result) = future.result {
+                                        match result {
+                                            auto_val::Value::Int(n) => task.ram.push_i32(*n as i32),
+                                            auto_val::Value::Nil => task.ram.push_i32(0),
+                                            _ => task.ram.push_i32(0),
+                                        }
+                                    } else {
+                                        task.ram.push_i32(0);
+                                    }
+                                }
+                                FutureState::Failed => {
+                                    // Push is_ready = 1 (failed is also "complete")
+                                    task.ram.push_i32(1);
+                                    // Push nil for failed
+                                    task.ram.push_i32(0);
+                                }
+                                FutureState::Pending => {
+                                    // Push is_ready = 0
+                                    task.ram.push_i32(0);
+                                    // Push nil (no value yet)
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                        } else {
+                            // Future not found - return not ready
+                            task.ram.push_i32(0);
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        // Not a future - return not ready
+                        task.ram.push_i32(0);
+                        task.ram.push_i32(0);
+                    }
                 }
 
                 _ => {

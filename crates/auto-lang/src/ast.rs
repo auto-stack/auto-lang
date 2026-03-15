@@ -183,6 +183,7 @@ pub enum Stmt {
     EmptyLine(usize),
     Break,
     Return(Box<Expr>),  // Return statement with value
+    Reply(Box<Expr>),   // Plan 124 Phase 2.3: reply statement for ask/reply RPC
     Ext(Ext),  // Type extension (like Rust's impl)
     // Plan 096: UI scenario statements
     WidgetDecl(WidgetDecl),
@@ -249,6 +250,7 @@ impl fmt::Display for Stmt {
             Stmt::SpecDecl(spec_decl) => write!(f, "{}", spec_decl),
             Stmt::Break => write!(f, "(break)"),
             Stmt::Return(expr) => write!(f, "(return {})", expr),
+            Stmt::Reply(expr) => write!(f, "(reply {})", expr),  // Plan 124 Phase 2.3
             Stmt::Ext(ext) => write!(f, "{}", ext),
             Stmt::Dep(dep) => write!(f, "{}", dep),
             // Plan 096: UI scenario statements
@@ -332,6 +334,18 @@ pub enum Expr {
     NavCall {
         path: Box<Expr>,
         params: Vec<Pair>,  // key-value pairs for route params
+    },
+    // Plan 124: Async/Future/Await system
+    /// Async block: ~{ stmts }
+    /// Returns a Future<T> value
+    AsyncBlock {
+        body: Body,
+        return_type: Option<Type>,  // Type inference will fill this
+    },
+    /// Await expression: expr.await
+    /// Unwraps Future<T> to T
+    Await {
+        expr: Box<Expr>,
     },
 }
 
@@ -427,6 +441,15 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             }
+            // Plan 124: Async/Future/Await
+            Expr::AsyncBlock { body, return_type } => {
+                write!(f, "(async {}", body)?;
+                if let Some(ty) = return_type {
+                    write!(f, " :{}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Expr::Await { expr } => write!(f, "({}.await)", expr),
         }
     }
 }
@@ -891,6 +914,22 @@ impl ToNode for Expr {
                 node.add_kid(e.to_node());
                 node
             }
+            // Plan 124: Async/Future/Await
+            Expr::AsyncBlock { body, return_type } => {
+                let mut node = AutoNode::new("async");
+                if let Some(ty) = return_type {
+                    node.set_prop("return_type", Value::Str(ty.to_string().into()));
+                }
+                for stmt in &body.stmts {
+                    node.add_kid(stmt.to_node());
+                }
+                node
+            }
+            Expr::Await { expr } => {
+                let mut node = AutoNode::new("await");
+                node.add_kid(expr.to_node());
+                node
+            }
         }
     }
 }
@@ -948,6 +987,12 @@ impl ToNode for Stmt {
             Stmt::ViewBlock(_) => AutoNode::new("view"),
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => task.to_node(),
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            Stmt::Reply(expr) => {
+                let mut node = AutoNode::new("reply");
+                node.add_arg(auto_val::Arg::Pos(Value::Node(expr.to_node())));
+                node
+            }
         }
     }
 }
@@ -993,6 +1038,8 @@ impl ToAtom for Stmt {
             Stmt::ViewBlock(_) => "(view)".into(),
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => task.to_atom(),
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            Stmt::Reply(expr) => format!("(reply {})", expr.to_atom()).into(),
         }
     }
 }

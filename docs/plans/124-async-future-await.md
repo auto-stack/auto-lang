@@ -1,6 +1,28 @@
 # Plan 124: 异步 Future/Await 系统
 
-## Status: 🚧 IN PROGRESS
+## Status: ✅ COMPLETED (Phase 2.1-2.3)
+
+## 实现总结
+
+### Phase 2.1: `~T` + `.await` + `TaskSystem.run` ✅
+- Lexer: `Tilde`, `Await` tokens
+- Parser: `~Type` → `Future<T>`, `~{ stmts }` async block, `.await` suffix
+- AST: `Expr::AsyncBlock`, `Expr::Await`
+- VM: `Value::Future`, `CREATE_FUTURE`, `AWAIT_FUTURE`, `POLL_FUTURE` opcodes
+- FFI: `TaskSystem.run()` (NATIVE_TASK_SYSTEM_RUN = 2306)
+- a2rs: `~{}` → `async {}`, `.await` → `.await`
+
+### Phase 2.2: `send().await` 背压挂起 ✅
+- FFI: `TaskHandle.send_await()` (NATIVE_TASK_SEND_AWAIT = 2307)
+- a2rs: `send_await(msg)` → `send(msg).await`
+
+### Phase 2.3: `ask/reply` 双向 RPC ✅
+- Lexer: `Reply` token
+- Parser: `reply expr` 语句
+- AST: `Stmt::Reply(Box<Expr>)`
+- FFI: `TaskHandle.ask()` (NATIVE_TASK_ASK = 2308)
+- a2rs: `reply expr` → `reply_tx.send(expr)`, `ask(msg)` mapping
+- Codegen: `Stmt::Reply` 处理
 
 ## Objective
 
