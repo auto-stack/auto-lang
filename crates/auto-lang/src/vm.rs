@@ -29,6 +29,8 @@ pub mod io;
 pub mod list;
 pub mod loader;
 pub mod memory;
+// Plan 125 Phase 3.4: MessageContext for task message handling
+pub mod message_context;
 pub mod native;
 pub mod native_registry;
 pub mod opcode;
