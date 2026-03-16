@@ -235,6 +235,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.time.now_ms", 1200);
     registry.register_with_id("auto.time.now_sec", 1201);
     registry.register_with_id("auto.time.sleep_ms", 1202);
+    registry.register_with_id("sleep", 1202); // Alias for auto.time.sleep_ms
 
     // Process functions (1300-1304)
     registry.register_with_id("auto.process.exit", 1300);
@@ -288,6 +289,16 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.task_system.start", 2305);
     registry.register_with_id("auto.task_system.run", 2306);
     registry.register_with_id("auto.task_system.stop", 2307);
+
+    // TaskSystem aliases (codegen uses TitleCase names)
+    registry.register_with_id("TaskSystem.start", 2305);
+    registry.register_with_id("TaskSystem.run", 2306);
+    registry.register_with_id("TaskSystem.stop", 2307);
+
+    // Task aliases (for LoggerTask.spawn(), handle.send(), MonitorTask.send())
+    registry.register_with_id("Task.spawn", 2300);
+    registry.register_with_id("TaskHandle.send", 2301);
+    registry.register_with_id("Task.send", 2301); // For singleton tasks like MonitorTask.send()
 }
 
 #[cfg(test)]

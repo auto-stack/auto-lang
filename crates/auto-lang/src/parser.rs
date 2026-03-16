@@ -3200,6 +3200,19 @@ impl<'a> Parser<'a> {
         self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
         // Register enum in type_store for type lookup
         self.type_store.write().unwrap().register_enum_decl(enum_decl.clone());
+
+        // Register enum variants as constants (Plan 127: for task message enums)
+        // Each variant becomes accessible as a standalone variable with its integer value
+        for item in &enum_decl.items {
+            let store = Store {
+                kind: StoreKind::Let,
+                name: item.name.clone(),
+                ty: Type::Int,
+                expr: Expr::Int(item.value),
+            };
+            self.define(item.name.as_str(), Meta::Store(store));
+        }
+
         Ok(Stmt::EnumDecl(enum_decl))
     }
 

@@ -2495,10 +2495,21 @@ impl Codegen {
                     eprintln!("DEBUG: Variable {} found at index {}", name_str, var_index);
                     self.emit_load_loc(var_index);
                 } else {
-                    eprintln!("DEBUG: Variable {} NOT FOUND!", name_str);
-                    // Plan 080: Variable not found - return proper error
-                    // Even with skip_check=true in parser, we catch undefined variables here
-                    return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
+                    // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
+                    let enum_variant_value = self.type_store.read().unwrap()
+                        .find_enum_variant_by_name(&name_str)
+                        .map(|(_, v)| v);
+                    if let Some(value) = enum_variant_value {
+                        eprintln!("DEBUG: Variable {} resolved as enum variant with value {}", name_str, value);
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(value);
+                        self.last_expr_type = ObjectType::Int;
+                    } else {
+                        eprintln!("DEBUG: Variable {} NOT FOUND!", name_str);
+                        // Plan 080: Variable not found - return proper error
+                        // Even with skip_check=true in parser, we catch undefined variables here
+                        return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
+                    }
                 }
             }
             // Plan 073: Dot expression field access (obj.field)
@@ -3420,8 +3431,40 @@ impl Codegen {
                             Expr::Ident(obj_name) => {
                                 // Check if it's a static method call (Type.method with capital T)
                                 if self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
-                                    // Static method call: Type.method
-                                    Some(format!("{}.{}", obj_name, method))
+                                    // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
+                                    // These should use the generic Task.spawn/Task.send native functions
+                                    if method.as_str() == "spawn" && self.types.contains_key(obj_name.as_ref()) {
+                                        // Check if this is a task type
+                                        let type_info = self.types.get(obj_name.as_ref());
+                                        if let Some(info) = type_info {
+                                            if info._name.contains("#single") || info._name == obj_name.as_ref() {
+                                                // This is a task type - use Task.spawn
+                                                eprintln!("DEBUG: Task spawn detected: {}.spawn() -> Task.spawn", obj_name);
+                                                Some("Task.spawn".to_string())
+                                            } else {
+                                                Some(format!("{}.{}", obj_name, method))
+                                            }
+                                        } else {
+                                            Some(format!("{}.{}", obj_name, method))
+                                        }
+                                    } else if method.as_str() == "send" && self.types.contains_key(obj_name.as_ref()) {
+                                        // Singleton task send: TaskType.send(msg)
+                                        let type_info = self.types.get(obj_name.as_ref());
+                                        if let Some(info) = type_info {
+                                            if info._name.contains("#single") {
+                                                // This is a singleton task - use Task.send
+                                                eprintln!("DEBUG: Singleton task send detected: {}.send() -> Task.send", obj_name);
+                                                Some("Task.send".to_string())
+                                            } else {
+                                                Some(format!("{}.{}", obj_name, method))
+                                            }
+                                        } else {
+                                            Some(format!("{}.{}", obj_name, method))
+                                        }
+                                    } else {
+                                        // Static method call: Type.method
+                                        Some(format!("{}.{}", obj_name, method))
+                                    }
                                 } else {
                                     // Instance method call: obj.method
                                     // Plan 087 Phase 3: Check if obj is a generic instance
@@ -3453,11 +3496,18 @@ impl Codegen {
                                                 );
                                                 Some(format!("{}.{}", type_name, method))
                                             } else {
-                                                eprintln!(
-                                                    "DEBUG: Failed to infer type for {}",
-                                                    obj_name
-                                                );
-                                                Some(format!("{}.{}", obj_name, method))
+                                                // Plan 127: Handle TaskHandle.send() when type is Unknown
+                                                // If the method is "send", assume it's a task handle
+                                                if method.as_str() == "send" {
+                                                    eprintln!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                    Some("TaskHandle.send".to_string())
+                                                } else {
+                                                    eprintln!(
+                                                        "DEBUG: Failed to infer type for {}",
+                                                        obj_name
+                                                    );
+                                                    Some(format!("{}.{}", obj_name, method))
+                                                }
                                             }
                                         }
                                     } else {
@@ -3472,11 +3522,19 @@ impl Codegen {
                                             eprintln!("DEBUG: Inferred type name: {}", type_name);
                                             Some(format!("{}.{}", type_name, method))
                                         } else {
-                                            eprintln!(
-                                                "DEBUG: Failed to infer type for {}",
-                                                obj_name
-                                            );
-                                            Some(format!("{}.{}", obj_name, method))
+                                            // Plan 127: Handle TaskHandle.send() when type is unknown
+                                            // If the variable name suggests it's a handle (e.g., "handle")
+                                            // and the method is "send", use TaskHandle.send
+                                            if method.as_str() == "send" {
+                                                eprintln!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                Some("TaskHandle.send".to_string())
+                                            } else {
+                                                eprintln!(
+                                                    "DEBUG: Failed to infer type for {}",
+                                                    obj_name
+                                                );
+                                                Some(format!("{}.{}", obj_name, method))
+                                            }
                                         }
                                     };
 
