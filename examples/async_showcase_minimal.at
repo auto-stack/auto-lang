@@ -1,9 +1,18 @@
+// =============================================================================
 // Auto Language Basic Demo
+// =============================================================================
+//
+// A minimal example demonstrating core Auto language features.
+// For full Task/Msg async examples, see async_showcase.at
+//
+// =============================================================================
 
+// Simple function definition
 fn add(a int, b int) int {
     a + b
 }
 
+// Recursive function
 fn factorial(n int) int {
     if n <= 1 {
         1
@@ -12,7 +21,10 @@ fn factorial(n int) int {
     }
 }
 
-fn main() {
+// Main function
+fn main() ! {
+    print("=== Auto Language Basic Demo ===")
+
     // Basic operations
     let a = 10
     let b = 20
@@ -40,4 +52,6 @@ fn main() {
     let arr = [1, 2, 3, 4, 5]
     print(arr[0])
     print(arr[2])
+
+    print("=== Demo Complete ===")
 }
