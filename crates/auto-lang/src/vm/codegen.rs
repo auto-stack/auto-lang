@@ -1983,9 +1983,10 @@ impl Codegen {
                     // Handler must return - emit RET
                     self.emit(OpCode::RET);
 
-                    #[cfg(debug_assertions)]
-                    eprintln!("[TaskDef] Compiled handler {} for task {} at offset {}",
-                        pattern_idx, task_name, handler_offset);
+                    if crate::is_vm_debug() {
+                        eprintln!("[TaskDef] Compiled handler {} for task {} at offset {}",
+                            pattern_idx, task_name, handler_offset);
+                    }
                 }
 
                 // Compile else handler if present

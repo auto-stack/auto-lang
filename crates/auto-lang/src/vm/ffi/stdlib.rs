@@ -1838,13 +1838,13 @@ pub fn shim_task_system_run(_future_id: i64) -> Result<i64, String> {
 // path uses the REPLY OpCode directly, which reads the MessageContext from
 // task.current_msg_context set by HANDLE_MSG.
 #[auto_macros::rust_fn("ctx.reply")]
-#[allow(unused_variables)]
 pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
     // The actual reply is handled by REPLY OpCode in engine.rs
     // This shim exists for FFI registration and potential future use
     // For now, we just return Ok - the real work is done by OpCode::REPLY
-    #[cfg(debug_assertions)]
-    eprintln!("[ctx.reply] FFI called with value: {}", value);
+    if crate::is_vm_debug() {
+        eprintln!("[ctx.reply] FFI called with value: {}", value);
+    }
     Ok(())
 }
 

@@ -99,12 +99,15 @@ use auto_val::{AutoPath, Obj, Value, Node, Array};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::error::{AutoError, AutoResult};
 
 /// Global error limit for parser error recovery
 static ERROR_LIMIT: AtomicUsize = AtomicUsize::new(20);
+
+/// Global VM debug logging flag
+static VM_DEBUG: AtomicBool = AtomicBool::new(false);
 
 /// Set the global error limit for parser error recovery
 ///
@@ -117,6 +120,19 @@ pub fn set_error_limit(limit: usize) {
 /// Get the current global error limit
 pub fn get_error_limit() -> usize {
     ERROR_LIMIT.load(Ordering::SeqCst)
+}
+
+/// Enable or disable VM debug logging
+///
+/// When enabled, the VM will print debug messages for operations like
+/// task spawning, message handling, and replies.
+pub fn set_vm_debug(enabled: bool) {
+    VM_DEBUG.store(enabled, Ordering::SeqCst);
+}
+
+/// Check if VM debug logging is enabled
+pub fn is_vm_debug() -> bool {
+    VM_DEBUG.load(Ordering::SeqCst)
 }
 
 /// Run AutoLang code using the default execution engine

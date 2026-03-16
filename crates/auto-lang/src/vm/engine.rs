@@ -2637,9 +2637,10 @@ impl AutoVM {
                     // Set task to waiting state (will be woken when messages arrive)
                     task.status = TaskStatus::Waiting("message_loop".to_string());
 
-                    #[cfg(debug_assertions)]
-                    eprintln!("[TASK_LOOP] Task {} entering message loop for type {}",
-                        task.id, task_type);
+                    if crate::is_vm_debug() {
+                        eprintln!("[TASK_LOOP] Task {} entering message loop for type {}",
+                            task.id, task_type);
+                    }
                 }
 
                 // Plan 127: HANDLE_MSG - dispatch message to matched handler
@@ -2680,14 +2681,16 @@ impl AutoVM {
                         if !found {
                             // No matching handler
                             task.ram.push_i32(0); // false - no handler
-                            #[cfg(debug_assertions)]
-                            eprintln!("[HANDLE_MSG] No handler found for message {} in task {}", msg_value, task_type);
+                            if crate::is_vm_debug() {
+                                eprintln!("[HANDLE_MSG] No handler found for message {} in task {}", msg_value, task_type);
+                            }
                         }
                     } else {
                         // No handlers registered for this task type
                         task.ram.push_i32(0); // false
-                        #[cfg(debug_assertions)]
-                        eprintln!("[HANDLE_MSG] No handler table for task type {}", task_type);
+                        if crate::is_vm_debug() {
+                            eprintln!("[HANDLE_MSG] No handler table for task type {}", task_type);
+                        }
                     }
                 }
 
@@ -2704,17 +2707,20 @@ impl AutoVM {
                         let value = auto_val::Value::Int(reply_value);
                         match ctx.reply(value) {
                             Ok(()) => {
-                                #[cfg(debug_assertions)]
-                                eprintln!("[REPLY] Sent reply value {}", reply_value);
+                                if crate::is_vm_debug() {
+                                    eprintln!("[REPLY] Sent reply value {}", reply_value);
+                                }
                             }
                             Err(_e) => {
-                                #[cfg(debug_assertions)]
-                                eprintln!("[REPLY] Failed to send reply: {}", _e);
+                                if crate::is_vm_debug() {
+                                    eprintln!("[REPLY] Failed to send reply: {}", _e);
+                                }
                             }
                         }
                     } else {
-                        #[cfg(debug_assertions)]
-                        eprintln!("[REPLY] No message context available for reply");
+                        if crate::is_vm_debug() {
+                            eprintln!("[REPLY] No message context available for reply");
+                        }
                     }
                 }
 

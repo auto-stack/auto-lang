@@ -88,6 +88,10 @@ struct Cli {
     #[arg(long, global = true, value_name = "FORMAT")]
     format: Option<OutputFormat>,
 
+    /// Enable VM debug logging (shows task spawning, message handling, replies)
+    #[arg(short = 'D', long = "debug", global = true)]
+    debug: bool,
+
     /// Run an Auto script directly via AutoVM
     #[arg(index = 1)]
     file: Option<String>,
@@ -295,6 +299,11 @@ fn main() -> Result<()> {
     // Set error limit from CLI if provided
     if let Some(limit) = cli.error_limit {
         auto_lang::set_error_limit(limit);
+    }
+
+    // Enable VM debug logging if requested
+    if cli.debug {
+        auto_lang::set_vm_debug(true);
     }
 
     // Execution: Run an Auto script directly via AutoVM
