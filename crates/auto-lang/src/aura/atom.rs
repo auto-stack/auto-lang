@@ -5,7 +5,6 @@
 //! toolchain integration, and AI-assisted generation.
 
 use super::types::*;
-use std::collections::HashMap;
 
 // ============================================================================
 // Atom Serializer
@@ -414,6 +413,7 @@ fn escape_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_to_atom_simple_widget() {

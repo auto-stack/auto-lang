@@ -53,7 +53,6 @@
 //! ```
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use crate::route::{RouteDef, RouteDiscovery, RouteMerger, RouteSource};
 

@@ -37,7 +37,6 @@ pub use types::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
 pub use targets::{Target, TargetGenerator, TypeScriptGenerator, TauriGenerator, AxumGenerator};
 
 use crate::ast::{Fn, Stmt, Type};
-use std::collections::HashMap;
 
 /// API annotation parser
 ///

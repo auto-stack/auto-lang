@@ -19,7 +19,7 @@
 //! 2. Checks send/ask message types against the envelope
 //! 3. Infers reply types from ctx.reply() calls
 
-use crate::ast::{Arg, Body, Call, Expr, LiteralValue, Name, TaskMsgPattern, TaskOnBlock, Type, TypeDecl, TypeDeclKind, Union, UnionField};
+use crate::ast::{Arg, Body, Expr, LiteralValue, Name, TaskMsgPattern, TaskOnBlock, Type, TypeDecl, TypeDeclKind, Union, UnionField};
 use crate::error::TypeError;
 use std::collections::HashMap;
 

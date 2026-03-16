@@ -4,7 +4,6 @@
 
 use super::super::ast::*;
 use super::super::error::AdocResult;
-use super::super::math::AutoMathParser;
 use super::{helpers, AdocSink, AdocTranspiler};
 
 /// Typst transpiler

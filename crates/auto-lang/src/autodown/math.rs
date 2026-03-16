@@ -3,7 +3,7 @@
 //! Converts function-style math expressions to various target formats.
 
 use super::ast::AdocMath;
-use super::error::{AdocError, AdocResult};
+use super::error::AdocResult;
 
 /// AutoMath parser
 pub struct AutoMathParser;

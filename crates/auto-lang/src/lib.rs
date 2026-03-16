@@ -95,7 +95,7 @@ use crate::compile::CompileSession;
 use crate::trans::c::CTrans;
 pub use crate::symbols::SymbolLocation;
 use crate::{trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj, Value, Node, Array, ValueKey, VmRef};
+use auto_val::{AutoPath, Obj, Value, Node, Array};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -1082,7 +1082,7 @@ pub fn ui_build(
     backend: &str,
     output: Option<&str>,
 ) -> AutoResult<String> {
-    use crate::session::{CompilerSession, Scenario};
+    use crate::session::CompilerSession;
     use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator};
 
     // Parse scenario

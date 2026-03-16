@@ -29,7 +29,6 @@
 
 use crate::route::RouteDef;
 use crate::ui_gen::GenResult;
-use std::collections::HashMap;
 
 /// Navigation route definition
 #[derive(Debug, Clone)]

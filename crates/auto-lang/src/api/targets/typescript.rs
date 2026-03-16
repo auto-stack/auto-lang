@@ -2,7 +2,7 @@
 //!
 //! Plan 102 Phase 5.3: Generate TypeScript types and API client from API definitions
 
-use crate::api::{ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
+use crate::api::{ApiEndpoint, ApiModule, ApiType};
 use super::TargetGenerator;
 
 /// TypeScript code generator
@@ -313,7 +313,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::ApiAttrs;
+    use crate::api::{ApiAttrs, ApiField};
 
     #[test]
     fn test_to_ts_type() {

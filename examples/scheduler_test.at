@@ -1,0 +1,30 @@
+// Simple scheduler test - tests task lifecycle only
+// Just spawns a task and starts the scheduler
+// Press Ctrl+C to stop
+
+task SimpleTask {
+    fn start() ! {
+        print("[SimpleTask] Started!")
+    }
+
+    fn stop() ! {
+        print("[SimpleTask] Stopped!")
+    }
+
+    on {
+        else => {
+            print("[SimpleTask] Message received")
+        }
+    }
+}
+
+fn main() ! {
+    print("=== Scheduler Test ===")
+    print("[Main] Spawning SimpleTask...")
+    let handle = SimpleTask.spawn()
+    print("[Main] Spawned!")
+    print("[Main] Starting scheduler (press Ctrl+C to stop)...")
+    TaskSystem.start()
+    print("[Main] Scheduler has shut down.")
+    print("=== Test Complete ===")
+}

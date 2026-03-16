@@ -5,7 +5,6 @@
 
 use super::{Body, Expr, Name, Type};
 use super::route::RoutesBlock;
-use auto_val::AutoStr;
 
 // ============================================================================
 // Widget Declaration
@@ -430,6 +429,7 @@ impl ViewNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::AutoStr;
 
     #[test]
     fn test_view_node_element() {

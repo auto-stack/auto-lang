@@ -2,7 +2,6 @@
 //!
 //! Provides error handling for AutoDown parsing and transpilation.
 
-use std::fmt;
 use thiserror::Error;
 
 /// AutoDown result type

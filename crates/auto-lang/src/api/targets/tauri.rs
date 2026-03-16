@@ -2,7 +2,7 @@
 //!
 //! Plan 102 Phase 5.2: Generate Tauri commands from API definitions
 
-use crate::api::{ApiEndpoint, ApiModule, ApiParam};
+use crate::api::{ApiEndpoint, ApiModule};
 use super::TargetGenerator;
 
 /// Tauri command generator
@@ -220,7 +220,7 @@ impl TargetGenerator for TauriGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::ApiAttrs;
+    use crate::api::{ApiAttrs, ApiParam};
 
     #[test]
     fn test_to_rust_type() {

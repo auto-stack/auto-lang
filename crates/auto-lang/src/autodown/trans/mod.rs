@@ -8,8 +8,7 @@ mod html;
 // pub mod docx; // Optional - requires docx-rs dependency
 
 use super::ast::*;
-use super::error::{AdocError, AdocResult};
-use std::collections::HashMap;
+use super::error::AdocResult;
 
 pub use typst::TypstTranspiler;
 pub use html::HtmlTranspiler;

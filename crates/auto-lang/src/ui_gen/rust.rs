@@ -54,9 +54,8 @@
 //!
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
-use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraEvent, AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
-use std::collections::HashMap;
+use super::{BackendGenerator, GenResult};
+use crate::aura::{AuraEvent, AuraExpr, AuraMsgVariant, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
 
 /// Rust/GPUI code generator
 pub struct RustGenerator {
@@ -805,6 +804,8 @@ impl Default for RustGenerator {
 mod tests {
     use super::*;
     use crate::ast::Type;
+    use crate::aura::{AuraMessage, AuraStateDef};
+    use std::collections::HashMap;
 
     #[test]
     fn test_rust_generator_creation() {

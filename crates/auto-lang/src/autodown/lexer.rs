@@ -7,7 +7,6 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use super::ast::{AdocBlock, AdocInline, AdocMath};
 use super::error::{AdocError, AdocResult};
 
 // ============================================================================

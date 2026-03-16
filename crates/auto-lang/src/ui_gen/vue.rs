@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
+use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -5527,7 +5527,7 @@ impl Default for VueGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraMessage, AuraMsgVariant};
+    use crate::aura::{AuraMessage, AuraMsgVariant, AuraStateDef};
     use std::collections::HashMap;
 
     #[test]

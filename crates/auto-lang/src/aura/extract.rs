@@ -10,7 +10,7 @@
 //! - **Separation**: Handlers are extracted as LogicPayload
 
 use super::types::*;
-use crate::ast::{ClassBindingEntry, Expr, Stmt, Type, Key, ViewPropValue};
+use crate::ast::{Expr, Stmt, Type, Key, ViewPropValue};
 use auto_val::Op;
 use std::collections::HashMap;
 
