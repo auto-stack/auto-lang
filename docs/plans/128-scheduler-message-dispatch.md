@@ -1,12 +1,16 @@
-# Scheduler Message Dispatch Loop - Design Document
+# Plan 128: Scheduler Message Dispatch Loop
 
-## Overview
+**Status**: In Progress (Phase 1-7 Complete, Integration Pending)
 
-This document describes the design for the AutoVM scheduler message dispatch loop, which enables Actor-style message passing between tasks.
+**Goal**: Implement the scheduler message dispatch loop that enables Actor-style message passing between tasks, making `async_showcase_minimal.at` fully functional.
 
-**Status**: Approved (2025-03-16)
+**Architecture**: Hybrid model with zero shared mutable state. GlobalMeta (Arc-wrapped) holds read-only bytecode/string pool. TaskContext per-task holds mailbox, ram, and executor. Each task runs in its own `tokio::spawn`, leveraging Tokio's work-stealing scheduler.
 
-## Architecture
+**Tech Stack**: Rust, Tokio async runtime, Arc for shared read-only, mpsc channels for messaging
+
+---
+
+## Design Overview
 
 ### Core Principle: Zero-Shared-Mutable-State
 
@@ -38,7 +42,7 @@ The architecture follows a **Hybrid** model:
 │  │         ▼                ▼                ▼                   │   │
 │  │  ┌────────────────────────────────────────────────────────┐   │   │
 │  │  │              GlobalMeta (Arc<GlobalMeta>)              │   │   │
-│  │  │              (零锁、零拷贝、零竞争)                      │   │   │
+│  │  │              (zero locks, zero copies, zero contention)│   │   │
 │  │  │                                                        │   │   │
 │  │  │  bytecode: VirtualFlash                                │   │   │
 │  │  │  string_pool: Vec<Vec<u8>>                             │   │   │
@@ -51,6 +55,8 @@ The architecture follows a **Hybrid** model:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
 ## Key Components
 
 ### GlobalMeta (Shared Read-Only)
@@ -59,15 +65,12 @@ The architecture follows a **Hybrid** model:
 /// Global read-only metadata - wrapped in Arc<GlobalMeta>
 /// No inner Arcs needed since outer Arc provides protection
 pub struct GlobalMeta {
-    /// Bytecode (Flash)
+    /// Bytecode (Flash) - read-only
     pub bytecode: VirtualFlash,
-
     /// String pool (read-only)
     pub string_pool: Vec<Vec<u8>>,
-
-    /// Native interface
+    /// Native interface (read-only)
     pub native_interface: NativeInterface,
-
     /// Handler tables per task type
     pub handler_tables: HashMap<String, TaskHandlerTable>,
 }
@@ -108,6 +111,8 @@ pub enum SystemCommand {
     },
 }
 ```
+
+---
 
 ## Task Lifecycle
 
@@ -195,6 +200,8 @@ async fn task_loop(mut ctx: TaskContext) {
 - `TaskSystem.start()` returns
 - `main()` continues with cleanup code
 
+---
+
 ## Critical: Async Handler Execution
 
 ### The Problem
@@ -252,6 +259,8 @@ async fn execute_handler_fully(meta: &GlobalMeta, task: &mut AutoTask) {
 | **Async native** | `async fn` enables `AWAIT_EXT` and `.await` support |
 | **Fair scheduling** | Tokio work-stealing distributes tasks across CPU cores |
 
+---
+
 ## Pattern Matching
 
 Uses existing `PatternMatcher` from Plan 125 (`crates/auto-lang/src/vm/pattern_matcher.rs`):
@@ -260,6 +269,8 @@ Uses existing `PatternMatcher` from Plan 125 (`crates/auto-lang/src/vm/pattern_m
 - `TypeBinding` patterns (`msg string`)
 - `Simple` variants (`Hello`, `Quit`)
 - `WithBindings` variants (`Add(val)`)
+
+---
 
 ## Key Component Summary
 
@@ -271,19 +282,124 @@ Uses existing `PatternMatcher` from Plan 125 (`crates/auto-lang/src/vm/pattern_m
 | **AutoTask** | Execution state (ip, bp, ram) | ❌ Inside TaskContext |
 | **SystemCommand** | Privileged control | Channel (Send/Receive) |
 
+---
+
 ## Error Handling
 
 - Pattern matching failure → else handler (if exists) → message dropped
 - Handler execution error → task terminated, error logged
 - Mailbox closed → task exits loop, runs stop hook
 
+---
+
+## Implementation Status
+
+### Phase 1: Core Infrastructure ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/scheduler.rs` (created)
+- `crates/auto-lang/src/vm/task_handler.rs` (modified)
+
+**Implemented:**
+- [x] `GlobalMeta` struct with bytecode, string_pool, native_interface, handler_tables
+- [x] `TaskContext` struct with meta, task_type, instance_id, mailbox, sys_tx, task, handlers
+- [x] `SystemCommand` enum with Stop and Spawn variants
+- [x] `TaskHandlerTable` fields: start_hook_offset, stop_hook_offset, else_handler_offset
+
+### Phase 2: Async Handler Execution ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/scheduler.rs`
+
+**Implemented:**
+- [x] `execute_handler_fully()` async function with cooperative yielding
+- [x] Budget defense (10,000 ops before yield)
+- [x] RET/HALT completion detection
+
+### Phase 3: Task Message Loop ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/scheduler.rs`
+
+**Implemented:**
+- [x] `task_loop()` async function
+- [x] Start hook execution
+- [x] Main message loop with pattern matching
+- [x] Else handler fallback
+- [x] Stop hook execution
+- [x] `try_match_pattern()` for SerializedPattern matching
+
+### Phase 4: Task Spawning ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/scheduler.rs`
+
+**Implemented:**
+- [x] `spawn_task()` function
+- [x] `spawn_dynamic_task()` function
+- [x] Dynamic task ID counter (DYNAMIC_TASK_ID)
+
+### Phase 5: Scheduler Daemon ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/scheduler.rs`
+
+**Implemented:**
+- [x] `run_scheduler_daemon()` async function
+- [x] SystemCommand handling (Spawn, Stop)
+
+### Phase 6: TaskRegistry Integration ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/task_system.rs`
+- `crates/auto-lang/src/vm/ffi/stdlib.rs`
+
+**Implemented:**
+- [x] `global_meta: RwLock<Option<Arc<GlobalMeta>>>` field in TaskRegistry
+- [x] `set_global_meta()` and `get_global_meta()` methods
+- [x] `spawn_initial_tasks()` creates TaskContext and spawns task_loop
+- [x] `create_task_context()` helper function
+- [x] `shim_task_system_start()` creates minimal GlobalMeta
+
+### Phase 7: Module Exports ✅ COMPLETE
+
+**Files:**
+- `crates/auto-lang/src/vm/mod.rs`
+
+**Implemented:**
+- [x] `pub mod scheduler;` export
+
+### Phase 8: Full Integration ⏳ PENDING
+
+**Remaining Work:**
+
+1. **Populate GlobalMeta with actual bytecode**
+   - Current: Minimal GlobalMeta with empty bytecode
+   - Needed: Transfer compiled bytecode from VM to GlobalMeta
+
+2. **Wire handler tables from CodeGen**
+   - Current: Empty handler_tables HashMap
+   - Needed: Transfer TaskHandlerTables from CodeGen to GlobalMeta
+
+3. **Connect mailbox receiver**
+   - Current: Dummy mailbox receiver in create_task_context
+   - Needed: Use actual receiver from TaskHandle
+
+4. **Test async_showcase_minimal.at**
+   - Requires enum variant resolution in codegen (pre-existing bug)
+   - Handler execution with actual bytecode
+
+---
+
 ## Testing Strategy
 
-1. **Unit tests**: Pattern matching, handler lookup
-2. **Integration tests**: Single task message loop
-3. **Concurrency tests**: Multiple tasks sending messages
-4. **Stress tests**: High-volume message passing
-5. **Shutdown tests**: TaskSystem.stop() from handler
+1. **Unit tests**: Pattern matching, handler lookup ✅
+2. **Integration tests**: Single task message loop ✅
+3. **Concurrency tests**: Multiple tasks sending messages (pending)
+4. **Stress tests**: High-volume message passing (pending)
+5. **Shutdown tests**: TaskSystem.stop() from handler (pending)
+
+---
 
 ## Future Enhancements
 
@@ -291,3 +407,11 @@ Uses existing `PatternMatcher` from Plan 125 (`crates/auto-lang/src/vm/pattern_m
 - Message batching
 - Dead letter queue
 - Distributed task spawning
+
+---
+
+## Related Plans
+
+- Plan 121: Task/Msg Registry (TaskRegistry, TaskHandle, TaskInstance)
+- Plan 125: Pattern Matcher
+- Plan 127: Scheduler Message Dispatch (this plan, merged from design and impl docs)
