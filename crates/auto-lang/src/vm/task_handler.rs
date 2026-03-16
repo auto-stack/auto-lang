@@ -190,6 +190,12 @@ pub struct TaskHandlerTable {
     pub patterns: Vec<SerializedPattern>,
     /// String pool for pattern data
     pub string_pool: Vec<String>,
+    /// Start hook bytecode offset (if present)
+    pub start_hook_offset: Option<u32>,
+    /// Stop hook bytecode offset (if present)
+    pub stop_hook_offset: Option<u32>,
+    /// Else handler bytecode offset (if present)
+    pub else_handler_offset: Option<u32>,
 }
 
 impl TaskHandlerTable {
@@ -200,6 +206,9 @@ impl TaskHandlerTable {
             handlers: Vec::new(),
             patterns: Vec::new(),
             string_pool: Vec::new(),
+            start_hook_offset: None,
+            stop_hook_offset: None,
+            else_handler_offset: None,
         }
     }
 

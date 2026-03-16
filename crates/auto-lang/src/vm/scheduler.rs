@@ -216,6 +216,194 @@ pub async fn execute_handler_fully(
     }
 }
 
+/// Task message loop - runs until mailbox closes or HALT
+///
+/// Lifecycle:
+/// 1. Execute start hook (if present)
+/// 2. Loop: receive message -> match pattern -> execute handler
+/// 3. Execute stop hook (if present, on mailbox close)
+pub async fn task_loop(ctx: &mut TaskContext) {
+    // 1. Start Hook
+    if let Some(start_offset) = ctx.handlers.start_hook_offset {
+        ctx.task.ip = start_offset as usize;
+        let _ = execute_handler_fully(&ctx.meta, &mut ctx.task).await;
+    }
+
+    // 2. Main Message Loop
+    loop {
+        // Wait for message
+        let msg = match ctx.mailbox.recv().await {
+            Some(m) => m,
+            None => break, // Mailbox closed
+        };
+
+        // Try to match a handler
+        let mut matched = false;
+        for handler in ctx.handlers.get_handlers() {
+            if let Some(pattern) = ctx.handlers.get_pattern(handler.pattern_idx) {
+                if let Some(_bindings) = try_match_pattern(&ctx.handlers, pattern, &msg) {
+                    // Execute handler
+                    ctx.task.ip = handler.body_offset as usize;
+                    let _ = execute_handler_fully(&ctx.meta, &mut ctx.task).await;
+                    matched = true;
+                    break;
+                }
+            }
+        }
+
+        // 3. Else Handler (if no match)
+        if !matched {
+            if let Some(else_offset) = ctx.handlers.else_handler_offset {
+                ctx.task.ip = else_offset as usize;
+                let _ = execute_handler_fully(&ctx.meta, &mut ctx.task).await;
+            }
+        }
+    }
+
+    // 4. Stop Hook
+    if let Some(stop_offset) = ctx.handlers.stop_hook_offset {
+        ctx.task.ip = stop_offset as usize;
+        let _ = execute_handler_fully(&ctx.meta, &mut ctx.task).await;
+    }
+
+    ctx.task.status = TaskStatus::Terminated;
+}
+
+/// Try to match a serialized pattern against a message
+fn try_match_pattern(
+    table: &TaskHandlerTable,
+    pattern: &crate::vm::task_handler::SerializedPattern,
+    msg: &auto_val::Value,
+) -> Option<crate::vm::pattern_matcher::MatchResult> {
+    use crate::vm::task_handler::PatternType;
+
+    match pattern.pattern_type {
+        PatternType::Literal => {
+            if pattern.data.is_empty() {
+                return None;
+            }
+            let lit_type = pattern.data[0];
+            match lit_type {
+                0x01 => {
+                    // String literal
+                    if pattern.data.len() < 5 {
+                        return None;
+                    }
+                    let idx = u32::from_le_bytes([
+                        pattern.data[1],
+                        pattern.data[2],
+                        pattern.data[3],
+                        pattern.data[4],
+                    ]) as usize;
+                    if let Some(s) = table.get_string(idx as u32) {
+                        if let auto_val::Value::Str(v) = msg {
+                            if s == v.as_str() {
+                                return Some(crate::vm::pattern_matcher::MatchResult::empty());
+                            }
+                        }
+                    }
+                    None
+                }
+                0x02 => {
+                    // Int literal
+                    if pattern.data.len() < 9 {
+                        return None;
+                    }
+                    let n = i64::from_le_bytes([
+                        pattern.data[1],
+                        pattern.data[2],
+                        pattern.data[3],
+                        pattern.data[4],
+                        pattern.data[5],
+                        pattern.data[6],
+                        pattern.data[7],
+                        pattern.data[8],
+                    ]);
+                    if let auto_val::Value::Int(v) = msg {
+                        if n == *v as i64 {
+                            return Some(crate::vm::pattern_matcher::MatchResult::empty());
+                        }
+                    }
+                    None
+                }
+                _ => None,
+            }
+        }
+        PatternType::Simple => {
+            // Simple variant matching
+            if pattern.data.len() < 4 {
+                return None;
+            }
+            let idx = u32::from_le_bytes([
+                pattern.data[0],
+                pattern.data[1],
+                pattern.data[2],
+                pattern.data[3],
+            ]) as usize;
+            if let Some(name) = table.get_string(idx as u32) {
+                // Match against string value (for MVP)
+                if let auto_val::Value::Str(v) = msg {
+                    if name == v.as_str() {
+                        return Some(crate::vm::pattern_matcher::MatchResult::empty());
+                    }
+                }
+                // Match against object with __variant field
+                if let auto_val::Value::Obj(obj) = msg {
+                    if let Some(auto_val::Value::Str(v)) =
+                        obj.get(auto_val::AutoStr::from("__variant"))
+                    {
+                        if name == v.as_str() {
+                            return Some(crate::vm::pattern_matcher::MatchResult::empty());
+                        }
+                    }
+                }
+            }
+            None
+        }
+        PatternType::TypeBinding => {
+            // Type binding - matches any value of the type
+            if pattern.data.len() >= 4 {
+                let _name_idx = u32::from_le_bytes([
+                    pattern.data[0],
+                    pattern.data[1],
+                    pattern.data[2],
+                    pattern.data[3],
+                ]);
+                // For MVP, just accept the message
+                return Some(crate::vm::pattern_matcher::MatchResult::new(vec![(
+                    "msg".to_string(),
+                    msg.clone(),
+                )]));
+            }
+            None
+        }
+        PatternType::WithBindings => {
+            // Variant with bindings - simplified for MVP
+            if pattern.data.len() < 4 {
+                return None;
+            }
+            let idx = u32::from_le_bytes([
+                pattern.data[0],
+                pattern.data[1],
+                pattern.data[2],
+                pattern.data[3],
+            ]) as usize;
+            if let Some(name) = table.get_string(idx as u32) {
+                if let auto_val::Value::Obj(obj) = msg {
+                    if let Some(auto_val::Value::Str(v)) =
+                        obj.get(auto_val::AutoStr::from("__variant"))
+                    {
+                        if name == v.as_str() {
+                            return Some(crate::vm::pattern_matcher::MatchResult::empty());
+                        }
+                    }
+                }
+            }
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +459,43 @@ mod tests {
         // execute_handler_fully should complete without error
         let result = execute_handler_fully(&meta, &mut task).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_task_loop_processes_messages() {
+        let bytecode = VirtualFlash::new(16);
+        bytecode.memory = vec![0x00]; // NOP
+
+        let meta = Arc::new(GlobalMeta::from_components(
+            bytecode,
+            Vec::new(),
+            NativeInterface::new(),
+            HashMap::new(),
+        ));
+
+        let (tx, rx) = mpsc::channel::<auto_val::Value>(16);
+        let (sys_tx, _sys_rx) = mpsc::channel::<SystemCommand>(16);
+
+        let task = AutoTask::new(1, 1024, 0);
+        let mut ctx = TaskContext::new(
+            meta,
+            "TestTask".to_string(),
+            1,
+            rx,
+            sys_tx,
+            task,
+        );
+
+        // Send a message
+        tx.send(auto_val::Value::Int(42)).await.unwrap();
+
+        // Drop sender to close mailbox after this message
+        drop(tx);
+
+        // Run task loop - should process one message then exit
+        task_loop(&mut ctx).await;
+
+        // Task should have terminated (mailbox closed)
+        assert_eq!(ctx.task.status, TaskStatus::Terminated);
     }
 }
