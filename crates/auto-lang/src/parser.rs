@@ -1670,6 +1670,13 @@ impl<'a> Parser<'a> {
                         lhs = Expr::Await { expr: Box::new(lhs) };
                         continue;
                     }
+                    // Plan 126: .go postfix operator - spawn background task
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::Go) {
+                        // .go suffix - consume the 'go' token
+                        self.next();
+                        lhs = Expr::Go { expr: Box::new(lhs) };
+                        continue;
+                    }
                     let rhs = self.expr_pratt(power.r)?;
                     match op {
                         Op::Range => {

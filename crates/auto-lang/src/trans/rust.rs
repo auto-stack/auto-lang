@@ -1081,6 +1081,16 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 126: .go postfix operator - fire-and-forget spawn
+            // expr.go -> tokio::spawn(async move { expr.await })
+            // The expression is spawned as a background task, result is discarded
+            Expr::Go { expr } => {
+                write!(out, "tokio::spawn(async move {{ ")?;
+                self.expr(expr, out)?;
+                write!(out, ".await; }})")?;
+                Ok(())
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported expression: {}", expr).into()),
         }
     }

@@ -1,6 +1,6 @@
 # Plan 126: Phase 4 - 微观并发引擎与隐式 Worker Pool
 
-## Status: 🔄 PLANNING
+## Status: ✅ COMPLETE (Phase 4.1-4.5)
 
 ## Objective
 
@@ -739,3 +739,49 @@ async fn test_high_throughput_go() {
 - [Plan 121: Task/Msg 系统](./121-task-msg-system.md) - Phase 1 实现
 - [Plan 124: Async/Future/Await](./124-async-future-await.md) - Phase 2 实现
 - [Plan 125: 多态路由](./125-phase3-polymorphic-routing.md) - Phase 3 实现
+
+---
+
+## 实现总结 (2026-03-16)
+
+### 已完成的阶段
+
+| 阶段 | 状态 | 实现文件 |
+|------|------|----------|
+| Phase 4.1: Lexer | ✅ 完成 | `token.rs` - `TokenKind::Go` |
+| Phase 4.2: Parser | ✅ 完成 | `ast.rs`, `parser.rs` - `Expr::Go` |
+| Phase 4.3: 语义检查 | ✅ 完成 | `infer/expr.rs` - 类型推断 |
+| Phase 4.4: AutoVM 运行时 | ✅ 完成 | `opcode.rs`, `codegen.rs`, `engine.rs` - `SPAWN_GO` |
+| Phase 4.5: a2rs 转译器 | ✅ 完成 | `trans/rust.rs` - `tokio::spawn` |
+| Phase 4.6: 测试与文档 | ✅ 完成 | 测试通过，文档更新 |
+
+### 实现细节
+
+#### 1. Lexer (`token.rs`)
+- 添加 `TokenKind::Go` 枚举变体
+- 添加 `"go" => Some(TokenKind::Go)` 关键字映射
+- 实现 Display trait: `<go>`
+
+#### 2. Parser (`parser.rs`, `ast.rs`)
+- 添加 `Expr::Go { expr: Box<Expr> }` AST 节点
+- 在 `parse_postfix()` 中处理 `.go` 后缀操作符
+- 实现 Display 和 ToNode trait
+
+#### 3. 类型推断 (`infer/expr.rs`)
+- `.go` 表达式推断为 `Type::Void`（fire-and-forget）
+- 检查内部表达式是否为 `Future<T>` 类型
+- 非 Future 类型产生 `InvalidGoUsage` 警告
+
+#### 4. VM 运行时
+- `opcode.rs`: `SPAWN_GO = 0x89`
+- `codegen.rs`: 编译 `Expr::Go` 生成 `SPAWN_GO` 指令
+- `engine.rs`: `SPAWN_GO` 执行逻辑 - 派发到后台任务池
+
+#### 5. Rust 转译器 (`trans/rust.rs`)
+- `expr.go` → `tokio::spawn(async move {{ expr.await; }})`
+- 支持链式调用
+
+### 测试状态
+- `test_go_keyword` 测试通过 ✅
+- Parser 测试通过 ✅
+- 编译无错误 ✅

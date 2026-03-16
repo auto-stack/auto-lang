@@ -347,6 +347,12 @@ pub enum Expr {
     Await {
         expr: Box<Expr>,
     },
+    /// Plan 126: Go expression: expr.go
+    /// Spawns async block to background worker pool
+    /// Returns void (fire-and-forget)
+    Go {
+        expr: Box<Expr>,  // Must be ~T (Future)
+    },
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -450,6 +456,8 @@ impl fmt::Display for Expr {
                 write!(f, ")")
             }
             Expr::Await { expr } => write!(f, "({}.await)", expr),
+            // Plan 126: .go postfix operator for spawning background tasks
+            Expr::Go { expr } => write!(f, "({}.go)", expr),
         }
     }
 }
@@ -927,6 +935,12 @@ impl ToNode for Expr {
             }
             Expr::Await { expr } => {
                 let mut node = AutoNode::new("await");
+                node.add_kid(expr.to_node());
+                node
+            }
+            // Plan 126: .go postfix operator for spawning background tasks
+            Expr::Go { expr } => {
+                let mut node = AutoNode::new("go");
                 node.add_kid(expr.to_node());
                 node
             }

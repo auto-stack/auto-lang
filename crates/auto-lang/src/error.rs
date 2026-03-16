@@ -1012,6 +1012,20 @@ pub enum Warning {
         #[label("deprecated feature '{name}'")]
         span: SourceSpan,
     },
+
+    /// Plan 126: Invalid .go usage warning
+    /// .go should only be applied to Future types
+    #[error("invalid .go usage")]
+    #[diagnostic(
+        code(auto_warning_W0006),
+        severity(warning),
+        help(".go should be applied to a Future type (found '{found}')")
+    )]
+    InvalidGoUsage {
+        found: String,
+        #[label(".go applied here")]
+        span: SourceSpan,
+    },
 }
 
 /// Attach source code to any error for displaying code snippets

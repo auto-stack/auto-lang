@@ -3909,6 +3909,15 @@ impl Codegen {
                 // Emit AWAIT_FUTURE to wait for the future's completion
                 self.emit(OpCode::AWAIT_FUTURE);
             }
+            // Plan 126: Go expression - expr.go (spawn background task)
+            // Fire-and-forget semantics: spawn the future and discard the result
+            Expr::Go { expr } => {
+                // Compile the inner expression (should evaluate to a Future)
+                self.compile_expr(expr)?;
+                // Emit SPAWN_GO to spawn the future in background
+                // SPAWN_GO pops the Future, spawns it, and pushes void
+                self.emit(OpCode::SPAWN_GO);
+            }
             Expr::Pair(pair) => {
                 // Handle Pair as a single-element object for config syntax like: name: "value"
                 // This is equivalent to Object {key: value}

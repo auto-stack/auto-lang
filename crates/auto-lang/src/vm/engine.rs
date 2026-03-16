@@ -2515,6 +2515,41 @@ impl AutoVM {
                     }
                 }
 
+                // Plan 126: SPAWN_GO - fire-and-forget spawn
+                // Pop function address and arg_count from stack, spawn in background
+                // Returns void (no value pushed to stack)
+                // Stack layout: [..., func_addr:i32, arg_count:i32] (high to low)
+                OpCode::SPAWN_GO => {
+                    // Pop the function address (or closure reference)
+                    let target = task.ram.pop_i32() as usize;
+                    // Pop arg count
+                    let arg_count = task.ram.pop_i32() as usize;
+
+                    // Collect args from stack
+                    let mut args = Vec::with_capacity(arg_count);
+                    for _ in 0..arg_count {
+                        args.push(task.ram.pop_i32());
+                    }
+
+                    // Spawn a new task for this function
+                    let new_task_id = self.spawn_task(target, 1024);
+
+                    // Initialize the new task's stack with args
+                    if let Some(new_task_arc) = self.tasks.get(&new_task_id) {
+                        if let Ok(mut new_task) = new_task_arc.try_lock() {
+                            // Push args in reverse order (A, B, C)
+                            for arg in args.into_iter().rev() {
+                                new_task.ram.push_i32(arg);
+                            }
+                        }
+                        // If we can't lock, the task will just sit idle
+                        // This is fire-and-forget, so we don't propagate errors
+                    }
+
+                    // Fire-and-forget: no value pushed to stack (returns void)
+                    // Unlike SPAWN, we don't push task_id back
+                }
+
                 // === Local Variables ===
                 //
                 // Stack frame layout (Plan 080):

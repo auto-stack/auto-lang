@@ -432,6 +432,26 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             // If not a Future type, return Unknown
             Type::Unknown
         }
+        // Plan 126: .go postfix operator spawns background task
+        // .go returns void (fire-and-forget semantics)
+        Expr::Go { expr } => {
+            let inner_ty = infer_expr(ctx, expr);
+            // Verify inner is a Future type
+            match inner_ty {
+                Type::GenericInstance(inst) if inst.base_name.as_str() == "Future" => {
+                    // Valid: expr is ~T, .go spawns it and returns void
+                    Type::Void
+                }
+                _ => {
+                    // Warning: .go on non-Future type
+                    ctx.warnings.push(Warning::InvalidGoUsage {
+                        found: inner_ty.to_string(),
+                        span: SourceSpan::new(0.into(), 0),
+                    });
+                    Type::Unknown
+                }
+            }
+        }
     }
 }
 

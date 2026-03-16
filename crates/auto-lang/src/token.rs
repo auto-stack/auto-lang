@@ -136,6 +136,9 @@ pub enum TokenKind {
     Await, // await keyword (postfix operator)
     Reply, // reply keyword (in on blocks)
 
+    // Plan 126: Phase 4 - Micro-concurrency (.go postfix operator)
+    Go, // go keyword (postfix operator for spawning background tasks)
+
     DotView,
     DotMut,
     DotMove,
@@ -248,6 +251,7 @@ impl fmt::Display for Token {
             TokenKind::Spawn => write!(f, "<spawn>"),
             TokenKind::Await => write!(f, "<await>"),
             TokenKind::Reply => write!(f, "<reply>"),
+            TokenKind::Go => write!(f, "<go>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }
@@ -366,6 +370,8 @@ impl Token {
             // Plan 124: Async/Future/Await system keywords
             "await" => Some(TokenKind::Await),
             "reply" => Some(TokenKind::Reply),
+            // Plan 126: Phase 4 - Micro-concurrency
+            "go" => Some(TokenKind::Go),
             _ => None,
         }
     }
@@ -401,5 +407,16 @@ mod tests {
         };
         let token = Token::new(TokenKind::Spec, pos, "spec".into());
         assert_eq!(format!("{}", token), "<spec>");
+    }
+
+    #[test]
+    fn test_go_keyword() {
+        // Plan 126: Test that "go" is recognized as a keyword
+        let kind = Token::keyword_kind("go");
+        assert_eq!(kind, Some(TokenKind::Go));
+
+        // Test that "Go" (capitalized) is NOT recognized as a keyword
+        let kind = Token::keyword_kind("Go");
+        assert_eq!(kind, None);
     }
 }

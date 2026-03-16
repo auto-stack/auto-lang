@@ -125,6 +125,8 @@ pub enum OpCode {
     SEND = 0x86,     // channel_id: u32, data: i32 -> void
     RECV = 0x87,     // channel_id: u32 -> data: i32
     TRY_RECV = 0x88, // channel_id: u32 -> data: i32 | 0 (non-blocking)
+    // Plan 126: .go postfix operator - fire-and-forget spawn
+    SPAWN_GO = 0x89, // future -> void (spawn Future in background, discard result)
 
     // === Closures (Plan 071: Direct Capture) ===
     CLOSURE = 0x90,         // func_addr, capture_count × value -> closure_id: u32

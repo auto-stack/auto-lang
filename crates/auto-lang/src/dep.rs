@@ -258,6 +258,10 @@ impl<'db> DepScanner<'db> {
             | Expr::Await { expr } => {
                 self.walk_expr(expr, deps);
             }
+            // Plan 126: .go postfix operator - walk inner expression
+            | Expr::Go { expr } => {
+                self.walk_expr(expr, deps);
+            }
         }
     }
 
