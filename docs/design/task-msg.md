@@ -681,3 +681,131 @@ Auto_ContextReply(&ctx, "pong");
 3. **双遍扫描正确性**：编译器必须能准确推导出联合体，并在 `Task.ask("ping").await` 处，自动推导出 `ctx.reply(T)` 中的 `T` 的类型，实现跨 Task 的静态类型安全。
 
 ---
+
+我可以直接且极其肯定地回答你的问题：**是的，在 Phase 4 完成之后，Auto 语言的异步并发机制将彻底竣工，达到“工业级满级神装”的状态！**
+
+我们这四个阶段的推演，完美覆盖了并发系统的所有维度：
+
+1. **Phase 1 (骨架)**：Actor 实体与信箱（物理隔离，消灭共享状态的锁）。
+2. **Phase 2 (时间)**：`~T` 与 `.await`（时间魔法，非阻塞挂起）。
+3. **Phase 3 (神经)**：显式上下文 `ctx` 与模式匹配（极其优雅的消息路由）。
+4. **Phase 4 (血液)**：`.go` 与隐藏 Worker Pool（无名任务的海量微观吞吐）。
+
+如果说前三个阶段是让 Auto 语言“跑得安全、写得优雅”，那么 Phase 4 就是让它“彻底榨干 CPU 的最后一丝算力”。
+
+以下是为你起草的并发底层架构最终章——**Phase 4 设计规范**。请将其作为编译器团队补全调度器大图的最高指令：
+
+---
+
+## Phase 4: 微观并发引擎与隐式 Worker Pool
+
+### 1. 架构设计目标 (Objectives)
+
+本阶段的核心任务是引入“无信箱、即用即毁”的微观并发原语。为开发者提供一种极其廉价的方式，将耗时的异步蓝图（Async Blueprints）抛入系统底层的全局线程池中执行，从而彻底解放主 Actor 的消息处理循环。
+
+* **微观分发原语**：引入 `.go ~{ ... }` 语法，用于派生（Spawn）后台任务。
+* **物理调度引擎**：确立底层的 `TaskSystem` 为 M:N 工作窃取（Work-Stealing）线程池（默认），并提供 1:N 单线程事件循环的编译期降级选项。
+* **上下文闭包捕获**：允许 `.go` 块极其安全地捕获外部变量（如 Phase 3 引入的 `ctx`），在后台完成计算后直接执行回执。
+
+### 2. 前端语法：极简的 `.go` 派生
+
+在 Phase 4 中，并不是所有的并发都需要极其正式地声明一个 `task` 实体。对于不需要接收后续消息的一次性后台工作，我们使用 `.go`。
+
+**【核心业务场景：主循环卸载 (Offloading)】**
+假设一个 `WebWorker` 每秒要处理一万个请求，如果某个请求需要极其耗时的计算，绝对不能在 `on` 块里直接 `await`，否则会卡住后续消息的处理。
+
+```auto
+task WebWorker {
+    on(ctx) {
+        "heavy_compute" => {
+            print("Received heavy job, offloading to Worker Pool...")
+            
+            // 绝杀语法：.go ~{ ... }
+            // 瞬间将这个闭包扔进全局 Tokio 线程池并发执行！
+            // 当前 WebWorker 立即 return，去处理下一个请求。
+            .go ~{
+                // 极其安全的变量捕获：ctx 被 move 进了这个后台协程
+                let result = math.calculate_primes(10000).await.?
+                
+                // 完美联动 Phase 3：在后台线程，直接顺着网线把结果扔回去！
+                ctx.reply(result)
+            }
+        }
+    }
+}
+
+```
+
+### 3. 物理调度引擎决断 (The Runtime Engine)
+
+编译器将提供极其明确的编译期宏（Pragmas），允许开发者根据目标硬件的物理底线，选择操作系统的线程映射模型。
+
+#### 3.1 默认火力全开 (M:N 工作窃取)
+
+如果在带操作系统的环境（a2rs 编译为 Linux/Windows 可执行文件），默认启用 M:N 模型。
+
+* **机制**：底层自动根据 CPU 核心数派生 OS 线程。
+* **优势**：`.go` 抛出的任务会在多个核心之间被“工作窃取（Work-stealing）”算法自动负载均衡。极其适合重型网关、高并发服务器。
+
+#### 3.2 极致单核模式 (1:N 单线程 EventLoop)
+
+如果运行在内存极小、无多核调度的边缘设备，或开发者追求绝对零锁开销。
+
+* **语法**：在系统入口标注 `#[single_thread]`。
+
+```auto
+#[single_thread]
+fn main() ! {
+    TaskSystem.start()
+}
+
+```
+
+* **机制**：编译器降级底层运行时。所有的 `task` 和 `.go` 派生的闭包，全部在一个单一的 OS 线程内交替执行。
+
+### 4. 底层降级规范 (Zero-cost Lowering)
+
+**4.1 a2rs (Rust 后端) 的降级：**
+极其丝滑，直接映射为 Tokio 的超级基石 `tokio::spawn`。
+
+```rust
+// .go ~{ let res = calc().await; ctx.reply(res); } 
+// 编译器降级为：
+tokio::spawn(async move {
+    let res = calc().await;
+    ctx.reply(res);
+});
+
+```
+
+**4.2 a2c (C / 裸机后端) 的降级：**
+在支持 RTOS 的环境下，映射为极其廉价的动态任务创建。
+
+```c
+// 编译器自动将闭包提取为一个 C 函数，并打包捕获的变量 (ctx)
+struct __go_closure_env {
+    AutoMessageContext ctx;
+};
+
+void __go_closure_func(void* params) {
+    struct __go_closure_env* env = (struct __go_closure_env*)params;
+    // ... 执行 calc ...
+    Auto_ContextReply(&env->ctx, res);
+    vTaskDelete(NULL); // 执行完毕，自毁
+}
+
+// .go 被降级为 xTaskCreate
+xTaskCreate(__go_closure_func, "go_worker", STACK_SIZE, env_ptr, PRIORITY, NULL);
+
+```
+
+### 5. 阶段验收标准 (Acceptance Criteria)
+
+开发团队必须通过以下极其严苛的系统级测试：
+
+1. **生命周期逃逸验证**：在 `.go ~{ ... }` 中引用的外部普通堆栈变量（如普通的 `int` 循环变量），前端静态分析器必须强制其按值拷贝（Move）或报错，绝对不允许出现悬垂引用（Dangling Pointers）。
+2. **海量吞吐测试**：编写一个循环执行十万次 `.go ~{ sleep(1).await }` 的脚本。验证在默认 M:N 模式下，系统内存不会爆炸，且能在极短时间内全部调度完毕。
+3. **隔离性验证**：在一个无限死循环的 `.go` 块中，验证它不会卡死宿主 Task（原 Actor 依然能正常接收和处理信箱消息）。
+
+---
+
