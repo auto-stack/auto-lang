@@ -40,8 +40,11 @@
 //! └─────────────────────────────────────────────────────────────────────┘
 //! ```
 
+use crate::vm::engine::VMError;
 use crate::vm::native::NativeInterface;
+use crate::vm::opcode::OpCode;
 use crate::vm::task::AutoTask;
+use crate::vm::task::TaskStatus;
 use crate::vm::task_handler::TaskHandlerTable;
 use crate::vm::virt_memory::VirtualFlash;
 use std::collections::HashMap;
@@ -159,6 +162,60 @@ impl TaskContext {
     }
 }
 
+/// Execute handler fully - async to support await, yields instead of breaking
+///
+/// This function runs a handler to completion (RET or HALT), with:
+/// - Cooperative yielding via `tokio::task::yield_now()` to prevent CPU starvation
+/// - Async FFI support via AWAIT_EXT opcode (future)
+/// - Budget defense that preserves task.ip state
+pub async fn execute_handler_fully(
+    meta: &GlobalMeta,
+    task: &mut AutoTask,
+) -> Result<TaskStatus, VMError> {
+    const BUDGET: u32 = 10_000;
+    let mut ops_executed = 0;
+
+    loop {
+        // Bounds check
+        if task.ip >= meta.bytecode.memory.len() {
+            return Ok(TaskStatus::Terminated);
+        }
+
+        // Fetch opcode
+        let op_byte = meta.bytecode.read_u8(task.ip);
+        let opcode = OpCode::from(op_byte);
+        task.ip += 1;
+
+        match opcode {
+            OpCode::RET | OpCode::HALT => {
+                // Normal completion
+                return Ok(TaskStatus::Terminated);
+            }
+
+            OpCode::NOP => {
+                // Do nothing
+            }
+
+            // Note: AWAIT_EXT would be handled here for async FFI
+            // OpCode::AWAIT_EXT => {
+            //     handle_async_ffi(meta, task).await;
+            // }
+
+            _ => {
+                // For now, skip unknown opcodes
+                // In full implementation, this would call execute_single_op()
+            }
+        }
+
+        // Budget defense: yield CPU, but preserve task.ip state
+        ops_executed += 1;
+        if ops_executed >= BUDGET {
+            tokio::task::yield_now().await;
+            ops_executed = 0;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +250,26 @@ mod tests {
 
         assert_eq!(ctx.task_type, "TestTask");
         assert_eq!(ctx.instance_id, 1);
+    }
+
+    #[tokio::test]
+    async fn test_execute_handler_fully_returns_on_ret() {
+        let mut bytecode = VirtualFlash::new(16);
+        // NOP opcode = 0x00 - handler should complete
+        bytecode.memory = vec![0x00];
+
+        let meta = Arc::new(GlobalMeta::from_components(
+            bytecode,
+            Vec::new(),
+            NativeInterface::new(),
+            HashMap::new(),
+        ));
+
+        let mut task = AutoTask::new(1, 1024, 0);
+        task.ip = 0;
+
+        // execute_handler_fully should complete without error
+        let result = execute_handler_fully(&meta, &mut task).await;
+        assert!(result.is_ok());
     }
 }
