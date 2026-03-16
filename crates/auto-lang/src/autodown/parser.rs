@@ -7,6 +7,7 @@ use super::error::{AdocError, AdocResult};
 use super::lexer::{AdToken, AdTokenKind, AdocLexer, LexerMode};
 
 /// AutoDown Parser with Flip mechanism
+#[allow(dead_code)]
 pub struct AdocParser<'a> {
     /// Lexer
     lexer: AdocLexer<'a>,

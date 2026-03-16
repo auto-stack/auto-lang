@@ -161,6 +161,7 @@ pub enum AdTokenKind {
 // ============================================================================
 
 /// AutoDown Lexer
+#[allow(dead_code)]
 pub struct AdocLexer<'a> {
     /// Source code being lexed
     source: &'a str,
@@ -252,8 +253,9 @@ impl<'a> AdocLexer<'a> {
     fn peek(&mut self) -> Option<char> {
         self.chars.peek().copied()
     }
-    
+
     /// Peek at the character after next
+    #[allow(dead_code)]
     fn peek_next(&mut self) -> Option<char> {
         // This is inefficient but works for now
         // A better approach would use a peekable buffer
@@ -301,8 +303,9 @@ impl<'a> AdocLexer<'a> {
     fn start_token(&mut self) {
         self.token_start = self.pos;
     }
-    
+
     /// Get text from token start to current position
+    #[allow(dead_code)]
     fn token_text(&self) -> String {
         self.source[self.token_start..self.pos].to_string()
     }
@@ -510,7 +513,7 @@ impl<'a> AdocLexer<'a> {
         
         // Check for numbered list (1. or 1))
         if self.peek() == Some('.') || self.peek() == Some(')') {
-            let delim = self.peek().unwrap();
+            let _delim = self.peek().unwrap();
             self.advance();
             if self.peek() == Some(' ') {
                 self.advance();

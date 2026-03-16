@@ -6,6 +6,7 @@
 use super::GenResult;
 
 /// Style generator
+#[allow(dead_code)]
 pub struct StyleGenerator {
     /// Whether to use Tailwind CSS
     use_tailwind: bool,

@@ -827,6 +827,7 @@ struct PreviewCardData {
 
 /// Data for generating code blocks with copy button
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct CodeBlockData {
     /// Unique identifier (e.g., "install-button", "install-card")
     id: String,
@@ -1854,7 +1855,7 @@ impl VueGenerator {
 
                 // Build events string
                 for (event_name, event) in events {
-                    let params_str = if event.params.is_empty() {
+                    let _params_str = if event.params.is_empty() {
                         String::new()
                     } else {
                         format!("({})", event.params.join(", "))
@@ -1887,7 +1888,7 @@ impl VueGenerator {
                     AuraTextContent::Literal(s) => {
                         format!("{}\"{}\"\n", ind, s)
                     }
-                    AuraTextContent::Interpolated { template, bindings } => {
+                    AuraTextContent::Interpolated { template, bindings: _ } => {
                         // Show the template with bindings
                         format!("{}\"{}\"\n", ind, template)
                     }
@@ -5190,7 +5191,7 @@ impl VueGenerator {
 
         for component_name in &self.shadcn_components_used {
             // Find which module this component belongs to
-            for (tag, (module, components)) in &self.shadcn_registry.components {
+            for (_tag, (module, components)) in &self.shadcn_registry.components {
                 if components.contains(&component_name.as_str()) {
                     module_imports.entry(module).or_default().push(component_name.as_str());
                     break;

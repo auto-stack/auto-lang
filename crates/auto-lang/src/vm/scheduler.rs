@@ -420,7 +420,7 @@ pub fn spawn_task(
     meta: Arc<GlobalMeta>,
     task_type: String,
     instance_id: u64,
-    handle: TaskHandle,
+    _handle: TaskHandle,
     sys_tx: mpsc::Sender<SystemCommand>,
 ) -> TaskContext {
     // For MVP, we create a dummy receiver that will be replaced

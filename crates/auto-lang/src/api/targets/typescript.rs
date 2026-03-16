@@ -123,7 +123,7 @@ impl TypeScriptGenerator {
             "export const tauriApi: IApi = {".to_string(),
         ];
 
-        for (i, endpoint) in endpoints.iter().enumerate() {
+        for (_i, endpoint) in endpoints.iter().enumerate() {
             let name = endpoint.frontend_name();
             let cmd_name = endpoint.fn_name.clone();
 

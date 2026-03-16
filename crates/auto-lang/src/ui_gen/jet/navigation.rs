@@ -160,7 +160,7 @@ impl NavigationGenerator {
                 ));
             } else {
                 // Route with parameters
-                let params_str = route.params.join(", ");
+                let _params_str = route.params.join(", ");
                 route_composables.push(format!(
                     "        composable(\n            \"{}\"\n        ) {{ backStackEntry ->\n            {}(navController)\n        }}",
                     route.name, route.screen
@@ -219,7 +219,7 @@ fun App() {{
     }
 
     /// Generate a navigate with argument call
-    pub fn generate_navigate_with_arg(&self, route: &str, arg_name: &str, arg_value: &str) -> String {
+    pub fn generate_navigate_with_arg(&self, route: &str, _arg_name: &str, arg_value: &str) -> String {
         format!(
             "navController.navigate(\"{}/{{$}}\".format({}))",
             route, arg_value

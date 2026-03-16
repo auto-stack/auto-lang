@@ -7,6 +7,7 @@
 //! - `model { name str = "" }` -> `var name by remember { mutableStateOf("") }`
 
 /// Converts Auto model definitions to Compose state
+#[allow(dead_code)]
 pub struct StateConverter {
     /// Package name for imports (unused for now)
     package: String,

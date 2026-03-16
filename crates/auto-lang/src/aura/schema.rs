@@ -78,7 +78,7 @@ impl PropType {
     pub fn matches(&self, other: &PropType) -> bool {
         match self {
             PropType::Union(types) => types.iter().any(|t| t.matches(other)),
-            PropType::OneOf(options) => {
+            PropType::OneOf(_options) => {
                 if let PropType::String = other {
                     true // String might match, validated at runtime
                 } else {

@@ -257,7 +257,7 @@ impl fmt::Display for Stmt {
             Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
             Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
-            Stmt::ViewBlock(view) => write!(f, "(view)"),
+            Stmt::ViewBlock(_view) => write!(f, "(view)"),
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => write!(f, "{}", task),
         }

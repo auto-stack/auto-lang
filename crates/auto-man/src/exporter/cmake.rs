@@ -1,6 +1,5 @@
 use super::Exporter;
 use auto_val::AutoStr;
-use log::*;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;

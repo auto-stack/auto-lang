@@ -105,6 +105,7 @@ fn postfix_power(op: Op) -> AutoResult<Option<PostfixPrec>> {
 
 /// Helper function to capitalize first letter for backwards compatibility
 /// Converts "int" -> "Int", "string" -> "String", etc.
+#[allow(dead_code)]
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
@@ -3306,7 +3307,7 @@ impl<'a> Parser<'a> {
     /// Parse task state field: `name [mut] = expr`
     fn parse_task_state_field(&mut self) -> AutoResult<(Name, bool, Expr)> {
         let name = self.parse_name()?;
-        let pos = self.prev.pos;
+        let _pos = self.prev.pos;
 
         // Check for 'mut' keyword
         let mutable = if self.is_kind(TokenKind::Mut) {
@@ -3476,7 +3477,7 @@ impl<'a> Parser<'a> {
 
         // Phase 1/2: Parse identifier-based pattern
         let name = self.parse_name()?;
-        let pos = self.prev.pos;
+        let _pos = self.prev.pos;
 
         // Check for parentheses with bindings: Add(val)
         if self.is_kind(TokenKind::LParen) {

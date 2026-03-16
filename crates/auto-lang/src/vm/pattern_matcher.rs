@@ -236,6 +236,7 @@ impl PatternMatcher {
     }
 
     /// Compare two values with a binary operator
+    #[allow(dead_code)]
     fn compare_values(left: &Value, op: &auto_val::Op, right: &Value) -> Result<bool, String> {
         use auto_val::Op;
 
@@ -251,6 +252,7 @@ impl PatternMatcher {
     }
 
     /// Compare ordered values (numeric types)
+    #[allow(dead_code)]
     fn compare_ordered<F>(left: &Value, right: &Value, cmp: F) -> Result<bool, String>
     where
         F: Fn(i64, i64) -> bool,
@@ -276,6 +278,7 @@ impl PatternMatcher {
     }
 
     /// Check if two values are equal
+    #[allow(dead_code)]
     fn values_equal(left: &Value, right: &Value) -> bool {
         match (left, right) {
             (Value::Int(a), Value::Int(b)) => a == b,

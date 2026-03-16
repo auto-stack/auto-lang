@@ -143,6 +143,7 @@ impl Default for ParamMode {
     }
 }
 
+#[allow(deprecated)]
 impl fmt::Display for ParamMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

@@ -395,7 +395,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // Ok(x) returns !T (Result type)
         Expr::Ok(e) => Type::Result(Box::new(infer_expr(ctx, e))),
         // Err(msg) returns !never (Result type with unknown success type)
-        Expr::Err(e) => Type::Result(Box::new(Type::Unknown)),
+        Expr::Err(_e) => Type::Result(Box::new(Type::Unknown)),
 
         // Plan 120: Option/Result patterns in is statements
         // These are used in pattern matching context, return Bool for the pattern check
@@ -407,7 +407,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
 
         // ========== Plan 124: Async/Future/Await ==========
         // Async block returns Future<T> where T is the return type of the block
-        Expr::AsyncBlock { body, return_type } => {
+        Expr::AsyncBlock { body: _, return_type } => {
             // If explicit return type is provided, use it
             if let Some(ty) = return_type {
                 return ty.clone();

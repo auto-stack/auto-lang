@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 use super::Exporter;
 use crate::asset::GHSTemplate;
-use crate::target::{Target, TargetKind};
+use crate::target::TargetKind;
 use crate::Pac; // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use crate::{AutoResult, Dir};
 use auto_gen::*;

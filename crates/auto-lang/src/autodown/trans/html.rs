@@ -46,6 +46,7 @@ impl Default for HtmlOptions {
 
 /// HTML transpiler implementation
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct HtmlTranspiler {
     /// Output sink
     sink: AdocSink,

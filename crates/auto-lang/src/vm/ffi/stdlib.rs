@@ -364,6 +364,7 @@ pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
 // ============================================================================
 
 /// Join path components together
+#[allow(non_snake_case)]
 pub fn __shim_Path_join(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -718,7 +719,7 @@ pub fn shim_url_join_path(segments: Vec<String>) -> String {
 /// Global handle counter for net resources
 static NET_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-/// Thread-local storage for TCP listeners
+// Thread-local storage for TCP listeners
 thread_local! {
     static TCP_LISTENERS: std::cell::RefCell<std::collections::HashMap<u64, StdTcpListener>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
@@ -997,7 +998,7 @@ pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, _vm: &AutoVM) 
 // HTTP Functions (ID 2200-2299)
 // ============================================================================
 
-/// HTTP Response data stored in thread-local
+// HTTP Response data stored in thread-local
 thread_local! {
     static HTTP_RESPONSES: std::cell::RefCell<std::collections::HashMap<u64, HttpResponseData>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
@@ -1425,9 +1426,9 @@ fn extract_body(response: &str) -> String {
 
 use crate::vm::task_system::{TaskHandle, TaskInstance, TaskRegistry};
 
-/// TaskHandle wrapper for passing through VM
-/// The handle is stored as a tuple: (task_type: String, instance_id: u64, tx_ptr: u64)
-/// We use a thread-local storage to keep actual handles alive
+// TaskHandle wrapper for passing through VM
+// The handle is stored as a tuple: (task_type: String, instance_id: u64, tx_ptr: u64)
+// We use a thread-local storage to keep actual handles alive
 thread_local! {
     static TASK_HANDLES: std::cell::RefCell<std::collections::HashMap<u64, TaskHandle>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
@@ -1837,6 +1838,7 @@ pub fn shim_task_system_run(_future_id: i64) -> Result<i64, String> {
 // path uses the REPLY OpCode directly, which reads the MessageContext from
 // task.current_msg_context set by HANDLE_MSG.
 #[auto_macros::rust_fn("ctx.reply")]
+#[allow(unused_variables)]
 pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
     // The actual reply is handled by REPLY OpCode in engine.rs
     // This shim exists for FFI registration and potential future use

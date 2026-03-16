@@ -327,7 +327,7 @@ impl WidgetValidator {
     }
 
     /// Validate a single view node
-    pub fn validate_element(&self, tag: &str) -> ElementValidation {
+    pub fn validate_element(&self, tag: &str) -> ElementValidation<'_> {
         ElementValidation {
             tag: tag.to_string(),
             element_def: self.schema.get_element(tag).cloned(),
@@ -388,7 +388,7 @@ pub fn format_validation_errors(errors: &[ValidationError]) -> String {
 
         // Add suggestion if available
         match error {
-            ValidationError::UnknownElement { tag, suggestion, .. } => {
+            ValidationError::UnknownElement { tag: _, suggestion, .. } => {
                 if let Some(s) = suggestion {
                     output.push_str(&format!("  = help: did you mean '{}'?\n", s));
                 }

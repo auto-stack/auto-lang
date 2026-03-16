@@ -725,7 +725,7 @@ dependencies {{
     fn generate_main_activity(&mut self) {
         let package = &self.config.application_id;
         let theme_name = self.config.theme_name();
-        let app_name = &self.config.name;
+        let _app_name = &self.config.name;
 
         // Generate widget imports
         let widget_imports: Vec<String> = self

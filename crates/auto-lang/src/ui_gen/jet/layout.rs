@@ -20,6 +20,7 @@ pub struct LayoutGenerator {
 }
 
 /// Layout properties extracted from AURA
+#[allow(dead_code)]
 pub struct LayoutProps {
     /// Gap between children (in Tailwind units)
     pub gap: Option<u32>,

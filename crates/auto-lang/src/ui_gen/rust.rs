@@ -614,6 +614,7 @@ impl RustGenerator {
     }
 
     /// Convert handler pattern to Rust closure
+    #[allow(dead_code)]
     fn handler_to_rust_closure(&self, handler: &str) -> String {
         let variant = self.extract_variant_name(handler);
         format!("|_| Msg::{}", variant)

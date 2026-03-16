@@ -1,6 +1,4 @@
-use crate::builder::new_builder;
 use crate::builder::Builder;
-use crate::builder::BuilderKind;
 use crate::git::check_changes;
 use crate::git::check_detached;
 use crate::git::pull;

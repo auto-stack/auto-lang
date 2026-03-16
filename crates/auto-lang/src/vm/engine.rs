@@ -1667,95 +1667,6 @@ impl AutoVM {
                         )));
                     }
                 }
-                // Plan 073: Node creation (for type instances and tree structures)
-                OpCode::CREATE_NODE => {
-                    // Format: CREATE_NODE <name_str_idx:u16> <arg_count:u8>
-                    let name_str_idx = self.flash.read_u16(task.ip);
-                    task.ip += 2;
-                    let arg_count = self.flash.read_u8(task.ip);
-                    task.ip += 1;
-
-                    // Get node name from string pool
-                    let name = if let Ok(strings) = self.strings.read() {
-                        if let Some(bytes) = strings.get(name_str_idx as usize) {
-                            String::from_utf8(bytes.clone()).unwrap_or_default()
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        String::new()
-                    };
-
-                    // Pop props_id and kids_id from stack (Plan 073)
-                    // -1 means no props/kids
-                    let kids_id = task.ram.pop_i32();
-                    let props_id = task.ram.pop_i32();
-
-                    // Pop arguments from stack (in reverse order)
-                    let mut args = Vec::with_capacity(arg_count as usize);
-                    for i in 0..arg_count {
-                        let idx = (arg_count - 1 - i) as usize;
-                        let tagged = task.ram.pop_i32();
-                        
-                        // Decode string if tagged negative
-                        let arg_val = if tagged < 0 {
-                            let str_idx = (-tagged - 1) as usize;
-                            if let Ok(strings) = self.strings.read() {
-                                if let Some(bytes) = strings.get(str_idx) {
-                                    auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
-                                } else {
-                                    auto_val::Value::Nil
-                                }
-                            } else {
-                                auto_val::Value::Nil
-                            }
-                        } else {
-                            // TODO: Support NestedObject/Array in node args
-                            auto_val::Value::Int(tagged)
-                        };
-                        args.insert(idx, arg_val);
-                    }
-
-                    // Create node
-                    let mut node = auto_val::Node::new(&name);
-
-                    // Add arguments as properties (positional)
-                    for (i, arg) in args.iter().enumerate() {
-                        let key = auto_val::ValueKey::Int(i as i32);
-                        node.set_prop(key, arg.clone());
-                    }
-
-                    // Add additional properties if props_id is provided
-                    if props_id >= 0 {
-                        if let Some(obj_ref) = self.objects.get(&(props_id as u64)) {
-                            let obj_data = obj_ref.value().read().unwrap();
-                            for (key, val) in &obj_data.fields {
-                                node.set_prop(key.clone(), val.clone());
-                            }
-                        }
-                    }
-
-                    // Add children if kids_id is provided
-                    if kids_id >= 0 {
-                        if let Some(array_ref) = self.arrays.get(&(kids_id as u64)) {
-                            let array_data = array_ref.value().read().unwrap();
-                            for val in array_data.iter() {
-                                if let auto_val::Value::Node(kid) = val {
-                                    node.add_kid(kid.clone());
-                                } else if let auto_val::Value::Str(s) = val {
-                                    node = node.with_text(s.clone());
-                                }
-                            }
-                        }
-                    }
-
-                    // Store node in nodes registry and get ID
-                    let node_id = self.node_id_gen.fetch_add(1, Ordering::SeqCst);
-                    self.nodes.insert(node_id, Arc::new(RwLock::new(node)));
-
-                    // Push node ID onto stack
-                    task.ram.push_i32(node_id as i32);
-                }
                 // Plan 073: Array element access (arr[index])
                 // Plan 080: Also supports heap objects (lists like List<int>)
                 // Plan 118 Phase 4: Also supports string indexing (str[index])
@@ -2796,9 +2707,9 @@ impl AutoVM {
                                 #[cfg(debug_assertions)]
                                 eprintln!("[REPLY] Sent reply value {}", reply_value);
                             }
-                            Err(e) => {
+                            Err(_e) => {
                                 #[cfg(debug_assertions)]
-                                eprintln!("[REPLY] Failed to send reply: {}", e);
+                                eprintln!("[REPLY] Failed to send reply: {}", _e);
                             }
                         }
                     } else {

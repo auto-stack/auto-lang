@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 use super::Exporter;
 use crate::asset::IARTemplate;
-use crate::target::{Target, TargetKind};
+use crate::target::TargetKind;
 use crate::AutoResult;
 use crate::Pac; // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use auto_gen::*;

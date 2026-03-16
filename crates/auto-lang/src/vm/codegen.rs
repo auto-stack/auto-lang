@@ -575,7 +575,7 @@ impl Codegen {
                 //    No change needed.
                 //
                 // So we only need to fix case 2: jumps that START BEFORE entry_point and END AFTER entry_point
-                let shift_amount = shift as isize;
+                let _shift_amount = shift as isize;
                 for (old_placeholder, old_target) in &self.jump_targets {
                     // Calculate new positions
                     let new_placeholder = if *old_placeholder > entry_point as usize {
@@ -1970,6 +1970,7 @@ impl Codegen {
                     let handler_offset = self.code.len() as u32;
 
                     // Add handler entry to table (pattern will be serialized)
+                    #[allow(unused_variables)]
                     let pattern_idx = handler_table.add_handler(pattern, handler_offset, has_context);
 
                     // Compile handler body
@@ -3368,7 +3369,7 @@ impl Codegen {
                             .map(|name| auto_val::ValueKey::Str(name.clone().into()))
                             .collect();
 
-                        let key_index = self.object_keys.len() as u16;
+                        let _key_index = self.object_keys.len() as u16;
                         self.object_keys.push(keys);
 
                         // Infer field types from args
@@ -4075,7 +4076,7 @@ impl Codegen {
                 // When .await is called, the body is executed
 
                 // Store the current code position as the body's start
-                let body_offset = self.code.len() as u32;
+                let _body_offset = self.code.len() as u32;
 
                 // Compile the body statements
                 for stmt in &body.stmts {
@@ -4744,6 +4745,7 @@ impl Codegen {
                                     self.emit_load_loc(var_index);
                                 }
                             }
+                            #[allow(deprecated)]
                             ParamMode::Take => {
                                 // Take mode: move semantics (value passing)
                                 // DEPRECATED: Use Move instead

@@ -302,7 +302,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
             // Extract props and children from the object
             let mut props = HashMap::new();
             let mut events = HashMap::new();
-            let mut children = Vec::new();
+            let children = Vec::new();
 
             for pair in pairs.iter().skip(1) {
                 let key = key_to_string(&pair.key);

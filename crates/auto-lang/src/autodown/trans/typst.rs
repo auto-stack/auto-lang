@@ -8,6 +8,7 @@ use super::{helpers, AdocSink, AdocTranspiler};
 
 /// Typst transpiler
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct TypstTranspiler {
     /// Indentation level
     indent: usize,
