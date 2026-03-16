@@ -46,8 +46,10 @@ use crate::vm::opcode::OpCode;
 use crate::vm::task::AutoTask;
 use crate::vm::task::TaskStatus;
 use crate::vm::task_handler::TaskHandlerTable;
+use crate::vm::task_system::TaskHandle;
 use crate::vm::virt_memory::VirtualFlash;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -404,6 +406,80 @@ fn try_match_pattern(
     }
 }
 
+// ============================================================================
+// Task Spawning and Scheduler Daemon
+// ============================================================================
+
+/// Dynamic task ID counter (starts at 1000 to distinguish from static IDs)
+static DYNAMIC_TASK_ID: AtomicU64 = AtomicU64::new(1000);
+
+/// Spawn a task context from a handle
+///
+/// Creates a TaskContext ready to run in its own tokio::spawn
+pub fn spawn_task(
+    meta: Arc<GlobalMeta>,
+    task_type: String,
+    instance_id: u64,
+    handle: TaskHandle,
+    sys_tx: mpsc::Sender<SystemCommand>,
+) -> TaskContext {
+    // For MVP, we create a dummy receiver that will be replaced
+    let (_dummy_tx, rx) = mpsc::channel::<auto_val::Value>(16);
+
+    let task = AutoTask::new(instance_id, 1024, 0);
+
+    TaskContext::new(meta, task_type, instance_id, rx, sys_tx, task)
+}
+
+/// Scheduler daemon loop - handles system commands
+///
+/// Runs until Stop command is received
+pub async fn run_scheduler_daemon(
+    meta: Arc<GlobalMeta>,
+    mut sys_rx: mpsc::Receiver<SystemCommand>,
+) {
+    while let Some(cmd) = sys_rx.recv().await {
+        match cmd {
+            SystemCommand::Spawn {
+                task_type,
+                capacity,
+                parent_id,
+            } => {
+                // Spawn a new task
+                let _ = spawn_dynamic_task(meta.clone(), task_type, capacity, parent_id);
+            }
+            SystemCommand::Stop => {
+                // Shutdown requested
+                break;
+            }
+        }
+    }
+}
+
+/// Spawn a dynamic task at runtime
+fn spawn_dynamic_task(
+    meta: Arc<GlobalMeta>,
+    task_type: String,
+    _capacity: usize,
+    _parent_id: Option<u64>,
+) -> Result<u64, String> {
+    let instance_id = DYNAMIC_TASK_ID.fetch_add(1, Ordering::SeqCst);
+
+    // Create task context (without actual mailbox for MVP)
+    let (sys_tx, _sys_rx) = mpsc::channel::<SystemCommand>(16);
+    let (_tx, rx) = mpsc::channel::<auto_val::Value>(16);
+    let task = AutoTask::new(instance_id, 1024, 0);
+
+    let mut ctx = TaskContext::new(meta, task_type.clone(), instance_id, rx, sys_tx, task);
+
+    // Spawn the task loop
+    tokio::spawn(async move {
+        task_loop(&mut ctx).await;
+    });
+
+    Ok(instance_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,9 +518,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_handler_fully_returns_on_ret() {
-        let mut bytecode = VirtualFlash::new(16);
-        // NOP opcode = 0x00 - handler should complete
-        bytecode.memory = vec![0x00];
+        let bytecode = VirtualFlash {
+            memory: vec![0x00], // NOP opcode - handler should complete
+            symbol_map: HashMap::new(),
+            object_keys: Vec::new(),
+            object_types: Vec::new(),
+        };
 
         let meta = Arc::new(GlobalMeta::from_components(
             bytecode,
@@ -463,8 +542,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_loop_processes_messages() {
-        let bytecode = VirtualFlash::new(16);
-        bytecode.memory = vec![0x00]; // NOP
+        let bytecode = VirtualFlash {
+            memory: vec![0x00], // NOP
+            symbol_map: HashMap::new(),
+            object_keys: Vec::new(),
+            object_types: Vec::new(),
+        };
 
         let meta = Arc::new(GlobalMeta::from_components(
             bytecode,
@@ -497,5 +580,38 @@ mod tests {
 
         // Task should have terminated (mailbox closed)
         assert_eq!(ctx.task.status, TaskStatus::Terminated);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_task_creates_context() {
+        let meta = Arc::new(GlobalMeta::new());
+        let (sys_tx, _sys_rx) = mpsc::channel::<SystemCommand>(16);
+
+        let (tx, _rx) = mpsc::channel::<auto_val::Value>(16);
+        let handle = TaskHandle::new("TestTask".to_string(), 1, tx);
+
+        let ctx = spawn_task(
+            Arc::clone(&meta),
+            "TestTask".to_string(),
+            1,
+            handle,
+            sys_tx,
+        );
+
+        assert_eq!(ctx.task_type, "TestTask");
+        assert_eq!(ctx.instance_id, 1);
+        // Note: handle is intentionally consumed by spawn_task
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_daemon_handles_stop() {
+        let meta = Arc::new(GlobalMeta::new());
+        let (sys_tx, sys_rx) = mpsc::channel::<SystemCommand>(16);
+
+        // Send stop command immediately
+        sys_tx.send(SystemCommand::Stop).await.unwrap();
+
+        // Run daemon loop - should exit immediately
+        run_scheduler_daemon(meta, sys_rx).await;
     }
 }
