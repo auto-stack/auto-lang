@@ -7,15 +7,12 @@
 
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
-use crate::vm::scheduler::GlobalMeta;
-use crate::vm::virt_memory::VirtualFlash;
-use crate::vm::native::NativeInterface;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // ============================================================================

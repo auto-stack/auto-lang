@@ -12,7 +12,6 @@ use crate::vm::native::NativeInterface;
 use crate::vm::scheduler::GlobalMeta;
 use crate::vm::task_handler::{TaskHandlerTable, SerializedPattern, TaskHandler};
 use crate::vm::virt_memory::VirtualFlash;
-use crate::vm::codegen::ObjectType;
 
 // ============================================================================
 // Plan 128: CompiledPackage - CodeGen's Final Output (The "ROM Cartridge")

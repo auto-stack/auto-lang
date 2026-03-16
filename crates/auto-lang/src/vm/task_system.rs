@@ -75,7 +75,7 @@ use tokio::sync::mpsc;
 use std::sync::RwLock;
 
 // Plan 127: Import scheduler components for task spawning
-use crate::vm::scheduler::{GlobalMeta, TaskContext, SystemCommand, task_loop};
+use crate::vm::scheduler::{GlobalMeta, TaskContext, task_loop};
 use crate::vm::task::AutoTask;
 
 /// Lifecycle hook callback type

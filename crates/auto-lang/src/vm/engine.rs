@@ -372,7 +372,7 @@ impl AutoVM {
         pattern: &crate::vm::task_handler::SerializedPattern,
         string_pool: &[String],
     ) -> bool {
-        use crate::vm::task_handler::{PatternType, SerializedPattern};
+        use crate::vm::task_handler::PatternType;
         use auto_val::Value;
 
         match pattern.pattern_type {

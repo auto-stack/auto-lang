@@ -13,7 +13,7 @@
 //! The TaskHandlerTable stores all handlers for a task type and provides
 //! efficient lookup during message routing.
 
-use crate::ast::{LiteralValue, TaskMsgPattern, Type};
+use crate::ast::TaskMsgPattern;
 use std::collections::HashMap;
 
 /// Task handler metadata for message routing

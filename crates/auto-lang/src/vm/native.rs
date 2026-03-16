@@ -1,4 +1,4 @@
-use crate::vm::collections::{AutoVMHashMap, SpecializedHashMap, SpecializedHashSet, SpecializedStringBuilder, SpecializedVecDeque, SpecializedBTreeMap};
+use crate::vm::collections::{SpecializedHashMap, SpecializedHashSet};
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
 use auto_val::Value;

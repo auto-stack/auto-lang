@@ -5448,8 +5448,7 @@ impl Codegen {
     /// - Exported symbols (function entry points)
     /// - Task definitions (handler tables for message routing)
     pub fn into_compiled_package(self) -> crate::vm::loader::CompiledPackage {
-        use crate::vm::loader::{CompiledPackage, TaskDefinition};
-        use crate::vm::task_handler::TaskHandlerTable;
+        use crate::vm::loader::CompiledPackage;
 
         // Extract task definitions from the handler registry
         let tasks = self.task_handler_registry.export_task_definitions();
