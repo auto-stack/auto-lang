@@ -40,6 +40,11 @@ pub struct AutoTask {
     pub last_result_type: ResultType,
     // Plan 118: Store last error for proper error propagation
     pub last_error: Option<String>,
+    // Plan 127: Task message loop support
+    pub in_message_loop: bool, // Whether task is in message processing loop
+    pub task_type_name: Option<String>, // Task type name for handler lookup
+    pub current_handler_has_context: bool, // Whether current handler has ctx parameter
+    pub current_msg_context: Option<crate::vm::message_context::MessageContext>, // Current reply context
 }
 
 impl AutoTask {
@@ -58,6 +63,10 @@ impl AutoTask {
             current_fn_n_locals: 0, // Plan 088 Phase 4: Initialize to 0
             last_result_type: ResultType::default(), // Plan 118: Initialize to Int
             last_error: None, // Plan 118: Initialize to None
+            in_message_loop: false,
+            task_type_name: None,
+            current_handler_has_context: false,
+            current_msg_context: None,
         }
     }
 }

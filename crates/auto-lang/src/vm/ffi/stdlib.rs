@@ -148,6 +148,7 @@ pub const NATIVE_TASK_SYSTEM_START: u16 = 2305;
 pub const NATIVE_TASK_SYSTEM_RUN: u16 = 2306; // Plan 124: Sync bridge for async code
 pub const NATIVE_TASK_SEND_AWAIT: u16 = 2307; // Plan 124 Phase 2.2: send().await backpressure
 pub const NATIVE_TASK_ASK: u16 = 2308;        // Plan 124 Phase 2.3: ask/reply RPC
+pub const NATIVE_CTX_REPLY: u16 = 2309;       // Plan 127: ctx.reply() for message handlers
 
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
@@ -1694,6 +1695,30 @@ pub fn shim_task_system_run(_future_id: i64) -> Result<i64, String> {
     Ok(0)
 }
 
+// Plan 127 Phase 3: ctx.reply() - Send reply from message handler
+//
+// This function is called from task message handlers that have a context parameter:
+//
+//   on(ctx) {
+//       "ping" => { ctx.reply("pong") }
+//   }
+//
+// The reply is sent via the current task's MessageContext, which was set up
+// when the handler was invoked by HANDLE_MSG.
+//
+// Note: This FFI shim is for fallback compatibility. The primary execution
+// path uses the REPLY OpCode directly, which reads the MessageContext from
+// task.current_msg_context set by HANDLE_MSG.
+#[auto_macros::rust_fn("ctx.reply")]
+pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
+    // The actual reply is handled by REPLY OpCode in engine.rs
+    // This shim exists for FFI registration and potential future use
+    // For now, we just return Ok - the real work is done by OpCode::REPLY
+    #[cfg(debug_assertions)]
+    eprintln!("[ctx.reply] FFI called with value: {}", value);
+    Ok(())
+}
+
 // ============================================================================
 // Registration Function
 // ============================================================================
@@ -1835,6 +1860,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_TASK_SYSTEM_RUN, __shim_TaskSystem_run); // Plan 124
     natives.register_static(NATIVE_TASK_SEND_AWAIT, __shim_TaskHandle_send_await); // Plan 124 Phase 2.2
     natives.register_static(NATIVE_TASK_ASK, __shim_TaskHandle_ask); // Plan 124 Phase 2.3
+    natives.register_static(NATIVE_CTX_REPLY, __shim_ctx_reply); // Plan 127: ctx.reply()
 }
 
 // ============================================================================

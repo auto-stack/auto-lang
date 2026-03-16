@@ -128,6 +128,15 @@ pub enum OpCode {
     // Plan 126: .go postfix operator - fire-and-forget spawn
     SPAWN_GO = 0x89, // future -> void (spawn Future in background, discard result)
 
+    // === Plan 127: Task/Msg Execution Opcodes ===
+    // Task message loop and handler dispatch
+    TASK_LOOP = 0x8A,    // -> void (enter message processing loop)
+                         // Blocks waiting for messages, dispatches to handlers
+    HANDLE_MSG = 0x8B,   // msg_value -> void (dispatch message to matched handler)
+                         // Uses PatternMatcher to route to correct handler
+    REPLY = 0x8C,        // value -> void (send reply via current MessageContext)
+                         // Used in on(ctx) handlers for ask/reply pattern
+
     // === Closures (Plan 071: Direct Capture) ===
     CLOSURE = 0x90,         // func_addr, capture_count × value -> closure_id: u32
     CAPTURE_VAR = 0x91,     // -> value (load variable by name)

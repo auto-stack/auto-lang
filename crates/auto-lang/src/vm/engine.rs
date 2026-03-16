@@ -114,6 +114,10 @@ pub struct AutoVM {
     // Manages singleton tasks and task instances
     pub task_registry: Arc<TaskRegistry>,
 
+    // Plan 127: Task Handler Registry for message routing
+    // Maps task type names to their handler tables
+    pub task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry,
+
     // Plan 124: Future Registry for async/await
     // Stores pending futures with their body code offsets
     pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
@@ -176,6 +180,8 @@ impl AutoVM {
             heap_object_id_gen: AtomicU64::new(4000000),
             // Plan 121: Task/Msg registry for Actor model
             task_registry: Arc::new(TaskRegistry::new()),
+            // Plan 127: Task handler registry for message routing
+            task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(),
             // Plan 124: Future registry for async/await
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
@@ -356,6 +362,156 @@ impl AutoVM {
     pub fn get_string(&self, index: u16) -> Option<Vec<u8>> {
         let strings = self.strings.read().unwrap();
         strings.get(index as usize).cloned()
+    }
+
+    /// Plan 127: Match a message value against a serialized pattern
+    /// Returns true if the message matches the pattern
+    fn match_message_pattern_vm(
+        &self,
+        msg: &auto_val::Value,
+        pattern: &crate::vm::task_handler::SerializedPattern,
+        string_pool: &[String],
+    ) -> bool {
+        use crate::vm::task_handler::{PatternType, SerializedPattern};
+        use auto_val::Value;
+
+        match pattern.pattern_type {
+            PatternType::Literal => {
+                if pattern.data.is_empty() {
+                    return false;
+                }
+                let lit_type = pattern.data[0];
+                match lit_type {
+                    0x01 => {
+                        // String literal
+                        if pattern.data.len() < 5 { return false; }
+                        let idx = u32::from_le_bytes([
+                            pattern.data[1], pattern.data[2], pattern.data[3], pattern.data[4]
+                        ]) as usize;
+                        if let Some(s) = string_pool.get(idx) {
+                            matches!(msg, Value::Str(s2) if s2.as_str() == s.as_str())
+                        } else {
+                            false
+                        }
+                    }
+                    0x02 => {
+                        // Int literal
+                        if pattern.data.len() < 9 { return false; }
+                        let n = i64::from_le_bytes([
+                            pattern.data[1], pattern.data[2], pattern.data[3], pattern.data[4],
+                            pattern.data[5], pattern.data[6], pattern.data[7], pattern.data[8]
+                        ]);
+                        matches!(msg, Value::Int(i) if *i as i64 == n)
+                    }
+                    0x03 => {
+                        // Uint literal
+                        if pattern.data.len() < 9 { return false; }
+                        let n = u64::from_le_bytes([
+                            pattern.data[1], pattern.data[2], pattern.data[3], pattern.data[4],
+                            pattern.data[5], pattern.data[6], pattern.data[7], pattern.data[8]
+                        ]);
+                        matches!(msg, Value::Uint(u) if *u as u64 == n)
+                    }
+                    0x04 => {
+                        // Bool literal
+                        if pattern.data.len() < 2 { return false; }
+                        let b = pattern.data[1] != 0;
+                        matches!(msg, Value::Bool(b2) if *b2 == b)
+                    }
+                    0x05 => {
+                        // Char literal
+                        if pattern.data.len() < 5 { return false; }
+                        let c = u32::from_le_bytes([
+                            pattern.data[1], pattern.data[2], pattern.data[3], pattern.data[4]
+                        ]);
+                        matches!(msg, Value::Char(c2) if (*c2 as u32) == c)
+                    }
+                    0x06 => {
+                        // Float literal (two i64 parts)
+                        if pattern.data.len() < 17 { return false; }
+                        let _integral = i64::from_le_bytes([
+                            pattern.data[1], pattern.data[2], pattern.data[3], pattern.data[4],
+                            pattern.data[5], pattern.data[6], pattern.data[7], pattern.data[8]
+                        ]);
+                        let _fractional = i64::from_le_bytes([
+                            pattern.data[9], pattern.data[10], pattern.data[11], pattern.data[12],
+                            pattern.data[13], pattern.data[14], pattern.data[15], pattern.data[16]
+                        ]);
+                        // For now, just check if it's a float type
+                        matches!(msg, Value::Float(_) | Value::Double(_))
+                    }
+                    _ => false,
+                }
+            }
+            PatternType::Simple => {
+                // Simple variant pattern - check if message is an object with __variant field
+                if pattern.data.len() < 4 { return false; }
+                let idx = u32::from_le_bytes([
+                    pattern.data[0], pattern.data[1], pattern.data[2], pattern.data[3]
+                ]) as usize;
+                if let Some(variant_name) = string_pool.get(idx) {
+                    match msg {
+                        Value::Obj(obj) => {
+                            if let Some(Value::Str(v)) = obj.get(auto_val::AutoStr::from("__variant")) {
+                                v.as_str() == variant_name.as_str()
+                            } else {
+                                false
+                            }
+                        }
+                        Value::Str(s) => s.as_str() == variant_name.as_str(),
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            PatternType::TypeBinding => {
+                // Type binding pattern - check if message matches the expected type
+                if pattern.data.len() < 5 { return false; }
+                let _name_idx = u32::from_le_bytes([
+                    pattern.data[0], pattern.data[1], pattern.data[2], pattern.data[3]
+                ]) as usize;
+                let type_tag = pattern.data[4];
+
+                // Match based on type tag
+                match type_tag {
+                    0x01 => matches!(msg, Value::Int(_)),      // Int
+                    0x02 => matches!(msg, Value::I64(_)),      // I64
+                    0x03 => matches!(msg, Value::Uint(_)),     // Uint
+                    0x04 => matches!(msg, Value::I64(_)),      // U64 -> I64 (Value doesn't have U64)
+                    0x05 => matches!(msg, Value::Float(_)),    // Float
+                    0x06 => matches!(msg, Value::Double(_)),   // Double
+                    0x07 => matches!(msg, Value::Bool(_)),     // Bool
+                    0x08 => matches!(msg, Value::Char(_)),     // Char
+                    0x09 => matches!(msg, Value::Str(_)),      // Str
+                    0xFF => true,                              // Unknown - match anything
+                    _ => false,
+                }
+            }
+            PatternType::WithBindings => {
+                // Variant with bindings pattern
+                if pattern.data.len() < 5 { return false; }
+                let variant_idx = u32::from_le_bytes([
+                    pattern.data[0], pattern.data[1], pattern.data[2], pattern.data[3]
+                ]) as usize;
+
+                if let Some(variant_name) = string_pool.get(variant_idx) {
+                    match msg {
+                        Value::Obj(obj) => {
+                            if let Some(Value::Str(v)) = obj.get(auto_val::AutoStr::from("__variant")) {
+                                v.as_str() == variant_name.as_str()
+                            } else {
+                                false
+                            }
+                        }
+                        Value::Str(s) => s.as_str() == variant_name.as_str(),
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     /// The main async loop that schedules and runs tasks.
@@ -2548,6 +2704,107 @@ impl AutoVM {
 
                     // Fire-and-forget: no value pushed to stack (returns void)
                     // Unlike SPAWN, we don't push task_id back
+                }
+
+                // Plan 127: TASK_LOOP - enter task message processing loop
+                // This opcode marks the start of a task's message handling loop.
+                // The task will wait for messages and dispatch them to handlers.
+                // Stack layout: [task_type_str_idx:i32]
+                OpCode::TASK_LOOP => {
+                    // Get task type string index
+                    let task_type_idx = task.ram.pop_i32() as u16;
+                    let strings = self.strings.read().unwrap();
+                    let task_type = strings.get(task_type_idx as usize)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+                    drop(strings);
+
+                    // Store that this task is now in message loop mode
+                    task.in_message_loop = true;
+                    task.task_type_name = Some(task_type.clone());
+
+                    // Set task to waiting state (will be woken when messages arrive)
+                    task.status = TaskStatus::Waiting("message_loop".to_string());
+
+                    #[cfg(debug_assertions)]
+                    eprintln!("[TASK_LOOP] Task {} entering message loop for type {}",
+                        task.id, task_type);
+                }
+
+                // Plan 127: HANDLE_MSG - dispatch message to matched handler
+                // The message value is on the stack, handlers are looked up from metadata.
+                // Stack layout: [..., msg_value:i32]
+                // Pushes: handler_found:bool, handler_offset:i32 (if found)
+                OpCode::HANDLE_MSG => {
+                    // Get message value from stack
+                    let msg_value = task.ram.pop_i32();
+
+                    // Get task type for handler lookup
+                    let task_type = task.task_type_name.clone().unwrap_or_default();
+
+                    // Try to find a matching handler using PatternMatcher
+                    if let Some(table) = self.task_handler_registry.get_table(&task_type) {
+                        // Convert message i32 to Value for pattern matching
+                        let msg = auto_val::Value::Int(msg_value);
+
+                        // Try each pattern in order
+                        let mut found = false;
+                        for handler in table.get_handlers() {
+                            if let Some(pattern) = table.get_pattern(handler.pattern_idx) {
+                                // Use PatternMatcher for matching
+                                if self.match_message_pattern_vm(&msg, pattern, &table.string_pool) {
+                                    // Found matching handler
+                                    task.ram.push_i32(1); // true - handler found
+                                    task.ram.push_i32(handler.body_offset as i32);
+
+                                    // Store if handler has context
+                                    task.current_handler_has_context = handler.has_context;
+
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if !found {
+                            // No matching handler
+                            task.ram.push_i32(0); // false - no handler
+                            #[cfg(debug_assertions)]
+                            eprintln!("[HANDLE_MSG] No handler found for message {} in task {}", msg_value, task_type);
+                        }
+                    } else {
+                        // No handlers registered for this task type
+                        task.ram.push_i32(0); // false
+                        #[cfg(debug_assertions)]
+                        eprintln!("[HANDLE_MSG] No handler table for task type {}", task_type);
+                    }
+                }
+
+                // Plan 127: REPLY - send reply via current MessageContext
+                // Stack layout: [..., reply_value:i32]
+                // Pops the reply value and sends it through the reply channel.
+                OpCode::REPLY => {
+                    // Get reply value from stack
+                    let reply_value = task.ram.pop_i32();
+
+                    // Check if we have a current message context with reply capability
+                    if let Some(ref ctx) = task.current_msg_context {
+                        // Convert i32 to Value for reply
+                        let value = auto_val::Value::Int(reply_value);
+                        match ctx.reply(value) {
+                            Ok(()) => {
+                                #[cfg(debug_assertions)]
+                                eprintln!("[REPLY] Sent reply value {}", reply_value);
+                            }
+                            Err(e) => {
+                                #[cfg(debug_assertions)]
+                                eprintln!("[REPLY] Failed to send reply: {}", e);
+                            }
+                        }
+                    } else {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[REPLY] No message context available for reply");
+                    }
                 }
 
                 // === Local Variables ===

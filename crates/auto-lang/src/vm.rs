@@ -41,6 +41,8 @@ pub mod storage;
 pub mod task;
 // Plan 121: Task/Msg Runtime System
 pub mod task_system;
+// Plan 127: Task Handler Table for message routing
+pub mod task_handler;
 pub mod types;
 pub mod virt_memory;
 // Plan 091: Extracted from universe.rs

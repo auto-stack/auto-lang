@@ -151,6 +151,10 @@ pub struct Codegen {
     /// Plan 118: Track the type of the last compiled expression for result formatting
     /// Used to format output correctly (e.g., byte as hex, uint with suffix)
     pub last_expr_type: ObjectType,
+
+    /// Plan 127: Task handler registry for message routing
+    /// Stores handler metadata for each task type
+    pub task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry,
 }
 
 impl Codegen {
@@ -197,6 +201,7 @@ impl Codegen {
             max_locals: 0,
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
+            task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
         }
     }
 
@@ -246,6 +251,7 @@ impl Codegen {
             max_locals: 0,
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
+            task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
         }
     }
 
@@ -1903,34 +1909,110 @@ impl Codegen {
                     self.patch_jump(jump_to_end);
                 }
             }
-            // Plan 121: Task/Msg support - register task definition
+            // Plan 121/127: Task/Msg support - compile task definition with handlers
             Stmt::TaskDef(task_def) => {
-                // Task definitions register metadata at compile time
-                // They don't generate bytecode - spawn/send are runtime FFI calls
-
                 // Register task type in the local types registry for lookup
                 let task_name = task_def.name.to_string();
 
                 // Store task metadata in local types HashMap
-                // The TypeInfo struct stores member_names, but for tasks we use it
-                // to mark this as a task type and track if it's a singleton
-                // (member_names is empty for tasks)
                 self.types.insert(
                     task_name.clone(),
                     TypeInfo {
                         _name: if task_def.is_single() {
                             format!("{}#single", task_name)
                         } else {
-                            task_name
+                            task_name.clone()
                         },
                         member_names: Vec::new(),
                     },
                 );
 
-                // Note: Lifecycle hooks (start/stop) and message handlers (on block)
-                // are stored in the AST and will be accessed during Task.spawn()
-                // at runtime via the parser's type_store.
-                //
+                // Plan 127: Create handler table for this task type
+                let mut handler_table = crate::vm::task_handler::TaskHandlerTable::new(task_name.clone());
+
+                // Compile lifecycle hooks if present
+                // Start hook
+                if let Some(ref start_hook) = task_def.start_hook {
+                    let start_offset = self.code.len() as u32;
+                    // Compile the hook body
+                    self.push_scope();
+                    for stmt in &start_hook.body.stmts {
+                        self.compile_stmt(stmt)?;
+                    }
+                    self.pop_scope();
+                    self.emit(OpCode::RET);
+                    // Store start hook offset (will be registered with TaskRegistry)
+                    self.exports.insert(format!("{}#start", task_name), start_offset);
+                }
+
+                // Stop hook
+                if let Some(ref stop_hook) = task_def.stop_hook {
+                    let stop_offset = self.code.len() as u32;
+                    // Compile the hook body
+                    self.push_scope();
+                    for stmt in &stop_hook.body.stmts {
+                        self.compile_stmt(stmt)?;
+                    }
+                    self.pop_scope();
+                    self.emit(OpCode::RET);
+                    // Store stop hook offset
+                    self.exports.insert(format!("{}#stop", task_name), stop_offset);
+                }
+
+                // Plan 127: Compile each message handler in the on block
+                let on_block = &task_def.on_block;
+                let has_context = on_block.context_param.is_some();
+
+                for (pattern, _guard, body) in &on_block.handlers {
+                    // Record handler bytecode offset
+                    let handler_offset = self.code.len() as u32;
+
+                    // Add handler entry to table (pattern will be serialized)
+                    let pattern_idx = handler_table.add_handler(pattern, handler_offset, has_context);
+
+                    // Compile handler body
+                    // The handler receives message value on stack
+                    // If has_context, also receives context id
+                    for stmt in &body.stmts {
+                        self.compile_stmt(stmt)?;
+                    }
+
+                    // Handler must return - emit RET
+                    self.emit(OpCode::RET);
+
+                    #[cfg(debug_assertions)]
+                    eprintln!("[TaskDef] Compiled handler {} for task {} at offset {}",
+                        pattern_idx, task_name, handler_offset);
+                }
+
+                // Compile else handler if present
+                if let Some(ref else_body) = on_block.else_handler {
+                    let else_offset = self.code.len() as u32;
+                    // Add else as a special handler with pattern_idx = 0xFFFFFFFF
+                    // (handled specially at runtime)
+                    for stmt in &else_body.stmts {
+                        self.compile_stmt(stmt)?;
+                    }
+                    self.emit(OpCode::RET);
+                    self.exports.insert(format!("{}#else", task_name), else_offset);
+                }
+
+                // Register handler table
+                self.task_handler_registry.register(handler_table);
+
+                // Emit TASK_LOOP opcode if task has handlers
+                if !on_block.handlers.is_empty() {
+                    // Push task type name string index
+                    let task_name_bytes = task_name.as_bytes().to_vec();
+                    let task_name_idx = self.strings.len() as u16;
+                    self.strings.push(task_name_bytes);
+
+                    self.emit(OpCode::CONST_I32);
+                    self.emit_i32(task_name_idx as i32);
+                    self.emit(OpCode::TASK_LOOP);
+                }
+
+                // Note: Lifecycle hooks and message handlers are now compiled to bytecode.
                 // The FFI shim_task_spawn function creates a TaskInstance and
                 // registers it in the TaskRegistry.
             }
