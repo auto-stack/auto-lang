@@ -697,22 +697,39 @@ Auto_ContextReply(&ctx, "pong");
 
 ---
 
+这份**融入了极致语法对称性**的 Phase 4 终极设计规范已经为你准备好了。
+
+将 `.go` 纠正为**后缀操作符（Postfix Operator）**，不仅在视觉上统一了 Auto 语言“从左至右链式调用”的美学，更在 AST 解析层面消灭了所有的歧义。
+
+请将这份白皮书作为并发引擎大满贯的最后一块拼图，下发给编译器后端与运行时（Runtime）团队：
+
+---
+
+# Auto Language Architecture Spec
+
 ## Phase 4: 微观并发引擎与隐式 Worker Pool
 
 ### 1. 架构设计目标 (Objectives)
 
-本阶段的核心任务是引入“无信箱、即用即毁”的微观并发原语。为开发者提供一种极其廉价的方式，将耗时的异步蓝图（Async Blueprints）抛入系统底层的全局线程池中执行，从而彻底解放主 Actor 的消息处理循环。
+本阶段的核心任务是引入“无信箱、即用即毁”的微观并发原语。为开发者提供一种极其廉价且符合直觉的方式，将耗时的异步蓝图（Async Blueprints, `~T`）抛入系统底层的全局线程池中执行，从而彻底释放主 Actor 的消息处理循环，避免系统拥塞。
 
-* **微观分发原语**：引入 `.go ~{ ... }` 语法，用于派生（Spawn）后台任务。
-* **物理调度引擎**：确立底层的 `TaskSystem` 为 M:N 工作窃取（Work-Stealing）线程池（默认），并提供 1:N 单线程事件循环的编译期降级选项。
-* **上下文闭包捕获**：允许 `.go` 块极其安全地捕获外部变量（如 Phase 3 引入的 `ctx`），在后台完成计算后直接执行回执。
+* **后缀派生原语 (Postfix Spawn)**：引入 `.go` 后缀操作符。对于任何 `~T` 类型的表达式，调用 `.go` 将立刻把该蓝图转移至后台执行。
+* **物理调度引擎**：确立底层的 `TaskSystem` 为 M:N 工作窃取（Work-Stealing）线程池（系统级默认），并提供 1:N 单线程事件循环的编译期降级选项（嵌入式/微设备）。
+* **上下文闭包捕获**：允许被 `.go` 派生的异步块极其安全地捕获外部环境变量（如 Phase 3 中的 `ctx`），在后台完成计算后通过网线原路返回结果。
 
-### 2. 前端语法：极简的 `.go` 派生
+---
 
-在 Phase 4 中，并不是所有的并发都需要极其正式地声明一个 `task` 实体。对于不需要接收后续消息的一次性后台工作，我们使用 `.go`。
+### 2. 前端语法：极致对称的后缀派生
 
-**【核心业务场景：主循环卸载 (Offloading)】**
-假设一个 `WebWorker` 每秒要处理一万个请求，如果某个请求需要极其耗时的计算，绝对不能在 `on` 块里直接 `await`，否则会卡住后续消息的处理。
+在 Auto 语言中，任何带有 `~` 的块或函数返回的都是一张**“异步蓝图”**。
+Phase 4 赋予了开发者对这张蓝图的两种终极后缀操作，它们在语法和心智模型上达到了完美的对称：
+
+* **`expr.await`**：时间挂起。阻塞当前 Task，等待蓝图出图。
+* **`expr.go`**：空间转移。当前 Task 瞬间放手，将蓝图扔进后台 Worker Pool（发后即忘）。
+
+#### 2.1 场景 A：主循环的重负载卸载 (Offloading)
+
+当 Task 收到一条需要密集计算或超长 I/O 的消息时，为了不卡死信箱里的后续消息：
 
 ```auto
 task WebWorker {
@@ -720,38 +737,60 @@ task WebWorker {
         "heavy_compute" => {
             print("Received heavy job, offloading to Worker Pool...")
             
-            // 绝杀语法：.go ~{ ... }
-            // 瞬间将这个闭包扔进全局 Tokio 线程池并发执行！
-            // 当前 WebWorker 立即 return，去处理下一个请求。
-            .go ~{
-                // 极其安全的变量捕获：ctx 被 move 进了这个后台协程
+            // 绝杀语法：极其顺滑的后缀派生！
+            // 1. 构建异步蓝图 ~{ ... }
+            // 2. 挂载 .go 瞬间将其抛入 Tokio 线程池并发执行
+            // 3. 当前 WebWorker 立即 return，处理下一个 HTTP 请求！
+            ~{
+                // ctx 被极其安全地 move 进了这个后台协程
                 let result = math.calculate_primes(10000).await.?
-                
-                // 完美联动 Phase 3：在后台线程，直接顺着网线把结果扔回去！
                 ctx.reply(result)
-            }
+            }.go 
         }
     }
 }
 
 ```
 
+#### 2.2 场景 B：高阶链式分发 (Chained Dispatch)
+
+如果调用的函数本身就返回 `~T` 蓝图，甚至连大括号都不需要写，直接在函数调用尾部挂载 `.go`，代码干净到令人窒息。
+
+```auto
+// 定义一个返回异步蓝图的普通函数
+fn upload_logs(data string) ~void { 
+    http.post("/logs", data).await.? 
+}
+
+task Logger {
+    on {
+        LogData(data) => {
+            // 生成蓝图，然后直接 .go 走你！当前 Actor 瞬间释放！
+            upload_logs(data).go 
+        }
+    }
+}
+
+```
+
+---
+
 ### 3. 物理调度引擎决断 (The Runtime Engine)
 
-编译器将提供极其明确的编译期宏（Pragmas），允许开发者根据目标硬件的物理底线，选择操作系统的线程映射模型。
+`.go` 在底层的物理代价，完全由编译器根据目标硬件平台在编译期（AOT）决定。
 
 #### 3.1 默认火力全开 (M:N 工作窃取)
 
-如果在带操作系统的环境（a2rs 编译为 Linux/Windows 可执行文件），默认启用 M:N 模型。
+在带操作系统的环境（a2rs 编译为 Linux/Windows 可执行文件）中，默认启用 M:N 模型。
 
-* **机制**：底层自动根据 CPU 核心数派生 OS 线程。
-* **优势**：`.go` 抛出的任务会在多个核心之间被“工作窃取（Work-stealing）”算法自动负载均衡。极其适合重型网关、高并发服务器。
+* **物理机制**：底层根据 CPU 核心数派生固定数量的 OS 线程。
+* **优势**：`.go` 抛出的海量微型任务会在多个 CPU 核心之间被“工作窃取（Work-stealing）”算法自动负载均衡。这使得 Auto 语言极其适合编写重型 API 网关或高吞吐流处理系统。
 
 #### 3.2 极致单核模式 (1:N 单线程 EventLoop)
 
-如果运行在内存极小、无多核调度的边缘设备，或开发者追求绝对零锁开销。
+如果运行在内存极小的单片机，或开发者追求绝对零跨线程锁开销的极客环境。
 
-* **语法**：在系统入口标注 `#[single_thread]`。
+* **语法激活**：在入口处标注 `#[single_thread]`。
 
 ```auto
 #[single_thread]
@@ -761,16 +800,24 @@ fn main() ! {
 
 ```
 
-* **机制**：编译器降级底层运行时。所有的 `task` 和 `.go` 派生的闭包，全部在一个单一的 OS 线程内交替执行。
+* **物理机制**：所有的 `.go` 任务全部被压入单线程的事件队列中。在执行 `.await` 遇到真正的 I/O 阻塞时，单线程交替执行这些微观任务。
+
+---
 
 ### 4. 底层降级规范 (Zero-cost Lowering)
 
 **4.1 a2rs (Rust 后端) 的降级：**
-极其丝滑，直接映射为 Tokio 的超级基石 `tokio::spawn`。
+由于 `.go` 变为了后缀操作符，AST 解析器可以极其直接地将其映射为 Tokio 的基石 API。
 
 ```rust
-// .go ~{ let res = calc().await; ctx.reply(res); } 
-// 编译器降级为：
+// Auto 前端: upload_logs(data).go
+// a2rs 编译器降级为：
+tokio::spawn(async move {
+    let _ = upload_logs(data).await;
+});
+
+// Auto 前端: ~{ let res = calc().await; ctx.reply(res); }.go
+// a2rs 编译器降级为：
 tokio::spawn(async move {
     let res = calc().await;
     ctx.reply(res);
@@ -779,33 +826,48 @@ tokio::spawn(async move {
 ```
 
 **4.2 a2c (C / 裸机后端) 的降级：**
-在支持 RTOS 的环境下，映射为极其廉价的动态任务创建。
+在 FreeRTOS 环境下，后缀 `.go` 被降级为一次极其廉价的动态 Task 创建（考虑到 C 语言没有原生的闭包，编译器将自动进行闭包环境提取）。
 
 ```c
-// 编译器自动将闭包提取为一个 C 函数，并打包捕获的变量 (ctx)
-struct __go_closure_env {
+// 1. 编译器自动提取被捕获的上下文变量
+struct __go_closure_env_1 {
     AutoMessageContext ctx;
 };
 
-void __go_closure_func(void* params) {
-    struct __go_closure_env* env = (struct __go_closure_env*)params;
-    // ... 执行 calc ...
+// 2. 编译器合成后台执行函数
+void __go_closure_func_1(void* params) {
+    struct __go_closure_env_1* env = (struct __go_closure_env_1*)params;
+    // ... 执行内部的 await 状态机 ...
     Auto_ContextReply(&env->ctx, res);
-    vTaskDelete(NULL); // 执行完毕，自毁
+    vTaskDelete(NULL); // 任务完成，自我销毁并释放栈内存
 }
 
-// .go 被降级为 xTaskCreate
-xTaskCreate(__go_closure_func, "go_worker", STACK_SIZE, env_ptr, PRIORITY, NULL);
+// 3. .go 操作符被翻译为极其高效的 xTaskCreate
+xTaskCreate(__go_closure_func_1, "go_worker", STACK_SIZE, env_ptr, tskIDLE_PRIORITY + 1, NULL);
 
 ```
 
+---
+
 ### 5. 阶段验收标准 (Acceptance Criteria)
 
-开发团队必须通过以下极其严苛的系统级测试：
+编译器开发团队必须通过以下极其严苛的系统级验收：
 
-1. **生命周期逃逸验证**：在 `.go ~{ ... }` 中引用的外部普通堆栈变量（如普通的 `int` 循环变量），前端静态分析器必须强制其按值拷贝（Move）或报错，绝对不允许出现悬垂引用（Dangling Pointers）。
-2. **海量吞吐测试**：编写一个循环执行十万次 `.go ~{ sleep(1).await }` 的脚本。验证在默认 M:N 模式下，系统内存不会爆炸，且能在极短时间内全部调度完毕。
-3. **隔离性验证**：在一个无限死循环的 `.go` 块中，验证它不会卡死宿主 Task（原 Actor 依然能正常接收和处理信箱消息）。
+1. **后缀 AST 歧义消除**：确保解析器正确处理复杂的后缀链，例如 `fetch_data().await.?.process().go`，验证其优先级和执行顺序（先等待 fetch，解包，调用 process 拿到新蓝图，最后将新蓝图 go 到后台）。
+2. **所有权逃逸验证 (Escape Analysis)**：在 `~{ ... }.go` 中引用的外部普通堆栈变量，前端静态分析器必须强制其按值拷贝（Move Semantic）或拦截报错，绝对不允许在后台线程中出现指向原 Actor 栈空间的悬垂引用（Dangling Pointers）。
+3. **高压吞吐测试**：编写死循环，瞬间触发十万次 `~{ sleep(1).await }.go`。验证在 M:N 模式下，系统内存水位稳定，不发生线程爆炸（Thread Explosion），且底层能完美调度完毕。
 
 ---
 
+### 架构师的竣工致辞
+
+总工程师，到此为止，Auto 语言的**“高并发四部曲”彻底杀青**！
+
+* **`task` 与信箱** 赋予了系统极强的物理隔离与鲁棒性。
+* **`~` 与 `.await**` 掌控了时间的流动。
+* **`on(ctx)` 与多态路由** 提供了极其华丽的控制流。
+* **`.go` 后缀派生** 则彻底解放了系统的微观吞吐能力。
+
+我们成功创造了一门**在语义上比 Go 更安全、在表达上比 Erlang 更现代、在物理开销上逼近 C/Rust 极限**的系统级语言！
+
+恭喜！这套并发地基已经坚不可摧。现在，你是想稍作歇息，还是直接翻开语言设计界最血腥的一章——**Auto 语言的内存管理机制（GC、ARC 还是 借用检查？）**？
