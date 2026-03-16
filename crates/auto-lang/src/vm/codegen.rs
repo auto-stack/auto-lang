@@ -128,6 +128,11 @@ pub struct Codegen {
     /// Used during compilation to distinguish parameters (before BP) from locals (after BP)
     pub current_fn_n_args: usize,
 
+    /// Plan 087 Phase 3: Starting index for function scope variables
+    /// When outer scope has variables, function parameters don't start at index 0
+    /// Used to correctly identify parameters: index >= fn_scope_start && index < fn_scope_start + n_args
+    pub fn_scope_start: usize,
+
     /// Plan 087 Phase 3: Type inference context for .type property support
     /// Uses the infer module's comprehensive type inference system
     pub infer_ctx: InferenceContext,
@@ -204,6 +209,7 @@ impl Codegen {
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
             fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
+            fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
@@ -255,6 +261,7 @@ impl Codegen {
             fn_params: HashMap::new(),
             fn_return_types: HashMap::new(),
             current_fn_n_args: 0,
+            fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
             jump_placeholders: Vec::new(),
@@ -444,6 +451,11 @@ impl Codegen {
                 // Plan 087 Phase 3: Set current function parameter count
                 self.current_fn_n_args = fn_decl.params.len();
 
+                // Plan 087 Phase 3: Record starting index for function scope
+                // This is needed because outer scope variables affect parameter indices
+                // Parameters will have indices: fn_scope_start, fn_scope_start+1, ...
+                self.fn_scope_start = self.scope_stack.iter().map(|s| s.len()).sum();
+
                 // Save and reset max_locals for this function
                 let old_max_locals = self.max_locals;
                 self.max_locals = 0;
@@ -628,8 +640,9 @@ impl Codegen {
                 // 8. Pop function scope
                 self.pop_scope();
 
-                // Plan 087 Phase 3: Reset current function parameter count
+                // Plan 087 Phase 3: Reset current function parameter count and scope start
                 self.current_fn_n_args = 0;
+                self.fn_scope_start = 0;
 
                 // 9. Patch jump to skip body
                 self.patch_jump(jump_over);
@@ -4516,21 +4529,29 @@ impl Codegen {
     }
 
     /// Emit STORE_LOCAL for a given local index
-    /// Distinguishes between parameters (before BP) and locals (after BP)
+    /// Plan 087 Phase 3: Distinguishes between parameters (before BP) and locals (after BP)
+    /// Parameters: fn_scope_start <= index < fn_scope_start + n_args
+    /// Locals: otherwise
     /// Uses dedicated opcodes for locals 0-1 for performance
     fn emit_store_loc(&mut self, index: usize) {
         let n_args = self.current_fn_n_args;
+        let fn_scope_start = self.fn_scope_start;
 
-        if index < n_args {
+        // Check if this is a parameter: index must be within [fn_scope_start, fn_scope_start + n_args)
+        if index >= fn_scope_start && index < fn_scope_start + n_args {
             // This is a parameter, stored before BP
+            // Calculate relative parameter index (0, 1, 2, ...)
+            let param_index = index - fn_scope_start;
+
             // Store parameter using STORE_LOCAL with negative offset logic
             self.emit(OpCode::STORE_LOCAL);
             // Encode as negative offset (0x80..0xFF means parameter)
-            let encoded_index = 0x80 + index as u8;
+            let encoded_index = 0x80 + param_index as u8;
             self.code.push(encoded_index);
         } else {
             // This is a local variable, stored after BP
-            let local_index = index - n_args;
+            // Local index is relative to the position after all parameters
+            let local_index = index - fn_scope_start - n_args;
 
             match local_index {
                 0 => self.emit(OpCode::STORE_LOC_0),
@@ -4545,40 +4566,46 @@ impl Codegen {
 
     /// Emit LOAD_LOCAL for a given local index
     /// Plan 087 Phase 3: Distinguish between parameters (before BP) and locals (after BP)
-    /// Parameters: index < current_fn_n_args, stored at BP - n_args + index
-    /// Locals: index >= current_fn_n_args, stored at BP + 1 + (index - n_args)
+    /// Parameters: fn_scope_start <= index < fn_scope_start + n_args, stored at BP - n_args + (index - fn_scope_start)
+    /// Locals: otherwise, stored at BP + 1 + (index - fn_scope_start - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
     fn emit_load_loc(&mut self, index: usize) {
-        vm_debug!("DEBUG: emit_load_loc called with index={}, n_args={}",
-            index, self.current_fn_n_args
+        vm_debug!("DEBUG: emit_load_loc called with index={}, n_args={}, fn_scope_start={}",
+            index, self.current_fn_n_args, self.fn_scope_start
         );
 
         let n_args = self.current_fn_n_args;
+        let fn_scope_start = self.fn_scope_start;
 
-        if index < n_args {
+        // Check if this is a parameter: index must be within [fn_scope_start, fn_scope_start + n_args)
+        if index >= fn_scope_start && index < fn_scope_start + n_args {
             // This is a parameter, stored before BP
+            // Calculate relative parameter index (0, 1, 2, ...)
+            let param_index = index - fn_scope_start;
+
             // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
             //                        ^- BP-n_args     ^- BP-1    ^- BP
             // Parameter i is at BP - n_args + i
-            let offset = (n_args - index) as i32; // Positive offset going backwards from BP
-            vm_debug!("DEBUG: Loading parameter {} at BP-{} (BP-{}={})",
-                index, offset, offset, "calculate at runtime"
+            let offset = (n_args - param_index) as i32; // Positive offset going backwards from BP
+            vm_debug!("DEBUG: Loading parameter {} (absolute index {}) at BP-{}",
+                param_index, index, offset
             );
 
             // Load parameter using LOAD_LOCAL with negative offset logic
             // For now, use LOAD_LOCAL with special encoding
             self.emit(OpCode::LOAD_LOCAL);
             // Encode as negative offset (0x80..0xFF means parameter)
-            let encoded_index = 0x80 + index as u8; // 0x80 means param 0, 0x81 means param 1, etc.
+            let encoded_index = 0x80 + param_index as u8; // 0x80 means param 0, 0x81 means param 1, etc.
             self.code.push(encoded_index);
             vm_debug!("DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}",
                 encoded_index
             );
         } else {
             // This is a local variable, stored after BP
-            let local_index = index - n_args;
-            vm_debug!("DEBUG: Loading local variable {} at BP+1+{}",
-                local_index, local_index
+            // Local index is relative to the position after all parameters
+            let local_index = index - fn_scope_start - n_args;
+            vm_debug!("DEBUG: Loading local variable {} (absolute index {}) at BP+1+{}",
+                local_index, index, local_index
             );
 
             match local_index {
@@ -5149,10 +5176,15 @@ impl Codegen {
 
         // Save old current_fn_n_args and set new value for closure
         let old_fn_n_args = self.current_fn_n_args;
+        let old_fn_scope_start = self.fn_scope_start;
         self.current_fn_n_args = closure.params.len();
 
         // Enter new scope for closure parameters
         self.push_scope();
+
+        // Record starting index for closure scope (for correct parameter indexing)
+        self.fn_scope_start = self.scope_stack.iter().map(|s| s.len()).sum();
+
         for param in &closure.params {
             self.add_var(&param.name);
         }
@@ -5167,8 +5199,9 @@ impl Codegen {
         // Exit closure scope
         self.pop_scope();
 
-        // Restore old current_fn_n_args
+        // Restore old current_fn_n_args and fn_scope_start
         self.current_fn_n_args = old_fn_n_args;
+        self.fn_scope_start = old_fn_scope_start;
 
         // Pop captured_vars (restore outer closure's captured vars)
         self.pop_captured_vars();

@@ -492,6 +492,23 @@ impl AutovmReplSession {
         // 6. Resolve relocations using existing symbols
         // Note: We need to clone the code to avoid moving from codegen
         let new_code = codegen.code.clone();
+
+        // Calculate new_code_start BEFORE popping HALT (we need the current bytecode length)
+        let new_code_start = if self.bytecode.len() > 0 {
+            self.bytecode.len() - 1 // -1 because we'll pop the HALT
+        } else {
+            0
+        };
+
+        // Adjust export addresses: exports from this compilation have addresses < new_code.len()
+        // They need to be adjusted to be absolute in the accumulated bytecode
+        let new_code_len = new_code.len() as u32;
+        for addr in codegen.exports.values_mut() {
+            if *addr < new_code_len {
+                *addr += new_code_start as u32;
+            }
+        }
+
         for reloc in &codegen.relocs {
             if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
                 let bytes = addr.to_le_bytes();
@@ -505,12 +522,12 @@ impl AutovmReplSession {
             }
         }
 
-        // 6. Update bytecode
+        // 7. Update bytecode
         vm_debug!("DEBUG: Before bytecode update - bytecode.len()={}",
             self.bytecode.len()
         );
         self.bytecode.pop();
-        let new_code_start = self.bytecode.len();
+        // Note: new_code_start was already calculated above before adjusting exports
         self.bytecode.extend_from_slice(&new_code);
         vm_debug!("DEBUG: After bytecode update - bytecode.len()={}, new_code_start={}",
             self.bytecode.len(),
