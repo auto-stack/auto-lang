@@ -525,6 +525,35 @@ impl Default for TaskRegistry {
 }
 
 impl TaskRegistry {
+    /// Spawn all registered tasks as tokio tasks
+    ///
+    /// This is called by start_scheduler to ignite all tasks.
+    /// For MVP, we just log the tasks that would be spawned.
+    /// Full integration requires GlobalMeta which isn't available yet.
+    pub fn spawn_initial_tasks(&self) {
+        // Spawn all singleton tasks
+        for entry in self.singletons.iter() {
+            let handle = entry.value();
+            eprintln!(
+                "[TaskSystem] Spawning singleton task: {}#{}",
+                handle.task_type, handle.instance_id
+            );
+            // TODO: Get GlobalMeta and spawn task_loop
+        }
+
+        // Spawn all instance tasks
+        for entry in self.instances.iter() {
+            let handle = entry.value();
+            eprintln!(
+                "[TaskSystem] Spawning task instance: {}#{}",
+                handle.task_type, handle.instance_id
+            );
+            // TODO: Get GlobalMeta and spawn task_loop
+        }
+    }
+}
+
+impl TaskRegistry {
     /// Start the task scheduler and block until Ctrl+C is received
     ///
     /// This method:
@@ -555,17 +584,20 @@ impl TaskRegistry {
 
     /// Internal scheduler loop
     async fn run_scheduler_loop(&self) {
-        // Create shutdown listener if available
+        // 1. Spawn all registered tasks
+        self.spawn_initial_tasks();
+
+        // 2. Create shutdown listener if available
         let mut shutdown_rx = self.shutdown_tx.as_ref().map(|tx| tx.subscribe());
 
-        // Wait for either Ctrl+C or shutdown signal
+        // 3. Wait for either Ctrl+C or shutdown signal
         let shutdown_reason = tokio::select! {
             // Ctrl+C signal
             result = tokio::signal::ctrl_c() => {
                 match result {
                     Ok(()) => "Ctrl+C",
                     Err(e) => {
-                        eprintln!("Failed to listen for Ctrl+C: {}", e);
+                        eprintln!("[TaskSystem] Failed to listen for Ctrl+C: {}", e);
                         return;
                     }
                 }
@@ -585,14 +617,14 @@ impl TaskRegistry {
 
         eprintln!("[TaskSystem] Shutdown triggered by {}", shutdown_reason);
 
-        // Execute stop hooks in LIFO order
+        // 4. Execute stop hooks in LIFO order
         let results = self.execute_stop_hooks();
 
         // Print results
         for result in results {
             if !result.success {
                 eprintln!(
-                    "Task {}.{} failed: {:?}",
+                    "[TaskSystem] Task {}.{} failed: {:?}",
                     result.task_type, result.hook_type, result.error
                 );
             }
