@@ -43,6 +43,8 @@ pub mod task;
 pub mod task_system;
 // Plan 127: Task Handler Table for message routing
 pub mod task_handler;
+// Plan 127: Scheduler Message Dispatch Loop
+pub mod scheduler;
 pub mod types;
 pub mod virt_memory;
 // Plan 091: Extracted from universe.rs

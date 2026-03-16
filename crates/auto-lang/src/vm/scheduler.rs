@@ -44,11 +44,11 @@ use crate::vm::native::NativeInterface;
 use crate::vm::task_handler::TaskHandlerTable;
 use crate::vm::virt_memory::VirtualFlash;
 use std::collections::HashMap;
-// use std::sync::Arc;
 
-/// Global read-only metadata - wrapped in Arc<GlobalMeta>
-/// No inner Arcs needed since outer Arc provides protection
-#[derive(Clone)]
+/// Global read-only metadata - wrapped in `Arc<GlobalMeta>`
+///
+/// No inner Arcs needed since outer Arc provides protection.
+/// This struct is intentionally not Clone - it should be shared via Arc.
 pub struct GlobalMeta {
     /// Bytecode (Flash) - read-only
     pub bytecode: VirtualFlash,
