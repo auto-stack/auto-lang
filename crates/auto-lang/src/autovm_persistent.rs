@@ -277,6 +277,9 @@ impl AutovmReplSession {
         // Clear previous bytecode (IMPORTANT: don't accumulate!)
         codegen.code.clear();
 
+        // Clear previous relocations (otherwise old relocations get applied to new code!)
+        codegen.relocs.clear();
+
         // Plan 118 Phase 7: Emit FN_PROLOG and RESERVE_STACK for proper local variable support
         // This matches what execute_autovm does in lib.rs
         let n_locals = 16; // Reserve space for up to 16 locals
