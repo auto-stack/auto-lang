@@ -146,9 +146,10 @@ pub const NATIVE_TASK_HANDLE_TYPE: u16 = 2303;
 pub const NATIVE_TASK_HANDLE_ID: u16 = 2304;
 pub const NATIVE_TASK_SYSTEM_START: u16 = 2305;
 pub const NATIVE_TASK_SYSTEM_RUN: u16 = 2306; // Plan 124: Sync bridge for async code
-pub const NATIVE_TASK_SEND_AWAIT: u16 = 2307; // Plan 124 Phase 2.2: send().await backpressure
-pub const NATIVE_TASK_ASK: u16 = 2308;        // Plan 124 Phase 2.3: ask/reply RPC
-pub const NATIVE_CTX_REPLY: u16 = 2309;       // Plan 127: ctx.reply() for message handlers
+pub const NATIVE_TASK_SYSTEM_STOP: u16 = 2307; // Plan 127: Stop the task system scheduler
+pub const NATIVE_TASK_SEND_AWAIT: u16 = 2308; // Plan 124 Phase 2.2: send().await backpressure
+pub const NATIVE_TASK_ASK: u16 = 2309;        // Plan 124 Phase 2.3: ask/reply RPC
+pub const NATIVE_CTX_REPLY: u16 = 2310;       // Plan 127: ctx.reply() for message handlers
 
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
@@ -1665,6 +1666,34 @@ fn get_global_task_registry() -> &'static TaskRegistry {
 pub fn shim_task_system_start() -> Result<(), String> {
     let registry = get_global_task_registry();
     registry.start_scheduler();
+    Ok(())
+}
+
+/// Stop the task system scheduler
+///
+/// This method executes all stop hooks in LIFO order.
+/// Unlike start_scheduler, this does NOT block - it just executes cleanup.
+///
+/// # Note
+/// This is useful for testing and graceful shutdown without Ctrl+C.
+#[auto_macros::rust_fn("TaskSystem.stop")]
+pub fn shim_task_system_stop() -> Result<(), String> {
+    let registry = get_global_task_registry();
+    // Execute stop hooks in LIFO order
+    let results = registry.execute_stop_hooks();
+
+    // Print results
+    for result in results {
+        if !result.success {
+            eprintln!(
+                "Task {}.{} failed: {:?}",
+                result.task_type, result.hook_type, result.error
+            );
+        }
+    }
+
+    // Clear the registry
+    registry.clear();
     Ok(())
 }
 

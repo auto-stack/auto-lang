@@ -283,6 +283,11 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.task.handle_is_null", 2302);
     registry.register_with_id("auto.task.handle_type", 2303);
     registry.register_with_id("auto.task.handle_id", 2304);
+
+    // TaskSystem functions (Plan 127) - 2305-2307
+    registry.register_with_id("auto.task_system.start", 2305);
+    registry.register_with_id("auto.task_system.run", 2306);
+    registry.register_with_id("auto.task_system.stop", 2307);
 }
 
 #[cfg(test)]

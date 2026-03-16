@@ -1,57 +1,109 @@
 // =============================================================================
-// Auto Language Basic Demo
+// Auto Language Task System Demo - Phase 1 Basics
 // =============================================================================
 //
-// A minimal example demonstrating core Auto language features.
-// For full Task/Msg async examples, see async_showcase.at
+// This example demonstrates the MOST BASIC Task/Msg features from Plan 121:
+//   - Message protocol definition (simple enum)
+//   - Task definition
+//   - Lifecycle hooks (start/stop)
+//   - on { } message handlers
+//   - spawn() to create instances
+//   - send() to send messages
+//   - TaskSystem.start() to run the scheduler
+//
+// NOTE: This example uses simple enum variants without associated data.
+//       Complex message patterns (with data) require additional support.
 //
 // =============================================================================
 
-// Simple function definition
-fn add(a int, b int) int {
-    a + b
+// Define message protocol for LoggerTask
+enum LoggerMsg {
+    Hello = 1
+    Ping = 2
+    Pong = 3
 }
 
-// Recursive function
-fn factorial(n int) int {
-    if n <= 1 {
-        1
-    } else {
-        n * factorial(n - 1)
+// Define message protocol for MonitorTask
+enum MonitorMsg {
+    Check = 1
+    Status = 2
+}
+
+// A simple Logger Task - prints messages it receives
+task LoggerTask {
+    fn start() ! {
+        print("[LoggerTask] Started!")
+    }
+
+    fn stop() ! {
+        print("[LoggerTask] Stopped!")
+    }
+
+    on {
+        Hello => {
+            print("[LoggerTask] Hello received!")
+        }
+
+        Ping => {
+            print("[LoggerTask] Ping received, sending Pong!")
+        }
+
+        else => {
+            print("[LoggerTask] Unknown message")
+        }
     }
 }
 
-// Main function
+// Single instance task - only one instance allowed
+#[single]
+task MonitorTask {
+    fn start() ! {
+        print("[MonitorTask] Started!")
+    }
+
+    on {
+        Check => {
+            print("[MonitorTask] System check OK")
+        }
+
+        Status => {
+            print("[MonitorTask] Status: Running")
+        }
+
+        else => {
+        }
+    }
+}
+
 fn main() ! {
-    print("=== Auto Language Basic Demo ===")
+    print("=== Task System Demo (Phase 1) ===")
 
-    // Basic operations
-    let a = 10
-    let b = 20
-    let sum = add(a, b)
-    print(sum)
+    // Start the task system scheduler
+    TaskSystem.start()
 
-    // Recursive function
-    let fact5 = factorial(5)
-    print(fact5)
+    // Spawn an instance of LoggerTask
+    print("[Main] Spawning LoggerTask...")
+    let handle = LoggerTask.spawn()
+    print("[Main] Spawned!")
 
-    // Conditionals
-    let x = 15
-    if x > 10 {
-        print(100)
-    } else {
-        print(200)
-    }
+    // Send messages to the instance
+    print("[Main] Sending Hello...")
+    handle.send(Hello)
 
-    // Loops
-    for i in 0..5 {
-        print(i)
-    }
+    print("[Main] Sending Ping...")
+    handle.send(Ping)
 
-    // Arrays
-    let arr = [1, 2, 3, 4, 5]
-    print(arr[0])
-    print(arr[2])
+    // Send to singleton task directly by name
+    print("[Main] Sending to MonitorTask...")
+    MonitorTask.send(Check)
+
+    // Wait for messages to be processed
+    print("[Main] Waiting for async processing...")
+    sleep(100)
+
+    // Stop the scheduler
+    print("[Main] Stopping task system...")
+    TaskSystem.stop()
 
     print("=== Demo Complete ===")
 }
