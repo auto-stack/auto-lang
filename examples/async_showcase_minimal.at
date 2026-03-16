@@ -1,35 +1,21 @@
-// =============================================================================
-// Auto Language Task System Demo - Phase 1 Basics
-// =============================================================================
-//
-// This example demonstrates the MOST BASIC Task/Msg features from Plan 121:
-//   - Message protocol definition (simple enum)
-//   - Task definition
-//   - Lifecycle hooks (start/stop)
-//   - on { } message handlers
-//   - spawn() to create instances
-//   - send() to send messages
-//   - TaskSystem.start() to run the scheduler
-//
-// NOTE: This example uses simple enum variants without associated data.
-//       Complex message patterns (with data) require additional support.
-//
-// =============================================================================
-
-// Define message protocol for LoggerTask
+// ==========================================
+// 消息协议定义 (协议先行)
+// ==========================================
 enum LoggerMsg {
     Hello = 1
     Ping = 2
     Pong = 3
 }
 
-// Define message protocol for MonitorTask
 enum MonitorMsg {
     Check = 1
     Status = 2
+    Quit = 3
 }
 
-// A simple Logger Task - prints messages it receives
+// ==========================================
+// Actor 定义区
+// ==========================================
 task LoggerTask {
     fn start() ! {
         print("[LoggerTask] Started!")
@@ -54,7 +40,6 @@ task LoggerTask {
     }
 }
 
-// Single instance task - only one instance allowed
 #[single]
 task MonitorTask {
     fn start() ! {
@@ -70,40 +55,57 @@ task MonitorTask {
             print("[MonitorTask] Status: Running")
         }
 
+        Quit => {
+            print("[MonitorTask] Quit signal received! Initiating shutdown...")
+            TaskSystem.stop()
+        }
+
         else => {
         }
     }
 }
 
+// ==========================================
+// 独立的家主：Main 函数
+// ==========================================
 fn main() ! {
     print("=== Task System Demo (Phase 1) ===")
 
-    // Start the task system scheduler
-    TaskSystem.start()
-
-    // Spawn an instance of LoggerTask
+    // ------------------------------------------------
+    // 阶段 1：部署与备料 (此时调度引擎尚未启动)
+    // ------------------------------------------------
     print("[Main] Spawning LoggerTask...")
     let handle = LoggerTask.spawn()
     print("[Main] Spawned!")
 
-    // Send messages to the instance
-    print("[Main] Sending Hello...")
+    // 将消息预先塞入信箱。因为 Task 还没跑，消息会安静地躺在队列里
+    print("[Main] Queuing Hello...")
     handle.send(Hello)
 
-    print("[Main] Sending Ping...")
+    print("[Main] Queuing Ping...")
     handle.send(Ping)
 
-    // Send to singleton task directly by name
-    print("[Main] Sending to MonitorTask...")
+    print("[Main] Queuing Check to MonitorTask...")
     MonitorTask.send(Check)
 
-    // Wait for messages to be processed
-    print("[Main] Waiting for async processing...")
-    sleep(100)
+    // 放入关机指令。当所有的消息都被消费到这一条时，系统将停止
+    print("[Main] Queuing Quit to MonitorTask...")
+    MonitorTask.send(Quit)
 
-    // Stop the scheduler
-    print("[Main] Stopping task system...")
-    TaskSystem.stop()
+    // ------------------------------------------------
+    // 阶段 2：点火！
+    // ------------------------------------------------
+    print("[Main] Igniting task system! (Main thread is now blocked)")
 
+    // 这一行将劫持当前主线程，启动底层 Tokio 引擎。
+    // 所有的 Task 瞬间苏醒，开始疯狂消费信箱里的消息！
+    TaskSystem.start()
+
+    // ------------------------------------------------
+    // 阶段 3：引擎停止后的清理
+    // ------------------------------------------------
+    // 只有当 MonitorTask 内部调用了 TaskSystem.stop() 后，
+    // 上面的 start() 才会返回，代码才会走到这里。
+    print("[Main] Task system has successfully shut down.")
     print("=== Demo Complete ===")
 }

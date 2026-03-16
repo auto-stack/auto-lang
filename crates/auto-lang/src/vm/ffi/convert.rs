@@ -136,7 +136,14 @@ impl VMConvertible for () {
 
 impl VMConvertible for String {
     fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
-        let str_idx = task.ram.pop_i32() as u16;
+        let tagged = task.ram.pop_i32();
+
+        // Decode tagged string index (LOAD_STR pushes -(idx+1))
+        let str_idx = if tagged < 0 {
+            ((-tagged) - 1) as u16  // Decode tagged string index
+        } else {
+            tagged as u16  // Direct index (shouldn't happen normally)
+        };
 
         let bytes = vm
             .get_string(str_idx)

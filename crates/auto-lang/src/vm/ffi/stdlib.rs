@@ -150,6 +150,7 @@ pub const NATIVE_TASK_SYSTEM_STOP: u16 = 2307; // Plan 127: Stop the task system
 pub const NATIVE_TASK_SEND_AWAIT: u16 = 2308; // Plan 124 Phase 2.2: send().await backpressure
 pub const NATIVE_TASK_ASK: u16 = 2309;        // Plan 124 Phase 2.3: ask/reply RPC
 pub const NATIVE_CTX_REPLY: u16 = 2310;       // Plan 127: ctx.reply() for message handlers
+pub const NATIVE_TASK_SINGLETON_SEND: u16 = 2311; // Plan 127: Task.send for singleton tasks
 
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
@@ -1433,6 +1434,9 @@ thread_local! {
     // Keep TaskInstance alive so the receiver (rx) doesn't get dropped
     static TASK_INSTANCES: std::cell::RefCell<std::collections::HashMap<u64, TaskInstance>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+    // Map task_type name -> handle_id for singleton tasks (#[single] annotation)
+    static SINGLETON_TASKS: std::cell::RefCell<std::collections::HashMap<String, u64>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -1447,9 +1451,10 @@ static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// * `capacity` - The mailbox capacity (default: 64)
 ///
 /// # Returns
-/// A handle ID (u64) that can be used to reference the task
+/// A handle ID (i32) that can be used to reference the task
 #[auto_macros::rust_fn("Task.spawn")]
-pub fn shim_task_spawn(task_type: String, capacity: i64) -> Result<u64, String> {
+pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
+    eprintln!("DEBUG shim_task_spawn: task_type='{}', capacity={}", task_type, capacity);
     let cap = if capacity <= 0 { 64 } else { capacity as usize };
 
     // Create a new task instance
@@ -1458,6 +1463,7 @@ pub fn shim_task_spawn(task_type: String, capacity: i64) -> Result<u64, String> 
 
     // Generate a unique handle ID
     let handle_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    eprintln!("DEBUG shim_task_spawn: generated handle_id={}", handle_id);
 
     // Store the handle in thread-local storage
     TASK_HANDLES.with(|handles| {
@@ -1470,31 +1476,95 @@ pub fn shim_task_spawn(task_type: String, capacity: i64) -> Result<u64, String> 
         instances.borrow_mut().insert(handle_id, instance);
     });
 
-    Ok(handle_id)
+    eprintln!("DEBUG shim_task_spawn: returning {}", handle_id as i32);
+    // Return as i32 (fits in one stack slot)
+    handle_id as i32
 }
 
 /// Send a message to a task
 ///
 /// # Arguments
 /// * `handle_id` - The handle ID returned by Task.spawn
-/// * `msg` - The message value to send
+/// * `msg` - The message value to send (enum variant as i32)
 ///
 /// # Returns
 /// 1 on success, 0 on failure
 #[auto_macros::rust_fn("TaskHandle.send")]
-pub fn shim_task_send(handle_id: i64, msg: String) -> Result<i32, String> {
+pub fn shim_task_send(handle_id: i32, msg: i32) -> i32 {
     let id = handle_id as u64;
 
     TASK_HANDLES.with(|handles| {
         let handles = handles.borrow();
         if let Some(handle) = handles.get(&id) {
-            let auto_str: auto_val::AutoStr = msg.into();
-            match handle.try_send(auto_val::Value::Str(auto_str)) {
-                Ok(()) => Ok(1),
-                Err(e) => Err(format!("TaskHandle.send failed: {}", e)),
+            match handle.try_send(auto_val::Value::Int(msg)) {
+                Ok(()) => 1,
+                Err(e) => {
+                    eprintln!("TaskHandle.send failed: {}", e);
+                    0
+                }
             }
         } else {
-            Err(format!("TaskHandle.send failed: invalid handle ID {}", id))
+            eprintln!("TaskHandle.send failed: invalid handle ID {}", id);
+            0
+        }
+    })
+}
+
+/// Send a message to a singleton task
+///
+/// # Arguments
+/// * `task_type` - The task type name (e.g., "MonitorTask")
+/// * `msg` - The message value to send (enum variant as i32)
+///
+/// # Returns
+/// 1 on success, 0 on failure
+#[auto_macros::rust_fn("Task.singleton_send")]
+pub fn shim_task_singleton_send(task_type: String, msg: i32) -> i32 {
+    // First, check if the singleton task already exists
+    let existing_handle_id = SINGLETON_TASKS.with(|singletons| {
+        let singletons = singletons.borrow();
+        singletons.get(&task_type).copied()
+    });
+
+    let handle_id = if let Some(id) = existing_handle_id {
+        id
+    } else {
+        // Auto-spawn the singleton task on first access
+        eprintln!("DEBUG: Auto-spawning singleton task '{}'", task_type);
+        let instance = TaskInstance::new(task_type.clone(), 64);
+        let handle = instance.handle.clone();
+        let new_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+
+        // Store the handle and instance
+        TASK_HANDLES.with(|handles| {
+            handles.borrow_mut().insert(new_id, handle);
+        });
+        TASK_INSTANCES.with(|instances| {
+            instances.borrow_mut().insert(new_id, instance);
+        });
+
+        // Register as singleton
+        SINGLETON_TASKS.with(|singletons| {
+            singletons.borrow_mut().insert(task_type.clone(), new_id);
+        });
+
+        new_id
+    };
+
+    // Now send the message
+    TASK_HANDLES.with(|handles| {
+        let handles = handles.borrow();
+        if let Some(handle) = handles.get(&handle_id) {
+            match handle.try_send(auto_val::Value::Int(msg)) {
+                Ok(()) => 1,
+                Err(e) => {
+                    eprintln!("Task.send failed: {}", e);
+                    0
+                }
+            }
+        } else {
+            eprintln!("Task.send failed: handle not found for {}", task_type);
+            0
         }
     })
 }
@@ -1671,29 +1741,18 @@ pub fn shim_task_system_start() -> Result<(), String> {
 
 /// Stop the task system scheduler
 ///
-/// This method executes all stop hooks in LIFO order.
-/// Unlike start_scheduler, this does NOT block - it just executes cleanup.
+/// This method signals the scheduler to stop and executes all stop hooks in LIFO order.
+/// Unlike start_scheduler, this does NOT block - it just signals shutdown.
 ///
 /// # Note
 /// This is useful for testing and graceful shutdown without Ctrl+C.
 #[auto_macros::rust_fn("TaskSystem.stop")]
 pub fn shim_task_system_stop() -> Result<(), String> {
     let registry = get_global_task_registry();
-    // Execute stop hooks in LIFO order
-    let results = registry.execute_stop_hooks();
 
-    // Print results
-    for result in results {
-        if !result.success {
-            eprintln!(
-                "Task {}.{} failed: {:?}",
-                result.task_type, result.hook_type, result.error
-            );
-        }
-    }
+    // Signal the scheduler to stop (Plan 127)
+    registry.signal_shutdown();
 
-    // Clear the registry
-    registry.clear();
     Ok(())
 }
 
@@ -1890,6 +1949,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_TASK_SEND_AWAIT, __shim_TaskHandle_send_await); // Plan 124 Phase 2.2
     natives.register_static(NATIVE_TASK_ASK, __shim_TaskHandle_ask); // Plan 124 Phase 2.3
     natives.register_static(NATIVE_CTX_REPLY, __shim_ctx_reply); // Plan 127: ctx.reply()
+    natives.register_static(NATIVE_TASK_SINGLETON_SEND, __shim_Task_singleton_send); // Plan 127: Task.send for singleton tasks
 }
 
 // ============================================================================

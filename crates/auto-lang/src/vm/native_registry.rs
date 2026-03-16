@@ -298,7 +298,7 @@ pub fn register_builtin_natives() {
     // Task aliases (for LoggerTask.spawn(), handle.send(), MonitorTask.send())
     registry.register_with_id("Task.spawn", 2300);
     registry.register_with_id("TaskHandle.send", 2301);
-    registry.register_with_id("Task.send", 2301); // For singleton tasks like MonitorTask.send()
+    registry.register_with_id("Task.send", 2311); // For singleton tasks like MonitorTask.send() - uses NATIVE_TASK_SINGLETON_SEND
 }
 
 #[cfg(test)]

@@ -341,9 +341,15 @@ pub fn shim_print_f32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 }
 
 /// Print a string from the string constant pool.
-/// Expects string index (u16) on TOS as i32.
+/// Expects tagged string index on TOS (LOAD_STR pushes -(idx+1)).
 pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_index = task.ram.pop_i32() as u16;
+    let tagged = task.ram.pop_i32();
+    // Decode tagged string index: LOAD_STR pushes -(idx+1)
+    let str_index = if tagged < 0 {
+        ((-tagged) - 1) as u16
+    } else {
+        tagged as u16
+    };
     if let Some(bytes) = vm.get_string(str_index) {
         let s = String::from_utf8_lossy(&bytes);
         println!("{}", s);

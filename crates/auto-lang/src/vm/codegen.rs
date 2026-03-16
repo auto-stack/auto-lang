@@ -164,7 +164,8 @@ impl Codegen {
 
         let mut intrinsics = HashMap::new();
         // Register intrinsics - only built-in print functions
-        intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
+        // "print" defaults to print_str since most print calls are for strings
+        intrinsics.insert("print".to_string(), NATIVE_PRINT_STR);
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
@@ -214,7 +215,8 @@ impl Codegen {
 
         let mut intrinsics = HashMap::new();
         // Register intrinsics - only built-in print functions
-        intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
+        // "print" defaults to print_str since most print calls are for strings
+        intrinsics.insert("print".to_string(), NATIVE_PRINT_STR);
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
@@ -3689,6 +3691,50 @@ impl Codegen {
                                 }
                             } else {
                                 self.compile_expr(obj)?;
+                            }
+                        }
+                    }
+
+                    // Plan 127: Special handling for Task.spawn - inject task_type and capacity
+                    // The rust_fn macro pops args in REVERSE order:
+                    // shim_task_spawn(task_type: String, capacity: i32)
+                    // Pop order: capacity first (from top), then task_type (from next)
+                    // Stack layout needed: [task_type, capacity] where capacity is on top
+                    // Push order: task_type first (bottom), capacity second (top)
+                    if func_name.as_deref() == Some("Task.spawn") {
+                        // Get the task type name from the original Dot expression
+                        if let Expr::Dot(obj, _) = call.name.as_ref() {
+                            if let Expr::Ident(task_type) = obj.as_ref() {
+                                // Push task_type as string FIRST (goes to bottom of stack)
+                                let task_type_str = task_type.to_string();
+                                let task_type_bytes = task_type_str.as_bytes().to_vec();
+                                let str_idx = self.strings.len() as u16;
+                                self.strings.push(task_type_bytes);
+                                self.emit(OpCode::LOAD_STR);
+                                self.code.extend_from_slice(&str_idx.to_le_bytes());
+
+                                // Push default capacity (64) as i32 SECOND (goes to top of stack)
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(64);
+
+                                eprintln!("DEBUG: Injected task_type='{}' capacity=64 for Task.spawn", task_type_str);
+                            }
+                        }
+                    }
+
+                    // Plan 127: Special handling for Task.send - inject task_type for singleton tasks
+                    if func_name.as_deref() == Some("Task.send") {
+                        // Get the task type name from the original Dot expression
+                        if let Expr::Dot(obj, _) = call.name.as_ref() {
+                            if let Expr::Ident(task_type) = obj.as_ref() {
+                                // Push task_type as string (first arg)
+                                let task_type_str = task_type.to_string();
+                                let task_type_bytes = task_type_str.as_bytes().to_vec();
+                                let str_idx = self.strings.len() as u16;
+                                self.strings.push(task_type_bytes);
+                                self.emit(OpCode::LOAD_STR);
+                                self.code.extend_from_slice(&str_idx.to_le_bytes());
+                                eprintln!("DEBUG: Injected task_type='{}' for Task.send", task_type_str);
                             }
                         }
                     }

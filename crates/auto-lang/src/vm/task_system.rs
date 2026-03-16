@@ -291,17 +291,28 @@ pub struct TaskRegistry {
     creation_order: DashMap<u64, (String, u64)>,
     /// Instance counter per task type
     instance_counts: DashMap<String, AtomicU64>,
+    /// Shutdown signal sender (Plan 127: for TaskSystem.stop())
+    shutdown_tx: Option<tokio::sync::broadcast::Sender<()>>,
 }
 
 impl TaskRegistry {
     /// Create a new task registry
     pub fn new() -> Self {
+        let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
         Self {
             singletons: DashMap::new(),
             instances: DashMap::new(),
             stop_hooks: DashMap::new(),
             creation_order: DashMap::new(),
             instance_counts: DashMap::new(),
+            shutdown_tx: Some(shutdown_tx),
+        }
+    }
+
+    /// Signal the scheduler to stop (Plan 127: for TaskSystem.stop())
+    pub fn signal_shutdown(&self) {
+        if let Some(tx) = &self.shutdown_tx {
+            let _ = tx.send(());
         }
     }
 
@@ -517,7 +528,7 @@ impl TaskRegistry {
     /// Start the task scheduler and block until Ctrl+C is received
     ///
     /// This method:
-    /// 1. Creates a Tokio runtime
+    /// 1. Creates a Tokio runtime (or uses existing one if already in a runtime)
     /// 2. Waits for Ctrl+C signal
     /// 3. Executes all stop hooks in LIFO order
     /// 4. Prints any errors from stop hooks
@@ -525,30 +536,67 @@ impl TaskRegistry {
     /// # Panics
     /// Panics if the Tokio runtime fails to create or if Ctrl+C handler fails.
     pub fn start_scheduler(&self) {
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+        // Check if we're already inside a Tokio runtime
+        if tokio::runtime::Handle::try_current().is_ok() {
+            // Already in a runtime - use block_in_place to allow blocking
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    self.run_scheduler_loop().await;
+                });
+            });
+        } else {
+            // Not in a runtime - create one
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+            rt.block_on(async {
+                self.run_scheduler_loop().await;
+            });
+        }
+    }
 
-        rt.block_on(async {
-            // Wait for Ctrl+C signal
-            match tokio::signal::ctrl_c().await {
-                Ok(()) => {
-                    // Execute stop hooks in LIFO order
-                    let results = self.execute_stop_hooks();
+    /// Internal scheduler loop
+    async fn run_scheduler_loop(&self) {
+        // Create shutdown listener if available
+        let mut shutdown_rx = self.shutdown_tx.as_ref().map(|tx| tx.subscribe());
 
-                    // Print results
-                    for result in results {
-                        if !result.success {
-                            eprintln!(
-                                "Task {}.{} failed: {:?}",
-                                result.task_type, result.hook_type, result.error
-                            );
-                        }
+        // Wait for either Ctrl+C or shutdown signal
+        let shutdown_reason = tokio::select! {
+            // Ctrl+C signal
+            result = tokio::signal::ctrl_c() => {
+                match result {
+                    Ok(()) => "Ctrl+C",
+                    Err(e) => {
+                        eprintln!("Failed to listen for Ctrl+C: {}", e);
+                        return;
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to listen for Ctrl+C: {}", e);
-                }
             }
-        });
+            // Shutdown signal from TaskSystem.stop()
+            _ = async {
+                if let Some(ref mut rx) = shutdown_rx {
+                    let _ = rx.recv().await;
+                } else {
+                    // If no shutdown channel, wait forever
+                    std::future::pending::<()>().await;
+                }
+            } => {
+                "TaskSystem.stop()"
+            }
+        };
+
+        eprintln!("[TaskSystem] Shutdown triggered by {}", shutdown_reason);
+
+        // Execute stop hooks in LIFO order
+        let results = self.execute_stop_hooks();
+
+        // Print results
+        for result in results {
+            if !result.success {
+                eprintln!(
+                    "Task {}.{} failed: {:?}",
+                    result.task_type, result.hook_type, result.error
+                );
+            }
+        }
     }
 }
 
