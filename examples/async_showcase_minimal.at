@@ -1,203 +1,43 @@
-// =============================================================================
-// Auto 语言异步系统 - 简化演示 (仅使用已实现的功能)
-// =============================================================================
-//
-// 本示例演示 Auto 语言异步系统的已实现特性：
-// - Phase 1 (Plan 121): Task/Msg 基础系统 ✅
-// - Phase 2 (Plan 124): ~T/.await/ask ✅
-// - Phase 3 (Plan 125): on(ctx)/ctx.reply()/模式匹配 ✅
-// - Phase 4 (Plan 126): .go 后缀操作符 ✅
-//
-// =============================================================================
+// Auto Language Basic Demo
 
-// =============================================================================
-// 消息协议定义
-// =============================================================================
-
-/// 计数器消息
-enum CounterMsg {
-    Add(int),
-    Reset,
-    Get
+fn add(a int, b int) int {
+    a + b
 }
 
-/// 数据库消息
-enum DBMsg {
-    QueryUser(int),
-    Ping
-}
-
-// =============================================================================
-// Task 定义
-// =============================================================================
-
-/// ---------------------------------------------------------
-/// Phase 1 示例: 基础 Task
-/// - 私有状态
-/// - send 发送消息
-/// - 生命周期钩子
-/// ---------------------------------------------------------
-#[single]
-task CounterTask {
-    count mut = 0
-
-    fn start() ! {
-        self.count = 0
-    }
-
-    fn stop() ! {
-        print("CounterTask stopped, count = ${self.count}")
-    }
-
-    on {
-        Add(val) => {
-            self.count = self.count + val
-            print("Count: ${self.count}")
-        }
-        Reset => {
-            self.count = 0
-            print("Reset to 0")
-        }
-        Get => {
-            print("Current count = ${self.count}")
-        }
+fn factorial(n int) int {
+    if n <= 1 {
+        1
+    } else {
+        n * factorial(n - 1)
     }
 }
 
-/// ---------------------------------------------------------
-/// Phase 2 + Phase 3 示例: 异步 + reply
-/// - on(ctx) 显式上下文
-/// - ctx.reply() 返回结果
-/// - ask/reply 双向 RPC
-/// ---------------------------------------------------------
-#[single]
-task DBWorker {
-    // 使用简单变量模拟数据库
-    user_name mut = "Alice"
-    user_email mut = "alice@example.com"
+fn main() {
+    // Basic operations
+    let a = 10
+    let b = 20
+    let sum = add(a, b)
+    print(sum)
 
-    fn start() ! {
-        print("DBWorker started")
+    // Recursive function
+    let fact5 = factorial(5)
+    print(fact5)
+
+    // Conditionals
+    let x = 15
+    if x > 10 {
+        print(100)
+    } else {
+        print(200)
     }
 
-    on(ctx) {
-        // Phase 3: 字面量模式匹配
-        Ping => {
-            ctx.reply("pong")
-        }
-
-        // Phase 3: 类型绑定模式 + reply
-        QueryUser(id) => {
-            // 模拟查询
-            print("Querying user ${id}")
-            ctx.reply(self.user_name)
-        }
-    }
-}
-
-/// ---------------------------------------------------------
-/// Phase 4 示例: .go 后台执行
-/// ---------------------------------------------------------
-#[single]
-task BackgroundWorker {
-    task_count mut = 0
-
-    on(ctx) {
-        "start_heavy" => {
-            // 使用 .go 派发到后台执行
-            // fire-and-forget: 不等待结果
-            ~{
-                print("Background task started...")
-                // 模拟耗时操作 (实际 sleep 需要 VM 支持)
-                print("Background task completed!")
-            }.go
-
-            ctx.reply("started")
-        }
-
-        "status" => {
-            ctx.reply(self.task_count)
-        }
-    }
-}
-
-// =============================================================================
-// 主函数
-// =============================================================================
-
-fn main() ! {
-    print("========================================")
-    print("Auto 异步系统演示 (简化版)")
-    print("========================================")
-
-    // Phase 1: 启动任务系统
-    TaskSystem.start()
-
-    // -----------------------------------------
-    // Phase 1 演示: send 消息
-    // -----------------------------------------
-    print("")
-    print("[Phase 1] Task/Msg 基础")
-
-    CounterTask.send(Add(10))
-    CounterTask.send(Add(5))
-    CounterTask.send(Get)
-    CounterTask.send(Reset)
-    CounterTask.send(Get)
-
-    // -----------------------------------------
-    // Phase 2 + Phase 3 演示: ask/reply
-    // -----------------------------------------
-    print("")
-    print("[Phase 2+3] ask/reply + 模式匹配")
-
-    // 字面量模式
-    let pong = DBWorker.ask(Ping).await.?
-    print("  Ping -> ${pong}")
-
-    // 类型绑定模式
-    let name = DBWorker.ask(QueryUser(1)).await.?
-    print("  User name: ${name}")
-
-    // -----------------------------------------
-    // Phase 4 演示: .go 后台执行
-    // -----------------------------------------
-    print("")
-    print("[Phase 4] .go 后台派发")
-
-    let result = BackgroundWorker.ask("start_heavy").await.?
-    print("  Result: ${result}")
-    print("  主线程立即继续...")
-
-    // -----------------------------------------
-    // Phase 2: 异步块演示
-    // -----------------------------------------
-    print("")
-    print("[Phase 2] 异步块")
-
-    let future = ~{
-        let x = 1 + 2
-        return x * 3
+    // Loops
+    for i in 0..5 {
+        print(i)
     }
 
-    let value = future.await
-    print("  (1+2)*3 = ${value}")
-
-    // -----------------------------------------
-    // 完成
-    // -----------------------------------------
-    print("")
-    print("========================================")
-    print("演示完成!")
-    print("")
-    print("已实现功能:")
-    print("  ✅ Task 定义 + spawn/send")
-    print("  ✅ ~T Future 类型")
-    print("  ✅ ~{} 异步块")
-    print("  ✅ .await 等待")
-    print("  ✅ ask/reply 双向 RPC")
-    print("  ✅ on(ctx) + ctx.reply()")
-    print("  ✅ 字面量/类型绑定模式")
-    print("  ✅ .go 后台派发")
-    print("========================================")
+    // Arrays
+    let arr = [1, 2, 3, 4, 5]
+    print(arr[0])
+    print(arr[2])
 }
