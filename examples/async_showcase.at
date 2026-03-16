@@ -1,0 +1,380 @@
+// =============================================================================
+// Auto 语言异步与并发系统综合展示
+// =============================================================================
+//
+// 本示例演示 Auto 语言异步系统的所有核心特性：
+//
+// Phase 1 (Plan 121): Task/Msg 基础系统
+//   - task 定义
+//   - spawn 创建实例
+//   - send 发送消息
+//   - Handle<T> 句柄
+//   - 生命周期钩子 (start/stop)
+//
+// Phase 2 (Plan 124): Async/Future/Await
+//   - ~T 类型 (Future<T>)
+//   - ~{} 异步块
+//   - .await 等待
+//   - send().await 背压挂起
+//   - ask/reply 双向 RPC
+//   - TaskSystem.run 同步桥接
+//
+// Phase 3 (Plan 125): 多态路由
+//   - on(ctx) 显式上下文
+//   - ctx.reply() 回复方法
+//   - 字面量模式匹配 ("ping" => ...)
+//   - 类型绑定模式 (msg string => ...)
+//   - 守卫表达式 (amount int if amount > 10000 => ...)
+//   - 隐式联合体
+//
+// Phase 4 (Plan 126): 微观并发
+//   - .go 后缀操作符
+//   - fire-and-forget 语义
+//   - 后台 Worker Pool
+//   - 捕获语义 (Copy 自动，非 Copy 需 .take)
+//
+// =============================================================================
+
+// =============================================================================
+// 第一部分：消息协议定义
+// =============================================================================
+
+/// 用户数据结构
+type User {
+    id int
+    name string
+    email string
+}
+
+/// 订单数据结构
+type Order {
+    id int
+    user_id int
+    amount int
+    status string
+}
+
+/// 数据库操作消息 (Phase 1: 显式枚举)
+enum DBMsg {
+    // 查询用户
+    QueryUser(int),
+    // 查询订单
+    QueryOrder(int),
+    // 保存用户
+    SaveUser(User),
+}
+
+// =============================================================================
+// 第二部分：Task 定义 - 展示各阶段特性
+// =============================================================================
+
+/// ---------------------------------------------------------
+/// 示例 1: 基础 Task (Phase 1)
+/// - 私有状态
+/// - 生命周期钩子
+/// - send 发送消息
+/// ---------------------------------------------------------
+#[single]  // 单例模式
+task CounterTask {
+    // 私有状态
+    count mut = 0
+
+    // 生命周期钩子：启动时调用
+    fn start() ! {
+        self.count = 0
+        print("[CounterTask] Started with count = 0")
+    }
+
+    // 生命周期钩子：停止时调用
+    fn stop() ! {
+        print("[CounterTask] Stopping, final count = ${self.count}")
+    }
+
+    // 消息处理
+    on {
+        Add(val) => {
+            self.count += val
+            print("[CounterTask] Added ${val}, count = ${self.count}")
+        }
+        Reset => {
+            self.count = 0
+            print("[CounterTask] Reset to 0")
+        }
+        Get => {
+            print("[CounterTask] Current count = ${self.count}")
+        }
+    }
+}
+
+/// ---------------------------------------------------------
+/// 示例 2: 带 reply 的 Task (Phase 2 + Phase 3)
+/// - ask/reply 双向 RPC
+/// - on(ctx) 显式上下文
+/// - ctx.reply() 返回结果
+/// ---------------------------------------------------------
+#[single]
+task DatabaseWorker {
+    // 模拟数据库
+    users mut = Map.new()
+
+    fn start() ! {
+        // 初始化一些测试数据
+        self.users.set(1, { id: 1, name: "Alice", email: "alice@example.com" })
+        self.users.set(2, { id: 2, name: "Bob", email: "bob@example.com" })
+        print("[DatabaseWorker] Connected to database")
+    }
+
+    // Phase 3: on(ctx) 显式上下文 + 多态路由
+    on(ctx) {
+        // 字面量模式匹配
+        "ping" => {
+            ctx.reply("pong")
+        }
+
+        // 类型绑定模式 + reply
+        QueryUser(id) => {
+            let user = self.users.get(id)
+            if user.is_nil() {
+                ctx.reply("error: user not found")
+            } else {
+                ctx.reply(user)
+            }
+        }
+
+        // 保存用户
+        SaveUser(user) => {
+            self.users.set(user.id, user)
+            ctx.reply("saved")
+        }
+
+        // 带守卫表达式的模式
+        QueryOrder(id) if id > 0 => {
+            // 模拟查询
+            let order = { id: id, user_id: 1, amount: 1000, status: "pending" }
+            ctx.reply(order)
+        }
+
+        // 兜底处理
+        QueryOrder(id) => {
+            ctx.reply("error: invalid order id")
+        }
+    }
+}
+
+/// ---------------------------------------------------------
+/// 示例 3: 异步 I/O Task (Phase 2)
+/// - ~{} 异步块
+/// - .await 等待
+/// - send().await 背压挂起
+/// ---------------------------------------------------------
+#[single]
+task WebClient {
+    on(ctx) {
+        "fetch_config" => {
+            // 异步块：模拟 HTTP 请求
+            let config = ~{
+                // 模拟网络延迟
+                sleep(100).await
+                return "{ \"api_url\": \"https://api.example.com\" }"
+            }
+
+            // 等待异步操作完成
+            let result = config.await
+            ctx.reply(result)
+        }
+
+        "fetch_user" => {
+            // 链式异步调用
+            let user = DatabaseWorker.ask(QueryUser(1)).await.?
+            ctx.reply(user)
+        }
+    }
+}
+
+/// ---------------------------------------------------------
+/// 示例 4: 后台任务处理 (Phase 4)
+/// - .go 后缀操作符
+/// - fire-and-forget 语义
+/// - 捕获变量
+/// ---------------------------------------------------------
+#[single]
+task BackgroundProcessor {
+    queue mut = List.new()
+
+    on(ctx) {
+        // 添加任务到队列
+        AddTask(data) => {
+            self.queue.push(data)
+            ctx.reply("added")
+        }
+
+        // 处理队列中的所有任务 (使用 .go 后台执行)
+        ProcessAll => {
+            let task_count = self.queue.len()
+
+            // 使用 .go 派发到后台执行
+            // Copy 类型 (task_count) 自动复制
+            ~{
+                print("[Background] Processing ${task_count} tasks...")
+                sleep(500).await
+                print("[Background] All tasks completed!")
+            }.go
+
+            // 立即返回，不等待后台任务完成
+            ctx.reply("processing started")
+        }
+
+        // 查询状态
+        Status => {
+            ctx.reply(self.queue.len())
+        }
+    }
+}
+
+// =============================================================================
+// 第三部分：主函数 - 综合演示
+// =============================================================================
+
+fn main() ! {
+    print("========================================")
+    print("Auto 异步与并发系统综合演示")
+    print("========================================")
+    print("")
+
+    // -----------------------------------------
+    // Phase 1 演示: Task/Msg 基础
+    // -----------------------------------------
+    print("[Phase 1] Task/Msg 基础系统")
+    print("----------------------------------------")
+
+    // TaskSystem.start() 启动任务系统
+    TaskSystem.start()
+
+    // send 发送消息 (fire-and-forget)
+    CounterTask.send(Add(10))
+    CounterTask.send(Add(5))
+    CounterTask.send(Get)
+    CounterTask.send(Reset)
+    CounterTask.send(Get)
+
+    sleep(100)  // 等待消息处理
+    print("")
+
+    // -----------------------------------------
+    // Phase 2 演示: Async/Future/Await
+    // -----------------------------------------
+    print("[Phase 2] Async/Future/Await")
+    print("----------------------------------------")
+
+    // ask/reply 双向 RPC
+    print("查询用户 ID=1:")
+    let user = DatabaseWorker.ask(QueryUser(1)).await.?
+    print("  结果: ${user.name} (${user.email})")
+
+    print("查询用户 ID=999 (不存在):")
+    let result = DatabaseWorker.ask(QueryUser(999)).await.?
+    print("  结果: ${result}")
+
+    // 异步块
+    print("执行异步计算:")
+    let future = ~{
+        let x = 1 + 2
+        let y = x * 3
+        sleep(50).await
+        return y
+    }
+    let value = future.await
+    print("  计算 (1+2)*3 = ${value}")
+    print("")
+
+    // -----------------------------------------
+    // Phase 3 演示: 多态路由
+    // -----------------------------------------
+    print("[Phase 3] 多态路由")
+    print("----------------------------------------")
+
+    // 字面量模式匹配
+    let pong = DatabaseWorker.ask("ping").await.?
+    print("  ping -> ${pong}")
+
+    // 带守卫的模式匹配
+    let order = DatabaseWorker.ask(QueryOrder(123)).await.?
+    print("  Order #${order.id}: status=${order.status}")
+
+    // 无效 ID (守卫不匹配)
+    let error = DatabaseWorker.ask(QueryOrder(-1)).await.?
+    print("  Invalid order: ${error}")
+    print("")
+
+    // -----------------------------------------
+    // Phase 4 演示: 微观并发 (.go)
+    // -----------------------------------------
+    print("[Phase 4] 微观并发 (.go 操作符)")
+    print("----------------------------------------")
+
+    // 添加一些任务
+    BackgroundProcessor.send(AddTask("task_1"))
+    BackgroundProcessor.send(AddTask("task_2"))
+    BackgroundProcessor.send(AddTask("task_3"))
+
+    let status = BackgroundProcessor.ask(Status).await.?
+    print("  队列中有 ${status} 个任务")
+
+    // 使用 .go 派发后台处理
+    let start_result = BackgroundProcessor.ask(ProcessAll).await.?
+    print("  ${start_result}")
+
+    // 主线程立即继续，不等待后台任务
+    print("  主线程立即继续执行...")
+
+    // 后台任务正在并行执行
+    sleep(600)  // 等待后台任务完成 (仅用于演示)
+    print("")
+
+    // -----------------------------------------
+    // Phase 4 进阶: 链式 .await + .go
+    // -----------------------------------------
+    print("[Phase 4 进阶] 链式调用")
+    print("----------------------------------------")
+
+    // 链式: fetch -> process -> spawn background
+    ~{
+        // 1. 获取用户
+        let user = DatabaseWorker.ask(QueryUser(1)).await.?
+        print("  [链式] 获取用户: ${user.name}")
+
+        // 2. 处理数据
+        let processed = "processed_${user.name}"
+        print("  [链式] 处理完成: ${processed}")
+
+        // 3. 返回结果
+        return processed
+    }
+    // 可以继续 .await 等待结果
+    // 也可以直接 .go 派发到后台
+    // .go
+
+    print("")
+
+    // -----------------------------------------
+    // 总结
+    // -----------------------------------------
+    print("========================================")
+    print("演示完成!")
+    print("")
+    print("核心概念总结:")
+    print("  Task      = 独立的并发实体，拥有私有状态")
+    print("  Handle<T> = Task 实例的引用句柄")
+    print("  send(msg) = 发送消息 (fire-and-forget)")
+    print("  ask(msg)  = 请求-响应 (返回 Future<T>)")
+    print("  ~T        = Future<T> 类型")
+    print("  ~{}       = 异步块")
+    print("  .await    = 等待 Future 完成")
+    print("  .go       = 派发到后台执行 (fire-and-forget)")
+    print("  on(ctx)   = 消息处理块，带上下文参数")
+    print("  ctx.reply = 回复 ask 请求")
+    print("========================================")
+
+    // 停止任务系统
+    TaskSystem.stop()
+}
