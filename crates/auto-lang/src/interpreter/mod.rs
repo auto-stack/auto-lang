@@ -27,6 +27,15 @@ mod vm_interpreter;
 
 pub use vm_interpreter::VmInterpreter;
 
+/// Debug logging macro - only prints when VM debug mode is enabled
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if crate::is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 /// AutoVM-based interpreter with simple API
 ///
 /// This is the recommended way to evaluate Auto code programmatically.
@@ -136,7 +145,7 @@ impl AutoInterpreter {
         }
 
         flipped_code.push_str("__out__\n");
-        eprintln!("DEBUG flipped_code:\n{}", flipped_code);
+        vm_debug!("DEBUG flipped_code:\n{}", flipped_code);
 
         // Evaluate the generated code
         self.eval(&flipped_code)

@@ -15,6 +15,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Debug logging macro - only prints when VM debug mode is enabled
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if crate::is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 // ============================================================================
 // Native Function IDs (1000-4999 for built-in stdlib)
 // ============================================================================
@@ -1455,7 +1464,7 @@ static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// A handle ID (i32) that can be used to reference the task
 #[auto_macros::rust_fn("Task.spawn")]
 pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
-    eprintln!("DEBUG shim_task_spawn: task_type='{}', capacity={}", task_type, capacity);
+    vm_debug!("DEBUG shim_task_spawn: task_type='{}', capacity={}", task_type, capacity);
     let cap = if capacity <= 0 { 64 } else { capacity as usize };
 
     // Create a new task instance
@@ -1464,14 +1473,14 @@ pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
 
     // Generate a unique handle ID
     let handle_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    eprintln!("DEBUG shim_task_spawn: generated handle_id={}", handle_id);
+    vm_debug!("DEBUG shim_task_spawn: generated handle_id={}", handle_id);
 
     // Plan 128: Get the global registry and store mailbox receiver
     // This allows spawn_initial_tasks to use the actual receiver
     let registry = get_global_task_registry();
     if let Some(receiver) = instance.take_receiver() {
         registry.store_mailbox_receiver(task_type.clone(), instance.instance_id, receiver);
-        eprintln!("DEBUG shim_task_spawn: stored receiver for {}#{}", task_type, instance.instance_id);
+        vm_debug!("DEBUG shim_task_spawn: stored receiver for {}#{}", task_type, instance.instance_id);
     } else {
         eprintln!("WARN shim_task_spawn: failed to take receiver for {}#{}", task_type, instance.instance_id);
     }
@@ -1487,7 +1496,7 @@ pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
     // Note: We no longer store the full TaskInstance in TASK_INSTANCES
     // since the receiver has been extracted and stored in TaskRegistry
 
-    eprintln!("DEBUG shim_task_spawn: returning {}", handle_id as i32);
+    vm_debug!("DEBUG shim_task_spawn: returning {}", handle_id as i32);
     // Return as i32 (fits in one stack slot)
     handle_id as i32
 }
@@ -1541,7 +1550,7 @@ pub fn shim_task_singleton_send(task_type: String, msg: i32) -> i32 {
         id
     } else {
         // Auto-spawn the singleton task on first access
-        eprintln!("DEBUG: Auto-spawning singleton task '{}'", task_type);
+        vm_debug!("DEBUG: Auto-spawning singleton task '{}'", task_type);
         let mut instance = TaskInstance::new(task_type.clone(), 64);
         let handle = instance.handle.clone();
         let new_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -1551,7 +1560,7 @@ pub fn shim_task_singleton_send(task_type: String, msg: i32) -> i32 {
             let registry = get_global_task_registry();
             registry.store_mailbox_receiver(task_type.clone(), instance.instance_id, receiver);
             registry.register_singleton(task_type.clone(), handle.clone());
-            eprintln!("DEBUG: Stored receiver for singleton {}#{}", task_type, instance.instance_id);
+            vm_debug!("DEBUG: Stored receiver for singleton {}#{}", task_type, instance.instance_id);
         } else {
             eprintln!("WARN: Failed to take receiver for singleton {}#{}", task_type, instance.instance_id);
             // Still register the singleton even if receiver extraction failed

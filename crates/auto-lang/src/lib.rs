@@ -135,6 +135,15 @@ pub fn is_vm_debug() -> bool {
     VM_DEBUG.load(Ordering::SeqCst)
 }
 
+/// Debug logging macro - only prints when VM debug mode is enabled
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 /// Run AutoLang code using the default execution engine
 ///
 /// **Plan 081 Phase 1**: Default engine is AutoVM (faster bytecode VM)
@@ -205,7 +214,9 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     
     // Then, compile other statements with proper local variable setup
     if !other_stmts.is_empty() {
-        eprintln!("DEBUG: Compiling {} script statements", other_stmts.len());
+        if is_vm_debug() {
+            vm_debug!("DEBUG: Compiling {} script statements", other_stmts.len());
+        }
         
         // Reserve space for locals (Plan 091)
         let n_locals = 16; // Reserve space for up to 16 locals
@@ -229,47 +240,41 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     codegen.code.push(OpCode::HALT as u8);
 
     // DEBUG: Print bytecode BEFORE relocation
-    eprintln!("DEBUG: === Bytecode BEFORE relocation (0x00-0x40) ===");
+    vm_debug!("DEBUG: === Bytecode BEFORE relocation (0x00-0x40) ===");
     for i in 0x00..0x40u32 {
         if (i as usize) < codegen.code.len() {
             let op = codegen.code[i as usize];
-            eprintln!("CODE[{:04x}]: {:02x}", i, op);
+            vm_debug!("CODE[{:04x}]: {:02x}", i, op);
         }
     }
-    eprintln!("DEBUG: === End of bytecode ===");
+    vm_debug!("DEBUG: === End of bytecode ===");
 
     // 3. Perform linking (resolve function calls)
     let strings = codegen.strings.clone();
-    eprintln!(
-        "DEBUG: === Performing relocation for {} entries ===",
+    vm_debug!("DEBUG: === Performing relocation for {} entries ===",
         codegen.relocs.len()
     );
-    eprintln!(
-        "DEBUG: Available exports: {:?}",
+    vm_debug!("DEBUG: Available exports: {:?}",
         codegen.exports.keys().collect::<Vec<_>>()
     );
-    eprintln!("DEBUG: exports map: {:?}", codegen.exports);
+    vm_debug!("DEBUG: exports map: {:?}", codegen.exports);
     for reloc in &codegen.relocs {
-        eprintln!(
-            "DEBUG: Relocating '{}' at offset 0x{:04x}",
+        vm_debug!("DEBUG: Relocating '{}' at offset 0x{:04x}",
             reloc.symbol_name, reloc.offset
         );
-        eprintln!(
-            "DEBUG:   Looking up symbol '{}' (len={}, bytes={:?})",
+        vm_debug!("DEBUG:   Looking up symbol '{}' (len={}, bytes={:?})",
             reloc.symbol_name,
             reloc.symbol_name.len(),
             reloc.symbol_name.as_bytes()
         );
         if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
-            eprintln!(
-                "DEBUG:   Found '{}' at address 0x{:04x}",
+            vm_debug!("DEBUG:   Found '{}' at address 0x{:04x}",
                 reloc.symbol_name, addr
             );
             let bytes = addr.to_le_bytes();
             let offset = reloc.offset as usize;
             for (i, b) in bytes.iter().enumerate() {
-                eprintln!(
-                    "DEBUG:   code[{}] = {} (was {})",
+                vm_debug!("DEBUG:   code[{}] = {} (was {})",
                     offset + i,
                     *b,
                     codegen.code[offset + i]

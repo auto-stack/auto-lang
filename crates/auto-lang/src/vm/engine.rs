@@ -14,6 +14,15 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
+/// Debug logging macro - only prints when VM debug mode is enabled
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if crate::is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 /// List iterator state
 #[derive(Debug, Clone)]
 pub struct ListIterator {
@@ -642,13 +651,11 @@ impl AutoVM {
                 OpCode::CONST_I32 => {
                     let val = self.flash.read_i32(task.ip);
                     task.ip += 4;
-                    eprintln!(
-                        "DEBUG: CONST_I32: val={}, sp before push={}",
+                    vm_debug!("DEBUG: CONST_I32: val={}, sp before push={}",
                         val, task.ram.sp
                     );
                     task.ram.push_i32(val);
-                    eprintln!(
-                        "DEBUG: CONST_I32: sp after push={}, wrote to address {}",
+                    vm_debug!("DEBUG: CONST_I32: sp after push={}, wrote to address {}",
                         task.ram.sp,
                         task.ram.sp - 1
                     );
@@ -919,8 +926,7 @@ impl AutoVM {
                     // Store range in ranges registry and push range_id
                     let range_id = task.ram.ranges.len() as i32;
                     task.ram.ranges.push((start, end, true)); // true = inclusive
-                    eprintln!(
-                        "DEBUG CREATE_RANGE_EQ: start={}, end={}, range_id={}",
+                    vm_debug!("DEBUG CREATE_RANGE_EQ: start={}, end={}, range_id={}",
                         start, end, range_id
                     );
 
@@ -1248,14 +1254,13 @@ impl AutoVM {
                     // Stack after: [..., instance_id]
                     use crate::vm::generic_registry::GenericInstanceData;
 
-                    eprintln!(
-                        "DEBUG NEW_INSTANCE: Stack depth before pop = {}",
+                    vm_debug!("DEBUG NEW_INSTANCE: Stack depth before pop = {}",
                         task.ram.sp
                     );
 
                     // Read mono_name length from stack
                     let name_len = task.ram.pop_i32() as usize;
-                    eprintln!("DEBUG NEW_INSTANCE: Popped name_len = {}", name_len);
+                    vm_debug!("DEBUG NEW_INSTANCE: Popped name_len = {}", name_len);
 
                     // Read mono_name bytes from flash memory and convert to String
                     // Note: task.ip already points to the first byte after the opcode (advanced by main loop)
@@ -1271,17 +1276,16 @@ impl AutoVM {
                     let mono_name = String::from_utf8(name_bytes).map_err(|e| {
                         VMError::RuntimeError(format!("Invalid UTF-8 in mono_name: {}", e))
                     })?;
-                    eprintln!("DEBUG NEW_INSTANCE: mono_name = '{}'", mono_name);
+                    vm_debug!("DEBUG NEW_INSTANCE: mono_name = '{}'", mono_name);
 
                     // Create instance with no fields (uninitialized)
                     let instance = GenericInstanceData::new(mono_name, vec![]);
                     let instance_id = self.insert_heap_object(instance);
 
                     // Push instance ID onto stack
-                    eprintln!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
+                    vm_debug!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
                     task.ram.push_i32(instance_id as i32);
-                    eprintln!(
-                        "DEBUG NEW_INSTANCE: Stack depth after push = {}, top value = {}",
+                    vm_debug!("DEBUG NEW_INSTANCE: Stack depth after push = {}, top value = {}",
                         task.ram.sp,
                         if task.ram.sp > 0 {
                             task.ram.raw[(task.ram.sp - 1) as usize]
@@ -1297,22 +1301,19 @@ impl AutoVM {
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::TypeTag;
 
-                    eprintln!(
-                        "DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}",
+                    vm_debug!("DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}",
                         task.ram.sp
                     );
 
                     // Pop field_count (top of stack)
                     let field_count = task.ram.pop_i32() as usize;
-                    eprintln!(
-                        "DEBUG CONSTRUCT_INSTANCE: Popped field_count = {}",
+                    vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped field_count = {}",
                         field_count
                     );
 
                     // Pop instance_id (next on stack)
                     let instance_id = task.ram.pop_i32() as u64;
-                    eprintln!(
-                        "DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
+                    vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
                         instance_id
                     );
 
@@ -1320,15 +1321,14 @@ impl AutoVM {
                     // For Phase 2, detect if value is a heap object ID or basic type
                     let mut field_values = Vec::with_capacity(field_count);
                     for i in 0..field_count {
-                        eprintln!(
-                            "DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}",
+                        vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}",
                             i + 1,
                             field_count,
                             task.ram.sp
                         );
                         // Pop value as i32
                         let val_i32 = task.ram.pop_i32();
-                        eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
+                        vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
 
                         // Check if this looks like a heap object ID (>= 4000000)
                         // Heap objects start at 4000000
@@ -1343,8 +1343,7 @@ impl AutoVM {
                     }
                     field_values.reverse(); // Reverse to get correct order
 
-                    eprintln!(
-                        "DEBUG CONSTRUCT_INSTANCE: Field values (reversed): {:?}",
+                    vm_debug!("DEBUG CONSTRUCT_INSTANCE: Field values (reversed): {:?}",
                         field_values
                     );
 
@@ -1363,8 +1362,7 @@ impl AutoVM {
                             {
                                 let field_count = field_values.len();
                                 instance.fields = field_values;
-                                eprintln!(
-                                    "DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields",
+                                vm_debug!("DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields",
                                     field_count
                                 );
                             } else {
@@ -1387,13 +1385,11 @@ impl AutoVM {
 
                     // Push instance_id back onto stack for variable assignment
                     // Stack layout after: [..., instance_id]
-                    eprintln!(
-                        "DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}",
+                    vm_debug!("DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}",
                         instance_id
                     );
                     task.ram.push_i32(instance_id as i32);
-                    eprintln!(
-                        "DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
+                    vm_debug!("DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
                         task.ram.sp
                     );
                 }
@@ -1413,8 +1409,7 @@ impl AutoVM {
                     // Stack: [..., instance_id, ...]
                     let instance_id = task.ram.read_i32(task.ram.sp - 1) as u64;
 
-                    eprintln!(
-                        "DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
+                    vm_debug!("DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
                         instance_id, field_index
                     );
 
@@ -1435,8 +1430,7 @@ impl AutoVM {
                                     let _ = task.ram.pop_i32();
                                     // Push field value onto stack
                                     Self::push_value(&mut task.ram, value, &self.strings);
-                                    eprintln!(
-                                        "DEBUG: GET_GENERIC_FIELD: field value = {:?}",
+                                    vm_debug!("DEBUG: GET_GENERIC_FIELD: field value = {:?}",
                                         value
                                     );
                                 } else {
@@ -1472,7 +1466,7 @@ impl AutoVM {
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::TypeTag;
 
-                    eprintln!("DEBUG: SET_GENERIC_FIELD executing at IP={}", task.ip);
+                    vm_debug!("DEBUG: SET_GENERIC_FIELD executing at IP={}", task.ip);
 
                     // Read field_index from code stream (not stack!)
                     let field_index = self.flash.read_u32(task.ip) as usize;
@@ -1490,8 +1484,7 @@ impl AutoVM {
                         Value::Int(val_i32)
                     };
 
-                    eprintln!(
-                        "DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={:?}",
+                    vm_debug!("DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={:?}",
                         instance_id, field_index, value
                     );
 
@@ -1511,8 +1504,7 @@ impl AutoVM {
                                 instance.set_field(field_index, value).map_err(|e| {
                                     VMError::RuntimeError(format!("Failed to set field: {}", e))
                                 })?;
-                                eprintln!(
-                                    "DEBUG: SET_GENERIC_FIELD: successfully set field {} to {}",
+                                vm_debug!("DEBUG: SET_GENERIC_FIELD: successfully set field {} to {}",
                                     field_index, value_repr
                                 );
                             } else {
@@ -1690,7 +1682,7 @@ impl AutoVM {
                         }
                     };
 
-                    eprintln!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}", obj_or_str_bits, index_i32);
+                    vm_debug!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}", obj_or_str_bits, index_i32);
 
                     // Check if this is a tagged string index (negative value)
                     if obj_or_str_bits < 0 && obj_or_str_bits > -1000000 && obj_or_str_bits != -2147483648 {
@@ -1704,19 +1696,19 @@ impl AutoVM {
                             let char_count = s.chars().count();
                             if let Some(normalized_idx) = normalize_index(index_i32, char_count) {
                                 if let Some(ch) = s.chars().nth(normalized_idx) {
-                                    eprintln!("DEBUG GET_ELEM: String[{}] = '{}'", normalized_idx, ch);
+                                    vm_debug!("DEBUG GET_ELEM: String[{}] = '{}'", normalized_idx, ch);
                                     // Push character as i32 (Unicode code point)
                                     task.ram.push_i32(ch as i32);
                                 } else {
-                                    eprintln!("DEBUG GET_ELEM: String index {} out of bounds", normalized_idx);
+                                    vm_debug!("DEBUG GET_ELEM: String index {} out of bounds", normalized_idx);
                                     task.ram.push_i32(0); // Out of bounds
                                 }
                             } else {
-                                eprintln!("DEBUG GET_ELEM: String index {} out of bounds", index_i32);
+                                vm_debug!("DEBUG GET_ELEM: String index {} out of bounds", index_i32);
                                 task.ram.push_i32(0); // Out of bounds
                             }
                         } else {
-                            eprintln!("DEBUG GET_ELEM: Invalid string index {}", str_idx);
+                            vm_debug!("DEBUG GET_ELEM: Invalid string index {}", str_idx);
                             task.ram.push_i32(0); // Invalid string index
                         }
                     } else {
@@ -1730,23 +1722,22 @@ impl AutoVM {
 
                             // Try List<int>
                             if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                                eprintln!(
-                                    "DEBUG GET_ELEM: Found List<int> with {} elems",
+                                vm_debug!("DEBUG GET_ELEM: Found List<int> with {} elems",
                                     list.elems.len()
                                 );
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     let elem = list.elems[normalized_idx];
-                                    eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", normalized_idx, elem);
+                                    vm_debug!("DEBUG GET_ELEM: Returning elem[{}]={}", normalized_idx, elem);
                                     task.ram.push_i32(elem);
                                 } else {
-                                    eprintln!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
+                                    vm_debug!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
                                     task.ram.push_i32(0); // Out of bounds
                                 }
                             }
                             // Try List<String>
                             else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>()
                             {
-                                eprintln!("DEBUG GET_ELEM: Found List<String>");
+                                vm_debug!("DEBUG GET_ELEM: Found List<String>");
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     // TODO: Support string elements (currently push placeholder)
                                     let _elem = &list.elems[normalized_idx];
@@ -1757,7 +1748,7 @@ impl AutoVM {
                             }
                             // Try List<bool>
                             else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
-                                eprintln!("DEBUG GET_ELEM: Found List<bool>");
+                                vm_debug!("DEBUG GET_ELEM: Found List<bool>");
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     let elem = list.elems[normalized_idx];
                                     task.ram.push_i32(if elem { 1 } else { 0 });
@@ -1765,7 +1756,7 @@ impl AutoVM {
                                     task.ram.push_i32(0); // Out of bounds
                                 }
                             } else {
-                                eprintln!("DEBUG GET_ELEM: Unknown heap object type");
+                                vm_debug!("DEBUG GET_ELEM: Unknown heap object type");
                                 task.ram.push_i32(0); // Unknown heap object type
                             }
                         }
@@ -2111,14 +2102,14 @@ impl AutoVM {
                     task.ram.push_i32(!a);
                 }
                 OpCode::CALL => {
-                    eprintln!("DEBUG CALL: Stack depth before = {}", task.ram.sp);
+                    vm_debug!("DEBUG CALL: Stack depth before = {}", task.ram.sp);
                     // Print stack before CALL
                     if task.ram.sp > 0 {
-                        eprintln!("DEBUG CALL: Stack[0] = {}", task.ram.read_i32(0));
+                        vm_debug!("DEBUG CALL: Stack[0] = {}", task.ram.read_i32(0));
                     }
 
                     let target = self.flash.read_u32(task.ip) as usize;
-                    eprintln!("DEBUG CALL: Calling function at address 0x{:04x}", target);
+                    vm_debug!("DEBUG CALL: Calling function at address 0x{:04x}", target);
                     task.ip += 4;
 
                     // Push Return Address (IP)
@@ -2129,12 +2120,10 @@ impl AutoVM {
                     // New BP points to the saved BP location (SP - 1)
                     task.bp = task.ram.sp - 1;
 
-                    eprintln!(
-                        "DEBUG CALL: Stack depth after setup = {}, BP = {}",
+                    vm_debug!("DEBUG CALL: Stack depth after setup = {}, BP = {}",
                         task.ram.sp, task.bp
                     );
-                    eprintln!(
-                        "DEBUG CALL: Stack[0] = {}, [1] = {}, [2] = {}",
+                    vm_debug!("DEBUG CALL: Stack[0] = {}, [1] = {}, [2] = {}",
                         task.ram.read_i32(0),
                         task.ram.read_i32(1),
                         task.ram.read_i32(2)
@@ -2205,7 +2194,7 @@ impl AutoVM {
                     let n_args = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    eprintln!("DEBUG CLOSURE: func_addr={}, capture_count={}, n_args={}, ip after header={}, sp before={}", func_addr, capture_count, n_args, task.ip, task.ram.sp);
+                    vm_debug!("DEBUG CLOSURE: func_addr={}, capture_count={}, n_args={}, ip after header={}, sp before={}", func_addr, capture_count, n_args, task.ip, task.ram.sp);
 
                     // Pop captured values from stack and build environment
                     let mut env = HashMap::new();
@@ -2235,7 +2224,7 @@ impl AutoVM {
                     let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
                     let closure = Closure { func_addr, env, n_args };
 
-                    eprintln!("DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}", closure_id, task.ip, task.ram.sp);
+                    vm_debug!("DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}", closure_id, task.ip, task.ram.sp);
 
                     self.closures.insert(closure_id, closure);
                     task.ram.push_i32(closure_id as i32);
@@ -2756,15 +2745,14 @@ impl AutoVM {
                         //                                    ^-BP-3 ^-BP-2 ^-BP-1  ^-BP
                         let actual_offset = offset + 1; // +1 for return_addr
                         let val = task.ram.read_i32(task.bp - actual_offset);
-                        eprintln!(
-                            "DEBUG: LOAD_LOCAL param {}: BP-{} (n_args={}, offset={}) = {}",
+                        vm_debug!("DEBUG: LOAD_LOCAL param {}: BP-{} (n_args={}, offset={}) = {}",
                             param_idx, actual_offset, n_args, offset, val
                         );
                         task.ram.push_i32(val);
                     } else {
                         // Local variable: load from bp+1+idx (bp+1 is first local variable)
                         let val = task.ram.read_i32(task.bp + 1 + idx);
-                        eprintln!("DEBUG: LOAD_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
+                        vm_debug!("DEBUG: LOAD_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
                         task.ram.push_i32(val);
                     }
                 }
@@ -2783,20 +2771,19 @@ impl AutoVM {
 
                         // Store to parameter location
                         task.ram.write_i32(task.bp - actual_offset, val);
-                        eprintln!(
-                            "DEBUG: STORE_LOCAL param {}: BP-{} = {}",
+                        vm_debug!("DEBUG: STORE_LOCAL param {}: BP-{} = {}",
                             param_idx, actual_offset, val
                         );
                     } else {
                         // Local variable: store to bp+1+idx (bp+1 is first local variable)
                         task.ram.write_i32(task.bp + 1 + idx, val);
-                        eprintln!("DEBUG: STORE_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
+                        vm_debug!("DEBUG: STORE_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
                     // Load from bp+1 (first local variable)
                     let addr = task.bp + 1;
-                    eprintln!("DEBUG LOAD_LOC_0: bp={}, addr={}, sp={}", task.bp, addr, task.ram.sp);
+                    vm_debug!("DEBUG LOAD_LOC_0: bp={}, addr={}, sp={}", task.bp, addr, task.ram.sp);
                     let val = task.ram.read_i32(addr);
                     task.ram.push_i32(val);
                 }
@@ -2833,7 +2820,7 @@ impl AutoVM {
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    eprintln!("DEBUG FN_PROLOG: n_args={}, n_locals={}", n_args, n_locals);
+                    vm_debug!("DEBUG FN_PROLOG: n_args={}, n_locals={}", n_args, n_locals);
 
                     // Save function metadata in task for use by LOAD_LOCAL/STORE_LOCAL
                     task.current_fn_n_args = n_args;
@@ -2849,7 +2836,7 @@ impl AutoVM {
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    eprintln!("DEBUG RESERVE_STACK: n_locals={}, sp before={}", n_locals, task.ram.sp);
+                    vm_debug!("DEBUG RESERVE_STACK: n_locals={}, sp before={}", n_locals, task.ram.sp);
 
                     // Push n_locals+1 zeros to reserve space for local variables + 1 extra slot
                     // The extra slot ensures SP starts beyond all local variable addresses
@@ -2857,7 +2844,7 @@ impl AutoVM {
                         task.ram.push_i32(0);
                     }
 
-                    eprintln!("DEBUG RESERVE_STACK: sp after={}", task.ram.sp);
+                    vm_debug!("DEBUG RESERVE_STACK: sp after={}", task.ram.sp);
 
                     // Track num_locals for native shims
                     task.num_locals = n_locals;
@@ -2967,7 +2954,7 @@ impl AutoVM {
                     // This will be used by subsequent STORE_REF or other operations
                     task.ram.push_i32(var_index as i32);
 
-                    eprintln!("DEBUG: LOAD_REF: var_index={}, bp={}", var_index, task.bp);
+                    vm_debug!("DEBUG: LOAD_REF: var_index={}, bp={}", var_index, task.bp);
                 }
                 OpCode::STORE_REF => {
                     // Plan 088 Phase 5: Store through immutable reference
@@ -2981,8 +2968,7 @@ impl AutoVM {
                     // Store to bp+1+var_index (same as LOAD_LOCAL logic)
                     task.ram.write_i32(task.bp + 1 + var_index as usize, val);
 
-                    eprintln!(
-                        "DEBUG: STORE_REF: var_index={}, val={}, bp={}",
+                    vm_debug!("DEBUG: STORE_REF: var_index={}, val={}, bp={}",
                         var_index, val, task.bp
                     );
                 }
@@ -3007,8 +2993,7 @@ impl AutoVM {
                     // Store to bp+1+var_index (same as STORE_LOCAL logic)
                     task.ram.write_i32(task.bp + 1 + var_index as usize, val);
 
-                    eprintln!(
-                        "DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}",
+                    vm_debug!("DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}",
                         var_index, val, task.bp
                     );
                 }
@@ -3039,7 +3024,7 @@ impl AutoVM {
                     let future_bits = ((future_id as i32) << 8) | 0xF0;
                     task.ram.push_i32(future_bits);
 
-                    eprintln!("DEBUG: CREATE_FUTURE: id={}, body_offset={}", future_id, body_offset);
+                    vm_debug!("DEBUG: CREATE_FUTURE: id={}, body_offset={}", future_id, body_offset);
                 }
                 OpCode::AWAIT_FUTURE => {
                     // Wait for future completion (blocking)
@@ -3058,7 +3043,7 @@ impl AutoVM {
                             match future.state {
                                 FutureState::Ready => {
                                     // Future is ready - return the result
-                                    eprintln!("DEBUG: AWAIT_FUTURE: id={} is ready", future_id);
+                                    vm_debug!("DEBUG: AWAIT_FUTURE: id={} is ready", future_id);
                                     if let Some(ref result) = future.result {
                                         // Push the result value
                                         // For Phase 2.1, we only support i32 results
@@ -3073,14 +3058,14 @@ impl AutoVM {
                                 }
                                 FutureState::Failed => {
                                     // Future failed - return nil
-                                    eprintln!("DEBUG: AWAIT_FUTURE: id={} failed", future_id);
+                                    vm_debug!("DEBUG: AWAIT_FUTURE: id={} failed", future_id);
                                     task.ram.push_i32(0);
                                 }
                                 FutureState::Pending => {
                                     // Phase 2.1: Execute the async body synchronously
                                     // In full implementation, this would suspend the task
                                     // and schedule execution on a worker thread
-                                    eprintln!("DEBUG: AWAIT_FUTURE: id={} is pending, executing synchronously", future_id);
+                                    vm_debug!("DEBUG: AWAIT_FUTURE: id={} is pending, executing synchronously", future_id);
 
                                     // Save current IP
                                     let saved_ip = task.ip;
@@ -3109,7 +3094,7 @@ impl AutoVM {
                             }
                         } else {
                             // Future not found - return nil
-                            eprintln!("DEBUG: AWAIT_FUTURE: id={} not found in registry", future_id);
+                            vm_debug!("DEBUG: AWAIT_FUTURE: id={} not found in registry", future_id);
                             task.ram.push_i32(0);
                         }
                     } else {

@@ -19,6 +19,15 @@ use miette::SourceSpan;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
+/// Debug logging macro - only prints when VM debug mode is enabled
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if crate::is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 /// Plan 073: Type tags for object field values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectType {
@@ -405,8 +414,7 @@ impl Codegen {
                 // 2. Record function entry point (export)
                 // Entry point is HERE (after JMP instruction)
                 let entry_point = self.code.len() as u32;
-                eprintln!(
-                    "DEBUG: Exporting function '{}' at address {:#04x}",
+                vm_debug!("DEBUG: Exporting function '{}' at address {:#04x}",
                     fn_decl.name, entry_point
                 );
                 self.exports.insert(fn_decl.name.to_string(), entry_point);
@@ -450,7 +458,7 @@ impl Codegen {
                         // Extract type name from method name (e.g., "Counter.get" → "Counter")
                         if let Some(dot_pos) = fn_decl.name.to_string().find('.') {
                             let type_name = fn_decl.name.to_string()[..dot_pos].to_string();
-                            eprintln!("DEBUG: Recording self parameter type: {}", type_name);
+                            vm_debug!("DEBUG: Recording self parameter type: {}", type_name);
                             // Create a synthetic TypeDecl for type tracking
                             if let Some(_type_info) = self.get_type(&type_name) {
                                 let type_decl = crate::ast::TypeDecl {
@@ -537,8 +545,7 @@ impl Codegen {
 
                 // Insert FN_PROLOG at entry_point (before function body)
                 // This is 3 bytes: 1 byte opcode + 1 byte n_args + 1 byte n_locals
-                eprintln!(
-                    "DEBUG: Emitting FN_PROLOG at address {}, n_args={}, n_locals={}",
+                vm_debug!("DEBUG: Emitting FN_PROLOG at address {}, n_args={}, n_locals={}",
                     entry_point, n_args, n_locals
                 );
                 self.code
@@ -596,8 +603,7 @@ impl Codegen {
                         let new_anchor = new_placeholder + 2;
                         let new_offset = (new_target as isize) - (new_anchor as isize);
 
-                        eprintln!(
-                            "DEBUG: Recalculating jump at {} (was {}): old_target={}, new_target={}, new_offset={}",
+                        vm_debug!("DEBUG: Recalculating jump at {} (was {}): old_target={}, new_target={}, new_offset={}",
                             new_placeholder, old_placeholder, old_target, new_target, new_offset
                         );
 
@@ -908,8 +914,7 @@ impl Codegen {
                             };
                             self.var_types
                                 .insert(store.name.to_string(), Type::User(type_decl));
-                            eprintln!(
-                                "DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
+                            vm_debug!("DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
                                 store.name, type_name
                             );
                         }
@@ -938,8 +943,7 @@ impl Codegen {
                                 store.name.to_string(),
                                 Type::GenericInstance(generic_inst),
                             );
-                            eprintln!(
-                                "DEBUG: Stored generic type for '{}' in var_types",
+                            vm_debug!("DEBUG: Stored generic type for '{}' in var_types",
                                 store.name
                             );
                         }
@@ -971,8 +975,7 @@ impl Codegen {
                     let ty = self.infer_expr_type(&store.expr);
                     // Only store if we could infer a non-Unknown type
                     if !matches!(ty, crate::ast::Type::Unknown) {
-                        eprintln!(
-                            "DEBUG: Inferred type for '{}' from expression: {:?}",
+                        vm_debug!("DEBUG: Inferred type for '{}' from expression: {:?}",
                             name_str, ty
                         );
                         self.var_types.insert(name_str.clone(), ty.clone());
@@ -1089,7 +1092,7 @@ impl Codegen {
             }
             // Plan 073: For statement support
             Stmt::For(for_stmt) => {
-                eprintln!("DEBUG FOR: Compiling for loop");
+                vm_debug!("DEBUG FOR: Compiling for loop");
                 // Push new loop exit tracking
                 self.loop_exits.push(Vec::new());
 
@@ -1099,30 +1102,28 @@ impl Codegen {
                     Iter::Named(var_name) => {
                         // Check if range is a Range expression (for x in 0..10)
                         if let Expr::Range(range) = &for_stmt.range {
-                            eprintln!(
-                                "DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}",
+                            vm_debug!("DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}",
                                 range.start, range.end, range.eq
                             );
                             // Compile start expression and initialize loop variable
                             self.compile_expr(&range.start)?;
-                            eprintln!(
-                                "DEBUG FOR: After start expr, code len = {}",
+                            vm_debug!("DEBUG FOR: After start expr, code len = {}",
                                 self.code.len()
                             );
 
                             // Store to loop variable
                             let var_str = var_name.to_string();
-                            eprintln!("DEBUG FOR: Loop var = {}", var_str);
+                            vm_debug!("DEBUG FOR: Loop var = {}", var_str);
                             self.push_scope(); // New scope for loop variable
                                                // Calculate total index across all scopes
                             let var_index = self.add_var(&var_str);
-                            eprintln!("DEBUG FOR: var_index = {}", var_index);
+                            vm_debug!("DEBUG FOR: var_index = {}", var_index);
                             self.emit_store_loc(var_index);
-                            eprintln!("DEBUG FOR: After store_loc, code len = {}", self.code.len());
+                            vm_debug!("DEBUG FOR: After store_loc, code len = {}", self.code.len());
 
                             // Loop start label
                             let loop_start = self.code.len() as i16;
-                            eprintln!("DEBUG FOR: Loop start at {}", loop_start);
+                            vm_debug!("DEBUG FOR: Loop start at {}", loop_start);
 
                             // Load loop variable
                             self.emit_load_loc(var_index);
@@ -2185,7 +2186,7 @@ impl Codegen {
                     // Generate: [CONST_I32, length, NEW_INSTANCE, name_bytes..., CONSTRUCT_INSTANCE]
                     // VM: pop length, read name from code (after NEW_INSTANCE), push instance_id
                     // Note: NEW_INSTANCE does NOT push instance_id - VM will push it when executing the instruction
-                    eprintln!("DEBUG: Compiling type instance: {}", type_name);
+                    vm_debug!("DEBUG: Compiling type instance: {}", type_name);
 
                     // Get ClassType to determine mono_name and field count
                     let type_args = Vec::new(); // Non-generic types have empty type args
@@ -2195,12 +2196,11 @@ impl Codegen {
                     {
                         let field_count = class_type.template.fields.len();
                         let mono_name = class_type.mono_name.clone();
-                        eprintln!(
-                            "DEBUG: mono_name = '{}' ({} bytes)",
+                        vm_debug!("DEBUG: mono_name = '{}' ({} bytes)",
                             mono_name,
                             mono_name.len()
                         );
-                        eprintln!("DEBUG: mono_name bytes = {:?}", mono_name.as_bytes());
+                        vm_debug!("DEBUG: mono_name bytes = {:?}", mono_name.as_bytes());
                         let name_bytes = mono_name.as_bytes();
                         let name_len = name_bytes.len();
 
@@ -2238,7 +2238,7 @@ impl Codegen {
                             }
                         }
 
-                        eprintln!("DEBUG codegen: field_count = {}, collected {} field values from args ({}), body ({})",
+                        vm_debug!("DEBUG codegen: field_count = {}, collected {} field values from args ({}), body ({})",
                             field_count,
                             field_values.len(),
                             node.args.args.len(),
@@ -2252,10 +2252,9 @@ impl Codegen {
                         // 1. Compile each field value expression (pushes values onto stack)
                         // Stack: ..., value1, value2, ..., valueN
                         for (i, value_expr) in field_values.iter().enumerate() {
-                            eprintln!("DEBUG codegen: Compiling field value {}", i);
+                            vm_debug!("DEBUG codegen: Compiling field value {}", i);
                             self.compile_expr(value_expr)?;
-                            eprintln!(
-                                "DEBUG codegen: code.len() = 0x{:04x} after field value {}",
+                            vm_debug!("DEBUG codegen: code.len() = 0x{:04x} after field value {}",
                                 self.code.len(),
                                 i
                             );
@@ -2283,8 +2282,7 @@ impl Codegen {
                         // 6. Emit CONSTRUCT_INSTANCE
                         // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
                         self.emit(OpCode::CONSTRUCT_INSTANCE);
-                        eprintln!(
-                            "DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE",
+                        vm_debug!("DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE",
                             self.code.len()
                         );
                     } else {
@@ -2476,7 +2474,7 @@ impl Codegen {
             }
             Expr::Ident(name) => {
                 let name_str = name.to_string();
-                eprintln!("DEBUG: Compiling Ident: {}", name_str);
+                vm_debug!("DEBUG: Compiling Ident: {}", name_str);
 
                 // Plan 118: Check variable type for result formatting
                 if let Some(var_type) = self.var_types.get(&name_str) {
@@ -2492,11 +2490,11 @@ impl Codegen {
                 // Check if this is a captured variable (Plan 071)
                 if let Some(_capture_index) = self.current_captured_vars().get(&name_str) {
                     // Variable is captured - emit LOAD_CAPTURED
-                    eprintln!("DEBUG: Variable {} is captured", name_str);
+                    vm_debug!("DEBUG: Variable {} is captured", name_str);
                     self.emit_load_captured(&name_str);
                 } else if let Some(var_index) = self.lookup_var(&name_str) {
                     // Variable found in local scope - load it
-                    eprintln!("DEBUG: Variable {} found at index {}", name_str, var_index);
+                    vm_debug!("DEBUG: Variable {} found at index {}", name_str, var_index);
                     self.emit_load_loc(var_index);
                 } else {
                     // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
@@ -2504,12 +2502,12 @@ impl Codegen {
                         .find_enum_variant_by_name(&name_str)
                         .map(|(_, v)| v);
                     if let Some(value) = enum_variant_value {
-                        eprintln!("DEBUG: Variable {} resolved as enum variant with value {}", name_str, value);
+                        vm_debug!("DEBUG: Variable {} resolved as enum variant with value {}", name_str, value);
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(value);
                         self.last_expr_type = ObjectType::Int;
                     } else {
-                        eprintln!("DEBUG: Variable {} NOT FOUND!", name_str);
+                        vm_debug!("DEBUG: Variable {} NOT FOUND!", name_str);
                         // Plan 080: Variable not found - return proper error
                         // Even with skip_check=true in parser, we catch undefined variables here
                         return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
@@ -2545,8 +2543,7 @@ impl Codegen {
                     // Emit LOAD_STR instruction
                     self.emit(OpCode::LOAD_STR);
                     self.code.extend_from_slice(&str_idx.to_le_bytes());
-                    eprintln!(
-                        "DEBUG: .type property: obj={:?}, type_name={}",
+                    vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
                         obj, type_name
                     );
                     return Ok(());
@@ -2577,8 +2574,7 @@ impl Codegen {
                 };
 
                 if is_user_type_instance || is_generic_instance {
-                    eprintln!(
-                        "DEBUG: Compiling field access: obj={:?}, field={}",
+                    vm_debug!("DEBUG: Compiling field access: obj={:?}, field={}",
                         obj, field
                     );
                     // Plan 087 Phase 2/3: Generic instance or user-defined type field access
@@ -2600,15 +2596,14 @@ impl Codegen {
                                 _ => var_name.to_string(),
                             };
 
-                            eprintln!(
-                                "DEBUG: Looking up type '{}' for field '{}'",
+                            vm_debug!("DEBUG: Looking up type '{}' for field '{}'",
                                 type_name, field
                             );
                             // Get ClassType to find field index
                             if let Some(class_type) = self.generic_registry.get_type(&type_name) {
                                 let field_str = field.to_string();
                                 if let Some(field_index) = class_type.field_index(&field_str) {
-                                    eprintln!("DEBUG: Field '{}' index = {}", field, field_index);
+                                    vm_debug!("DEBUG: Field '{}' index = {}", field, field_index);
                                     // Emit GET_GENERIC_FIELD with field index
                                     self.emit(OpCode::GET_GENERIC_FIELD);
                                     self.emit_u32(field_index as u32);
@@ -2629,7 +2624,7 @@ impl Codegen {
                                             Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
                                             _ => ObjectType::Int,
                                         };
-                                        eprintln!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
+                                        vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
                                             field, field_type, self.last_expr_type);
                                     }
                                 } else {
@@ -3027,10 +3022,10 @@ impl Codegen {
 
                             // Check if the result is a heap object (nested user type)
                             let obj_expr_type = self.infer_expr_type(obj);
-                            eprintln!("DEBUG ASSIGN: obj={:?}, field={}, obj_expr_type={:?}", obj, field, obj_expr_type);
+                            vm_debug!("DEBUG ASSIGN: obj={:?}, field={}, obj_expr_type={:?}", obj, field, obj_expr_type);
                             let is_user_type = matches!(obj_expr_type, Type::User(_) | Type::GenericInstance(_));
                             let is_heap_object = is_user_type || self.last_expr_type == ObjectType::NestedObject;
-                            eprintln!("DEBUG ASSIGN: is_user_type={}, is_heap_object={}, last_expr_type={:?}",
+                            vm_debug!("DEBUG ASSIGN: is_user_type={}, is_heap_object={}, last_expr_type={:?}",
                                 is_user_type, is_heap_object, self.last_expr_type);
 
                             if is_heap_object || is_user_type {
@@ -3071,11 +3066,11 @@ impl Codegen {
                                     if let Some(field_index) = class_type.field_index(&field_str) {
                                         // Stack: [value, instance_id]
                                         // SET_GENERIC_FIELD code layout: [opcode, field_index:u32]
-                                        eprintln!("DEBUG: Emitting SET_GENERIC_FIELD for field '{}' with index {} at code position {}",
+                                        vm_debug!("DEBUG: Emitting SET_GENERIC_FIELD for field '{}' with index {} at code position {}",
                                             field_str, field_index, self.code.len());
                                         self.emit(OpCode::SET_GENERIC_FIELD);
                                         self.emit_u32(field_index as u32);
-                                        eprintln!("DEBUG: After emit, code position = {}", self.code.len());
+                                        vm_debug!("DEBUG: After emit, code position = {}", self.code.len());
                                     } else {
                                         eprintln!("Warning: Field '{}' not found in type '{}' (nested assignment)",
                                             field, type_name);
@@ -3331,7 +3326,7 @@ impl Codegen {
                     // Check if this type is registered
                     if self.generic_registry.has_template(&type_name_str) || self.get_type(&type_name_str).is_some() {
                         // This is a type constructor call - compile as type instance
-                        eprintln!("DEBUG: Compiling type constructor call for '{}'", type_name_str);
+                        vm_debug!("DEBUG: Compiling type constructor call for '{}'", type_name_str);
 
                         // Get type info
                         let member_names = if self.generic_registry.has_template(&type_name_str) {
@@ -3443,7 +3438,7 @@ impl Codegen {
                                         if let Some(info) = type_info {
                                             if info._name.contains("#single") || info._name == obj_name.as_ref() {
                                                 // This is a task type - use Task.spawn
-                                                eprintln!("DEBUG: Task spawn detected: {}.spawn() -> Task.spawn", obj_name);
+                                                vm_debug!("DEBUG: Task spawn detected: {}.spawn() -> Task.spawn", obj_name);
                                                 Some("Task.spawn".to_string())
                                             } else {
                                                 Some(format!("{}.{}", obj_name, method))
@@ -3457,7 +3452,7 @@ impl Codegen {
                                         if let Some(info) = type_info {
                                             if info._name.contains("#single") {
                                                 // This is a singleton task - use Task.send
-                                                eprintln!("DEBUG: Singleton task send detected: {}.send() -> Task.send", obj_name);
+                                                vm_debug!("DEBUG: Singleton task send detected: {}.send() -> Task.send", obj_name);
                                                 Some("Task.send".to_string())
                                             } else {
                                                 Some(format!("{}.{}", obj_name, method))
@@ -3490,12 +3485,11 @@ impl Codegen {
                                             Some(format!("{}.{}", mono_name, method))
                                         } else {
                                             // Not a generic instance, use regular inference
-                                            eprintln!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
+                                            vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
                                             if let Some(type_name) =
                                                 self.infer_type_from_var(obj_name.as_ref())
                                             {
-                                                eprintln!(
-                                                    "DEBUG: Inferred type name: {}",
+                                                vm_debug!("DEBUG: Inferred type name: {}",
                                                     type_name
                                                 );
                                                 Some(format!("{}.{}", type_name, method))
@@ -3503,11 +3497,10 @@ impl Codegen {
                                                 // Plan 127: Handle TaskHandle.send() when type is Unknown
                                                 // If the method is "send", assume it's a task handle
                                                 if method.as_str() == "send" {
-                                                    eprintln!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                    vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
                                                     Some("TaskHandle.send".to_string())
                                                 } else {
-                                                    eprintln!(
-                                                        "DEBUG: Failed to infer type for {}",
+                                                    vm_debug!("DEBUG: Failed to infer type for {}",
                                                         obj_name
                                                     );
                                                     Some(format!("{}.{}", obj_name, method))
@@ -3516,25 +3509,23 @@ impl Codegen {
                                         }
                                     } else {
                                         // No type info, use regular inference
-                                        eprintln!(
-                                            "DEBUG: No type info for obj={}, var_types empty",
+                                        vm_debug!("DEBUG: No type info for obj={}, var_types empty",
                                             obj_name
                                         );
                                         if let Some(type_name) =
                                             self.infer_type_from_var(obj_name.as_ref())
                                         {
-                                            eprintln!("DEBUG: Inferred type name: {}", type_name);
+                                            vm_debug!("DEBUG: Inferred type name: {}", type_name);
                                             Some(format!("{}.{}", type_name, method))
                                         } else {
                                             // Plan 127: Handle TaskHandle.send() when type is unknown
                                             // If the variable name suggests it's a handle (e.g., "handle")
                                             // and the method is "send", use TaskHandle.send
                                             if method.as_str() == "send" {
-                                                eprintln!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
                                                 Some("TaskHandle.send".to_string())
                                             } else {
-                                                eprintln!(
-                                                    "DEBUG: Failed to infer type for {}",
+                                                vm_debug!("DEBUG: Failed to infer type for {}",
                                                     obj_name
                                                 );
                                                 Some(format!("{}.{}", obj_name, method))
@@ -3610,7 +3601,7 @@ impl Codegen {
                     // (closure_id should be on top of stack when CALL_CLOSURE executes)
                     if let Expr::Ident(name) = call.name.as_ref() {
                         let name_str = name.to_string();
-                        eprintln!("DEBUG: Closure variable call: {}", name_str);
+                        vm_debug!("DEBUG: Closure variable call: {}", name_str);
 
                         // Compile arguments FIRST (push them to stack)
                         for arg in &call.args.args {
@@ -3650,8 +3641,7 @@ impl Codegen {
                     // Native function call
                     // For instance methods, compile receiver (self) FIRST, then arguments
                     // This ensures stack order: [self, arg1, arg2, ...]
-                    eprintln!(
-                        "DEBUG: Native function call: func_name={:?}, native_id={}",
+                    vm_debug!("DEBUG: Native function call: func_name={:?}, native_id={}",
                         func_name, id
                     );
                     if let Expr::Dot(obj, _method) = call.name.as_ref() {
@@ -3662,15 +3652,14 @@ impl Codegen {
                             }
                             _ => false,
                         };
-                        eprintln!("DEBUG: is_static_method={}", is_static_method);
+                        vm_debug!("DEBUG: is_static_method={}", is_static_method);
 
                         // Compile receiver for instance methods
                         if !is_static_method {
-                            eprintln!("DEBUG: Compiling receiver for instance method");
+                            vm_debug!("DEBUG: Compiling receiver for instance method");
                             // Check if this method needs 'id' field extraction
                             if let Some(ref method_name) = func_name {
-                                eprintln!(
-                                    "DEBUG: method_name={}, needs_id_extraction={}",
+                                vm_debug!("DEBUG: method_name={}, needs_id_extraction={}",
                                     method_name,
                                     self.needs_id_extraction(method_name)
                                 );
@@ -3688,7 +3677,7 @@ impl Codegen {
                                     self.code.extend_from_slice(&field_idx.to_le_bytes());
                                 } else {
                                     // Compile full instance (for user-defined types)
-                                    eprintln!("DEBUG: Compiling object expr (no id extraction)");
+                                    vm_debug!("DEBUG: Compiling object expr (no id extraction)");
                                     self.compile_expr(obj)?;
                                 }
                             } else {
@@ -3719,7 +3708,7 @@ impl Codegen {
                                 self.emit(OpCode::CONST_I32);
                                 self.emit_i32(64);
 
-                                eprintln!("DEBUG: Injected task_type='{}' capacity=64 for Task.spawn", task_type_str);
+                                vm_debug!("DEBUG: Injected task_type='{}' capacity=64 for Task.spawn", task_type_str);
                             }
                         }
                     }
@@ -3736,7 +3725,7 @@ impl Codegen {
                                 self.strings.push(task_type_bytes);
                                 self.emit(OpCode::LOAD_STR);
                                 self.code.extend_from_slice(&str_idx.to_le_bytes());
-                                eprintln!("DEBUG: Injected task_type='{}' for Task.send", task_type_str);
+                                vm_debug!("DEBUG: Injected task_type='{}' for Task.send", task_type_str);
                             }
                         }
                     }
@@ -3799,8 +3788,7 @@ impl Codegen {
 
                         // Plan 088 Phase 4: Compile receiver as first argument (index 0)
                         if let Some(ref method_name) = func_name {
-                            eprintln!(
-                                "DEBUG: Compiling instance method call: receiver is arg 0 for '{}'",
+                            vm_debug!("DEBUG: Compiling instance method call: receiver is arg 0 for '{}'",
                                 method_name
                             );
 
@@ -3820,25 +3808,21 @@ impl Codegen {
                             } else {
                                 // Plan 088 Phase 4: Smart parameter passing for receiver
                                 // Use compile_call_arg to support Copy/View/Mut/Take modes
-                                eprintln!(
-                                    "DEBUG: Checking fn_params for '{}': found={}",
+                                vm_debug!("DEBUG: Checking fn_params for '{}': found={}",
                                     method_name,
                                     self.fn_params.contains_key(method_name)
                                 );
-                                eprintln!(
-                                    "DEBUG: Available fn_params: {:?}",
+                                vm_debug!("DEBUG: Available fn_params: {:?}",
                                     self.fn_params.keys().collect::<Vec<_>>()
                                 );
 
                                 if self.fn_params.contains_key(method_name) {
-                                    eprintln!(
-                                        "DEBUG:   Receiver (arg 0): smart param passing for '{}'",
+                                    vm_debug!("DEBUG:   Receiver (arg 0): smart param passing for '{}'",
                                         method_name
                                     );
                                     self.compile_call_arg(obj, method_name, 0)?;
                                 } else {
-                                    eprintln!(
-                                        "DEBUG:   Receiver (arg 0): normal compile (no param info)"
+                                    vm_debug!("DEBUG:   Receiver (arg 0): normal compile (no param info)"
                                     );
                                     self.compile_expr(obj)?;
                                 }
@@ -3853,9 +3837,8 @@ impl Codegen {
                 // Compile Arguments (pushes them to stack)
                 // Plan 088 Phase 4: Smart parameter passing based on type and mode
                 let call_display = format!("{:?}", call.name);
-                eprintln!("DEBUG: ===== Compiling call: {} =====", call_display);
-                eprintln!(
-                    "DEBUG: Before compiling args, code.len()={:04x} ({})",
+                vm_debug!("DEBUG: ===== Compiling call: {} =====", call_display);
+                vm_debug!("DEBUG: Before compiling args, code.len()={:04x} ({})",
                     self.code.len(),
                     self.code.len()
                 );
@@ -3872,13 +3855,12 @@ impl Codegen {
                                 if !func_name_for_params.is_empty()
                                     && self.fn_params.contains_key(func_name_for_params)
                                 {
-                                    eprintln!(
-                                        "DEBUG:   Arg {}: smart param passing for '{}'",
+                                    vm_debug!("DEBUG:   Arg {}: smart param passing for '{}'",
                                         param_index, func_name_for_params
                                     );
                                     self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
-                                    eprintln!("DEBUG:   Arg {}: normal compile", param_index);
+                                    vm_debug!("DEBUG:   Arg {}: normal compile", param_index);
                                     self.compile_expr(expr)?;
                                 }
                             }
@@ -3889,13 +3871,12 @@ impl Codegen {
                                 if !func_name_for_params.is_empty()
                                     && self.fn_params.contains_key(func_name_for_params)
                                 {
-                                    eprintln!(
-                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                    vm_debug!("DEBUG:   Named arg {}: smart param passing for '{}'",
                                         param_index, func_name_for_params
                                     );
                                     self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
-                                    eprintln!("DEBUG:   Named arg {}: normal compile", param_index);
+                                    vm_debug!("DEBUG:   Named arg {}: normal compile", param_index);
                                     self.compile_expr(expr)?;
                                 }
                             }
@@ -3906,8 +3887,7 @@ impl Codegen {
                                 if !func_name_for_params.is_empty()
                                     && self.fn_params.contains_key(func_name_for_params)
                                 {
-                                    eprintln!(
-                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                    vm_debug!("DEBUG:   Named arg {}: smart param passing for '{}'",
                                         param_index, func_name_for_params
                                     );
                                     self.compile_call_arg(
@@ -3916,7 +3896,7 @@ impl Codegen {
                                         param_index,
                                     )?;
                                 } else {
-                                    eprintln!("DEBUG:   Named arg {}: normal compile", param_index);
+                                    vm_debug!("DEBUG:   Named arg {}: normal compile", param_index);
                                     self.compile_expr(&Expr::Ident(name.clone()))?;
                                 }
                             }
@@ -3936,12 +3916,10 @@ impl Codegen {
                     _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
                 });
 
-                eprintln!(
-                    "DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
+                vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
                     reloc_name, placeholder_idx
                 );
-                eprintln!(
-                    "DEBUG: Available exports: {:?}",
+                vm_debug!("DEBUG: Available exports: {:?}",
                     self.exports.keys().collect::<Vec<_>>()
                 );
 
@@ -4475,8 +4453,7 @@ impl Codegen {
         let anchor = placeholder_idx + 2;
         let offset = (target as isize) - (anchor as isize);
 
-        eprintln!(
-            "DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
+        vm_debug!("DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
             placeholder_idx, target, anchor, offset
         );
 
@@ -4572,8 +4549,7 @@ impl Codegen {
     /// Locals: index >= current_fn_n_args, stored at BP + 1 + (index - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
     fn emit_load_loc(&mut self, index: usize) {
-        eprintln!(
-            "DEBUG: emit_load_loc called with index={}, n_args={}",
+        vm_debug!("DEBUG: emit_load_loc called with index={}, n_args={}",
             index, self.current_fn_n_args
         );
 
@@ -4585,8 +4561,7 @@ impl Codegen {
             //                        ^- BP-n_args     ^- BP-1    ^- BP
             // Parameter i is at BP - n_args + i
             let offset = (n_args - index) as i32; // Positive offset going backwards from BP
-            eprintln!(
-                "DEBUG: Loading parameter {} at BP-{} (BP-{}={})",
+            vm_debug!("DEBUG: Loading parameter {} at BP-{} (BP-{}={})",
                 index, offset, offset, "calculate at runtime"
             );
 
@@ -4596,36 +4571,33 @@ impl Codegen {
             // Encode as negative offset (0x80..0xFF means parameter)
             let encoded_index = 0x80 + index as u8; // 0x80 means param 0, 0x81 means param 1, etc.
             self.code.push(encoded_index);
-            eprintln!(
-                "DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}",
+            vm_debug!("DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}",
                 encoded_index
             );
         } else {
             // This is a local variable, stored after BP
             let local_index = index - n_args;
-            eprintln!(
-                "DEBUG: Loading local variable {} at BP+1+{}",
+            vm_debug!("DEBUG: Loading local variable {} at BP+1+{}",
                 local_index, local_index
             );
 
             match local_index {
                 0 => {
-                    eprintln!("DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)");
+                    vm_debug!("DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)");
                     self.emit(OpCode::LOAD_LOC_0);
                 }
                 1 => {
-                    eprintln!("DEBUG: Emitting LOAD_LOC_1");
+                    vm_debug!("DEBUG: Emitting LOAD_LOC_1");
                     self.emit(OpCode::LOAD_LOC_1);
                 }
                 2 => {
-                    eprintln!("DEBUG: Emitting LOAD_LOC_2");
+                    vm_debug!("DEBUG: Emitting LOAD_LOC_2");
                     self.emit(OpCode::LOAD_LOC_2);
                 }
                 _ => {
                     self.emit(OpCode::LOAD_LOCAL);
                     self.code.push(local_index as u8);
-                    eprintln!(
-                        "DEBUG: Emitting LOAD_LOCAL with local index {}",
+                    vm_debug!("DEBUG: Emitting LOAD_LOCAL with local index {}",
                         local_index
                     );
                 }
@@ -4648,11 +4620,10 @@ impl Codegen {
 
     /// Plan 088 Phase 4: Emit LOAD_MUT_REF for mutable reference
     fn emit_load_mut_ref(&mut self, index: usize) {
-        eprintln!("DEBUG: emit_load_mut_ref called with index={}", index);
+        vm_debug!("DEBUG: emit_load_mut_ref called with index={}", index);
         self.emit(OpCode::LOAD_MUT_REF);
         let bytes = (index as u32).to_le_bytes();
-        eprintln!(
-            "DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}",
+        vm_debug!("DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}",
             bytes[0], bytes[1], bytes[2], bytes[3]
         );
         self.code.extend_from_slice(&bytes);
@@ -5364,8 +5335,7 @@ impl Codegen {
                 .generic_registry
                 .get_or_create_type(&type_decl.name.to_string(), type_args)
             {
-                eprintln!(
-                    "DEBUG: Registered non-generic type '{}' in generic_registry",
+                vm_debug!("DEBUG: Registered non-generic type '{}' in generic_registry",
                     type_decl.name
                 );
             } else {
