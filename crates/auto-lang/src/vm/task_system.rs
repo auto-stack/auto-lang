@@ -72,6 +72,11 @@ use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use std::sync::RwLock;
+
+// Plan 127: Import scheduler components for task spawning
+use crate::vm::scheduler::{GlobalMeta, TaskContext, SystemCommand, task_loop};
+use crate::vm::task::AutoTask;
 
 /// Lifecycle hook callback type
 ///
@@ -216,6 +221,17 @@ impl TaskInstance {
         self.stop_hook = Some(Arc::new(hook));
     }
 
+    /// Plan 128: Take ownership of the mailbox receiver
+    ///
+    /// This method extracts the receiver so it can be stored in TaskRegistry
+    /// and later passed to the scheduler's task_loop.
+    /// After calling this, the TaskInstance should not be used to receive messages.
+    pub fn take_receiver(&mut self) -> Option<mpsc::Receiver<Value>> {
+        // Create a dummy receiver to replace the taken one
+        let (_tx, rx) = mpsc::channel(1);
+        Some(std::mem::replace(&mut self.rx, rx))
+    }
+
     /// Execute the start hook
     ///
     /// Returns a HookResult indicating success or failure.
@@ -293,6 +309,13 @@ pub struct TaskRegistry {
     instance_counts: DashMap<String, AtomicU64>,
     /// Shutdown signal sender (Plan 127: for TaskSystem.stop())
     shutdown_tx: Option<tokio::sync::broadcast::Sender<()>>,
+    /// Global metadata for task execution (Plan 127)
+    /// Set by the VM before TaskSystem.start() is called
+    global_meta: RwLock<Option<Arc<GlobalMeta>>>,
+    /// Plan 128: Mailbox receivers for task instances
+    /// Stored when task is spawned, retrieved when scheduler starts
+    /// Key: (task_type, instance_id)
+    mailbox_receivers: DashMap<(String, u64), mpsc::Receiver<Value>>,
 }
 
 impl TaskRegistry {
@@ -306,7 +329,23 @@ impl TaskRegistry {
             creation_order: DashMap::new(),
             instance_counts: DashMap::new(),
             shutdown_tx: Some(shutdown_tx),
+            global_meta: RwLock::new(None),
+            mailbox_receivers: DashMap::new(),
         }
+    }
+
+    /// Set the global metadata for task execution (Plan 127)
+    ///
+    /// This must be called before TaskSystem.start() to provide
+    /// the bytecode, handler tables, and native interface.
+    pub fn set_global_meta(&self, meta: Arc<GlobalMeta>) {
+        let mut guard = self.global_meta.write().unwrap();
+        *guard = Some(meta);
+    }
+
+    /// Get the global metadata (if set)
+    pub fn get_global_meta(&self) -> Option<Arc<GlobalMeta>> {
+        self.global_meta.read().unwrap().clone()
     }
 
     /// Signal the scheduler to stop (Plan 127: for TaskSystem.stop())
@@ -314,6 +353,31 @@ impl TaskRegistry {
         if let Some(tx) = &self.shutdown_tx {
             let _ = tx.send(());
         }
+    }
+
+    // ========== Plan 128: Mailbox Receiver Storage ==========
+
+    /// Store a mailbox receiver for a task instance (Plan 128)
+    ///
+    /// Called by shim_task_spawn when creating a new task instance.
+    /// The receiver is retrieved by spawn_initial_tasks when the scheduler starts.
+    pub fn store_mailbox_receiver(
+        &self,
+        task_type: String,
+        instance_id: u64,
+        receiver: mpsc::Receiver<Value>,
+    ) {
+        let key = (task_type, instance_id);
+        self.mailbox_receivers.insert(key, receiver);
+    }
+
+    /// Take the mailbox receiver for a task instance (Plan 128)
+    ///
+    /// Removes and returns the receiver, preventing accidental reuse.
+    /// Returns None if no receiver was stored for this task.
+    pub fn take_mailbox_receiver(&self, task_type: &str, instance_id: u64) -> Option<mpsc::Receiver<Value>> {
+        let key = (task_type.to_string(), instance_id);
+        self.mailbox_receivers.remove(&key).map(|(_, rx)| rx)
     }
 
     /// Register a singleton task
@@ -528,9 +592,19 @@ impl TaskRegistry {
     /// Spawn all registered tasks as tokio tasks
     ///
     /// This is called by start_scheduler to ignite all tasks.
-    /// For MVP, we just log the tasks that would be spawned.
-    /// Full integration requires GlobalMeta which isn't available yet.
+    /// Requires GlobalMeta to be set via set_global_meta() before calling.
+    ///
+    /// Plan 128: Now retrieves stored mailbox receivers for each task.
     pub fn spawn_initial_tasks(&self) {
+        // Get GlobalMeta (required for spawning)
+        let meta = match self.get_global_meta() {
+            Some(m) => m,
+            None => {
+                eprintln!("[TaskSystem] Warning: GlobalMeta not set, tasks will not execute handlers");
+                return;
+            }
+        };
+
         // Spawn all singleton tasks
         for entry in self.singletons.iter() {
             let handle = entry.value();
@@ -538,7 +612,21 @@ impl TaskRegistry {
                 "[TaskSystem] Spawning singleton task: {}#{}",
                 handle.task_type, handle.instance_id
             );
-            // TODO: Get GlobalMeta and spawn task_loop
+
+            // Plan 128: Retrieve stored mailbox receiver
+            let mailbox_rx = self.take_mailbox_receiver(&handle.task_type, handle.instance_id);
+
+            // Create TaskContext and spawn task_loop
+            let mut ctx = create_task_context(
+                Arc::clone(&meta),
+                handle.task_type.clone(),
+                handle.instance_id,
+                mailbox_rx,
+            );
+
+            tokio::spawn(async move {
+                task_loop(&mut ctx).await;
+            });
         }
 
         // Spawn all instance tasks
@@ -548,9 +636,57 @@ impl TaskRegistry {
                 "[TaskSystem] Spawning task instance: {}#{}",
                 handle.task_type, handle.instance_id
             );
-            // TODO: Get GlobalMeta and spawn task_loop
+
+            // Plan 128: Retrieve stored mailbox receiver
+            let mailbox_rx = self.take_mailbox_receiver(&handle.task_type, handle.instance_id);
+
+            // Create TaskContext and spawn task_loop
+            let mut ctx = create_task_context(
+                Arc::clone(&meta),
+                handle.task_type.clone(),
+                handle.instance_id,
+                mailbox_rx,
+            );
+
+            tokio::spawn(async move {
+                task_loop(&mut ctx).await;
+            });
         }
     }
+}
+
+/// Helper to create a TaskContext for spawning
+///
+/// Creates a TaskContext ready to run task_loop in its own tokio::spawn
+/// Plan 128: Now accepts mailbox receiver as parameter instead of creating dummy
+fn create_task_context(
+    meta: Arc<GlobalMeta>,
+    task_type: String,
+    instance_id: u64,
+    mailbox_rx: Option<mpsc::Receiver<Value>>,
+) -> TaskContext {
+    // Use provided receiver, or create a dummy channel if none was stored
+    let rx = mailbox_rx.unwrap_or_else(|| {
+        let (_dummy_tx, rx) = mpsc::channel::<Value>(16);
+        rx
+    });
+
+    // Create the AutoTask
+    let task = AutoTask::new(instance_id, 1024, 0);
+
+    // Create TaskContext
+    TaskContext::new(
+        meta,
+        task_type,
+        instance_id,
+        rx,
+        // sys_tx is a dummy for MVP - tasks don't spawn children yet
+        {
+            let (sys_tx, _) = mpsc::channel(16);
+            sys_tx
+        },
+        task,
+    )
 }
 
 impl TaskRegistry {

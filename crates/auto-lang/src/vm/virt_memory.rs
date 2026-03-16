@@ -76,6 +76,43 @@ impl VirtualFlash {
         }
     }
 
+    /// Plan 128: Create VirtualFlash from Vec with full metadata
+    ///
+    /// Used by VMLoader to create the frozen bytecode from CompiledPackage
+    pub fn from_vec_with_metadata(
+        code: Vec<u8>,
+        exports: HashMap<String, u32>,
+        object_keys: Vec<Vec<auto_val::ValueKey>>,
+        object_types: Vec<Vec<ObjectType>>,
+    ) -> Self {
+        // Convert string exports to u32 symbol map
+        // For now, we use a simple hash-based ID for symbols
+        let symbol_map: HashMap<u32, usize> = exports
+            .into_iter()
+            .map(|(name, offset)| {
+                // Use a simple hash of the name as the symbol ID
+                let id = Self::name_to_symbol_id(&name);
+                (id, offset as usize)
+            })
+            .collect();
+
+        Self {
+            memory: code,
+            symbol_map,
+            object_keys,
+            object_types,
+        }
+    }
+
+    /// Convert a name to a symbol ID (simple hash-based approach)
+    fn name_to_symbol_id(name: &str) -> u32 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        hasher.finish() as u32
+    }
+
     #[inline(always)]
     pub fn read_u8(&self, addr: usize) -> u8 {
         if addr >= self.memory.len() {

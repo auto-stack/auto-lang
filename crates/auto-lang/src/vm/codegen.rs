@@ -5435,6 +5435,34 @@ impl Codegen {
     pub fn get_type(&self, name: &str) -> Option<&TypeInfo> {
         self.types.get(name)
     }
+
+    /// Plan 128: Convert CodeGen output into CompiledPackage
+    ///
+    /// This is the final step of compilation - producing a "ROM cartridge"
+    /// that can be loaded into the VM via VMLoader.
+    ///
+    /// The CompiledPackage contains all the data needed for execution:
+    /// - Bytecode (linked, ready to execute)
+    /// - String pool (all string literals)
+    /// - Object metadata (keys and types for object literals)
+    /// - Exported symbols (function entry points)
+    /// - Task definitions (handler tables for message routing)
+    pub fn into_compiled_package(self) -> crate::vm::loader::CompiledPackage {
+        use crate::vm::loader::{CompiledPackage, TaskDefinition};
+        use crate::vm::task_handler::TaskHandlerTable;
+
+        // Extract task definitions from the handler registry
+        let tasks = self.task_handler_registry.export_task_definitions();
+
+        CompiledPackage {
+            bytecode: self.code,
+            string_pool: self.strings,
+            object_keys: self.object_keys,
+            object_types: self.object_types,
+            exports: self.exports,
+            tasks,
+        }
+    }
 }
 
 #[cfg(test)]

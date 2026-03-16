@@ -7,6 +7,9 @@
 
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
+use crate::vm::scheduler::GlobalMeta;
+use crate::vm::virt_memory::VirtualFlash;
+use crate::vm::native::NativeInterface;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
@@ -1458,23 +1461,33 @@ pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
     let cap = if capacity <= 0 { 64 } else { capacity as usize };
 
     // Create a new task instance
-    let instance = TaskInstance::new(task_type.clone(), cap);
+    let mut instance = TaskInstance::new(task_type.clone(), cap);
     let handle = instance.handle.clone();
 
     // Generate a unique handle ID
     let handle_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     eprintln!("DEBUG shim_task_spawn: generated handle_id={}", handle_id);
 
-    // Store the handle in thread-local storage
+    // Plan 128: Get the global registry and store mailbox receiver
+    // This allows spawn_initial_tasks to use the actual receiver
+    let registry = get_global_task_registry();
+    if let Some(receiver) = instance.take_receiver() {
+        registry.store_mailbox_receiver(task_type.clone(), instance.instance_id, receiver);
+        eprintln!("DEBUG shim_task_spawn: stored receiver for {}#{}", task_type, instance.instance_id);
+    } else {
+        eprintln!("WARN shim_task_spawn: failed to take receiver for {}#{}", task_type, instance.instance_id);
+    }
+
+    // Register the handle with the global registry
+    registry.register_instance(handle.clone());
+
+    // Store the handle in thread-local storage (for legacy send operations)
     TASK_HANDLES.with(|handles| {
         handles.borrow_mut().insert(handle_id, handle);
     });
 
-    // Store the instance to keep the receiver alive
-    // In a full implementation, we would spawn a tokio task to process messages.
-    TASK_INSTANCES.with(|instances| {
-        instances.borrow_mut().insert(handle_id, instance);
-    });
+    // Note: We no longer store the full TaskInstance in TASK_INSTANCES
+    // since the receiver has been extracted and stored in TaskRegistry
 
     eprintln!("DEBUG shim_task_spawn: returning {}", handle_id as i32);
     // Return as i32 (fits in one stack slot)
@@ -1531,19 +1544,29 @@ pub fn shim_task_singleton_send(task_type: String, msg: i32) -> i32 {
     } else {
         // Auto-spawn the singleton task on first access
         eprintln!("DEBUG: Auto-spawning singleton task '{}'", task_type);
-        let instance = TaskInstance::new(task_type.clone(), 64);
+        let mut instance = TaskInstance::new(task_type.clone(), 64);
         let handle = instance.handle.clone();
         let new_id = TASK_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-        // Store the handle and instance
+        // Plan 128: Extract and store the mailbox receiver in global TaskRegistry
+        if let Some(receiver) = instance.take_receiver() {
+            let registry = get_global_task_registry();
+            registry.store_mailbox_receiver(task_type.clone(), instance.instance_id, receiver);
+            registry.register_singleton(task_type.clone(), handle.clone());
+            eprintln!("DEBUG: Stored receiver for singleton {}#{}", task_type, instance.instance_id);
+        } else {
+            eprintln!("WARN: Failed to take receiver for singleton {}#{}", task_type, instance.instance_id);
+            // Still register the singleton even if receiver extraction failed
+            let registry = get_global_task_registry();
+            registry.register_singleton(task_type.clone(), handle.clone());
+        }
+
+        // Store the handle in thread-local storage
         TASK_HANDLES.with(|handles| {
             handles.borrow_mut().insert(new_id, handle);
         });
-        TASK_INSTANCES.with(|instances| {
-            instances.borrow_mut().insert(new_id, instance);
-        });
 
-        // Register as singleton
+        // Register as singleton in thread-local tracking
         SINGLETON_TASKS.with(|singletons| {
             singletons.borrow_mut().insert(task_type.clone(), new_id);
         });
@@ -1734,7 +1757,26 @@ fn get_global_task_registry() -> &'static TaskRegistry {
 /// This is a blocking call that will not return until Ctrl+C is received.
 #[auto_macros::rust_fn("TaskSystem.start")]
 pub fn shim_task_system_start() -> Result<(), String> {
+    use crate::vm::scheduler::GlobalMeta;
+    use crate::vm::virt_memory::VirtualFlash;
+    use crate::vm::native::NativeInterface;
+    use std::collections::HashMap;
+
     let registry = get_global_task_registry();
+
+    // Build GlobalMeta if not already set
+    // For MVP, we create a minimal GlobalMeta with empty bytecode
+    // Full integration would populate this from the compiled VM state
+    if registry.get_global_meta().is_none() {
+        let meta = Arc::new(GlobalMeta::from_components(
+            VirtualFlash::new(0),
+            Vec::new(),
+            NativeInterface::new(),
+            HashMap::new(),
+        ));
+        registry.set_global_meta(meta);
+    }
+
     registry.start_scheduler();
     Ok(())
 }
@@ -2035,17 +2077,15 @@ mod tests {
     // Plan 121: Task spawn tests
     #[test]
     fn test_task_spawn() {
-        let result = shim_task_spawn("TestTask".to_string(), 64);
-        assert!(result.is_ok());
-        let handle_id = result.unwrap();
+        let handle_id = shim_task_spawn("TestTask".to_string(), 64);
         assert!(handle_id > 0);
     }
 
     #[test]
     fn test_task_spawn_default_capacity() {
         // Test with negative capacity (should use default 64)
-        let result = shim_task_spawn("TestTask".to_string(), -1);
-        assert!(result.is_ok());
+        let handle_id = shim_task_spawn("TestTask".to_string(), -1);
+        assert!(handle_id > 0);
     }
 
     #[test]
@@ -2061,9 +2101,7 @@ mod tests {
         assert_eq!(result.unwrap(), 1);
 
         // A spawned task should not be null
-        let spawn_result = shim_task_spawn("TestTask".to_string(), 64);
-        assert!(spawn_result.is_ok());
-        let handle_id = spawn_result.unwrap() as i64;
+        let handle_id = shim_task_spawn("TestTask".to_string(), 64) as i64;
 
         let result = shim_task_handle_is_null(handle_id);
         assert!(result.is_ok());
@@ -2072,9 +2110,7 @@ mod tests {
 
     #[test]
     fn test_task_handle_type() {
-        let spawn_result = shim_task_spawn("MyCounterTask".to_string(), 64);
-        assert!(spawn_result.is_ok());
-        let handle_id = spawn_result.unwrap() as i64;
+        let handle_id = shim_task_spawn("MyCounterTask".to_string(), 64) as i64;
 
         let result = shim_task_handle_type(handle_id);
         assert!(result.is_ok());
@@ -2083,9 +2119,7 @@ mod tests {
 
     #[test]
     fn test_task_handle_id() {
-        let spawn_result = shim_task_spawn("TestTask".to_string(), 64);
-        assert!(spawn_result.is_ok());
-        let handle_id = spawn_result.unwrap();
+        let handle_id = shim_task_spawn("TestTask".to_string(), 64);
 
         let result = shim_task_handle_id(handle_id as i64);
         assert!(result.is_ok());
@@ -2095,31 +2129,24 @@ mod tests {
 
     #[test]
     fn test_task_send() {
-        let spawn_result = shim_task_spawn("TestTask".to_string(), 64);
-        assert!(spawn_result.is_ok());
-        let handle_id = spawn_result.unwrap() as i64;
+        let handle_id = shim_task_spawn("TestTask".to_string(), 64);
 
-        let result = shim_task_send(handle_id, "hello".to_string());
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1);
+        // shim_task_send takes (i32, i32) - handle_id and message enum tag
+        let result = shim_task_send(handle_id, 1); // 1 is some message tag
+        assert_eq!(result, 1); // 1 = success
     }
 
     #[test]
     fn test_task_send_invalid_handle() {
-        let result = shim_task_send(999999, "hello".to_string());
-        assert!(result.is_err());
+        // Invalid handle should return 0 (failure)
+        let result = shim_task_send(999999, 1);
+        assert_eq!(result, 0); // 0 = failure
     }
 
     #[test]
     fn test_multiple_spawn_unique_ids() {
-        let result1 = shim_task_spawn("Task1".to_string(), 64);
-        let result2 = shim_task_spawn("Task2".to_string(), 64);
-
-        assert!(result1.is_ok());
-        assert!(result2.is_ok());
-
-        let id1 = result1.unwrap();
-        let id2 = result2.unwrap();
+        let id1 = shim_task_spawn("Task1".to_string(), 64);
+        let id2 = shim_task_spawn("Task2".to_string(), 64);
 
         // Each spawn should return a unique handle ID
         assert_ne!(id1, id2);

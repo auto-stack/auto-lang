@@ -260,6 +260,30 @@ impl TaskHandlerTable {
     pub fn handler_count(&self) -> usize {
         self.handlers.len()
     }
+
+    /// Plan 128: Create TaskHandlerTable from pre-serialized components
+    ///
+    /// Used by VMLoader to convert CompiledPackage task definitions
+    /// into runtime handler tables.
+    pub fn from_components(
+        task_type: String,
+        handlers: Vec<TaskHandler>,
+        patterns: Vec<SerializedPattern>,
+        string_pool: Vec<String>,
+        start_hook_offset: Option<u32>,
+        stop_hook_offset: Option<u32>,
+        else_handler_offset: Option<u32>,
+    ) -> Self {
+        Self {
+            task_type,
+            handlers,
+            patterns,
+            string_pool,
+            start_hook_offset,
+            stop_hook_offset,
+            else_handler_offset,
+        }
+    }
 }
 
 /// Registry of all task handler tables
@@ -295,6 +319,29 @@ impl TaskHandlerRegistry {
     /// Get all registered task types
     pub fn task_types(&self) -> impl Iterator<Item = &String> {
         self.tables.keys()
+    }
+
+    /// Plan 128: Export all task definitions for CompiledPackage
+    ///
+    /// Converts the internal TaskHandlerTable entries into TaskDefinition
+    /// structures that can be serialized into CompiledPackage.
+    pub fn export_task_definitions(&self) -> HashMap<String, crate::vm::loader::TaskDefinition> {
+        self.tables
+            .iter()
+            .map(|(_key, table)| {
+                let def = crate::vm::loader::TaskDefinition {
+                    name: table.task_type.clone(),
+                    is_single: false, // TODO: Track this in TaskHandlerTable
+                    patterns: table.patterns.clone(),
+                    handlers: table.handlers.clone(),
+                    start_hook_offset: table.start_hook_offset,
+                    stop_hook_offset: table.stop_hook_offset,
+                    else_handler_offset: table.else_handler_offset,
+                    strings: table.string_pool.clone(),
+                };
+                (table.task_type.clone(), def)
+            })
+            .collect()
     }
 }
 

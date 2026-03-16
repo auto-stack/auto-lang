@@ -1,4 +1,164 @@
+//! Plan 128 Phase 8: Linker & Bootstrapper
+//!
+//! This module provides the loading infrastructure that connects CodeGen output
+//! to the VM execution engine. It implements the "cartridge" pattern where
+//! CodeGen produces a `CompiledPackage` (pure data), and `VMLoader` freezes
+//! it into `GlobalMeta` for execution.
+
 use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::vm::native::NativeInterface;
+use crate::vm::scheduler::GlobalMeta;
+use crate::vm::task_handler::{TaskHandlerTable, SerializedPattern, TaskHandler};
+use crate::vm::virt_memory::VirtualFlash;
+use crate::vm::codegen::ObjectType;
+
+// ============================================================================
+// Plan 128: CompiledPackage - CodeGen's Final Output (The "ROM Cartridge")
+// ============================================================================
+
+/// The compiled output from CodeGen - a pure data structure that can be
+/// serialized, cached, and loaded into the VM.
+///
+/// This is the "game cartridge" that contains all the code and metadata
+/// needed to run an Auto program.
+#[derive(Debug, Clone, Default)]
+pub struct CompiledPackage {
+    /// Linked bytecode (all modules combined)
+    pub bytecode: Vec<u8>,
+
+    /// String constant pool (all string literals)
+    pub string_pool: Vec<Vec<u8>>,
+
+    /// Object keys metadata for object literal creation
+    pub object_keys: Vec<Vec<auto_val::ValueKey>>,
+
+    /// Object field types for runtime value conversion
+    pub object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
+
+    /// Exported symbols: Name -> Bytecode offset
+    pub exports: HashMap<String, u32>,
+
+    /// All task definitions with their handler tables
+    pub tasks: HashMap<String, TaskDefinition>,
+}
+
+/// Definition of a compiled task type
+#[derive(Debug, Clone)]
+pub struct TaskDefinition {
+    /// Task type name (e.g., "LoggerTask")
+    pub name: String,
+
+    /// Whether this is a #[single] singleton task
+    pub is_single: bool,
+
+    /// Serialized patterns for message matching
+    pub patterns: Vec<SerializedPattern>,
+
+    /// Handler entries
+    pub handlers: Vec<TaskHandler>,
+
+    /// Start hook bytecode offset (if present)
+    pub start_hook_offset: Option<u32>,
+
+    /// Stop hook bytecode offset (if present)
+    pub stop_hook_offset: Option<u32>,
+
+    /// Else handler bytecode offset (if present)
+    pub else_handler_offset: Option<u32>,
+
+    /// String literals used by patterns (local to this task)
+    pub strings: Vec<String>,
+}
+
+// ============================================================================
+// Plan 128: VMLoader - The Bootstrapper
+// ============================================================================
+
+/// The VM Loader takes a `CompiledPackage` and produces a frozen `GlobalMeta`.
+///
+/// This is the bridge between compile-time and runtime:
+/// 1. Receives pure data from CodeGen
+/// 2. Optionally registers native FFI functions
+/// 3. Freezes everything into Arc-wrapped, read-only structures
+/// 4. Produces `GlobalMeta` for the scheduler
+pub struct VMLoader {
+    package: CompiledPackage,
+    native_interface: NativeInterface,
+}
+
+impl VMLoader {
+    /// Create a new loader with the compiled package
+    pub fn new(package: CompiledPackage) -> Self {
+        Self {
+            package,
+            native_interface: NativeInterface::new(),
+        }
+    }
+
+    /// Create a loader with pre-configured native interface
+    pub fn with_native_interface(package: CompiledPackage, native_interface: NativeInterface) -> Self {
+        Self {
+            package,
+            native_interface,
+        }
+    }
+
+    /// Get a reference to the native interface for registration
+    pub fn native_interface(&mut self) -> &mut NativeInterface {
+        &mut self.native_interface
+    }
+
+    /// The core bootstrap operation: freeze all data into GlobalMeta
+    ///
+    /// This consumes the loader and produces an Arc<GlobalMeta> that
+    /// can be shared across all task contexts without any locks.
+    pub fn bootstrap(self) -> Arc<GlobalMeta> {
+        // 1. Convert TaskDefinitions to TaskHandlerTables
+        let handler_tables = self.build_handler_tables();
+
+        // 2. Create VirtualFlash from bytecode
+        let bytecode = VirtualFlash::from_vec_with_metadata(
+            self.package.bytecode,
+            self.package.exports,
+            self.package.object_keys,
+            self.package.object_types,
+        );
+
+        // 3. Freeze everything into GlobalMeta
+        Arc::new(GlobalMeta::from_components(
+            bytecode,
+            self.package.string_pool,
+            self.native_interface,
+            handler_tables,
+        ))
+    }
+
+    /// Build handler tables from task definitions
+    fn build_handler_tables(&self) -> HashMap<String, TaskHandlerTable> {
+        let mut tables = HashMap::new();
+
+        for (name, task_def) in &self.package.tasks {
+            let table = TaskHandlerTable::from_components(
+                task_def.name.clone(),
+                task_def.handlers.clone(),
+                task_def.patterns.clone(),
+                task_def.strings.clone(),
+                task_def.start_hook_offset,
+                task_def.stop_hook_offset,
+                task_def.else_handler_offset,
+            );
+            tables.insert(name.clone(), table);
+        }
+
+        tables
+    }
+}
+
+// ============================================================================
+// Legacy: Low-level Linker (for module linking)
+// ============================================================================
 
 // Defined in docs/design/abc.md
 // struct FragHeader {
