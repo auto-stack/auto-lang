@@ -40,6 +40,9 @@ pub mod pac;
 // Phase 5: Vue project support
 pub mod vue;
 
+// Phase 6: Tauri project support (Plan 130)
+pub mod tauri;
+
 // Phase 7: Jetpack Compose project support
 pub mod jet;
 
@@ -77,6 +80,9 @@ pub use pac::*;
 
 // Re-exports (Phase 5: Vue)
 pub use vue::*;
+
+// Re-exports (Phase 6: Tauri)
+pub use tauri::*;
 
 // Re-exports (Phase 7: Jet)
 pub use jet::*;

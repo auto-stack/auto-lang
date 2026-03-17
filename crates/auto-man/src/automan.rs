@@ -610,6 +610,31 @@ impl Automan {
             return self.run_workspace(args);
         }
 
+        // Check backend configuration (Plan 130: support array form)
+        // backend: ["vue", "tauri"] means run both Vue dev server and Tauri
+        if self.pac.has_backend_config() {
+            let frontends = self.pac.frontend_types();
+
+            // Check if tauri is in the frontend list
+            let has_tauri = frontends.iter().any(|t| {
+                matches!(t, auto_lang::config::BackendType::Tauri)
+            });
+            let has_vue = frontends.iter().any(|t| {
+                matches!(t, auto_lang::config::BackendType::Vue)
+            });
+
+            if has_tauri {
+                // Tauri backend: generate Tauri project and run tauri dev
+                println!("Running Tauri dev server (backend includes tauri)");
+                return self.run_tauri(args);
+            } else if has_vue {
+                // Vue backend: run npm run dev in dist directory
+                println!("Running Vue dev server (backend: vue)");
+                return self.run_vue(args);
+            }
+        }
+
+        // Legacy: use backend string
         let backend = self.pac.backend.as_str();
 
         match backend {
@@ -617,6 +642,11 @@ impl Automan {
                 // Vue backend: run npm run dev in dist directory
                 println!("Running Vue dev server (backend: vue)");
                 self.run_vue(args)
+            }
+            "tauri" => {
+                // Tauri backend: generate Tauri project and run tauri dev
+                println!("Running Tauri dev server (backend: tauri)");
+                self.run_tauri(args)
             }
             _ => {
                 // Default: use pac.run()
@@ -630,6 +660,13 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::vue::run_vue_project(&root_dir, args)
+    }
+
+    /// Run Tauri dev server using npm run tauri dev (full workflow: generate Vue, generate Tauri, install, run)
+    fn run_tauri(&mut self, args: Vec<String>) -> AutoResult<()> {
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        crate::tauri::run_tauri_project(&root_dir, args)
     }
 
     /// Run all workspace members (Plan 130)

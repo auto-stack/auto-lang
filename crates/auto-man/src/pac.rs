@@ -94,6 +94,7 @@ impl Pac {
         //   1. backend: "vue"                          -> Single(BackendType::Vue)
         //   2. backend: { front: "vue", back: "rust" } -> Split { front: [Vue], back: Rust }
         //   3. backend: { front: ["vue", "tauri"], back: "rust" } -> Split { front: [Vue, Tauri], back: Rust }
+        //   4. backend: ["vue", "tauri"]               -> Multi([Vue, Tauri])
         let backend_value = config.root.get_prop("backend");
         let backend_config = BackendConfig::from_value(&backend_value);
 
@@ -201,6 +202,7 @@ impl Pac {
         if let Some(ref config) = self.backend_config {
             match config {
                 BackendConfig::Single(t) => vec![t.clone()],
+                BackendConfig::Multi(types) => types.clone(),
                 BackendConfig::Split { front, .. } => front.clone(),
             }
         } else {
@@ -216,6 +218,7 @@ impl Pac {
         if let Some(ref config) = self.backend_config {
             match config {
                 BackendConfig::Single(_) => None,
+                BackendConfig::Multi(_) => None,
                 BackendConfig::Split { back, .. } => Some(back.clone()),
             }
         } else {

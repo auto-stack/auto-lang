@@ -192,6 +192,8 @@ impl BackendType {
 pub enum BackendConfig {
     /// 单后端：整个项目都是同一种类型
     Single(BackendType),
+    /// 多前端：多个前端框架（如 vue + tauri）
+    Multi(Vec<BackendType>),
     /// 前后端分离
     Split {
         front: Vec<BackendType>,
@@ -205,10 +207,29 @@ impl BackendConfig {
         BackendType::from_str(s).map(Self::Single)
     }
 
-    /// 从 Value 解析（支持对象形式）
+    /// 从 Value 解析（支持对象形式和数组形式）
+    /// - 字符串: backend: "vue"
+    /// - 数组: backend: ["vue", "tauri"] (多个前端框架)
+    /// - 对象: backend: { front: "vue", back: "rust" }
     pub fn from_value(value: &Value) -> Option<Self> {
         match value {
             Value::Str(s) => Self::parse(&s),
+            Value::Array(arr) => {
+                // 数组形式：backend: ["vue", "tauri"]
+                let frontends: Vec<BackendType> = arr.iter()
+                    .filter_map(|v| match v {
+                        Value::Str(s) => BackendType::from_str(&s),
+                        _ => None,
+                    })
+                    .collect();
+                if frontends.len() == 1 {
+                    Some(Self::Single(frontends[0].clone()))
+                } else if !frontends.is_empty() {
+                    Some(Self::Multi(frontends))
+                } else {
+                    None
+                }
+            }
             Value::Obj(obj) => {
                 let front = obj.get("front").and_then(|v| match v {
                     Value::Str(s) => BackendType::from_str(&s).map(|t| vec![t]),
@@ -239,6 +260,7 @@ impl BackendConfig {
     pub fn frontends(&self) -> Vec<&BackendType> {
         match self {
             Self::Single(t) => vec![t],
+            Self::Multi(types) => types.iter().collect(),
             Self::Split { front, .. } => front.iter().collect(),
         }
     }
@@ -247,6 +269,7 @@ impl BackendConfig {
     pub fn backend(&self) -> Option<&BackendType> {
         match self {
             Self::Single(_) => None,
+            Self::Multi(_) => None,
             Self::Split { back, .. } => Some(back),
         }
     }

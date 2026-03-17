@@ -658,6 +658,17 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
 fn extract_auto_val_value(vm: &crate::vm::engine::AutoVM, val: &Value, visited: &mut std::collections::HashSet<u64>) -> Value {
     match val {
         Value::VmRef(vm_ref) => extract_value_from_vm(vm, vm_ref.id as i32, visited),
+        Value::Int(bits) => {
+            // Check if this is a tagged string index (negative value)
+            if *bits < 0 {
+                let str_idx = (-bits - 1) as usize;
+                let strings = vm.strings.read().unwrap();
+                if let Some(str_bytes) = strings.get(str_idx) {
+                    return Value::Str(String::from_utf8_lossy(str_bytes).to_string().into());
+                }
+            }
+            val.clone()
+        }
         Value::Array(arr) => {
             let mut items = Vec::new();
             for v in &arr.values {
