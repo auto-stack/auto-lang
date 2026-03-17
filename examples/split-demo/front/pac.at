@@ -1,0 +1,8 @@
+// front/pac.at - Frontend Package Config
+// Part of split-demo workspace
+
+name: "split-demo-ui"
+version: "1.0.0"
+scene: "ui"
+
+backend: "vue"

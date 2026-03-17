@@ -1,35 +1,28 @@
 // pac.at - Multi-Frontend Demo (多前端示例)
-// Demonstrates Plan 129: Multiple frontends with shared backend
+// Demonstrates Plan 130: Multiple frontends from single source
 //
-// Directory structure after build:
+// Directory structure:
 //   multi-frontend-demo/
-//   ├── pac.at
-//   ├── front/              <- Shared frontend source (AURA)
+//   ├── pac.at              <- Workspace config (this file)
+//   ├── front/
+//   │   ├── pac.at          <- Frontend project config (multi-backend)
 //   │   └── app.at
-//   ├── back/               <- Backend source
-//   │   └── api.at
-//   ├── vue/                <- Generated Vue web project
-//   ├── tauri/              <- Generated Tauri desktop project
-//   └── rust/               <- Generated Rust backend
+//   └── back/
+//       ├── pac.at          <- Backend project config
+//       └── api.at
+//
+// After build:
+//   ├── front/vue/          <- Generated Vue web project
+//   ├── front/tauri/        <- Generated Tauri desktop project
+//   └── back/rust/          <- Generated Rust backend
 //
 // Commands:
-//   auto build                 # Build vue/, tauri/, and rust/
-//   auto build --target vue    # Build only vue/
-//   auto build --target tauri  # Build only tauri/
+//   auto build                 # Build all members
+//   auto build --target front  # Build only front (vue + tauri)
 //   auto run --target tauri    # Run Tauri desktop app
 
 name: "multi-frontend-demo"
 version: "1.0.0"
-description: "Demo with multiple frontends from single source"
+scene: "workspace"
 
-// Multi-frontend: front/ -> vue/ AND tauri/, back/ -> rust/
-backend: {
-    front: ["vue", "tauri"]
-    back: "rust"
-}
-
-// app("front") -> source in front/, output to vue/ AND tauri/
-app("front") {}
-
-// app("back") -> source in back/, output to rust/
-app("back") {}
+members: ["./front", "./back"]

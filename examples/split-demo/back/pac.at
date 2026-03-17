@@ -1,0 +1,7 @@
+// back/pac.at - Backend Package Config
+// Part of split-demo workspace
+
+name: "split-demo-api"
+version: "1.0.0"
+
+backend: "rust"

@@ -1,32 +1,22 @@
 // pac.at - Unified Backend Demo
-// Demonstrates Plan 129: Unified Backend Output Structure
+// Demonstrates Plan 130: Single UI project (not a workspace)
 //
-// Directory structure after build:
+// Directory structure:
 //   unified-demo/
-//   ├── pac.at              <- This file
+//   ├── pac.at              <- Project config (this file)
 //   ├── front/              <- Frontend source (AURA widgets)
 //   │   └── app.at
-//   ├── vue/                <- Generated Vue project (auto build)
-//   └── jet/                <- Generated Jetpack project (auto build --target jet)
+//   └── .am/                <- AutoMan state
 //
-// Backend config syntax (Plan 129):
-//   1. Single frontend:     backend: "vue"
-//   2. Split front/back:    backend: { front: "vue", back: "rust" }
-//   3. Multi-frontend:      backend: { front: ["vue", "tauri"], back: "rust" }
+// After build:
+//   └── vue/                <- Generated Vue project
 //
 // Usage:
-//   auto build              # Build all frontends
-//   auto build --target vue # Build only Vue
+//   auto build              # Build Vue project
 //   auto run                # Run dev server
 
 name: "unified-demo"
 version: "1.0.0"
-description: "Demo project with unified backend output structure"
+scene: "ui"
 
-// Single frontend: all code in front/ generates to vue/
 backend: "vue"
-
-// app("front") declares:
-//   - Source: front/ (implied by name)
-//   - Output: vue/ (from backend config above)
-app("front")

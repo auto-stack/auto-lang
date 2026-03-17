@@ -1,0 +1,9 @@
+// front/pac.at - Frontend Package Config
+// Part of multi-frontend-demo workspace
+// Outputs to both vue/ and tauri/ directories
+
+name: "multi-frontend-ui"
+version: "1.0.0"
+scene: "ui"
+
+backend: ["vue", "tauri"]

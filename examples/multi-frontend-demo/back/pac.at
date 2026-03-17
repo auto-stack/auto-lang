@@ -1,0 +1,7 @@
+// back/pac.at - Backend Package Config
+// Part of multi-frontend-demo workspace
+
+name: "multi-frontend-api"
+version: "1.0.0"
+
+backend: "rust"
