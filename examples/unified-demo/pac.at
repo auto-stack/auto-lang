@@ -6,7 +6,6 @@
 //   ├── pac.at              <- This file
 //   ├── front/              <- Frontend source (AURA widgets)
 //   │   └── app.at
-//   ├── back/               <- Backend source (Rust/API)
 //   ├── vue/                <- Generated Vue project (auto build)
 //   └── jet/                <- Generated Jetpack project (auto build --target jet)
 //
@@ -24,22 +23,10 @@ name: "unified-demo"
 version: "1.0.0"
 description: "Demo project with unified backend output structure"
 
-// Example 1: Single frontend (entire project is frontend)
-// All code in front/ generates to vue/
+// Single frontend: all code in front/ generates to vue/
 backend: "vue"
 
-// Example 2: Split frontend + backend
-// front/ generates to vue/, back/ generates to rust native
-// backend: { front: "vue", back: "rust" }
-
-// Example 3: Multiple frontends + shared backend
-// front/ generates to both vue/ and tauri/, back/ generates to rust native
-// backend: { front: ["vue", "tauri"], back: "rust" }
-
-// App definition - defines source directory and its backend
-// app("front") means:
-//   - Source code is in front/ directory
-//   - Generated output goes to vue/ (from backend: "vue" above)
-app("front") {
-    at: "./front"
-}
+// app("front") declares:
+//   - Source: front/ (implied by name)
+//   - Output: vue/ (from backend config above)
+app("front")
