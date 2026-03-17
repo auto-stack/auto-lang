@@ -26,7 +26,7 @@ backend: {
 }
 
 // app("front") -> source in front/, output to vue/
-app("front")
+app("front") {}
 
 // app("back") -> source in back/, output to rust/
-app("back")
+app("back") {}
