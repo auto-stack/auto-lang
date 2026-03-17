@@ -19,4 +19,4 @@ name: "unified-demo"
 version: "1.0.0"
 scene: "ui"
 
-backend: "vue"
+backend: ["vue", "tauri"]

@@ -255,7 +255,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    // Don't auto-open browser - let Tauri or user handle it
+    // Only auto-open browser when NOT running under Tauri
+    // Tauri sets TAURI_ENV before running vite
+    open: !process.env.TAURI_ENV
   }
 })
 "#.to_string()
