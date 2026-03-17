@@ -14,25 +14,46 @@ use colored::Colorize;
 
 use crate::AutoResult;
 
-/// Run Tauri dev server (full workflow: generate Vue, generate Tauri, install, run)
+/// Run Tauri dev server (full workflow: generate Vue, install deps, run)
 ///
 /// Steps:
 /// 1. Generate Vue project structure if not exists
-/// 2. Generate Tauri backend if not exists
-/// 3. npm install
-/// 4. Install shadcn-vue components
-/// 5. npm run tauri dev
+/// 2. npm install
+/// 3. Install shadcn-vue components
+/// 4. npm run tauri dev (no build needed for dev mode)
 pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Tauri dev server (backend: tauri)".bright_cyan());
 
-    // First, ensure Vue project is generated and ready
-    println!();
-    println!("{}", "▶ Step 1/2: Preparing Vue frontend...".bright_white());
-    crate::vue::build_vue_project(root_dir)?;
+    // Load Vue project context
+    let project = crate::vue::VueProject::from_workspace(root_dir)?;
 
-    // Then run Tauri dev
+    // Step 1: Generate project structure if not exists
+    let total_steps = if project.exists() { 3 } else { 4 };
+    let mut current_step = 0;
+
+    if !project.exists() {
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
+        project.generate()?;
+    }
+
+    // Step 2: npm install
+    current_step += 1;
     println!();
-    println!("{}", "▶ Step 2/2: Starting Tauri dev server...".bright_white());
+    println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
+    project.npm_install()?;
+
+    // Step 3: Install shadcn-vue components
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
+    project.install_shadcn_components()?;
+
+    // Step 4: Run Tauri dev (no build needed - tauri dev handles it)
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Starting Tauri dev server...", current_step, total_steps);
     run_tauri_dev(root_dir)?;
 
     Ok(())
