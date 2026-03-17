@@ -92,13 +92,15 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
     println!("  ✓ @tauri-apps/api installed");
 
     // Step 3: Initialize Tauri using npx (directly runs the CLI)
-    // Tauri v2 uses --frontend-dist instead of --dist-dir
+    // Note: Vite dev server runs on port 3000 (configured in vue.rs)
+    // Use --ci flag for non-interactive mode
     let init_args = vec![
         "tauri", "init",
+        "--ci",
         "--app-name", "App",
         "--window-title", "App",
-        "--dev-url", "http://localhost:1420",
-        "--before-dev-command", "npm run dev",
+        "--dev-url", "http://localhost:3000",
+        "--before-dev-command", "\"npm run dev\"",
         "--frontend-dist", "../dist",
     ];
 
