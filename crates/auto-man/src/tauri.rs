@@ -94,6 +94,19 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
     // Step 3: Initialize Tauri using npx (directly runs the CLI)
     // Note: Vite dev server runs on port 3000 (configured in vue.rs)
     // Use --ci flag for non-interactive mode
+    // On Windows, we need to be careful with argument quoting
+    #[cfg(windows)]
+    let init_args = vec![
+        "tauri", "init",
+        "--ci",
+        "--app-name", "App",
+        "--window-title", "App",
+        "--dev-url", "http://localhost:3000",
+        "--before-dev-command", "npm run dev",
+        "--frontend-dist", "../dist",
+    ];
+
+    #[cfg(not(windows))]
     let init_args = vec![
         "tauri", "init",
         "--ci",
