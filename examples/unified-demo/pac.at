@@ -36,14 +36,10 @@ backend: "vue"
 // front/ generates to both vue/ and tauri/, back/ generates to rust native
 // backend: { front: ["vue", "tauri"], back: "rust" }
 
-// Workspace structure (Plan 129: no source/ wrapper)
-workspace: {
-    front: "./front"
-    back: "./back"
-}
-
-// Development commands
-scripts: {
-    dev: "npm run dev"
-    build: "npm run build"
+// App definition - defines source directory and its backend
+// app("front") means:
+//   - Source code is in front/ directory
+//   - Generated output goes to vue/ (from backend: "vue" above)
+app("front") {
+    at: "./front"
 }
