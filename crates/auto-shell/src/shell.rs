@@ -30,6 +30,8 @@ impl Shell {
 
         let registry = {
             let mut reg = CommandRegistry::new();
+            reg.register(Box::new(commands::build::BuildCommand));
+            reg.register(Box::new(commands::run::RunCommand));
             reg.register(Box::new(commands::ls::LsCommand));
             reg.register(Box::new(commands::cd::CdCommand));
             reg.register(Box::new(commands::pwd::PwdCommand));
