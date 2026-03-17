@@ -611,26 +611,17 @@ impl Automan {
         }
 
         // Check backend configuration (Plan 130: support array form)
-        // backend: ["vue", "tauri"] means run both Vue dev server and Tauri
         if self.pac.has_backend_config() {
             let frontends = self.pac.frontend_types();
 
-            // Check if tauri is in the frontend list
-            let has_tauri = frontends.iter().any(|t| {
-                matches!(t, auto_lang::config::BackendType::Tauri)
-            });
-            let has_vue = frontends.iter().any(|t| {
-                matches!(t, auto_lang::config::BackendType::Vue)
-            });
+            // If multiple backends, let user select one
+            if frontends.len() > 1 {
+                return self.run_multi_backend(frontends, args);
+            }
 
-            if has_tauri {
-                // Tauri backend: generate Tauri project and run tauri dev
-                println!("Running Tauri dev server (backend includes tauri)");
-                return self.run_tauri(args);
-            } else if has_vue {
-                // Vue backend: run npm run dev in dist directory
-                println!("Running Vue dev server (backend: vue)");
-                return self.run_vue(args);
+            // Single backend
+            if let Some(backend) = frontends.first() {
+                return self.run_backend(backend, args);
             }
         }
 
@@ -639,18 +630,63 @@ impl Automan {
 
         match backend {
             "vue" => {
-                // Vue backend: run npm run dev in dist directory
                 println!("Running Vue dev server (backend: vue)");
                 self.run_vue(args)
             }
             "tauri" => {
-                // Tauri backend: generate Tauri project and run tauri dev
                 println!("Running Tauri dev server (backend: tauri)");
                 self.run_tauri(args)
             }
             _ => {
                 // Default: use pac.run()
                 self.pac.run(args)
+            }
+        }
+    }
+
+    /// Run with multiple backends - let user select one
+    fn run_multi_backend(&mut self, frontends: Vec<auto_lang::config::BackendType>, args: Vec<String>) -> AutoResult<()> {
+        use dialoguer::Select;
+
+        let backend_names: Vec<&'static str> = frontends.iter()
+            .map(|t| t.as_str())
+            .collect();
+
+        println!("{}", "Multiple backends configured:".bright_cyan());
+        for (i, name) in backend_names.iter().enumerate() {
+            println!("  {}. {}", i + 1, name);
+        }
+        println!();
+
+        let selection = Select::new()
+            .with_prompt("Select backend to run")
+            .default(0)
+            .items(&backend_names)
+            .interact()
+            .map_err(|e| format!("Failed to select backend: {}", e))?;
+
+        let selected = &frontends[selection];
+        self.run_backend(selected, args)
+    }
+
+    /// Run a specific backend
+    fn run_backend(&mut self, backend: &auto_lang::config::BackendType, args: Vec<String>) -> AutoResult<()> {
+        match backend {
+            auto_lang::config::BackendType::Vue => {
+                println!("Running Vue dev server (backend: vue)");
+                self.run_vue(args)
+            }
+            auto_lang::config::BackendType::Tauri => {
+                println!("Running Tauri dev server (backend: tauri)");
+                self.run_tauri(args)
+            }
+            auto_lang::config::BackendType::Jet => {
+                println!("Running Jetpack Compose project (backend: jet)");
+                // TODO: Implement jet run
+                Err("Jet backend run not yet implemented".into())
+            }
+            _ => {
+                Err(format!("Backend {:?} does not support run command", backend).into())
             }
         }
     }

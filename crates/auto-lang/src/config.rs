@@ -185,6 +185,21 @@ impl BackendType {
             Self::Rust => "back",
         }
     }
+
+    /// 获取后端类型名称字符串
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Vue => "vue",
+            Self::Jet => "jet",
+            Self::Tauri => "tauri",
+            Self::Gpui => "gpui",
+            Self::Iced => "iced",
+            Self::Arkts => "arkts",
+            Self::Cangjie => "cangjie",
+            Self::Godot => "godot",
+            Self::Rust => "rust",
+        }
+    }
 }
 
 /// 后端配置（单后端或多后端）
