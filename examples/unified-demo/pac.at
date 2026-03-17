@@ -1,0 +1,29 @@
+// pac.at - Unified Backend Demo
+// Demonstrates Plan 129: Unified Backend Output Structure
+
+name: "unified-demo"
+version: "1.0.0"
+description: "Demo project with unified backend output structure"
+
+// Backend configuration (Plan 129 syntax)
+// Single backend mode: output to vue/ directory
+backend: "vue"
+
+// Workspace structure
+workspace: {
+    front: "./source/front"
+}
+
+// Build targets
+targets: {
+    vue: {
+        frontend: "vue"
+        backend: "none"
+    }
+}
+
+// Development commands
+scripts: {
+    dev: "npm run dev"
+    build: "npm run build"
+}

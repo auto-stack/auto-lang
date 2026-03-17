@@ -1,0 +1,28 @@
+// app.at - Main application component
+// A simple counter demo
+
+export name: "CounterApp"
+export count: 0
+
+<template>
+    <div class="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg shadow-lg">
+            <h1 class="text-2xl font-bold mb-4">{name}</h1>
+            <div class="flex items-center gap-4">
+                <button
+                    class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                    onclick={count -= 1}
+                >
+                    -
+                </button>
+                <span class="text-3xl font-mono">{count}</span>
+                <button
+                    class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                    onclick={count += 1}
+                >
+                    +
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
