@@ -1,25 +1,32 @@
 // pac.at - Unified Backend Demo
 // Demonstrates Plan 129: Unified Backend Output Structure
+//
+// New directory structure:
+//   unified-demo/
+//   ├── pac.at              <- This file
+//   ├── front/              <- Frontend source (directly at root, not source/front)
+//   │   └── app.at
+//   ├── back/               <- Backend source (directly at root)
+//   ├── vue/                <- Generated Vue project (was dist/)
+//   └── jet/                <- Generated Jetpack project
+//
+// Usage:
+//   auto build              # Build all backends
+//   auto build --target vue # Build only Vue
+//   auto run                # Run dev servers
 
 name: "unified-demo"
 version: "1.0.0"
 description: "Demo project with unified backend output structure"
 
 // Backend configuration (Plan 129 syntax)
-// Single backend mode: output to vue/ directory
+// Single backend: output to vue/ directory
 backend: "vue"
 
-// Workspace structure
+// Workspace structure (new: front/ and back/ directly at project root)
 workspace: {
-    front: "./source/front"
-}
-
-// Build targets
-targets: {
-    vue: {
-        frontend: "vue"
-        backend: "none"
-    }
+    front: "./front"
+    back: "./back"
 }
 
 // Development commands
