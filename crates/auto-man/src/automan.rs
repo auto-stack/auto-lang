@@ -7,6 +7,7 @@ use crate::{Index, IndexStore};
 use auto_lang::config::AutoConfig;
 use auto_val::shared;
 use auto_val::{AutoPath, AutoStr, Obj, Value};
+use colored::Colorize;
 use log::*;
 use reqwest::blocking::get;
 use std::collections::HashMap;
@@ -604,6 +605,11 @@ impl Automan {
     }
 
     pub fn run(&mut self, args: Vec<String>) -> AutoResult<()> {
+        // Plan 130: Check if this is a workspace
+        if self.pac.is_workspace() {
+            return self.run_workspace(args);
+        }
+
         let backend = self.pac.backend.as_str();
 
         match backend {
@@ -624,6 +630,60 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::vue::run_vue_project(&root_dir, args)
+    }
+
+    /// Run all workspace members (Plan 130)
+    fn run_workspace(&mut self, args: Vec<String>) -> AutoResult<()> {
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        let members = self.pac.workspace_members();
+
+        if members.is_empty() {
+            return Err("Workspace has no members defined".into());
+        }
+
+        println!("{} {}", "Workspace members:".bright_cyan(), members.len());
+
+        for member_path in members {
+            let member_dir = root_dir.join(member_path.as_str());
+            let member_pac_path = member_dir.join("pac.at");
+
+            if !member_pac_path.exists() {
+                println!("{} Skipping {} - pac.at not found",
+                    "Warning:".bright_yellow(), member_path);
+                continue;
+            }
+
+            println!();
+            println!("{} {}/", "→ Member:".bright_green(), member_path);
+
+            // Load member's pac.at
+            let config = AutoConfig::read(&member_pac_path)?;
+            let member_pac = Pac::new(config);
+
+            // Run based on member's backend
+            let backend = member_pac.backend.as_str();
+            match backend {
+                "vue" => {
+                    println!("  Running Vue dev server");
+                    crate::vue::run_vue_project(&member_dir, args.clone())?;
+                }
+                "jet" => {
+                    println!("  Running Jetpack project");
+                    // TODO: Implement jet run
+                }
+                "rust" => {
+                    println!("  Running Rust backend");
+                    // TODO: Implement rust run
+                }
+                _ => {
+                    println!("  Unknown backend: {}", backend);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn clean(&mut self) -> AutoResult<()> {
