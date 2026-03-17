@@ -45,9 +45,14 @@ test*.pdb
 tmp/*.at
 
 examples/**/dist/*
+examples/**/vue/*
+examples/**/jet/*
+examples/**/tauri/*
+examples/**/rust/
 
 # Vue project output at root
 /dist/
+/vue/
 
 # npm
 node_modules/
