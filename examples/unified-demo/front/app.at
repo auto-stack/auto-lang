@@ -20,10 +20,10 @@ widget CounterApp {
                 // Counter controls
                 row (class: "flex items-center gap-4") {
                     // Decrement button
-                    button (text: "-", class: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600") {}
+                    button (text: "-", class: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600", onClick: {{ count-- }}) {}
 
                     // Increment button
-                    button (text: "+", class: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600") {}
+                    button (text: "+", class: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600", onClick: {{ count++ }}) {}
                 }
             }
         }
