@@ -120,11 +120,11 @@ fn generate_workspace_project(
     let pac_dir = pac_path.parent()
         .ok_or_else(|| "Cannot determine pac.at directory".to_string())?;
 
-    // Parse workspace paths from pac.at
+    // Parse workspace paths from pac.at (Plan 129: app("front") syntax)
     let front_rel_path = parse_workspace_path(&pac_content, "front")
-        .unwrap_or_else(|| "source/front".to_string());
+        .unwrap_or_else(|| "front".to_string());
     let back_rel_path = parse_workspace_path(&pac_content, "back")
-        .unwrap_or_else(|| "source/back".to_string());
+        .unwrap_or_else(|| "back".to_string());
 
     // Resolve paths relative to pac.at directory
     let front_dir = pac_dir.join(&front_rel_path);
@@ -416,8 +416,23 @@ fn generate_workspace_project(
 }
 
 /// Parse workspace path from pac.at content
+///
+/// Plan 129: Supports two syntaxes:
+/// 1. app("front") {} - source in ./front/ (implied by name)
+/// 2. front: "./source/front" - explicit path (legacy)
 fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
-    // Look for: front: "./source/front" or workspace: { front: "./source/front" }
+    // First, look for app("key") syntax (Plan 129)
+    // Pattern: app("front") or app("back")
+    let app_pattern = format!("app(\"{}\")", key);
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with(&app_pattern) {
+            // app("front") implies source directory is "./front"
+            return Some(format!("./{}", key));
+        }
+    }
+
+    // Fallback: Look for explicit path: front: "./source/front"
     for line in content.lines() {
         let line = line.trim();
         if line.starts_with(&format!("{}:", key)) {

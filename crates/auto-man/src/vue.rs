@@ -600,7 +600,23 @@ fn write_project_files(
 }
 
 /// Parse workspace path from pac.at content
+///
+/// Plan 129: Supports two syntaxes:
+/// 1. app("front") {} - source in ./front/ (implied by name)
+/// 2. front: "./source/front" - explicit path (legacy)
 fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
+    // First, look for app("key") syntax (Plan 129)
+    // Pattern: app("front") or app("back")
+    let app_pattern = format!("app(\"{}\")", key);
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with(&app_pattern) {
+            // app("front") implies source directory is "./front"
+            return Some(format!("./{}", key));
+        }
+    }
+
+    // Fallback: Look for explicit path: front: "./source/front"
     for line in content.lines() {
         let line = line.trim();
         if line.starts_with(&format!("{}:", key)) {
@@ -666,9 +682,9 @@ impl VueProject {
         let pac_content = fs::read_to_string(&pac_path)
             .map_err(|e| format!("Failed to read pac.at: {}", e))?;
 
-        // Parse workspace paths
+        // Parse workspace paths (Plan 129: app("front") syntax)
         let front_rel_path = parse_workspace_path(&pac_content, "front")
-            .unwrap_or_else(|| "source/front".to_string());
+            .unwrap_or_else(|| "front".to_string());
         let front_dir = root_dir.join(&front_rel_path);
 
         // Check if front directory exists
