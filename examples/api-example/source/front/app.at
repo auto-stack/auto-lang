@@ -5,7 +5,7 @@ widget App {
     msg Msg { Click, Load }
 
     model {
-        count int = 0
+        var count int = 0
     }
 
     computed {
@@ -29,10 +29,10 @@ widget App {
     }
 
     on {
-        Click => {
-            count = count + 1
+        .Click => {
+            .count = .count + 1
         }
-        Load => {
+        .Load => {
             // TODO: Call backend API
         }
     }

@@ -105,6 +105,11 @@ pub struct ModelField {
 
     /// Initial value expression
     pub init: Expr,
+
+    /// Whether the field is mutable (Plan 130: var keyword)
+    /// Default is false (immutable, like `let`)
+    /// When true, allows modification in `on` handlers
+    pub mutable: bool,
 }
 
 // ============================================================================

@@ -7783,6 +7783,15 @@ impl<'a> Parser<'a> {
                 break;
             }
 
+            // Plan 130: Support `var` keyword for mutable model fields
+            // Default is immutable (like `let`), use `var` to allow modification in `on` handlers
+            let mutable = if self.cur.text.as_str() == "var" {
+                self.next();
+                true
+            } else {
+                false
+            };
+
             let name = self.cur.text.clone();
             self.next();
             let ty = self.parse_type()?;
@@ -7792,7 +7801,7 @@ impl<'a> Parser<'a> {
             } else {
                 Expr::Nil
             };
-            fields.push(ModelField { name, ty, init });
+            fields.push(ModelField { name, ty, init, mutable });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
@@ -8501,8 +8510,17 @@ impl<'a> Parser<'a> {
             }
 
             // Parse pattern (e.g., .Inc or Msg::Inc)
-            let pattern = self.cur.text.to_string();
-            self.next();
+            // Plan 130: Support dot-prefixed patterns like .Inc
+            let pattern = if self.is_kind(TokenKind::Dot) {
+                self.next(); // consume the dot
+                let name = self.cur.text.to_string();
+                self.next();
+                format!(".{}", name)
+            } else {
+                let name = self.cur.text.to_string();
+                self.next();
+                name
+            };
 
             // Expect => (might be DoubleArrow, or Asn followed by Gt)
             if self.is_kind(TokenKind::DoubleArrow) {
@@ -9747,5 +9765,120 @@ widget Test {
         let mut parser = Parser::from(code).with_session(session);
         let result = parser.parse();
         assert!(result.is_ok(), "Pipe syntax should work for text nodes");
+    }
+
+    // Plan 130: Test new AURA syntax with dot-prefixed handlers and state references
+    // - on block events use .Inc instead of Inc
+    // - model member references use .count instead of count
+    // - model fields require var keyword for mutability
+
+    #[test]
+    fn test_aura_dot_prefixed_handler_syntax() {
+        // Test: on { .Inc => { .count = .count + 1 } }
+        let code = r#"
+widget Counter {
+    msg Msg { Inc, Dec }
+    model { var count int = 0 }
+    view {
+        col {
+            text "Counter Demo"
+            text f"Count: ${.count}"
+            row {
+                button "-" { onclick: .Dec }
+                button "+" { onclick: .Inc }
+            }
+        }
+    }
+    on {
+        .Inc => { .count = .count + 1 }
+        .Dec => { .count = .count - 1 }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        match result {
+            Ok(ast) => {
+                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
+                    !matches!(s, Stmt::EmptyLine(_))
+                }).collect();
+                assert_eq!(non_empty.len(), 1, "Should have one widget statement");
+
+                if let Stmt::WidgetDecl(widget) = non_empty[0] {
+                    assert_eq!(widget.name.as_str(), "Counter");
+                    assert_eq!(widget.messages.len(), 1);
+                    assert_eq!(widget.messages[0].variants.len(), 2);
+
+                    // Check model has mutable count field
+                    assert!(widget.model.is_some());
+                    let model = widget.model.as_ref().unwrap();
+                    assert_eq!(model.fields.len(), 1);
+                    assert_eq!(model.fields[0].name.as_str(), "count");
+                    assert!(model.fields[0].mutable, "count should be mutable with var keyword");
+
+                    // Check on block has dot-prefixed handlers
+                    assert!(widget.on.is_some());
+                    let on = widget.on.as_ref().unwrap();
+                    assert_eq!(on.handlers.len(), 2);
+
+                    // Verify handler patterns are dot-prefixed
+                    assert_eq!(on.handlers[0].pattern, ".Inc");
+                    assert_eq!(on.handlers[1].pattern, ".Dec");
+
+                    println!("Dot-prefixed handler syntax parsed successfully!");
+                } else {
+                    panic!("Expected WidgetDecl, got {:?}", non_empty[0]);
+                }
+            }
+            Err(e) => {
+                panic!("Dot-prefixed handler syntax parsing failed: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_aura_model_var_keyword() {
+        // Test: model { var count int = 0 } creates mutable field
+        //      model { count int = 0 } creates immutable field (default)
+        let mutable_code = r#"
+widget Test {
+    model { var count int = 0 }
+    view { col { text "test" } }
+}
+"#;
+        let immutable_code = r#"
+widget Test {
+    model { count int = 0 }
+    view { col { text "test" } }
+}
+"#;
+
+        // Test mutable field
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(mutable_code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+
+        if let Ok(ast) = result {
+            if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
+                let model = widget.model.as_ref().unwrap();
+                assert!(model.fields[0].mutable, "Field with var should be mutable");
+            }
+        }
+
+        // Test immutable field (default)
+        let session2 = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser2 = Parser::from(immutable_code).with_session(session2);
+        let result2 = parser2.parse();
+        assert!(result2.is_ok());
+
+        if let Ok(ast) = result2 {
+            if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
+                let model = widget.model.as_ref().unwrap();
+                assert!(!model.fields[0].mutable, "Field without var should be immutable");
+            }
+        }
     }
 }

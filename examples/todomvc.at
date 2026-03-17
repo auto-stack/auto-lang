@@ -6,8 +6,9 @@ widget TodoApp {
     msg Msg { Add, Clear }
 
     // Model (state variables)
+    // Plan 130: Use var for mutable fields
     model {
-        count int = 0
+        var count int = 0
     }
 
     // Computed property
@@ -42,12 +43,13 @@ widget TodoApp {
     }
 
     // Event handlers
+    // Plan 130: Use . prefix for message variants
     on {
-        Add => {
-            count = count + 1
+        .Add => {
+            .count = .count + 1
         }
-        Clear => {
-            count = 0
+        .Clear => {
+            .count = 0
         }
     }
 }
