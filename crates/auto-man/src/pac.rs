@@ -9,7 +9,7 @@ use crate::Port;
 use crate::TargetOrigin;
 use crate::{Index, PacInfo};
 use crate::{Target, TargetKind, TargetStatus};
-use auto_lang::config::AutoConfig;
+use auto_lang::config::{AutoConfig, BackendConfig, BackendType};
 use auto_lang::Atom;
 use auto_val::{pretty, Arg, Array, AutoPath, AutoStr, Kid, Node, Obj, Value, ValueKey};
 use auto_val::{shared, Shared};
@@ -25,7 +25,14 @@ use tabled::{
 
 pub struct Pac {
     pub name: AutoStr,
+    /// Legacy backend string (for backwards compatibility)
     pub backend: AutoStr,
+    /// New backend configuration (Plan 129)
+    /// Supports:
+    ///   - Single: backend: "vue"
+    ///   - Split: backend: { front: "vue", back: "rust" }
+    ///   - Multi: backend: { front: ["vue", "tauri"], back: "rust" }
+    pub backend_config: Option<BackendConfig>,
     pub port: Port,
     pub version: AutoStr,
     pub ports: Vec<Node>,
@@ -54,7 +61,15 @@ impl Pac {
         let version = config.version();
         let props = config.root.props_clone();
 
-        let backend_str = config.root.get_prop("backend").to_astr();
+        // Parse backend field - supports three forms (Plan 129):
+        //   1. backend: "vue"                          -> Single(BackendType::Vue)
+        //   2. backend: { front: "vue", back: "rust" } -> Split { front: [Vue], back: Rust }
+        //   3. backend: { front: ["vue", "tauri"], back: "rust" } -> Split { front: [Vue, Tauri], back: Rust }
+        let backend_value = config.root.get_prop("backend");
+        let backend_config = BackendConfig::from_value(&backend_value);
+
+        // Legacy backend string (for backwards compatibility)
+        let backend_str = backend_value.to_astr();
         let backend = if backend_str.is_empty() { "c".into() } else { backend_str };
 
         // ports
@@ -109,6 +124,7 @@ impl Pac {
         Self {
             name: pac_name,
             backend,
+            backend_config,
             version,
             port,
             ports,
@@ -133,6 +149,71 @@ impl Pac {
         }
         Ok(())
     }
+
+    // ========== Backend Configuration Helpers (Plan 129) ==========
+
+    /// Check if using new backend config syntax
+    pub fn has_backend_config(&self) -> bool {
+        self.backend_config.is_some()
+    }
+
+    /// Get frontend backend types
+    /// Returns vec of frontend types, or empty vec if not configured
+    pub fn frontend_types(&self) -> Vec<BackendType> {
+        if let Some(ref config) = self.backend_config {
+            match config {
+                BackendConfig::Single(t) => vec![t.clone()],
+                BackendConfig::Split { front, .. } => front.clone(),
+            }
+        } else {
+            // Legacy: parse from backend string
+            BackendType::from_str(&self.backend)
+                .map(|t| vec![t])
+                .unwrap_or_default()
+        }
+    }
+
+    /// Get backend type (for split mode)
+    pub fn backend_type(&self) -> Option<BackendType> {
+        if let Some(ref config) = self.backend_config {
+            match config {
+                BackendConfig::Single(_) => None,
+                BackendConfig::Split { back, .. } => Some(back.clone()),
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Get output directory for a frontend type
+    /// Example: BackendType::Vue -> "vue/"
+    pub fn frontend_output_dir(&self, frontend: &BackendType) -> AutoStr {
+        frontend.output_dir().into()
+    }
+
+    /// Get all output directories based on backend config
+    pub fn output_dirs(&self) -> Vec<(BackendType, AutoStr)> {
+        let mut dirs = Vec::new();
+
+        // Add frontend directories
+        for frontend in self.frontend_types() {
+            dirs.push((frontend.clone(), frontend.output_dir().into()));
+        }
+
+        // Add backend directory (if split mode)
+        if let Some(back) = self.backend_type() {
+            dirs.push((back.clone(), back.output_dir().into()));
+        }
+
+        dirs
+    }
+
+    /// Check if backend is a specific type
+    pub fn is_backend(&self, ty: BackendType) -> bool {
+        self.frontend_types().contains(&ty)
+    }
+
+    // ========== End Backend Configuration Helpers ==========
 
     pub fn print_target_info(&self, target: &str) -> AutoResult<()> {
         if let Some(target) = self.targets.iter().find(|t| t.name == target) {
