@@ -20,15 +20,25 @@ use crate::AutoResult;
 /// 1. Generate Vue project structure if not exists
 /// 2. npm install
 /// 3. Install shadcn-vue components
-/// 4. npm run tauri dev (no build needed for dev mode)
+/// 4. Initialize Tauri if not exists
+/// 5. npm run tauri dev (no build needed for dev mode)
 pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Tauri dev server (backend: tauri)".bright_cyan());
 
     // Load Vue project context
     let project = crate::vue::VueProject::from_workspace(root_dir)?;
 
+    // Check if Tauri is already initialized
+    let vue_dir = root_dir.join("vue");
+    let tauri_dir = vue_dir.join("src-tauri");
+    let tauri_exists = tauri_dir.exists();
+
     // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 3 } else { 4 };
+    let total_steps = if project.exists() {
+        if tauri_exists { 4 } else { 5 }
+    } else {
+        if tauri_exists { 5 } else { 6 }
+    };
     let mut current_step = 0;
 
     if !project.exists() {
@@ -50,11 +60,53 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
     project.install_shadcn_components()?;
 
-    // Step 4: Run Tauri dev (no build needed - tauri dev handles it)
+    // Step 4: Initialize Tauri if not exists
+    if !tauri_exists {
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Initializing Tauri...", current_step, total_steps);
+        init_tauri(&vue_dir)?;
+    }
+
+    // Step 5: Run Tauri dev (no build needed - tauri dev handles it)
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Starting Tauri dev server...", current_step, total_steps);
     run_tauri_dev(root_dir)?;
+
+    Ok(())
+}
+
+/// Initialize Tauri in the Vue project
+fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
+    // Step 1: Install Tauri CLI as dev dependency
+    println!("  Installing @tauri-apps/cli...");
+    let install_args = vec!["install", "--save-dev", "@tauri-apps/cli@^2"];
+    run_command_live("npm", &install_args, vue_dir)?;
+    println!("  ✓ @tauri-apps/cli installed");
+
+    // Step 2: Install Tauri API as dependency
+    println!("  Installing @tauri-apps/api...");
+    let api_args = vec!["install", "@tauri-apps/api@^2"];
+    run_command_live("npm", &api_args, vue_dir)?;
+    println!("  ✓ @tauri-apps/api installed");
+
+    // Step 3: Initialize Tauri
+    // Run npm run tauri init -- --app-name "App" --window-title "App" --dev-url "http://localhost:1420" --before-dev-command "npm run dev" --dist-dir "../dist"
+    let init_args = vec![
+        "run", "tauri", "init",
+        "--app-name", "App",
+        "--window-title", "App",
+        "--dev-url", "http://localhost:1420",
+        "--before-dev-command", "npm run dev",
+        "--dist-dir", "../dist",
+    ];
+
+    println!("  Running: npm {}", init_args.join(" "));
+
+    run_command_live("npm", &init_args, vue_dir)?;
+
+    println!("  ✓ Tauri initialized");
 
     Ok(())
 }
