@@ -255,7 +255,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true
+    // Don't auto-open browser - let Tauri or user handle it
   }
 })
 "#.to_string()
