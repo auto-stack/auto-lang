@@ -151,7 +151,8 @@ fn generate_workspace_project(
         .unwrap_or_else(|| "aura-app".to_string());
 
     // Determine output directory (relative to pac_dir/workspace root)
-    let output = output_dir.unwrap_or("dist");
+    // Plan 129: Use backend-specific output directory (vue/ instead of dist/)
+    let output = output_dir.unwrap_or("vue");
     let output_path = pac_dir.join(output);
 
     println!("{} {}", "Output:".bright_cyan(), output);

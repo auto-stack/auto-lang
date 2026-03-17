@@ -686,8 +686,8 @@ impl VueProject {
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "aura-app".to_string());
 
-        // Output directory
-        let output_dir = root_dir.join("dist");
+        // Output directory (Plan 129: vue/ instead of dist/)
+        let output_dir = root_dir.join("vue");
         let public_dir = front_dir.join("public");
 
         // Compile .at files

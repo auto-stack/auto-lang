@@ -88,8 +88,8 @@ impl JetProject {
         // Default front directory
         let front_dir = root_dir.join("source").join("front");
 
-        // Output directory
-        let output_dir = root_dir.join("dist");
+        // Output directory (Plan 129: jet/ instead of dist/)
+        let output_dir = root_dir.join("jet");
 
         // Compile .at files to Kotlin
         let mut kotlin_files: Vec<(String, String)> = Vec::new();
