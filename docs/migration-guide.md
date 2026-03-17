@@ -22,16 +22,20 @@ my-project/
 ```
 my-project/
 ├── pac.at
-├── source/
-│   ├── front/
-│   │   ├── app.at
-│   │   └── pages/
-│   └── back/
-├── vue/                     # Generated Vue project
-├── jet/                     # Generated Jetpack project
+├── front/                   # Frontend source (directly at root, no source/ wrapper)
+│   ├── app.at
+│   └── pages/
+├── back/                    # Backend source (directly at root)
+├── vue/                     # Generated Vue project (was dist/)
+├── jet/                     # Generated Jetpack project (was project root)
 ├── tauri/                   # Generated Tauri project
-└── back/                    # Generated Rust backend
+└── rust/                    # Generated Rust backend
 ```
+
+### Key Changes
+
+1. **No `source/` wrapper**: `front/` and `back/` are now directly at project root
+2. **Backend-specific output**: Generated code goes to `vue/`, `jet/`, `tauri/` instead of `dist/`
 
 ## Key Changes
 
