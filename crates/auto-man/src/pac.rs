@@ -23,6 +23,28 @@ use tabled::{
     Table,
 };
 
+/// 工程场景类型 (Plan 130)
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Scene {
+    /// Workspace 类型 - 包含多个子工程
+    Workspace,
+    /// UI 工程 - AURA 语法
+    Ui,
+    /// 普通工程 - 标准 Auto 语法
+    #[default]
+    Default,
+}
+
+impl Scene {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "workspace" => Self::Workspace,
+            "ui" => Self::Ui,
+            _ => Self::Default,
+        }
+    }
+}
+
 pub struct Pac {
     pub name: AutoStr,
     /// Legacy backend string (for backwards compatibility)
@@ -46,6 +68,13 @@ pub struct Pac {
     /// Whether to show header files in `srcs`
     pub show_headers: bool,
     pub defines: Vec<AutoStr>,
+
+    // Plan 130: Scene and members
+    /// Scene type: workspace, ui, or default
+    pub scene: Scene,
+    /// Workspace members (relative paths to sub-projects)
+    pub members: Vec<AutoStr>,
+
     is_update: bool,
 }
 
@@ -78,6 +107,13 @@ impl Pac {
 
         // defines
         let defines = config.root.get_str_vec_or("defines");
+
+        // Parse scene field (Plan 130)
+        let scene_str = config.root.get_prop("scene").to_astr();
+        let scene = Scene::from_str(&scene_str);
+
+        // Parse members field (Plan 130)
+        let members = config.root.get_str_vec_or("members");
 
         // target related properties
         let target_props = vec!["at", "lang"];
@@ -137,6 +173,8 @@ impl Pac {
             build_location: "cmake".into(),
             show_headers: false,
             defines,
+            scene,
+            members,
             is_update: false,
         }
     }
