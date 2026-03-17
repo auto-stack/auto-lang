@@ -1,0 +1,39 @@
+// pac.at - Multi-Frontend Demo (多前端示例)
+// Demonstrates Plan 129: Multiple frontends with single backend
+//
+// backend: { front: ["vue", "tauri"], back: "rust" }
+//
+// Directory structure after build:
+//   multi-frontend-demo/
+//   ├── pac.at
+//   ├── front/              <- Frontend source (shared)
+//   │   └── app.at
+//   ├── back/               <- Backend source
+//   │   └── api.at
+//   ├── vue/                <- Generated Vue web app
+//   ├── tauri/              <- Generated Tauri desktop app
+//   └── rust/               <- Generated Rust backend
+//
+// Usage:
+//   auto build                    # Build vue/, tauri/, and rust/
+//   auto build --target vue       # Build only vue/
+//   auto build --target tauri     # Build only tauri/
+//   auto run --target tauri       # Run Tauri desktop app
+
+name: "multi-frontend-demo"
+version: "1.0.0"
+description: "Demo with Vue web + Tauri desktop + Rust backend"
+
+// Multi-frontend configuration
+// Same front/ generates to both vue/ and tauri/
+// back/ generates to rust/
+backend: {
+    front: ["vue", "tauri"]
+    back: "rust"
+}
+
+scripts: {
+    dev: "npm run dev"
+    tauri: "cargo tauri dev"
+    build: "cargo build --release"
+}

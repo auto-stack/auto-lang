@@ -1,29 +1,42 @@
 // pac.at - Unified Backend Demo
 // Demonstrates Plan 129: Unified Backend Output Structure
 //
-// New directory structure:
+// Directory structure after build:
 //   unified-demo/
 //   ├── pac.at              <- This file
-//   ├── front/              <- Frontend source (directly at root, not source/front)
+//   ├── front/              <- Frontend source (AURA widgets)
 //   │   └── app.at
-//   ├── back/               <- Backend source (directly at root)
-//   ├── vue/                <- Generated Vue project (was dist/)
-//   └── jet/                <- Generated Jetpack project
+//   ├── back/               <- Backend source (Rust/API)
+//   ├── vue/                <- Generated Vue project (auto build)
+//   └── jet/                <- Generated Jetpack project (auto build --target jet)
+//
+// Backend config syntax (Plan 129):
+//   1. Single frontend:     backend: "vue"
+//   2. Split front/back:    backend: { front: "vue", back: "rust" }
+//   3. Multi-frontend:      backend: { front: ["vue", "tauri"], back: "rust" }
 //
 // Usage:
-//   auto build              # Build all backends
+//   auto build              # Build all frontends
 //   auto build --target vue # Build only Vue
-//   auto run                # Run dev servers
+//   auto run                # Run dev server
 
 name: "unified-demo"
 version: "1.0.0"
 description: "Demo project with unified backend output structure"
 
-// Backend configuration (Plan 129 syntax)
-// Single backend: output to vue/ directory
+// Example 1: Single frontend (entire project is frontend)
+// All code in front/ generates to vue/
 backend: "vue"
 
-// Workspace structure (new: front/ and back/ directly at project root)
+// Example 2: Split frontend + backend
+// front/ generates to vue/, back/ generates to rust native
+// backend: { front: "vue", back: "rust" }
+
+// Example 3: Multiple frontends + shared backend
+// front/ generates to both vue/ and tauri/, back/ generates to rust native
+// backend: { front: ["vue", "tauri"], back: "rust" }
+
+// Workspace structure (Plan 129: no source/ wrapper)
 workspace: {
     front: "./front"
     back: "./back"

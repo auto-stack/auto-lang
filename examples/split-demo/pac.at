@@ -1,0 +1,30 @@
+// pac.at - Split Demo (前后端分离示例)
+// Demonstrates Plan 129: Split frontend/backend configuration
+//
+// backend: { front: "vue", back: "rust" }
+//
+// Build output:
+//   split-demo/
+//   ├── front/       <- Frontend source
+//   ├── back/        <- Backend source
+//   ├── vue/         <- Generated Vue project
+//   └── rust/        <- Generated Rust backend
+//
+// Commands:
+//   auto build              # Build both vue/ and rust/
+//   auto build --target vue # Build only vue/
+//   auto run                # Run dev servers
+
+name: "split-demo"
+version: "1.0.0"
+
+// Split mode: frontend -> vue/, backend -> rust/
+backend: {
+    front: "vue"
+    back: "rust"
+}
+
+scripts: {
+    dev: "npm run dev"
+    build: "cargo build --release"
+}

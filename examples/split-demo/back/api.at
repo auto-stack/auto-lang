@@ -1,0 +1,18 @@
+// back/api.at - Backend API for split demo
+
+// API endpoints
+fn get_status() str {
+    "OK"
+}
+
+fn get_count() int {
+    42
+}
+
+fn increment(val int) int {
+    val + 1
+}
+
+fn decrement(val int) int {
+    val - 1
+}

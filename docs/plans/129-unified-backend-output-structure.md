@@ -5,11 +5,139 @@
 **Goal:** 统一 Auto 项目的后端输出目录结构，使不同后端（Vue、Jetpack、Tauri 等）的生成代码有一致的目录命名和组织方式。
 
 **Architecture:**
-1. 在 `pac.at` 中定义 `backend` 配置，指定输出目录名（vue/, jet/, tauri/ 等）
+1. 在 `pac.at` 中定义 `backend` 配置，支持三种形式
 2. `auto build` / `auto run` 读取 backend 配置，生成到对应目录
 3. 废弃旧的 `auto vue` / `auto jet` 命令，统一用 `auto build` / `auto run`
 
 **Tech Stack:** Rust, clap, serde
+
+---
+
+## `backend` 字段语法
+
+`backend` 字段支持三种形式：
+
+### 形式 1: 单后端（纯前端项目）
+
+```auto
+backend: "vue"
+```
+
+- 所有代码都是前端，生成到 `vue/` 目录
+- 目录结构：
+  ```
+  my-app/
+  ├── pac.at
+  ├── front/          <- 前端源码（无 source/ 包装）
+  │   └── app.at
+  └── vue/            <- 生成的 Vue 项目
+  ```
+
+### 形式 2: 前后端分离（单一前端）
+
+```auto
+backend: {
+    front: "vue"
+    back: "rust"
+}
+```
+
+- `front/` 生成到 `vue/`
+- `back/` 生成到 `rust/`（或 `back/` 取决于后端类型）
+- 目录结构：
+  ```
+  my-app/
+  ├── pac.at
+  ├── front/          <- 前端源码
+  │   └── app.at
+  ├── back/           <- 后端源码
+  │   └── api.at
+  ├── vue/            <- 生成的 Vue 项目
+  └── rust/           <- 生成的 Rust 后端
+  ```
+
+### 形式 3: 多前端（同一前端生成到多个平台）
+
+```auto
+backend: {
+    front: ["vue", "tauri"]
+    back: "rust"
+}
+```
+
+- 同一份 `front/` 代码生成到 `vue/` 和 `tauri/` 两个目录
+- `back/` 生成到 `rust/`
+- 目录结构：
+  ```
+  my-app/
+  ├── pac.at
+  ├── front/          <- 共享前端源码
+  │   └── app.at
+  ├── back/           <- 后端源码
+  ├── vue/            <- 生成的 Vue Web 项目
+  ├── tauri/          <- 生成的 Tauri 桌面项目
+  └── rust/           <- 生成的 Rust 后端
+  ```
+
+### 后端类型与输出目录映射
+
+| 后端类型 | 输出目录 |
+|---------|---------|
+| `vue` | `vue/` |
+| `jet` | `jet/` |
+| `tauri` | `tauri/` |
+| `gpui` | `gpui/` |
+| `iced` | `iced/` |
+| `arkts` | `arkts/` |
+| `cangjie` | `cangjie/` |
+| `godot` | `godot/` |
+| `rust` | `rust/` |
+
+---
+
+## AutoMan 解析修改
+
+`crates/auto-man/src/automan.rs` 需要修改以支持新的 `backend` 语法：
+
+```rust
+use auto_lang::config::{BackendConfig, BackendType};
+
+impl AutoMan {
+    /// Parse backend configuration from pac.at
+    pub fn parse_backend_config(&self, pac_content: &str) -> Option<BackendConfig> {
+        // Parse the backend field from pac.at content
+        // Supports:
+        //   backend: "vue"
+        //   backend: { front: "vue", back: "rust" }
+        //   backend: { front: ["vue", "tauri"], back: "rust" }
+
+        // Use existing AutoVal parser to get the Value
+        let value = self.parse_field(pac_content, "backend")?;
+
+        // Use BackendConfig::from_value() to parse
+        BackendConfig::from_value(&value)
+    }
+
+    /// Get output directories based on backend config
+    pub fn get_output_dirs(&self, config: &BackendConfig) -> Vec<PathBuf> {
+        let root = self.project_root();
+
+        match config {
+            BackendConfig::Single(t) => {
+                vec![root.join(t.output_dir())]
+            }
+            BackendConfig::Split { front, back } => {
+                let mut dirs = Vec::new();
+                for f in front {
+                    dirs.push(root.join(f.output_dir()));
+                }
+                dirs.push(root.join(back.output_dir()));
+                dirs
+            }
+        }
+    }
+}
+```
 
 ---
 

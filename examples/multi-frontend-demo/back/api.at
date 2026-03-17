@@ -1,0 +1,30 @@
+// back/api.at - Shared backend for web and desktop
+
+// API endpoints
+fn get_status() str {
+    "OK"
+}
+
+fn get_message() str {
+    "Hello from Rust backend!"
+}
+
+fn increment(val int) int {
+    val + 1
+}
+
+fn decrement(val int) int {
+    val - 1
+}
+
+// Tauri-specific commands (only included in Tauri build)
+#[cfg(target = "tauri")]
+fn get_platform() str {
+    "desktop"
+}
+
+// Web-specific endpoints (only included in Vue build)
+#[cfg(target = "vue")]
+fn get_platform() str {
+    "web"
+}
