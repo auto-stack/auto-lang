@@ -1,31 +1,23 @@
-// app.at - Main application component
-// A simple counter demo demonstrating the new unified backend structure
+widget Counter {
+    msg Msg { Inc, Dec }
 
-widget CounterApp {
-    model {
-        count int = 0
-    }
+    model { count int = 0 }
 
     view {
-        // Centered container
-        col (class: "min-h-screen bg-gray-100 flex items-center justify-center") {
-            // Card container
-            col (class: "bg-white p-8 rounded-lg shadow-lg") {
-                // Title
-                text (text: "Counter Demo", class: "text-2xl font-bold mb-4") {}
+        col {
+            text "Counter Demo"
 
-                // Counter display
-                text (text: "Count: {count}", class: "text-3xl font-mono mb-4") {}
+            text f"Count: ${.count}"
 
-                // Counter controls
-                row (class: "flex items-center gap-4") {
-                    // Decrement button
-                    button (text: "-", class: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600", onClick: {{ count-- }}) {}
-
-                    // Increment button
-                    button (text: "+", class: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600", onClick: {{ count++ }}) {}
-                }
+            row {
+                button "-" { onclick: .Dec }
+                button "+" { onclick: .Inc }
             }
         }
+    }
+
+    on {
+        Inc => { count = count + 1 }
+        Dec => { count = count - 1 }
     }
 }
