@@ -15,7 +15,7 @@ widget Counter {
 
     // Model (state variables)
     model {
-        count int = 0
+        var count int = 0
     }
 
     // View tree

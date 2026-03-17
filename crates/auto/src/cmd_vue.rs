@@ -466,6 +466,23 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
+/// Parse scene from pac.at content (Plan 130)
+/// Returns "ui" for UI projects, "workspace" for workspaces, or None for default
+fn parse_scene(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("scene:") || line.starts_with("scene =") {
+            if let Some(colon_pos) = line.find(':').or_else(|| line.find('=')) {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_matches('"').trim_matches('\'');
+                let value = value.trim_end_matches(',');
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Check if npm dependencies are already installed
 fn is_npm_installed(output_path: &Path) -> bool {
     output_path.join("node_modules").exists()
