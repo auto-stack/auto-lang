@@ -106,6 +106,21 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
 
     run_command_live("npx", &init_args, vue_dir)?;
 
+    // Step 4: Add empty [workspace] to src-tauri/Cargo.toml to exclude from root workspace
+    let tauri_cargo_toml = vue_dir.join("src-tauri").join("Cargo.toml");
+    if tauri_cargo_toml.exists() {
+        let content = std::fs::read_to_string(&tauri_cargo_toml)
+            .map_err(|e| format!("Failed to read src-tauri/Cargo.toml: {}", e))?;
+
+        // Only add if not already present
+        if !content.contains("[workspace]") {
+            let updated = format!("{}\n\n# Exclude from root workspace\n[workspace]\n", content);
+            std::fs::write(&tauri_cargo_toml, updated)
+                .map_err(|e| format!("Failed to write src-tauri/Cargo.toml: {}", e))?;
+            println!("  ✓ Added [workspace] to exclude from root workspace");
+        }
+    }
+
     println!("  ✓ Tauri initialized");
 
     Ok(())
