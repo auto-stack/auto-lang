@@ -91,10 +91,10 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
     run_command_live("npm", &api_args, vue_dir)?;
     println!("  ✓ @tauri-apps/api installed");
 
-    // Step 3: Initialize Tauri
-    // Run npm run tauri init -- --app-name "App" --window-title "App" --dev-url "http://localhost:1420" --before-dev-command "npm run dev" --dist-dir "../dist"
+    // Step 3: Initialize Tauri using npx (directly runs the CLI)
+    // npx tauri init --app-name "App" --window-title "App" --dev-url "http://localhost:1420" --before-dev-command "npm run dev" --dist-dir "../dist"
     let init_args = vec![
-        "run", "tauri", "init",
+        "tauri", "init",
         "--app-name", "App",
         "--window-title", "App",
         "--dev-url", "http://localhost:1420",
@@ -102,9 +102,9 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
         "--dist-dir", "../dist",
     ];
 
-    println!("  Running: npm {}", init_args.join(" "));
+    println!("  Running: npx {}", init_args.join(" "));
 
-    run_command_live("npm", &init_args, vue_dir)?;
+    run_command_live("npx", &init_args, vue_dir)?;
 
     println!("  ✓ Tauri initialized");
 
