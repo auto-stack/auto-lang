@@ -548,6 +548,58 @@ git commit -m "docs: add migration guide for unified backend structure"
 
 ---
 
+## `app()` 语法说明
+
+`app()` 用于声明源码目录，与 `backend` 配置配合决定输出位置：
+
+```auto
+// 简写形式 (at: "./front" 省略)
+app("front")  // 源码在 front/，输出到 backend 指定目录
+
+// 完整形式
+app("front") {
+    at: "./front"    // 源码目录
+}
+
+app("back") {
+    at: "./back"     // 后端源码目录
+}
+```
+
+### 映射规则
+
+| `backend` 配置 | `app("front")` 输出 | `app("back")` 输出 |
+|---------------|---------------------|-------------------|
+| `"vue"` | `vue/` | - |
+| `{ front: "vue", back: "rust" }` | `vue/` | `rust/` |
+| `{ front: ["vue", "tauri"], back: "rust" }` | `vue/` + `tauri/` | `rust/` |
+
+### 完整示例
+
+```auto
+// pac.at
+name: "my-app"
+version: "1.0.0"
+
+// 多前端 + 后端
+backend: {
+    front: ["vue", "tauri"]
+    back: "rust"
+}
+
+// 前端源码 -> 生成到 vue/ 和 tauri/
+app("front") {
+    at: "./front"
+}
+
+// 后端源码 -> 生成到 rust/
+app("back") {
+    at: "./back"
+}
+```
+
+---
+
 ## Success Criteria
 
 1. `auto build` 能正确解析新 `backend` 配置语法
