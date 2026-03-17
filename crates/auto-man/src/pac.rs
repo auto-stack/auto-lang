@@ -253,6 +253,39 @@ impl Pac {
 
     // ========== End Backend Configuration Helpers ==========
 
+    // ========== Workspace Configuration Helpers (Plan 130) ==========
+
+    /// Check if this is a workspace
+    pub fn is_workspace(&self) -> bool {
+        self.scene == Scene::Workspace
+    }
+
+    /// Check if this is a UI project
+    pub fn is_ui(&self) -> bool {
+        self.scene == Scene::Ui
+    }
+
+    /// Get workspace members as paths
+    /// Returns empty vec if not a workspace
+    pub fn workspace_members(&self) -> &[AutoStr] {
+        if self.is_workspace() {
+            &self.members
+        } else {
+            &[]
+        }
+    }
+
+    /// Check if this project has multiple backend outputs
+    pub fn has_multi_backend(&self) -> bool {
+        if let Some(ref config) = self.backend_config {
+            matches!(config, BackendConfig::Split { front, .. } if front.len() > 1)
+        } else {
+            false
+        }
+    }
+
+    // ========== End Workspace Configuration Helpers ==========
+
     pub fn print_target_info(&self, target: &str) -> AutoResult<()> {
         if let Some(target) = self.targets.iter().find(|t| t.name == target) {
             target.print_info()
