@@ -145,7 +145,7 @@ fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> 
     }
 }
 
-/// Run npm run tauri dev
+/// Run npx tauri dev
 fn run_tauri_dev(root_dir: &Path) -> AutoResult<()> {
     let vue_dir = root_dir.join("vue");
 
@@ -157,9 +157,10 @@ fn run_tauri_dev(root_dir: &Path) -> AutoResult<()> {
     println!("{} {}", "Starting Tauri dev...".bright_green(), "(this may take a while for first build)".bright_black());
     println!();
 
-    // Run npm run tauri dev in the vue directory
-    let args = vec!["run", "tauri", "dev"];
-    run_command_live("npm", &args, &vue_dir)?;
+    // Use npx tauri dev instead of npm run tauri dev
+    // (tauri CLI is installed as dev dependency, npx can run it directly)
+    let args = vec!["tauri", "dev"];
+    run_command_live("npx", &args, &vue_dir)?;
 
     Ok(())
 }
