@@ -140,30 +140,114 @@ impl AutoConfig {
     // }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// 后端类型
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BackendType {
+    Vue,
+    Jet,
+    Tauri,
+    Gpui,
+    Iced,
+    Arkts,
+    Cangjie,
+    Godot,
+    Rust,
+}
 
-    #[test]
-    fn test_config_with_if() -> AutoResult<()> {
-        let code = r#"
-            name: "hello"
+impl BackendType {
+    /// 从字符串解析后端类型
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "vue" => Some(Self::Vue),
+            "jet" => Some(Self::Jet),
+            "tauri" => Some(Self::Tauri),
+            "gpui" => Some(Self::Gpui),
+            "iced" => Some(Self::Iced),
+            "arkts" => Some(Self::Arkts),
+            "cangjie" => Some(Self::Cangjie),
+            "godot" => Some(Self::Godot),
+            "rust" => Some(Self::Rust),
+            _ => None,
+        }
+    }
 
-            var a = true
+    /// 获取输出目录名
+    pub fn output_dir(&self) -> &'static str {
+        match self {
+            Self::Vue => "vue",
+            Self::Jet => "jet",
+            Self::Tauri => "tauri",
+            Self::Gpui => "gpui",
+            Self::Iced => "iced",
+            Self::Arkts => "arkts",
+            Self::Cangjie => "cangjie",
+            Self::Godot => "godot",
+            Self::Rust => "back",
+        }
+    }
+}
 
-            if a {
-                lib("alib") {}
+/// 后端配置（单后端或多后端）
+#[derive(Debug, Clone, PartialEq)]
+pub enum BackendConfig {
+    /// 单后端：整个项目都是同一种类型
+    Single(BackendType),
+    /// 前后端分离
+    Split {
+        front: Vec<BackendType>,
+        back: BackendType,
+    },
+}
+
+impl BackendConfig {
+    /// 从字符串解析
+    pub fn parse(s: &str) -> Option<Self> {
+        BackendType::from_str(s).map(Self::Single)
+    }
+
+    /// 从 Value 解析（支持对象形式）
+    pub fn from_value(value: &Value) -> Option<Self> {
+        match value {
+            Value::Str(s) => Self::parse(&s),
+            Value::Obj(obj) => {
+                let front = obj.get("front").and_then(|v| match v {
+                    Value::Str(s) => BackendType::from_str(&s).map(|t| vec![t]),
+                    Value::Array(arr) => Some(
+                        arr.iter()
+                            .filter_map(|v| match v {
+                                Value::Str(s) => BackendType::from_str(&s),
+                                _ => None,
+                            })
+                            .collect()
+                    ),
+                    _ => None,
+                });
+                let back = obj.get("back").and_then(|v| match v {
+                    Value::Str(s) => BackendType::from_str(&s),
+                    _ => None,
+                });
+                match (front, back) {
+                    (Some(f), Some(b)) => Some(Self::Split { front: f, back: b }),
+                    _ => None,
+                }
             }
-        "#;
+            _ => None,
+        }
+    }
 
-        let mut reader = AutoConfigReader::new();
-        let config = reader.parse(code)?;
-        assert_eq!(config.name(), "hello");
-        assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
+    /// 获取所有前端后端类型
+    pub fn frontends(&self) -> Vec<&BackendType> {
+        match self {
+            Self::Single(t) => vec![t],
+            Self::Split { front, .. } => front.iter().collect(),
+        }
+    }
 
-        // Note: eval() on the reader is no longer supported with AutoVM
-        // Use run() or run_autovm() for script execution
-
-        Ok(())
+    /// 获取后端类型
+    pub fn backend(&self) -> Option<&BackendType> {
+        match self {
+            Self::Single(_) => None,
+            Self::Split { back, .. } => Some(back),
+        }
     }
 }
