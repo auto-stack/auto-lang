@@ -796,7 +796,35 @@ impl Automan {
         Ok(())
     }
 
-    /// Run all workspace members (Plan 130)
+    /// Run a member's frontend (helper for run_workspace)
+    fn run_member_frontend(frontend: &auto_lang::config::BackendType, member_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+        use auto_lang::config::BackendType;
+
+        match frontend {
+            BackendType::Vue => {
+                println!("  Running Vue dev server");
+                crate::vue::run_vue_project(member_dir, args)?;
+            }
+            BackendType::Jet => {
+                println!("  Running Jetpack project");
+                // TODO: Implement jet run
+            }
+            BackendType::Tauri => {
+                println!("  Running Tauri project");
+                crate::tauri::run_tauri_project(member_dir, args)?;
+            }
+            BackendType::Rust => {
+                println!("  Running Rust backend");
+                // TODO: Implement rust run
+            }
+            _ => {
+                println!("  Unknown frontend type: {:?}", frontend);
+            }
+        }
+        Ok(())
+    }
+
+    /// Run all workspace members (Plan 130, Plan 132: full stack)
     fn run_workspace(&mut self, args: Vec<String>) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
@@ -808,6 +836,33 @@ impl Automan {
         }
 
         println!("{} {}", "Workspace members:".bright_cyan(), members.len());
+
+        // Plan 132: Check if there's a generated Rust server to run
+        let rust_dir = root_dir.join("rust");
+        let rust_server_path = rust_dir.join("Cargo.toml");
+        let mut rust_server_handle: Option<std::process::Child> = None;
+
+        if rust_server_path.exists() {
+            println!();
+            println!("{} Starting Rust backend server...", "▶".bright_cyan());
+            println!("  Directory: rust/");
+
+            // Start the Rust server in background
+            let rust_server = std::process::Command::new("cargo")
+                .args(&["run", "--release"])
+                .current_dir(&rust_dir)
+                .spawn()
+                .map_err(|e| format!("Failed to start Rust server: {}", e))?;
+
+            rust_server_handle = Some(rust_server);
+            println!("  {} Rust backend started", "✓".bright_green());
+
+            // Give the server time to start
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+
+        // Track if we have a frontend to run
+        let mut frontend_started = false;
 
         for member_path in members {
             let member_dir = root_dir.join(member_path.as_str());
@@ -826,25 +881,49 @@ impl Automan {
             let config = AutoConfig::read(&member_pac_path)?;
             let member_pac = Pac::new(config);
 
-            // Run based on member's backend
-            let backend = member_pac.backend.as_str();
-            match backend {
-                "vue" => {
-                    println!("  Running Vue dev server");
-                    crate::vue::run_vue_project(&member_dir, args.clone())?;
+            // Run based on member's frontend types (Plan 132: support array backends)
+            let frontends = member_pac.frontend_types();
+
+            if frontends.is_empty() {
+                // Check for backend type (rust) - already handled above
+                if let Some(_backend_type) = member_pac.backend_type() {
+                    println!("  Backend member (server started above)");
+                } else {
+                    println!("  No backend configured");
                 }
-                "jet" => {
-                    println!("  Running Jetpack project");
-                    // TODO: Implement jet run
-                }
-                "rust" => {
-                    println!("  Running Rust backend");
-                    // TODO: Implement rust run
-                }
-                _ => {
-                    println!("  Unknown backend: {}", backend);
-                }
+            } else if frontends.len() == 1 {
+                // Single frontend - run directly
+                Self::run_member_frontend(&frontends[0], &member_dir, args.clone())?;
+                frontend_started = true;
+            } else {
+                // Multiple frontends - let user select
+                use dialoguer::Select;
+
+                let frontend_names: Vec<&'static str> = frontends.iter()
+                    .map(|t| t.as_str())
+                    .collect();
+
+                let selection = Select::new()
+                    .with_prompt("Select frontend to run")
+                    .default(0)
+                    .items(&frontend_names)
+                    .interact()
+                    .map_err(|e| format!("Failed to select frontend: {}", e))?;
+
+                Self::run_member_frontend(&frontends[selection], &member_dir, args.clone())?;
+                frontend_started = true;
             }
+        }
+
+        // Cleanup: stop the Rust server if no frontend was started
+        if let Some(mut child) = rust_server_handle {
+            if !frontend_started {
+                println!();
+                println!("{} Stopping Rust backend server...", "▶".bright_cyan());
+                let _ = child.kill();
+                println!("  {} Rust backend stopped", "✓".bright_green());
+            }
+            // If frontend was started, the server keeps running until Ctrl+C
         }
 
         Ok(())
