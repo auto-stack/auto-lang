@@ -91,30 +91,56 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
     run_command_live("npm", &api_args, vue_dir)?;
     println!("  ✓ @tauri-apps/api installed");
 
-    // Step 3: Initialize Tauri using npx (directly runs the CLI)
+    // Step 3: Install cross-env for cross-platform environment variables
+    println!("  Installing cross-env...");
+    let cross_env_args = vec!["install", "--save-dev", "cross-env"];
+    run_command_live("npm", &cross_env_args, vue_dir)?;
+    println!("  ✓ cross-env installed");
+
+    // Step 4: Add dev:tauri script to package.json if not present
+    let package_json_path = vue_dir.join("package.json");
+    if package_json_path.exists() {
+        let content = std::fs::read_to_string(&package_json_path)
+            .map_err(|e| format!("Failed to read package.json: {}", e))?;
+
+        // Check if dev:tauri script exists
+        if !content.contains("\"dev:tauri\"") {
+            // Add dev:tauri script by finding the scripts section and adding it
+            // This is a simple string replacement approach
+            if let Some(pos) = content.find("\"dev\":") {
+                // Find the end of the dev script line
+                let before = &content[..pos];
+                let after = &content[pos..];
+
+                // Find where to insert (after the "dev" script line ends)
+                if let Some(line_end) = after.find('\n') {
+                    let dev_line = &after[..line_end];
+                    let rest = &after[line_end..];
+
+                    let updated = format!(
+                        "{}{}\n    \"dev:tauri\": \"cross-env TAURI_ENV=1 vite\",{}",
+                        before, dev_line, rest
+                    );
+
+                    std::fs::write(&package_json_path, updated)
+                        .map_err(|e| format!("Failed to write package.json: {}", e))?;
+                    println!("  ✓ Added dev:tauri script to package.json");
+                }
+            }
+        }
+    }
+
+    // Step 5: Initialize Tauri using npx (directly runs the CLI)
     // Note: Vite dev server runs on port 3000 (configured in vue.rs)
     // Use --ci flag for non-interactive mode
-    // Set TAURI_ENV=1 to tell Vite not to auto-open browser
-    // (vite.config.ts checks process.env.TAURI_ENV)
-    #[cfg(windows)]
+    // Use npm run dev:tauri which sets TAURI_ENV=1 to prevent browser auto-open
     let init_args = vec![
         "tauri", "init",
         "--ci",
         "--app-name", "App",
         "--window-title", "App",
         "--dev-url", "http://localhost:3000",
-        "--before-dev-command", "set TAURI_ENV=1 && npx vite",
-        "--frontend-dist", "../dist",
-    ];
-
-    #[cfg(not(windows))]
-    let init_args = vec![
-        "tauri", "init",
-        "--ci",
-        "--app-name", "App",
-        "--window-title", "App",
-        "--dev-url", "http://localhost:3000",
-        "--before-dev-command", "\"TAURI_ENV=1 npx vite\"",
+        "--before-dev-command", "npm run dev:tauri",
         "--frontend-dist", "../dist",
     ];
 
