@@ -175,9 +175,27 @@ impl FilesystemResolver {
                 let current_dir = current_file
                     .parent()
                     .ok_or("Cannot resolve super: current file has no parent directory")?;
-                let parent_dir = current_dir
-                    .parent()
-                    .ok_or("Cannot resolve super: already at root directory")?;
+
+                // Check if we're already at the package root
+                let is_at_root = self.search_paths.iter().any(|p| current_dir == *p);
+                if is_at_root {
+                    return Err(format!(
+                        "Cannot use 'super' at package root level.\n\
+                         \n\
+                         Current directory '{}' is already at the package root.\n\
+                         Use 'pac.' prefix to import from the package root instead:\n\
+                         \n\
+                         use pac.{}",
+                        current_dir.display(),
+                        segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(".")
+                    ));
+                }
+
+                let parent_dir = current_dir.parent()
+                    .ok_or_else(|| format!(
+                        "Cannot resolve super: no parent directory above '{}'",
+                        current_dir.display()
+                    ))?;
                 self.find_module(parent_dir, segments)
             }
             PathPrefix::None => {
@@ -231,9 +249,19 @@ impl FilesystemResolver {
             return Ok(dir_module);
         }
 
+        // Enhanced not found error with searched locations
+        let segment_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
         Err(format!(
-            "Module not found: {}",
-            segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(".")
+            "Module '{}' not found.\n\
+             \n\
+             Searched locations:\n\
+             - {} (file module)\n\
+             - {} (directory module)\n\
+             \n\
+             Make sure the file exists with .at extension or has a mod.at file.",
+            segment_strs.join("."),
+            file_module.display(),
+            dir_module.display()
         ))
     }
 }
@@ -464,4 +492,76 @@ mod plan131_tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Dependency resolution not yet implemented"));
     }
+
+    // Plan 131 Task 9: Enhanced Error Message Tests
+
+    #[test]
+    fn test_error_super_at_root_suggests_pac() {
+        // When at package root and using super
+        let tmp = setup_test_project();
+        let src_path = tmp.path().join("src");
+        let resolver = FilesystemResolver::with_package_root(src_path.clone());
+
+        // current file is at package root (src/main.at)
+        let path = ModulePath::super_path(vec![AutoStr::from("utils")]);
+        let current = src_path.join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Error should mention package root
+        assert!(err.contains("package root"), "Error should mention 'package root', got: {}", err);
+        // Error should suggest using pac.
+        assert!(err.contains("use pac.utils"), "Error should suggest 'use pac.utils', got: {}", err);
+    }
+
+    #[test]
+    fn test_error_module_not_found_shows_searched_paths() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::pac(vec![AutoStr::from("nonexistent")]);
+        let current = tmp.path().join("src").join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Error should show searched locations
+        assert!(err.contains("Searched locations"), "Error should mention 'Searched locations', got: {}", err);
+        // Error should show file module path
+        assert!(err.contains("nonexistent.at"), "Error should mention 'nonexistent.at', got: {}", err);
+        // Error should show directory module path
+        assert!(err.contains("nonexistent/mod.at"), "Error should mention 'nonexistent/mod.at', got: {}", err);
+    }
+
+    #[test]
+    fn test_error_ambiguous_module_shows_both_paths() {
+        // Create both db.at and db/mod.at
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        // Create db.at file module
+        fs::write(src.join("db.at"), "fn connect() {}").unwrap();
+
+        // Create db/mod.at directory module
+        let db_dir = src.join("db");
+        fs::create_dir_all(&db_dir).unwrap();
+        fs::write(db_dir.join("mod.at"), "fn connect() {}").unwrap();
+
+        let resolver = FilesystemResolver::with_package_root(src.clone().to_path_buf());
+        let path = ModulePath::pac(vec![AutoStr::from("db")]);
+        let current = src.join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Error should mention ambiguity
+        assert!(err.contains("Ambiguous"), "Error should mention 'Ambiguous', got: {}", err);
+        // Error should show both file paths
+        assert!(err.contains("db.at"), "Error should mention 'db.at', got: {}", err);
+        assert!(err.contains("db/mod.at"), "Error should mention 'db/mod.at', got: {}", err);
+    }
+
 }

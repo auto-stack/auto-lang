@@ -322,7 +322,25 @@ impl AutoManResolver {
             PathPrefix::Dep(dep_name) => {
                 // Look up dependency by name
                 let dep = self.dependencies.get(dep_name.as_str())
-                    .ok_or_else(|| format!("Dependency '{}' not declared in pac.at", dep_name))?;
+                    .ok_or_else(|| {
+                        let declared_deps: Vec<_> = self.dependencies.keys().collect();
+                        format!(
+                            "Dependency '{}' not declared in pac.at.\n\
+                             \n\
+                             Add it to your pac.at file:\n\
+                             dep {}(path: \"path/to/{}\")\n\
+                             \n\
+                             Declared dependencies: {}",
+                            dep_name,
+                            dep_name,
+                            dep_name,
+                            if declared_deps.is_empty() {
+                                "(none)".to_string()
+                            } else {
+                                declared_deps.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                            }
+                        )
+                    })?;
 
                 // Build path from segments within dependency
                 let segments = &module_path.segments;
@@ -374,10 +392,19 @@ impl AutoManResolver {
             return Ok(dir_module);
         }
 
+        // Enhanced not found error with searched locations
         let segment_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
         Err(format!(
-            "Module '{}' not found in dependency at '{}'",
+            "Module '{}' not found in dependency.\n\
+             \n\
+             Searched locations:\n\
+             - {} (file module)\n\
+             - {} (directory module)\n\
+             \n\
+             Dependency root: {}",
             segment_strs.join("."),
+            file_module.display(),
+            dir_module.display(),
             dep_root.display()
         ))
     }
@@ -1153,6 +1180,91 @@ dep database(path: "../database")"#,
         assert!(
             err.contains("Ambiguous"),
             "Error should mention 'Ambiguous', got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_dep_not_declared_error_shows_declared_deps() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+
+        // Create resolver WITHOUT database dependency
+        let resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+
+        // Try to import from undeclared dependency
+        let path = ModulePath::dep(
+            AutoStr::from("undeclared_pkg"),
+            vec![AutoStr::from("module")],
+        );
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not declared"),
+            "Error should mention 'not declared', got: {}",
+            err
+        );
+        // Error should show how to declare
+        assert!(
+            err.contains("Add it to your pac.at file"),
+            "Error should mention 'Add it to your pac.at file', got: {}",
+            err
+        );
+        // Error should show declared dependencies
+        assert!(
+            err.contains("Declared dependencies"),
+            "Error should mention 'Declared dependencies', got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_dep_module_not_found_shows_searched_paths() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+        let db_pkg = workspace.path().join("database");
+
+        // Create resolver with dependency
+        let mut resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+
+        resolver.add_dependency(
+            "database".to_string(),
+            db_pkg.join("src"),
+            ExecutionMode::AutoVM,
+        );
+
+        // Try to import non-existent module
+        let path = ModulePath::dep(
+            AutoStr::from("database"),
+            vec![AutoStr::from("nonexistent")],
+        );
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not found"),
+            "Error should mention 'not found', got: {}",
+            err
+        );
+        // Error should show searched locations
+        assert!(
+            err.contains("Searched locations"),
+            "Error should mention 'Searched locations', got: {}",
             err
         );
     }
