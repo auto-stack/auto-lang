@@ -245,6 +245,88 @@ export { tauriApi, httpApi };
 export type { IApi };
 "#.to_string()
     }
+
+    /// Generate a single fetch function for an endpoint
+    pub fn generate_fetch_function(&self, endpoint: &ApiEndpoint) -> String {
+        let name = endpoint.frontend_name();
+        let method = endpoint.method().to_uppercase();
+        let path = endpoint.path();
+
+        let params: Vec<String> = endpoint.params.iter()
+            .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+            .collect();
+        let param_list = params.join(", ");
+
+        let return_type = self.to_ts_type(&endpoint.return_type);
+        let return_type = if return_type == "void" {
+            "Promise<void>".to_string()
+        } else {
+            format!("Promise<{}>", return_type)
+        };
+
+        let mut lines = vec![
+            format!("export async function {}({}): {} {{", name, param_list, return_type),
+        ];
+
+        // Build URL (handle path params if any)
+        let url = if path.contains(':') {
+            let mut url_str = path.to_string();
+            for param in &endpoint.params {
+                url_str = url_str.replace(&format!(":{}", param.name), &format!("${{{}}}", param.name));
+            }
+            format!("`{}`", url_str)
+        } else {
+            format!("'{}'", path)
+        };
+
+        lines.push(format!("{}const response = await fetch({}, {{", self.indent, url));
+        lines.push(format!("{}{}method: '{}',", self.indent, self.indent, method));
+        lines.push(format!("{}{}headers: {{ 'Content-Type': 'application/json' }},", self.indent, self.indent));
+
+        if method != "GET" && method != "DELETE" && !endpoint.params.is_empty() {
+            let body = if endpoint.params.len() == 1 {
+                endpoint.params[0].name.clone()
+            } else {
+                format!("{{ {} }}", endpoint.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "))
+            };
+            lines.push(format!("{}{}body: JSON.stringify({}),", self.indent, self.indent, body));
+        }
+
+        lines.push(format!("{}}});", self.indent));
+        lines.push(format!("{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);", self.indent));
+
+        if return_type != "Promise<void>" {
+            lines.push(format!("{}return response.json();", self.indent));
+        }
+        lines.push("}".to_string());
+
+        lines.join("\n")
+    }
+
+    /// Generate simple API client file with fetch functions
+    pub fn generate_simple_client(&self, module: &ApiModule) -> String {
+        let mut lines = Vec::new();
+
+        // Type definitions
+        if !module.types.is_empty() {
+            lines.push("// Type Definitions".to_string());
+            lines.push("".to_string());
+            for api_type in &module.types {
+                lines.push(self.generate_interface(api_type));
+                lines.push("".to_string());
+            }
+        }
+
+        // API functions
+        lines.push("// API Functions".to_string());
+        lines.push("".to_string());
+        for endpoint in &module.endpoints {
+            lines.push(self.generate_fetch_function(endpoint));
+            lines.push("".to_string());
+        }
+
+        lines.join("\n")
+    }
 }
 
 impl TargetGenerator for TypeScriptGenerator {
@@ -352,5 +434,22 @@ mod tests {
         assert!(result.contains("id: number"));
         assert!(result.contains("name: string"));
         assert!(result.contains("email?: string"));
+    }
+
+    #[test]
+    fn test_generate_fetch_function() {
+        let gen = TypeScriptGenerator::new();
+
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("GET".to_string());
+        attrs.path = Some("/api/users".to_string());
+
+        let mut endpoint = ApiEndpoint::new("listusers".to_string(), attrs);
+        endpoint.return_type = "User[]".to_string();
+
+        let result = gen.generate_fetch_function(&endpoint);
+        assert!(result.contains("fetch"));
+        assert!(result.contains("/api/users"));
+        assert!(!result.contains("axios"));
     }
 }
