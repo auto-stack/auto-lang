@@ -837,6 +837,17 @@ impl Automan {
 
         println!("{} {}", "Workspace members:".bright_cyan(), members.len());
 
+        // Convert to owned Strings before mutating self
+        let members: Vec<String> = members.iter()
+            .map(|m| m.as_str().to_string())
+            .collect();
+
+        // Auto build first to ensure everything is up to date
+        println!();
+        println!("{} Building project first...", "▶".bright_cyan());
+        self.build_workspace()?;
+        println!("{} Build complete", "✓".bright_green());
+
         // Plan 132: Check if there's a generated Rust server to run
         let rust_dir = root_dir.join("rust");
         let rust_server_path = rust_dir.join("Cargo.toml");
@@ -864,8 +875,8 @@ impl Automan {
         // Track if we have a frontend to run
         let mut frontend_started = false;
 
-        for member_path in members {
-            let member_dir = root_dir.join(member_path.as_str());
+        for member_path in &members {
+            let member_dir = root_dir.join(member_path);
             let member_pac_path = member_dir.join("pac.at");
 
             if !member_pac_path.exists() {

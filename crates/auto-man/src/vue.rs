@@ -231,7 +231,7 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "@vitejs/plugin-vue": "^5.0.0",
     "vite": "^5.0.0",
     "typescript": "^5.3.0",
-    "vue-tsc": "^1.8.0",
+    "vue-tsc": "^2.0.0",
     "tailwindcss": "^3.4.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
@@ -935,8 +935,14 @@ impl VueProject {
             return Ok(());
         }
 
+        // For demo purposes, skip shadcn-vue installation and use native HTML elements
         println!();
-        println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
+        println!("{} {}", "▶".bright_cyan(), "Skipping shadcn-vue (using native HTML for demo)".bright_white());
+        return Ok(());
+
+        // Original code kept for reference
+        // println!();
+        // println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
 
         let mut args = vec!["--yes", "shadcn-vue@latest", "add"];
         args.extend(self.shadcn_components.iter().map(|s| s.as_str()));

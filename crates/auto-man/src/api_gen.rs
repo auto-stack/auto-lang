@@ -151,6 +151,15 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
     std::fs::write(lib_dir.join("api.ts"), &ts_code)
         .map_err(|e| format!("Failed to write api.ts: {}", e))?;
 
+    // Also write to vue/src/lib/ for Vue project imports
+    let vue_lib_dir = root_dir.join("vue").join("src").join("lib");
+    if vue_lib_dir.exists() || root_dir.join("vue").exists() {
+        std::fs::create_dir_all(&vue_lib_dir)
+            .map_err(|e| format!("Failed to create vue lib directory: {}", e))?;
+        std::fs::write(vue_lib_dir.join("api.ts"), &ts_code)
+            .map_err(|e| format!("Failed to write vue api.ts: {}", e))?;
+    }
+
     println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
     // Generate Rust server if back/ exists

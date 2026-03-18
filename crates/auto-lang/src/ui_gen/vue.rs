@@ -2483,7 +2483,17 @@ impl VueGenerator {
                         return Ok(format!("await {}({})", name, args_js.join(", ")));
                     }
                 }
-                // Case 2: Method call on object like api.listusers() or self.listusers()
+                // Case 2: self.<api_function>() - treat as direct API call
+                // When AURA parser sees `listusers()` in handler, it converts to `self.listusers()`
+                if let AuraExpr::StateRef(obj_name) = object.as_ref() {
+                    if obj_name == "self" && Self::API_FUNCTIONS.contains(&method.as_str()) {
+                        let args_js: Vec<String> = args.iter()
+                            .map(|a| self.expr_to_js(a))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        return Ok(format!("await {}({})", method, args_js.join(", ")));
+                    }
+                }
+                // Case 3: Any method call where method name is an API function
                 if Self::API_FUNCTIONS.contains(&method.as_str()) {
                     let args_js: Vec<String> = args.iter()
                         .map(|a| self.expr_to_js(a))
@@ -2825,16 +2835,9 @@ impl VueGenerator {
         match normalized_tag.as_str() {
             // === Button ===
             "button" => {
-                // Handle variant prop
-                if let Some(value) = props.get("variant") {
-                    let variant = self.extract_string_value(value).unwrap_or("default");
-                    attrs.push(format!("variant=\"{}\"", variant));
-                }
-                // Handle size prop
-                if let Some(value) = props.get("size") {
-                    let size = self.extract_string_value(value).unwrap_or("default");
-                    attrs.push(format!("size=\"{}\"", size));
-                }
+                // For demo purposes, use native HTML button with Tailwind classes
+                // instead of shadcn-vue Button component
+                attrs.push("class=\"px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600\"".to_string());
                 // Handle disabled
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
@@ -5402,22 +5405,26 @@ impl VueGenerator {
 
     /// Generate shadcn-vue import statements
     fn generate_shadcn_imports(&self) -> String {
-        if !self.is_shadcn() || self.shadcn_components_used.is_empty() {
-            return String::new();
-        }
+        // Skip shadcn-vue imports for demo - use native HTML elements
+        return String::new();
 
-        // Group components by their module path
-        let mut module_imports: HashMap<&str, Vec<&str>> = HashMap::new();
-
-        for component_name in &self.shadcn_components_used {
-            // Find which module this component belongs to
-            for (_tag, (module, components)) in &self.shadcn_registry.components {
-                if components.contains(&component_name.as_str()) {
-                    module_imports.entry(module).or_default().push(component_name.as_str());
-                    break;
-                }
-            }
-        }
+        // Original code kept for reference
+        // if !self.is_shadcn() || self.shadcn_components_used.is_empty() {
+        //     return String::new();
+        // }
+        //
+        // // Group components by their module path
+        // let mut module_imports: HashMap<&str, Vec<&str>> = HashMap::new();
+        //
+        // for component_name in &self.shadcn_components_used {
+        //     // Find which module this component belongs to
+        //     for (_tag, (module, components)) in &self.shadcn_registry.components {
+        //         if components.contains(&component_name.as_str()) {
+        //             module_imports.entry(module).or_default().push(component_name.as_str());
+        //             break;
+        //         }
+        //     }
+        // }
 
         let mut imports = Vec::new();
         for (module, components) in module_imports {
@@ -5493,7 +5500,7 @@ impl VueGenerator {
     "@vitejs/plugin-vue": "^5.0.0",
     "vite": "^5.0.0",
     "typescript": "^5.3.0",
-    "vue-tsc": "^1.8.0",
+    "vue-tsc": "^2.0.0",
     "tailwindcss": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "autoprefixer": "^10.4.0",

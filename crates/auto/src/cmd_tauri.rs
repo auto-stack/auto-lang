@@ -463,7 +463,7 @@ fn generate_package_json(name: &str) -> String {
     "@vitejs/plugin-vue": "^5.0.0",
     "vite": "^5.0.0",
     "typescript": "^5.3.0",
-    "vue-tsc": "^1.8.0",
+    "vue-tsc": "^2.0.0",
     "tailwindcss": "^3.4.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",

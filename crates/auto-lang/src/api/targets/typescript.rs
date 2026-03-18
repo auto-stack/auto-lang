@@ -268,16 +268,32 @@ export type { IApi };
             format!("export async function {}({}): {} {{", name, param_list, return_type),
         ];
 
-        // Build URL (handle path params if any)
-        let url = if path.contains(':') {
+        // Separate path params from query params
+        let path_params: Vec<_> = endpoint.params.iter()
+            .filter(|p| path.contains(&format!(":{}", p.name)))
+            .collect();
+        let query_params: Vec<_> = endpoint.params.iter()
+            .filter(|p| !path.contains(&format!(":{}", p.name)))
+            .collect();
+
+        // Build URL (handle path params)
+        let mut url = if path.contains(':') {
             let mut url_str = path.to_string();
-            for param in &endpoint.params {
+            for param in &path_params {
                 url_str = url_str.replace(&format!(":{}", param.name), &format!("${{{}}}", param.name));
             }
             format!("`{}`", url_str)
         } else {
             format!("'{}'", path)
         };
+
+        // Add query params to URL for GET requests
+        if method == "GET" && !query_params.is_empty() {
+            let query_str: Vec<String> = query_params.iter()
+                .map(|p| format!("{}=${{encodeURIComponent({})}}", p.name, p.name))
+                .collect();
+            url = format!("`{}?{}`", path, query_str.join("&"));
+        }
 
         lines.push(format!("{}const response = await fetch({}, {{", self.indent, url));
         lines.push(format!("{}{}method: '{}',", self.indent, self.indent, method));
