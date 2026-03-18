@@ -113,10 +113,18 @@ impl ApiExtractor {
         let mut api_module = ApiModule::new(module_name.to_string());
 
         for stmt in stmts {
-            if let Stmt::Fn(fn_decl) = stmt {
-                if let Some(endpoint) = self.extract_endpoint(fn_decl) {
-                    api_module.add_endpoint(endpoint);
+            match stmt {
+                Stmt::Fn(fn_decl) => {
+                    if let Some(endpoint) = self.extract_endpoint(fn_decl) {
+                        api_module.add_endpoint(endpoint);
+                    }
                 }
+                Stmt::TypeDecl(type_decl) => {
+                    if let Some(api_type) = self.extract_type(type_decl) {
+                        api_module.types.push(api_type);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -146,6 +154,27 @@ impl ApiExtractor {
         endpoint.return_type = type_to_string(&fn_decl.ret);
 
         Some(endpoint)
+    }
+
+    /// Extract API type from type declaration
+    fn extract_type(&self, type_decl: &crate::ast::TypeDecl) -> Option<ApiType> {
+        // Only extract user-defined types with struct-like members
+        if type_decl.members.is_empty() {
+            return None;
+        }
+
+        let fields: Vec<ApiField> = type_decl.members.iter().map(|m| ApiField {
+            name: m.name.to_string(),
+            ty: type_to_string(&m.ty),
+            optional: matches!(&m.ty, Type::Option(_)),
+            default: m.value.as_ref().map(|e| expr_to_string(e)),
+        }).collect();
+
+        Some(ApiType {
+            name: type_decl.name.to_string(),
+            fields,
+            doc: None,
+        })
     }
 }
 
@@ -271,3 +300,29 @@ mod tests {
 // Phase 5.4: Integration tests
 #[cfg(test)]
 mod integration_tests;
+
+#[cfg(test)]
+mod type_extraction_tests {
+    use super::*;
+    use crate::Parser;
+
+    #[test]
+    fn test_extract_type_definition() {
+        let code = r#"
+type User {
+    id int
+    name str
+    email str
+}
+"#;
+        let mut parser = Parser::from(code);
+        let ast = parser.parse().unwrap();
+
+        let extractor = ApiExtractor::new();
+        let module = extractor.extract("test", &ast.stmts);
+
+        assert_eq!(module.types.len(), 1);
+        assert_eq!(module.types[0].name, "User");
+        assert_eq!(module.types[0].fields.len(), 3);
+    }
+}
