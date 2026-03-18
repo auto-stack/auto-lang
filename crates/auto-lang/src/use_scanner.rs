@@ -472,4 +472,53 @@ use c <stdio.h>
         assert!(!uses[2].is_rust_import);
         assert!(uses[2].is_c_import);
     }
+
+    // Plan 131: Module path prefix tests (pac. and super.)
+
+    #[test]
+    fn test_scan_pac_import() {
+        let source = "use pac.db";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].module, "pac.db");
+    }
+
+    #[test]
+    fn test_scan_super_import() {
+        let source = "use super.utils";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].module, "super.utils");
+    }
+
+    #[test]
+    fn test_scan_pac_deep_path() {
+        let source = "use pac.api.handlers.user";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].module, "pac.api.handlers.user");
+    }
+
+    #[test]
+    fn test_scan_super_with_items() {
+        let source = "use super.utils: load, save";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].module, "super.utils");
+        assert_eq!(uses[0].items, vec!["load", "save"]);
+    }
+
+    #[test]
+    fn test_scan_plan131_mixed_imports() {
+        let source = r#"
+use pac.db
+use super.utils
+use local_mod
+"#;
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 3);
+        assert_eq!(uses[0].module, "pac.db");
+        assert_eq!(uses[1].module, "super.utils");
+        assert_eq!(uses[2].module, "local_mod");
+    }
 }
