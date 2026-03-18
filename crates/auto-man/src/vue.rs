@@ -1038,7 +1038,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     let project = VueProject::from_workspace(root_dir)?;
 
     // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 3 } else { 4 };
+    let total_steps = if project.exists() { 4 } else { 5 };
     let mut current_step = 0;
 
     if !project.exists() {
@@ -1048,7 +1048,16 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         project.generate()?;
     }
 
-    // Step 2: npm install
+    // Step 2: Generate API client code (if api.at exists)
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
+    if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
+        // API generation is optional - only warn on failure
+        println!("  ⚠ API generation skipped: {}", e);
+    }
+
+    // Step 3: npm install
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
@@ -1079,10 +1088,11 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 ///
 /// Steps:
 /// 1. Generate project structure if not exists
-/// 2. npm install
-/// 3. Install shadcn-vue components
-/// 4. Copy public assets
-/// 5. npm run dev
+/// 2. Generate API client code (if api.at exists)
+/// 3. npm install
+/// 4. Install shadcn-vue components
+/// 5. Copy public assets
+/// 6. npm run dev
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
 
@@ -1090,7 +1100,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     let project = VueProject::from_workspace(root_dir)?;
 
     // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 4 } else { 5 };
+    let total_steps = if project.exists() { 5 } else { 6 };
     let mut current_step = 0;
 
     if !project.exists() {
@@ -1100,25 +1110,34 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.generate()?;
     }
 
-    // Step 2: npm install
+    // Step 2: Generate API client code (if api.at exists)
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
+    if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
+        // API generation is optional - only warn on failure
+        println!("  ⚠ API generation skipped: {}", e);
+    }
+
+    // Step 3: npm install
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
     project.npm_install()?;
 
-    // Step 3: Install shadcn-vue components
+    // Step 4: Install shadcn-vue components
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
     project.install_shadcn_components()?;
 
-    // Step 4: Copy public assets
+    // Step 5: Copy public assets
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Copying public assets...", current_step, total_steps);
     project.copy_public_assets()?;
 
-    // Step 5: npm run dev
+    // Step 6: npm run dev
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Starting dev server...", current_step, total_steps);

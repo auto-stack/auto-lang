@@ -478,6 +478,11 @@ impl Automan {
     }
 
     pub fn build(&mut self) -> AutoResult<()> {
+        // Check if this is a workspace (Plan 130)
+        if self.pac.is_workspace() {
+            return self.build_workspace();
+        }
+
         let backend = self.pac.backend.as_str();
 
         match backend {
@@ -703,6 +708,92 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::tauri::run_tauri_project(&root_dir, args)
+    }
+
+    /// Build all workspace members (Plan 130)
+    fn build_workspace(&mut self) -> AutoResult<()> {
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        let members = self.pac.workspace_members();
+
+        if members.is_empty() {
+            return Err("Workspace has no members defined".into());
+        }
+
+        println!("{} {}", "Building workspace members:".bright_cyan(), members.len());
+
+        for member_path in members {
+            let member_dir = root_dir.join(member_path.as_str());
+            let member_pac_path = member_dir.join("pac.at");
+
+            if !member_pac_path.exists() {
+                println!("{} Skipping {} - pac.at not found",
+                    "Warning:".bright_yellow(), member_path);
+                continue;
+            }
+
+            println!();
+            println!("{} {}/", "→ Member:".bright_green(), member_path);
+
+            // Load member's pac.at
+            let config = AutoConfig::read(&member_pac_path)?;
+            let member_pac = Pac::new(config);
+
+            // Check scene type first
+            if member_pac.is_ui() {
+                // UI project - build for each frontend type
+                // Note: VueProject::from_workspace expects workspace root dir
+                // and finds front/ subdirectory automatically
+                let frontends = member_pac.frontend_types();
+                if frontends.is_empty() {
+                    println!("  No frontend backends configured");
+                    continue;
+                }
+
+                for frontend in frontends {
+                    match frontend {
+                        auto_lang::config::BackendType::Vue => {
+                            println!("  Building Vue frontend");
+                            // Pass workspace root (parent of front/) to Vue builder
+                            crate::vue::build_vue_project(&root_dir)?;
+                        }
+                        auto_lang::config::BackendType::Tauri => {
+                            println!("  Building Tauri frontend");
+                            // Tauri uses Vue as base, then adds Tauri wrapper
+                            crate::vue::build_vue_project(&root_dir)?;
+                        }
+                        auto_lang::config::BackendType::Jet => {
+                            println!("  Building Jetpack project");
+                            // TODO: Implement jet build
+                        }
+                        _ => {
+                            println!("  Unknown frontend type: {:?}", frontend);
+                        }
+                    }
+                }
+            } else {
+                // Default scene - check backend type
+                if let Some(backend_type) = member_pac.backend_type() {
+                    match backend_type {
+                        auto_lang::config::BackendType::Rust => {
+                            println!("  Building Rust backend");
+                            // TODO: Implement rust build (cargo build)
+                        }
+                        _ => {
+                            println!("  Unknown backend type: {:?}", backend_type);
+                        }
+                    }
+                } else {
+                    println!("  No backend configured");
+                }
+            }
+        }
+
+        println!();
+        println!("{}", "Workspace build complete!".bright_green());
+
+        Ok(())
     }
 
     /// Run all workspace members (Plan 130)

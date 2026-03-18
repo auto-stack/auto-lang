@@ -18,10 +18,11 @@ use crate::AutoResult;
 ///
 /// Steps:
 /// 1. Generate Vue project structure if not exists
-/// 2. npm install
-/// 3. Install shadcn-vue components
-/// 4. Initialize Tauri if not exists
-/// 5. npm run tauri dev (no build needed for dev mode)
+/// 2. Generate API client code (if api.at exists)
+/// 3. npm install
+/// 4. Install shadcn-vue components
+/// 5. Initialize Tauri if not exists
+/// 6. npm run tauri dev (no build needed for dev mode)
 pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Tauri dev server (backend: tauri)".bright_cyan());
 
@@ -35,9 +36,9 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
 
     // Step 1: Generate project structure if not exists
     let total_steps = if project.exists() {
-        if tauri_exists { 4 } else { 5 }
-    } else {
         if tauri_exists { 5 } else { 6 }
+    } else {
+        if tauri_exists { 6 } else { 7 }
     };
     let mut current_step = 0;
 
@@ -48,19 +49,28 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         project.generate()?;
     }
 
-    // Step 2: npm install
+    // Step 2: Generate API client code (if api.at exists)
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
+    if let Err(e) = crate::api_gen::generate_api(root_dir, "tauri") {
+        // API generation is optional - only warn on failure
+        println!("  ⚠ API generation skipped: {}", e);
+    }
+
+    // Step 3: npm install
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
     project.npm_install()?;
 
-    // Step 3: Install shadcn-vue components
+    // Step 4: Install shadcn-vue components
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
     project.install_shadcn_components()?;
 
-    // Step 4: Initialize Tauri if not exists
+    // Step 5: Initialize Tauri if not exists
     if !tauri_exists {
         current_step += 1;
         println!();
@@ -68,7 +78,7 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         init_tauri(&vue_dir)?;
     }
 
-    // Step 5: Run Tauri dev (no build needed - tauri dev handles it)
+    // Step 6: Run Tauri dev (no build needed - tauri dev handles it)
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Starting Tauri dev server...", current_step, total_steps);

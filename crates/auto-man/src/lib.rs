@@ -46,6 +46,9 @@ pub mod tauri;
 // Phase 7: Jetpack Compose project support
 pub mod jet;
 
+// Phase 8: API code generation (Plan 130)
+pub mod api_gen;
+
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)
