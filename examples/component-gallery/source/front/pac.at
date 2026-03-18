@@ -5,8 +5,11 @@ version: "1.0.0"
 description: "Component Gallery Frontend - Documentation site components"
 
 // IMPORTANT: This marks the package as an AURA UI package
-// When scenario is "ui", the compiler treats .at files as AURA components
-scenario: "ui"
+// When scene is "ui", the compiler treats .at files as AURA components
+scene: "ui"
+
+// Supported backends: Vue (web) and Tauri (desktop)
+backend: ["vue", "tauri"]
 
 // Workspace paths (front is current directory)
 front: "."
@@ -45,7 +48,6 @@ pages: {
     index: "./pages/index.at"
     button: "./pages/button.at"
     input: "./pages/input.at"
-    text: "./pages/text.at"
     card: "./pages/card.at"
     badge: "./pages/badge.at"
     label: "./pages/label.at"

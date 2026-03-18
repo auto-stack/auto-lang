@@ -428,23 +428,33 @@ fn generate_index_html(name: &str) -> String {
 }
 
 fn generate_main_ts(has_routes: bool) -> String {
+    let base = r#"import { createApp } from 'vue'
+import App from './App.vue'
+import './assets/index.css'
+import 'prismjs/themes/prism-tomorrow.css'
+import Prism from 'prismjs'
+
+// Define custom 'auto' language for Prism
+Prism.languages.auto = {
+  'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+  'string': {
+    pattern: /f?"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/,
+    greedy: true
+  },
+  'keyword': /\b(?:widget|view|model|msg|fn|let|mut|const|if|else|for|in|return|use|type|spec|import|export|struct|enum|interface|extends|implements|new|true|false|null)\b/,
+  'function': /\b[a-z_][a-z0-9_]*(?=\s*\()/i,
+  'number': /\b\d+\.?\d*\b/,
+  'operator': /[+\-*/%=<>!&|^~?:]+/,
+  'punctuation': /[{}[\]();,.]/,
+  'property': /\.[a-z_][a-z0-9_]*/i,
+  'element': /\b(?:col|row|button|text|input|card|link|div|span|p|h1|h2|h3|h4|h5|h6|ul|ol|li|table|thead|tbody|tr|td|th|form|label|checkbox|switch|select|option|dialog|modal|toast|dropdown|menu|tab|tabs|accordion|badge|avatar|progress|slider|scroll|codeblock|pre|code|img|video|audio|canvas|svg|path|rect|circle|ellipse|line|polyline|polygon|header|footer|nav|main|aside|section|article|header|footer|sidebar|outlet|slot)\b/,
+  'attr': /\([^)]*\)/,
+};
+"#;
     if has_routes {
-        r#"import { createApp } from 'vue'
-import App from './App.vue'
-import router from './router'
-import './assets/index.css'
-
-const app = createApp(App)
-app.use(router)
-app.mount('#app')
-"#.to_string()
+        format!("{}\nimport router from './router'\n\nconst app = createApp(App)\napp.use(router)\napp.mount('#app')\n", base)
     } else {
-        r#"import { createApp } from 'vue'
-import App from './App.vue'
-import './assets/index.css'
-
-createApp(App).mount('#app')
-"#.to_string()
+        format!("{}\ncreateApp(App).mount('#app')\n", base)
     }
 }
 
@@ -554,6 +564,11 @@ fn write_project_files(
     let package_json = generate_package_json(name, has_routes);
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
+
+    // components.json (shadcn-vue config)
+    let components_json = auto_lang::ui_gen::VueGenerator::generate_components_json();
+    fs::write(output_path.join("components.json"), components_json)
+        .map_err(|e| format!("Failed to write components.json: {}", e))?;
 
     // vite.config.ts
     let vite_config = generate_vite_config();
@@ -906,6 +921,83 @@ impl VueProject {
         Ok(())
     }
 
+    /// Regenerate only source files (App.vue, pages, components, router)
+    /// This preserves node_modules, package.json, and installed shadcn components
+    pub fn regenerate_source_files(&self) -> AutoResult<()> {
+        println!("{}", "Regenerating source files...".bright_cyan());
+
+        let src_dir = self.output_dir.join("src");
+        let components_dir = src_dir.join("components");
+
+        // Regenerate App.vue
+        let app_vue_path = src_dir.join("App.vue");
+        fs::write(&app_vue_path, &self.app_vue_code)
+            .map_err(|e| format!("Failed to write App.vue: {}", e))?;
+        println!("{}", "  ✓ Regenerated App.vue".bright_green());
+
+        // Regenerate router if routes exist
+        if self.has_routes {
+            let router_dir = self.output_dir.join("src/router");
+            fs::create_dir_all(&router_dir)
+                .map_err(|e| format!("Failed to create src/router: {}", e))?;
+
+            let router_content = VueGenerator::generate_router_file(&self.routes);
+            fs::write(router_dir.join("index.ts"), router_content)
+                .map_err(|e| format!("Failed to write router/index.ts: {}", e))?;
+
+            println!("{}", "  ✓ Regenerated router/index.ts".bright_green());
+        }
+
+        // Regenerate all components and pages
+        let mut pages_count = 0;
+        let mut components_count = 0;
+
+        for (relative_dir, name, code, widget_name) in &self.components {
+            if name != "app" {
+                let output_subdir = if relative_dir.is_empty() || relative_dir == "components" {
+                    components_dir.clone()
+                } else if relative_dir == "pages" || relative_dir.starts_with("pages/") {
+                    let pages_dir = src_dir.join("pages");
+                    let sub_path = relative_dir.strip_prefix("pages/").unwrap_or(relative_dir);
+                    if sub_path.is_empty() || sub_path == "pages" {
+                        pages_dir
+                    } else {
+                        pages_dir.join(sub_path)
+                    }
+                } else if relative_dir.starts_with("components/") {
+                    let sub_path = relative_dir.strip_prefix("components/").unwrap_or(relative_dir);
+                    components_dir.join(sub_path)
+                } else {
+                    components_dir.join(relative_dir)
+                };
+
+                fs::create_dir_all(&output_subdir)
+                    .map_err(|e| format!("Failed to create {}: {}", output_subdir.display(), e))?;
+
+                let vue_file_name = if relative_dir == "pages" || relative_dir.starts_with("pages/") {
+                    pages_count += 1;
+                    name.clone()
+                } else {
+                    components_count += 1;
+                    widget_name.clone()
+                };
+
+                let component_file = output_subdir.join(format!("{}.vue", vue_file_name));
+                fs::write(&component_file, code)
+                    .map_err(|e| format!("Failed to write {}: {}", component_file.display(), e))?;
+            }
+        }
+
+        if pages_count > 0 {
+            println!("{}", format!("  ✓ Regenerated {} pages", pages_count).bright_green());
+        }
+        if components_count > 0 {
+            println!("{}", format!("  ✓ Regenerated {} components", components_count).bright_green());
+        }
+
+        Ok(())
+    }
+
     /// Run npm install
     pub fn npm_install(&self) -> AutoResult<()> {
         if !command_exists("npm") {
@@ -942,10 +1034,28 @@ impl VueProject {
             return Ok(());
         }
 
-        // For demo purposes, skip shadcn-vue installation and use native HTML elements
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Skipping shadcn-vue (using native HTML for demo)".bright_white());
-        Ok(())
+        println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
+
+        // npx --yes (skip npx install prompt) shadcn-vue@latest add <components> --yes (skip shadcn prompts)
+        let mut args = vec!["--yes", "shadcn-vue@latest", "add"];
+        args.extend(self.shadcn_components.iter().map(|s| s.as_str()));
+        args.push("-y");  // shadcn-vue uses -y for yes
+
+        println!("{}", format!("  Running: npx {}", args.join(" ")).bright_black());
+
+        match run_command_live("npx", &args, &self.output_dir) {
+            Ok(_) => {
+                println!("{}", "  ✓ shadcn-vue components added".bright_green());
+                Ok(())
+            }
+            Err(e) => {
+                println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                println!("  You may need to run 'npx shadcn-vue@latest add {} -y' manually.", self.shadcn_components.join(" "));
+                // Don't fail - user can install manually
+                Ok(())
+            }
+        }
     }
 
     /// Copy public assets
@@ -1077,7 +1187,7 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 /// Run Vue dev server (auto run command)
 ///
 /// Steps:
-/// 1. Generate project structure if not exists
+/// 1. Generate project structure if not exists, or regenerate source files if exists
 /// 2. Generate API client code (if api.at exists)
 /// 3. npm install
 /// 4. Install shadcn-vue components
@@ -1089,15 +1199,19 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
 
-    // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 5 } else { 6 };
+    // Determine total steps based on whether project exists
+    let total_steps = 6;
     let mut current_step = 0;
 
+    // Step 1: Generate project structure if not exists, or regenerate source files
+    current_step += 1;
+    println!();
     if !project.exists() {
-        current_step += 1;
-        println!();
         println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
         project.generate()?;
+    } else {
+        println!("▶ Step {}/{}: Regenerating source files...", current_step, total_steps);
+        project.regenerate_source_files()?;
     }
 
     // Step 2: Generate API client code (if api.at exists)

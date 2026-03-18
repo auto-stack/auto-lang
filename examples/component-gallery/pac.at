@@ -4,7 +4,11 @@
 name: "component-gallery"
 version: "1.0.0"
 description: "AutoUI Component Gallery - Interactive component documentation"
-backend: "vue"
+
+scene: "ui"
+
+// Supported backends: Vue (web) and Tauri (desktop)
+backend: ["vue", "tauri"]
 
 // Workspace structure
 workspace: {

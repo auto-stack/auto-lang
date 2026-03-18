@@ -973,10 +973,11 @@ impl VueGenerator {
         if needs_computed {
             imports.push("computed");
         }
-        // Plan 106: Add watch and nextTick for Prism.js re-highlighting
+        // Plan 106: Add watch, nextTick, onMounted for Prism.js re-highlighting
         if !self.previewcard_data.is_empty() {
             imports.push("watch");
             imports.push("nextTick");
+            imports.push("onMounted");
         }
         if !imports.is_empty() {
             script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
@@ -1210,6 +1211,9 @@ impl VueGenerator {
                     active_var
                 ));
             }
+
+            // Add onMounted hook for initial syntax highlighting
+            script.push_str("onMounted(() => {\n  nextTick(() => Prism.highlightAll())\n})\n");
             script.push('\n');
         } else if !self.codeblock_data.is_empty() {
             // Codeblocks only (no previewcard)
@@ -1737,7 +1741,7 @@ impl VueGenerator {
 {ind}        </button>
 {ind}      </div>
 {ind}      <!-- Code content with syntax highlighting -->
-{ind}      <pre class="overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"><code :class="'block font-mono !p-0 language-' + active{id_cap}Tab.toLowerCase()">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
+{ind}      <pre class="overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"><code :class="'block font-mono !p-0 language-' + (active{id_cap}Tab === 'auto' ? 'auto' : 'html')">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
 {ind}    </div>
 {ind}  </div>
 {ind}</div>
@@ -2835,9 +2839,16 @@ impl VueGenerator {
         match normalized_tag.as_str() {
             // === Button ===
             "button" => {
-                // For demo purposes, use native HTML button with Tailwind classes
-                // instead of shadcn-vue Button component
-                attrs.push("class=\"px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600\"".to_string());
+                // Handle variant prop (default, secondary, destructive, outline, ghost, link)
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // Handle size prop (sm, default, lg, icon)
+                if let Some(value) = props.get("size") {
+                    let size = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("size=\"{}\"", size));
+                }
                 // Handle disabled
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
@@ -5405,8 +5416,38 @@ impl VueGenerator {
 
     /// Generate shadcn-vue import statements
     fn generate_shadcn_imports(&self) -> String {
-        // Skip shadcn-vue imports for demo - use native HTML elements
-        String::new()
+        if self.shadcn_components_used.is_empty() {
+            return String::new();
+        }
+
+        // Build reverse map: component_name -> import_path
+        let mut component_to_path: std::collections::HashMap<String, &'static str> = std::collections::HashMap::new();
+
+        for (_, (path, names)) in self.shadcn_registry.components.iter() {
+            for name in names {
+                component_to_path.insert(name.to_string(), *path);
+            }
+        }
+
+        // Group components by import path
+        let mut imports_by_path: std::collections::HashMap<&'static str, Vec<String>> = std::collections::HashMap::new();
+
+        for component_name in &self.shadcn_components_used {
+            if let Some(path) = component_to_path.get(component_name) {
+                imports_by_path.entry(*path).or_default().push(component_name.clone());
+            }
+        }
+
+        // Generate import statements
+        let mut imports = Vec::new();
+        for (path, mut names) in imports_by_path {
+            names.sort();
+            names.dedup();
+            imports.push(format!("import {{ {} }} from '{}'\n", names.join(", "), path));
+        }
+
+        imports.sort();
+        imports.join("")
     }
 
     /// Get shadcn-vue component name for a tag
@@ -5424,14 +5465,12 @@ impl VueGenerator {
   "$schema": "https://shadcn-vue.com/schema.json",
   "style": "default",
   "typescript": true,
-  "tsConfigPath": "./tsconfig.json",
   "tailwind": {
-    "config": "tailwind.config.js",
+    "config": "tailwind.config.cjs",
     "css": "src/assets/index.css",
     "baseColor": "slate",
     "cssVariables": true
   },
-  "framework": "vite",
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils"

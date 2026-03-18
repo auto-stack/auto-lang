@@ -48,7 +48,6 @@ widget App {
         "/table" => use table
         "/tabs" => use tabs
         "/textarea" => use textarea
-        "/text" => use text
         "/toast" => use toast
         "/toggle" => use toggle
         "/togglegroup" => use togglegroup
@@ -216,9 +215,6 @@ widget App {
                             }
                             link (to: "/textarea") {
                                 text (text: "Textarea", class: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/text") {
-                                text (text: "Text", class: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                             }
                             link (to: "/toast") {
                                 text (text: "Toast", class: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
