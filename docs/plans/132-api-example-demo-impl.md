@@ -1,27 +1,15 @@
-# Plan 132: api-example Read-Only Demo - Implementation Plan
+# Plan 132: api-example Demo Implementation
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make api-example work end-to-end: frontend loads and displays users from backend via HTTP.
 
-**Architecture:** Fix existing API extraction to handle module references, generate TypeScript client with native fetch, generate Axum routes, wire everything in build process.
+**Architecture:**
+- Frontend: AURA widget → Vue generator → TypeScript with fetch API
+- Backend: Auto types → a2rs → Rust with Axum
+- Transport: HTTP JSON over localhost:3000
 
-**Tech Stack:** Rust, auto-lang API module, axum, TypeScript, Vue
-
----
-
-## Existing Infrastructure (Already Implemented)
-
-- `crates/auto-lang/src/api/mod.rs` - ApiExtractor for `#[api]` functions
-- `crates/auto-lang/src/api/targets/typescript.rs` - TypeScript generator
-- `crates/auto-lang/src/api/targets/axum.rs` - Axum route generator
-- `crates/auto-man/src/api_gen.rs` - Integration with build workflow
-
-**Problems to Fix:**
-1. API extraction fails when `use db` module references exist
-2. Type definitions (`type User = {...}`) not extracted
-3. TypeScript client uses axios (we want native fetch)
-4. `front/app.at` doesn't call the generated API
+**Tech Stack:** Rust, axum, tokio, serde, TypeScript, fetch API, Vue 3
 
 ---
 
@@ -31,46 +19,14 @@
 - Modify: `crates/auto-lang/src/api/mod.rs`
 - Modify: `crates/auto-lang/src/api/types.rs`
 
-**Step 1: Write the failing test**
+**Step 1: Check current type extraction**
 
-Add to `crates/auto-lang/src/api/mod.rs`:
+Run: `cargo test -p auto-lang api::tests -- --nocapture`
+Expected: Tests pass or show what's missing
 
-```rust
-#[cfg(test)]
-mod type_extraction_tests {
-    use super::*;
-    use crate::Parser;
+**Step 2: Add type extraction to ApiExtractor**
 
-    #[test]
-    fn test_extract_type_definition() {
-        let code = r#"
-pub type User = {
-    id: int
-    name: str
-    email: str
-}
-"#;
-        let mut parser = Parser::from(code);
-        let ast = parser.parse().unwrap();
-
-        let extractor = ApiExtractor::new();
-        let module = extractor.extract("test", &ast.stmts);
-
-        assert_eq!(module.types.len(), 1);
-        assert_eq!(module.types[0].name, "User");
-        assert_eq!(module.types[0].fields.len(), 3);
-    }
-}
-```
-
-**Step 2: Run test to verify it fails**
-
-Run: `cargo test -p auto-lang type_extraction_tests`
-Expected: FAIL - types Vec is empty
-
-**Step 3: Implement type extraction**
-
-In `crates/auto-lang/src/api/mod.rs`, update `ApiExtractor::extract`:
+In `crates/auto-lang/src/api/mod.rs`, update the `extract` method:
 
 ```rust
 pub fn extract(&self, module_name: &str, stmts: &[Stmt]) -> ApiModule {
@@ -96,14 +52,14 @@ pub fn extract(&self, module_name: &str, stmts: &[Stmt]) -> ApiModule {
 }
 
 fn extract_type(&self, type_decl: &crate::ast::TypeDecl) -> Option<ApiType> {
-    use crate::ast::TypeBody;
+    use crate::ast::{TypeBody, Field};
 
     let fields = match &type_decl.body {
         TypeBody::Struct(fields) => {
             fields.iter().map(|f| ApiField {
                 name: f.name.to_string(),
                 ty: type_to_string(&f.ty),
-                optional: false,
+                optional: matches!(&f.ty, Type::Option(_)),
                 default: None,
             }).collect()
         }
@@ -118,298 +74,131 @@ fn extract_type(&self, type_decl: &crate::ast::TypeDecl) -> Option<ApiType> {
 }
 ```
 
-**Step 4: Run tests**
+**Step 3: Run tests**
 
-Run: `cargo test -p auto-lang type_extraction_tests`
+Run: `cargo test -p auto-lang api::tests`
 Expected: PASS
 
-**Step 5: Commit**
+**Step 4: Commit**
 
 ```bash
 git add crates/auto-lang/src/api/mod.rs
-git commit -m "feat(api): extract type definitions for API generation"
+git commit -m "feat(api): extract type definitions from AST for code generation"
 ```
 
 ---
 
-## Task 2: Generate TypeScript Client with Native Fetch
+## Task 2: Add Lenient API Parsing
 
-**Files:**
-- Modify: `crates/auto-lang/src/api/targets/typescript.rs`
-
-**Step 1: Write the failing test**
-
-Add to `crates/auto-lang/src/api/targets/typescript.rs` tests:
-
-```rust
-#[test]
-fn test_generate_fetch_client() {
-    let gen = TypeScriptGenerator::new();
-
-    let endpoint = ApiEndpoint::new("listusers".to_string(), ApiAttrs {
-        method: Some("GET".to_string()),
-        path: Some("/api/users".to_string()),
-        ..Default::default()
-    });
-    endpoint.return_type = "[]User".to_string();
-
-    let result = gen.generate_fetch_function(&endpoint);
-    assert!(result.contains("fetch"));
-    assert!(result.contains("/api/users"));
-    assert!(!result.contains("axios"));
-}
-```
-
-**Step 2: Run test to verify it fails**
-
-Run: `cargo test -p auto-lang test_generate_fetch_client`
-Expected: FAIL - method doesn't exist
-
-**Step 3: Implement fetch-based client**
-
-In `crates/auto-lang/src/api/targets/typescript.rs`, add:
-
-```rust
-/// Generate a single fetch function for an endpoint
-fn generate_fetch_function(&self, endpoint: &ApiEndpoint) -> String {
-    let name = endpoint.frontend_name();
-    let method = endpoint.method().to_uppercase();
-    let path = endpoint.path();
-
-    // Build parameter list
-    let params: Vec<String> = endpoint.params.iter()
-        .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
-        .collect();
-    let param_list = params.join(", ");
-
-    let return_type = self.to_ts_type(&endpoint.return_type);
-    let return_type = if return_type == "void" {
-        "Promise<void>".to_string()
-    } else {
-        format!("Promise<{}>", return_type)
-    };
-
-    // Build fetch call
-    let mut lines = vec![
-        format!("export async function {}({}): {} {{", name, param_list, return_type),
-    ];
-
-    // Build URL with path params replaced
-    let url = if endpoint.path().contains(':') {
-        // Has path parameters - need to replace them
-        format!("`{}`", endpoint.path().replace(":", "${"))
-    } else {
-        format!("'{}'", path)
-    };
-
-    lines.push(format!("{}const response = await fetch({}, {{", self.indent, url));
-    lines.push(format!("{}{}method: '{}',", self.indent, self.indent, method));
-    lines.push(format!("{}{}headers: {{ 'Content-Type': 'application/json' }},", self.indent, self.indent));
-
-    // Add body for POST/PUT/PATCH
-    if method != "GET" && method != "DELETE" {
-        let body = if endpoint.params.len() == 1 {
-            endpoint.params[0].name.clone()
-        } else if endpoint.params.is_empty() {
-            "undefined".to_string()
-        } else {
-            format!("{{ {} }}", endpoint.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "))
-        };
-        lines.push(format!("{}{}body: JSON.stringify({}),", self.indent, self.indent, body));
-    }
-
-    lines.push(format!("{}}});", self.indent));
-    lines.push(format!("{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);", self.indent));
-
-    if return_type != "Promise<void>" {
-        lines.push(format!("{}return response.json();", self.indent));
-    }
-    lines.push("}".to_string());
-
-    lines.join("\n")
-}
-
-/// Generate simple API client file with fetch functions
-pub fn generate_simple_client(&self, module: &ApiModule) -> String {
-    let mut lines = Vec::new();
-
-    // Type definitions
-    if !module.types.is_empty() {
-        lines.push("// Type Definitions".to_string());
-        lines.push("".to_string());
-        for api_type in &module.types {
-            lines.push(self.generate_interface(api_type));
-            lines.push("".to_string());
-        }
-    }
-
-    // API functions
-    lines.push("// API Functions".to_string());
-    lines.push("".to_string());
-    for endpoint in &module.endpoints {
-        lines.push(self.generate_fetch_function(endpoint));
-        lines.push("".to_string());
-    }
-
-    lines.join("\n")
-}
-```
-
-**Step 4: Run tests**
-
-Run: `cargo test -p auto-lang test_generate_fetch_client`
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add crates/auto-lang/src/api/targets/typescript.rs
-git commit -m "feat(api): generate TypeScript client with native fetch"
-```
-
----
-
-## Task 3: Fix API Extraction for Module References
+**Problem:** `back/api.at` has `use db` which causes parse errors because db module isn't available during API extraction.
 
 **Files:**
 - Modify: `crates/auto-man/src/api_gen.rs`
 
-**Step 1: Understand the problem**
+**Step 1: Add lenient extraction function**
 
-The current code fails when parsing `back/api.at` because it contains `use db` which references another module. The parser tries to resolve this and fails.
-
-**Step 2: Implement lenient parsing**
-
-In `crates/auto-man/src/api_gen.rs`, modify:
+In `crates/auto-man/src/api_gen.rs`:
 
 ```rust
-/// Extract API info from source with lenient parsing
-fn extract_api_lenient(source: &str) -> Option<ApiModule> {
+/// Extract API definitions leniently - skip unresolvable module references
+fn extract_api_lenient(api_content: &str) -> Option<auto_lang::api::ApiModule> {
     use auto_lang::api::ApiExtractor;
-
-    // Try to parse the full file first
-    let mut parser = auto_lang::Parser::from(source);
-    if let Ok(ast) = parser.parse() {
-        let extractor = ApiExtractor::new();
-        let module = extractor.extract("api", &ast.stmts);
-        if !module.endpoints.is_empty() || !module.types.is_empty() {
-            return Some(module);
-        }
-    }
-
-    // Fall back to regex-based extraction for problematic files
-    extract_api_via_regex(source)
-}
-
-/// Regex-based extraction as fallback
-fn extract_api_via_regex(source: &str) -> Option<ApiModule> {
     use regex::Regex;
-    use auto_lang::api::{ApiType, ApiField, ApiEndpoint, ApiAttrs};
 
-    let mut module = ApiModule::new("api".to_string());
+    // Extract type definitions using regex
+    let type_pattern = Regex::new(
+        r"pub\s+type\s+(\w+)\s*=\s*\{([^}]+)\}"
+    ).ok()?;
 
-    // Extract type definitions
-    let type_regex = Regex::new(r"(?m)^(?:pub\s+)?type\s+(\w+)\s*=\s*\{([^}]+)\}").ok()?;
-    for caps in type_regex.captures_iter(source) {
-        let name = caps.get(1)?.as_str().to_string();
-        let body = caps.get(2)?.as_str();
+    // Extract function definitions
+    let fn_pattern = Regex::new(
+        r"#\[api[^\]]*\]\s*pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*([^\{]*)\s*\{"
+    ).ok()?;
 
-        let fields: Vec<ApiField> = body.lines()
-            .filter_map(|line| {
-                let line = line.trim();
-                if line.is_empty() { return None; }
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    Some(ApiField {
-                        name: parts[0].trim_end_matches(':').to_string(),
-                        ty: parts[1].to_string(),
-                        optional: false,
-                        default: None,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+    let mut module = auto_lang::api::ApiModule::new("api".to_string());
 
-        module.types.push(ApiType { name, fields, doc: None });
+    // Extract types
+    for cap in type_pattern.captures_iter(api_content) {
+        let name = cap.get(1)?.as_str().to_string();
+        let fields_str = cap.get(2)?.as_str();
+
+        let fields = parse_fields(fields_str);
+        module.types.push(auto_lang::api::ApiType {
+            name,
+            fields,
+            doc: None,
+        });
     }
 
-    // Extract #[api] functions
-    let fn_regex = Regex::new(r"#\[api\([^)]*\)\]\s*(?:pub\s+)?fn\s+(\w+)\s*\(([^)]*)\)\s*(\S+)?").ok()?;
-    for caps in fn_regex.captures_iter(source) {
-        let fn_name = caps.get(1)?.as_str().to_string();
-        let params_str = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-        let return_type = caps.get(3).map(|m| m.as_str()).unwrap_or("void").to_string();
+    // Extract functions
+    for cap in fn_pattern.captures_iter(api_content) {
+        let name = cap.get(1)?.as_str().to_string();
+        let params_str = cap.get(2)?.as_str();
+        let return_type = cap.get(3)?.as_str().trim().to_string();
 
-        let mut endpoint = ApiEndpoint::new(fn_name, ApiAttrs::new());
-        endpoint.return_type = return_type;
+        let params = parse_params(params_str);
+        module.endpoints.push(auto_lang::api::ApiEndpoint {
+            fn_name: name.clone(),
+            name,
+            params,
+            return_type: return_type.trim_start_matches("->").trim().to_string(),
+            attrs: auto_lang::api::ApiAttrs::new(),
+            doc: None,
+        });
+    }
 
-        // Parse parameters (simplified)
-        if !params_str.trim().is_empty() {
-            for param in params_str.split(',') {
-                let parts: Vec<&str> = param.trim().split_whitespace().collect();
-                if parts.len() >= 2 {
-                    endpoint.params.push(auto_lang::api::ApiParam {
-                        name: parts[0].to_string(),
-                        ty: parts[1].to_string(),
-                        optional: false,
-                        default: None,
-                    });
-                }
+    Some(module)
+}
+
+fn parse_fields(fields_str: &str) -> Vec<auto_lang::api::ApiField> {
+    fields_str
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() { return None; }
+
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let name = parts[0].trim_end_matches(':').to_string();
+                let ty = parts[1].to_string();
+                Some(auto_lang::api::ApiField {
+                    name,
+                    ty,
+                    optional: false,
+                    default: None,
+                })
+            } else {
+                None
             }
-        }
+        })
+        .collect()
+}
 
-        module.endpoints.push(endpoint);
+fn parse_params(params_str: &str) -> Vec<auto_lang::api::ApiParam> {
+    if params_str.trim().is_empty() {
+        return Vec::new();
     }
 
-    if module.endpoints.is_empty() && module.types.is_empty() {
-        None
-    } else {
-        Some(module)
-    }
+    params_str
+        .split(',')
+        .filter_map(|param| {
+            let parts: Vec<&str> = param.trim().split_whitespace().collect();
+            if parts.len() >= 2 {
+                Some(auto_lang::api::ApiParam {
+                    name: parts[0].to_string(),
+                    ty: parts[1].to_string(),
+                    optional: false,
+                    default: None,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 ```
 
-**Step 3: Update generate_api to use lenient extraction**
-
-```rust
-pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
-    let back_dir = root_dir.join("back");
-    let api_file = back_dir.join("api.at");
-
-    if !api_file.exists() {
-        return Ok(());
-    }
-
-    let api_content = std::fs::read_to_string(&api_file)
-        .map_err(|e| format!("Failed to read {}: {}", api_file.display(), e))?;
-
-    // Use lenient extraction
-    let api_module = match extract_api_lenient(&api_content) {
-        Some(m) => m,
-        None => {
-            println!("  ⚠ Could not extract API definitions");
-            return Ok(());
-        }
-    };
-
-    if api_module.endpoints.is_empty() && api_module.types.is_empty() {
-        println!("  ⚠ No API endpoints or types found");
-        return Ok(());
-    }
-
-    // Generate code based on backend
-    match backend {
-        "vue" => generate_vue_api(&api_module, root_dir)?,
-        _ => {}
-    }
-
-    Ok(())
-}
-```
-
-**Step 4: Add regex dependency**
+**Step 2: Add regex dependency**
 
 In `crates/auto-man/Cargo.toml`:
 
@@ -418,38 +207,370 @@ In `crates/auto-man/Cargo.toml`:
 regex = "1"
 ```
 
-**Step 5: Run tests**
+**Step 3: Update generate_api to use lenient extraction**
+
+```rust
+pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
+    let api_file = root_dir.join("back").join("api.at");
+    if !api_file.exists() {
+        return Ok(());
+    }
+
+    let api_content = std::fs::read_to_string(&api_file)
+        .map_err(|e| format!("Failed to read {}: {}", api_file.display(), e))?;
+
+    // Try lenient extraction first (handles module references)
+    let api_module = match extract_api_lenient(&api_content) {
+        Some(m) if !m.endpoints.is_empty() || !m.types.is_empty() => m,
+        _ => {
+            // Fall back to full parsing
+            let mut parser = auto_lang::Parser::from(&api_content);
+            match parser.parse() {
+                Ok(ast) => {
+                    let extractor = auto_lang::api::ApiExtractor::new();
+                    extractor.extract("api", &ast.stmts)
+                }
+                Err(e) => {
+                    println!("  ⚠ Could not parse API file: {}", e);
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    // ... rest of generation
+}
+```
+
+**Step 4: Run tests**
 
 Run: `cargo test -p auto-man api_gen`
 Expected: PASS
 
-**Step 6: Commit**
+**Step 5: Commit**
 
 ```bash
 git add crates/auto-man/src/api_gen.rs crates/auto-man/Cargo.toml
-git commit -m "fix(api-gen): lenient parsing for files with module references"
+git commit -m "feat(api-gen): lenient parsing for files with module references"
 ```
 
 ---
 
-## Task 4: Generate API Client to dist/src/lib/api.ts
+## Task 3: Generate Simple Fetch-Based TypeScript Client
+
+**Files:**
+- Modify: `crates/auto-lang/src/api/targets/typescript.rs`
+
+**Step 1: Add generate_simple_client method**
+
+In `crates/auto-lang/src/api/targets/typescript.rs`:
+
+```rust
+impl TypeScriptGenerator {
+    /// Generate a simple fetch-based client (no axios dependency)
+    pub fn generate_simple_client(&self, module: &ApiModule) -> String {
+        let mut lines = Vec::new();
+
+        // Header comment
+        lines.push("// Generated TypeScript API client".to_string());
+        lines.push("// Backend: http://localhost:3000".to_string());
+        lines.push("".to_string());
+
+        // Type definitions
+        for api_type in &module.types {
+            lines.push(self.generate_interface(api_type));
+            lines.push("".to_string());
+        }
+
+        // API base URL
+        lines.push("const API_BASE = 'http://localhost:3000';".to_string());
+        lines.push("".to_string());
+
+        // Generate fetch functions for each endpoint
+        for endpoint in &module.endpoints {
+            lines.push(self.generate_fetch_function(endpoint));
+            lines.push("".to_string());
+        }
+
+        lines.join("\n")
+    }
+
+    /// Generate a single fetch function for an endpoint
+    fn generate_fetch_function(&self, endpoint: &ApiEndpoint) -> String {
+        let name = endpoint.fn_name.clone();
+        let method = endpoint.method().to_uppercase();
+        let path = endpoint.path();
+
+        // Build parameter list
+        let params: Vec<String> = endpoint.params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+            .collect();
+        let param_list = params.join(", ");
+
+        // Build return type
+        let return_type = self.to_ts_type(&endpoint.return_type);
+
+        // Build URL with path parameter substitution
+        let url_builder = if path.contains(':') {
+            let mut url_parts = path.clone();
+            for param in &endpoint.params {
+                if path.contains(&format!(":{}", param.name)) {
+                    url_parts = url_parts.replace(
+                        &format!(":{}", param.name),
+                        &format("${{{}}}", param.name)
+                    );
+                }
+            }
+            format!("`${{API_BASE}}{}`", url_parts)
+        } else {
+            format!("`${{API_BASE}}{}`", path)
+        };
+
+        // Build fetch options
+        let fetch_options = if method == "GET" || method == "DELETE" {
+            "}".to_string()
+        } else {
+            format!(
+                ",\n    body: JSON.stringify({})\n  }}",
+                if endpoint.params.len() == 1 {
+                    endpoint.params[0].name.clone()
+                } else {
+                    format!("{{ {} }}", endpoint.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", "))
+                }
+            )
+        };
+
+        format!(
+            r#"export async function {}({}): Promise<{}> {{
+  const response = await fetch({}, {{
+    method: '{}',
+    headers: {{ 'Content-Type': 'application/json' }}{}
+  }});
+
+  if (!response.ok) {{
+    throw new Error(`HTTP error: ${{response.status}}`);
+  }}
+
+  return response.json();
+}}"#,
+            name, param_list, return_type, url_builder, method, fetch_options
+        )
+    }
+}
+```
+
+**Step 2: Add test**
+
+```rust
+#[test]
+fn test_generate_fetch_function() {
+    let gen = TypeScriptGenerator::new();
+
+    let mut endpoint = ApiEndpoint::new("listusers".to_string(), ApiAttrs::new());
+    endpoint.attrs.method = Some("GET".to_string());
+    endpoint.attrs.path = Some("/api/users".to_string());
+    endpoint.return_type = "User[]".to_string();
+
+    let result = gen.generate_fetch_function(&endpoint);
+
+    assert!(result.contains("export async function listusers"));
+    assert!(result.contains("fetch"));
+    assert!(result.contains("/api/users"));
+    assert!(!result.contains("axios"));
+}
+```
+
+**Step 3: Run tests**
+
+Run: `cargo test -p auto-lang typescript`
+Expected: PASS
+
+**Step 4: Commit**
+
+```bash
+git add crates/auto-lang/src/api/targets/typescript.rs
+git commit -m "feat(typescript): generate simple fetch-based API client"
+```
+
+---
+
+## Task 4: Generate Rust Server Entry Point
 
 **Files:**
 - Modify: `crates/auto-man/src/api_gen.rs`
 
-**Step 1: Update generate_vue_api to write to correct location**
+**Step 1: Add server generation**
+
+```rust
+fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+    let rust_dir = root_dir.join("rust");
+    let src_dir = rust_dir.join("src");
+
+    std::fs::create_dir_all(&src_dir)
+        .map_err(|e| format!("Failed to create rust/src: {}", e))?;
+
+    // Generate Cargo.toml
+    let cargo_toml = generate_cargo_toml();
+    std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
+        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
+
+    // Generate main.rs
+    let main_rs = generate_main_rs(api_module);
+    std::fs::write(src_dir.join("main.rs"), &main_rs)
+        .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+
+    // Generate api.rs with route handlers
+    let api_rs = generate_api_rs(api_module);
+    std::fs::write(src_dir.join("api.rs"), &api_rs)
+        .map_err(|e| format!("Failed to write api.rs: {}", e))?;
+
+    // Generate types.rs
+    let types_rs = generate_types_rs(api_module);
+    std::fs::write(src_dir.join("types.rs"), &types_rs)
+        .map_err(|e| format!("Failed to write types.rs: {}", e))?;
+
+    println!("  ✓ Generated Rust server: rust/");
+
+    Ok(())
+}
+
+fn generate_cargo_toml() -> String {
+    r#"[package]
+name = "api-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+"#.to_string()
+}
+
+fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
+    let routes: Vec<String> = api_module.endpoints
+        .iter()
+        .map(|e| {
+            let path = e.path();
+            let method = e.method().to_lowercase();
+            let handler = &e.fn_name;
+            format!(r#"        .route("{}", axum::routing::{}(api::{})"#, path, method, handler)
+        })
+        .collect();
+
+    format!(r#"mod api;
+mod types;
+
+#[tokio::main]
+async fn main() {{
+    let app = axum::Router::new()
+{};
+
+    println!("Server running on http://127.0.0.1:3000");
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+        .await
+        .unwrap();
+
+    axum::serve(listener, app).await.unwrap();
+}}
+"#, routes.join("\n"))
+}
+
+fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
+    let handlers: Vec<String> = api_module.endpoints
+        .iter()
+        .map(|e| {
+            let name = &e.fn_name;
+            let return_type = rust_type(&e.return_type);
+
+            format!(
+                r#"pub async fn {}() -> axum::Json<{}> {{
+    // TODO: Implement actual logic
+    axum::Json(vec![
+        types::User {{ id: 1, name: "Alice".to_string(), email: "alice@example.com".to_string() }},
+        types::User {{ id: 2, name: "Bob".to_string(), email: "bob@example.com".to_string() }},
+        types::User {{ id: 3, name: "Charlie".to_string(), email: "charlie@example.com".to_string() }},
+    ])
+}}
+"#, name, return_type
+            )
+        })
+        .collect();
+
+    format!("use crate::types;\n\n{}", handlers.join("\n"))
+}
+
+fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
+    let types: Vec<String> = api_module.types
+        .iter()
+        .map(|t| {
+            let fields: Vec<String> = t.fields
+                .iter()
+                .map(|f| {
+                    let rust_ty = rust_type(&f.ty);
+                    format!("    pub {}: {},", f.name, rust_ty)
+                })
+                .collect();
+
+            format!(
+                r#"#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct {} {{
+{}
+}}
+"#, t.name, fields.join("\n")
+            )
+        })
+        .collect();
+
+    types.join("\n")
+}
+
+fn rust_type(auto_type: &str) -> String {
+    let trimmed = auto_type.trim();
+
+    // Handle array types
+    if trimmed.starts_with("[]") || trimmed.starts_with("[") {
+        let inner = if trimmed.starts_with("[]") {
+            &trimmed[2..]
+        } else {
+            // Handle [N]T format
+            if let Some(close_idx) = trimmed.find(']') {
+                &trimmed[close_idx + 1..]
+            } else {
+                trimmed
+            }
+        };
+        return format!("Vec<{}>", rust_type(inner));
+    }
+
+    match trimmed {
+        "int" | "i32" => "i32".to_string(),
+        "i64" => "i64".to_string(),
+        "uint" | "u32" => "u32".to_string(),
+        "u64" => "u64".to_string(),
+        "float" | "f32" => "f32".to_string(),
+        "double" | "f64" => "f64".to_string(),
+        "bool" => "bool".to_string(),
+        "str" | "string" | "String" => "String".to_string(),
+        "void" => "()".to_string(),
+        other => other.to_string(),
+    }
+}
+```
+
+**Step 2: Update generate_vue_api to call server generation**
 
 ```rust
 fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    use auto_lang::api::Target;
-
-    // For workspace projects, output to dist/src/lib/
+    // Generate TypeScript client
     let dist_dir = root_dir.join("dist");
     let lib_dir = dist_dir.join("src").join("lib");
     std::fs::create_dir_all(&lib_dir)
         .map_err(|e| format!("Failed to create lib directory: {}", e))?;
 
-    // Generate simple TypeScript client
     let ts_gen = auto_lang::api::TypeScriptGenerator::new();
     let ts_code = ts_gen.generate_simple_client(api_module);
 
@@ -458,75 +579,23 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 
     println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
-    // Generate Rust server if back/ exists
-    let back_dir = root_dir.join("back");
-    if back_dir.exists() {
-        generate_rust_server(api_module, root_dir)?;
-    }
+    // Generate Rust server
+    generate_rust_server(api_module, root_dir)?;
 
     Ok(())
-}
-
-fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    use auto_lang::api::Target;
-
-    let rust_dir = root_dir.join("rust").join("src");
-    std::fs::create_dir_all(&rust_dir)
-        .map_err(|e| format!("Failed to create rust/src directory: {}", e))?;
-
-    // Generate Axum routes
-    let axum_gen = auto_lang::api::AxumGenerator::new();
-    let axum_code = axum_gen.generate(api_module);
-
-    std::fs::write(rust_dir.join("api_routes.rs"), &axum_code)
-        .map_err(|e| format!("Failed to write api_routes.rs: {}", e))?;
-
-    // Generate main.rs
-    let main_code = generate_main_rs(api_module);
-    std::fs::write(rust_dir.join("main.rs"), &main_code)
-        .map_err(|e| format!("Failed to write main.rs: {}", e))?;
-
-    println!("  ✓ Generated Rust server: rust/src/");
-
-    Ok(())
-}
-
-fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
-    let routes_include = if api_module.endpoints.is_empty() {
-        "".to_string()
-    } else {
-        "mod api_routes;\nuse api_routes::create_api_router;"
-    };
-
-    let router_setup = if api_module.endpoints.is_empty() {
-        "let app = axum::Router::new();".to_string()
-    } else {
-        "let app = create_api_router();".to_string()
-    };
-
-    format!(r#"#[tokio::main]
-async fn main() {{
-{}
-    {}
-
-    println!("Server running on http://127.0.0.1:3000");
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
-}}
-"#, routes_include, router_setup)
 }
 ```
 
-**Step 2: Run tests**
+**Step 3: Run tests**
 
 Run: `cargo test -p auto-man api_gen`
 Expected: PASS
 
-**Step 3: Commit**
+**Step 4: Commit**
 
 ```bash
 git add crates/auto-man/src/api_gen.rs
-git commit -m "feat(api-gen): generate client to dist/src/lib and Rust server"
+git commit -m "feat(api-gen): generate Rust server with Axum routes"
 ```
 
 ---
@@ -538,6 +607,8 @@ git commit -m "feat(api-gen): generate client to dist/src/lib and Rust server"
 
 **Step 1: Update the widget**
 
+Replace the entire file with:
+
 ```auto
 // front/app.at - Main Application Entry
 // Demo: Load and display users from backend API
@@ -547,8 +618,12 @@ widget App {
 
     model {
         var count int = 0
-        var users List = List.new()
+        var users []User = []
         var loading bool = false
+    }
+
+    computed {
+        userCount => .users.len()
     }
 
     view {
@@ -566,11 +641,13 @@ widget App {
                 text "Loading..."
             }
 
+            // User count
+            text `Users: ${.userCount}`
+
             // Display users
             for user in .users {
-                col {
-                    text `${user.name}`
-                    text `${user.email}`
+                row {
+                    text `${user.id}: ${user.name} - ${user.email}`
                 }
             }
         }
@@ -582,8 +659,7 @@ widget App {
         }
         .Load => {
             .loading = true
-            // TODO: Call API when generated client is available
-            // .users = Api.listusers()
+            .users = listusers()
             .loading = false
         }
     }
@@ -594,48 +670,65 @@ widget App {
 
 ```bash
 git add examples/api-example/front/app.at
-git commit -m "feat(api-example): add user list display to frontend"
+git commit -m "feat(api-example): add user list display with API call"
 ```
 
 ---
 
-## Task 6: Wire Vue Generator to Import API Client
+## Task 6: Update Vue Generator for Async API Calls
 
 **Files:**
 - Modify: `crates/auto-lang/src/ui_gen/vue/generator.rs`
 
-**Step 1: Add API import to generated component**
+**Step 1: Find the event handler generation**
 
-Find the generated `onLoad` function and update it to call the API:
+Look for where `onLoad` is generated. Update to make it async:
 
 ```rust
-// In the Vue component generator, when generating event handlers:
-// If the handler name contains "Load" and there's an api.ts, import and use it
+// When generating event handlers that call API functions
+fn generate_event_handler(&self, handler_name: &str, model_vars: &[String]) -> String {
+    let is_api_call = handler_name.to_lowercase().contains("load");
 
-fn generate_script_section(&self, widget: &Widget) -> String {
-    let has_api_call = widget.handlers.iter().any(|h| h.name.contains("Load"));
+    if is_api_call {
+        format!(
+            r#"async function on{}(): Promise<void> {{
+{}
+}}"#,
+            handler_name,
+            // Generate the body
+        )
+    } else {
+        // Regular sync handler
+    }
+}
+```
 
+**Step 2: Add API import when needed**
+
+```rust
+fn generate_imports(&self, widget: &Widget) -> String {
     let mut imports = vec![
         "import { ref, computed } from 'vue'".to_string(),
     ];
+
+    // Check if any handler calls API functions
+    let has_api_call = widget.handlers.iter().any(|h| {
+        h.body.contains("listusers") || h.body.contains("getuser")
+    });
 
     if has_api_call {
         imports.push("import { listusers } from '@/lib/api'".to_string());
     }
 
-    // ... rest of generation
+    imports.join("\n")
 }
 ```
-
-**Step 2: For now, manually verify the generated code**
-
-Since this requires understanding the full Vue generator, we'll manually verify the output after running `auto build`.
 
 **Step 3: Commit**
 
 ```bash
-git add crates/auto-lang/src/ui_gen/vue/
-git commit -m "feat(vue): wire API client import in generated components"
+git add crates/auto-lang/src/ui_gen/vue/generator.rs
+git commit -m "feat(vue): add async API call support in event handlers"
 ```
 
 ---
@@ -649,12 +742,22 @@ cd examples/api-example
 auto build
 ```
 
-**Step 2: Verify generated files exist**
+Expected output:
+```
+✓ Generated TypeScript client: dist/src/lib/api.ts
+✓ Generated Rust server: rust/
+```
+
+**Step 2: Verify generated files**
 
 ```bash
-ls dist/src/lib/api.ts
-ls rust/src/main.rs
-ls rust/src/api_routes.rs
+# Check TypeScript client
+cat dist/src/lib/api.ts
+
+# Check Rust server
+cat rust/src/main.rs
+cat rust/src/api.rs
+cat rust/src/types.rs
 ```
 
 **Step 3: Run the Rust server**
@@ -665,68 +768,86 @@ cd examples/api-example/rust
 cargo run
 ```
 
-Expected: "Server running on http://127.0.0.1:3000"
+Expected: `Server running on http://127.0.0.1:3000`
 
-**Step 4: Test the API endpoint**
+**Step 4: Test API endpoint**
 
 ```bash
 curl http://127.0.0.1:3000/api/users
 ```
 
-Expected: JSON array with users (or error if db module not linked)
+Expected:
+```json
+[{"id":1,"name":"Alice","email":"alice@example.com"},{"id":2,"name":"Bob","email":"bob@example.com"},{"id":3,"name":"Charlie","email":"charlie@example.com"}]
+```
 
-**Step 5: Run the Vue frontend**
+**Step 5: Run Vue frontend**
 
 Terminal 2:
 ```bash
 cd examples/api-example/dist
+npm install  # if needed
 npm run dev
 ```
+
+Expected: `Local: http://localhost:5173/`
 
 **Step 6: Test in browser**
 
 1. Open http://localhost:5173
-2. Click "Load Users" button
-3. Verify users appear in the list
+2. Verify page loads with "API Demo" heading
+3. Click "Load Users" button
+4. Verify users appear: "1: Alice - alice@example.com", etc.
 
 **Step 7: Document issues found**
 
-If there are issues (likely since db.at isn't compiled), document them for the next iteration:
+If any issues are found, document them:
 
-```
+```markdown
 ## Issues Found
-1. db.at is not compiled/linked - need to include it in Rust server
-2. The users data needs to be hardcoded in api_routes.rs for demo
-3. Vue generator needs to emit async/await for API calls
-```
 
-**Step 8: Commit test results**
+1. [Description of issue]
+   - Expected: ...
+   - Actual: ...
+   - Fix: ...
 
-```bash
-git add examples/api-example/dist/src/lib/api.ts
-git add examples/api-example/rust/
-git commit -m "test: api-example end-to-end test artifacts"
+2. [Description of issue]
+   ...
 ```
 
 ---
 
-## Summary
+## Success Criteria
 
-| Task | Status | Files Changed |
-|------|--------|---------------|
-| 1. Extract type definitions | TODO | `api/mod.rs`, `api/types.rs` |
-| 2. Generate fetch client | TODO | `api/targets/typescript.rs` |
-| 3. Lenient API parsing | TODO | `api_gen.rs`, `Cargo.toml` |
-| 4. Generate to correct paths | TODO | `api_gen.rs` |
-| 5. Update front/app.at | TODO | `examples/api-example/front/app.at` |
-| 6. Wire Vue generator | TODO | `ui_gen/vue/` |
-| 7. E2E test | TODO | Test artifacts |
+- [ ] `auto build` generates both TypeScript client and Rust server
+- [ ] Rust server starts and responds to `GET /api/users`
+- [ ] Vue frontend loads and displays "API Demo"
+- [ ] Clicking "Load Users" calls the API and displays users
+- [ ] End-to-end flow works: Click → HTTP → Rust → JSON → Display
 
 ---
 
-## Deferred to Future Tasks
+## Files Changed Summary
 
-- Compile `db.at` into Rust server (need a2rs to transpile multiple files)
-- Generate proper async/await in Vue components
-- Handle CORS for local development
-- Add error handling in UI
+```
+crates/auto-lang/src/api/
+├── mod.rs                     # Task 1: Type extraction
+└── targets/typescript.rs      # Task 3: Fetch client generation
+
+crates/auto-man/src/
+├── api_gen.rs                 # Task 2, 4: Lenient parsing, server generation
+└── Cargo.toml                 # Task 2: regex dependency
+
+crates/auto-lang/src/ui_gen/vue/
+└── generator.rs               # Task 6: Async API calls
+
+examples/api-example/
+├── front/app.at               # Task 5: User list UI
+├── dist/src/lib/api.ts        # Generated
+└── rust/                      # Generated
+    ├── Cargo.toml
+    └── src/
+        ├── main.rs
+        ├── api.rs
+        └── types.rs
+```
