@@ -1,0 +1,23 @@
+// front/pac.at - Frontend Package Config
+// Plan 130: UI project with multiple backend targets
+//
+// This package defines the AURA frontend that can be deployed with:
+// - Vue + Web Server (backend: "vue")     -> HTTP API calls
+// - Tauri Desktop App (backend: "tauri") -> IPC calls
+//
+// The api.at import provides type-safe API definitions that work
+// for both HTTP and IPC transports.
+
+name: "api-example-front"
+version: "1.0.0"
+
+// UI scene = AURA components
+scene: "ui"
+
+// Multiple backend support:
+// - "vue"  -> Vue SPA with HTTP backend
+// - "tauri" -> Tauri desktop app with IPC backend
+backend: ["vue", "tauri"]
+
+// API types import (generates TypeScript client)
+api: "../back/api.at"

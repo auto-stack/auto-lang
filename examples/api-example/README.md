@@ -1,77 +1,77 @@
 # API Example - Frontend & Backend Infrastructure
 
-This example demonstrates the **single source, dual deployment** pattern from Plan 102 Phase 5.
+This example demonstrates the **Plan 130 workspace pattern** with frontend/backend separation.
 
 ## Project Structure
 
 ```
-examples/api-example/
-├── pac.at                        # Workspace root config
+api-example/
+├── pac.at                        # Workspace root (scene: "workspace")
 │
-└── source/
-    ├── front/                    # AURA Frontend
-    │   ├── pac.at                # Frontend config (scenario: "ui")
-    │   ├── app.at                # Main app component
-    │   └── userlist.at           # User list component
-    │
-    └── back/                     # Auto Backend
-        ├── pac.at                # Backend config
-        ├── api.at                # API interface definitions
-        ├── db.at                 # Database service
-        └── service.at            # Common utilities
+├── front/                        # AURA Frontend
+│   ├── pac.at                    # Frontend config (scene: "ui")
+│   └── app.at                    # Main app component
+│
+└── back/                         # Auto Backend
+    ├── pac.at                    # Backend config (scene: "default")
+    ├── api.at                    # API interface definitions
+    ├── db.at                     # Database operations
+    └── service.at                # Common utilities
 ```
 
-## Config Files
+## Config Files (Plan 130 Format)
 
 ### Workspace Root (`pac.at`)
 ```auto
 name: "api-example"
-workspace: {
-    front: "./source/front"
-    back: "./source/back"
-}
+version: "1.0.0"
+scene: "workspace"
+
+members: ["front", "back"]
 ```
 
-### Frontend (`source/front/pac.at`)
+### Frontend (`front/pac.at`)
 ```auto
-name: "api-example-ui"
-scenario: "ui"          // IMPORTANT: marks this as AURA package
-entry: "app.at"
-api: "../back/api.at"   // API import path
+name: "api-example-front"
+version: "1.0.0"
+scene: "ui"
+
+// Multiple backend support:
+// - "vue"  -> Vue SPA with HTTP backend
+// - "tauri" -> Tauri desktop app with IPC backend
+backend: ["vue", "tauri"]
+
+// API types import (generates TypeScript client)
+api: "../back/api.at"
 ```
 
-### Backend (`source/back/pac.at`)
+### Backend (`back/pac.at`)
 ```auto
-name: "api-example-api"
+name: "api-example-back"
+version: "1.0.0"
+scene: "default"   // Default scene = native code (Rust backend)
+
+backend: "rust"
 entry: "api.at"
 ```
 
 ## Commands
 
-### `auto.exe vue`
-Compiles the entire project:
-1. Reads `source/front/pac.at` (detects `scenario: "ui"`)
-2. Compiles `source/front/*.at` as AURA → generates `.vue` files
-3. Compiles `source/back/*.at` as Auto → generates `.rs` files
-4. Generates workspace-level files (`vite.config.js`, `index.html`, etc.)
-5. Runs interactive commands:
-   - `npm install`
-   - `npx shadcn-vue@latest add button input card table`
+### `auto build`
+Builds the project based on selected backend:
+- **Vue**: Generates Vue SPA + Rust HTTP server
+- **Tauri**: Generates Tauri desktop app
 
-### `auto.exe run`
-Runs the development server:
-- Executes `npm run dev`
-
-### `auto.exe tauri`
-For Tauri desktop apps:
-- Generates Tauri-specific Rust code
-- Runs `tauri dev`
+### `auto run`
+Runs development server:
+- **Vue**: Starts Vite dev server + Rust backend
+- **Tauri**: Starts Tauri dev (Vite + IPC backend)
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    source/front/ (AURA)                         │
+│                      front/ (AURA UI)                           │
 │                                                                 │
 │  app.at, userlist.at                                            │
 │  └── import { api } from "../back/api.at"                       │
@@ -79,64 +79,82 @@ For Tauri desktop apps:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    source/back/ (Auto)                          │
+│                      back/ (Auto Rust)                          │
 │                                                                 │
-│  api.at   → #[api(method = "GET", path = "/users/:id")]        │
-│  db.at    → Database operations                                 │
-│  service.at → Utilities                                         │
+│  api.at   → #[api] annotations (interface)                      │
+│  db.at    → Database operations (business logic)                │
+│  service.at → Utilities (shared code)                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    auto.exe vue                                 │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              Frontend Generation                         │   │
-│  │                                                         │   │
-│  │  source/front/app.at     → dist/app.vue                 │   │
-│  │  source/front/userlist.at → dist/userlist.vue           │   │
-│  │  source/back/api.at      → dist/api.ts (types + client) │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              Backend Generation                          │   │
-│  │                                                         │   │
-│  │  source/back/*.at → src-tauri/src/*.rs (Tauri)          │   │
-│  │                   or src-server/*.rs (axum)              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              Workspace Files                             │   │
-│  │                                                         │   │
-│  │  vite.config.js, index.html, package.json               │   │
-│  │  tsconfig.json, src-tauri/                              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-         ┌────────────────────┴────────────────────┐
-         │                                         │
-         ▼                                         ▼
-┌─────────────────────┐                  ┌─────────────────────┐
-│  Tauri Desktop App  │                  │  Web Application    │
-│                     │                  │                     │
-│  WebView (Vue)      │                  │  Browser (Vue)      │
-│      │              │                  │      │              │
-│      │ IPC          │                  │      │ HTTP         │
-│      ▼              │                  │      ▼              │
-│  Rust Backend       │                  │  Rust Server        │
-│  (tauri command)    │                  │  (axum routes)      │
-└─────────────────────┘                  └─────────────────────┘
+            ┌─────────────────┴─────────────────┐
+            ▼                                   ▼
+┌─────────────────────┐              ┌─────────────────────┐
+│  Vue + HTTP Mode    │              │  Tauri + IPC Mode   │
+│                     │              │                     │
+│  ┌─────────────┐    │              │  ┌─────────────┐    │
+│  │ Vue SPA     │    │              │  │ Vue SPA     │    │
+│  │ (Vite)      │    │              │  │ (Vite)      │    │
+│  └─────────────┘    │              │  └─────────────┘    │
+│         │           │              │         │           │
+│         │ HTTP      │              │         │ IPC       │
+│         ▼           │              │         ▼           │
+│  ┌─────────────┐    │              │  ┌─────────────┐    │
+│  │ Rust Server │    │              │  │ Tauri Core  │    │
+│  │ (axum)      │    │              │  │ (#[command])│    │
+│  └─────────────┘    │              │  └─────────────┘    │
+│                     │              │                     │
+│  Browser Access     │              │  Desktop App        │
+└─────────────────────┘              └─────────────────────┘
 ```
 
-## API Annotation Attributes
+## API Annotation
 
-| Attribute | Description | Example |
-|-----------|-------------|---------|
-| `method` | HTTP method | `#[api(method = "POST")]` |
-| `path` | Custom path | `#[api(path = "/users/:id")]` |
-| `name` | Custom function name | `#[api(name = "getUserById")]` |
-| `auth` | Requires authentication | `#[api(auth = true)]` |
-| `cache` | Cache duration (seconds) | `#[api(cache = 60)]` |
+The `api.at` file defines the interface that works for both HTTP and IPC:
+
+```auto
+// Shared types
+pub type User = {
+    id: int
+    name: str
+    email: str
+}
+
+// API endpoint - generates both HTTP route and Tauri command
+#[api(method = "GET", path = "/api/users/:id")]
+pub fn get_user(id int) User? {
+    use db
+    return db.find_user(id)
+}
+```
+
+### Generated Code
+
+**HTTP Mode (axum):**
+```rust
+#[axum::debug_handler]
+async fn get_user(
+    Path(id): Path<i64>,
+) -> Result<Json<User>, StatusCode> {
+    // ...
+}
+```
+
+**IPC Mode (tauri):**
+```rust
+#[tauri::command]
+async fn get_user(id: i64) -> Result<Option<User>, String> {
+    // ...
+}
+```
+
+**Frontend Client (TypeScript):**
+```typescript
+// Works for both HTTP and IPC
+export async function getUser(id: number): Promise<User | null> {
+    // HTTP: fetch('/api/users/' + id)
+    // IPC:  invoke('get_user', { id })
+}
+```
 
 ## Benefits
 

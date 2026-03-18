@@ -1,0 +1,28 @@
+// back/pac.at - Backend Package Config
+// Plan 130: Backend service with dual deployment
+//
+// This backend can be deployed as:
+// - Web Server (axum)     -> HTTP REST API
+// - Tauri IPC (tauri)     -> Desktop app backend
+//
+// Structure:
+//   back/
+//   ├── pac.at            <- This file
+//   ├── api.at            <- API interface definitions (#[api] functions)
+//   ├── db.at             <- Database operations (business logic)
+//   └── service.at        <- Common utilities
+//
+// The api.at file defines the interface that both deployments share.
+// Business logic in db.at and service.at is deployment-agnostic.
+
+name: "api-example-back"
+version: "1.0.0"
+
+// Default scene = native code (Rust backend)
+scene: "default"
+
+// Backend target: generates Rust code
+backend: "rust"
+
+// Entry point for API definitions
+entry: "api.at"
