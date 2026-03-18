@@ -206,6 +206,8 @@ axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[workspace]
 "#.to_string()
 }
 
@@ -230,6 +232,13 @@ fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
 
 /// Convert AutoLang type to Rust type
 fn auto_type_to_rust(auto_type: &str) -> String {
+    // Handle optional type T?
+    let auto_type = auto_type.trim();
+    if auto_type.ends_with('?') {
+        let inner = &auto_type[..auto_type.len()-1];
+        return format!("Option<{}>", auto_type_to_rust(inner));
+    }
+
     match auto_type {
         "int" => "i64".to_string(),
         "str" => "String".to_string(),

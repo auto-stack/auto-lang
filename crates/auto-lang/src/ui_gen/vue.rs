@@ -2473,6 +2473,24 @@ impl VueGenerator {
                 Ok(format!("{}.{}", msg_type, variant))
             }
             AuraExpr::MethodCall { object, method, args } => {
+                // Plan 132: Check if this is an API function call
+                // Case 1: Direct API call like listusers() - object is API name, method might be empty
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if Self::API_FUNCTIONS.contains(&name.as_str()) {
+                        let args_js: Vec<String> = args.iter()
+                            .map(|a| self.expr_to_js(a))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        return Ok(format!("await {}({})", name, args_js.join(", ")));
+                    }
+                }
+                // Case 2: Method call on object like api.listusers() or self.listusers()
+                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                    let args_js: Vec<String> = args.iter()
+                        .map(|a| self.expr_to_js(a))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    return Ok(format!("await {}({})", method, args_js.join(", ")));
+                }
+
                 let object_js = self.expr_to_js(object)?;
                 let args_js: Vec<String> = args.iter()
                     .map(|a| self.expr_to_js(a))
@@ -2542,6 +2560,20 @@ impl VueGenerator {
                 let args_js: Vec<String> = args.iter()
                     .map(|a| self.expr_to_js(a))
                     .collect::<Result<Vec<_>, _>>()?;
+
+                // Plan 132: Check if this is a standalone API function call
+                // (object is API function name, method is likely empty or 'call')
+                if Self::API_FUNCTIONS.contains(&object.as_str()) && method.is_empty() {
+                    // Generate: await apiFunction(args)
+                    return Ok(format!("await {}({})", object, args_js.join(", ")));
+                }
+
+                // Check if object is an API function being called as a method
+                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                    // This might be something like api.listusers() - should be await listusers()
+                    return Ok(format!("await {}({})", method, args_js.join(", ")));
+                }
+
                 if self.state_names.contains(object) {
                     Ok(format!("{}.value.{}({})", object, method, args_js.join(", ")))
                 } else {
