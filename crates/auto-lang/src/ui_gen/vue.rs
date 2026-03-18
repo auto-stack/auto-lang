@@ -768,8 +768,8 @@ pub struct VueGenerator {
     /// State variable names (for ref() detection)
     state_names: Vec<String>,
 
-    /// Event handler definitions
-    handlers: Vec<(String, String)>,
+    /// Event handler definitions (name, body, is_async)
+    handlers: Vec<(String, String, bool)>,
 
     /// Event names for emit
     emit_events: Vec<String>,
@@ -812,6 +812,9 @@ pub struct VueGenerator {
 
     /// Whether router is needed (has outlet, link, or nav() calls) - Plan 105
     needs_router: bool,
+
+    /// API functions used in handlers (Plan 132)
+    api_functions_used: HashSet<String>,
 }
 
 /// Data for generating interactive preview cards
@@ -859,6 +862,7 @@ impl VueGenerator {
             codeblock_counter: 0,
             codeblock_data: Vec::new(),
             needs_router: false,
+            api_functions_used: HashSet::new(),
         }
     }
 
@@ -908,6 +912,7 @@ impl VueGenerator {
         self.codeblock_counter = 0;
         self.codeblock_data.clear();
         self.needs_router = false;
+        self.api_functions_used.clear();
     }
 
     /// Generate complete Vue3 SFC
@@ -993,6 +998,17 @@ impl VueGenerator {
             script.push_str(&shadcn_imports);
             script.push('\n');
         }
+
+        // Plan 132: Scan handlers for API function calls
+        for (_pattern, payload) in &widget.handlers {
+            self.extract_api_calls_from_payload(payload);
+        }
+
+        // Plan 132: Add API imports if needed
+        if !self.api_functions_used.is_empty() {
+            let api_funcs: Vec<&str> = self.api_functions_used.iter().map(|s| s.as_str()).collect();
+            script.push_str(&format!("import {{ {} }} from '@/lib/api'\n", api_funcs.join(", ")));
+        }
         script.push('\n');
 
         // Generate state variables as ref()
@@ -1049,17 +1065,25 @@ impl VueGenerator {
         for (pattern, payload) in &widget.handlers {
             let handler_name = self.pattern_to_handler_name(pattern);
             let body = self.generate_handler_body(payload)?;
-            self.handlers.push((handler_name.clone(), body));
+            // Plan 132: Check if handler contains API calls (needs async)
+            let is_async = self.handler_has_api_calls(payload);
+            self.handlers.push((handler_name.clone(), body, is_async));
         }
 
         // Output handler functions
         // Plan 100: Add return type annotation for TypeScript
-        let return_type = if self.use_typescript { ": void" } else { "" };
-        for (handler_name, handler_body) in &self.handlers {
-            if handler_body.is_empty() {
-                script.push_str(&format!("function {}(){} {{\n  // TODO\n}}\n\n", handler_name, return_type));
+        // Plan 132: Add async keyword for handlers with API calls
+        for (handler_name, handler_body, is_async) in &self.handlers {
+            let async_kw = if *is_async { "async " } else { "" };
+            let return_type = if self.use_typescript {
+                if *is_async { ": Promise<void>" } else { ": void" }
             } else {
-                script.push_str(&format!("function {}(){} {{\n  {}\n}}\n\n", handler_name, return_type, handler_body));
+                ""
+            };
+            if handler_body.is_empty() {
+                script.push_str(&format!("{}function {}(){} {{\n  // TODO\n}}\n\n", async_kw, handler_name, return_type));
+            } else {
+                script.push_str(&format!("{}function {}(){} {{\n  {}\n}}\n\n", async_kw, handler_name, return_type, handler_body));
             }
         }
 
@@ -2543,6 +2567,170 @@ impl VueGenerator {
             crate::aura::AuraBinOp::Ge => ">=",
             crate::aura::AuraBinOp::And => "&&",
             crate::aura::AuraBinOp::Or => "||",
+        }
+    }
+
+    // ========================================================================
+    // Plan 132: API Call Detection for Async Handlers
+    // ========================================================================
+
+    /// List of known API function names (from @/lib/api)
+    const API_FUNCTIONS: &'static [&'static str] = &[
+        "listusers",
+        "getuser",
+        "getUser",
+        "createUser",
+        "updateUser",
+        "deleteUser",
+    ];
+
+    /// Extract API function calls from a LogicPayload and track them
+    fn extract_api_calls_from_payload(&mut self, payload: &LogicPayload) {
+        match payload {
+            LogicPayload::AstBlock(stmts) => {
+                for stmt in stmts {
+                    self.extract_api_calls_from_stmt(stmt);
+                }
+            }
+            LogicPayload::Bytecode(_) => {
+                // Bytecode not supported for API call detection
+            }
+        }
+    }
+
+    /// Extract API function calls from a statement
+    fn extract_api_calls_from_stmt(&mut self, stmt: &AuraStmt) {
+        match stmt {
+            AuraStmt::Assign { value, .. } => {
+                self.extract_api_calls_from_expr(value);
+            }
+            AuraStmt::Update { value, .. } => {
+                self.extract_api_calls_from_expr(value);
+            }
+            AuraStmt::MethodCall { args, .. } => {
+                for arg in args {
+                    self.extract_api_calls_from_expr(arg);
+                }
+            }
+        }
+    }
+
+    /// Extract API function calls from an expression (recursive)
+    fn extract_api_calls_from_expr(&mut self, expr: &AuraExpr) {
+        match expr {
+            AuraExpr::MethodCall { object, method, args } => {
+                // Check if this is a direct API function call (e.g., listusers())
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if Self::API_FUNCTIONS.contains(&name.as_str()) {
+                        self.api_functions_used.insert(name.clone());
+                    }
+                }
+                // Also check if method name matches API function
+                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                    self.api_functions_used.insert(method.clone());
+                }
+                // Recurse into object and args
+                self.extract_api_calls_from_expr(object);
+                for arg in args {
+                    self.extract_api_calls_from_expr(arg);
+                }
+            }
+            AuraExpr::Binary { left, right, .. } => {
+                self.extract_api_calls_from_expr(left);
+                self.extract_api_calls_from_expr(right);
+            }
+            AuraExpr::Unary { operand, .. } => {
+                self.extract_api_calls_from_expr(operand);
+            }
+            AuraExpr::FieldAccess { object, .. } => {
+                self.extract_api_calls_from_expr(object);
+            }
+            AuraExpr::Array(elems) => {
+                for elem in elems {
+                    self.extract_api_calls_from_expr(elem);
+                }
+            }
+            AuraExpr::Lambda { body, .. } => {
+                self.extract_api_calls_from_expr(body);
+            }
+            AuraExpr::NavCall { params, .. } => {
+                for (_, v) in params {
+                    self.extract_api_calls_from_expr(v);
+                }
+            }
+            // These don't contain nested expressions
+            AuraExpr::Literal(_)
+            | AuraExpr::Int(_)
+            | AuraExpr::Float(_)
+            | AuraExpr::Bool(_)
+            | AuraExpr::StateRef(_)
+            | AuraExpr::MsgVariant { .. } => {}
+        }
+    }
+
+    /// Check if a handler payload contains API calls
+    fn handler_has_api_calls(&self, payload: &LogicPayload) -> bool {
+        match payload {
+            LogicPayload::AstBlock(stmts) => {
+                stmts.iter().any(|s| self.stmt_has_api_calls(s))
+            }
+            LogicPayload::Bytecode(_) => false,
+        }
+    }
+
+    /// Check if a statement contains API calls
+    fn stmt_has_api_calls(&self, stmt: &AuraStmt) -> bool {
+        match stmt {
+            AuraStmt::Assign { value, .. } => self.expr_has_api_calls(value),
+            AuraStmt::Update { value, .. } => self.expr_has_api_calls(value),
+            AuraStmt::MethodCall { object, method, args } => {
+                // Check if method name is an API function
+                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                    return true;
+                }
+                // Check if object name is an API function (standalone call)
+                if Self::API_FUNCTIONS.contains(&object.as_str()) {
+                    return true;
+                }
+                // Check args
+                args.iter().any(|a| self.expr_has_api_calls(a))
+            }
+        }
+    }
+
+    /// Check if an expression contains API calls (non-mutating version)
+    fn expr_has_api_calls(&self, expr: &AuraExpr) -> bool {
+        match expr {
+            AuraExpr::MethodCall { object, method, args } => {
+                // Check if method name is an API function
+                if Self::API_FUNCTIONS.contains(&method.as_str()) {
+                    return true;
+                }
+                // Check if object is an API function reference
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if Self::API_FUNCTIONS.contains(&name.as_str()) {
+                        return true;
+                    }
+                }
+                // Recurse
+                self.expr_has_api_calls(object) || args.iter().any(|a| self.expr_has_api_calls(a))
+            }
+            AuraExpr::Binary { left, right, .. } => {
+                self.expr_has_api_calls(left) || self.expr_has_api_calls(right)
+            }
+            AuraExpr::Unary { operand, .. } => self.expr_has_api_calls(operand),
+            AuraExpr::FieldAccess { object, .. } => self.expr_has_api_calls(object),
+            AuraExpr::Array(elems) => elems.iter().any(|e| self.expr_has_api_calls(e)),
+            AuraExpr::Lambda { body, .. } => self.expr_has_api_calls(body),
+            AuraExpr::NavCall { params, .. } => {
+                params.values().any(|v| self.expr_has_api_calls(v))
+            }
+            AuraExpr::Literal(_)
+            | AuraExpr::Int(_)
+            | AuraExpr::Float(_)
+            | AuraExpr::Bool(_)
+            | AuraExpr::StateRef(_)
+            | AuraExpr::MsgVariant { .. } => false,
         }
     }
 
