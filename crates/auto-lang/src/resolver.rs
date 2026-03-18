@@ -8,6 +8,8 @@
 
 use std::path::PathBuf;
 
+use crate::ast::{ModulePath, PathPrefix};
+
 /// Trait for resolving AutoLang module imports to file paths
 ///
 /// This trait allows the VM to delegate module resolution to external
@@ -140,6 +142,100 @@ impl FilesystemResolver {
     pub fn add_search_path(&mut self, path: PathBuf) {
         self.search_paths.push(path);
     }
+
+    /// Create resolver with package source root
+    pub fn with_package_root(package_root: PathBuf) -> Self {
+        Self {
+            std_root: PathBuf::from("stdlib/auto"),
+            search_paths: vec![package_root],
+        }
+    }
+
+    /// Resolve a module path with prefix awareness
+    pub fn resolve_with_prefix(
+        &self,
+        module_path: &ModulePath,
+        current_file: PathBuf,
+    ) -> Result<PathBuf, String> {
+        let segments = &module_path.segments;
+
+        match &module_path.prefix {
+            PathPrefix::Pac => {
+                // Search from package root(s)
+                for search_path in &self.search_paths {
+                    let result = self.find_module(search_path, segments)?;
+                    if result.exists() {
+                        return Ok(result);
+                    }
+                }
+                Err(format!("Module not found: {}", module_path.display()))
+            }
+            PathPrefix::Super => {
+                // Resolve relative to parent of current file's directory
+                let current_dir = current_file
+                    .parent()
+                    .ok_or("Cannot resolve super: current file has no parent directory")?;
+                let parent_dir = current_dir
+                    .parent()
+                    .ok_or("Cannot resolve super: already at root directory")?;
+                self.find_module(parent_dir, segments)
+            }
+            PathPrefix::None => {
+                // Same directory as current file
+                let current_dir = current_file
+                    .parent()
+                    .ok_or("Cannot resolve: current file has no parent directory")?;
+                self.find_module(current_dir, segments)
+            }
+            PathPrefix::Dep(dep_name) => {
+                // Look up dependency - requires dependency map
+                Err(format!(
+                    "Dependency resolution not yet implemented: {}",
+                    dep_name
+                ))
+            }
+        }
+    }
+
+    /// Find a module file in a base directory
+    fn find_module(
+        &self,
+        base_dir: &std::path::Path,
+        segments: &[auto_val::AutoStr],
+    ) -> Result<PathBuf, String> {
+        // Build path from segments
+        let mut module_path = base_dir.to_path_buf();
+        for segment in segments {
+            module_path.push(segment.as_str());
+        }
+
+        // Try file module first: db.at
+        let file_module = module_path.with_extension("at");
+        if file_module.exists() {
+            // Check for ambiguity with directory module
+            let dir_module = module_path.join("mod.at");
+            if dir_module.exists() {
+                return Err(format!(
+                    "Ambiguous module '{}' - both '{}' and '{}' exist",
+                    segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("."),
+                    file_module.display(),
+                    dir_module.display()
+                ));
+            }
+            return Ok(file_module);
+        }
+
+        // Try directory module: db/mod.at
+        let dir_module = module_path.join("mod.at");
+        if dir_module.exists() {
+            return Ok(dir_module);
+        }
+
+        Err(format!(
+            "Module not found: {}",
+            segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(".")
+        ))
+    }
 }
 
 impl ModuleResolver for FilesystemResolver {
@@ -227,5 +323,145 @@ mod tests {
         assert_eq!(paths.len(), 2);
         assert_eq!(paths[0], PathBuf::from("packages"));
         assert_eq!(paths[1], PathBuf::from("stdlib/auto"));
+    }
+}
+
+/// Plan 131: Module Path Resolution Tests
+#[cfg(test)]
+mod plan131_tests {
+    use super::*;
+    use auto_val::AutoStr;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn setup_test_project() -> TempDir {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        // Create db.at
+        fs::write(src.join("db.at"), "fn load() {}").unwrap();
+
+        // Create api/mod.at
+        let api = src.join("api");
+        fs::create_dir_all(&api).unwrap();
+        fs::write(api.join("mod.at"), "fn handlers() {}").unwrap();
+
+        // Create api/handlers.at
+        fs::write(api.join("handlers.at"), "fn user() {}").unwrap();
+
+        tmp
+    }
+
+    #[test]
+    fn test_resolve_pac_from_root() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::pac(vec![AutoStr::from("db")]);
+        let current = tmp.path().join("src").join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), tmp.path().join("src").join("db.at"));
+    }
+
+    #[test]
+    fn test_resolve_super_from_nested() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::super_path(vec![AutoStr::from("db")]);
+        let current = tmp.path().join("src").join("api").join("handlers.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), tmp.path().join("src").join("db.at"));
+    }
+
+    #[test]
+    fn test_resolve_local_in_same_dir() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::local(vec![AutoStr::from("handlers")]);
+        let current = tmp.path().join("src").join("api").join("mod.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            tmp.path().join("src").join("api").join("handlers.at")
+        );
+    }
+
+    #[test]
+    fn test_resolve_pac_directory_module() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::pac(vec![AutoStr::from("api")]);
+        let current = tmp.path().join("src").join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), tmp.path().join("src").join("api").join("mod.at"));
+    }
+
+    #[test]
+    fn test_resolve_pac_deep_path() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        // Create api/v1/mod.at
+        let api_v1 = tmp.path().join("src").join("api").join("v1");
+        fs::create_dir_all(&api_v1).unwrap();
+        fs::write(api_v1.join("mod.at"), "fn endpoint() {}").unwrap();
+
+        let path = ModulePath::pac(vec![
+            AutoStr::from("api"),
+            AutoStr::from("v1"),
+        ]);
+        let current = tmp.path().join("src").join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            tmp.path().join("src").join("api").join("v1").join("mod.at")
+        );
+    }
+
+    #[test]
+    fn test_resolve_module_not_found() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::pac(vec![AutoStr::from("nonexistent")]);
+        let current = tmp.path().join("src").join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_resolve_dep_not_implemented() {
+        let tmp = setup_test_project();
+        let resolver =
+            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+
+        let path = ModulePath::dep(AutoStr::from("database"), vec![AutoStr::from("connection")]);
+        let current = tmp.path().join("src").join("main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Dependency resolution not yet implemented"));
     }
 }
