@@ -280,3 +280,84 @@ check_status()
 - Clear visual distinction from library code
 - Easy to identify at a glance
 - Allows different semantics (wildcards, relaxed rules)
+
+---
+
+## Implementation Details
+
+### Key Files Modified
+
+| File | Changes |
+|------|---------|
+| `crates/auto-lang/src/ast/module_path.rs` | New file: `PathPrefix` enum, `ModulePath` struct |
+| `crates/auto-lang/src/ast/use_.rs` | Added `module_path: Option<ModulePath>` field |
+| `crates/auto-lang/src/token.rs` | Added `Pac` and `Super` keywords |
+| `crates/auto-lang/src/lexer.rs` | Keyword recognition for pac/super |
+| `crates/auto-lang/src/parser.rs` | Updated `use_stmt()` to parse prefixes |
+| `crates/auto-lang/src/resolver.rs` | Added `resolve_with_prefix()`, `find_module()` |
+| `crates/auto-man/src/resolver.rs` | Added dependency resolution via `PathPrefix::Dep` |
+
+### Core Data Structures
+
+```rust
+// crates/auto-lang/src/ast/module_path.rs
+pub enum PathPrefix {
+    None,           // use db
+    Super,          // use super.db
+    Pac,            // use pac.db
+    Dep(AutoStr),   // use database.connection
+}
+
+pub struct ModulePath {
+    pub prefix: PathPrefix,
+    pub segments: Vec<AutoStr>,
+    pub items: Vec<AutoStr>,
+}
+```
+
+### Resolution Algorithm
+
+```
+resolve_with_prefix(module_path, current_file):
+  match prefix:
+    Pac -> search in package source dirs
+    Super -> search in parent of current file's dir
+    None -> search in current file's dir
+    Dep(name) -> lookup in dependencies map, search in dep path
+
+find_module(base_dir, segments):
+  path = base_dir + segments.join("/")
+  if path.at exists:
+    if path/mod.at exists: ERROR ambiguous
+    return path.at
+  if path/mod.at exists: return path/mod.at
+  ERROR not found
+```
+
+### Error Messages
+
+| Scenario | Message |
+|----------|---------|
+| Ambiguous module | "Ambiguous module 'X' - both 'X.at' and 'X/mod.at' exist" |
+| Module not found | "Module 'X' not found. Searched locations: ..." |
+| Super at root | "Cannot use 'super' at package root level. Use 'pac.' instead" |
+| Dep not declared | "Dependency 'X' not declared in pac.at. Add: dep X(path: ...)" |
+
+### Tests Added
+
+- **ModulePath unit tests**: 5 tests for path construction/display
+- **Lexer tests**: 4 tests for pac/super keyword recognition
+- **Parser tests**: 8 tests for parsing new syntax
+- **Resolver tests**: 7 tests for pac/super/local resolution
+- **AutoMan tests**: 6 tests for dependency resolution
+- **Integration tests**: 5 end-to-end tests
+
+**Total: 35+ new tests**
+
+---
+
+## Deferred to Future Plans
+
+- **Phase 4:** `pub` visibility and `pub use` re-exports
+- **Phase 5:** Wildcard imports (`use db: *`) in `.as` scripts
+- **Dependency alias support:** `dep database(path: "../database", as: "db")`
