@@ -5406,36 +5406,7 @@ impl VueGenerator {
     /// Generate shadcn-vue import statements
     fn generate_shadcn_imports(&self) -> String {
         // Skip shadcn-vue imports for demo - use native HTML elements
-        return String::new();
-
-        // Original code kept for reference
-        // if !self.is_shadcn() || self.shadcn_components_used.is_empty() {
-        //     return String::new();
-        // }
-        //
-        // // Group components by their module path
-        // let mut module_imports: HashMap<&str, Vec<&str>> = HashMap::new();
-        //
-        // for component_name in &self.shadcn_components_used {
-        //     // Find which module this component belongs to
-        //     for (_tag, (module, components)) in &self.shadcn_registry.components {
-        //         if components.contains(&component_name.as_str()) {
-        //             module_imports.entry(module).or_default().push(component_name.as_str());
-        //             break;
-        //         }
-        //     }
-        // }
-
-        let mut imports = Vec::new();
-        for (module, components) in module_imports {
-            let unique_components: HashSet<&str> = components.into_iter().collect();
-            let mut sorted: Vec<&str> = unique_components.into_iter().collect();
-            sorted.sort();
-            imports.push(format!("import {{ {} }} from '{}'", sorted.join(", "), module));
-        }
-
-        imports.sort();
-        imports.join("\n")
+        String::new()
     }
 
     /// Get shadcn-vue component name for a tag

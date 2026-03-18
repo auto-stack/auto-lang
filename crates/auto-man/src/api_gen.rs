@@ -319,7 +319,7 @@ use tower_http::cors::{{
 
 #[tokio::main]
 async fn main() {{
-    println!("Server running on http://127.0.0.1:3000");
+    println!("Server running on http://127.0.0.1:8080");
     println!("CORS enabled for all origins");
 
     // Enable CORS for frontend development
@@ -332,7 +332,7 @@ async fn main() {{
 {}
         .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }}
 "#, routes.join("\n"))

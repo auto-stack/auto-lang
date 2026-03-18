@@ -257,7 +257,14 @@ export default defineConfig({
     port: 3000,
     // Only auto-open browser when NOT running under Tauri
     // Tauri sets TAURI_ENV before running vite
-    open: !process.env.TAURI_ENV
+    open: !process.env.TAURI_ENV,
+    // Proxy API requests to Rust backend
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      }
+    }
   }
 })
 "#.to_string()
@@ -938,30 +945,7 @@ impl VueProject {
         // For demo purposes, skip shadcn-vue installation and use native HTML elements
         println!();
         println!("{} {}", "▶".bright_cyan(), "Skipping shadcn-vue (using native HTML for demo)".bright_white());
-        return Ok(());
-
-        // Original code kept for reference
-        // println!();
-        // println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
-
-        let mut args = vec!["--yes", "shadcn-vue@latest", "add"];
-        args.extend(self.shadcn_components.iter().map(|s| s.as_str()));
-        args.push("--yes");
-
-        println!("{}", format!("  Running: npx {}", args.join(" ")).bright_black());
-
-        match run_command_live("npx", &args, &self.output_dir) {
-            Ok(_) => {
-                println!("{}", "  ✓ shadcn-vue components added".bright_green());
-                Ok(())
-            }
-            Err(e) => {
-                println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", self.shadcn_components.join(" "));
-                // Don't fail - user can install manually
-                Ok(())
-            }
-        }
+        Ok(())
     }
 
     /// Copy public assets

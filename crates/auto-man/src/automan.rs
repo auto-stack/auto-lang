@@ -13,6 +13,7 @@ use reqwest::blocking::get;
 use std::collections::HashMap;
 use std::env;
 use std::fmt::Display;
+use std::io::IsTerminal;
 use std::path::Path;
 
 // Plan 082: AutoCache integration
@@ -797,13 +798,13 @@ impl Automan {
     }
 
     /// Run a member's frontend (helper for run_workspace)
-    fn run_member_frontend(frontend: &auto_lang::config::BackendType, member_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    fn run_member_frontend(frontend: &auto_lang::config::BackendType, root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         use auto_lang::config::BackendType;
 
         match frontend {
             BackendType::Vue => {
                 println!("  Running Vue dev server");
-                crate::vue::run_vue_project(member_dir, args)?;
+                crate::vue::run_vue_project(root_dir, args)?;
             }
             BackendType::Jet => {
                 println!("  Running Jetpack project");
@@ -811,7 +812,7 @@ impl Automan {
             }
             BackendType::Tauri => {
                 println!("  Running Tauri project");
-                crate::tauri::run_tauri_project(member_dir, args)?;
+                crate::tauri::run_tauri_project(root_dir, args)?;
             }
             BackendType::Rust => {
                 println!("  Running Rust backend");
@@ -904,24 +905,30 @@ impl Automan {
                 }
             } else if frontends.len() == 1 {
                 // Single frontend - run directly
-                Self::run_member_frontend(&frontends[0], &member_dir, args.clone())?;
+                Self::run_member_frontend(&frontends[0], &root_dir, args.clone())?;
                 frontend_started = true;
             } else {
-                // Multiple frontends - let user select
-                use dialoguer::Select;
+                // Multiple frontends - let user select (or default to first in non-interactive)
+                let selection = if std::io::stdin().is_terminal() {
+                    use dialoguer::Select;
 
-                let frontend_names: Vec<&'static str> = frontends.iter()
-                    .map(|t| t.as_str())
-                    .collect();
+                    let frontend_names: Vec<&'static str> = frontends.iter()
+                        .map(|t| t.as_str())
+                        .collect();
 
-                let selection = Select::new()
-                    .with_prompt("Select frontend to run")
-                    .default(0)
-                    .items(&frontend_names)
-                    .interact()
-                    .map_err(|e| format!("Failed to select frontend: {}", e))?;
+                    Select::new()
+                        .with_prompt("Select frontend to run")
+                        .default(0)
+                        .items(&frontend_names)
+                        .interact()
+                        .map_err(|e| format!("Failed to select frontend: {}", e))?
+                } else {
+                    // Non-interactive mode - default to first frontend
+                    println!("  Using default frontend: {}", frontends[0].as_str());
+                    0
+                };
 
-                Self::run_member_frontend(&frontends[selection], &member_dir, args.clone())?;
+                Self::run_member_frontend(&frontends[selection], &root_dir, args.clone())?;
                 frontend_started = true;
             }
         }
