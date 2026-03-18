@@ -206,6 +206,7 @@ axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tower-http = { version = "0.5", features = ["cors"] }
 
 [workspace]
 "#.to_string()
@@ -260,8 +261,19 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
     for endpoint in &api_module.endpoints {
         let return_type = auto_type_to_rust(&endpoint.return_type);
         lines.push(format!("pub async fn {}() -> Json<{}> {{", endpoint.fn_name, return_type));
-        lines.push(format!("    // TODO: Implement actual logic"));
-        lines.push(format!("    Json(Default::default())"));
+
+        // Generate mock data for listusers endpoint
+        if endpoint.fn_name == "listusers" {
+            lines.push("    // Mock data for demo".to_string());
+            lines.push("    Json(vec![".to_string());
+            lines.push("        User { id: 1, name: \"Alice\".to_string(), email: \"alice@example.com\".to_string() },".to_string());
+            lines.push("        User { id: 2, name: \"Bob\".to_string(), email: \"bob@example.com\".to_string() },".to_string());
+            lines.push("        User { id: 3, name: \"Charlie\".to_string(), email: \"charlie@example.com\".to_string() },".to_string());
+            lines.push("    ])".to_string());
+        } else {
+            lines.push("    // TODO: Implement actual logic".to_string());
+            lines.push("    Json(Default::default())".to_string());
+        }
         lines.push("}".to_string());
         lines.push("".to_string());
     }
@@ -291,12 +303,25 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
     format!(r#"mod api;
 mod types;
 
+use tower_http::cors::{{
+    CorsLayer,
+    Any,
+}};
+
 #[tokio::main]
 async fn main() {{
     println!("Server running on http://127.0.0.1:3000");
+    println!("CORS enabled for all origins");
+
+    // Enable CORS for frontend development
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     let app = axum::Router::new()
-{};
+{}
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -338,19 +363,37 @@ fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
     // Pattern: #[api(...)] pub fn name(params) return_type {
     // Note: return_type may be followed by { or whitespace
     let fn_pattern = Regex::new(
-        r"#\[api\([^]]*\]\s*pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*(\S+)?"
+        r#"#\[api\(([^]]*)\]\s*pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*(\S+)?"#
     ).ok()?;
 
     for cap in fn_pattern.captures_iter(api_content) {
-        let fn_name = cap.get(1)?.as_str().to_string();
-        let params_str = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+        let annotation_str = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+        let fn_name = cap.get(2)?.as_str().to_string();
+        let params_str = cap.get(3).map(|m| m.as_str()).unwrap_or("");
         // Return type may have trailing { which we need to strip
-        let return_type_raw = cap.get(3).map(|m| m.as_str()).unwrap_or("void");
+        let return_type_raw = cap.get(4).map(|m| m.as_str()).unwrap_or("void");
         let return_type = return_type_raw.trim_end_matches('{').trim().to_string();
         let return_type = if return_type.is_empty() { "void".to_string() } else { return_type };
 
+        // Extract method from annotation (e.g., method = "GET")
+        let method_pattern = Regex::new(r#"method\s*=\s*"(\w+)""#).ok()?;
+        let method = method_pattern.captures(annotation_str)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| "GET".to_string());
+
+        // Extract path from annotation (e.g., path = "/api/users")
+        let path_pattern = Regex::new(r#"path\s*=\s*"([^"]+)""#).ok()?;
+        let path = path_pattern.captures(annotation_str)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| format!("/api/{}", fn_name));
+
         let params = parse_params(params_str);
-        let mut endpoint = ApiEndpoint::new(fn_name.clone(), ApiAttrs::new());
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some(method);
+        attrs.path = Some(path);
+        let mut endpoint = ApiEndpoint::new(fn_name.clone(), attrs);
         endpoint.params = params;
         endpoint.return_type = return_type;
 
@@ -461,10 +504,16 @@ pub fn listusers() []User {
         assert_eq!(module.endpoints[0].params[0].name, "id");
         assert_eq!(module.endpoints[0].params[0].ty, "int");
         assert_eq!(module.endpoints[0].return_type, "User?");
+        // Verify method and path extraction
+        assert_eq!(module.endpoints[0].attrs.method, Some("GET".to_string()));
+        assert_eq!(module.endpoints[0].attrs.path, Some("/api/users/:id".to_string()));
 
         assert_eq!(module.endpoints[1].fn_name, "listusers");
         assert_eq!(module.endpoints[1].params.len(), 0);
         assert_eq!(module.endpoints[1].return_type, "[]User");
+        // Verify method and path extraction
+        assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
+        assert_eq!(module.endpoints[1].attrs.path, Some("/api/users".to_string()));
     }
 
     #[test]
@@ -485,6 +534,9 @@ pub fn createuser(req CreateUserRequest) User {
         assert_eq!(module.endpoints[0].params[0].name, "req");
         assert_eq!(module.endpoints[0].params[0].ty, "CreateUserRequest");
         assert_eq!(module.endpoints[0].return_type, "User");
+        // Verify method and path extraction
+        assert_eq!(module.endpoints[0].attrs.method, Some("POST".to_string()));
+        assert_eq!(module.endpoints[0].attrs.path, Some("/api/users".to_string()));
     }
 
     #[test]
@@ -570,9 +622,13 @@ pub fn listusers() []User {
         // Check getuser endpoint
         assert_eq!(module.endpoints[0].fn_name, "getuser");
         assert_eq!(module.endpoints[0].return_type, "User?");
+        assert_eq!(module.endpoints[0].attrs.method, Some("GET".to_string()));
+        assert_eq!(module.endpoints[0].attrs.path, Some("/api/users/:id".to_string()));
 
         // Check listusers endpoint
         assert_eq!(module.endpoints[1].fn_name, "listusers");
         assert_eq!(module.endpoints[1].return_type, "[]User");
+        assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
+        assert_eq!(module.endpoints[1].attrs.path, Some("/api/users".to_string()));
     }
 }
