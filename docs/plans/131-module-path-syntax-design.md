@@ -139,19 +139,39 @@ use db.connection          // by alias
 use serde.json.from_str    // nested path
 ```
 
+## Implementation Status
+
+**Completed (2025-03-18):**
+
+| Component | Status |
+|-----------|--------|
+| ModulePath AST type | ✅ |
+| pac/super lexer keywords | ✅ |
+| Use.module_path field | ✅ |
+| Parser support | ✅ |
+| FilesystemResolver.resolve_with_prefix | ✅ |
+| AutoManResolver dependency resolution | ✅ |
+| Integration tests | ✅ |
+| Error messages | ✅ |
+
+**Total commits: 15**
+**Test coverage: 25+ tests**
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Module Path Resolution
-- [ ] Add `pac` keyword to lexer
-- [ ] Parse module paths with `pac.` prefix
-- [ ] Parse `super.` prefix
-- [ ] Resolve dependency names from `pac.at`
+- [x] Add `pac` keyword to lexer
+- [x] Parse module paths with `pac.` prefix
+- [x] Parse `super.` prefix
+- [x] Resolve dependency names from `pac.at`
 
 ### Phase 2: Module File Discovery
-- [ ] Implement module resolver
-- [ ] Search source directories
-- [ ] Detect ambiguous modules (both `.at` and `/mod.at`)
-- [ ] Error reporting for unresolved modules
+- [x] Implement module resolver
+- [x] Search source directories
+- [x] Detect ambiguous modules (both `.at` and `/mod.at`)
+- [x] Error reporting for unresolved modules
 
 ### Phase 3: Symbol Import
 - [ ] Parse `use module: symbol` syntax

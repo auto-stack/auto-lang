@@ -228,6 +228,42 @@ Located in `crates/auto-lang/test/a2r/`:
 - **Functions**: `fn add(a int, b int) int { a + b }`
 - **Imports**: `use math::add` or `use c <stdio.h>`
 
+### Module Imports
+
+AutoLang supports a module path syntax for importing modules:
+
+**Syntax:**
+```auto
+use db              // Same directory: ./db.at or ./db/mod.at
+use super.db         // Parent directory: ../db.at
+use pac.db           // Package root: search source dirs
+use pac.api.handlers // Deep path from root
+use db: load, save   // Import specific symbols
+```
+
+**Rules:**
+- Error if both `name.at` and `name/mod.at` exist (ambiguous)
+- `super` only works one level; for deeper navigation use `pac.`
+- Dependencies declared in `pac.at` can be imported by name
+
+**Resolution Order:**
+1. Try `name.at` (file module)
+2. Try `name/mod.at` (directory module)
+3. Error if neither exists
+
+**Example:**
+```auto
+// pac.at
+name: "myapp"
+src: ["src"]
+dep database(path: "../database")
+
+// src/handlers/user.at
+use pac.db           // → src/db.at
+use super.utils      // → src/utils.at
+use database.conn    // → ../database/src/conn.at
+```
+
 ### Function Annotations
 
 ⚠️ **IMPORTANT**: AutoLang uses Rust-style `#[...]` annotation syntax. The old `[...]` syntax is **DEPRECATED** and should not be used.
