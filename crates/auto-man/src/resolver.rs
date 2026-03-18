@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use auto_lang::resolver::ModuleResolver;
 use auto_lang::mode::ExecutionMode;
+use auto_lang::ast::{ModulePath, PathPrefix};
+use auto_val::AutoStr;
 
 /// Dependency with execution mode
 ///
@@ -296,6 +298,88 @@ impl AutoManResolver {
     pub fn add_dependency(&mut self, name: String, path: PathBuf, mode: ExecutionMode) {
         let dep = Dependency::new(name.clone(), path, mode);
         self.dependencies.insert(name, dep);
+    }
+
+    /// Resolve a module path with prefix awareness
+    ///
+    /// **Plan 131 Task 8**: Extends the base resolver with dependency support
+    ///
+    /// # Arguments
+    ///
+    /// * `module_path` - The parsed module path with prefix and segments
+    /// * `current_file` - The file from which the import is being resolved
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(PathBuf)` - Path to the resolved module file
+    /// * `Err(String)` - Error message if resolution fails
+    pub fn resolve_with_prefix(
+        &self,
+        module_path: &ModulePath,
+        current_file: PathBuf,
+    ) -> Result<PathBuf, String> {
+        match &module_path.prefix {
+            PathPrefix::Dep(dep_name) => {
+                // Look up dependency by name
+                let dep = self.dependencies.get(dep_name.as_str())
+                    .ok_or_else(|| format!("Dependency '{}' not declared in pac.at", dep_name))?;
+
+                // Build path from segments within dependency
+                let segments = &module_path.segments;
+                self.find_module_in_dep(&dep.path, segments)
+            }
+            // For other prefixes, use the package root
+            PathPrefix::Pac | PathPrefix::Super | PathPrefix::None => {
+                // Delegate to base resolver logic
+                let base_resolver = auto_lang::resolver::FilesystemResolver::with_package_root(self.project_root.clone());
+                base_resolver.resolve_with_prefix(module_path, current_file)
+            }
+        }
+    }
+
+    /// Find a module within a dependency directory
+    ///
+    /// **Plan 131 Task 8**: Resolves module paths within declared dependencies
+    fn find_module_in_dep(
+        &self,
+        dep_root: &std::path::Path,
+        segments: &[AutoStr],
+    ) -> Result<PathBuf, String> {
+        // Build path from segments
+        let mut module_path = dep_root.to_path_buf();
+        for segment in segments {
+            module_path.push(segment.as_str());
+        }
+
+        // Try file module first
+        let file_module = module_path.with_extension("at");
+        if file_module.exists() {
+            // Check for ambiguity
+            let dir_module = module_path.join("mod.at");
+            if dir_module.exists() {
+                let segment_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+                return Err(format!(
+                    "Ambiguous module '{}' in dependency - both '{}' and '{}' exist",
+                    segment_strs.join("."),
+                    file_module.display(),
+                    dir_module.display()
+                ));
+            }
+            return Ok(file_module);
+        }
+
+        // Try directory module
+        let dir_module = module_path.join("mod.at");
+        if dir_module.exists() {
+            return Ok(dir_module);
+        }
+
+        let segment_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+        Err(format!(
+            "Module '{}' not found in dependency at '{}'",
+            segment_strs.join("."),
+            dep_root.display()
+        ))
     }
 }
 
@@ -803,5 +887,273 @@ use std.io
         assert!(deps.contains_key("pkg2"));
         assert_eq!(deps["pkg1"].mode, ExecutionMode::AutoVM);
         assert_eq!(deps["pkg2"].mode, ExecutionMode::C);
+    }
+}
+
+// Plan 131 Task 8: Dependency Module Resolution Tests
+#[cfg(test)]
+mod plan131_dep_tests {
+    use super::*;
+    use auto_lang::ast::ModulePath;
+    use auto_val::AutoStr;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Set up a test project with a database dependency
+    fn setup_dep_test_project() -> (TempDir, TempDir) {
+        // Create workspace with app and database dependency
+        let workspace = TempDir::new().unwrap();
+
+        // Create database package
+        let db_pkg = workspace.path().join("database");
+        fs::create_dir_all(&db_pkg).unwrap();
+        fs::write(
+            db_pkg.join("pac.at"),
+            r#"name: "database"
+src: ["src"]"#,
+        )
+        .unwrap();
+
+        let db_src = db_pkg.join("src");
+        fs::create_dir_all(&db_src).unwrap();
+        fs::write(
+            db_src.join("connection.at"),
+            "fn connect() str { \"connected\" }",
+        )
+        .unwrap();
+
+        // Create app package with database dependency
+        let app_pkg = workspace.path().join("app");
+        fs::create_dir_all(&app_pkg).unwrap();
+        fs::write(
+            app_pkg.join("pac.at"),
+            r#"name: "app"
+src: ["src"]
+dep database(path: "../database")"#,
+        )
+        .unwrap();
+
+        let app_src = app_pkg.join("src");
+        fs::create_dir_all(&app_src).unwrap();
+        fs::write(
+            app_src.join("main.at"),
+            "use database.connection\nfn main() { database.connect() }",
+        )
+        .unwrap();
+
+        (workspace, TempDir::new().unwrap()) // Return second TempDir to satisfy return type
+    }
+
+    #[test]
+    fn test_resolve_dep_path() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+        let db_pkg = workspace.path().join("database");
+
+        // Create resolver with dependency manually added
+        let mut resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+        resolver.add_dependency(
+            "database".to_string(),
+            db_pkg.join("src"),
+            ExecutionMode::AutoVM,
+        );
+
+        let path = ModulePath::dep(AutoStr::from("database"), vec![AutoStr::from("connection")]);
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let resolved = result.unwrap();
+        assert!(resolved.ends_with("database/src/connection.at"));
+    }
+
+    #[test]
+    fn test_dep_not_declared_error() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+
+        // Create resolver WITHOUT database dependency
+        let resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+
+        // Try to import from undeclared dependency
+        let path = ModulePath::dep(
+            AutoStr::from("undeclared_pkg"),
+            vec![AutoStr::from("module")],
+        );
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not declared"),
+            "Error should mention 'not declared', got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_dep_module_not_found() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+        let db_pkg = workspace.path().join("database");
+
+        // Create resolver with dependency
+        let mut resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+        resolver.add_dependency(
+            "database".to_string(),
+            db_pkg.join("src"),
+            ExecutionMode::AutoVM,
+        );
+
+        // Try to import non-existent module
+        let path = ModulePath::dep(
+            AutoStr::from("database"),
+            vec![AutoStr::from("nonexistent")],
+        );
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not found"),
+            "Error should mention 'not found', got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_dep_directory_module() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+        let db_pkg = workspace.path().join("database");
+
+        // Add a directory module in database
+        let db_models = db_pkg.join("src").join("models");
+        fs::create_dir_all(&db_models).unwrap();
+        fs::write(db_models.join("mod.at"), "fn user() {}").unwrap();
+
+        // Create resolver with dependency
+        let mut resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+        resolver.add_dependency(
+            "database".to_string(),
+            db_pkg.join("src"),
+            ExecutionMode::AutoVM,
+        );
+
+        // Import directory module
+        let path = ModulePath::dep(AutoStr::from("database"), vec![AutoStr::from("models")]);
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let resolved = result.unwrap();
+        assert!(resolved.ends_with("models/mod.at"));
+    }
+
+    #[test]
+    fn test_dep_deep_path() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+        let db_pkg = workspace.path().join("database");
+
+        // Add a deep module in database: src/api/v1/handlers.at
+        let db_api_v1 = db_pkg.join("src").join("api").join("v1");
+        fs::create_dir_all(&db_api_v1).unwrap();
+        fs::write(db_api_v1.join("handlers.at"), "fn user() {}").unwrap();
+
+        // Create resolver with dependency
+        let mut resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+        resolver.add_dependency(
+            "database".to_string(),
+            db_pkg.join("src"),
+            ExecutionMode::AutoVM,
+        );
+
+        // Import deep path
+        let path = ModulePath::dep(
+            AutoStr::from("database"),
+            vec![
+                AutoStr::from("api"),
+                AutoStr::from("v1"),
+                AutoStr::from("handlers"),
+            ],
+        );
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let resolved = result.unwrap();
+        assert!(resolved.ends_with("api/v1/handlers.at"));
+    }
+
+    #[test]
+    fn test_dep_ambiguous_module() {
+        let (workspace, _keep) = setup_dep_test_project();
+
+        // Get paths
+        let app_pkg = workspace.path().join("app");
+        let db_pkg = workspace.path().join("database");
+
+        // Create both file and directory module (ambiguous)
+        let db_src = db_pkg.join("src");
+        fs::write(db_src.join("models.at"), "fn user() {}").unwrap();
+
+        let db_models = db_src.join("models");
+        fs::create_dir_all(&db_models).unwrap();
+        fs::write(db_models.join("mod.at"), "fn user() {}").unwrap();
+
+        // Create resolver with dependency
+        let mut resolver = AutoManResolver::new(
+            app_pkg.clone(),
+            PathBuf::from("stdlib/auto"),
+        );
+        resolver.add_dependency(
+            "database".to_string(),
+            db_pkg.join("src"),
+            ExecutionMode::AutoVM,
+        );
+
+        // Try to import ambiguous module
+        let path = ModulePath::dep(AutoStr::from("database"), vec![AutoStr::from("models")]);
+        let current = app_pkg.join("src/main.at");
+
+        let result = resolver.resolve_with_prefix(&path, current);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Ambiguous"),
+            "Error should mention 'Ambiguous', got: {}",
+            err
+        );
     }
 }
