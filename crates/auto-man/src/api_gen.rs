@@ -136,26 +136,163 @@ fn generate_tauri_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -
 
 /// Generate Vue + HTTP API code
 fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    use auto_lang::api::Target;
+    use auto_lang::api::TypeScriptGenerator;
 
-    let vue_dir = root_dir.join("vue");
+    // For workspace projects, output to dist/src/lib/
+    let dist_dir = root_dir.join("dist");
+    let lib_dir = dist_dir.join("src").join("lib");
+    std::fs::create_dir_all(&lib_dir)
+        .map_err(|e| format!("Failed to create lib directory: {}", e))?;
 
-    // Generate TypeScript client with HTTP backend
-    let ts_gen = Target::TypeScript.generator();
-    let ts_code = ts_gen.generate(api_module);
+    // Generate simple TypeScript client
+    let ts_gen = TypeScriptGenerator::new();
+    let ts_code = ts_gen.generate_simple_client(api_module);
 
-    let api_dir = vue_dir.join("src").join("api");
-    std::fs::create_dir_all(&api_dir)
-        .map_err(|e| format!("Failed to create api directory: {}", e))?;
-    std::fs::write(api_dir.join("client.ts"), &ts_code)
-        .map_err(|e| format!("Failed to write client.ts: {}", e))?;
+    std::fs::write(lib_dir.join("api.ts"), &ts_code)
+        .map_err(|e| format!("Failed to write api.ts: {}", e))?;
 
-    println!("  ✓ Generated TypeScript client: src/api/client.ts");
+    println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
-    // Note: For Vue + HTTP mode, the backend server is a separate project
-    // Users should run `cargo run` in the back/ directory
+    // Generate Rust server if back/ exists
+    let back_dir = root_dir.join("back");
+    if back_dir.exists() {
+        generate_rust_server(api_module, root_dir)?;
+    }
 
     Ok(())
+}
+
+/// Generate Rust server code (Axum-based)
+fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+    let rust_dir = root_dir.join("rust");
+    let src_dir = rust_dir.join("src");
+    std::fs::create_dir_all(&src_dir)
+        .map_err(|e| format!("Failed to create rust/src: {}", e))?;
+
+    // Generate Cargo.toml
+    let cargo_toml = generate_cargo_toml();
+    std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
+        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
+
+    // Generate types.rs
+    let types_rs = generate_types_rs(api_module);
+    std::fs::write(src_dir.join("types.rs"), &types_rs)
+        .map_err(|e| format!("Failed to write types.rs: {}", e))?;
+
+    // Generate api.rs with route handlers
+    let api_rs = generate_api_rs(api_module);
+    std::fs::write(src_dir.join("api.rs"), &api_rs)
+        .map_err(|e| format!("Failed to write api.rs: {}", e))?;
+
+    // Generate main.rs
+    let main_rs = generate_main_rs(api_module);
+    std::fs::write(src_dir.join("main.rs"), &main_rs)
+        .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+
+    println!("  ✓ Generated Rust server: rust/");
+
+    Ok(())
+}
+
+/// Generate Cargo.toml for the Rust server
+fn generate_cargo_toml() -> String {
+    r#"[package]
+name = "api-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+"#.to_string()
+}
+
+/// Generate types.rs with serde structs
+fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
+    let mut lines = vec!["use serde::{Serialize, Deserialize};".to_string(), "".to_string()];
+
+    for api_type in &api_module.types {
+        // Include Default derive for simple placeholder generation
+        lines.push(format!("#[derive(Clone, Debug, Default, Serialize, Deserialize)]"));
+        lines.push(format!("pub struct {} {{", api_type.name));
+        for field in &api_type.fields {
+            let rust_type = auto_type_to_rust(&field.ty);
+            lines.push(format!("    pub {}: {},", field.name, rust_type));
+        }
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Convert AutoLang type to Rust type
+fn auto_type_to_rust(auto_type: &str) -> String {
+    match auto_type {
+        "int" => "i64".to_string(),
+        "str" => "String".to_string(),
+        "bool" => "bool".to_string(),
+        "float" => "f64".to_string(),
+        s if s.starts_with("[]") || s.starts_with("[") => {
+            // Handle []T and [N]T
+            let inner = s.trim_start_matches(|c: char| c == '[' || c == ']' || c.is_numeric());
+            format!("Vec<{}>", auto_type_to_rust(inner))
+        }
+        s => s.to_string(),
+    }
+}
+
+/// Generate api.rs with route handlers
+fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
+    let mut lines = vec!["use axum::Json;".to_string(), "use crate::types::*;".to_string(), "".to_string()];
+
+    for endpoint in &api_module.endpoints {
+        let return_type = auto_type_to_rust(&endpoint.return_type);
+        lines.push(format!("pub async fn {}() -> Json<{}> {{", endpoint.fn_name, return_type));
+        lines.push(format!("    // TODO: Implement actual logic"));
+        lines.push(format!("    Json(Default::default())"));
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Generate main.rs with Axum server setup
+fn generate_main_rs(api_module: &auto_lang::api::ApiModule) -> String {
+    let routes: Vec<String> = api_module.endpoints.iter()
+        .map(|e| {
+            let default_path = format!("/api/{}", e.fn_name);
+            let path = e.attrs.path.as_deref().unwrap_or(&default_path);
+            // Use the endpoint's HTTP method
+            let method = e.attrs.method.as_deref().unwrap_or("GET");
+            let method_fn = match method.to_lowercase().as_str() {
+                "post" => "post",
+                "put" => "put",
+                "delete" => "delete",
+                "patch" => "patch",
+                _ => "get",
+            };
+            format!("        .route(\"{}\", axum::routing::{}(api::{}))", path, method_fn, e.fn_name)
+        })
+        .collect();
+
+    format!(r#"mod api;
+mod types;
+
+#[tokio::main]
+async fn main() {{
+    println!("Server running on http://127.0.0.1:3000");
+
+    let app = axum::Router::new()
+{};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}}
+"#, routes.join("\n"))
 }
 
 // ============================================================================
