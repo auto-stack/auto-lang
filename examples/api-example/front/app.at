@@ -1,15 +1,13 @@
-// source/front/app.at - Main Application Entry
-// Simple test widget for workspace compilation
+// front/app.at - Main Application Entry
+// Demo: Load and display users from backend API
 
 widget App {
     msg Msg { Click, Load }
 
     model {
         var count int = 0
-    }
-
-    computed {
-        doubleCount => .count * 2
+        var users []User = []
+        var loading bool = false
     }
 
     view {
@@ -18,12 +16,20 @@ widget App {
 
             row {
                 text `Count: ${.count}`
-                text `Double: ${.doubleCount}`
             }
 
-            row {
-                button (text: "Load", onclick: .Load) {}
-                button (text: "Click", onclick: .Click) {}
+            button (text: "Load Users", onclick: .Load) {}
+
+            // Loading indicator
+            if .loading {
+                text "Loading..."
+            }
+
+            // Display users
+            for user in .users {
+                row {
+                    text `${user.id}: ${user.name} - ${user.email}`
+                }
             }
         }
     }
@@ -33,7 +39,9 @@ widget App {
             .count = .count + 1
         }
         .Load => {
-            // TODO: Call backend API
+            .loading = true
+            .users = listusers()
+            .loading = false
         }
     }
 }
