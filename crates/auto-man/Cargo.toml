@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 auto-lang = { path = "../auto-lang" }
+regex = "1"
 auto-val = { path = "../auto-val" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
