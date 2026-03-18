@@ -103,6 +103,8 @@ pub enum TokenKind {
     Has,
     Spec,
     Use,
+    Pac,    // Plan 131: package keyword (use pac.db)
+    Super,  // Plan 131: super keyword (use super.utils)
     As,
     Enum,
     On,
@@ -243,6 +245,8 @@ impl fmt::Display for Token {
             TokenKind::DotQuestion => write!(f, "?."),
             TokenKind::DotQuest => write!(f, ".?"),
             TokenKind::Use => write!(f, "<use>"),
+            TokenKind::Pac => write!(f, "<pac>"),
+            TokenKind::Super => write!(f, "<super>"),
             TokenKind::Spec => write!(f, "<spec>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
             TokenKind::At => write!(f, "<@>"),
@@ -341,6 +345,8 @@ impl Token {
             "has" => Some(TokenKind::Has),
             "spec" => Some(TokenKind::Spec),
             "use" => Some(TokenKind::Use),
+            "pac" => Some(TokenKind::Pac),   // Plan 131: package keyword
+            "super" => Some(TokenKind::Super), // Plan 131: super keyword
             "as" => Some(TokenKind::As),
             "enum" => Some(TokenKind::Enum),
             "grid" => Some(TokenKind::Grid),

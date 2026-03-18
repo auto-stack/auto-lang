@@ -1162,4 +1162,42 @@ mod tests {
         let tokens3 = parse_token_strings("a -b");
         assert_eq!(tokens3, "<ident:a><-><ident:b>");
     }
+
+    #[test]
+    fn test_pac_keyword() {
+        // Plan 131: Test that "pac" is recognized as a keyword
+        let kind = Token::keyword_kind("pac");
+        assert_eq!(kind, Some(TokenKind::Pac));
+
+        // Test that "Pac" (capitalized) is NOT recognized as a keyword
+        let kind = Token::keyword_kind("Pac");
+        assert_eq!(kind, None);
+    }
+
+    #[test]
+    fn test_super_keyword() {
+        // Plan 131: Test that "super" is recognized as a keyword
+        let kind = Token::keyword_kind("super");
+        assert_eq!(kind, Some(TokenKind::Super));
+
+        // Test that "Super" (capitalized) is NOT recognized as a keyword
+        let kind = Token::keyword_kind("Super");
+        assert_eq!(kind, None);
+    }
+
+    #[test]
+    fn test_pac_keyword_in_use() {
+        // Plan 131: Test pac keyword in use statement
+        let code = "use pac.db";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<use><pac><.><ident:db>");
+    }
+
+    #[test]
+    fn test_super_keyword_in_use() {
+        // Plan 131: Test super keyword in use statement
+        let code = "use super.db";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<use><super><.><ident:db>");
+    }
 }
