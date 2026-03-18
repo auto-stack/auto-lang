@@ -629,6 +629,7 @@ mod tests {
         // Create AST with use statement
         let use_stmt = crate::ast::Use {
             kind: crate::ast::UseKind::Auto,
+            module_path: None,
             paths: vec![AutoStr::from("std::io")],
             items: vec![],
         };

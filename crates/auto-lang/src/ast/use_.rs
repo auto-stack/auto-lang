@@ -1,3 +1,4 @@
+use crate::ast::module_path::ModulePath;
 use crate::ast::AtomWriter;
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
@@ -12,7 +13,11 @@ pub enum UseKind {
 #[derive(Debug, Clone)]
 pub struct Use {
     pub kind: UseKind,
+    /// Plan 131: Structured module path (new syntax)
+    pub module_path: Option<ModulePath>,
+    /// Legacy: dotted path segments (for backward compat)
     pub paths: Vec<AutoStr>,
+    /// Symbols to import (after `:`)
     pub items: Vec<AutoStr>,
 }
 
@@ -24,7 +29,10 @@ impl fmt::Display for Use {
             UseKind::Rust => write!(f, " (kind rust)")?,
             _ => (),
         }
-        if !self.paths.is_empty() {
+        // Plan 131: Display module_path if present
+        if let Some(ref mp) = self.module_path {
+            write!(f, " (module_path {})", mp.display())?;
+        } else if !self.paths.is_empty() {
             write!(f, " (path {})", self.paths.join("."))?;
         }
         if !self.items.is_empty() {
@@ -50,7 +58,10 @@ impl ToNode for Use {
             UseKind::Auto => {} // Default, omit
         }
 
-        if !self.paths.is_empty() {
+        // Plan 131: Include module_path if present
+        if let Some(ref mp) = self.module_path {
+            node.set_prop("module_path", Value::str(mp.display().as_str()));
+        } else if !self.paths.is_empty() {
             let path_str = self.paths.join(".");
             node.set_prop("path", Value::str(path_str.as_str()));
         }
@@ -72,11 +83,14 @@ impl AtomWriter for Use {
             UseKind::Rust => write!(f, "kind(\"rust\"), ")?,
             UseKind::Auto => {}
         }
-        if !self.paths.is_empty() {
+        // Plan 131: Include module_path if present
+        if let Some(ref mp) = self.module_path {
+            write!(f, "module_path(\"{}\")", mp.display())?;
+        } else if !self.paths.is_empty() {
             write!(f, "path(\"{}\")", self.paths.join("."))?;
         }
         if !self.items.is_empty() {
-            if !self.paths.is_empty() {
+            if self.module_path.is_some() || !self.paths.is_empty() {
                 write!(f, ", ")?;
             }
             write!(f, "items([{}])", self.items.join(", "))?;
@@ -89,5 +103,104 @@ impl AtomWriter for Use {
 impl ToAtom for Use {
     fn to_atom(&self) -> AutoStr {
         self.to_atom_str()
+    }
+}
+
+#[cfg(test)]
+mod plan131_tests {
+    use super::*;
+
+    #[test]
+    fn test_use_with_pac_prefix() {
+        let use_stmt = Use {
+            kind: UseKind::Auto,
+            module_path: Some(ModulePath::pac(vec!["db".into()])),
+            paths: vec![],
+            items: vec![],
+        };
+        assert_eq!(
+            use_stmt.module_path.as_ref().unwrap().display(),
+            "pac.db"
+        );
+        // Test Display trait
+        assert_eq!(format!("{}", use_stmt), "(use (module_path pac.db))");
+    }
+
+    #[test]
+    fn test_use_with_super_prefix() {
+        let use_stmt = Use {
+            kind: UseKind::Auto,
+            module_path: Some(ModulePath::super_path(vec!["utils".into()])),
+            paths: vec![],
+            items: vec![],
+        };
+        assert_eq!(
+            use_stmt.module_path.as_ref().unwrap().display(),
+            "super.utils"
+        );
+        // Test Display trait
+        assert_eq!(format!("{}", use_stmt), "(use (module_path super.utils))");
+    }
+
+    #[test]
+    fn test_use_with_items() {
+        let use_stmt = Use {
+            kind: UseKind::Auto,
+            module_path: Some(
+                ModulePath::pac(vec!["io".into()]).with_items(vec!["say".into(), "ask".into()]),
+            ),
+            paths: vec![],
+            items: vec!["say".into(), "ask".into()],
+        };
+        assert_eq!(use_stmt.items, vec!["say", "ask"]);
+        // Test Display trait
+        assert_eq!(
+            format!("{}", use_stmt),
+            "(use (module_path pac.io) (items say,ask))"
+        );
+    }
+
+    #[test]
+    fn test_use_legacy_paths_backward_compat() {
+        // Legacy paths still work
+        let use_stmt = Use {
+            kind: UseKind::Auto,
+            module_path: None,
+            paths: vec!["std".into(), "io".into()],
+            items: vec!["say".into()],
+        };
+        assert!(use_stmt.module_path.is_none());
+        assert_eq!(format!("{}", use_stmt), "(use (path std.io) (items say))");
+    }
+
+    #[test]
+    fn test_use_to_node_with_module_path() {
+        let use_stmt = Use {
+            kind: UseKind::Auto,
+            module_path: Some(ModulePath::pac(vec!["db".into()])),
+            paths: vec![],
+            items: vec![],
+        };
+        let node = use_stmt.to_node();
+        assert_eq!(node.name.as_str(), "use");
+        let module_path_val = node.get_prop("module_path");
+        assert!(matches!(module_path_val, Value::Str(_)));
+        if let Value::Str(s) = module_path_val {
+            assert_eq!(s.as_str(), "pac.db");
+        }
+    }
+
+    #[test]
+    fn test_use_write_atom_with_module_path() {
+        let use_stmt = Use {
+            kind: UseKind::Auto,
+            module_path: Some(ModulePath::pac(vec!["db".into()])),
+            paths: vec![],
+            items: vec!["load".into(), "save".into()],
+        };
+        let mut output = Vec::new();
+        use_stmt.write_atom(&mut output).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert_eq!(result, "use(module_path(\"pac.db\"), items([load, save]))");
     }
 }

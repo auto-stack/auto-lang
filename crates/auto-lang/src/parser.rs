@@ -2860,6 +2860,7 @@ impl<'a> Parser<'a> {
                         // Plan 085: Import is now handled by CompileSession.resolve_uses()
                         let uses = Use {
                             kind: UseKind::C,
+                            module_path: None,
                             paths,
                             items,
                         };
@@ -3594,6 +3595,7 @@ impl<'a> Parser<'a> {
 
         let uses = Use {
             kind: UseKind::C,
+            module_path: None,
             paths,
             items,
         };
@@ -3636,6 +3638,7 @@ impl<'a> Parser<'a> {
 
         let uses = Use {
             kind: UseKind::Rust,
+            module_path: None,
             paths,
             items,
         };
@@ -3650,10 +3653,23 @@ impl<'a> Parser<'a> {
     pub fn use_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip use
 
-        let mut paths = Vec::new();
+        // Plan 131: Check for pac. or super. prefix
+        let prefix = if self.is_kind(TokenKind::Pac) {
+            self.next(); // skip 'pac'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Pac
+        } else if self.is_kind(TokenKind::Super) {
+            self.next(); // skip 'super'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super
+        } else {
+            PathPrefix::None
+        };
 
-        // check user.c or use.rust
-        if self.is_kind(TokenKind::Dot) {
+        let mut segments = Vec::new();
+
+        // check use.c or use.rust (only when no prefix)
+        if prefix == PathPrefix::None && self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
             let name = self.expect_ident_str()?;
 
@@ -3662,26 +3678,50 @@ impl<'a> Parser<'a> {
             } else if name == "rust" {
                 return self.use_rust_stmt();
             } else {
-                paths.push(name);
+                segments.push(name.into());
             }
         } else {
             let name = self.expect_ident_str()?;
-            paths.push(name);
+            segments.push(name.into());
         }
 
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
-            let name = self.expect_ident_str()?;
-            paths.push(name);
+            // Check for pac/super after dot - not allowed
+            if self.is_kind(TokenKind::Pac) || self.is_kind(TokenKind::Super) {
+                return Err(SyntaxError::Generic {
+                    message: "Keywords 'pac' and 'super' can only appear at the start of a module path".into(),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+            let segment = self.expect_ident_str()?;
+            segments.push(segment.into());
         }
 
         let items = self.parse_use_items()?;
+
+        // Build ModulePath (Plan 131)
+        let module_path = Some(ModulePath::new(prefix.clone(), segments.clone(), items.clone()));
+
+        // Legacy paths for backward compat
+        let paths = if prefix == PathPrefix::Pac {
+            // Skip "pac" prefix for legacy paths (pac.db -> ["db"])
+            segments
+        } else if prefix == PathPrefix::Super {
+            // Include "super" in legacy paths (super.utils -> ["super", "utils"])
+            let mut p = vec!["super".into()];
+            p.extend(segments);
+            p
+        } else {
+            segments
+        };
 
         // Create the Use statement
         // Plan 085: Import is now handled by CompileSession.resolve_uses()
         // The symbols should already be in type_store before parsing
         let uses = Use {
             kind: UseKind::Auto,
+            module_path,
             paths,
             items,
         };
@@ -9175,9 +9215,10 @@ exe hello {
     fn test_use() {
         let code = "use auto.math:square; square(16)";
         let ast = parse_once(code);
+        // Plan 131: Now uses module_path instead of path
         assert_eq!(
             ast.to_string(),
-            "(code (use (path auto.math) (items square)) (call (name square) (args (int 16))))"
+            "(code (use (module_path auto.math) (items square)) (call (name square) (args (int 16))))"
         );
     }
 
@@ -9880,5 +9921,137 @@ widget Test {
                 assert!(!model.fields[0].mutable, "Field without var should be immutable");
             }
         }
+    }
+
+    // Plan 131: Module Path Syntax tests
+
+    #[test]
+    fn test_parse_pac_import() {
+        let code = "use pac.db";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                assert!(u.module_path.is_some());
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Pac);
+                assert_eq!(mp.segments, vec!["db"]);
+                assert_eq!(mp.display(), "pac.db");
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_super_import() {
+        let code = "use super.utils";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Super);
+                assert_eq!(mp.segments, vec!["utils"]);
+                assert_eq!(mp.display(), "super.utils");
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pac_deep_path() {
+        let code = "use pac.api.handlers.user";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Pac);
+                assert_eq!(mp.segments, vec!["api", "handlers", "user"]);
+                assert_eq!(mp.display(), "pac.api.handlers.user");
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_with_items() {
+        let code = "use pac.db: load, save";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Pac);
+                assert_eq!(mp.segments, vec!["db"]);
+                assert_eq!(mp.items, vec!["load", "save"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_super_with_items() {
+        let code = "use super.io: say, ask";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Super);
+                assert_eq!(mp.segments, vec!["io"]);
+                assert_eq!(mp.items, vec!["say", "ask"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_local_path_still_works() {
+        // Backward compat: no prefix still works
+        let code = "use auto.math: square";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::None);
+                assert_eq!(mp.segments, vec!["auto", "math"]);
+                assert_eq!(mp.items, vec!["square"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_legacy_paths_backward_compat() {
+        // Legacy paths field should still be populated for backward compat
+        let code = "use pac.db";
+        let ast = parse_once(code);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                // For pac prefix, paths should skip "pac"
+                assert_eq!(u.paths, vec!["db"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+
+        let code2 = "use super.utils";
+        let ast2 = parse_once(code2);
+        match &ast2.stmts[0] {
+            Stmt::Use(u) => {
+                // For super prefix, paths should include "super"
+                assert_eq!(u.paths, vec!["super", "utils"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pac_after_dot_errors() {
+        // pac/super after dot should be an error
+        let code = "use utils.pac.db";
+        let result = Parser::from(code).parse();
+        assert!(result.is_err(), "Should error when pac appears after dot");
     }
 }
