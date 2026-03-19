@@ -24,6 +24,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+// Plan 134: UI Artifact support
+mod ui_artifact;
+pub use ui_artifact::{UIArtifact, UIBackend};
+
 // =============================================================================
 // Stable Identifiers
 // =============================================================================
