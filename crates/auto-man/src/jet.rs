@@ -137,8 +137,15 @@ impl JetProject {
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "MyApp".to_string());
 
-        // Default front directory
-        let front_dir = root_dir.join("source").join("front");
+        // Determine front directory - check multiple locations
+        let front_dir = if root_dir.join("source").join("front").exists() {
+            root_dir.join("source").join("front")
+        } else if root_dir.join("front").exists() {
+            root_dir.join("front")
+        } else {
+            // Default to source/front (will be created if needed)
+            root_dir.join("source").join("front")
+        };
 
         // Output directory (Plan 129: jet/ instead of dist/)
         let output_dir = root_dir.join("jet");
