@@ -38,7 +38,7 @@ use super::list::ListGenerator;
 use super::modifier::ModifierDsl;
 use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
-use crate::aura::{AuraPropValue, AuraWidget};
+use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraUnaryOp, AuraWidget};
 use crate::ui_gen::shared::ComponentRegistry;
 use crate::ui_gen::{BackendGenerator, GenError, GenResult};
 use std::collections::{HashMap, HashSet};
@@ -112,6 +112,9 @@ pub struct JetGenerator {
     /// Components used in current widget
     #[allow(dead_code)]
     components_used: HashSet<String>,
+
+    /// Referenced child components (for imports)
+    component_refs: Vec<String>,
 }
 
 impl JetGenerator {
@@ -144,6 +147,7 @@ impl JetGenerator {
             list_generator: ListGenerator::new(),
             navigation_generator: NavigationGenerator::new(),
             components_used: HashSet::new(),
+            component_refs: Vec::new(),
         }
     }
 
@@ -271,17 +275,569 @@ fun {}Preview() {{
             .join("\n    ")
     }
 
-    /// Generate view body (placeholder for now)
-    fn generate_view_body(&mut self, _widget: &AuraWidget) -> GenResult<String> {
-        // TODO: Implement full view body generation from widget.view_tree
-        // For now, return a placeholder
-        Ok("Column(modifier = modifier) {\n        // TODO: Generate view from AURA\n    }".to_string())
+    /// Generate view body from widget's view_tree
+    fn generate_view_body(&mut self, widget: &AuraWidget) -> GenResult<String> {
+        // Process the view tree node
+        let body = self.node_to_compose(&widget.view_tree, 1)?;
+
+        // If empty, provide a default Column
+        if body.trim().is_empty() {
+            Ok("    Column(modifier = modifier) {\n        // Empty view\n    }\n".to_string())
+        } else {
+            Ok(body)
+        }
     }
 
     /// Generate event handlers for a widget (placeholder)
     fn generate_handlers(&self, _widget: &AuraWidget) -> String {
         // TODO: Implement handler generation from widget.handlers
         String::new()
+    }
+
+    // =========================================================================
+    // Node to Compose Conversion (Plan 134)
+    // =========================================================================
+
+    /// Convert AuraNode to Compose Kotlin code
+    fn node_to_compose(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        match node {
+            AuraNode::Element { tag, props, events, children } => {
+                self.element_to_compose(tag, props, events, children, indent)
+            }
+            AuraNode::Text(content) => {
+                self.text_to_compose(content, indent)
+            }
+            AuraNode::ForLoop { var, index, iterable, body } => {
+                self.for_loop_to_compose(var, index, iterable, body, indent)
+            }
+            AuraNode::Conditional { condition, then_body, else_body } => {
+                self.conditional_to_compose(condition, then_body, else_body, indent)
+            }
+            AuraNode::Component { name, props, events } => {
+                self.component_to_compose(name, props, events, indent)
+            }
+            AuraNode::Outlet => {
+                // TODO: Navigation placeholder
+                Ok(format!("{}// TODO: Router outlet\n", ind))
+            }
+            AuraNode::Link { to, text, href, children } => {
+                self.link_to_compose(to, text, href, children, indent)
+            }
+        }
+    }
+
+    /// Convert AuraTextContent to Compose Text composable
+    fn text_to_compose(&self, content: &AuraTextContent, indent: usize) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        match content {
+            AuraTextContent::Literal(s) => {
+                Ok(format!("{}Text(\"{}\")\n", ind, s))
+            }
+            AuraTextContent::Interpolated { template, bindings } => {
+                // Convert template to Kotlin string interpolation
+                let mut kotlin_text = template.clone();
+                for binding in bindings {
+                    // Replace ${.binding} with $binding (state reference)
+                    kotlin_text = kotlin_text.replace(
+                        &format!("${{{}.{}}}", ".", binding),
+                        &format!("${}", binding)
+                    );
+                    // Replace ${binding} with $binding (variable reference)
+                    kotlin_text = kotlin_text.replace(
+                        &format!("${{{}}}", binding),
+                        &format!("${}", binding)
+                    );
+                }
+                Ok(format!("{}Text(\"{}\")\n", ind, kotlin_text))
+            }
+        }
+    }
+
+    /// Convert AuraNode::Element to Compose code
+    fn element_to_compose(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        // Check if it's a layout element
+        if Self::is_layout_tag(tag) {
+            return self.layout_element_to_compose(tag, props, events, children, indent);
+        }
+
+        // Check if it's a form element
+        if Self::is_form_tag(tag) {
+            return self.form_element_to_compose(tag, props, events, children, indent);
+        }
+
+        // Check if it's a list element
+        if Self::is_list_tag(tag) {
+            return self.list_element_to_compose(tag, props, events, children, indent);
+        }
+
+        // Default: map to Compose component
+        self.generic_element_to_compose(tag, props, events, children, indent)
+    }
+
+    /// Check if tag is a layout element
+    fn is_layout_tag(tag: &str) -> bool {
+        matches!(tag, "col" | "column" | "row" | "box" | "container" | "card" | "scroll")
+    }
+
+    /// Check if tag is a form element
+    fn is_form_tag(tag: &str) -> bool {
+        matches!(tag, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button")
+    }
+
+    /// Check if tag is a list element
+    fn is_list_tag(tag: &str) -> bool {
+        matches!(tag, "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column")
+    }
+
+    /// Convert layout elements to Compose
+    fn layout_element_to_compose(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Generate children content
+        let mut children_content = String::new();
+        for child in children {
+            children_content.push_str(&self.node_to_compose(child, indent + 2)?);
+        }
+
+        // Use LayoutGenerator for the actual generation
+        let result = match tag {
+            "col" | "column" => self.layout_generator.generate_column(props, &children_content),
+            "row" => self.layout_generator.generate_row(props, &children_content),
+            "box" | "container" => self.layout_generator.generate_box(props, &children_content),
+            "card" => self.layout_generator.generate_card(props, &children_content),
+            "scroll" => self.layout_generator.generate_scroll(props, &children_content),
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown layout tag: {}", tag))),
+        };
+
+        // Prepend proper indentation
+        result.map(|s| {
+            let lines: Vec<&str> = s.lines().collect();
+            lines.iter()
+                .map(|line| format!("{}{}", ind, line))
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n"
+        })
+    }
+
+    /// Convert form elements to Compose
+    fn form_element_to_compose(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        match tag {
+            "button" => self.button_to_compose(props, events, children, indent),
+            "input" => {
+                // Generate input with state binding
+                self.form_generator.generate_input(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim()))
+            }
+            "checkbox" => self.form_generator.generate_checkbox(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            "switch" | "toggle" => self.form_generator.generate_switch(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            "slider" => self.form_generator.generate_slider(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown form tag: {}", tag))),
+        }
+    }
+
+    /// Convert button to Compose Button
+    fn button_to_compose(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Get onClick handler
+        let on_click = events.get("click")
+            .map(|e| self.event_to_lambda(e))
+            .unwrap_or_default();
+
+        // Get button text
+        let text = props.get("text")
+            .and_then(|p| self.extract_string_value(p))
+            .unwrap_or_default();
+
+        // Generate children content if any
+        let content = if !text.is_empty() {
+            format!("{}    Text(\"{}\")\n", ind, text)
+        } else if !children.is_empty() {
+            let mut s = String::new();
+            for child in children {
+                s.push_str(&self.node_to_compose(child, indent + 1)?);
+            }
+            s
+        } else {
+            format!("{}    Text(\"Button\")\n", ind)
+        };
+
+        if on_click.is_empty() {
+            Ok(format!(
+                "{}Button {{\n{}}}\n",
+                ind, content
+            ))
+        } else {
+            Ok(format!(
+                "{}Button(\n{}    onClick = {{ {} }}\n{}) {{\n{}}}\n",
+                ind, ind, on_click, ind, content
+            ))
+        }
+    }
+
+    /// Convert AuraEvent to Kotlin lambda
+    fn event_to_lambda(&self, event: &AuraEvent) -> String {
+        let handler = &event.handler;
+        let params = &event.params;
+
+        // Clean handler name (remove leading ".")
+        let handler_clean = handler.trim_start_matches('.');
+
+        if params.is_empty() {
+            format!("{}()", handler_clean)
+        } else {
+            format!("{}({})", handler_clean, params.join(", "))
+        }
+    }
+
+    /// Extract string value from AuraPropValue
+    fn extract_string_value(&self, value: &AuraPropValue) -> Option<String> {
+        match value {
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
+            AuraPropValue::Expr(AuraExpr::StateRef(s)) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    /// Convert for loop to Compose items() or forEach()
+    fn for_loop_to_compose(
+        &mut self,
+        var: &str,
+        index: &Option<String>,
+        iterable: &str,
+        body: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Generate body content
+        let mut body_content = String::new();
+        for child in body {
+            body_content.push_str(&self.node_to_compose(child, indent + 2)?);
+        }
+
+        // Clean iterable name (remove leading ".")
+        let iterable_clean = iterable.trim_start_matches('.');
+
+        if let Some(idx) = index {
+            // With index: itemsIndexed(items) { index, item -> ... }
+            Ok(format!(
+                "{}itemsIndexed({}) {{ {}, {} ->\n{}}}\n",
+                ind, iterable_clean, idx, var, body_content
+            ))
+        } else {
+            // Without index: items(items) { item -> ... }
+            Ok(format!(
+                "{}items({}) {{ {} ->\n{}}}\n",
+                ind, iterable_clean, var, body_content
+            ))
+        }
+    }
+
+    /// Convert conditional to Kotlin if/else
+    fn conditional_to_compose(
+        &mut self,
+        condition: &str,
+        then_body: &[AuraNode],
+        else_body: &Option<Vec<AuraNode>>,
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Clean condition (remove leading "." for state refs)
+        let cond_kotlin = condition.trim_start_matches('.');
+
+        // Generate then body
+        let mut then_content = String::new();
+        for child in then_body {
+            then_content.push_str(&self.node_to_compose(child, indent + 1)?);
+        }
+
+        if let Some(else_nodes) = else_body {
+            let mut else_content = String::new();
+            for child in else_nodes {
+                else_content.push_str(&self.node_to_compose(child, indent + 1)?);
+            }
+            Ok(format!(
+                "{}if ({}) {{\n{}}} else {{\n{}}}\n",
+                ind, cond_kotlin, then_content, else_content
+            ))
+        } else {
+            Ok(format!(
+                "{}if ({}) {{\n{}}}\n",
+                ind, cond_kotlin, then_content
+            ))
+        }
+    }
+
+    /// Convert AuraExpr to Kotlin expression string
+    fn expr_to_kotlin(&self, expr: &AuraExpr) -> String {
+        match expr {
+            AuraExpr::Literal(s) => format!("\"{}\"", s),
+            AuraExpr::Int(n) => n.to_string(),
+            AuraExpr::Float(f) => f.to_string(),
+            AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::StateRef(s) => s.clone(),
+            AuraExpr::Binary { left, op, right } => {
+                let left_str = self.expr_to_kotlin(left);
+                let right_str = self.expr_to_kotlin(right);
+                let op_str = self.binop_to_kotlin(*op);
+                format!("{} {} {}", left_str, op_str, right_str)
+            }
+            AuraExpr::Unary { op, operand } => {
+                let operand_str = self.expr_to_kotlin(operand);
+                match op {
+                    AuraUnaryOp::Neg => format!("-{}", operand_str),
+                    AuraUnaryOp::Not => format!("!{}", operand_str),
+                }
+            }
+            AuraExpr::FieldAccess { object, field } => {
+                let obj_str = self.expr_to_kotlin(object);
+                format!("{}.{}", obj_str, field)
+            }
+            AuraExpr::MethodCall { object, method, args } => {
+                let obj_str = self.expr_to_kotlin(object);
+                let args_str = args.iter()
+                    .map(|a| self.expr_to_kotlin(a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}.{}({})", obj_str, method, args_str)
+            }
+            _ => "/* unsupported expr */".to_string(),
+        }
+    }
+
+    /// Convert binary operator to Kotlin
+    fn binop_to_kotlin(&self, op: AuraBinOp) -> &'static str {
+        match op {
+            AuraBinOp::Add => "+",
+            AuraBinOp::Sub => "-",
+            AuraBinOp::Mul => "*",
+            AuraBinOp::Div => "/",
+            AuraBinOp::Mod => "%",
+            AuraBinOp::Eq => "==",
+            AuraBinOp::Ne => "!=",
+            AuraBinOp::Lt => "<",
+            AuraBinOp::Le => "<=",
+            AuraBinOp::Gt => ">",
+            AuraBinOp::Ge => ">=",
+            AuraBinOp::And => "&&",
+            AuraBinOp::Or => "||",
+        }
+    }
+
+    /// Convert child component reference to Compose call
+    fn component_to_compose(
+        &mut self,
+        name: &str,
+        props: &HashMap<String, AuraExpr>,
+        events: &HashMap<String, AuraEvent>,
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Track component reference for imports
+        self.component_refs.push(name.to_string());
+
+        // Build props string
+        let mut props_parts = Vec::new();
+        for (key, value) in props {
+            let value_str = self.expr_to_kotlin(value);
+            props_parts.push(format!("{} = {}", key, value_str));
+        }
+
+        // Build event handlers
+        for (event, aura_event) in events {
+            let handler = self.event_to_lambda(aura_event);
+            // Map event names to Compose convention
+            let compose_event = if event == "click" {
+                "onClick".to_string()
+            } else {
+                format!("on{}", event.chars().next().unwrap().to_uppercase().collect::<String>() + &event[1..])
+            };
+            props_parts.push(format!("{} = {{ {} }}", compose_event, handler));
+        }
+
+        let props_str = if props_parts.is_empty() {
+            String::new()
+        } else {
+            format!("\n{}    {}", ind, props_parts.join(&format!(",\n{}    ", ind)))
+        };
+
+        Ok(format!("{}{}({})\n", ind, name, props_str))
+    }
+
+    /// Convert link to Compose navigation
+    fn link_to_compose(
+        &mut self,
+        to: &str,
+        text: &str,
+        href: &str,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        if !href.is_empty() {
+            // External link - use Text with clickable modifier
+            let text_content = if text.is_empty() {
+                // Get text from children
+                let mut s = String::new();
+                for child in children {
+                    if let AuraNode::Text(content) = child {
+                        if let AuraTextContent::Literal(t) = content {
+                            s.push_str(t);
+                        }
+                    }
+                }
+                s
+            } else {
+                text.to_string()
+            };
+
+            Ok(format!(
+                "{}Text(\n{}    \"{}\",\n{}    modifier = Modifier.clickable {{ /* open {} */ }}\n{})\n",
+                ind, ind, text_content, ind, href, ind
+            ))
+        } else {
+            // Internal navigation - use navigation generator
+            self.navigation_generator.add_route(to, to);
+            Ok(format!(
+                "{}Button(onClick = {{ /* navigate to {} */ }}) {{\n{}    Text(\"{}\")\n{}}}\n",
+                ind, to, ind, text, ind
+            ))
+        }
+    }
+
+    /// Convert list elements to Compose
+    fn list_element_to_compose(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Generate children content as item template
+        let mut item_content = String::new();
+        for child in children {
+            item_content.push_str(&self.node_to_compose(child, indent + 2)?);
+        }
+
+        // Use ListGenerator for the actual generation
+        let result = match tag {
+            "list" | "lazy-column" => self.list_generator.generate_lazy_column(props, &item_content),
+            "list-row" | "lazy-row" => self.list_generator.generate_lazy_row(props, &item_content),
+            "grid" | "lazy-grid" => self.list_generator.generate_lazy_grid(props, &item_content),
+            "flow-row" => self.list_generator.generate_flow_row(props, &item_content),
+            "flow-col" | "flow-column" => self.list_generator.generate_flow_column(props, &item_content),
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown list tag: {}", tag))),
+        };
+
+        // Prepend proper indentation
+        result.map(|s| {
+            let lines: Vec<&str> = s.lines().collect();
+            lines.iter()
+                .map(|line| format!("{}{}", ind, line))
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n"
+        })
+    }
+
+    /// Convert generic element to Compose
+    fn generic_element_to_compose(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+
+        // Map common HTML-like tags to Compose
+        let (compose_name, is_text_like) = self.map_tag_to_compose(tag);
+
+        // Check for text prop
+        let text_prop = props.get("text")
+            .and_then(|p| self.extract_string_value(p));
+
+        // Generate children content
+        let mut children_content = String::new();
+        for child in children {
+            children_content.push_str(&self.node_to_compose(child, indent + 1)?);
+        }
+
+        if is_text_like {
+            // Text-like components: Text("content")
+            let text = text_prop.unwrap_or_default();
+            if children.is_empty() {
+                Ok(format!("{}{}(\"{}\")\n", ind, compose_name, text))
+            } else {
+                // Has children - use them as content
+                Ok(format!("{}{}(\"{}\")\n", ind, compose_name, children_content.trim()))
+            }
+        } else {
+            // Container-like components: Box { ... }
+            if children_content.is_empty() {
+                Ok(format!("{}{}()\n", ind, compose_name))
+            } else {
+                Ok(format!("{}{} {{\n{}}}\n", ind, compose_name, children_content))
+            }
+        }
+    }
+
+    /// Map AURA tag to Compose component name
+    fn map_tag_to_compose(&self, tag: &str) -> (&'static str, bool) {
+        match tag {
+            "text" | "span" | "p" => ("Text", true),
+            "div" | "section" | "article" => ("Box", false),
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => ("Text", true),
+            "img" | "image" => ("Image", true),
+            "icon" => ("Icon", true),
+            "spacer" => ("Spacer", true),
+            "divider" => ("HorizontalDivider", true),
+            _ => ("Box", false),  // Default to Box container
+        }
     }
 
     /// Generate form element code based on tag type
