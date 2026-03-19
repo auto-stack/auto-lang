@@ -120,6 +120,9 @@ pub enum ArtifactType {
     CSource,
     CHeader,
     RustSource,
+    // UI backends (Plan 134)
+    VueComponent,
+    KotlinFile,
 }
 
 /// Transpilation artifact (generated code)
