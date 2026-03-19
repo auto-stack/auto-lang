@@ -288,14 +288,126 @@ impl Automan {
         println!("build dir: {}", self.pac.build_location);
         println!("port: {}", self.pac.port.name);
 
-        // Check backend first for project-type-specific IDEs
+        // Check if using new backend config (supports multiple backends)
+        if self.pac.has_backend_config() {
+            let frontends = self.pac.frontend_types();
+
+            // If multiple frontends, let user select one
+            if frontends.len() > 1 {
+                return self.open_ide_multi_backend(frontends);
+            }
+
+            // Single frontend - open directly
+            if let Some(backend) = frontends.first() {
+                return self.open_ide_for_backend(backend);
+            }
+        }
+
+        // Legacy: Check single backend string
         let backend = self.pac.backend.as_str();
         if backend == "jet" {
-            // Open Jetpack Compose project with Android Studio
             return self.open_jet_project();
         }
 
         // Fall back to port builder for embedded IDEs
+        self.open_ide_for_port_builder()
+    }
+
+    /// Open IDE for multi-backend configuration (user selects which one)
+    fn open_ide_multi_backend(&self, frontends: Vec<BackendType>) -> AutoResult<()> {
+        use dialoguer::Select;
+
+        let backend_names: Vec<String> = frontends.iter().map(|b| format!("{:?}", b)).collect();
+
+        println!();
+        println!("{}", "Multiple backends configured:".bright_cyan());
+        for (i, name) in backend_names.iter().enumerate() {
+            println!("  {}. {}", i + 1, name);
+        }
+        println!();
+
+        let selection = Select::new()
+            .with_prompt("Select backend to open")
+            .default(0)
+            .items(&backend_names)
+            .interact()
+            .map_err(|e| format!("Failed to select backend: {}", e))?;
+
+        let selected = &frontends[selection];
+        self.open_ide_for_backend(selected)
+    }
+
+    /// Open IDE for a specific backend
+    fn open_ide_for_backend(&self, backend: &BackendType) -> AutoResult<()> {
+        match backend {
+            BackendType::Jet => {
+                println!("Opening Jetpack Compose project (backend: jet)");
+                self.open_jet_project()
+            }
+            BackendType::Vue | BackendType::Tauri => {
+                println!("Opening {:?} project with VSCode...", backend);
+                self.open_vscode()
+            }
+            _ => {
+                // Fall back to port builder for other backends
+                self.open_ide_for_port_builder()
+            }
+        }
+    }
+
+    /// Open VSCode at project root
+    fn open_vscode(&self) -> AutoResult<()> {
+        let project_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        println!("Project: {}", project_dir.display());
+
+        // Try to open with VSCode
+        let code_result = std::process::Command::new("code")
+            .arg(&project_dir)
+            .spawn();
+
+        match code_result {
+            Ok(_) => {
+                println!("✓ VSCode opened");
+                Ok(())
+            }
+            Err(_) => {
+                // Fallback: open with system file explorer
+                println!("VSCode not found, opening folder with system default...");
+
+                #[cfg(target_os = "windows")]
+                {
+                    let path_str = project_dir.to_string_lossy().replace("/", "\\");
+                    std::process::Command::new("explorer.exe")
+                        .arg(&path_str)
+                        .output()
+                        .map_err(|e| format!("Failed to open folder: {}", e))?;
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    std::process::Command::new("open")
+                        .arg(&project_dir)
+                        .output()
+                        .map_err(|e| format!("Failed to open folder: {}", e))?;
+                }
+
+                #[cfg(target_os = "linux")]
+                {
+                    std::process::Command::new("xdg-open")
+                        .arg(&project_dir)
+                        .output()
+                        .map_err(|e| format!("Failed to open folder: {}", e))?;
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    /// Open IDE based on port builder (embedded systems)
+    fn open_ide_for_port_builder(&self) -> AutoResult<()> {
         match self.pac.port.builder.as_str() {
             "iar" => {
                 // open iar ide in the build_location
@@ -718,6 +830,23 @@ impl Automan {
 
     /// Run a specific backend
     fn run_backend(&mut self, backend: &auto_lang::config::BackendType, args: Vec<String>) -> AutoResult<()> {
+        use auto_lang::database::UICache;
+
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        // Show cache status
+        let cache = UICache::load(&root_dir);
+        if cache.file_count() > 0 {
+            println!("{}", "─────────────────────────────────".bright_cyan());
+            println!("{} {} files, {} artifacts cached",
+                "Cache:".bright_cyan(),
+                cache.file_count(),
+                cache.artifact_count()
+            );
+            println!("{}", "─────────────────────────────────".bright_cyan());
+        }
+
         match backend {
             auto_lang::config::BackendType::Vue => {
                 println!("Running Vue dev server (backend: vue)");
@@ -729,8 +858,6 @@ impl Automan {
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
-                let root_dir = std::env::current_dir()
-                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
                 crate::jet::run_jet_project(&root_dir, args)
             }
             _ => {
