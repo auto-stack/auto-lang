@@ -373,7 +373,8 @@ impl JetProject {
             // Generate file path: ui/widgets/{WidgetName}.kt
             let widget_name = &widget.name;
             let file_name = format!("{}.kt", widget_name);
-            let relative_path = format!("app/src/main/java/com/example/{}/ui/widgets/{}", default_name.to_lowercase(), file_name);
+            let safe_name = default_name.to_lowercase().replace('-', "_");
+            let relative_path = format!("app/src/main/java/com/example/{}/ui/widgets/{}", safe_name, file_name);
             files.push((relative_path, kotlin_code));
         }
 
@@ -602,7 +603,7 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             println!("  ✓ App installed successfully!");
             println!();
             println!("{}", "App is now running on your device/emulator.".bright_green());
-            println!("Package: com.example.{}", project.name.to_lowercase().replace("-", ""));
+            println!("Package: com.example.{}", project.name.to_lowercase().replace("-", "_"));
         } else {
             println!("  ⚠ Install failed. Try running manually:");
             println!("    cd {} && ./gradlew installDebug", jet_dir.display());

@@ -159,7 +159,7 @@ impl JetProjectConfig {
     /// Create a new config with the given project name
     pub fn new(name: &str) -> Self {
         let application_id = format!("com.example.{}", name.to_lowercase().replace('-', "_"));
-        let widget_name = format!("{}App", name);
+        let widget_name = format!("{}App", name.replace('-', "_"));
         Self {
             name: name.to_string(),
             application_id,
@@ -550,6 +550,8 @@ app("{name}") {{
     /// Generate source/front/app.at (AURA entry point for auto gen)
     fn generate_app_at(&mut self) {
         let name = &self.config.name;
+        // Convert hyphens to underscores for valid Kotlin identifier
+        let safe_name = name.replace('-', "_");
 
         let content = format!(
             r#"// {name} - Main Application Widget
@@ -557,7 +559,7 @@ app("{name}") {{
 // This file is the entry point for AURA code generation.
 // Run `auto gen` to generate Kotlin code from this file.
 
-widget {name}App {{
+widget {safe_name}App {{
     view {{
         col(padding: 16, align: "center", arrange: "center") {{
             text(
