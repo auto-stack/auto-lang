@@ -9,6 +9,7 @@ regex = "1"
 auto-val = { path = "../auto-val" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
+blake3 = { workspace = true }  # Plan 134: File hashing utilities
 
 # Error handling
 thiserror = { workspace = true }

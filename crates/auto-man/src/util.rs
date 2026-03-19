@@ -1,3 +1,21 @@
+use std::fs;
+use std::path::Path;
+
+/// Compute BLAKE3 hash of a file's contents
+/// Returns the first 64 bits as u64 for compact storage
+pub fn hash_file(path: &Path) -> std::io::Result<u64> {
+    let content = fs::read(path)?;
+    let hash = blake3::hash(&content);
+    Ok(u64::from_be_bytes(hash.as_bytes()[0..8].try_into().unwrap()))
+}
+
+/// Compute BLAKE3 hash of a string
+/// Returns the first 64 bits as u64 for compact storage
+pub fn hash_string(content: &str) -> u64 {
+    let hash = blake3::hash(content.as_bytes());
+    u64::from_be_bytes(hash.as_bytes()[0..8].try_into().unwrap())
+}
+
 pub fn split_first(in_string: &str, sep: char) -> (&str, &str) {
     let mut splitter = in_string.splitn(2, sep);
     let first = splitter.next().unwrap();
