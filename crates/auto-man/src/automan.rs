@@ -5,6 +5,7 @@ use crate::Port;
 use crate::TargetKind;
 use crate::{Index, IndexStore};
 use auto_lang::config::AutoConfig;
+use auto_lang::config::BackendType;
 use auto_val::shared;
 use auto_val::{AutoPath, AutoStr, Obj, Value};
 use colored::Colorize;
@@ -339,11 +340,24 @@ impl Automan {
 
     /// Open Jetpack Compose project with Android Studio
     fn open_jet_project(&self) -> AutoResult<()> {
-        let project_dir = std::env::current_dir()
+        // Get current directory (project root)
+        let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
+        // Jet project is in the jet/ subdirectory
+        let project_dir = root_dir.join("jet");
+
+        // Check if jet directory exists, if not, create it
+        if !project_dir.exists() {
+            println!("Jet project directory not found, generating...");
+            // Generate the jet project first
+            let output_dir = root_dir.join("jet");
+            crate::jet::generate_jet_project(&root_dir, Some(&output_dir), true)?;
+        }
+
         println!("Opening Jetpack Compose project with Android Studio...");
-        println!("Project: {}", project_dir.display());
+        println!("Project root: {}", root_dir.display());
+        println!("Jet project: {}", project_dir.display());
 
         // Try to find Android Studio installation
         let studio_path = self.find_android_studio();
@@ -566,44 +580,71 @@ impl Automan {
     ///
     /// For jet backend: generates Kotlin code for Jetpack Compose
     /// For vue backend: generates Vue components
+    /// For tauri backend: generates Tauri desktop app
+    /// Supports multiple backends: generates for all configured frontends
     pub fn gen(&self, output: Option<String>, project: bool) -> AutoResult<()> {
-        let backend = self.pac.backend.as_str();
+        // Get all frontend types (supports multi-backend configuration)
+        let frontends = if self.pac.has_backend_config() {
+            self.pac.frontend_types()
+        } else {
+            // Legacy: parse single backend string
+            self.pac.backend.as_str().split(',')
+                .filter_map(|s| BackendType::from_str(s.trim()))
+                .collect()
+        };
 
-        match backend {
-            "jet" => {
-                // Jet backend: generate Kotlin code for Jetpack Compose
-                println!("Generating Kotlin code (backend: jet)");
-                let root_dir = std::env::current_dir()
-                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        if frontends.is_empty() {
+            return Err("No frontend backend configured in pac.at".into());
+        }
 
-                let output_path = output.as_ref()
-                    .map(|o| std::path::PathBuf::from(o));
+        // Generate for all configured frontends
+        for backend in &frontends {
+            match backend {
+                BackendType::Jet => {
+                    println!("Generating Kotlin code (backend: jet)");
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                if let Some(ref out) = output_path {
-                    crate::jet::generate_jet_project(&root_dir, Some(out.as_path()), project)?;
-                } else {
-                    crate::jet::generate_jet_project(&root_dir, None, project)?;
+                    // For multi-backend, create output subdirectory
+                    let output_path = if frontends.len() > 1 {
+                        output.as_ref().map(|o| {
+                            std::path::PathBuf::from(o).join("jet")
+                        }).or_else(|| Some(root_dir.join("jet")))
+                    } else {
+                        output.as_ref().map(|o| std::path::PathBuf::from(o))
+                    };
+
+                    if let Some(ref out) = output_path {
+                        crate::jet::generate_jet_project(&root_dir, Some(out.as_path()), project)?;
+                    } else {
+                        crate::jet::generate_jet_project(&root_dir, None, project)?;
+                    }
                 }
-            }
-            "vue" => {
-                // Vue backend: generate Vue components
-                println!("Generating Vue components (backend: vue)");
-                let root_dir = std::env::current_dir()
-                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+                BackendType::Vue => {
+                    println!("Generating Vue components (backend: vue)");
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
+                    let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
 
-                if project || !project_ctx.exists() {
-                    // Generate full project structure
-                    project_ctx.generate()?;
-                } else {
-                    // Just generate Vue components (no npm install)
-                    // For now, we still generate the full project but skip npm steps
+                    if project || !project_ctx.exists() {
+                        project_ctx.generate()?;
+                    } else {
+                        project_ctx.generate()?;
+                    }
+                }
+                BackendType::Tauri => {
+                    println!("Generating Tauri app (backend: tauri)");
+                    // Tauri uses Vue frontend + Rust backend
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+                    let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
                     project_ctx.generate()?;
                 }
-            }
-            _ => {
-                return Err(format!("'gen' command is not supported for backend '{}'", backend).into());
+                _ => {
+                    println!("Skipping unsupported backend: {:?}", backend);
+                }
             }
         }
 
@@ -688,8 +729,9 @@ impl Automan {
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
-                // TODO: Implement jet run
-                Err("Jet backend run not yet implemented".into())
+                let root_dir = std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+                crate::jet::run_jet_project(&root_dir, args)
             }
             _ => {
                 Err(format!("Backend {:?} does not support run command", backend).into())

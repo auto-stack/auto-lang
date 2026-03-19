@@ -39,6 +39,7 @@ use super::modifier::ModifierDsl;
 use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
 use crate::aura::{AuraPropValue, AuraWidget};
+use crate::ui_gen::shared::ComponentRegistry;
 use crate::ui_gen::{BackendGenerator, GenError, GenResult};
 use std::collections::{HashMap, HashSet};
 
@@ -56,7 +57,8 @@ use std::collections::{HashMap, HashSet};
 ///     ├── ListGenerator (LazyColumn, LazyRow, Grid)
 ///     ├── NavigationGenerator (NavHost, routes)
 ///     ├── StateConverter (model → mutableStateOf)
-///     └── ModifierDsl (Tailwind → Compose Modifier)
+///     ├── ModifierDsl (Tailwind → Compose Modifier)
+///     └── ComponentRegistry (shared AURA → Jet mappings)
 /// ```
 ///
 /// # Example
@@ -80,9 +82,13 @@ pub struct JetGenerator {
     /// Collected imports
     imports: HashSet<String>,
 
-    /// Material3 component registry
+    /// Material3 component registry (legacy, for backward compatibility)
     #[allow(dead_code)]
     registry: Material3Registry,
+
+    /// Shared component registry (AURA → Vue/Jet mappings)
+    #[allow(dead_code)]
+    component_registry: ComponentRegistry,
 
     /// Modifier DSL converter
     #[allow(dead_code)]
@@ -130,6 +136,7 @@ impl JetGenerator {
             package: "com.example.widgets".to_string(),
             imports: HashSet::new(),
             registry: Material3Registry::new(),
+            component_registry: ComponentRegistry::new(),
             modifier_dsl: ModifierDsl::new(),
             state_converter: StateConverter::new(),
             form_generator: FormGenerator::new(),

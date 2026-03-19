@@ -1,0 +1,156 @@
+// Unified Button Component - Works for Vue, Tauri, and Jet backends
+// This file demonstrates the unified AURA syntax that can generate
+// to multiple platforms using the shared Tailwind parser and component registry.
+
+widget Button {
+    // Messages (events)
+    msg Msg { Click }
+
+    // State
+    model {
+        text str = "Button"
+        variant str = "default"  // default, outline, ghost, destructive
+        size str = "md"          // sm, md, lg
+        disabled bool = false
+        clickCount int = 0
+    }
+
+    // Computed properties
+    computed {
+        // Generate Tailwind classes based on variant and size
+        classes => {
+            let base = "inline-flex items-center justify-center rounded-md font-medium transition-colors"
+            let variantClass = match .variant {
+                "outline" => "border border-input bg-background hover:bg-accent"
+                "ghost" => "hover:bg-accent hover:text-accent-foreground"
+                "destructive" => "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                _ => "bg-primary text-primary-foreground hover:bg-primary/90"
+            }
+            let sizeClass = match .size {
+                "sm" => "h-9 px-3 text-xs"
+                "lg" => "h-11 px-8 text-base"
+                _ => "h-10 px-4 py-2 text-sm"
+            }
+            f"${base} ${variantClass} ${sizeClass}"
+        }
+
+        // Display text for debugging
+        displayText => f"${.text} (clicked ${.clickCount} times)"
+    }
+
+    // View
+    view {
+        button(class: .classes, disabled: .disabled, onclick: .Click) {
+            text .displayText
+        }
+    }
+
+    // Event handlers
+    on {
+        Click => {
+            clickCount = clickCount + 1
+        }
+    }
+}
+
+/// Button Demo Page
+widget ButtonDemo {
+    msg Msg {
+        ButtonClick
+        ChangeVariant(v: str)
+        ChangeSize(s: str)
+    }
+
+    model {
+        clickCount int = 0
+        currentVariant str = "default"
+        currentSize str = "md"
+    }
+
+    computed {
+        statusText => f"Clicked ${.clickCount} times"
+
+        variantButtons => [
+            ("default", "Default"),
+            ("outline", "Outline"),
+            ("ghost", "Ghost"),
+            ("destructive", "Destructive")
+        ]
+
+        sizeButtons => [
+            ("sm", "Small"),
+            ("md", "Medium"),
+            ("lg", "Large")
+        ]
+    }
+
+    view {
+        col(class: "flex flex-col gap-4 p-4") {
+            // Title
+            text(class: "text-2xl font-bold text-gray-900") {
+                "Button Component Demo"
+            }
+
+            // Current state display
+            card(class: "p-4 bg-gray-50 rounded-lg") {
+                text(class: "text-lg") { .statusText }
+                text(class: "text-sm text-gray-500") {
+                    f"Variant: ${.currentVariant}, Size: ${.currentSize}"
+                }
+            }
+
+            // Variant buttons
+            col(class: "flex flex-col gap-2") {
+                text(class: "text-lg font-medium") { "Variants" }
+                row(class: "flex flex-wrap gap-2") {
+                    for (variant, label) in .variantButtons {
+                        Button(
+                            text: label,
+                            variant: variant,
+                            size: .currentSize,
+                            onclick: .ChangeVariant(variant)
+                        ) {}
+                    }
+                }
+            }
+
+            // Size buttons
+            col(class: "flex flex-col gap-2") {
+                text(class: "text-lg font-medium") { "Sizes" }
+                row(class: "flex flex-wrap gap-2") {
+                    for (size, label) in .sizeButtons {
+                        Button(
+                            text: label,
+                            variant: .currentVariant,
+                            size: size,
+                            onclick: .ChangeSize(size)
+                        ) {}
+                    }
+                }
+            }
+
+            // State examples
+            col(class: "flex flex-col gap-2") {
+                text(class: "text-lg font-medium") { "States" }
+                row(class: "flex flex-wrap gap-2") {
+                    Button(text: "Normal", variant: .currentVariant, size: .currentSize, onclick: .ButtonClick) {}
+                    Button(text: "Disabled", variant: .currentVariant, size: .currentSize, disabled: true) {}
+                }
+            }
+        }
+    }
+
+    on {
+        ButtonClick => {
+            clickCount = count + 1
+        }
+
+        ChangeVariant(v) => {
+            currentVariant = v
+        }
+
+        ChangeSize(s) => {
+            currentSize = s
+        }
+    }
+}

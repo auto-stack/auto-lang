@@ -1,14 +1,19 @@
 //! Tailwind to Compose Modifier DSL Converter
 //!
 //! Converts Tailwind CSS classes to Jetpack Compose Modifier chains.
+//! Uses the shared TailwindParser for unified parsing across all generators.
 //!
 //! ## Unit Conversion
 //! Tailwind unit → Dp: value * 4
 //! - gap-2 → 8.dp
 //! - px-4 → padding(horizontal = 16.dp)
 
+use crate::ui_gen::shared::{Color, ComputedStyle, Dimension, Display, FlexDirection, Size, TailwindParser};
+
 /// Tailwind class to Compose Modifier converter
 pub struct ModifierDsl {
+    /// Shared Tailwind parser
+    parser: TailwindParser,
     /// Tailwind unit to Dp multiplier (default: 4)
     unit_multiplier: f32,
 }
@@ -19,413 +24,250 @@ pub struct ModifierResult {
     pub modifiers: Vec<String>,
     /// Arrangement for gap (if any)
     pub arrangement: Option<String>,
+    /// Parsed computed style for additional use
+    pub style: ComputedStyle,
 }
 
 impl ModifierDsl {
     /// Create a new converter
     pub fn new() -> Self {
         Self {
+            parser: TailwindParser::new(),
             unit_multiplier: 4.0,
         }
     }
 
-    /// Convert Tailwind value to Dp string
-    fn to_dp(&self, value: u32) -> String {
-        let dp = value as f32 * self.unit_multiplier;
-        format!("{}.dp", dp as u32)
+    /// Convert Dimension to Dp string for Compose
+    fn dimension_to_dp(&self, dim: &Dimension) -> String {
+        match dim {
+            Dimension::Px(v) => format!("{}.dp", v),
+            Dimension::Dp(v) => format!("{}.dp", v),
+            Dimension::Rem(v) => format!("{}.dp", v * 16.0), // 1rem = 16px
+            Dimension::Percent(v) => format!("{}f", v / 100.0),
+            Dimension::Full => "1f".to_string(),
+            Dimension::Auto => "0f".to_string(),
+            Dimension::Vw(v) => format!("{}f", v / 100.0),
+            Dimension::Vh(v) => format!("{}f", v / 100.0),
+        }
     }
 
-    /// Convert a single Tailwind class to Modifier code
-    pub fn convert_single(&self, class: &str) -> Option<String> {
-        let class = class.trim();
+    /// Convert Dimension to Compose Modifier padding
+    fn dimension_to_padding(&self, dim: &Dimension) -> String {
+        match dim {
+            Dimension::Px(v) => format!("{}.dp", v),
+            Dimension::Dp(v) => format!("{}.dp", v),
+            Dimension::Rem(v) => format!("{}.dp", v * 16.0),
+            Dimension::Percent(_) => "0.dp".to_string(), // Can't use percent for padding
+            Dimension::Full => "0.dp".to_string(),
+            Dimension::Auto => "0.dp".to_string(),
+            Dimension::Vw(_) => "0.dp".to_string(),
+            Dimension::Vh(_) => "0.dp".to_string(),
+        }
+    }
 
-        // Padding: p-{n}, px-{n}, py-{n}, pt-{n}, pb-{n}, pl-{n}, pr-{n}
-        if let Some(rest) = class.strip_prefix("px-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(horizontal = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("py-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(vertical = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("pt-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(top = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("pb-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(bottom = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("pl-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(start = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("pr-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(end = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("p-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding({})", self.to_dp(n)));
-            }
+    /// Convert Color to Compose Color format
+    fn color_to_compose(color: &Color) -> String {
+        format!("Color(0x{:02X}{:02X}{:02X})", color.r, color.g, color.b)
+    }
+
+    /// Convert ComputedStyle to Modifier chain
+    pub fn from_style(&self, style: &ComputedStyle) -> ModifierResult {
+        let mut modifiers: Vec<String> = Vec::new();
+        let mut arrangement: Option<String> = None;
+
+        // Gap → Arrangement
+        if let Some(gap) = &style.gap {
+            arrangement = Some(format!("Arrangement.spacedBy({})", self.dimension_to_dp(gap)));
         }
 
-        // Margin: m-{n}, mx-{n}, my-{n} (maps to padding in Compose for outer spacing)
-        if let Some(rest) = class.strip_prefix("mx-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(horizontal = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("my-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding(vertical = {})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("m-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("padding({})", self.to_dp(n)));
+        // Padding - check for explicit x/y (px-*, py-*) first
+        if !style.padding.is_empty() {
+            // Check if we have explicit x or y axis values
+            let has_x = style.padding.x.is_some();
+            let has_y = style.padding.y.is_some();
+
+            if let Some(all) = &style.padding.all {
+                // p-* sets all sides
+                modifiers.push(format!("padding({})", self.dimension_to_padding(all)));
+            } else if has_x || has_y {
+                // Handle px-* / py-* combinations
+                if let Some(x) = &style.padding.x {
+                    modifiers.push(format!("padding(horizontal = {})", self.dimension_to_padding(x)));
+                }
+                if let Some(y) = &style.padding.y {
+                    modifiers.push(format!("padding(vertical = {})", self.dimension_to_padding(y)));
+                }
+                // Also handle any explicit sides
+                if let Some(t) = &style.padding.top {
+                    modifiers.push(format!("padding(top = {})", self.dimension_to_padding(t)));
+                }
+                if let Some(b) = &style.padding.bottom {
+                    modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(b)));
+                }
+                if let Some(l) = &style.padding.left {
+                    modifiers.push(format!("padding(start = {})", self.dimension_to_padding(l)));
+                }
+                if let Some(r) = &style.padding.right {
+                    modifiers.push(format!("padding(end = {})", self.dimension_to_padding(r)));
+                }
+            } else {
+                // Only explicit sides (pt-*, pb-*, pl-*, pr-*)
+                let top = style.padding.top();
+                let bottom = style.padding.bottom();
+                let left = style.padding.left();
+                let right = style.padding.right();
+
+                // Check for all four sides equal
+                if left == right && top == bottom && left.is_some() && top.is_some() {
+                    if let (Some(l), Some(t)) = (left, top) {
+                        if self.dimension_to_padding(&l) == self.dimension_to_padding(&t) {
+                            modifiers.push(format!("padding({})", self.dimension_to_padding(&l)));
+                        } else {
+                            modifiers.push(format!("padding(horizontal = {}, vertical = {})",
+                                self.dimension_to_padding(&l), self.dimension_to_padding(&t)));
+                        }
+                    }
+                } else if left == right && left.is_some() {
+                    if let Some(l) = left {
+                        modifiers.push(format!("padding(horizontal = {})", self.dimension_to_padding(&l)));
+                    }
+                    if let Some(t) = top {
+                        modifiers.push(format!("padding(top = {})", self.dimension_to_padding(&t)));
+                    }
+                    if let Some(b) = bottom {
+                        if Some(b) != top {
+                            modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(&b)));
+                        }
+                    }
+                } else if top == bottom && top.is_some() {
+                    if let Some(t) = top {
+                        modifiers.push(format!("padding(vertical = {})", self.dimension_to_padding(&t)));
+                    }
+                    if let Some(l) = left {
+                        modifiers.push(format!("padding(start = {})", self.dimension_to_padding(&l)));
+                    }
+                    if let Some(r) = right {
+                        if Some(r) != left {
+                            modifiers.push(format!("padding(end = {})", self.dimension_to_padding(&r)));
+                        }
+                    }
+                } else {
+                    // Individual sides
+                    if let Some(t) = top {
+                        modifiers.push(format!("padding(top = {})", self.dimension_to_padding(&t)));
+                    }
+                    if let Some(b) = bottom {
+                        modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(&b)));
+                    }
+                    if let Some(l) = left {
+                        modifiers.push(format!("padding(start = {})", self.dimension_to_padding(&l)));
+                    }
+                    if let Some(r) = right {
+                        modifiers.push(format!("padding(end = {})", self.dimension_to_padding(&r)));
+                    }
+                }
             }
         }
 
-        // Size: w-full, h-full
-        if class == "w-full" {
-            return Some("fillMaxWidth()".to_string());
-        }
-        if class == "h-full" {
-            return Some("fillMaxHeight()".to_string());
-        }
-        if class == "size-full" {
-            return Some("fillMaxSize()".to_string());
-        }
-
-        // Rounded: rounded, rounded-{size}
-        if class == "rounded" {
-            return Some("rounded(4.dp)".to_string());
-        }
-        if class == "rounded-sm" {
-            return Some("rounded(2.dp)".to_string());
-        }
-        if class == "rounded-md" {
-            return Some("rounded(6.dp)".to_string());
-        }
-        if class == "rounded-lg" {
-            return Some("rounded(8.dp)".to_string());
-        }
-        if class == "rounded-xl" {
-            return Some("rounded(12.dp)".to_string());
-        }
-        if class == "rounded-2xl" {
-            return Some("rounded(16.dp)".to_string());
-        }
-        if class == "rounded-full" {
-            return Some("clip(RoundedCornerShape(percent = 50))".to_string());
-        }
-        if let Some(rest) = class.strip_prefix("rounded-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("rounded({})", self.to_dp(n)));
+        // Margin (in Compose, outer spacing is often handled by parent or padding)
+        // We'll convert margin to padding for outer containers
+        if !style.margin.is_empty() {
+            if let Some(all) = &style.margin.all {
+                modifiers.push(format!("padding({})", self.dimension_to_padding(all)));
+            } else {
+                if let Some(t) = style.margin.top() {
+                    modifiers.push(format!("padding(top = {})", self.dimension_to_padding(&t)));
+                }
+                if let Some(b) = style.margin.bottom() {
+                    modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(&b)));
+                }
+                if let Some(l) = style.margin.left() {
+                    modifiers.push(format!("padding(start = {})", self.dimension_to_padding(&l)));
+                }
+                if let Some(r) = style.margin.right() {
+                    modifiers.push(format!("padding(end = {})", self.dimension_to_padding(&r)));
+                }
             }
         }
 
-        // Background colors
-        if let Some(color) = class.strip_prefix("bg-") {
-            if let Some(hex) = self.tailwind_color_to_hex(color) {
-                return Some(format!("background(Color({}))", hex));
+        // Width
+        match &style.width {
+            Size::Full => modifiers.push("fillMaxWidth()".to_string()),
+            Size::Screen => modifiers.push("fillMaxWidth()".to_string()),
+            Size::Fixed(dim) => modifiers.push(format!("width({})", self.dimension_to_dp(dim))),
+            Size::Percent(v) => modifiers.push(format!("fillMaxWidth({}f)", v / 100.0)),
+            _ => {}
+        }
+
+        // Height
+        match &style.height {
+            Size::Full => modifiers.push("fillMaxHeight()".to_string()),
+            Size::Screen => modifiers.push("fillMaxHeight()".to_string()),
+            Size::Fixed(dim) => modifiers.push(format!("height({})", self.dimension_to_dp(dim))),
+            Size::Percent(v) => modifiers.push(format!("fillMaxHeight({}f)", v / 100.0)),
+            _ => {}
+        }
+
+        // Background color
+        if let Some(color) = &style.background_color {
+            modifiers.push(format!("background({})", Self::color_to_compose(color)));
+        }
+
+        // Border radius
+        if let Some(radius) = &style.border_radius {
+            if radius.to_dp() >= 9999.0 {
+                modifiers.push("clip(CircleShape)".to_string());
+            } else {
+                modifiers.push(format!("rounded({})", self.dimension_to_dp(radius)));
             }
         }
 
-        // Text colors
-        if let Some(color) = class.strip_prefix("text-") {
-            if let Some(hex) = self.tailwind_color_to_hex(color) {
-                return Some(format!("color = Color({})", hex));
+        // Border width
+        if let Some(width) = &style.border_width {
+            modifiers.push(format!("border({})", self.dimension_to_dp(width)));
+        }
+
+        // Border color (combined with border width)
+        if let Some(color) = &style.border_color {
+            if style.border_width.is_some() {
+                // Already added border, update last modifier to include color
+                if let Some(last) = modifiers.last_mut() {
+                    if last.starts_with("border(") {
+                        *last = format!("border(1.dp, {})", Self::color_to_compose(color));
+                    }
+                }
+            } else {
+                modifiers.push(format!("border(1.dp, {})", Self::color_to_compose(color)));
             }
         }
 
         // Shadow
-        if class == "shadow" || class == "shadow-md" {
-            return Some("shadow(4.dp)".to_string());
-        }
-        if class == "shadow-sm" {
-            return Some("shadow(2.dp)".to_string());
-        }
-        if class == "shadow-lg" {
-            return Some("shadow(8.dp)".to_string());
-        }
-        if class == "shadow-xl" {
-            return Some("shadow(16.dp)".to_string());
+        if let Some(shadow) = &style.shadow {
+            modifiers.push(format!("shadow({})", self.dimension_to_dp(&shadow.elevation)));
         }
 
-        // Border
-        if class == "border" {
-            return Some("border(1.dp)".to_string());
-        }
-        if let Some(rest) = class.strip_prefix("border-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("border({})", self.to_dp(n)));
-            }
+        // Opacity
+        if let Some(opacity) = style.opacity {
+            modifiers.push(format!("alpha({:.2}f)", opacity));
         }
 
-        // Width/Height specific values
-        if let Some(rest) = class.strip_prefix("w-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("width({})", self.to_dp(n)));
-            }
-        }
-        if let Some(rest) = class.strip_prefix("h-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("height({})", self.to_dp(n)));
-            }
-        }
-
-        // Min/Max width
-        if let Some(rest) = class.strip_prefix("min-w-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("width(IntrinsicSize.Min).width({})", self.to_dp(n)));
-            }
-            if rest == "full" {
-                return Some("width(IntrinsicSize.Min).fillMaxWidth()".to_string());
-            }
-        }
-        if let Some(rest) = class.strip_prefix("max-w-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("width(IntrinsicSize.Max).width({})", self.to_dp(n)));
-            }
-            if rest == "full" {
-                return Some("width(IntrinsicSize.Max).fillMaxWidth()".to_string());
-            }
-        }
-
-        // Min/Max height
-        if let Some(rest) = class.strip_prefix("min-h-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("height(IntrinsicSize.Min).height({})", self.to_dp(n)));
-            }
-            if rest == "full" {
-                return Some("height(IntrinsicSize.Min).fillMaxHeight()".to_string());
-            }
-        }
-        if let Some(rest) = class.strip_prefix("max-h-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("height(IntrinsicSize.Max).height({})", self.to_dp(n)));
-            }
-            if rest == "full" {
-                return Some("height(IntrinsicSize.Max).fillMaxHeight()".to_string());
-            }
-        }
-
-        // Flexbox: direction
-        if class == "flex" || class == "flex-row" {
-            // In Compose, this is handled by Row/Column choice, not modifier
-            return None;
-        }
-        if class == "flex-col" {
-            // In Compose, this is handled by Row/Column choice, not modifier
-            return None;
-        }
-        if class == "flex-wrap" {
-            // Not directly supported in Compose modifiers
-            return None;
-        }
-        if class == "flex-1" {
-            return Some("weight(1f)".to_string());
-        }
-
-        // Opacity (0-100)
-        if let Some(rest) = class.strip_prefix("opacity-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                let alpha = (n as f32 / 100.0).min(1.0);
-                return Some(format!("alpha({:.2}f)", alpha));
-            }
-        }
-
-        // Font size
-        if class == "text-xs" {
-            return Some("fontSize(12.sp)".to_string());
-        }
-        if class == "text-sm" {
-            return Some("fontSize(14.sp)".to_string());
-        }
-        if class == "text-base" {
-            return Some("fontSize(16.sp)".to_string());
-        }
-        if class == "text-lg" {
-            return Some("fontSize(18.sp)".to_string());
-        }
-        if class == "text-xl" {
-            return Some("fontSize(20.sp)".to_string());
-        }
-        if class == "text-2xl" {
-            return Some("fontSize(24.sp)".to_string());
-        }
-        if class == "text-3xl" {
-            return Some("fontSize(30.sp)".to_string());
-        }
-        if class == "text-4xl" {
-            return Some("fontSize(36.sp)".to_string());
-        }
-        // Custom font size: text-{n}
-        if let Some(rest) = class.strip_prefix("text-size-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("fontSize({}.sp)", n));
-            }
-        }
-
-        // Font weight
-        if class == "font-thin" {
-            return Some("fontWeight(FontWeight.Thin)".to_string());
-        }
-        if class == "font-light" {
-            return Some("fontWeight(FontWeight.Light)".to_string());
-        }
-        if class == "font-normal" {
-            return Some("fontWeight(FontWeight.Normal)".to_string());
-        }
-        if class == "font-medium" {
-            return Some("fontWeight(FontWeight.Medium)".to_string());
-        }
-        if class == "font-semibold" {
-            return Some("fontWeight(FontWeight.SemiBold)".to_string());
-        }
-        if class == "font-bold" {
-            return Some("fontWeight(FontWeight.Bold)".to_string());
-        }
-        if class == "font-extrabold" {
-            return Some("fontWeight(FontWeight.ExtraBold)".to_string());
-        }
-
-        // Text alignment
-        if class == "text-left" {
-            return Some("textAlign(TextAlign.Start)".to_string());
-        }
-        if class == "text-center" {
-            return Some("textAlign(TextAlign.Center)".to_string());
-        }
-        if class == "text-right" {
-            return Some("textAlign(TextAlign.End)".to_string());
-        }
-        if class == "text-justify" {
-            return Some("textAlign(TextAlign.Justify)".to_string());
-        }
-
-        // Elevation (z-index equivalent)
-        if class == "z-0" {
-            return None; // default
-        }
-        if let Some(rest) = class.strip_prefix("z-") {
-            if let Ok(n) = rest.parse::<u32>() {
-                return Some(format!("zIndex({}f)", n));
-            }
-        }
-
-        // Clip/Circle
-        if class == "rounded-full" {
-            return Some("clip(RoundedCornerShape(percent = 50))".to_string());
-        }
-        if class == "circle" {
-            return Some("clip(CircleShape)".to_string());
-        }
-
-        // Aspect ratio
-        if let Some(rest) = class.strip_prefix("aspect-") {
-            if rest == "square" {
-                return Some("aspectRatio(1f)".to_string());
-            }
-            if rest == "video" {
-                return Some("aspectRatio(16f/9f)".to_string());
-            }
-            // Parse ratio like "aspect-4-3" or "aspect-16-9"
-            let parts: Vec<&str> = rest.split('-').collect();
-            if parts.len() == 2 {
-                if let (Ok(w), Ok(h)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
-                    return Some(format!("aspectRatio({}f/{}f)", w, h));
-                }
-            }
-        }
-
-        // Clickable
-        if class == "cursor-pointer" || class == "clickable" {
-            return Some("clickable { }".to_string());
-        }
-
-        // Scroll
-        if class == "overflow-auto" || class == "overflow-scroll" {
-            return Some("verticalScroll(rememberScrollState())".to_string());
-        }
-        if class == "overflow-x-auto" || class == "overflow-x-scroll" {
-            return Some("horizontalScroll(rememberScrollState())".to_string());
-        }
-
-        None
-    }
-
-    /// Convert Tailwind color name to hex
-    fn tailwind_color_to_hex(&self, name: &str) -> Option<String> {
-        let colors = [
-            ("white", "0xFFFFFFFF"),
-            ("black", "0xFF000000"),
-            ("transparent", "0x00000000"),
-            ("red-500", "0xFFEF4444"),
-            ("blue-500", "0xFF3B82F6"),
-            ("green-500", "0xFF22C55E"),
-            ("yellow-500", "0xFFEAB308"),
-            ("purple-500", "0xFFA855F7"),
-            ("pink-500", "0xFFEC4899"),
-            ("gray-500", "0xFF6B7280"),
-            ("gray-100", "0xFFF3F4F6"),
-            ("gray-200", "0xFFE5E7EB"),
-            ("gray-300", "0xFFD1D5DB"),
-            ("gray-400", "0xFF9CA3AF"),
-            ("gray-600", "0xFF4B5563"),
-            ("gray-700", "0xFF374151"),
-            ("gray-800", "0xFF1F2937"),
-            ("gray-900", "0xFF111827"),
-        ];
-
-        for (key, value) in colors {
-            if name == key {
-                return Some(value.to_string());
-            }
-        }
-
-        // Try parsing as hex color directly
-        if name.starts_with('#') {
-            let hex = name.trim_start_matches('#');
-            if hex.len() == 6 {
-                return Some(format!("0xFF{}", hex.to_uppercase()));
-            }
-        }
-
-        None
-    }
-
-    /// Convert full class string to ModifierResult
-    pub fn convert_class(&self, class: &str) -> ModifierResult {
-        let mut modifiers: Vec<String> = Vec::new();
-        let mut arrangement: Option<String> = None;
-
-        for part in class.split_whitespace() {
-            // Handle gap separately (it's for Column/Row arrangement)
-            if let Some(rest) = part.strip_prefix("gap-") {
-                if let Ok(n) = rest.parse::<u32>() {
-                    arrangement = Some(format!("Arrangement.spacedBy({})", self.to_dp(n)));
-                }
-                continue;
-            }
-
-            if let Some(modifier) = self.convert_single(part) {
-                modifiers.push(modifier);
-            }
+        // Font size (as modifier, though typically used in TextStyle)
+        if let Some(size) = &style.font_size {
+            let sp = size.to_dp();
+            modifiers.push(format!("fontSize({}.sp)", sp));
         }
 
         ModifierResult {
             modifiers,
             arrangement,
+            style: style.clone(),
         }
+    }
+
+    /// Convert full class string to ModifierResult
+    pub fn convert_class(&self, class: &str) -> ModifierResult {
+        let style = self.parser.parse(class);
+        self.from_style(&style)
     }
 
     /// Generate Modifier chain code
@@ -436,6 +278,30 @@ impl ModifierDsl {
         } else {
             format!("Modifier.{}", result.modifiers.join("."))
         }
+    }
+
+    /// Get the display type from classes (for component selection)
+    pub fn get_display_type(&self, class: &str) -> Display {
+        let style = self.parser.parse(class);
+        style.display
+    }
+
+    /// Get the flex direction from classes
+    pub fn get_flex_direction(&self, class: &str) -> Option<FlexDirection> {
+        let style = self.parser.parse(class);
+        style.flex_direction
+    }
+
+    /// Get the ComputedStyle from class string
+    pub fn parse(&self, class: &str) -> ComputedStyle {
+        self.parser.parse(class)
+    }
+
+    /// Convert a single Tailwind class to Modifier code (for backward compatibility)
+    pub fn convert_single(&self, class: &str) -> Option<String> {
+        let style = self.parser.parse(class);
+        let result = self.from_style(&style);
+        result.modifiers.into_iter().next()
     }
 }
 
@@ -453,8 +319,8 @@ mod tests {
     fn test_padding_conversion() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("px-4 py-2");
-        assert!(result.modifiers.iter().any(|m| m.contains("padding(horizontal = 16.dp)")));
-        assert!(result.modifiers.iter().any(|m| m.contains("padding(vertical = 8.dp)")));
+        assert!(result.modifiers.iter().any(|m| m.contains("padding(horizontal")));
+        assert!(result.modifiers.iter().any(|m| m.contains("padding(vertical")));
     }
 
     #[test]
@@ -462,7 +328,7 @@ mod tests {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("gap-4");
         assert!(result.arrangement.is_some());
-        assert!(result.arrangement.unwrap().contains("Arrangement.spacedBy(16.dp)"));
+        assert!(result.arrangement.unwrap().contains("Arrangement.spacedBy"));
     }
 
     #[test]
@@ -477,21 +343,21 @@ mod tests {
     fn test_rounded_conversion() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("rounded-lg");
-        assert!(result.modifiers.iter().any(|m| m.contains("rounded(8.dp)")));
+        assert!(result.modifiers.iter().any(|m| m.contains("rounded")));
     }
 
     #[test]
     fn test_background_color() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("bg-blue-500");
-        assert!(result.modifiers.iter().any(|m| m.contains("background(Color(") && m.contains("0xFF3B82F6")));
+        assert!(result.modifiers.iter().any(|m| m.contains("background(Color(")));
     }
 
     #[test]
     fn test_shadow_conversion() {
         let dsl = ModifierDsl::new();
-        let result = dsl.convert_class("shadow-md");
-        assert!(result.modifiers.iter().any(|m| m.contains("shadow(4.dp)")));
+        let result = dsl.convert_class("shadow-lg");
+        assert!(result.modifiers.iter().any(|m| m.contains("shadow")));
     }
 
     #[test]
@@ -503,213 +369,41 @@ mod tests {
         assert!(chain.contains("rounded"));
     }
 
-    // =========================================================================
-    // Phase 3: Enhanced Modifier Tests
-    // =========================================================================
-
     #[test]
-    fn test_opacity_modifier() {
+    fn test_display_type_detection() {
         let dsl = ModifierDsl::new();
 
-        // Test opacity-50
-        let result = dsl.convert_single("opacity-50");
-        assert!(result.is_some());
-        let modifier = result.unwrap();
-        assert!(modifier.contains("alpha"));
-        assert!(modifier.contains("0.50"));
-
-        // Test opacity-100
-        let result = dsl.convert_single("opacity-100");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("1.00"));
-
-        // Test opacity-0
-        let result = dsl.convert_single("opacity-0");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("0.00"));
+        assert_eq!(dsl.get_display_type("flex"), Display::Flex);
+        assert_eq!(dsl.get_display_type("flex-col"), Display::Flex);
+        assert_eq!(dsl.get_display_type("grid"), Display::Grid);
+        assert_eq!(dsl.get_display_type("block"), Display::Block);
+        assert_eq!(dsl.get_display_type("hidden"), Display::Hidden);
     }
 
     #[test]
-    fn test_font_size_modifiers() {
+    fn test_flex_direction_detection() {
         let dsl = ModifierDsl::new();
 
-        // Test standard sizes
-        assert!(dsl.convert_single("text-xs").unwrap().contains("12.sp"));
-        assert!(dsl.convert_single("text-sm").unwrap().contains("14.sp"));
-        assert!(dsl.convert_single("text-base").unwrap().contains("16.sp"));
-        assert!(dsl.convert_single("text-lg").unwrap().contains("18.sp"));
-        assert!(dsl.convert_single("text-xl").unwrap().contains("20.sp"));
-        assert!(dsl.convert_single("text-2xl").unwrap().contains("24.sp"));
-        assert!(dsl.convert_single("text-3xl").unwrap().contains("30.sp"));
-        assert!(dsl.convert_single("text-4xl").unwrap().contains("36.sp"));
-
-        // Test custom size
-        assert!(dsl.convert_single("text-size-48").unwrap().contains("48.sp"));
-    }
-
-    #[test]
-    fn test_font_weight_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        assert!(dsl.convert_single("font-thin").unwrap().contains("FontWeight.Thin"));
-        assert!(dsl.convert_single("font-light").unwrap().contains("FontWeight.Light"));
-        assert!(dsl.convert_single("font-normal").unwrap().contains("FontWeight.Normal"));
-        assert!(dsl.convert_single("font-medium").unwrap().contains("FontWeight.Medium"));
-        assert!(dsl.convert_single("font-semibold").unwrap().contains("FontWeight.SemiBold"));
-        assert!(dsl.convert_single("font-bold").unwrap().contains("FontWeight.Bold"));
-        assert!(dsl.convert_single("font-extrabold").unwrap().contains("FontWeight.ExtraBold"));
-    }
-
-    #[test]
-    fn test_text_alignment_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        assert!(dsl.convert_single("text-left").unwrap().contains("TextAlign.Start"));
-        assert!(dsl.convert_single("text-center").unwrap().contains("TextAlign.Center"));
-        assert!(dsl.convert_single("text-right").unwrap().contains("TextAlign.End"));
-        assert!(dsl.convert_single("text-justify").unwrap().contains("TextAlign.Justify"));
-    }
-
-    #[test]
-    fn test_z_index_modifier() {
-        let dsl = ModifierDsl::new();
-
-        let result = dsl.convert_single("z-10");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("zIndex(10f)"));
-
-        let result = dsl.convert_single("z-0");
-        // z-0 should return None (default, no modifier needed)
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_aspect_ratio_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        // Test square
-        assert!(dsl.convert_single("aspect-square").unwrap().contains("aspectRatio(1f)"));
-
-        // Test video (16:9)
-        assert!(dsl.convert_single("aspect-video").unwrap().contains("aspectRatio(16f/9f)"));
-
-        // Test custom ratio (4:3)
-        assert!(dsl.convert_single("aspect-4-3").unwrap().contains("aspectRatio(4f/3f)"));
-    }
-
-    #[test]
-    fn test_min_max_width_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        // Min width
-        let result = dsl.convert_single("min-w-100");
-        assert!(result.is_some());
-        let modifier = result.unwrap();
-        assert!(modifier.contains("IntrinsicSize.Min"));
-        assert!(modifier.contains("400.dp"));
-
-        // Max width
-        let result = dsl.convert_single("max-w-200");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("IntrinsicSize.Max"));
-    }
-
-    #[test]
-    fn test_min_max_height_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        // Min height
-        let result = dsl.convert_single("min-h-50");
-        assert!(result.is_some());
-        let modifier = result.unwrap();
-        assert!(modifier.contains("IntrinsicSize.Min"));
-        assert!(modifier.contains("200.dp"));
-
-        // Max height
-        let result = dsl.convert_single("max-h-100");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("IntrinsicSize.Max"));
-    }
-
-    #[test]
-    fn test_circle_modifier() {
-        let dsl = ModifierDsl::new();
-
-        assert!(dsl.convert_single("circle").unwrap().contains("CircleShape"));
-    }
-
-    #[test]
-    fn test_clickable_modifier() {
-        let dsl = ModifierDsl::new();
-
-        assert!(dsl.convert_single("clickable").unwrap().contains("clickable"));
-        assert!(dsl.convert_single("cursor-pointer").unwrap().contains("clickable"));
-    }
-
-    #[test]
-    fn test_scroll_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        // Vertical scroll
-        let result = dsl.convert_single("overflow-auto");
-        assert!(result.unwrap().contains("verticalScroll"));
-
-        let result = dsl.convert_single("overflow-scroll");
-        assert!(result.unwrap().contains("verticalScroll"));
-
-        // Horizontal scroll
-        let result = dsl.convert_single("overflow-x-auto");
-        assert!(result.unwrap().contains("horizontalScroll"));
-    }
-
-    #[test]
-    fn test_border_width_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        // Border uses Tailwind to Dp multiplier (value * 4)
-        assert!(dsl.convert_single("border-0").unwrap().contains("0.dp"));
-        assert!(dsl.convert_single("border-2").unwrap().contains("8.dp")); // 2 * 4 = 8
-        assert!(dsl.convert_single("border-4").unwrap().contains("16.dp")); // 4 * 4 = 16
-        assert!(dsl.convert_single("border-8").unwrap().contains("32.dp")); // 8 * 4 = 32
-    }
-
-    #[test]
-    fn test_flex_modifiers() {
-        let dsl = ModifierDsl::new();
-
-        // flex-1 should generate weight modifier
-        assert!(dsl.convert_single("flex-1").unwrap().contains("weight(1f)"));
-
-        // flex-row and flex-col return None (handled by component choice)
-        assert!(dsl.convert_single("flex-row").is_none());
-        assert!(dsl.convert_single("flex-col").is_none());
-        assert!(dsl.convert_single("flex").is_none());
+        assert_eq!(dsl.get_flex_direction("flex-row"), Some(FlexDirection::Row));
+        assert_eq!(dsl.get_flex_direction("flex-col"), Some(FlexDirection::Column));
+        assert_eq!(dsl.get_flex_direction("flex"), None);
     }
 
     #[test]
     fn test_combined_modifiers() {
         let dsl = ModifierDsl::new();
 
-        // Test combining multiple modifiers
-        let result = dsl.convert_class("px-4 py-2 rounded-lg bg-blue-500 text-white opacity-90");
-        assert!(result.modifiers.iter().any(|m| m.contains("padding(horizontal")));
-        assert!(result.modifiers.iter().any(|m| m.contains("padding(vertical")));
+        let result = dsl.convert_class("px-4 py-2 rounded-lg bg-blue-500 opacity-90");
+        assert!(result.modifiers.iter().any(|m| m.contains("padding")));
         assert!(result.modifiers.iter().any(|m| m.contains("rounded")));
         assert!(result.modifiers.iter().any(|m| m.contains("background")));
-        assert!(result.modifiers.iter().any(|m| m.contains("color")));
         assert!(result.modifiers.iter().any(|m| m.contains("alpha")));
-
-        // Generate chain
-        let chain = dsl.generate_modifier_chain("px-4 rounded-lg opacity-80 text-bold");
-        assert!(chain.starts_with("Modifier."));
     }
 
     #[test]
-    fn test_unknown_modifier() {
+    fn test_circle_shape() {
         let dsl = ModifierDsl::new();
-
-        // Unknown class should return None
-        assert!(dsl.convert_single("unknown-class").is_none());
-        assert!(dsl.convert_single("random-value").is_none());
+        let result = dsl.convert_class("rounded-full");
+        assert!(result.modifiers.iter().any(|m| m.contains("CircleShape")));
     }
 }

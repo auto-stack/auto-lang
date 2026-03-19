@@ -97,6 +97,9 @@ pub use jet::*;
 pub use auto_val::AutoError;
 pub use auto_val::AutoResult;
 
+// Re-export BackendType from auto_lang::config
+pub use auto_lang::config::BackendType;
+
 /// AutoMan version
 pub const AUTOMAN_VERSION: &str = env!("CARGO_PKG_VERSION");
 

@@ -1,0 +1,38 @@
+// Simple Counter Widget - Unified AURA Syntax
+// Works for Vue, Tauri, and Jet backends
+
+widget Counter {
+    msg Msg { Increment, Decrement }
+
+    model {
+        count int = 0
+    }
+
+    computed {
+        displayText => f"Count: ${self.count}"
+    }
+
+    view {
+        col(class: "flex flex-col gap-4 p-4 items-center") {
+            text(class: "text-2xl font-bold") { self.displayText }
+
+            row(class: "flex gap-2") {
+                button(class: "px-4 py-2 bg-blue-500 text-white rounded", onclick: .Decrement) {
+                    text "-"
+                }
+                button(class: "px-4 py-2 bg-blue-500 text-white rounded", onclick: .Increment) {
+                    text "+"
+                }
+            }
+        }
+    }
+
+    on {
+        Increment => {
+            count = count + 1
+        }
+        Decrement => {
+            count = count - 1
+        }
+    }
+}

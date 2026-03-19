@@ -31,20 +31,72 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
-/// Parse backend from pac.at content
+/// Parse backend from pac.at content (supports array format)
 fn parse_pac_backend(content: &str) -> Option<String> {
+    // First, try to parse as array: backend: ["vue", "jet"]
     for line in content.lines() {
         let line = line.trim();
         if line.starts_with("backend:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
-                let value = value.trim_matches('"').trim_matches('\'');
-                let value = value.trim_end_matches(',');
-                return Some(value.to_string());
+                // Check if it's an array format
+                if value.starts_with('[') {
+                    // Extract all backends from array
+                    let backends: Vec<&str> = value
+                        .trim_start_matches('[')
+                        .trim_end_matches(']')
+                        .split(',')
+                        .filter_map(|s| {
+                            let s = s.trim().trim_matches('"').trim_matches('\'');
+                            if !s.is_empty() { Some(s) } else { None }
+                        })
+                        .collect();
+                    // Return first backend if jet is in the list
+                    if backends.iter().any(|&b| b == "jet") {
+                        return Some("jet".to_string());
+                    }
+                    return backends.first().map(|s| s.to_string());
+                } else {
+                    // Single backend
+                    let value = value.trim_matches('"').trim_matches('\'');
+                    let value = value.trim_end_matches(',');
+                    return Some(value.to_string());
+                }
             }
         }
     }
     None
+}
+
+/// Check if jet is in the backend list
+fn has_jet_backend(content: &str) -> bool {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("backend:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                // Check if it's an array format
+                if value.starts_with('[') {
+                    // Extract all backends from array
+                    let backends: Vec<&str> = value
+                        .trim_start_matches('[')
+                        .trim_end_matches(']')
+                        .split(',')
+                        .filter_map(|s| {
+                            let s = s.trim().trim_matches('"').trim_matches('\'');
+                            if !s.is_empty() { Some(s) } else { None }
+                        })
+                        .collect();
+                    return backends.iter().any(|&b| b == "jet");
+                } else {
+                    let value = value.trim_matches('"').trim_matches('\'');
+                    let value = value.trim_end_matches(',');
+                    return value == "jet";
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Jetpack Compose project generation context
@@ -74,11 +126,9 @@ impl JetProject {
         let pac_content = fs::read_to_string(&pac_path)
             .map_err(|e| format!("Failed to read pac.at: {}", e))?;
 
-        // Verify backend is jet
-        let backend = parse_pac_backend(&pac_content)
-            .unwrap_or_else(|| "jet".to_string());
-        if backend != "jet" {
-            return Err(format!("Expected backend 'jet', found '{}'", backend).into());
+        // Check if jet is in the backend list (supports multi-backend configuration)
+        if !has_jet_backend(&pac_content) {
+            return Err("Backend 'jet' not found in pac.at. Add 'jet' to backend list.".into());
         }
 
         // Get project name
@@ -322,6 +372,126 @@ pub fn generate_jet_project(root_dir: &Path, output_dir: Option<&Path>, full_pro
         // Generate only Kotlin files
         project.generate_kotlin_only(output)?;
     }
+
+    Ok(())
+}
+
+/// Run Jetpack Compose project (auto run command for jet backend)
+///
+/// Steps:
+/// 1. Generate project structure if not exists
+/// 2. Check for Android Studio / emulator
+/// 3. Build and run on connected device/emulator
+pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+    println!("{}", "Running Jetpack Compose project (backend: jet)".bright_cyan());
+
+    // Load project context
+    let project = JetProject::from_workspace(root_dir)?;
+    let jet_dir = root_dir.join("jet");
+
+    // Step 1: Generate project structure if not exists
+    let total_steps = if project.exists() { 3 } else { 4 };
+    let mut current_step = 0;
+
+    if !project.exists() {
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Generating Jetpack project...", current_step, total_steps);
+        project.generate()?;
+    }
+
+    // Step 2: Check for gradlew
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Checking Gradle wrapper...", current_step, total_steps);
+
+    let gradlew = if cfg!(windows) {
+        jet_dir.join("gradlew.bat")
+    } else {
+        jet_dir.join("gradlew")
+    };
+
+    if !gradlew.exists() {
+        println!("  ⚠ Gradle wrapper not found, generating...");
+        // Generate gradle wrapper if needed
+        std::process::Command::new("gradle")
+            .args(&["wrapper"])
+            .current_dir(&jet_dir)
+            .output()
+            .map_err(|e| format!("Failed to generate gradle wrapper: {}. Please install Gradle or Android Studio.", e))?;
+    } else {
+        println!("  ✓ Gradle wrapper found");
+    }
+
+    // Step 3: Build the project
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Building Android project...", current_step, total_steps);
+
+    let build_result = std::process::Command::new(&gradlew)
+        .args(&["assembleDebug"])
+        .current_dir(&jet_dir)
+        .status()
+        .map_err(|e| format!("Failed to run gradlew assembleDebug: {}", e))?;
+
+    if !build_result.success() {
+        return Err("Build failed. Check the error messages above.".into());
+    }
+    println!("  ✓ Build successful");
+
+    // Step 4: Install and run on device/emulator
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Installing on device/emulator...", current_step, total_steps);
+
+    // Check for connected devices
+    let adb_devices = std::process::Command::new("adb")
+        .args(&["devices"])
+        .output();
+
+    let has_device = match adb_devices {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Check if there's at least one device (excluding header line)
+            stdout.lines().any(|line| line.contains("\tdevice"))
+        }
+        Err(_) => false
+    };
+
+    if has_device {
+        // Install the APK
+        let install_result = std::process::Command::new(&gradlew)
+            .args(&["installDebug"])
+            .current_dir(&jet_dir)
+            .status()
+            .map_err(|e| format!("Failed to install: {}", e))?;
+
+        if install_result.success() {
+            println!("  ✓ App installed successfully!");
+            println!();
+            println!("{}", "App is now running on your device/emulator.".bright_green());
+            println!("Package: com.example.{}", project.name.to_lowercase().replace("-", ""));
+        } else {
+            println!("  ⚠ Install failed. Try running manually:");
+            println!("    cd {} && ./gradlew installDebug", jet_dir.display());
+        }
+    } else {
+        println!("  ⚠ No Android device or emulator found.");
+        println!();
+        println!("To run the app:");
+        println!("  1. Connect an Android device (with USB debugging enabled), or");
+        println!("  2. Start an Android emulator, or");
+        println!("  3. Open the project in Android Studio:");
+        println!();
+        println!("     {}", jet_dir.display().to_string().bright_cyan());
+        println!();
+        println!("Then run: ./gradlew installDebug");
+    }
+
+    println!();
+    println!("{}", "═══════════════════════════════════".bright_green());
+    println!("{}", "  Jetpack Compose project ready!".bright_green());
+    println!("{}", "═══════════════════════════════════".bright_green());
 
     Ok(())
 }
