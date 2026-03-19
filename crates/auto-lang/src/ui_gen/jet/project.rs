@@ -693,7 +693,8 @@ dependencies {{
 
     /// Generate AndroidManifest.xml
     fn generate_android_manifest(&mut self) {
-        let app_name = &self.config.name;
+        // Use safe name for theme (replace hyphens with underscores)
+        let app_name = self.config.name.replace('-', "_");
 
         let content = format!(
             r#"<?xml version="1.0" encoding="utf-8"?>
@@ -816,7 +817,8 @@ class MainActivity : ComponentActivity() {{
 
     /// Generate themes.xml for Android
     fn generate_themes_xml(&mut self) {
-        let theme_name = &self.config.name;
+        // Use safe name for theme (replace hyphens with underscores)
+        let theme_name = self.config.name.replace('-', "_");
 
         let content = format!(
             r#"<?xml version="1.0" encoding="utf-8"?>
