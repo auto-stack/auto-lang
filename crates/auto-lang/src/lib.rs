@@ -75,6 +75,8 @@ pub mod autodown;
 pub mod symbol;
 pub mod util;
 pub mod vm;
+// Plan 095: Compile-Time Execution Engine
+pub mod comptime;
 
 // Plan 088: Parameter passing mode tests
 #[cfg(test)]
@@ -1115,7 +1117,7 @@ pub fn ui_build(
     output: Option<&str>,
 ) -> AutoResult<String> {
     use crate::session::CompilerSession;
-    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator};
+    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator, JetGenerator};
 
     // Parse scenario
     let session = match scenario {
@@ -1153,6 +1155,7 @@ pub fn ui_build(
 
     // Generate code based on backend
     // Rust backend uses auto-ui abstract components (Iced, GPUI handled by auto-ui crate)
+    // Jet backend generates Kotlin/Compose code for Android
     let mut output_code = String::new();
     match backend {
         "vue" => {
@@ -1171,8 +1174,16 @@ pub fn ui_build(
                 output_code.push_str("\n\n");
             }
         }
+        "jet" => {
+            let mut gen = JetGenerator::new();
+            for widget in &widgets {
+                let code = gen.generate(widget).map_err(|e| e.to_string())?;
+                output_code.push_str(&code);
+                output_code.push_str("\n\n");
+            }
+        }
         _ => {
-            return Err(format!("Unknown backend: {}. Available: vue, rust", backend).into());
+            return Err(format!("Unknown backend: {}. Available: vue, rust, jet", backend).into());
         }
     }
 
@@ -1181,6 +1192,7 @@ pub fn ui_build(
         let ext = match backend {
             "vue" => "vue",
             "rust" => "rs",
+            "jet" => "kt",
             _ => "txt",
         };
         std::fs::create_dir_all(out_dir).ok();
@@ -1195,6 +1207,10 @@ pub fn ui_build(
                 }
                 "rust" => {
                     let mut gen = RustGenerator::new();
+                    gen.generate(widget).map_err(|e| e.to_string())?
+                }
+                "jet" => {
+                    let mut gen = JetGenerator::new();
                     gen.generate(widget).map_err(|e| e.to_string())?
                 }
                 _ => output_code.clone(),

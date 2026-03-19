@@ -74,6 +74,12 @@ pub enum TokenKind {
     Hash,             // #
     Tilde,            // ~
 
+    // Comptime keywords (compile-time execution) - Plan 095
+    HashIf,      // #if
+    HashFor,     // #for
+    HashIs,      // #is
+    HashBrace,   // #{
+
     // Keywords
     True,
     False,
@@ -199,6 +205,10 @@ impl fmt::Display for Token {
             TokenKind::Arrow => write!(f, "<->>"),
             TokenKind::DoubleArrow => write!(f, "<=>>"),
             TokenKind::Hash => write!(f, "<#>"),
+            TokenKind::HashIf => write!(f, "<#if>"),
+            TokenKind::HashFor => write!(f, "<#for>"),
+            TokenKind::HashIs => write!(f, "<#is>"),
+            TokenKind::HashBrace => write!(f, "<#{}>", "{"),
             TokenKind::True => write!(f, "<true>"),
             TokenKind::False => write!(f, "<false>"),
             TokenKind::Nil => write!(f, "<nil>"),

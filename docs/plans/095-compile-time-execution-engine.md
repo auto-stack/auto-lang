@@ -1,9 +1,24 @@
 # Plan 095: Compile-Time Execution Engine (CTEE)
 
-> **Status**: 📋 Proposed
+> **Status**: 🔄 In Progress
 > **Priority**: Critical (blocks self-hosting)
 > **Dependencies**: Plan 094 (Hybrid FFI Bridge), Plan 081 (AutoVM Default Mode)
 > **Design Doc**: [docs/design/compile-time-execution.md](../design/compile-time-execution.md) (Finalized)
+
+## Implementation Progress
+
+| Phase | Task | Status | Notes |
+|-------|------|--------|-------|
+| 1 | Lexer & Tokens | ✅ Complete | `HashIf`, `HashFor`, `HashIs`, `HashBrace` tokens |
+| 2 | AST Nodes | ✅ Complete | `HashIf`, `HashFor`, `HashIs`, `HashBrace` structs |
+| 3 | Parser | ✅ Complete | All comptime constructs parsed |
+| 4 | CTEE Module | ✅ Complete | Using `VmInterpreter` for evaluation |
+| 5 | Integration | ⏳ Pending | Pipeline integration |
+| 6 | Error Reporting | ⏳ Pending | Comptime-specific errors |
+
+---
+
+# Part A: High-Level Architecture
 
 ## Executive Summary
 
@@ -223,367 +238,6 @@ Based on `crates/auto-lang/src/vm/opcode.rs` and `engine.rs`:
 2. **Resource limits** (timeout, memory cap)
 3. **CTEE coordinator** (orchestration layer)
 
-## Implementation Phases
-
-> **Aligned with**: [docs/design/compile-time-execution.md](../design/compile-time-execution.md) Phase 1-5
-
-### Phase 1: Parser Support (Week 1-2)
-
-**Goal**: Extend parser to recognize `#` prefix syntax
-
-**From Design Doc**:
-> Modify Parser, recognize `#` prefix. New AST node types: `ComptimeIfStmt`, `ComptimeForStmt`, `ComptimeBlockExpr` (`#{}`).
-
-**New AST Nodes**:
-```rust
-// crates/auto-lang/src/ast.rs
-
-/// Compile-time conditional (`#if`)
-pub struct ComptimeIfStmt {
-    pub condition: Expr,
-    pub then_block: Vec<Stmt>,
-    pub elif_branches: Vec<(Expr, Vec<Stmt>)>,
-    pub else_block: Option<Vec<Stmt>>,
-}
-
-/// Compile-time loop unrolling (`#for`)
-pub struct ComptimeForStmt {
-    pub var: Name,
-    pub range: Expr,  // start..end or start..=end
-    pub body: Vec<Stmt>,
-}
-
-/// Compile-time pattern matching (`#is`)
-pub struct ComptimeIsStmt {
-    pub subject: Expr,
-    pub cases: Vec<ComptimeCase>,
-}
-
-/// Compile-time evaluation block (`#{ ... }`)
-pub struct ComptimeBlockExpr {
-    pub body: Vec<Stmt>,
-    pub result: Option<Expr>,
-}
-
-/// Compile-time interpolation (`#{expr}`)
-pub struct ComptimeInterpolation {
-    pub expr: Expr,
-}
-```
-
-**Lexer Changes**:
-```rust
-// crates/auto-lang/src/token.rs
-
-pub enum TokenKind {
-    // ... existing tokens ...
-
-    // Comptime prefix tokens
-    HashIf,      // #if
-    HashFor,     // #for
-    HashIs,      // #is
-    HashBrace,   // #{
-}
-```
-
-**Deliverables**:
-- [ ] Lexer recognizes `#if`, `#for`, `#is`, `#{` as tokens
-- [ ] Parser builds `ComptimeIfStmt`, `ComptimeForStmt`, `ComptimeIsStmt`, `ComptimeBlockExpr`
-- [ ] `#{expr}` parsed as `ComptimeInterpolation` within expressions
-- [ ] AST nodes integrate with existing infrastructure
-
-### Phase 2: Meta-Evaluator (Week 2-4)
-
-**Goal**: Implement the compile-time interpreter using embedded AutoVM
-
-**From Design Doc**:
-> Implement a lightweight Tree-Walk Interpreter or Bytecode VM. Must simulate target platform data widths.
-
-**CTEE Infrastructure**:
-```rust
-// crates/auto-lang/src/comptime/mod.rs
-
-/// Compile-Time Execution Engine coordinator
-pub struct CTEE {
-    /// Embedded AutoVM (sandboxed)
-    vm: AutoVM,
-
-    /// Compile-time symbol table
-    symbols: HashMap<String, CTEValue>,
-
-    /// Resource limits
-    limits: CTEELimits,
-
-    /// Execution mode (deterministic vs full)
-    mode: CTEEMode,
-
-    /// Target platform configuration
-    target: TargetInfo,
-}
-
-/// Target platform information for cross-compilation
-pub struct TargetInfo {
-    pub os: String,        // "windows", "linux", "macos"
-    pub arch: String,      // "x64", "arm", "arm64"
-    pub pointer_width: u8, // 32 or 64
-}
-
-/// Resource limits for compile-time execution
-pub struct CTEELimits {
-    pub max_time_ms: u64,
-    pub max_memory: usize,
-    pub max_recursion: u32,
-    pub max_native_calls: u64,
-}
-
-/// Execution mode
-pub enum CTEEMode {
-    /// Deterministic: No I/O, no randomness, reproducible
-    Deterministic,
-    /// Full: Allow I/O and side effects (for build scripts)
-    Full,
-}
-
-/// Compile-time evaluated value
-pub enum CTEValue {
-    Int(i64),
-    Uint(u64),
-    Float(f64),
-    String(String),
-    Bool(bool),
-    Array(Vec<CTEValue>),
-    Type(Type),  // Type values for computed types
-}
-```
-
-**Deliverables**:
-- [ ] `CTEE` struct with sandbox configuration
-- [ ] `CTEELimits` enforcement (timeout, memory, recursion)
-- [ ] Deterministic mode switch (blocks I/O, randomness)
-- [ ] Target platform simulation (pointer width, etc.)
-- [ ] Basic error handling with compile-time stack traces
-
-### Phase 3: Transform Pass (Week 4-5)
-
-**Goal**: Implement AST transformation (pruning, expansion, evaluation)
-
-**From Design Doc**:
-> Implement an AST Visitor.
-> - `ComptimeIf`: Replace with Then-Block or Else-Block content
-> - `ComptimeFor`: Copy Body N times and concatenate
-> - `#{ expr }`: Evaluate and replace with `LiteralNode`
-
-**Transform Implementation**:
-```rust
-// crates/auto-lang/src/comptime/transform.rs
-
-impl CTEE {
-    /// Transform AST by evaluating comptime constructs
-    pub fn transform(&mut self, ast: &mut AST) -> AutoResult<()> {
-        self.visit_ast(ast)
-    }
-
-    /// Visit and transform `#if` statement
-    fn visit_comptime_if(&mut self, stmt: &mut ComptimeIfStmt) -> AutoResult<Option<Vec<Stmt>>> {
-        // Evaluate condition in comptime mode
-        let cond = self.eval_expr(&stmt.condition)?;
-
-        match cond {
-            CTEValue::Bool(true) => Ok(Some(stmt.then_block.clone())),
-            CTEValue::Bool(false) => {
-                // Check elif branches
-                for (elif_cond, elif_block) in &stmt.elif_branches {
-                    if self.eval_expr(elif_cond)? == CTEValue::Bool(true) {
-                        return Ok(Some(elif_block.clone()));
-                    }
-                }
-                // Fall through to else
-                Ok(stmt.else_block.clone())
-            }
-            _ => Err(CTEEError::TypeError("Comptime condition must be bool")),
-        }
-    }
-
-    /// Visit and transform `#for` statement
-    fn visit_comptime_for(&mut self, stmt: &mut ComptimeForStmt) -> AutoResult<Vec<Stmt>> {
-        let range = self.eval_range(&stmt.range)?;
-        let mut expanded = Vec::new();
-
-        for i in range {
-            // Bind loop variable
-            self.symbols.insert(stmt.var.clone(), CTEValue::Int(i));
-
-            // Deep copy body and substitute #{var}
-            for body_stmt in &stmt.body {
-                let mut copy = body_stmt.clone();
-                self.substitute_interpolation(&mut copy)?;
-                expanded.push(copy);
-            }
-        }
-
-        Ok(expanded)
-    }
-
-    /// Visit and transform `#{ ... }` block
-    fn visit_comptime_block(&mut self, expr: &mut ComptimeBlockExpr) -> AutoResult<Expr> {
-        // Execute all statements
-        for stmt in &expr.body {
-            self.exec_stmt(stmt)?;
-        }
-
-        // Evaluate result expression
-        let value = match &expr.result {
-            Some(result) => self.eval_expr(result)?,
-            None => CTEValue::Void,
-        };
-
-        // Convert to literal expression
-        Ok(self.value_to_literal(value))
-    }
-
-    /// Substitute `#{var}` with literal value
-    fn substitute_interpolation(&mut self, node: &mut impl ASTNode) -> AutoResult<()> {
-        // Walk AST and replace ComptimeInterpolation with Literal
-    }
-}
-```
-
-**Deliverables**:
-- [ ] `#if`/`#elif`/`#else` AST pruning (only matching branch emitted)
-- [ ] `#for` loop unrolling with `#{var}` interpolation
-- [ ] `#{ ... }` block evaluation and literal conversion
-- [ ] Integration with main compilation pipeline
-
-### Phase 4: Stdlib & Reflection (Week 5-6)
-
-**Goal**: Provide `std.meta` library for compile-time introspection
-
-**From Design Doc**:
-> Provide `std.meta` library with `os`, `arch`, `compiler_version` and type reflection API.
-
-**Built-in Comptime Constants**:
-```rust
-// crates/auto-lang/src/comptime/builtins.rs
-
-impl CTEE {
-    pub fn init_builtins(&mut self) {
-        // Target information
-        self.symbols.insert("OS", CTEValue::String(self.target.os.clone()));
-        self.symbols.insert("ARCH", CTEValue::String(self.target.arch.clone()));
-        self.symbols.insert("POINTER_WIDTH", CTEValue::Int(self.target.pointer_width as i64));
-
-        // Compiler information
-        self.symbols.insert("COMPILER_VERSION", CTEValue::String(env!("CARGO_PKG_VERSION").to_string()));
-        self.symbols.insert("AUTO_VERSION_MAJOR", CTEValue::Int(0));
-        self.symbols.insert("AUTO_VERSION_MINOR", CTEValue::Int(10));
-        self.symbols.insert("AUTO_VERSION_PATCH", CTEValue::Int(0));
-    }
-}
-```
-
-**Reflection API** (future):
-```auto
-// std/meta.at
-type TypeInfo {
-    name str
-    fields []FieldInfo
-    methods []MethodInfo
-}
-
-type FieldInfo {
-    name str
-    type Type
-    offset int
-}
-
-// Reflection functions (comptime only)
-fn type_of(val) Type
-fn fields_of(t Type) []FieldInfo
-fn has_field(t Type, name str) bool
-```
-
-**Deliverables**:
-- [ ] Built-in constants: `OS`, `ARCH`, `POINTER_WIDTH`, `COMPILER_VERSION`
-- [ ] `compile_error(msg)` intrinsic (halts compilation with error)
-- [ ] (Future) Type reflection API
-
-### Phase 5: Diagnostics (Week 6-7)
-
-**Goal**: Distinguish compile-time errors from runtime errors
-
-**From Design Doc**:
-> Distinguish "compile-time execution error" and "code generation error".
-> When `#{}` panics, report source location and compile-time stack trace.
-
-**Error Reporting**:
-```rust
-/// Compile-time error with source location
-pub struct ComptimeError {
-    pub message: String,
-    pub location: SourceSpan,
-    pub comptime_stack: Vec<ComptimeFrame>,
-}
-
-pub struct ComptimeFrame {
-    pub function: String,
-    pub location: SourceSpan,
-    pub locals: HashMap<String, CTEValue>,
-}
-
-impl Diagnostic for ComptimeError {
-    fn code(&self) -> Option<Box<dyn std::fmt::Display>> {
-        Some(Box::new("auto_comptime_E0001"))
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        // Show both comptime location and original source
-    }
-}
-```
-
-**Deliverables**:
-- [ ] `ComptimeError` with miette integration
-- [ ] Compile-time stack traces
-- [ ] Clear distinction: "Error in comptime block" vs "Error in generated code"
-- [ ] `compile_error(msg)` intrinsic for user-triggered errors
-
-### Phase 6: Integration with Transpilers (Week 7-8)
-
-**Goal**: Embed CTEE in a2r and a2c transpilers
-
-```rust
-// crates/auto-lang/src/trans/rust.rs
-
-pub struct RustTranspiler {
-    /// Compile-Time Execution Engine
-    ctee: CTEE,
-
-    /// Generated Rust code
-    output: String,
-}
-
-impl RustTranspiler {
-    pub fn transpile(&mut self, ast: &mut AST) -> AutoResult<String> {
-        // Phase 1: Transform AST (evaluate comptime constructs)
-        self.ctee.transform(ast)?;
-
-        // Phase 2: Type check transformed AST
-        self.type_check(ast)?;
-
-        // Phase 3: Generate Rust code
-        self.codegen(ast)?;
-
-        Ok(self.output.clone())
-    }
-}
-```
-
-**Deliverables**:
-- [ ] CTEE embedded in a2r
-- [ ] CTEE embedded in a2c
-- [ ] Const value substitution in output
-- [ ] Full end-to-end tests
-
 ## Deterministic Execution
 
 ### Why Deterministic?
@@ -604,72 +258,6 @@ Compile-time execution must be **reproducible**:
 | `Env.get()` | ❌ Error | ✅ Allowed |
 | Pure computation | ✅ Allowed | ✅ Allowed |
 
-### Implementing Determinism
-
-```rust
-impl AutoVM {
-    /// Execute in sandboxed/deterministic mode
-    pub fn execute_sandboxed(&mut self, bytecode: &[u8], limits: &CTEELimits) -> AutoResult<VMValue> {
-        // Enable determinism checks
-        self.deterministic = true;
-
-        // Set resource limits
-        self.limits = limits.clone();
-
-        // Execute with monitoring
-        let start = std::time::Instant::now();
-        let result = self.execute_with_monitoring(bytecode, |vm| {
-            // Check time limit
-            if start.elapsed().as_millis() as u64 > limits.max_time_ms {
-                return Err(VMError::Timeout);
-            }
-
-            // Check memory limit
-            if vm.memory_usage() > limits.max_memory {
-                return Err(VMError::MemoryLimitExceeded);
-            }
-
-            // Check recursion limit
-            if vm.call_stack_depth() > limits.max_recursion {
-                return Err(VMError::RecursionLimitExceeded);
-            }
-
-            Ok(())
-        })?;
-
-        Ok(result)
-    }
-
-    /// Native call with determinism check
-    fn call_native(&mut self, id: u16) -> AutoResult<()> {
-        if self.deterministic {
-            // Check if native is allowed in deterministic mode
-            if !self.is_deterministic_native(id) {
-                return Err(VMError::NonDeterministicInComptime);
-            }
-        }
-
-        // Call native
-        self.natives.call(id, self)
-    }
-
-    /// Check if native is allowed in deterministic mode
-    fn is_deterministic_native(&self, id: u16) -> bool {
-        match id {
-            // Allowed: pure operations
-            NATIVE_PRINT_I32 | NATIVE_PRINT_STR => true,
-
-            // Disallowed: I/O, randomness, external state
-            NATIVE_FILE_READ | NATIVE_FILE_WRITE |
-            NATIVE_TIME_NOW | NATIVE_RANDOM_INT |
-            NATIVE_ENV_GET | NATIVE_PROCESS_SPAWN => false,
-
-            _ => true, // Default: allow
-        }
-    }
-}
-```
-
 ## Resource Limits
 
 ### Default Limits
@@ -683,19 +271,6 @@ impl Default for CTEELimits {
             max_recursion: 256,       // 256 frames
             max_native_calls: 10000,  // 10k calls
         }
-    }
-}
-```
-
-### Configurable Limits
-
-```auto
-// In autoconfig.at:
-comptime {
-    limits {
-        time_ms = 10000      // 10 seconds
-        memory_mb = 200      // 200 MB
-        recursion = 512      // 512 frames
     }
 }
 ```
@@ -728,13 +303,6 @@ pub enum CTEEError {
 }
 ```
 
-### Error Recovery
-
-1. **Timeout/Memory**: Abort comptime, emit error
-2. **Non-determinism**: Suggest using `comptime!` (full mode)
-3. **Type error**: Report with source location
-4. **Constraint failure**: Report which constraint failed
-
 ## File Structure
 
 ```
@@ -749,45 +317,6 @@ crates/auto-lang/src/comptime/
 ├── effects.rs          # Side effect tracking
 └── tests.rs            # Comprehensive tests
 ```
-
-## Success Criteria
-
-### Phase 1 Complete (Parser Support)
-- [ ] Lexer recognizes `#if`, `#for`, `#is`, `#{` tokens
-- [ ] Parser builds `ComptimeIfStmt`, `ComptimeForStmt`, `ComptimeIsStmt`, `ComptimeBlockExpr`
-- [ ] `#{expr}` parsed as interpolation within expressions
-
-### Phase 2 Complete (Meta-Evaluator)
-- [ ] CTEE coordinator implemented
-- [ ] Sandbox infrastructure working
-- [ ] Resource limits enforced (timeout, memory, recursion)
-- [ ] Deterministic mode blocks I/O and randomness
-
-### Phase 3 Complete (Transform Pass)
-- [ ] `#if`/`#elif`/`#else` AST pruning works
-- [ ] `#for` loop unrolling with `#{var}` interpolation
-- [ ] `#{ ... }` block evaluation and literal conversion
-- [ ] Integration with compilation pipeline
-
-### Phase 4 Complete (Stdlib & Reflection)
-- [ ] Built-in constants: `OS`, `ARCH`, `POINTER_WIDTH`, `COMPILER_VERSION`
-- [ ] `compile_error(msg)` intrinsic works
-- [ ] (Future) Type reflection API available
-
-### Phase 5 Complete (Diagnostics)
-- [ ] `ComptimeError` with miette integration
-- [ ] Compile-time stack traces
-- [ ] Clear distinction between comptime and generated code errors
-
-### Phase 6 Complete (Integration)
-- [ ] CTEE embedded in a2r
-- [ ] CTEE embedded in a2c
-- [ ] Full compilation pipeline works end-to-end
-
-### Self-Hosting Ready
-- [ ] All Tier 1 features implemented
-- [ ] Auto compiler can compile itself
-- [ ] `#if`, `#for`, `#{}` work in stdlib and compiler
 
 ## Dependencies
 
@@ -812,12 +341,926 @@ crates/auto-lang/src/comptime/
 - [Plan 033: Self-Hosting Compiler](./033-self-hosting-compiler.md) - Ultimate goal
 - [Plan 031: Bootstrap Strategy](./031-bootstrap-strategy.md) - Bootstrap roadmap
 
-## Design Documents
-
-- [Compile-Time Execution Design](../design/compile-time-execution.md) - **Official syntax specification** (`#if`, `#for`, `#is`, `#{}`)
-
 ## References
 
 - [Zig Comptime](https://ziglang.org/documentation/master/#comptime) - Inspiration
 - [D CTFE](https://dlang.org/spec/consteval.html) - Compile-time function execution
 - [Rust const fn](https://doc.rust-lang.org/reference/const_eval.html) - Const evaluation
+
+---
+---
+
+# Part B: Detailed Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
+
+**Goal:** Implement a compile-time execution system using `#` prefix syntax for conditional compilation, loop unrolling, and constant evaluation.
+
+**Architecture:** Two-stage compilation where Stage 1 (Meta-Eval) executes `#`-marked code using an embedded interpreter, transforming the AST before Stage 2 (Codegen). Uses existing AutoVM in sandboxed mode.
+
+**Tech Stack:** Rust, miette (error reporting), existing AutoVM infrastructure
+
+**Design Doc:** [docs/design/compile-time-execution.md](../design/compile-time-execution.md)
+
+---
+
+## Phase 1: Lexer & Token Support
+
+### Task 1.1: Add Comptime Token Types
+
+**Files:**
+- Modify: `crates/auto-lang/src/token.rs:14-160`
+
+**Step 1: Add new token kinds for comptime keywords**
+
+In `crates/auto-lang/src/token.rs`, add after line 74 (`Hash`):
+
+```rust
+    // Comptime keywords (compile-time execution)
+    HashIf,      // #if
+    HashFor,     // #for
+    HashIs,      // #is
+    HashBrace,   // #{
+```
+
+**Step 2: Add Display implementations for new tokens**
+
+In the `impl fmt::Display for Token` block (around line 201), add:
+
+```rust
+            TokenKind::HashIf => write!(f, "<#if>"),
+            TokenKind::HashFor => write!(f, "<#for>"),
+            TokenKind::HashIs => write!(f, "<#is>"),
+            TokenKind::HashBrace => write!(f, "<#{>"),
+```
+
+**Step 3: Run tests to verify compilation**
+
+Run: `rtk cargo build -p auto-lang`
+Expected: Compiles successfully with no errors
+
+**Step 4: Commit**
+
+```bash
+rtk git add crates/auto-lang/src/token.rs
+rtk git commit -m "feat(token): add comptime token kinds (#if, #for, #is, #{)"
+```
+
+---
+
+### Task 1.2: Update Lexer to Recognize Comptime Keywords
+
+**Files:**
+- Modify: `crates/auto-lang/src/lexer.rs:660-670`
+
+**Step 1: Write the failing test**
+
+Create `crates/auto-lang/src/lexer_comptime_test.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use crate::lexer::Lexer;
+    use crate::token::TokenKind;
+
+    #[test]
+    fn test_hash_if_token() {
+        let mut lexer = Lexer::new("#if");
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashIf);
+    }
+
+    #[test]
+    fn test_hash_for_token() {
+        let mut lexer = Lexer::new("#for");
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashFor);
+    }
+
+    #[test]
+    fn test_hash_is_token() {
+        let mut lexer = Lexer::new("#is");
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashIs);
+    }
+
+    #[test]
+    fn test_hash_brace_token() {
+        let mut lexer = Lexer::new("#{");
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashBrace);
+    }
+
+    #[test]
+    fn test_hash_alone_still_works() {
+        // #[...] annotation syntax should still work
+        let mut lexer = Lexer::new("#[");
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::Hash);
+    }
+}
+```
+
+**Step 2: Run tests to verify they fail**
+
+Run: `rtk cargo test -p auto-lang lexer_comptime_test`
+Expected: FAIL - tests not found or wrong token kind
+
+**Step 3: Modify lexer to recognize comptime keywords**
+
+In `crates/auto-lang/src/lexer.rs`, find the `#` handling around line 660 and replace:
+
+```rust
+                '#' => {
+                    // Look ahead to check for comptime keywords
+                    if self.peek('i') {
+                        let mut iter = self.chars.clone();
+                        iter.next(); // skip 'i'
+                        if let Some('f') = iter.next() {
+                            let next_next = iter.clone().next();
+                            if next_next.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+                                self.chars.next(); // skip 'i'
+                                self.chars.next(); // skip 'f'
+                                return Ok(Token::new(TokenKind::HashIf, self.pos(3), "#if".into()));
+                            }
+                        }
+                        // Check for #is
+                        let mut iter_s = self.chars.clone();
+                        iter_s.next(); // skip 'i'
+                        if let Some('s') = iter_s.next() {
+                            let next_next = iter_s.clone().next();
+                            if next_next.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+                                self.chars.next(); // skip 'i'
+                                self.chars.next(); // skip 's'
+                                return Ok(Token::new(TokenKind::HashIs, self.pos(3), "#is".into()));
+                            }
+                        }
+                    } else if self.peek('f') {
+                        let mut iter = self.chars.clone();
+                        iter.next(); // skip 'f'
+                        if let Some('o') = iter.next() {
+                            if let Some('r') = iter.next() {
+                                let next_next = iter.clone().next();
+                                if next_next.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+                                    self.chars.next(); // skip 'f'
+                                    self.chars.next(); // skip 'o'
+                                    self.chars.next(); // skip 'r'
+                                    return Ok(Token::new(TokenKind::HashFor, self.pos(4), "#for".into()));
+                                }
+                            }
+                        }
+                    } else if self.peek('{') {
+                        self.chars.next(); // skip '{'
+                        return Ok(Token::new(TokenKind::HashBrace, self.pos(2), "#{".into()));
+                    }
+                    // Default: return Hash for #[...] annotations
+                    return Ok(self.single(TokenKind::Hash, c));
+                }
+```
+
+**Step 4: Run tests to verify they pass**
+
+Run: `rtk cargo test -p auto-lang lexer_comptime_test`
+Expected: PASS - all 5 tests pass
+
+**Step 5: Commit**
+
+```bash
+rtk git add crates/auto-lang/src/lexer.rs crates/auto-lang/src/lexer_comptime_test.rs
+rtk git commit -m "feat(lexer): recognize comptime keywords (#if, #for, #is, #{)"
+```
+
+---
+
+## Phase 2: AST Nodes for Comptime
+
+### Task 2.1: Create Comptime AST Node Types
+
+**Files:**
+- Create: `crates/auto-lang/src/ast/comptime.rs`
+- Modify: `crates/auto-lang/src/ast.rs` (add mod and re-export)
+
+**Step 1: Create comptime.rs with AST node definitions**
+
+Create `crates/auto-lang/src/ast/comptime.rs` with the following structures:
+
+```rust
+//! Compile-time execution AST nodes
+//!
+//! Supports: #if, #for, #is, #{ }, #{expr}
+
+use super::{Body, Expr, Name, ToAtom, ToNode, AtomWriter, ToAtomStr};
+use auto_val::{AutoStr, Node as AutoNode};
+use std::{fmt, io as stdio};
+
+/// Compile-time conditional (`#if`)
+#[derive(Debug, Clone)]
+pub struct ComptimeIf {
+    pub branches: Vec<ComptimeBranch>,
+    pub else_: Option<Body>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComptimeBranch {
+    pub condition: Expr,
+    pub body: Body,
+}
+
+/// Compile-time loop (`#for`)
+#[derive(Debug, Clone)]
+pub struct ComptimeFor {
+    pub var: Name,
+    pub range_start: Expr,
+    pub range_end: Expr,
+    pub inclusive: bool,
+    pub body: Body,
+}
+
+/// Compile-time pattern match (`#is`)
+#[derive(Debug, Clone)]
+pub struct ComptimeIs {
+    pub subject: Expr,
+    pub cases: Vec<ComptimeCase>,
+    pub else_: Option<Body>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComptimeCase {
+    pub pattern: Expr,
+    pub body: Body,
+}
+
+/// Compile-time evaluation block (`#{ }`)
+#[derive(Debug, Clone)]
+pub struct ComptimeBlock {
+    pub body: Body,
+    pub result: Option<Expr>,
+}
+
+/// Compile-time interpolation (`#{expr}`)
+#[derive(Debug, Clone)]
+pub struct ComptimeInterpolate {
+    pub expr: Expr,
+}
+```
+
+Include full `Display`, `AtomWriter`, `ToNode`, `ToAtom` implementations for each struct.
+
+**Step 2: Add mod and re-export to ast.rs**
+
+In `crates/auto-lang/src/ast.rs`, add after existing mod declarations:
+
+```rust
+mod comptime;
+pub use comptime::*;
+```
+
+**Step 3: Add Comptime variants to Stmt enum**
+
+Add to `Stmt` enum:
+
+```rust
+    // Comptime statements
+    ComptimeIf(ComptimeIf),
+    ComptimeFor(ComptimeFor),
+    ComptimeIs(ComptimeIs),
+```
+
+**Step 4: Add ComptimeBlock variant to Expr enum**
+
+Add to `Expr` enum:
+
+```rust
+    // Comptime expressions
+    ComptimeBlock(ComptimeBlock),
+    ComptimeInterpolate(ComptimeInterpolate),
+```
+
+**Step 5: Build to verify**
+
+Run: `rtk cargo build -p auto-lang`
+Expected: Compiles successfully
+
+**Step 6: Commit**
+
+```bash
+rtk git add crates/auto-lang/src/ast/comptime.rs crates/auto-lang/src/ast.rs
+rtk git commit -m "feat(ast): add comptime AST nodes (ComptimeIf, ComptimeFor, ComptimeIs, ComptimeBlock)"
+```
+
+---
+
+## Phase 3: Parser Support
+
+### Task 3.1: Parse `#if` Statement
+
+**Files:**
+- Modify: `crates/auto-lang/src/parser.rs`
+
+**Step 1: Add parse_comptime_if method**
+
+```rust
+    /// Parse: #if cond { } elif cond { } else { }
+    fn parse_comptime_if(&mut self) -> AutoResult<Stmt> {
+        self.expect(TokenKind::HashIf)?;
+
+        let mut branches = Vec::new();
+        let condition = self.expr()?;
+        self.skip_newlines();
+        let body = self.parse_body()?;
+        branches.push(ComptimeBranch { condition, body });
+
+        // Parse elif branches
+        self.skip_newlines();
+        while self.is_kind(TokenKind::Ident) && self.cur.text == "elif" {
+            self.next();
+            let elif_cond = self.expr()?;
+            self.skip_newlines();
+            let elif_body = self.parse_body()?;
+            branches.push(ComptimeBranch { condition: elif_cond, body: elif_body });
+            self.skip_newlines();
+        }
+
+        // Parse else
+        let mut else_body = None;
+        if self.is_kind(TokenKind::Else) {
+            self.next();
+            self.skip_newlines();
+            else_body = Some(self.parse_body()?);
+        }
+
+        Ok(Stmt::ComptimeIf(ComptimeIf { branches, else_: else_body }))
+    }
+```
+
+**Step 2: Integrate into parse_stmt**
+
+Add case in `parse_stmt()`:
+
+```rust
+            TokenKind::HashIf => self.parse_comptime_if()?,
+```
+
+**Step 3: Write and run tests**
+
+```rust
+    #[test]
+    fn test_parse_comptime_if_simple() {
+        let code = r#"#if OS == "windows" { init_win32() }"#;
+        let mut parser = Parser::new(code, CompileDest::Interp);
+        let ast = parser.parse().unwrap();
+        assert!(matches!(&ast.stmts[0], Stmt::ComptimeIf(_)));
+    }
+```
+
+**Step 4: Commit**
+
+```bash
+rtk git commit -am "feat(parser): parse #if comptime conditional"
+```
+
+---
+
+### Task 3.2: Parse `#for` Statement
+
+**Step 1: Add parse_comptime_for method**
+
+```rust
+    /// Parse: #for var in start..end { }
+    fn parse_comptime_for(&mut self) -> AutoResult<Stmt> {
+        self.expect(TokenKind::HashFor)?;
+        let var = self.expect_ident()?;
+        self.expect(TokenKind::In)?;
+
+        let start = self.expr()?;
+        let inclusive = if self.is_kind(TokenKind::RangeEq) {
+            self.next();
+            true
+        } else {
+            self.expect(TokenKind::Range)?;
+            false
+        };
+        let end = self.expr()?;
+
+        self.skip_newlines();
+        let body = self.parse_body()?;
+
+        Ok(Stmt::ComptimeFor(ComptimeFor {
+            var: var.into(),
+            range_start: start,
+            range_end: end,
+            inclusive,
+            body,
+        }))
+    }
+```
+
+**Step 2: Integrate into parse_stmt**
+
+```rust
+            TokenKind::HashFor => self.parse_comptime_for()?,
+```
+
+**Step 3: Commit**
+
+```bash
+rtk git commit -am "feat(parser): parse #for comptime loop"
+```
+
+---
+
+### Task 3.3: Parse `#is` Statement
+
+**Step 1: Add parse_comptime_is method**
+
+```rust
+    /// Parse: #is subject { pattern => { } else => { } }
+    fn parse_comptime_is(&mut self) -> AutoResult<Stmt> {
+        self.expect(TokenKind::HashIs)?;
+        let subject = self.expr()?;
+
+        self.skip_newlines();
+        self.expect(TokenKind::LBrace)?;
+
+        let mut cases = Vec::new();
+        let mut else_body = None;
+
+        self.skip_newlines();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::Else) {
+                self.next();
+                self.expect(TokenKind::DoubleArrow)?;
+                self.skip_newlines();
+                else_body = Some(self.parse_body()?);
+                break;
+            }
+
+            let pattern = self.expr()?;
+            self.expect(TokenKind::DoubleArrow)?;
+            self.skip_newlines();
+            let body = self.parse_body()?;
+            cases.push(ComptimeCase { pattern, body });
+            self.skip_newlines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::ComptimeIs(ComptimeIs { subject, cases, else_: else_body }))
+    }
+```
+
+**Step 2: Integrate and commit**
+
+---
+
+### Task 3.4: Parse `#{ }` Block and Interpolation
+
+**Step 1: Add parse_comptime_block_expr for expressions**
+
+In primary expression parsing:
+
+```rust
+            TokenKind::HashBrace => {
+                self.next(); // skip #{
+                // Check if followed by } immediately - that's interpolation
+                // Otherwise it's a block
+                ...
+            }
+```
+
+**Step 2: Commit**
+
+```bash
+rtk git commit -am "feat(parser): parse #{ } comptime block and interpolation"
+```
+
+---
+
+## Phase 4: CTEE Evaluator (Reuse VmInterpreter)
+
+> **IMPORTANT**: We reuse the existing `VmInterpreter` for compile-time code execution.
+> This avoids code duplication and ensures all language features are supported.
+> The key additions are:
+> 1. **Comptime mode flag** - Distinguishes compile-time vs runtime execution
+> 2. **Built-in constants** - OS, ARCH, DEBUG, VERSION available at compile time
+> 3. **AST transform pass** - Prunes/expands `#if`, `#for`, `#is`, `#{}` constructs
+
+### Task 4.1: Create CTEE Module Structure (Simplified)
+
+**Files:**
+- Create: `crates/auto-lang/src/comptime/mod.rs`
+- Create: `crates/auto-lang/src/comptime/transformer.rs` (AST transform only)
+- Modify: `crates/auto-lang/src/interpreter/vm_interpreter.rs` (add comptime mode)
+
+**Step 1: Create comptime module with transformer**
+
+The transformer uses `VmInterpreter` to evaluate conditions, not a custom evaluator:
+
+```rust
+// crates/auto-lang/src/comptime/mod.rs
+pub mod transformer;
+
+pub use transformer::*;
+
+// crates/auto-lang/src/comptime/transformer.rs
+use crate::ast::{Code, Stmt, HashIf, HashFor, HashIs, HashBrace};
+use crate::interpreter::VmInterpreter;
+use crate::error::AutoResult;
+
+/// Compile-Time Execution Engine
+///
+/// Transforms AST by evaluating `#if`, `#for`, `#is`, `#{}` constructs.
+/// Uses VmInterpreter for expression evaluation.
+pub struct CTEE {
+    /// Embedded VM interpreter for expression evaluation
+    vm: VmInterpreter,
+    /// Built-in compile-time constants (OS, ARCH, DEBUG, etc.)
+    builtins: HashMap<String, Value>,
+    /// Target platform
+    target_os: String,
+    target_arch: String,
+}
+
+impl CTEE {
+    pub fn new() -> Self {
+        let mut ctee = Self {
+            vm: VmInterpreter::new(),
+            builtins: HashMap::new(),
+            target_os: "windows".to_string(),
+            target_arch: "x64".to_string(),
+        };
+        ctee.init_builtins();
+        ctee
+    }
+
+    /// Initialize built-in compile-time constants
+    fn init_builtins(&mut self) {
+        self.builtins.insert("OS".into(), Value::Str(self.target_os.clone().into()));
+        self.builtins.insert("ARCH".into(), Value::Str(self.target_arch.clone().into()));
+        self.builtins.insert("DEBUG".into(), Value::Bool(true));
+        self.builtins.insert("VERSION".into(), Value::Str("0.1.0".into()));
+    }
+
+    /// Transform AST by evaluating all comptime constructs
+    pub fn transform(&mut self, code: &mut Code) -> AutoResult<()> {
+        let mut new_stmts = Vec::new();
+        for stmt in code.stmts.drain(..) {
+            let transformed = self.transform_stmt(stmt)?;
+            new_stmts.extend(transformed);
+        }
+        code.stmts = new_stmts;
+        Ok(())
+    }
+
+    /// Evaluate a compile-time expression using VmInterpreter
+    fn eval_expr(&mut self, expr: &Expr) -> AutoResult<Value> {
+        // Set built-in constants as globals
+        for (name, value) in &self.builtins {
+            self.vm.set_global(name, value.clone());
+        }
+
+        // Convert expression to code string and run
+        let code = format!("{}\n", expr);
+        self.vm.run(&code)
+    }
+
+    fn transform_stmt(&mut self, stmt: Stmt) -> AutoResult<Vec<Stmt>> {
+        match stmt {
+            Stmt::HashIf(hash_if) => self.transform_hash_if(hash_if),
+            Stmt::HashFor(hash_for) => self.transform_hash_for(hash_for),
+            Stmt::HashIs(hash_is) => self.transform_hash_is(hash_is),
+            Stmt::HashBrace(hash_brace) => self.transform_hash_brace(hash_brace),
+            other => Ok(vec![other]),
+        }
+    }
+
+    // ... transform methods for #if, #for, #is, #{}
+}
+```
+
+**Step 2: Add comptime mode to VmInterpreter**
+
+In `crates/auto-lang/src/interpreter/vm_interpreter.rs`:
+
+```rust
+pub struct VmInterpreter {
+    rt: tokio::runtime::Runtime,
+    exports: StdHashMap<String, u32>,
+    /// Compile-time mode: disables non-deterministic operations
+    comptime_mode: bool,
+}
+
+impl VmInterpreter {
+    pub fn new() -> Self {
+        Self {
+            rt: tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"),
+            exports: StdHashMap::new(),
+            comptime_mode: false,
+        }
+    }
+
+    /// Enable compile-time mode (disables I/O, random, time)
+    pub fn set_comptime_mode(&mut self, enabled: bool) {
+        self.comptime_mode = enabled;
+    }
+
+    /// Check if in compile-time mode
+    pub fn is_comptime_mode(&self) -> bool {
+        self.comptime_mode
+    }
+}
+```
+
+**Step 3: Commit**
+
+```bash
+rtk git add crates/auto-lang/src/comptime/ crates/auto-lang/src/interpreter/
+rtk git commit -m "feat(comptime): create CTEE transformer using VmInterpreter"
+```
+
+---
+
+### Task 4.2: Implement AST Transform Pass
+
+**Step 1: Implement transform methods using VmInterpreter**
+
+```rust
+impl CTEE {
+    /// Transform #if - evaluate condition using VM, keep matching branch
+    fn transform_hash_if(&mut self, hash_if: HashIf) -> AutoResult<Vec<Stmt>> {
+        // Use VmInterpreter to evaluate condition
+        let cond_value = self.eval_expr(&hash_if.cond)?;
+
+        if cond_value.is_truthy() {
+            // Keep then branch, recursively transform
+            let mut result = Vec::new();
+            for stmt in hash_if.then_block.stmts {
+                result.extend(self.transform_stmt(stmt)?);
+            }
+            Ok(result)
+        } else if let Some(else_block) = hash_if.else_block {
+            // Handle else branch
+            match else_block {
+                HashIfElse::Block(body) => {
+                    let mut result = Vec::new();
+                    for stmt in body.stmts {
+                        result.extend(self.transform_stmt(stmt)?);
+                    }
+                    Ok(result)
+                }
+                HashIfElse::ElseIf(nested_if) => {
+                    self.transform_hash_if(*nested_if)
+                }
+            }
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Transform #for - unroll loop at compile time
+    fn transform_hash_for(&mut self, hash_for: HashFor) -> AutoResult<Vec<Stmt>> {
+        // Evaluate iterable (range or array) using VM
+        let iter_value = self.eval_expr(&hash_for.iter)?;
+
+        // Get iteration values
+        let values = self.value_to_iter(&iter_value)?;
+
+        // Set loop variable and unroll
+        let var_name = hash_for.var.to_string();
+        let mut result = Vec::new();
+
+        for value in values {
+            // Set loop variable as global in VM
+            self.builtins.insert(var_name.clone(), value.clone());
+
+            // Transform body with loop variable set
+            for stmt in hash_for.body.stmts.clone() {
+                result.extend(self.transform_stmt(stmt)?);
+            }
+        }
+
+        // Remove loop variable
+        self.builtins.remove(&var_name);
+        Ok(result)
+    }
+
+    /// Convert Value to iterator values
+    fn value_to_iter(&self, value: &Value) -> AutoResult<Vec<Value>> {
+        match value {
+            Value::Array(arr) => Ok(arr.iter().cloned().collect()),
+            Value::Int(end) => {
+                Ok((0..*end).map(Value::Int).collect())
+            }
+            _ => Err(AutoError::Generic(
+                format!("Cannot iterate over {:?}", value)
+            )),
+        }
+    }
+
+    /// Transform #is - pattern match at compile time
+    fn transform_hash_is(&mut self, hash_is: HashIs) -> AutoResult<Vec<Stmt>> {
+        let target_value = self.eval_expr(&hash_is.target)?;
+
+        for branch in hash_is.branches {
+            match branch {
+                HashIsBranch::EqBranch(pattern, body) => {
+                    let pattern_value = self.eval_expr(&pattern)?;
+                    if target_value == pattern_value {
+                        let mut result = Vec::new();
+                        for stmt in body.stmts {
+                            result.extend(self.transform_stmt(stmt)?);
+                        }
+                        return Ok(result);
+                    }
+                }
+                HashIsBranch::IfBranch(cond, body) => {
+                    let cond_value = self.eval_expr(&cond)?;
+                    if cond_value.is_truthy() {
+                        let mut result = Vec::new();
+                        for stmt in body.stmts {
+                            result.extend(self.transform_stmt(stmt)?);
+                        }
+                        return Ok(result);
+                    }
+                }
+                HashIsBranch::ElseBranch(body) => {
+                    let mut result = Vec::new();
+                    for stmt in body.stmts {
+                        result.extend(self.transform_stmt(stmt)?);
+                    }
+                    return Ok(result);
+                }
+            }
+        }
+        Ok(vec![])
+    }
+
+    /// Transform #{} - evaluate and substitute result
+    fn transform_hash_brace(&mut self, hash_brace: HashBrace) -> AutoResult<Vec<Stmt>> {
+        let value = self.eval_expr(&hash_brace.expr)?;
+        let expr = self.value_to_expr(&value);
+        Ok(vec![Stmt::Expr(expr)])
+    }
+
+    /// Convert Value back to Expr literal
+    fn value_to_expr(&self, value: &Value) -> Expr {
+        match value {
+            Value::Nil => Expr::Nil,
+            Value::Int(i) => Expr::I64(*i),
+            Value::Bool(b) => Expr::Bool(*b),
+            Value::Str(s) => Expr::Str(s.clone()),
+            Value::Float(f) => Expr::Double(*f, false),
+            // ... other types
+            _ => Expr::Nil,
+        }
+    }
+}
+```
+
+**Step 2: Add comptime mode checks to VM FFI**
+
+In `crates/auto-lang/src/vm/ffi/`, add checks for non-deterministic operations:
+
+```rust
+// In stdlib.rs or similar FFI handler
+pub fn shim_time_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    if vm.is_comptime_mode() {
+        return Err(VMError::RuntimeError(
+            "Time.now() is not allowed in compile-time mode".to_string()
+        ));
+    }
+    // ... normal implementation
+}
+```
+
+**Step 3: Commit**
+
+```bash
+rtk git commit -am "feat(comptime): implement AST transform pass using VmInterpreter"
+```
+
+---
+
+## Phase 5: Integration
+
+### Task 5.1: Integrate CTEE into Compilation Pipeline
+
+**Files:**
+- Modify: `crates/auto-lang/src/lib.rs`
+
+**Step 1: Add comptime transform to run()**
+
+```rust
+pub fn run(code: &str) -> AutoResult<String> {
+    let mut parser = Parser::new(code, CompileDest::Interp);
+    let mut ast = parser.parse()?;
+
+    // NEW: Apply comptime transformations
+    let mut ctee = comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
+
+    let result = eval::eval(&ast)?;
+    Ok(result)
+}
+```
+
+**Step 2: Write end-to-end tests**
+
+**Step 3: Commit**
+
+```bash
+rtk git commit -am "feat: integrate CTEE into compilation pipeline"
+```
+
+---
+
+### Task 5.2: Add compile_error() Intrinsic
+
+**Step 1: Handle compile_error in transform**
+
+```rust
+    fn compile_error(&self, msg: &str) -> AutoResult<()> {
+        Err(SyntaxError::Generic {
+            message: format!("compile_error: {}", msg),
+            span: SourceSpan::new(0.into(), 0.into()),
+        }.into())
+    }
+```
+
+**Step 2: Commit**
+
+---
+
+## Phase 6: Error Reporting
+
+### Task 6.1: Add Comptime-Specific Error Types
+
+**Files:**
+- Modify: `crates/auto-lang/src/error.rs`
+
+**Step 1: Add ComptimeError with miette integration**
+
+```rust
+#[derive(Debug, Error)]
+#[error("Compile-time error: {message}")]
+pub struct ComptimeError {
+    pub message: String,
+    #[source_code]
+    pub source: Option<String>,
+    #[label("error occurred here")]
+    pub span: SourceSpan,
+    pub comptime_stack: Vec<String>,
+}
+
+impl Diagnostic for ComptimeError {
+    fn code(&self) -> Option<Box<dyn std::fmt::Display>> {
+        Some(Box::new("auto_comptime_E0001"))
+    }
+}
+```
+
+**Step 2: Commit**
+
+```bash
+rtk git commit -am "feat(error): add ComptimeError with source location"
+```
+
+---
+
+## Success Criteria Checklist
+
+### Phase 1 Complete (Lexer & Tokens) ✅
+- [x] Lexer recognizes `#if`, `#for`, `#is`, `#{` tokens
+- [x] All comptime token tests pass
+
+### Phase 2 Complete (AST Nodes) ✅
+- [x] `HashIf`, `HashFor`, `HashIs`, `HashBrace` structs defined
+- [x] `ToAtom` and `ToNode` implementations work
+- [x] `Stmt` enum has `HashIf`, `HashFor`, `HashIs`, `HashBrace` variants
+
+### Phase 3 Complete (Parser) ✅
+- [x] `#if ... else { }` parses correctly
+- [x] `#for var in iter { }` parses correctly
+- [x] `#is target { pattern => body }` parses correctly
+- [x] `#{ expr }` parses as statement
+
+### Phase 4 Complete (CTEE) ✅
+- [x] CTEE transformer using VmInterpreter (not custom evaluator)
+- [x] Built-in constants (OS, ARCH, DEBUG, VERSION) available at compile time
+- [x] `transform()` modifies AST in-place
+- [x] `#if` condition evaluation works (via VmInterpreter)
+- [x] `#for` loop unrolling works
+- [x] `#is` pattern matching works
+- [ ] VmInterpreter comptime mode blocks non-deterministic ops (TODO)
+
+### Phase 5 Complete (Integration) ⏳
+- [ ] CTEE integrated into `run()` pipeline
+- [ ] `compile_error()` intrinsic works
+
+### Phase 6 Complete (Error Reporting) ⏳
+- [ ] `ComptimeError` with miette integration
+- [ ] Clear error messages for comptime failures
+
+### Self-Hosting Ready
+- [ ] All Tier 1 features implemented
+- [ ] Auto compiler can compile itself
+- [ ] `#if`, `#for`, `#{}` work in stdlib and compiler

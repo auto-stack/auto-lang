@@ -127,6 +127,11 @@ impl<'db> DepScanner<'db> {
             Stmt::ViewBlock(_) => {}
             // Plan 121: Task/Msg system
             Stmt::TaskDef(_) => {}
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(_) => {}
+            Stmt::HashFor(_) => {}
+            Stmt::HashIs(_) => {}
+            Stmt::HashBrace(_) => {}
         }
     }
 

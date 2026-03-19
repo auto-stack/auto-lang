@@ -158,6 +158,12 @@ impl<'db> Indexer<'db> {
                     // For now, skip task declarations
                     // Phase 2: Could index task declarations
                 }
+
+                // Plan 095: Compile-time execution
+                Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) => {
+                    // Compile-time constructs are processed before indexing
+                    // Skip them here as they should be resolved by CTEE
+                }
             }
         }
 

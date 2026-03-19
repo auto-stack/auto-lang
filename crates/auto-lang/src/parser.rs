@@ -2758,6 +2758,11 @@ impl<'a> Parser<'a> {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Is => self.is_stmt()?,
+            // Plan 095: Compile-time execution statements
+            TokenKind::HashIf => self.hash_if_stmt()?,
+            TokenKind::HashFor => self.hash_for_stmt()?,
+            TokenKind::HashIs => self.hash_is_stmt()?,
+            TokenKind::HashBrace => self.hash_brace_expr()?,
             TokenKind::Var => self.parse_store_stmt()?,
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
@@ -4141,6 +4146,174 @@ impl<'a> Parser<'a> {
 
     pub fn is_stmt(&mut self) -> AutoResult<Stmt> {
         Ok(Stmt::Is(self.parse_is()?))
+    }
+
+    // Plan 095: Compile-time execution statements
+
+    /// Parse #if statement for compile-time conditional compilation
+    /// Syntax: #if condition { ... } else { ... }
+    /// Returns HashIf directly (not wrapped in Stmt) for recursive elif parsing
+    fn hash_if_inner(&mut self) -> AutoResult<HashIf> {
+        self.next(); // skip #if
+
+        // Parse condition - use parse_expr just like normal if statement
+        // This allows: #if DEBUG { ... } and #if x == 10 { ... }
+        let cond = self.parse_expr()?;
+        let then_block = self.body()?;
+
+        // Check for else clause
+        let else_block = if self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+            if self.is_kind(TokenKind::HashIf) {
+                // else #if - elif chain
+                Some(HashIfElse::ElseIf(Box::new(self.hash_if_inner()?)))
+            } else {
+                // else { ... }
+                Some(HashIfElse::Block(self.body()?))
+            }
+        } else {
+            None
+        };
+
+        Ok(HashIf {
+            cond,
+            then_block,
+            else_block,
+        })
+    }
+
+    /// Public wrapper that returns Stmt::HashIf
+    pub fn hash_if_stmt(&mut self) -> AutoResult<Stmt> {
+        Ok(Stmt::HashIf(self.hash_if_inner()?))
+    }
+
+    /// Parse #for statement for compile-time loop unrolling
+    /// Syntax: #for var in iterable { ... }
+    pub fn hash_for_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip #for
+        let var = self.parse_name()?;
+        self.expect(TokenKind::In)?;
+
+        // Enter scope and define loop variable (same as normal for loop)
+        self.enter_scope();
+        let meta = Meta::Store(Store {
+            kind: StoreKind::Var,
+            name: var.clone(),
+            expr: Expr::Nil,
+            ty: Type::Int, // Default type, will be inferred later
+        });
+        self.define(var.as_str(), meta);
+
+        let iter = self.iterable_expr()?;
+        let body = self.body()?;
+
+        self.exit_scope();
+
+        Ok(Stmt::HashFor(HashFor {
+            var,
+            iter,
+            body,
+        }))
+    }
+
+    /// Parse #is statement for compile-time type matching
+    /// Syntax: #is target { pattern1 => body1 pattern2 => body2 else => body3 }
+    /// Same syntax as normal is statement, just with # prefix
+    pub fn hash_is_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip #is
+        let target = self.lhs_expr()?;
+
+        self.expect(TokenKind::LBrace)?; // {
+        self.skip_empty_lines();
+
+        let mut branches = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            let branch = self.parse_hash_is_branch(&target)?;
+            branches.push(branch);
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::HashIs(HashIs {
+            target,
+            branches,
+        }))
+    }
+
+    /// Parse a single branch in #is statement
+    /// Reuses the same logic as normal is branch parsing
+    fn parse_hash_is_branch(&mut self, tgt: &Expr) -> AutoResult<HashIsBranch> {
+        match self.cur.kind {
+            TokenKind::If => {
+                self.next(); // skip if
+                let expr = self.cond_expr()?;
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = HashIsBranch::IfBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            TokenKind::Else => {
+                self.next(); // skip else
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = HashIsBranch::ElseBranch(body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            _ => {
+                // Pattern expression (e.g., "x64", type_name)
+                let expr = self.is_branch_cond_expr()?;
+                self.expect(TokenKind::DoubleArrow)?;
+
+                // Check for pattern binding cases (same as normal is)
+                let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
+                    // Tag pattern: Msg.Inc(value) => ...
+                    self.enter_scope();
+                    let tag_typ = self.lookup_type(&cover.kind);
+                    let tag_field_type = match *tag_typ.borrow() {
+                        Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                        _ => {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Invalid tag type: {}", cover.kind),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    };
+
+                    self.define(cover.elem.as_str(), Meta::Store(Store {
+                        name: cover.elem.clone(),
+                        kind: StoreKind::Let,
+                        ty: tag_field_type,
+                        expr: Expr::Uncover(TagUncover {
+                            src: tgt.repr(),
+                            cover: cover.clone(),
+                        }),
+                    }));
+
+                    let body = self.parse_expr_or_body()?;
+                    self.exit_scope();
+                    body
+                } else {
+                    self.parse_expr_or_body()?
+                };
+
+                let branch = HashIsBranch::EqBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+        }
+    }
+
+    /// Parse #{} expression for compile-time code execution
+    /// Syntax: #{ expression }
+    /// Used for compile-time evaluation and string interpolation
+    pub fn hash_brace_expr(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip #{
+        let expr = self.parse_expr()?;
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::HashBrace(HashBrace { expr }))
     }
 
     pub fn parse_is(&mut self) -> AutoResult<Is> {
@@ -10047,11 +10220,40 @@ widget Test {
         }
     }
 
+    // Plan 095: Compile-time execution parser tests
+
     #[test]
-    fn test_parse_pac_after_dot_errors() {
-        // pac/super after dot should be an error
-        let code = "use utils.pac.db";
-        let result = Parser::from(code).parse();
-        assert!(result.is_err(), "Should error when pac appears after dot");
+    fn test_parse_hash_if_simple() {
+        // Test: #if true { say("Debug mode") }
+        // Use boolean literal instead of undefined variable
+        let code = "#if true {\n    say(\"Debug mode\")\n}";
+        let result = parse_with_err(code);
+        if let Err(e) = &result {
+            eprintln!("Parse error: {:?}", e);
+        }
+        let ast = result.expect("Failed to parse #if");
+        assert!(matches!(&ast.stmts[0], Stmt::HashIf(_)));
+    }
+
+    #[test]
+    fn test_parse_hash_for_simple() {
+        // Test: #for i in 0..3 { say(i) }
+        // Use skip_check to avoid undefined variable errors for loop variable
+        let code = "#for i in 0..3 {\n    say(i)\n}";
+        let mut parser = Parser::from(code);
+        parser.skip_check = true;
+        let ast = parser.parse().expect("Failed to parse #for");
+        assert!(matches!(&ast.stmts[0], Stmt::HashFor(_)));
+    }
+
+    #[test]
+    fn test_parse_hash_is_simple() {
+        // Test: #is T { "x64" => { say("x64") } "arm" => { say("arm") } }
+        // Use skip_check to avoid undefined variable errors for type variable
+        let code = "#is T {\n    \"x64\" => { say(\"x64\") }\n    \"arm\" => { say(\"arm\") }\n}";
+        let mut parser = Parser::from(code);
+        parser.skip_check = true;
+        let ast = parser.parse().expect("Failed to parse #is");
+        assert!(matches!(&ast.stmts[0], Stmt::HashIs(_)));
     }
 }

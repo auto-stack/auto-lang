@@ -658,6 +658,65 @@ impl<'a> Lexer<'a> {
                     return Ok(self.str());
                 }
                 '#' => {
+                    // Plan 095: Check for comptime keywords (#if, #for, #is, #{)
+                    // Clone iterator AFTER current char (#), so next() will give us the following char
+                    let mut iter = self.chars.clone();
+                    iter.next(); // skip the '#' that we're currently on
+
+                    // Check for #if
+                    if let Some('i') = iter.next() {
+                        if let Some('f') = iter.next() {
+                            let next_next = iter.clone().next();
+                            if next_next.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+                                self.chars.next(); // skip '#'
+                                self.chars.next(); // skip 'i'
+                                self.chars.next(); // skip 'f'
+                                return Ok(Token::new(TokenKind::HashIf, self.pos(3), "#if".into()));
+                            }
+                        }
+                        // Check for #is
+                        let mut iter_s = self.chars.clone();
+                        iter_s.next(); // skip '#'
+                        iter_s.next(); // skip 'i'
+                        if let Some('s') = iter_s.next() {
+                            let next_next = iter_s.clone().next();
+                            if next_next.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+                                self.chars.next(); // skip '#'
+                                self.chars.next(); // skip 'i'
+                                self.chars.next(); // skip 's'
+                                return Ok(Token::new(TokenKind::HashIs, self.pos(3), "#is".into()));
+                            }
+                        }
+                    }
+
+                    // Check for #for
+                    let mut iter_for = self.chars.clone();
+                    iter_for.next(); // skip '#'
+                    if let Some('f') = iter_for.next() {
+                        if let Some('o') = iter_for.next() {
+                            if let Some('r') = iter_for.next() {
+                                let next_next = iter_for.clone().next();
+                                if next_next.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+                                    self.chars.next(); // skip '#'
+                                    self.chars.next(); // skip 'f'
+                                    self.chars.next(); // skip 'o'
+                                    self.chars.next(); // skip 'r'
+                                    return Ok(Token::new(TokenKind::HashFor, self.pos(4), "#for".into()));
+                                }
+                            }
+                        }
+                    }
+
+                    // Check for #{
+                    let mut iter_brace = self.chars.clone();
+                    iter_brace.next(); // skip '#'
+                    if let Some('{') = iter_brace.next() {
+                        self.chars.next(); // skip '#'
+                        self.chars.next(); // skip '{'
+                        return Ok(Token::new(TokenKind::HashBrace, self.pos(2), "#{".into()));
+                    }
+
+                    // Default: return Hash for #[...] annotations
                     return Ok(self.single(TokenKind::Hash, c));
                 }
                 'c' => {
@@ -1199,5 +1258,67 @@ mod tests {
         let code = "use super.db";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<use><super><.><ident:db>");
+    }
+
+    // Plan 095: Comptime token tests
+    #[test]
+    fn test_hash_if_token() {
+        let code = "#if";
+        let mut lexer = Lexer::new(code);
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashIf);
+        assert_eq!(tok.text.as_str(), "#if");
+    }
+
+    #[test]
+    fn test_hash_for_token() {
+        let code = "#for";
+        let mut lexer = Lexer::new(code);
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashFor);
+        assert_eq!(tok.text.as_str(), "#for");
+    }
+
+    #[test]
+    fn test_hash_is_token() {
+        let code = "#is";
+        let mut lexer = Lexer::new(code);
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashIs);
+        assert_eq!(tok.text.as_str(), "#is");
+    }
+
+    #[test]
+    fn test_hash_brace_token() {
+        let code = "#{";
+        let mut lexer = Lexer::new(code);
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::HashBrace);
+        assert_eq!(tok.text.as_str(), "#{");
+    }
+
+    #[test]
+    fn test_hash_alone_for_annotation() {
+        // #[...] annotation syntax should still work
+        let code = "#[";
+        let mut lexer = Lexer::new(code);
+        let tok = lexer.next().unwrap();
+        assert_eq!(tok.kind, TokenKind::Hash);
+    }
+
+    #[test]
+    fn test_hash_if_not_confused_with_identifier() {
+        // #ifx should NOT be parsed as HashIf
+        let code = "#ifx";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<#><ident:ifx>");
+    }
+
+    #[test]
+    fn test_hash_for_not_confused_with_identifier() {
+        // #form should NOT be parsed as HashFor
+        let code = "#form";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<#><ident:form>");
     }
 }

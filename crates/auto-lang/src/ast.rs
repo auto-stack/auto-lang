@@ -57,6 +57,10 @@ pub use ui::*;
 mod route;
 pub use route::*;
 
+// Plan 095: Compile-time execution AST nodes
+mod comptime;
+pub use comptime::*;
+
 mod atom_helpers;
 pub use atom_helpers::*;
 
@@ -194,6 +198,11 @@ pub enum Stmt {
     ViewBlock(ViewBlock),
     // Plan 121: Task/Msg system
     TaskDef(TaskDef),
+    // Plan 095: Compile-time execution
+    HashIf(HashIf),
+    HashFor(HashFor),
+    HashIs(HashIs),
+    HashBrace(HashBrace),
 }
 
 impl Stmt {
@@ -262,6 +271,11 @@ impl fmt::Display for Stmt {
             Stmt::ViewBlock(_view) => write!(f, "(view)"),
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => write!(f, "{}", task),
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(hash_if) => write!(f, "{}", hash_if),
+            Stmt::HashFor(hash_for) => write!(f, "{}", hash_for),
+            Stmt::HashIs(hash_is) => write!(f, "{}", hash_is),
+            Stmt::HashBrace(hash_brace) => write!(f, "{}", hash_brace),
         }
     }
 }
@@ -1009,6 +1023,11 @@ impl ToNode for Stmt {
                 node.add_arg(auto_val::Arg::Pos(Value::Node(expr.to_node())));
                 node
             }
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(hash_if) => hash_if.to_node(),
+            Stmt::HashFor(hash_for) => hash_for.to_node(),
+            Stmt::HashIs(hash_is) => hash_is.to_node(),
+            Stmt::HashBrace(hash_brace) => hash_brace.to_node(),
         }
     }
 }
@@ -1056,6 +1075,11 @@ impl ToAtom for Stmt {
             Stmt::TaskDef(task) => task.to_atom(),
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC
             Stmt::Reply(expr) => format!("(reply {})", expr.to_atom()).into(),
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(hash_if) => hash_if.to_atom_str(),
+            Stmt::HashFor(hash_for) => hash_for.to_atom_str(),
+            Stmt::HashIs(hash_is) => hash_is.to_atom_str(),
+            Stmt::HashBrace(hash_brace) => hash_brace.to_atom_str(),
         }
     }
 }
