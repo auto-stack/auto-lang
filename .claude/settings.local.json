@@ -115,7 +115,10 @@
       "Bash(rtk cargo check -p auto-man)",
       "Read(//d/autostack/**)",
       "Bash(rtk cargo:*)",
-      "Bash(DEBUG=1 cargo test -p auto-lang test_add_u8 -- --nocapture)"
+      "Bash(DEBUG=1 cargo test -p auto-lang test_add_u8 -- --nocapture)",
+      "Skill(commit-commands:commit)",
+      "Skill(commit-commands:commit:*)",
+      "Bash(rtk git:*)"
     ],
     "additionalDirectories": [
       "d:\\autostack\\auto-lang\\docs\\plans"

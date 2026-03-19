@@ -3,6 +3,7 @@
 //! This module provides code generators for various UI backends:
 //! - **Vue3/JavaScript**: Vue3 SFC (Single File Component) generator
 //! - **Rust/AutoUI**: Rust Component trait generator using auto-ui abstraction
+//! - **Jetpack Compose**: Kotlin/Compose for Android
 //!
 //! The Rust generator produces code using the abstract AutoUI components from
 //! the `auto-ui` crate. The auto-ui crate then handles backend-specific
@@ -10,6 +11,7 @@
 //!
 //! All generators take `AuraWidget` as input and produce target-specific code.
 
+pub mod shared;
 pub mod vue;
 pub mod rust;
 pub mod style;
