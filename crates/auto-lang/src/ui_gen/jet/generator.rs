@@ -38,7 +38,7 @@ use super::list::ListGenerator;
 use super::modifier::ModifierDsl;
 use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
-use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraUnaryOp, AuraWidget};
+use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraUnaryOp, AuraUpdateOp, AuraWidget, LogicPayload};
 use crate::ui_gen::shared::ComponentRegistry;
 use crate::ui_gen::{BackendGenerator, GenError, GenResult};
 use std::collections::{HashMap, HashSet};
@@ -115,6 +115,9 @@ pub struct JetGenerator {
 
     /// Referenced child components (for imports)
     component_refs: Vec<String>,
+
+    /// Current widget's handlers (for event resolution)
+    current_handlers: HashMap<String, LogicPayload>,
 }
 
 impl JetGenerator {
@@ -148,6 +151,7 @@ impl JetGenerator {
             navigation_generator: NavigationGenerator::new(),
             components_used: HashSet::new(),
             component_refs: Vec::new(),
+            current_handlers: HashMap::new(),
         }
     }
 
@@ -275,6 +279,83 @@ fun {}Preview() {{
             .join("\n    ")
     }
 
+    /// Generate sealed class for Msg (ELM architecture)
+    fn generate_msg_sealed(&self, widget: &AuraWidget) -> String {
+        if widget.messages.is_empty() {
+            return String::new();
+        }
+
+        let mut variants = Vec::new();
+
+        for msg in &widget.messages {
+            for variant in &msg.variants {
+                if let Some(ref payload_type) = variant.payload {
+                    // Variant with payload
+                    let kotlin_type = match payload_type {
+                        crate::ast::Type::Int => "Int".to_string(),
+                        crate::ast::Type::Float => "Float".to_string(),
+                        crate::ast::Type::Double => "Double".to_string(),
+                        crate::ast::Type::Bool => "Boolean".to_string(),
+                        crate::ast::Type::Str(_) => "String".to_string(),
+                        crate::ast::Type::User(decl) => decl.name.as_str().to_string(),
+                        _ => "Any".to_string(),
+                    };
+                    variants.push(format!("    data class {}(val value: {}) : Msg()", variant.name, kotlin_type));
+                } else {
+                    // Simple variant without payload
+                    variants.push(format!("    object {} : Msg()", variant.name));
+                }
+            }
+        }
+
+        if variants.is_empty() {
+            String::new()
+        } else {
+            format!("sealed class Msg {{\n{}\n}}", variants.join("\n"))
+        }
+    }
+
+    /// Generate dispatch function for ELM architecture
+    fn generate_dispatch_function(&self, widget: &AuraWidget) -> GenResult<String> {
+        if widget.handlers.is_empty() {
+            return Ok(String::new());
+        }
+
+        let mut cases = Vec::new();
+
+        for (pattern, payload) in &widget.handlers {
+            // Extract the variant name from pattern (e.g., ".Inc" -> "Inc")
+            let variant_name = pattern.trim_start_matches('.');
+
+            // Generate the handler body
+            let body = match payload {
+                LogicPayload::AstBlock(stmts) => {
+                    let mut body_parts = Vec::new();
+                    for stmt in stmts {
+                        body_parts.push(self.stmt_to_kotlin(stmt)?);
+                    }
+                    body_parts.join("\n            ")
+                }
+                _ => "// TODO: Unsupported payload type".to_string(),
+            };
+
+            cases.push(format!("            is Msg.{} -> {{\n                {}\n            }}", variant_name, body));
+        }
+
+        if cases.is_empty() {
+            Ok(String::new())
+        } else {
+            Ok(format!(
+                r#"    val dispatch: (Msg) -> Unit = {{ msg ->
+        when (msg) {{
+{}
+        }}
+    }}"#,
+                cases.join("\n")
+            ))
+        }
+    }
+
     /// Generate view body from widget's view_tree
     fn generate_view_body(&mut self, widget: &AuraWidget) -> GenResult<String> {
         // Process the view tree node
@@ -286,12 +367,6 @@ fun {}Preview() {{
         } else {
             Ok(body)
         }
-    }
-
-    /// Generate event handlers for a widget (placeholder)
-    fn generate_handlers(&self, _widget: &AuraWidget) -> String {
-        // TODO: Implement handler generation from widget.handlers
-        String::new()
     }
 
     // =========================================================================
@@ -465,7 +540,7 @@ fun {}Preview() {{
         }
     }
 
-    /// Convert button to Compose Button
+    /// Convert button to Compose Button with dispatch mechanism
     fn button_to_compose(
         &mut self,
         props: &HashMap<String, AuraPropValue>,
@@ -475,10 +550,20 @@ fun {}Preview() {{
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
 
-        // Get onClick handler
-        let on_click = events.get("click")
-            .map(|e| self.event_to_lambda(e))
-            .unwrap_or_default();
+        // Get onClick handler - try both "onclick" and "click" for compatibility
+        let event = events.get("onclick")
+            .or_else(|| events.get("click"));
+
+        // Generate onClick code using dispatch mechanism
+        let on_click_code = if let Some(evt) = event {
+            // Extract the message variant name (e.g., "Inc" from ".Inc")
+            let msg_name = evt.handler.trim_start_matches('.');
+            // Generate dispatch call: { dispatch(Msg.Inc) }
+            format!("{{ dispatch(Msg.{}) }}", msg_name)
+        } else {
+            // No event - empty lambda
+            "{}".to_string()
+        };
 
         // Get button text
         let text = props.get("text")
@@ -498,18 +583,40 @@ fun {}Preview() {{
             format!("{}    Text(\"Button\")\n", ind)
         };
 
-        if on_click.is_empty() {
-            Ok(format!(
-                "{}Button {{\n{}}}\n",
-                ind, content
-            ))
-        } else {
-            Ok(format!(
-                "{}Button(\n{}    onClick = {{ {} }}\n{}) {{\n{}}}\n",
-                ind, ind, on_click, ind, content
-            ))
-        }
+        Ok(format!(
+            "{}Button(\n{}    onClick = {}\n{}) {{\n{}}}\n",
+            ind, ind, on_click_code, ind, content
+        ))
     }
+
+    /// Convert AuraStmt to Kotlin code
+    fn stmt_to_kotlin(&self, stmt: &AuraStmt) -> GenResult<String> {
+        match stmt {
+                AuraStmt::Assign { target, value } => {
+                    let target_clean = target.trim_start_matches('.');
+                    let value_kotlin = self.expr_to_kotlin(value);
+                    Ok(format!("{} = {}", target_clean, value_kotlin))
+                }
+                AuraStmt::Update { target, op, value } => {
+                    let target_clean = target.trim_start_matches('.');
+                    let value_kotlin = self.expr_to_kotlin(value);
+                    let op_str = match op {
+                        AuraUpdateOp::AddAssign => "+=",
+                        AuraUpdateOp::SubAssign => "-=",
+                        AuraUpdateOp::MulAssign => "*=",
+                        AuraUpdateOp::DivAssign => "/=",
+                    };
+                    Ok(format!("{} {} {}", target_clean, op_str, value_kotlin))
+                }
+                AuraStmt::MethodCall { object, method, args } => {
+                    let object_clean = object.trim_start_matches('.');
+                    let args_kotlin: Vec<String> = args.iter()
+                        .map(|a| self.expr_to_kotlin(a))
+                        .collect();
+                    Ok(format!("{}.{}({})", object_clean, method, args_kotlin.join(", ")))
+                }
+            }
+        }
 
     /// Convert AuraEvent to Kotlin lambda
     fn event_to_lambda(&self, event: &AuraEvent) -> String {
@@ -1092,6 +1199,7 @@ impl BackendGenerator for JetGenerator {
         // Reset state for new widget
         self.imports.clear();
         self.components_used.clear();
+        self.current_handlers = widget.handlers.clone();
 
         // Add standard Compose imports
         self.add_import("androidx.compose.foundation.layout.*");
@@ -1101,10 +1209,13 @@ impl BackendGenerator for JetGenerator {
         self.add_import("androidx.compose.ui.unit.dp");
         self.add_import("androidx.compose.ui.tooling.preview.Preview");
 
+        // Generate Msg sealed class (ELM architecture)
+        let msg_sealed = self.generate_msg_sealed(widget);
+
         // Generate components
         let state_decls = self.generate_state_declarations(widget);
+        let dispatch_fn = self.generate_dispatch_function(widget)?;
         let view_body = self.generate_view_body(widget)?;
-        let _handlers = self.generate_handlers(widget);
 
         // Assemble final code
         let package_decl = self.generate_package();
@@ -1112,43 +1223,45 @@ impl BackendGenerator for JetGenerator {
         let composable_name = &widget.name;
         let preview = self.generate_preview(composable_name);
 
-        let code = if state_decls.is_empty() {
-            format!(
-                r#"{}// Auto-generated by a2jet
+        // Build the complete code
+        let mut code = String::new();
 
-{}
+        // Package declaration
+        code.push_str(&package_decl);
+        code.push_str("// Auto-generated by a2jet\n\n");
 
-@Composable
-fun {}(
-    modifier: Modifier = Modifier
-) {{
-    {}
-}}
+        // Imports
+        code.push_str(&imports);
+        code.push_str("\n\n");
 
-{}
-"#,
-                package_decl, imports, composable_name, view_body, preview
-            )
-        } else {
-            format!(
-                r#"{}// Auto-generated by a2jet
+        // Msg sealed class (if any messages)
+        if !msg_sealed.is_empty() {
+            code.push_str(&msg_sealed);
+            code.push_str("\n\n");
+        }
 
-{}
+        // Composable function
+        code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
 
-@Composable
-fun {}(
-    modifier: Modifier = Modifier
-) {{
-    {}
+        // State declarations
+        if !state_decls.is_empty() {
+            code.push_str("    ");
+            code.push_str(&state_decls);
+            code.push_str("\n\n");
+        }
 
-    {}
-}}
+        // Dispatch function (if any handlers)
+        if !dispatch_fn.is_empty() {
+            code.push_str(&dispatch_fn);
+            code.push_str("\n\n");
+        }
 
-{}
-"#,
-                package_decl, imports, composable_name, state_decls, view_body, preview
-            )
-        };
+        // View body
+        code.push_str(&view_body);
+        code.push_str("}\n\n");
+
+        // Preview
+        code.push_str(&preview);
 
         Ok(code)
     }
