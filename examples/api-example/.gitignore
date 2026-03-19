@@ -1,0 +1,24 @@
+# Generated directories
+vue/
+rust/
+dist/
+build/
+
+# Node
+node_modules/
+
+# Rust
+target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Auto
+.am/
