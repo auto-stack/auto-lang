@@ -239,6 +239,10 @@ pub enum AutoError {
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 
+    /// Compile-time execution errors (Plan 095)
+    #[error(transparent)]
+    Comptime(#[from] ComptimeError),
+
     /// Multiple errors collected during parsing with error recovery
     #[error("aborting due to {count} previous error{plural}")]
     MultipleErrors {
@@ -271,6 +275,7 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.code(),
             AutoError::Name(e) => e.code(),
             AutoError::Runtime(e) => e.code(),
+            AutoError::Comptime(e) => e.code(),
             AutoError::MultipleErrors { .. } => Some(Box::new("auto_syntax_E0099")),
             AutoError::Warning(e) => e.code(),
             AutoError::Io(_) => None,
@@ -287,6 +292,7 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.severity(),
             AutoError::Name(e) => e.severity(),
             AutoError::Runtime(e) => e.severity(),
+            AutoError::Comptime(e) => e.severity(),
             AutoError::MultipleErrors { .. } => Some(miette::Severity::Error),
             AutoError::Warning(e) => e.severity(),
             AutoError::Io(_) => None,
@@ -303,6 +309,7 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.help(),
             AutoError::Name(e) => e.help(),
             AutoError::Runtime(e) => e.help(),
+            AutoError::Comptime(e) => e.help(),
             AutoError::MultipleErrors { .. } => {
                 Some(Box::new("Fix the reported errors and try again"))
             }
@@ -321,6 +328,7 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.url(),
             AutoError::Name(e) => e.url(),
             AutoError::Runtime(e) => e.url(),
+            AutoError::Comptime(e) => e.url(),
             AutoError::MultipleErrors { .. } => None,
             AutoError::Warning(e) => e.url(),
             AutoError::Io(_) => None,
@@ -337,6 +345,7 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.labels(),
             AutoError::Name(e) => e.labels(),
             AutoError::Runtime(e) => e.labels(),
+            AutoError::Comptime(e) => e.labels(),
             AutoError::MultipleErrors { errors, .. } => {
                 // Return labels from the first error
                 errors.first()?.labels()
@@ -365,6 +374,7 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.source_code(),
             AutoError::Name(e) => e.source_code(),
             AutoError::Runtime(e) => e.source_code(),
+            AutoError::Comptime(e) => e.source_code(),
             AutoError::MultipleErrors { errors, .. } => {
                 // Return source code from the first error
                 errors.first()?.source_code()
@@ -1024,6 +1034,88 @@ pub enum Warning {
     InvalidGoUsage {
         found: String,
         #[label(".go applied here")]
+        span: SourceSpan,
+    },
+}
+
+// ============================================================================
+// Compile-Time Execution Errors (E0400-E0499) - Plan 095
+// ============================================================================
+
+/// Errors during compile-time execution
+#[derive(Error, Diagnostic, Debug, Clone)]
+pub enum ComptimeError {
+    /// compile_error() was called
+    #[error("compile_error: {message}")]
+    #[diagnostic(
+        code(auto_comptime_E0401),
+        help("This error was triggered by compile_error() at compile time")
+    )]
+    CompileError {
+        message: String,
+        #[label("compile_error called here")]
+        span: SourceSpan,
+    },
+
+    /// Non-deterministic operation at compile time
+    #[error("non-deterministic operation not allowed at compile time")]
+    #[diagnostic(
+        code(auto_comptime_E0402),
+        help("Operations like I/O, random, and time are not allowed during compile-time execution")
+    )]
+    NonDeterministic {
+        operation: String,
+        #[label("non-deterministic operation")]
+        span: SourceSpan,
+    },
+
+    /// Resource limit exceeded at compile time
+    #[error("compile-time resource limit exceeded")]
+    #[diagnostic(
+        code(auto_comptime_E0403),
+        help("{limit}: {value} (limit: {max})")
+    )]
+    ResourceLimit {
+        limit: String,
+        value: String,
+        max: String,
+        #[label("limit exceeded here")]
+        span: SourceSpan,
+    },
+
+    /// Undefined compile-time constant
+    #[error("undefined compile-time constant")]
+    #[diagnostic(
+        code(auto_comptime_E0404),
+        help("'{name}' is not defined as a compile-time constant. Available: OS, ARCH, DEBUG, VERSION")
+    )]
+    UndefinedConstant {
+        name: String,
+        #[label("undefined constant")]
+        span: SourceSpan,
+    },
+
+    /// Type mismatch in compile-time expression
+    #[error("type mismatch in compile-time expression")]
+    #[diagnostic(
+        code(auto_comptime_E0405),
+        help("Expected {expected}, but found {found}")
+    )]
+    TypeMismatch {
+        expected: String,
+        found: String,
+        #[label("type mismatch")]
+        span: SourceSpan,
+    },
+
+    /// Unreachable code in #is statement
+    #[error("unreachable branch in #is")]
+    #[diagnostic(
+        code(auto_comptime_E0406),
+        help("This branch will never be reached because a previous branch always matches")
+    )]
+    UnreachableBranch {
+        #[label("unreachable branch")]
         span: SourceSpan,
     },
 }

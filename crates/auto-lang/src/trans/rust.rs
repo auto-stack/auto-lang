@@ -3002,7 +3002,11 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);
-    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut ast = parser.parse().map_err(|e| e.to_string())?;
+
+    // Plan 095: Run CTEE to transform compile-time constructs
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast).map_err(|e| e.to_string())?;
 
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);

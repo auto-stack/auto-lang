@@ -196,7 +196,12 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
 
     // 1. Parse the code (with pre-loaded type_store from resolve_uses)
     let mut parser = Parser::new_with_type_store(code, session.type_store());
-    let ast = parser.parse()?;
+    let mut ast = parser.parse()?;
+
+    // Plan 095: Run CTEE (Compile-Time Execution Engine) to transform AST
+    // This handles #if, #for, #is, #{} constructs
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
 
     // 2. Compile to bytecode
     // Plan 091: Wrap script-level code with FN_PROLOG/RESERVE_STACK for proper local variable support

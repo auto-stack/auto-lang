@@ -4051,10 +4051,15 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let name = name.into();
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransC);
-    let ast = parser.parse().map_err(|e| {
+    let mut ast = parser.parse().map_err(|e| {
         // Attach source code to errors for beautiful miette display
         attach_source(e, name.to_string(), code.to_string())
     })?;
+
+    // Plan 095: Run CTEE to transform compile-time constructs
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
+
     let mut out = Sink::new(name.clone());
     let mut transpiler = CTrans::new(name);
     transpiler.trans(ast, &mut out)?;

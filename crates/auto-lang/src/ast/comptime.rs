@@ -337,7 +337,8 @@ mod tests {
                 Body::new(),
             )],
         };
-        assert_eq!(format!("{}", hash_is), "(#is (name T) (eq (str int) (body )))");
+        // Expr::Str displays with quotes: (str "int")
+        assert_eq!(format!("{}", hash_is), "(#is (name T) (eq (str \"int\") (body )))");
     }
 
     #[test]

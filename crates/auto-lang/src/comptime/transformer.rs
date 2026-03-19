@@ -4,9 +4,10 @@
 //! Uses VmInterpreter for expression evaluation.
 
 use crate::ast::{Code, Expr, HashBrace, HashFor, HashIf, HashIfElse, HashIs, HashIsBranch, Stmt};
-use crate::error::AutoResult;
+use crate::error::{AutoResult, ComptimeError};
 use crate::interpreter::VmInterpreter;
 use auto_val::Value;
+use miette::SourceSpan;
 use std::collections::HashMap;
 
 /// Compile-Time Execution Engine
@@ -210,6 +211,31 @@ impl CTEE {
 
     /// Evaluate an expression at compile time using VmInterpreter
     fn eval_expr(&mut self, expr: &Expr) -> AutoResult<Value> {
+        // Check for compile_error() call - Plan 095 Task 5.2
+        if let Expr::Call(call) = expr {
+            if let Expr::Ident(name) = call.name.as_ref() {
+                if name.to_string() == "compile_error" {
+                    // Extract error message from arguments
+                    let msg = if call.args.is_empty() {
+                        "compile error".to_string()
+                    } else if let Some(arg) = call.args.get(0) {
+                        let arg_expr = arg.get_expr();
+                        if let Expr::Str(s) = arg_expr {
+                            s.to_string()
+                        } else {
+                            arg.repr().to_string()
+                        }
+                    } else {
+                        "compile error".to_string()
+                    };
+                    return Err(ComptimeError::CompileError {
+                        message: msg,
+                        span: SourceSpan::new(0usize.into(), 0usize.into()),
+                    }.into());
+                }
+            }
+        }
+
         // For simple expressions, handle directly for performance
         match expr {
             // Literals
@@ -323,5 +349,28 @@ mod tests {
             &Value::Str("hello".into()),
             &Value::Str("hello".into())
         ));
+    }
+
+    #[test]
+    fn test_compile_error_intrinsic() {
+        // Test compile_error() by parsing code that calls it
+        use crate::parser::Parser;
+
+        let mut ctee = CTEE::new();
+
+        // Parse: compile_error("unsupported platform")
+        let mut parser = Parser::from("compile_error(\"unsupported platform\")");
+        let ast = parser.parse().unwrap();
+
+        // Get the expression from the first statement
+        if let Some(crate::ast::Stmt::Expr(expr)) = ast.stmts.first() {
+            let result = ctee.eval_expr(expr);
+            assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("compile_error"));
+            assert!(err_msg.contains("unsupported platform"));
+        } else {
+            panic!("Expected Expr statement");
+        }
     }
 }

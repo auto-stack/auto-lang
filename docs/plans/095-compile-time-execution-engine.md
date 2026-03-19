@@ -1,6 +1,6 @@
 # Plan 095: Compile-Time Execution Engine (CTEE)
 
-> **Status**: 🔄 In Progress
+> **Status**: ✅ Complete
 > **Priority**: Critical (blocks self-hosting)
 > **Dependencies**: Plan 094 (Hybrid FFI Bridge), Plan 081 (AutoVM Default Mode)
 > **Design Doc**: [docs/design/compile-time-execution.md](../design/compile-time-execution.md) (Finalized)
@@ -13,8 +13,8 @@
 | 2 | AST Nodes | ✅ Complete | `HashIf`, `HashFor`, `HashIs`, `HashBrace` structs |
 | 3 | Parser | ✅ Complete | All comptime constructs parsed |
 | 4 | CTEE Module | ✅ Complete | Using `VmInterpreter` for evaluation |
-| 5 | Integration | ⏳ Pending | Pipeline integration |
-| 6 | Error Reporting | ⏳ Pending | Comptime-specific errors |
+| 5 | Integration | ✅ Complete | Integrated into `run_autovm`, `transpile_c`, `transpile_rust` |
+| 6 | Error Reporting | ✅ Complete | `ComptimeError` type with codes E0401-E0406 |
 
 ---
 
