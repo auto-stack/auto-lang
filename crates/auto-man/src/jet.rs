@@ -6,13 +6,15 @@
 //! 3. Copy to output directory
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use colored::Colorize;
+use auto_lang::database::{UIArtifact, UIBackend, UICache};
 use auto_lang::ui_gen::jet::{JetGenerator, JetProjectConfig, ProjectGenerator};
 use auto_lang::ui_gen::BackendGenerator;
 use auto_lang::Parser;
 
+use crate::util::hash_string;
 use crate::AutoResult;
 
 /// Parse project name from pac.at content
@@ -194,6 +196,129 @@ impl JetProject {
             kotlin_files,
             widget_names,
         })
+    }
+
+    /// Generate Kotlin files with incremental support
+    /// Returns (project, changed_files)
+    pub fn from_workspace_incremental(root_dir: &Path) -> AutoResult<(Self, Vec<String>)> {
+        let pac_path = root_dir.join("pac.at");
+        if !pac_path.exists() {
+            return Err("pac.at not found in workspace".into());
+        }
+
+        let pac_content = fs::read_to_string(&pac_path)
+            .map_err(|e| format!("Failed to read pac.at: {}", e))?;
+
+        if !has_jet_backend(&pac_content) {
+            return Err("Backend 'jet' not found in pac.at".into());
+        }
+
+        let name = parse_pac_name(&pac_content).unwrap_or_else(|| "MyApp".to_string());
+        let front_dir = root_dir.join("source").join("front");
+        let output_dir = root_dir.join("jet");
+
+        // Load cache
+        let mut cache = UICache::load(root_dir);
+        let mut changed_files = Vec::new();
+
+        // Process app.at
+        let mut kotlin_files: Vec<(String, String)> = Vec::new();
+        let mut widget_names: Vec<String> = Vec::new();
+
+        let app_at = front_dir.join("app.at");
+        if app_at.exists() {
+            let content = fs::read_to_string(&app_at)
+                .map_err(|e| format!("Failed to read app.at: {}", e))?;
+            let hash = hash_string(&content);
+
+            if cache.is_dirty(&app_at, hash) {
+                println!("  {} (changed)", "app.at".bright_yellow());
+                match Self::compile_at_file(&app_at, &name) {
+                    Ok((files, names)) => {
+                        // Create artifacts for tracking
+                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((path, content), widget_name)| {
+                            UIArtifact {
+                                source_path: app_at.clone(),
+                                widget_name: widget_name.clone(),
+                                output_path: PathBuf::from(path),
+                                source_hash: hash,
+                                content_hash: hash_string(content),
+                                backend: UIBackend::Jet,
+                            }
+                        }).collect();
+
+                        cache.update(app_at.clone(), hash, artifacts);
+                        kotlin_files.extend(files);
+                        widget_names.extend(names);
+                        changed_files.push("app.at".to_string());
+                    }
+                    Err(e) => {
+                        println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
+                    }
+                }
+            } else {
+                println!("  {} (cached)", "app.at".bright_green());
+            }
+        }
+
+        // Process widgets/ directory
+        let widgets_dir = front_dir.join("widgets");
+        if widgets_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&widgets_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let hash = hash_string(&content);
+
+                            if cache.is_dirty(&path, hash) {
+                                println!("  {} (changed)", file_name.bright_yellow());
+                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("widget");
+
+                                match Self::compile_at_file(&path, stem) {
+                                    Ok((files, names)) => {
+                                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
+                                            UIArtifact {
+                                                source_path: path.clone(),
+                                                widget_name: widget_name.clone(),
+                                                output_path: PathBuf::from(p),
+                                                source_hash: hash,
+                                                content_hash: hash_string(c),
+                                                backend: UIBackend::Jet,
+                                            }
+                                        }).collect();
+
+                                        cache.update(path.clone(), hash, artifacts);
+                                        kotlin_files.extend(files);
+                                        widget_names.extend(names);
+                                        changed_files.push(file_name);
+                                    }
+                                    Err(e) => {
+                                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                                    }
+                                }
+                            } else {
+                                println!("  {} (cached)", file_name.bright_green());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Save cache
+        cache.save(root_dir).ok();
+
+        Ok((Self {
+            root_dir: root_dir.to_path_buf(),
+            output_dir,
+            name,
+            front_dir,
+            kotlin_files,
+            widget_names,
+        }, changed_files))
     }
 
     /// Compile a single .at file to Kotlin code
