@@ -125,7 +125,7 @@ impl UICache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::ui_artifact::UIBackend;
+    use crate::database::UIBackend;
     use tempfile::TempDir;
 
     #[test]
