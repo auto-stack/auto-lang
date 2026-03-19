@@ -514,31 +514,23 @@ pub fn generate_jet_project(root_dir: &Path, output_dir: Option<&Path>, full_pro
 /// Run Jetpack Compose project (auto run command for jet backend)
 ///
 /// Steps:
-/// 1. Generate project structure if not exists
-/// 2. Check for Android Studio / emulator
-/// 3. Build and run on connected device/emulator
+/// 1. Generate code (incremental - only changed files)
+/// 2. Generate project structure if not exists
+/// 3. Build the project
+/// 4. Install and run on connected device/emulator
 pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Jetpack Compose project (backend: jet)".bright_cyan());
 
-    // Load project context
-    let project = JetProject::from_workspace(root_dir)?;
+    // Step 1: Generate code (always, incremental)
+    println!();
+    println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
+    generate_jet_project(root_dir, None, false)?;
+
     let jet_dir = root_dir.join("jet");
 
-    // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 3 } else { 4 };
-    let mut current_step = 0;
-
-    if !project.exists() {
-        current_step += 1;
-        println!();
-        println!("▶ Step {}/{}: Generating Jetpack project...", current_step, total_steps);
-        project.generate()?;
-    }
-
     // Step 2: Check for gradlew
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Checking Gradle wrapper...", current_step, total_steps);
+    println!("{}", "▶ Step 2: Checking Gradle wrapper...".bright_cyan());
 
     let gradlew = if cfg!(windows) {
         jet_dir.join("gradlew.bat")
@@ -559,9 +551,8 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     }
 
     // Step 3: Build the project
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Building Android project...", current_step, total_steps);
+    println!("{}", "▶ Step 3: Building Android project...".bright_cyan());
 
     let build_result = std::process::Command::new(&gradlew)
         .args(&["assembleDebug"])
@@ -575,9 +566,8 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("  ✓ Build successful");
 
     // Step 4: Install and run on device/emulator
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Installing on device/emulator...", current_step, total_steps);
+    println!("{}", "▶ Step 4: Installing on device/emulator...".bright_cyan());
 
     // Check for connected devices
     let adb_devices = std::process::Command::new("adb")
@@ -602,10 +592,22 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             .map_err(|e| format!("Failed to install: {}", e))?;
 
         if install_result.success() {
+            // Read project name from pac.at
+            let pac_path = root_dir.join("pac.at");
+            let project_name = if pac_path.exists() {
+                if let Ok(content) = fs::read_to_string(&pac_path) {
+                    parse_pac_name(&content).unwrap_or_else(|| "MyApp".to_string())
+                } else {
+                    "MyApp".to_string()
+                }
+            } else {
+                "MyApp".to_string()
+            };
+
             println!("  ✓ App installed successfully!");
             println!();
             println!("{}", "App is now running on your device/emulator.".bright_green());
-            println!("Package: com.example.{}", project.name.to_lowercase().replace("-", "_"));
+            println!("Package: com.example.{}", project_name.to_lowercase().replace("-", "_"));
         } else {
             println!("  ⚠ Install failed. Try running manually:");
             println!("    cd {} && ./gradlew installDebug", jet_dir.display());
@@ -634,30 +636,22 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
 /// Build Jetpack Compose project (auto build command for jet backend)
 ///
 /// Steps:
-/// 1. Generate project structure if not exists
-/// 2. Run gradlew assembleDebug
+/// 1. Generate code (incremental - only changed files)
+/// 2. Generate project structure if not exists
+/// 3. Run gradlew assembleDebug
 pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Jetpack Compose project (backend: jet)".bright_cyan());
 
-    // Load project context
-    let project = JetProject::from_workspace(root_dir)?;
+    // Step 1: Generate code (always, incremental)
+    println!();
+    println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
+    generate_jet_project(root_dir, None, false)?;
+
     let jet_dir = root_dir.join("jet");
 
-    // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 2 } else { 3 };
-    let mut current_step = 0;
-
-    if !project.exists() {
-        current_step += 1;
-        println!();
-        println!("▶ Step {}/{}: Generating Jetpack project...", current_step, total_steps);
-        project.generate()?;
-    }
-
     // Step 2: Check for gradlew
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Checking Gradle wrapper...", current_step, total_steps);
+    println!("{}", "▶ Step 2: Checking Gradle wrapper...".bright_cyan());
 
     let gradlew = if cfg!(windows) {
         jet_dir.join("gradlew.bat")
@@ -678,9 +672,8 @@ pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
     }
 
     // Step 3: Build the project
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Building APK...", current_step, total_steps);
+    println!("{}", "▶ Step 3: Building APK...".bright_cyan());
 
     let build_result = std::process::Command::new(&gradlew)
         .args(&["assembleDebug"])
