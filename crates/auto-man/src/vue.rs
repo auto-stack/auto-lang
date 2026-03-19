@@ -8,13 +8,15 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use colored::Colorize;
 use auto_lang::aura::AuraRoute;
+use auto_lang::database::{UIArtifact, UIBackend, UICache};
 use auto_lang::ui_gen::VueGenerator;
 
+use crate::util::hash_string;
 use crate::AutoResult;
 
 /// Recursively copy a directory and all its contents
@@ -1196,6 +1198,83 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
 
+    // Load cache for incremental compilation
+    let mut cache = UICache::load(root_dir);
+    let front_dir = root_dir.join("source").join("front");
+    let mut changed_count = 0;
+
+    // Check app.at for changes
+    let app_at = front_dir.join("app.at");
+    if app_at.exists() {
+        if let Ok(content) = fs::read_to_string(&app_at) {
+            let hash = hash_string(&content);
+            if cache.is_dirty(&app_at, hash) {
+                println!("  {} (changed)", "app.at".bright_yellow());
+                // Generate Vue component
+                if let Ok((vue_code, widgets)) = compile_at_to_vue(&app_at, &content) {
+                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                        UIArtifact {
+                            source_path: app_at.clone(),
+                            widget_name: w.clone(),
+                            output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                            source_hash: hash,
+                            content_hash: hash_string(&vue_code),
+                            backend: UIBackend::Vue,
+                        }
+                    }).collect();
+                    cache.update(app_at.clone(), hash, artifacts);
+                    changed_count += 1;
+                }
+            } else {
+                println!("  {} (cached)", "app.at".bright_green());
+            }
+        }
+    }
+
+    // Check widgets/ directory for changes
+    let widgets_dir = front_dir.join("widgets");
+    if widgets_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&widgets_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        let hash = hash_string(&content);
+                        if cache.is_dirty(&path, hash) {
+                            println!("  {} (changed)", file_name.bright_yellow());
+                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                                let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                    UIArtifact {
+                                        source_path: path.clone(),
+                                        widget_name: w.clone(),
+                                        output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                        source_hash: hash,
+                                        content_hash: hash_string(&vue_code),
+                                        backend: UIBackend::Vue,
+                                    }
+                                }).collect();
+                                cache.update(path.clone(), hash, artifacts);
+                                changed_count += 1;
+                            }
+                        } else {
+                            println!("  {} (cached)", file_name.bright_green());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Save cache
+    cache.save(root_dir).ok();
+
+    if changed_count > 0 {
+        println!("{} files changed, regenerating", changed_count.to_string().bright_yellow());
+    } else {
+        println!("{}", "No changes detected, using cached files".bright_green());
+    }
+
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
 
@@ -1248,4 +1327,39 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     project.npm_run_dev(args)?;
 
     Ok(())
+}
+
+/// Compile a .at file to Vue component
+/// Returns (vue_code, widget_names)
+fn compile_at_to_vue(at_path: &Path, content: &str) -> Result<(String, Vec<String>), String> {
+    use auto_lang::Parser;
+    use auto_lang::session::CompilerSession;
+    use auto_lang::ui_gen::BackendGenerator;
+    use auto_lang::aura::extract_widget_from_decl;
+
+    let session = CompilerSession::ui().with_backend("vue");
+    let mut parser = Parser::from(content);
+    parser = parser.with_session(session);
+
+    let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
+
+    let mut widgets = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let aura_widget = extract_widget_from_decl(widget_decl)
+                .map_err(|e| e.to_string())?;
+            widgets.push(aura_widget);
+        }
+    }
+
+    if widgets.is_empty() {
+        return Err("No widgets found".to_string());
+    }
+
+    let mut generator = VueGenerator::new();
+    let vue_code = generator.generate(&widgets[0])
+        .map_err(|e| e.to_string())?;
+
+    let names: Vec<String> = widgets.iter().map(|w| w.name.clone()).collect();
+    Ok((vue_code, names))
 }
