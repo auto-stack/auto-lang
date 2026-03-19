@@ -162,7 +162,20 @@ impl JetGenerator {
     pub fn generate_composable(&mut self, name: &str, body: &str) -> String {
         format!(
             r#"@Composable
-fun {}(
+pub fun {}(
+    modifier: Modifier = Modifier
+) {{
+    {}
+}}"#,
+            name, body
+        )
+    }
+
+    /// Generate public @Composable function (with pub modifier for cross-file access)
+    pub fn generate_public_composable(&mut self, name: &str, body: &str) -> String {
+        format!(
+            r#"@Composable
+pub fun {}(
     modifier: Modifier = Modifier
 ) {{
     {}
@@ -550,7 +563,7 @@ impl BackendGenerator for JetGenerator {
 {}
 
 @Composable
-fun {}(
+pub fun {}(
     modifier: Modifier = Modifier
 ) {{
     {}
@@ -567,7 +580,7 @@ fun {}(
 {}
 
 @Composable
-fun {}(
+pub fun {}(
     modifier: Modifier = Modifier
 ) {{
     {}

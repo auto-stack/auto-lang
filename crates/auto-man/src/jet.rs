@@ -359,7 +359,9 @@ impl JetProject {
         }
 
         // Generate Kotlin code for each widget
-        let mut generator = JetGenerator::new();
+        // Use project name for package
+        let package_name = format!("com.example.{}.ui.widgets", default_name.to_lowercase().replace('-', "_"));
+        let mut generator = JetGenerator::new().with_package(&package_name);
         let mut files = Vec::new();
         let mut names = Vec::new();
 
