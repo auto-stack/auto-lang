@@ -628,3 +628,75 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
 
     Ok(())
 }
+
+/// Build Jetpack Compose project (auto build command for jet backend)
+///
+/// Steps:
+/// 1. Generate project structure if not exists
+/// 2. Run gradlew assembleDebug
+pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
+    println!("{}", "Building Jetpack Compose project (backend: jet)".bright_cyan());
+
+    // Load project context
+    let project = JetProject::from_workspace(root_dir)?;
+    let jet_dir = root_dir.join("jet");
+
+    // Step 1: Generate project structure if not exists
+    let total_steps = if project.exists() { 2 } else { 3 };
+    let mut current_step = 0;
+
+    if !project.exists() {
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Generating Jetpack project...", current_step, total_steps);
+        project.generate()?;
+    }
+
+    // Step 2: Check for gradlew
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Checking Gradle wrapper...", current_step, total_steps);
+
+    let gradlew = if cfg!(windows) {
+        jet_dir.join("gradlew.bat")
+    } else {
+        jet_dir.join("gradlew")
+    };
+
+    if !gradlew.exists() {
+        println!("  ⚠ Gradle wrapper not found, generating...");
+        // Generate gradle wrapper if needed
+        std::process::Command::new("gradle")
+            .args(&["wrapper"])
+            .current_dir(&jet_dir)
+            .output()
+            .map_err(|e| format!("Failed to generate gradle wrapper: {}. Please install Gradle or Android Studio.", e))?;
+    } else {
+        println!("  ✓ Gradle wrapper found");
+    }
+
+    // Step 3: Build the project
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Building APK...", current_step, total_steps);
+
+    let build_result = std::process::Command::new(&gradlew)
+        .args(&["assembleDebug"])
+        .current_dir(&jet_dir)
+        .status()
+        .map_err(|e| format!("Failed to build: {}", e))?;
+
+    if build_result.success() {
+        println!();
+        println!("{}", "✓ Build successful!".bright_green());
+        println!();
+        println!("APK location:");
+        println!("  {}", jet_dir.join("app/build/outputs/apk/debug/app-debug.apk").display().to_string().bright_cyan());
+    } else {
+        println!();
+        println!("  ⚠ Build failed. Try running manually:");
+        println!("    cd {} && ./gradlew assembleDebug", jet_dir.display());
+    }
+
+    Ok(())
+}

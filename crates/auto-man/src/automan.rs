@@ -627,6 +627,20 @@ impl Automan {
                     }
                 }
             }
+            "jet" => {
+                // Jet backend: build Jetpack Compose project
+                println!("Building Jetpack Compose project (backend: jet)");
+                self.build_jet()?;
+
+                // Run garbage collection if needed
+                if let Some(ref cache) = self.cache {
+                    if cache.should_gc() {
+                        println!("Running cache garbage collection...");
+                        let freed_mb = cache.run_gc()? / (1024 * 1024);
+                        println!("Cache GC: freed {} MB", freed_mb);
+                    }
+                }
+            }
             _ => {
                 // Default C backend
                 println!("Transpiling auto code to c code");
@@ -654,6 +668,13 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::vue::build_vue_project(&root_dir)
+    }
+
+    /// Build Jetpack Compose project (full workflow: generate, gradle build)
+    fn build_jet(&mut self) -> AutoResult<()> {
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        crate::jet::build_jet_project(&root_dir)
     }
 
     pub fn export(&mut self, port_name: String, format: String) -> AutoResult<()> {
