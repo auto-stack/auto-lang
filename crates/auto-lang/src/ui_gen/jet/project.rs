@@ -217,9 +217,9 @@ impl JetProjectConfig {
         self.application_id.replace('.', "/")
     }
 
-    /// Get theme name (based on project name)
+    /// Get theme name (based on project name, with hyphens replaced)
     pub fn theme_name(&self) -> String {
-        format!("{}Theme", self.name)
+        format!("{}Theme", self.name.replace('-', "_"))
     }
 }
 
