@@ -1488,26 +1488,85 @@ examples/unified-demo/
 
 ## Bug Fixes Required (2025-03-20)
 
-Comparing generated `Counter.ets` against manually-written correct version revealed 6 bugs:
+Comparing generated `Counter.ets` against manually-written correct version revealed 6 bugs.
 
-### Bug 1: Wrong Enum Syntax
+### Root Cause: Kotlin Syntax in TypeScript Generator
+
+The ark generator was incorrectly emitting **Kotlin** syntax instead of **TypeScript/ArkTS** syntax. This happened because the code was likely copied/adapted from the jet backend (which targets Kotlin/Jetpack Compose) without proper adaptation for TypeScript.
+
+### File-by-File Analysis
+
+#### File: `state.rs` - ALL KOTLIN PATTERNS
+
+| Line | Kotlin (Wrong) | TypeScript/ArkTS (Correct) | Issue |
+|------|----------------|---------------------------|-------|
+| 59 | `sealed class Msg {` | `enum Msg {` | Kotlin sealed class keyword |
+| 65 | `data class Inc(val value: T) : Msg()` | (remove) | Kotlin data class inheritance |
+| 67 | `object Dec : Msg()` | `  Dec,` | Kotlin object declaration |
+| 38 | `Msg.Inc: {` | `case Msg.Inc: {` | Missing `case` keyword |
+| 44 | `}` (no break) | `        break;\n      }` | Missing `break;` statement |
+
+#### File: `generator.rs` - MOSTLY CORRECT ✓
+
+No Kotlin patterns. Correctly generates TypeScript-style code.
+
+#### File: `modifier.rs` - CORRECT ✓
+
+No Kotlin patterns. Correctly generates TypeScript chainable modifiers.
+
+---
+
+### Bug 1: Wrong Enum Syntax (Kotlin `sealed class`)
 
 | Generated (Wrong) | Correct |
 |-------------------|---------|
 | `sealed class Msg { object Inc : Msg() ... }` | `enum Msg { Inc, Dec }` |
 
-**Root cause**: Generator uses Kotlin sealed class pattern instead of TypeScript enum.
+**Root cause**: `generate_msg_sealed()` uses Kotlin sealed class pattern.
 
-**Fix location**: `state.rs` → `generate_msg_sealed()`
+**Fix location**: `state.rs` lines 54-75 → `generate_msg_sealed()`
 
-**Fix**:
+**Fix**: Replace entire function to generate TypeScript enum:
+
 ```rust
-// Before (Kotlin-style)
-lines.push(format!("  object {} : Msg()", variant.name));
+// BEFORE (Kotlin-style) - lines 54-75
+pub fn generate_msg_sealed(widget: &AuraWidget) -> String {
+    if widget.messages.is_empty() {
+        return String::new();
+    }
+    let mut lines = vec!["sealed class Msg {".to_string()];
+    for msg in &widget.messages {
+        for variant in &msg.variants {
+            if let Some(ref payload_type) = variant.payload {
+                let arkts_type = auto_type_to_arkts(payload_type);
+                lines.push(format!("  data class {}(val value: {}) : Msg()", variant.name, arkts_type));
+            } else {
+                lines.push(format!("  object {} : Msg()", variant.name));
+            }
+        }
+    }
+    lines.push("}".to_string());
+    lines.join("\n")
+}
 
-// After (TypeScript enum)
-lines.push(format!("  {},", variant.name));
+// AFTER (TypeScript enum)
+pub fn generate_msg_enum(widget: &AuraWidget) -> String {
+    if widget.messages.is_empty() {
+        return String::new();
+    }
+    let mut lines = vec!["enum Msg {".to_string()];
+    for msg in &widget.messages {
+        for variant in &msg.variants {
+            // TypeScript enum - simple variant
+            lines.push(format!("  {},", variant.name));
+        }
+    }
+    lines.push("}".to_string());
+    lines.join("\n")
+}
 ```
+
+**Note**: For payload-carrying messages, TypeScript requires a different pattern (union types or class-based approach). For now, simple enums cover the common case.
 
 ---
 
@@ -1517,17 +1576,18 @@ lines.push(format!("  {},", variant.name));
 |-------------------|---------|
 | `Msg.Inc: { ... }` | `case Msg.Inc: { ... break; }` |
 
-**Root cause**: Generator not emitting `case` keyword for switch branches.
+**Root cause**: `generate_dispatch_function()` emits Kotlin `when` pattern (without `case`).
 
-**Fix location**: `state.rs` → `generate_dispatch_function()`
+**Fix location**: `state.rs` lines 24-51 → `generate_dispatch_function()`
 
 **Fix**:
-```rust
-// Before
-lines.push(format!("      Msg.{}: {{", pattern));
 
-// After
-lines.push(format!("      case Msg.{}: {{", pattern));
+```rust
+// BEFORE (line 38)
+lines.push(format!("      Msg.{}: {{", msg_name));
+
+// AFTER
+lines.push(format!("      case Msg.{}: {{", msg_name));
 ```
 
 ---
@@ -1538,14 +1598,27 @@ lines.push(format!("      case Msg.{}: {{", pattern));
 |-------------------|---------|
 | No `break;` after case blocks | Each case ends with `break;` |
 
-**Root cause**: Generator not emitting `break` for switch cases.
+**Root cause**: `generate_dispatch_function()` doesn't emit `break` (Kotlin `when` doesn't require it).
 
-**Fix location**: `state.rs` → `generate_dispatch_function()`
+**Fix location**: `state.rs` lines 40-44 → after handler body
 
 **Fix**:
+
 ```rust
-// Add after each handler body
-lines.push("        break;".to_string());
+// BEFORE (lines 40-44)
+let body = generate_handler_body(payload);
+for line in body.lines() {
+    lines.push(format!("        {}", line));
+}
+lines.push("      }".to_string());
+
+// AFTER
+let body = generate_handler_body(payload);
+for line in body.lines() {
+    lines.push(format!("        {}", line));
+}
+lines.push("        break;".to_string());  // Add break
+lines.push("      }".to_string());
 ```
 
 ---
