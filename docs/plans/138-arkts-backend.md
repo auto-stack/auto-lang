@@ -1490,6 +1490,24 @@ examples/unified-demo/
 
 Comparing generated `Counter.ets` against manually-written correct version revealed 6 bugs.
 
+### Modifier Format Analysis
+
+**Good news**: The `ark/modifier.rs` correctly generates TypeScript-style modifiers!
+
+| Backend | Format | Example | Status |
+|---------|--------|---------|--------|
+| **ark/modifier.rs** | `.methodName(value)` | `.fontSize(30)`, `.margin(20)` | ✅ Correct for ArkTS |
+| **jet/modifier.rs** | `Modifier.methodName(value)` | `Modifier.fontSize(30.sp)` | ✅ Correct for Kotlin |
+
+No cross-contamination found - no `Modifier.` patterns in ark files.
+
+**Note**: In AURA, styles are defined using Tailwind classes in the `class` prop:
+```auto
+button "-" { onclick: .Dec, class: "w-24 h-12 m-2" }
+```
+
+---
+
 ### Root Cause: Kotlin Syntax in TypeScript Generator
 
 The ark generator was incorrectly emitting **Kotlin** syntax instead of **TypeScript/ArkTS** syntax. This happened because the code was likely copied/adapted from the jet backend (which targets Kotlin/Jetpack Compose) without proper adaptation for TypeScript.
