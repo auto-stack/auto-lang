@@ -111,6 +111,10 @@ impl ArkGenerator {
 
         let mut lines = Vec::new();
 
+        // Add import statement for ArkUI components
+        lines.push("import { Button, Column, Row, Text } from '@kit.ArkUI';".to_string());
+        lines.push(String::new());
+
         // Generate Msg enum if widget has messages (before @Entry)
         let msg_enum = generate_msg_enum(widget);
         if !msg_enum.is_empty() {
@@ -644,5 +648,42 @@ mod tests {
 
         // Should NOT contain direct state update in event handlers
         // (dispatch pattern is used instead)
+    }
+
+    #[test]
+    fn test_generated_file_has_imports() {
+        // Create a simple widget
+        let widget = AuraWidget {
+            name: "TestWidget".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "col".to_string(),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // Should contain import statement at the top
+        assert!(
+            code.contains("import { Button, Column, Row, Text } from '@kit.ArkUI';"),
+            "Should contain ArkUI import statement"
+        );
+
+        // Import should appear before @Entry decorator
+        let import_pos = code.find("import").expect("Import should exist");
+        let entry_pos = code.find("@Entry").expect("@Entry should exist");
+        assert!(
+            import_pos < entry_pos,
+            "Import should appear before @Entry decorator"
+        );
     }
 }
