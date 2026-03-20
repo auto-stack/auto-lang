@@ -20,9 +20,9 @@ pub fn generate_state_declarations(widget: &AuraWidget) -> String {
     lines.join("\n")
 }
 
-/// Generate dispatch function from widget handlers
+/// Generate dispatch function from widget messages and handlers
 pub fn generate_dispatch_function(widget: &AuraWidget) -> String {
-    if widget.handlers.is_empty() {
+    if widget.messages.is_empty() {
         return String::new();
     }
 
@@ -31,17 +31,27 @@ pub fn generate_dispatch_function(widget: &AuraWidget) -> String {
         "    switch (msg) {".to_string(),
     ];
 
-    for (pattern, payload) in &widget.handlers {
-        // Extract message name from pattern (e.g., ".Inc" -> "Inc")
-        let msg_name = pattern.trim_start_matches('.');
+    // Iterate over all message variants
+    for msg in &widget.messages {
+        for variant in &msg.variants {
+            let msg_name = &variant.name;
+            lines.push(format!("      case Msg.{}: {{", msg_name));
 
-        lines.push(format!("      Msg.{}: {{", msg_name));
+            // Look up handler for this message (pattern format: ".MsgName")
+            let handler_key = format!(".{}", msg_name);
+            if let Some(payload) = widget.handlers.get(&handler_key) {
+                let body = generate_handler_body(payload);
+                for line in body.lines() {
+                    lines.push(format!("        {}", line));
+                }
+            } else {
+                // No handler defined - emit placeholder
+                lines.push("        // TODO: implement handler".to_string());
+            }
 
-        let body = generate_handler_body(payload);
-        for line in body.lines() {
-            lines.push(format!("        {}", line));
+            lines.push("        break;".to_string());
+            lines.push("      }".to_string());
         }
-        lines.push("      }".to_string());
     }
 
     lines.push("    }".to_string());

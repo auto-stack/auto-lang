@@ -24,7 +24,7 @@
 use super::components::ArkComponentRegistry;
 use super::modifier::{class_to_modifier, prop_to_modifier};
 use super::project::ArkProjectGenerator;
-use super::state::{generate_handler_body, generate_msg_enum, generate_state_declarations};
+use super::state::{generate_dispatch_function, generate_handler_body, generate_msg_enum, generate_state_declarations};
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::{BackendGenerator, GenResult};
 use std::collections::HashMap;
@@ -111,8 +111,12 @@ impl ArkGenerator {
 
         let mut lines = Vec::new();
 
-        // NOTE: ArkTS doesn't support sealed classes like Kotlin
-        // We generate direct state updates in event handlers instead
+        // Generate Msg enum if widget has messages (before @Entry)
+        let msg_enum = generate_msg_enum(widget);
+        if !msg_enum.is_empty() {
+            lines.push(msg_enum);
+            lines.push("".to_string());
+        }
 
         // @Entry @Component struct
         lines.push("@Entry".to_string());
@@ -130,7 +134,14 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
-        // NOTE: No dispatch function - ArkTS uses direct state updates
+        // Generate dispatch function if widget has messages and handlers
+        let dispatch_fn = generate_dispatch_function(widget);
+        if !dispatch_fn.is_empty() {
+            for line in dispatch_fn.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+            lines.push("".to_string());
+        }
 
         // build() method
         lines.push(format!("{}build() {{", self.indent()));
@@ -262,8 +273,15 @@ impl ArkGenerator {
         // Process events - generate onClick handlers
         for (event_name, event) in events {
             if event_name == "click" || event_name == "onclick" {
-                // Generate direct state update instead of dispatch pattern
-                let handler_code = self.generate_handler_code(&event.handler);
+                // Use dispatch pattern if widget has messages, otherwise direct state update
+                let handler_code = if self.has_messages && event.handler.starts_with('.') {
+                    // Extract message name and generate dispatch call
+                    let msg_name = &event.handler[1..];
+                    format!("this.dispatch(Msg.{})", msg_name)
+                } else {
+                    // Fall back to direct state update
+                    self.generate_handler_code(&event.handler)
+                };
                 modifiers.push(format!(
                     ".onClick(() => {{\n    {}\n  }})",
                     handler_code
@@ -547,6 +565,8 @@ impl BackendGenerator for ArkGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::aura::{AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, Type};
+    use std::collections::HashMap;
 
     #[test]
     fn test_generator_extension() {
@@ -571,5 +591,58 @@ mod tests {
 
         let oh_package = files.get("oh-package.json5").unwrap();
         assert!(oh_package.contains("testapp"));
+    }
+
+    #[test]
+    fn test_dispatch_pattern_generation() {
+        // Create a widget with messages and handlers
+        let widget = AuraWidget {
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+            }],
+            computed: vec![],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![
+                    AuraMsgVariant {
+                        name: "Inc".to_string(),
+                        payload: None,
+                    },
+                    AuraMsgVariant {
+                        name: "Dec".to_string(),
+                        payload: None,
+                    },
+                ],
+            }],
+            view_tree: AuraNode::Element {
+                tag: "col".to_string(),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // Should contain Msg enum
+        assert!(code.contains("enum Msg {"), "Should generate Msg enum");
+        assert!(code.contains("Inc,"), "Should contain Inc variant");
+        assert!(code.contains("Dec,"), "Should contain Dec variant");
+
+        // Should contain dispatch function
+        assert!(
+            code.contains("private dispatch(msg: Msg): void"),
+            "Should generate dispatch function"
+        );
+
+        // Should NOT contain direct state update in event handlers
+        // (dispatch pattern is used instead)
     }
 }
