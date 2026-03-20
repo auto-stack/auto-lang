@@ -969,6 +969,17 @@ fun {}Preview() {{
         let text_prop = props.get("text")
             .and_then(|p| self.extract_string_value(p));
 
+        // Get typography style for heading tags
+        let typography_style = match tag {
+            "h1" => Some("headlineLarge"),
+            "h2" => Some("headlineMedium"),
+            "h3" => Some("headlineSmall"),
+            "h4" => Some("titleLarge"),
+            "h5" => Some("titleMedium"),
+            "h6" => Some("titleSmall"),
+            _ => None,
+        };
+
         // Generate children content
         let mut children_content = String::new();
         for child in children {
@@ -978,11 +989,19 @@ fun {}Preview() {{
         if is_text_like {
             // Text-like components: Text("content")
             let text = text_prop.unwrap_or_default();
+
+            // Build style parameter if needed
+            let style_param = if let Some(style) = typography_style {
+                format!(", style = MaterialTheme.typography.{}", style)
+            } else {
+                String::new()
+            };
+
             if children.is_empty() {
-                Ok(format!("{}{}(\"{}\")\n", ind, compose_name, text))
+                Ok(format!("{}{}(\"{}\"{})\n", ind, compose_name, text, style_param))
             } else {
                 // Has children - use them as content
-                Ok(format!("{}{}(\"{}\")\n", ind, compose_name, children_content.trim()))
+                Ok(format!("{}{}(\"{}\"{})\n", ind, compose_name, children_content.trim(), style_param))
             }
         } else {
             // Container-like components: Box { ... }
@@ -995,16 +1014,22 @@ fun {}Preview() {{
     }
 
     /// Map AURA tag to Compose component name
-    fn map_tag_to_compose(&self, tag: &str) -> (&'static str, bool) {
+    /// Returns (component_name, is_text_like)
+    /// For unknown tags, treat as user-defined component (not text-like)
+    fn map_tag_to_compose(&self, tag: &str) -> (String, bool) {
         match tag {
-            "text" | "span" | "p" => ("Text", true),
-            "div" | "section" | "article" => ("Box", false),
-            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => ("Text", true),
-            "img" | "image" => ("Image", true),
-            "icon" => ("Icon", true),
-            "spacer" => ("Spacer", true),
-            "divider" => ("HorizontalDivider", true),
-            _ => ("Box", false),  // Default to Box container
+            "text" | "span" | "p" => ("Text".to_string(), true),
+            "div" | "section" | "article" | "header" | "footer" | "nav" | "main" | "aside" => ("Column".to_string(), false),
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => ("Text".to_string(), true),
+            "img" | "image" => ("Image".to_string(), true),
+            "icon" => ("Icon".to_string(), true),
+            "spacer" => ("Spacer".to_string(), true),
+            "divider" => ("HorizontalDivider".to_string(), true),
+            _ => {
+                // Unknown tag - treat as user-defined component
+                // Use the tag name directly (e.g., "Counter" -> "Counter()")
+                (tag.to_string(), false)
+            }
         }
     }
 
@@ -1316,29 +1341,43 @@ impl BackendGenerator for JetGenerator {
         let package_decl = self.generate_package();
         let composable_name = &widget.name;
 
+        // Check if this widget has Link nodes (for navController parameter requirement)
+        let has_link = Self::has_link_node(&widget.view_tree);
+
+        // Check if this is a page widget (by naming convention)
+        // Page widgets receive navController from NavHost
+        let is_page_widget = composable_name.ends_with("Page");
+
         // Add navigation imports based on widget type
-        // Router widgets need all navigation imports; Page widgets need NavHostController for param
-        self.add_import("androidx.navigation.NavHostController");
+        // - Router widgets: need NavHost, composable, rememberNavController
+        // - Page widgets (with Link OR name ends with "Page"): need NavHostController and rememberNavController
+        // - Plain widgets: no navigation imports needed
         if has_routes {
-            // Router - also needs NavHost, composable, and rememberNavController
+            // Router - needs all navigation imports
+            self.add_import("androidx.navigation.NavHostController");
             self.add_import("androidx.navigation.compose.NavHost");
             self.add_import("androidx.navigation.compose.composable");
             self.add_import("androidx.navigation.compose.rememberNavController");
-        } else {
-            // Page - needs rememberNavController for Preview
+        } else if has_link || is_page_widget {
+            // Page with Link or Page naming convention - needs navController param and Preview support
+            self.add_import("androidx.navigation.NavHostController");
             self.add_import("androidx.navigation.compose.rememberNavController");
         }
+        // else: plain widget - no navigation imports
 
         // Generate imports (after potentially adding navigation imports)
         let imports = self.generate_imports();
 
-        // Generate appropriate Preview based on whether this is a router or a page
+        // Generate appropriate Preview based on widget type
         let preview = if has_routes {
             // Router - no navController param, just call the function
             self.generate_preview(composable_name)
-        } else {
+        } else if has_link || is_page_widget {
             // Page with navController param, use preview_with_nav
             self.generate_preview_with_nav(composable_name)
+        } else {
+            // Plain widget - no navController
+            self.generate_preview(composable_name)
         };
 
         // Build the complete code
@@ -1366,14 +1405,19 @@ impl BackendGenerator for JetGenerator {
 
         // Composable function
         // - Router widgets (has_routes): create navController internally, no param needed
-        // - Page widgets: receive navController from NavHost
+        // - Page widgets (has_link OR name ends with "Page"): receive navController from NavHost
+        // - Plain widgets: no navController at all
         if has_routes {
             // Router widget (like App) - creates its own navController
             code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
             code.push_str("    val navController = rememberNavController()\n\n");
-        } else {
-            // Regular page widget - receives navController from NavHost
+        } else if has_link || is_page_widget {
+            // Page widget - receives navController from NavHost
+            // Either has Link components OR follows Page naming convention
             code.push_str(&format!("@Composable\nfun {}(\n    navController: NavHostController,\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
+        } else {
+            // Plain widget - no navController
+            code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
         }
 
         // State declarations

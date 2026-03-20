@@ -24,6 +24,8 @@ pub struct LayoutGenerator {
 pub struct LayoutProps {
     /// Gap between children (in Tailwind units)
     pub gap: Option<u32>,
+    /// Padding (in dp)
+    pub padding: Option<u32>,
     /// Vertical alignment (for Row) or horizontal alignment (for Column)
     pub vertical_align: Option<String>,
     /// Horizontal arrangement (for Row)
@@ -70,10 +72,12 @@ impl LayoutGenerator {
         })
     }
 
-    /// Extract int value from prop
+    /// Extract int value from prop (handles Int, Float, and String forms)
     fn extract_int(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<i64> {
         props.get(key).and_then(|p| match p {
             AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
+            AuraPropValue::Expr(AuraExpr::Float(n)) => Some(*n as i64),
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse::<i64>().ok(),
             _ => None,
         })
     }
@@ -81,6 +85,7 @@ impl LayoutGenerator {
     /// Parse layout properties from AURA props
     fn parse_layout_props(&mut self, props: &HashMap<String, AuraPropValue>) -> LayoutProps {
         let gap = Self::extract_int(props, "gap").map(|n| n as u32);
+        let padding = Self::extract_int(props, "padding").map(|n| n as u32);
         let vertical_align = Self::extract_string(props, "align")
             .or_else(|| Self::extract_string(props, "vertical_align"));
         let horizontal_arrange = Self::extract_string(props, "justify")
@@ -91,6 +96,7 @@ impl LayoutGenerator {
 
         LayoutProps {
             gap,
+            padding,
             vertical_align,
             horizontal_arrange,
             vertical_arrange,
@@ -103,6 +109,7 @@ impl LayoutGenerator {
     pub fn generate_column(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Column");
         self.add_import("androidx.compose.foundation.layout.Arrangement");
+        self.add_import("androidx.compose.foundation.layout.padding");
         self.add_import("androidx.compose.ui.Alignment");
         self.add_import("androidx.compose.ui.Modifier");
 
@@ -110,11 +117,24 @@ impl LayoutGenerator {
 
         let mut params = Vec::new();
 
-        // Modifier
+        // Build modifier chain
+        let mut modifier_parts = Vec::new();
+
+        // Add padding if specified
+        if let Some(padding) = layout_props.padding {
+            modifier_parts.push(format!("padding({}.dp)", padding));
+        }
+
+        // Add class-based modifiers
         if let Some(class) = &layout_props.class {
-            params.push(format!("modifier = Modifier.{}", self.class_to_modifier(class)));
-        } else {
+            modifier_parts.push(self.class_to_modifier(class));
+        }
+
+        // Build final modifier
+        if modifier_parts.is_empty() {
             params.push("modifier = Modifier".to_string());
+        } else {
+            params.push(format!("modifier = Modifier.{}", modifier_parts.join(".")));
         }
 
         // Vertical arrangement (gap + arrange)
@@ -167,6 +187,7 @@ impl LayoutGenerator {
     pub fn generate_row(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Row");
         self.add_import("androidx.compose.foundation.layout.Arrangement");
+        self.add_import("androidx.compose.foundation.layout.padding");
         self.add_import("androidx.compose.ui.Alignment");
         self.add_import("androidx.compose.ui.Modifier");
 
@@ -174,11 +195,24 @@ impl LayoutGenerator {
 
         let mut params = Vec::new();
 
-        // Modifier
+        // Build modifier chain
+        let mut modifier_parts = Vec::new();
+
+        // Add padding if specified
+        if let Some(padding) = layout_props.padding {
+            modifier_parts.push(format!("padding({}.dp)", padding));
+        }
+
+        // Add class-based modifiers
         if let Some(class) = &layout_props.class {
-            params.push(format!("modifier = Modifier.{}", self.class_to_modifier(class)));
-        } else {
+            modifier_parts.push(self.class_to_modifier(class));
+        }
+
+        // Build final modifier
+        if modifier_parts.is_empty() {
             params.push("modifier = Modifier".to_string());
+        } else {
+            params.push(format!("modifier = Modifier.{}", modifier_parts.join(".")));
         }
 
         // Horizontal arrangement (gap + justify)
@@ -221,6 +255,7 @@ impl LayoutGenerator {
     /// Generate Box component
     pub fn generate_box(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Box");
+        self.add_import("androidx.compose.foundation.layout.padding");
         self.add_import("androidx.compose.ui.Alignment");
         self.add_import("androidx.compose.ui.Modifier");
 
@@ -228,11 +263,24 @@ impl LayoutGenerator {
 
         let mut params = Vec::new();
 
-        // Modifier
+        // Build modifier chain
+        let mut modifier_parts = Vec::new();
+
+        // Add padding if specified
+        if let Some(padding) = layout_props.padding {
+            modifier_parts.push(format!("padding({}.dp)", padding));
+        }
+
+        // Add class-based modifiers
         if let Some(class) = &layout_props.class {
-            params.push(format!("modifier = Modifier.{}", self.class_to_modifier(class)));
-        } else {
+            modifier_parts.push(self.class_to_modifier(class));
+        }
+
+        // Build final modifier
+        if modifier_parts.is_empty() {
             params.push("modifier = Modifier".to_string());
+        } else {
+            params.push(format!("modifier = Modifier.{}", modifier_parts.join(".")));
         }
 
         // Content alignment
