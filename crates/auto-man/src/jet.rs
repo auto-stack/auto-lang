@@ -178,11 +178,7 @@ impl JetProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    let file_stem = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("widget");
-
-                    match Self::compile_at_file(&path, file_stem) {
+                    match Self::compile_at_file(&path, &name) {
                         Ok((files, names)) => {
                             kotlin_files.extend(files);
                             widget_names.extend(names);
@@ -205,11 +201,7 @@ impl JetProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    let file_stem = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("page");
-
-                    match Self::compile_at_file(&path, file_stem) {
+                    match Self::compile_at_file(&path, &name) {
                         Ok((files, names)) => {
                             kotlin_files.extend(files);
                             widget_names.extend(names);
@@ -232,11 +224,7 @@ impl JetProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    let file_stem = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("component");
-
-                    match Self::compile_at_file(&path, file_stem) {
+                    match Self::compile_at_file(&path, &name) {
                         Ok((files, names)) => {
                             kotlin_files.extend(files);
                             widget_names.extend(names);
@@ -336,9 +324,8 @@ impl JetProject {
 
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
-                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("widget");
 
-                                match Self::compile_at_file(&path, stem) {
+                                match Self::compile_at_file(&path, &name) {
                                     Ok((files, names)) => {
                                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
                                             UIArtifact {
@@ -383,9 +370,8 @@ impl JetProject {
 
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
-                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
 
-                                match Self::compile_at_file(&path, stem) {
+                                match Self::compile_at_file(&path, &name) {
                                     Ok((files, names)) => {
                                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
                                             UIArtifact {
@@ -430,9 +416,8 @@ impl JetProject {
 
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
-                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("component");
 
-                                match Self::compile_at_file(&path, stem) {
+                                match Self::compile_at_file(&path, &name) {
                                     Ok((files, names)) => {
                                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
                                             UIArtifact {
@@ -478,7 +463,11 @@ impl JetProject {
 
     /// Compile a single .at file to Kotlin code
     /// Returns (kotlin_files, widget_names)
-    fn compile_at_file(at_path: &Path, default_name: &str) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    ///
+    /// # Arguments
+    /// * `at_path` - Path to the .at file
+    /// * `project_name` - Project name (used for package name)
+    fn compile_at_file(at_path: &Path, project_name: &str) -> Result<(Vec<(String, String)>, Vec<String>), String> {
         let code = fs::read_to_string(at_path)
             .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
@@ -507,8 +496,9 @@ impl JetProject {
         }
 
         // Generate Kotlin code for each widget
-        // Use project name for package
-        let package_name = format!("com.example.{}.ui.widgets", default_name.to_lowercase().replace('-', "_"));
+        // Use project name for package - all widgets go to the same package
+        let safe_project_name = project_name.to_lowercase().replace('-', "_");
+        let package_name = format!("com.example.{}.ui.widgets", safe_project_name);
         let mut generator = JetGenerator::new().with_package(&package_name);
         let mut files = Vec::new();
         let mut names = Vec::new();
@@ -523,8 +513,7 @@ impl JetProject {
             // Generate file path: ui/widgets/{WidgetName}.kt
             let widget_name = &widget.name;
             let file_name = format!("{}.kt", widget_name);
-            let safe_name = default_name.to_lowercase().replace('-', "_");
-            let relative_path = format!("app/src/main/java/com/example/{}/ui/widgets/{}", safe_name, file_name);
+            let relative_path = format!("app/src/main/java/com/example/{}/ui/widgets/{}", safe_project_name, file_name);
             files.push((relative_path, kotlin_code));
         }
 
