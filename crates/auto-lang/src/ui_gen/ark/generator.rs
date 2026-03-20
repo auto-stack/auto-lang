@@ -148,8 +148,8 @@ impl ArkGenerator {
 
         let mut lines = Vec::new();
 
-        // Add import statement for ArkUI components
-        lines.push("import { Button, Column, Row, Text } from '@kit.ArkUI';".to_string());
+        // Add import statement for ArkUI components (only Button - Column, Row, Text are built-in)
+        lines.push("import { Button } from '@kit.ArkUI';".to_string());
         lines.push(String::new());
 
         // Generate Msg enum if widget has messages (before @Entry)
@@ -711,10 +711,10 @@ mod tests {
         let mut gen = ArkGenerator::new();
         let code = gen.generate_entry_component(&widget).unwrap();
 
-        // Should contain import statement at the top
+        // Should contain import statement at the top (only Button - built-ins don't need import)
         assert!(
-            code.contains("import { Button, Column, Row, Text } from '@kit.ArkUI';"),
-            "Should contain ArkUI import statement"
+            code.contains("import { Button } from '@kit.ArkUI';"),
+            "Should contain ArkUI import statement for Button only"
         );
 
         // Import should appear before @Entry decorator
