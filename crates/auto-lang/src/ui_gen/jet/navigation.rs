@@ -272,10 +272,10 @@ impl Default for NavigationGenerator {
 /// Convert a route path to a screen name
 ///
 /// # Examples
-/// - `/` -> `HomeScreen`
-/// - `/about` -> `AboutScreen`
-/// - `/user/:id` -> `UserScreen`
-/// - `/admin/settings` -> `AdminSettingsScreen`
+/// - `/` -> `IndexPage`
+/// - `/about` -> `AboutPage`
+/// - `/user/:id` -> `UserPage`
+/// - `/admin/settings` -> `AdminSettingsPage`
 fn path_to_screen_name(path: &str) -> String {
     let segments: Vec<&str> = path
         .split('/')
@@ -283,7 +283,7 @@ fn path_to_screen_name(path: &str) -> String {
         .collect();
 
     if segments.is_empty() {
-        return "HomeScreen".to_string();
+        return "IndexPage".to_string();
     }
 
     let name: String = segments
@@ -297,7 +297,7 @@ fn path_to_screen_name(path: &str) -> String {
         })
         .collect();
 
-    format!("{}Screen", name)
+    format!("{}Page", name)
 }
 
 #[cfg(test)]
@@ -308,13 +308,13 @@ mod tests {
     fn test_add_route() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route("home", "HomeScreen");
-        gen.add_route("settings", "SettingsScreen");
+        gen.add_route("/", "IndexPage");
+        gen.add_route("/settings", "SettingsPage");
 
         let routes = gen.get_routes();
         assert_eq!(routes.len(), 2);
-        assert_eq!(routes[0].name, "home");
-        assert_eq!(routes[0].screen, "HomeScreen");
+        assert_eq!(routes[0].name, "/");
+        assert_eq!(routes[0].screen, "IndexPage");
     }
 
     #[test]
@@ -323,7 +323,7 @@ mod tests {
 
         gen.add_route_with_params(
             "detail",
-            "DetailScreen",
+            "DetailPage",
             vec!["id".to_string()]
         );
 
@@ -336,28 +336,28 @@ mod tests {
     fn test_generate_nav_host() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route("home", "HomeScreen");
-        gen.add_route("settings", "SettingsScreen");
+        gen.add_route("/", "IndexPage");
+        gen.add_route("/settings", "SettingsPage");
 
-        let result = gen.generate_nav_host("home");
+        let result = gen.generate_nav_host("/");
         assert!(result.is_ok());
 
         let code = result.unwrap();
         assert!(code.contains("NavHost"));
-        assert!(code.contains("startDestination = \"home\""));
-        assert!(code.contains("composable(\"home\")"));
-        assert!(code.contains("composable(\"settings\")"));
-        assert!(code.contains("HomeScreen(navController)"));
-        assert!(code.contains("SettingsScreen(navController)"));
+        assert!(code.contains("startDestination = \"/\""));
+        assert!(code.contains("composable(\"/\")"));
+        assert!(code.contains("composable(\"/settings\")"));
+        assert!(code.contains("IndexPage(navController)"));
+        assert!(code.contains("SettingsPage(navController)"));
     }
 
     #[test]
     fn test_generate_app_with_nav() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route("home", "HomeScreen");
+        gen.add_route("/", "IndexPage");
 
-        let result = gen.generate_app_with_nav("home");
+        let result = gen.generate_app_with_nav("/");
         assert!(result.is_ok());
 
         let code = result.unwrap();
@@ -426,8 +426,8 @@ mod tests {
     fn test_import_collection() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route("home", "HomeScreen");
-        let _ = gen.generate_nav_host("home");
+        gen.add_route("/", "IndexPage");
+        let _ = gen.generate_nav_host("/");
 
         let imports = gen.get_imports();
         assert!(imports.iter().any(|i| i.contains("NavHostController")));
@@ -438,8 +438,8 @@ mod tests {
     fn test_clear_routes() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route("home", "HomeScreen");
-        gen.add_route("settings", "SettingsScreen");
+        gen.add_route("/", "IndexPage");
+        gen.add_route("/settings", "SettingsPage");
         assert_eq!(gen.get_routes().len(), 2);
 
         gen.clear_routes();
@@ -450,8 +450,8 @@ mod tests {
     fn test_clear_imports() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route("home", "HomeScreen");
-        let _ = gen.generate_nav_host("home");
+        gen.add_route("/", "IndexPage");
+        let _ = gen.generate_nav_host("/");
         assert!(!gen.get_imports().is_empty());
 
         gen.clear_imports();

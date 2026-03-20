@@ -166,6 +166,24 @@ impl JetGenerator {
         &self.package
     }
 
+    /// Check if a node tree contains any Link nodes (for navController requirement)
+    fn has_link_node(node: &crate::aura::AuraNode) -> bool {
+        match node {
+            crate::aura::AuraNode::Link { .. } => true,
+            crate::aura::AuraNode::Element { children, .. } => {
+                children.iter().any(|c| Self::has_link_node(c))
+            }
+            crate::aura::AuraNode::ForLoop { body, .. } => {
+                body.iter().any(|c| Self::has_link_node(c))
+            }
+            crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+                then_body.iter().any(|c| Self::has_link_node(c))
+                    || else_body.as_ref().map_or(false, |e| e.iter().any(|c| Self::has_link_node(c)))
+            }
+            _ => false,
+        }
+    }
+
     /// Generate @Composable function signature and body
     pub fn generate_composable(&mut self, name: &str, body: &str) -> String {
         format!(
@@ -198,7 +216,21 @@ fun {}(
             r#"@Preview(showBackground = true)
 @Composable
 fun {}Preview() {{
+    // Note: For pages with navController, use rememberNavController()
     {}()
+}}"#,
+            name, name
+        )
+    }
+
+    /// Generate @Preview function with navController
+    pub fn generate_preview_with_nav(&self, name: &str) -> String {
+        format!(
+            r#"@Preview(showBackground = true)
+@Composable
+fun {}Preview() {{
+    val navController = rememberNavController()
+    {}(navController)
 }}"#,
             name, name
         )
@@ -394,8 +426,8 @@ fun {}Preview() {{
                 self.component_to_compose(name, props, events, indent)
             }
             AuraNode::Outlet => {
-                // TODO: Navigation placeholder
-                Ok(format!("{}// TODO: Router outlet\n", ind))
+                // outlet should render the NavHost with current navController
+                Ok(format!("{}AppNavHost(navController)\n", ind))
             }
             AuraNode::Link { to, text, href, children } => {
                 self.link_to_compose(to, text, href, children, indent)
@@ -1261,9 +1293,26 @@ impl BackendGenerator for JetGenerator {
 
         // Assemble final code
         let package_decl = self.generate_package();
-        let imports = self.generate_imports();
         let composable_name = &widget.name;
-        let preview = self.generate_preview(composable_name);
+
+        // Check if this widget has Link nodes (needs navController parameter)
+        let has_link = Self::has_link_node(&widget.view_tree);
+
+        // Add navigation imports if has Link nodes
+        if has_link {
+            self.add_import("androidx.navigation.NavHostController");
+            self.add_import("androidx.navigation.compose.rememberNavController");
+        }
+
+        // Generate imports (after potentially adding navigation imports)
+        let imports = self.generate_imports();
+
+        // Generate appropriate Preview based on navController requirement
+        let preview = if has_link {
+            self.generate_preview_with_nav(composable_name)
+        } else {
+            self.generate_preview(composable_name)
+        };
 
         // Build the complete code
         let mut code = String::new();
@@ -1288,8 +1337,17 @@ impl BackendGenerator for JetGenerator {
             code.push_str("\n\n");
         }
 
-        // Composable function
-        code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
+        // Composable function - add navController param if has Link nodes
+        if has_link {
+            code.push_str(&format!("@Composable\nfun {}(\n    navController: NavHostController,\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
+        } else {
+            code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
+        }
+
+        // If has routes, create navController
+        if has_routes {
+            code.push_str("    val navController = rememberNavController()\n\n");
+        }
 
         // State declarations
         if !state_decls.is_empty() {
@@ -1951,9 +2009,11 @@ mod tests {
         let nav_host = result.unwrap();
         assert!(nav_host.contains("NavHost"));
         assert!(nav_host.contains("composable(\"home\")"));
-        assert!(nav_host.contains("composable(\"detail\")"));
+        // Routes with params use multi-line format
+        assert!(nav_host.contains("\"detail\""));
         assert!(nav_host.contains("composable(\"settings\")"));
         assert!(nav_host.contains("startDestination = \"home\""));
+        assert!(nav_host.contains("DetailScreen(navController)"));
     }
 
     #[test]
