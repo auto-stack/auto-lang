@@ -730,4 +730,39 @@ mod tests {
             "Import should appear before @Entry decorator"
         );
     }
+
+    #[test]
+    fn test_semantic_header_element() {
+        // Test that semantic HTML elements like header are transpiled to Column
+        let widget = AuraWidget {
+            name: "TestApp".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "header".to_string(),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // header should be transpiled to Column, not "Unknown component"
+        assert!(
+            code.contains("Column()"),
+            "header should be transpiled to Column, got: {}",
+            code
+        );
+        assert!(
+            !code.contains("Unknown component"),
+            "Should not contain 'Unknown component' comment, got: {}",
+            code
+        );
+    }
 }

@@ -113,6 +113,15 @@ impl ArkComponentRegistry {
             has_children: false,
             has_content: false,
         });
+
+        // Semantic HTML elements (map to Column)
+        for tag in ["header", "footer", "nav", "main", "aside", "article", "section"] {
+            self.register(tag, ArkComponent {
+                name: "Column".to_string(),
+                has_children: true,
+                has_content: false,
+            });
+        }
     }
 
     /// Register a component
@@ -190,5 +199,17 @@ mod tests {
 
         let custom = registry.get("custom").unwrap();
         assert_eq!(custom.name, "CustomWidget");
+    }
+
+    #[test]
+    fn test_semantic_elements_map_to_column() {
+        let registry = ArkComponentRegistry::new();
+
+        // Semantic HTML elements should map to Column
+        for tag in ["header", "footer", "nav", "main", "aside", "article", "section"] {
+            let component = registry.get(tag).unwrap();
+            assert_eq!(component.name, "Column", "{} should map to Column", tag);
+            assert!(component.has_children);
+        }
     }
 }
