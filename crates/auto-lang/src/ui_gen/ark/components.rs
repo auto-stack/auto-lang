@@ -122,6 +122,15 @@ impl ArkComponentRegistry {
                 has_content: false,
             });
         }
+
+        // Heading elements (map to Text with font size)
+        for tag in ["h1", "h2", "h3", "h4", "h5", "h6"] {
+            self.register(tag, ArkComponent {
+                name: "Text".to_string(),
+                has_children: false,
+                has_content: true,
+            });
+        }
     }
 
     /// Register a component

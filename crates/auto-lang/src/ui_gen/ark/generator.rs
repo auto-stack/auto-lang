@@ -150,6 +150,12 @@ impl ArkGenerator {
 
         // Add import statement for ArkUI components (only Button - Column, Row, Text are built-in)
         lines.push("import { Button } from '@kit.ArkUI';".to_string());
+
+        // Check if widget has routes - add NavPathStack import
+        let has_routes = widget.routes.is_some();
+        if has_routes {
+            lines.push("import { NavPathStack } from '@kit.ArkUI';".to_string());
+        }
         lines.push(String::new());
 
         // Generate Msg enum if widget has messages (before @Entry)
@@ -165,6 +171,12 @@ impl ArkGenerator {
         lines.push(format!("struct {} {{", sanitized_name));
 
         self.indent_level = 1;
+
+        // Add NavPathStack state if widget has routes
+        if has_routes {
+            lines.push(format!("{}@State navPathStack: NavPathStack = new NavPathStack()", self.indent()));
+            lines.push(String::new());
+        }
 
         // State declarations
         let state_decls = generate_state_declarations(widget);
@@ -184,12 +196,42 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
+        // Generate @Builder functions for route pages
+        if let Some(ref routes) = widget.routes {
+            for route in &routes.routes {
+                let builder_name = Self::page_to_builder_name(&route.module);
+                lines.push(format!("{}@Builder", self.indent()));
+                lines.push(format!("{}{}() {{", self.indent(), builder_name));
+                lines.push(format!("{}  {}()", self.indent(), Self::module_to_component(&route.module)));
+                lines.push(format!("{}}}", self.indent()));
+                lines.push(String::new());
+            }
+
+            // Generate buildNavDestination builder for navDestination
+            lines.push(format!("{}@Builder", self.indent()));
+            lines.push(format!("{}buildNavDestination(name: string) {{", self.indent()));
+            let mut first = true;
+            for route in &routes.routes {
+                let component_name = Self::module_to_component(&route.module);
+                if first {
+                    lines.push(format!("{}  if (name === '{}') {{", self.indent(), route.module));
+                    first = false;
+                } else {
+                    lines.push(format!("{}  else if (name === '{}') {{", self.indent(), route.module));
+                }
+                lines.push(format!("{}    {}()", self.indent(), component_name));
+                lines.push(format!("{}  }}", self.indent()));
+            }
+            lines.push(format!("{}}}", self.indent()));
+            lines.push(String::new());
+        }
+
         // build() method
         lines.push(format!("{}build() {{", self.indent()));
         self.indent_level = 2;
 
         // Generate UI tree from view_tree (not root)
-        let ui_code = self.generate_node(&widget.view_tree)?;
+        let ui_code = self.generate_node_with_routes(&widget.view_tree, has_routes)?;
         for line in ui_code.lines() {
             lines.push(format!("{}{}", self.indent(), line));
         }
@@ -201,6 +243,106 @@ impl ArkGenerator {
         lines.push("}".to_string());
 
         Ok(lines.join("\n"))
+    }
+
+    /// Convert page module name to @Builder function name
+    fn page_to_builder_name(module: &str) -> String {
+        // e.g., "counter" -> "CounterBuilder"
+        let mut chars = module.chars();
+        let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+        let rest: String = chars.collect();
+        format!("{}{}Builder", first, rest)
+    }
+
+    /// Convert module name to component name
+    fn module_to_component(module: &str) -> String {
+        // e.g., "counter" -> "CounterPage" or "index" -> "IndexPage"
+        let mut chars = module.chars();
+        let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+        let rest: String = chars.collect();
+        format!("{}{}Page", first, rest)
+    }
+
+    /// Generate ArkTS code for a node, with route awareness
+    fn generate_node_with_routes(&mut self, node: &AuraNode, has_routes: bool) -> GenResult<String> {
+        match node {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+            } => {
+                // Special handling for root col when routes exist - wrap in Navigation
+                if tag == "col" && has_routes {
+                    return self.generate_navigation_root(props, events, children);
+                }
+                self.generate_element(tag, props, events, children)
+            }
+            AuraNode::Outlet => {
+                // Outlet in navigation context - handled by navDestination
+                Ok("// Outlet - router placeholder".to_string())
+            }
+            _ => self.generate_node(node),
+        }
+    }
+
+    /// Generate Navigation component with navDestination for routing
+    fn generate_navigation_root(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        children: &[AuraNode],
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Navigation component with navPathStack
+        lines.push("Navigation(this.navPathStack) {".to_string());
+        self.indent_level += 1;
+
+        // Generate children (header, outlet, etc.)
+        for child in children {
+            let child_code = self.generate_node(child)?;
+            for line in child_code.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+        }
+
+        self.indent_level -= 1;
+        lines.push(format!("{}}}", self.indent()));
+
+        // Add navDestination modifier for route handling
+        lines.push(format!("{}.navDestination(this.buildNavDestination)", self.indent()));
+
+        // Add modifiers
+        let modifiers = self.generate_modifiers(props, events);
+        if !modifiers.is_empty() {
+            lines.last_mut().unwrap().push_str(&modifiers);
+        }
+
+        Ok(lines.join("\n"))
+    }
+
+    /// Generate buildNavDestination builder for navDestination
+    fn generate_nav_destination_builder(&self, routes: &crate::aura::AuraRoutes) -> String {
+        let mut lines = Vec::new();
+
+        lines.push("@Builder".to_string());
+        lines.push("buildNavDestination(name: string) {".to_string());
+        lines.push("  if (name === 'index') {".to_string());
+        lines.push("    IndexPage()".to_string());
+        lines.push("  }".to_string());
+
+        for route in &routes.routes {
+            if route.module != "index" {
+                let component_name = Self::module_to_component(&route.module);
+                lines.push(format!("  else if (name === '{}') {{", route.module));
+                lines.push(format!("    {}()", component_name));
+                lines.push("  }".to_string());
+            }
+        }
+
+        lines.push("}".to_string());
+        lines.join("\n")
     }
 
     /// Generate ArkTS code for a single node
@@ -515,21 +657,29 @@ impl ArkGenerator {
         // Use external href if provided, otherwise use internal to
         let target = if !href.is_empty() { href } else { to };
 
+        // Extract route name from path (e.g., "/counter" -> "counter")
+        let route_name = target.trim_start_matches('/');
+
         if !text.is_empty() {
-            // Simple text link
-            lines.push(format!("Text(\"{}\")", text));
+            // Simple text link - use Column with onClick for navigation
+            lines.push(format!("Column()"));
             lines.last_mut().unwrap().push_str(&format!(
-                "\n{}.onClick(() => {{\n    // Navigate to: {}\n  }})",
+                "\n{}.onClick(() => {{\n    this.navPathStack.pushPathByName('{}')\n  }})",
                 self.indent(),
-                target
+                route_name
             ));
+            lines.last_mut().unwrap().push_str(" {");
+            self.indent_level += 1;
+            lines.push(format!("{}Text(\"{}\")", self.indent(), text));
+            self.indent_level -= 1;
+            lines.push(format!("{}}}", self.indent()));
         } else if !children.is_empty() {
             // Link with children
             lines.push(format!("Column()"));
             lines.last_mut().unwrap().push_str(&format!(
-                "\n{}.onClick(() => {{\n    // Navigate to: {}\n  }})",
+                "\n{}.onClick(() => {{\n    this.navPathStack.pushPathByName('{}')\n  }})",
                 self.indent(),
-                target
+                route_name
             ));
             lines.last_mut().unwrap().push_str(" {");
             self.indent_level += 1;
