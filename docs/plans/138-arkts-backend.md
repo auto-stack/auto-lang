@@ -1486,6 +1486,208 @@ examples/unified-demo/
 
 ---
 
+## Bug Fixes Required (2025-03-20)
+
+Comparing generated `Counter.ets` against manually-written correct version revealed 6 bugs:
+
+### Bug 1: Wrong Enum Syntax
+
+| Generated (Wrong) | Correct |
+|-------------------|---------|
+| `sealed class Msg { object Inc : Msg() ... }` | `enum Msg { Inc, Dec }` |
+
+**Root cause**: Generator uses Kotlin sealed class pattern instead of TypeScript enum.
+
+**Fix location**: `state.rs` → `generate_msg_sealed()`
+
+**Fix**:
+```rust
+// Before (Kotlin-style)
+lines.push(format!("  object {} : Msg()", variant.name));
+
+// After (TypeScript enum)
+lines.push(format!("  {},", variant.name));
+```
+
+---
+
+### Bug 2: Missing `case` Keyword in Switch
+
+| Generated (Wrong) | Correct |
+|-------------------|---------|
+| `Msg.Inc: { ... }` | `case Msg.Inc: { ... break; }` |
+
+**Root cause**: Generator not emitting `case` keyword for switch branches.
+
+**Fix location**: `state.rs` → `generate_dispatch_function()`
+
+**Fix**:
+```rust
+// Before
+lines.push(format!("      Msg.{}: {{", pattern));
+
+// After
+lines.push(format!("      case Msg.{}: {{", pattern));
+```
+
+---
+
+### Bug 3: Missing `break` Statements
+
+| Generated (Wrong) | Correct |
+|-------------------|---------|
+| No `break;` after case blocks | Each case ends with `break;` |
+
+**Root cause**: Generator not emitting `break` for switch cases.
+
+**Fix location**: `state.rs` → `generate_dispatch_function()`
+
+**Fix**:
+```rust
+// Add after each handler body
+lines.push("        break;".to_string());
+```
+
+---
+
+### Bug 4: Wrong Self-Reference Syntax (Double Dot)
+
+| Generated (Wrong) | Correct |
+|-------------------|---------|
+| `${..count}`, `Msg..Dec`, `Msg..Inc` | `${this.count}`, `Msg.Dec`, `Msg.Inc` |
+
+**Root cause**: Generator emitting `..` instead of `.` for member access.
+
+**Fix location**: `generator.rs` → `interpolate_string()` and `add_modifiers()`
+
+**Fix**:
+```rust
+// The bug is likely in how we handle AURA's `.field` syntax
+// AURA uses `.count` for self-reference, but we're converting to `..count`
+// Should convert to `this.count` or just `.count` depending on context
+```
+
+---
+
+### Bug 5: Wrong Button Construction Order
+
+| Generated (Wrong) | Correct |
+|-------------------|---------|
+| `Button().onClick(...)('-')` | `Button('-').onClick(...)` |
+
+**Root cause**: Generator placing label as trailing call instead of constructor argument.
+
+**Fix location**: `generator.rs` → `node_to_arkts()`
+
+**Fix**:
+```rust
+// Before (wrong order)
+lines.push(format!("{}Button()", indent_str));
+// ... add onClick ...
+lines.push(format("{}  ('{}')", indent_str, label));
+
+// After (correct order)
+lines.push(format!("{}Button('{}')", indent_str, label));
+// ... add onClick ...
+```
+
+---
+
+### Bug 6: Missing Import Statements
+
+| Generated (Wrong) | Correct |
+|-------------------|---------|
+| No imports | `import { Button } from '@kit.ArkUI';` |
+
+**Root cause**: Generator not emitting required imports.
+
+**Fix location**: `generator.rs` → `generate()` and new `imports` tracking
+
+**Fix**:
+```rust
+// At top of generated file
+lines.push("import { Button, Column, Row, Text } from '@kit.ArkUI';".to_string());
+lines.push(String::new());
+```
+
+---
+
+### Fix Priority
+
+| Priority | Bug | Complexity | Impact |
+|----------|-----|------------|--------|
+| 1 | Missing imports | Low | Foundational |
+| 2 | Double dot (`..`) | Medium | Critical syntax error |
+| 3 | Button order | Low | Component API |
+| 4 | `case` keyword | Low | Control flow |
+| 5 | `break` statements | Low | Control flow |
+| 6 | Enum syntax | Medium | Type system |
+
+---
+
+### Correct Counter.ets Reference
+
+```typescript
+// page.ets
+import { Button } from '@kit.ArkUI';
+
+enum Msg {
+  Inc,
+  Dec,
+}
+
+@Entry
+@Component
+struct Index {
+  @State message: string = 'Hello World';
+  @State count: number = 0;
+
+  private dispatch(msg: Msg): void {
+    switch (msg) {
+    case Msg.Inc: {
+      this.count = this.count + 1
+      break;
+    }
+    case Msg.Dec: {
+      this.count = this.count - 1
+      break;
+    }
+  }
+}
+
+  build() {
+    Column() {
+      Text(`Counter now: ${this.count}`)
+        .fontSize(30)
+        .margin(20)
+
+      Row() {
+        Button('-')
+          .onClick(() => {
+            this.dispatch(Msg.Dec);
+          })
+          .width(100)
+          .height(50)
+          .margin(10)
+
+        Button('+')
+          .onClick(() => {
+            this.dispatch(Msg.Inc);
+          })
+          .width(100)
+          .height(50)
+          .margin(10)
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+  }
+}
+```
+
+---
+
 ## Deferred (Future Work)
 
 | Item | Reason |
@@ -1508,3 +1710,13 @@ examples/unified-demo/
 - [ ] Message dispatch pattern generates correctly
 - [ ] `auto gen` creates `arkts/` directory with valid project
 - [ ] Generated project can be opened in DevEco Studio
+
+### Bug Fix Verification
+
+- [ ] **Bug 1**: Msg uses `enum Msg { Inc, Dec }` syntax
+- [ ] **Bug 2**: Switch uses `case Msg.Inc:` syntax
+- [ ] **Bug 3**: Each case has `break;` statement
+- [ ] **Bug 4**: No `..` syntax, use `this.count` or `Msg.Inc`
+- [ ] **Bug 5**: Button label in constructor: `Button('-')`
+- [ ] **Bug 6**: Required imports at top of file
+- [ ] Generated Counter.ets matches correct reference (can compile in DevEco)
