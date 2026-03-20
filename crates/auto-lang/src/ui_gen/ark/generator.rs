@@ -54,6 +54,8 @@ use std::collections::HashMap;
 /// // gen.generate_project("MyApp"); // Generate full project
 /// ```
 pub struct ArkGenerator {
+    /// Sanitized struct name (avoiding conflicts with built-in components)
+    sanitized_name: Option<String>,
     /// Current widget name
     current_widget: Option<String>,
 
@@ -83,12 +85,43 @@ impl ArkGenerator {
             indent_level: 0,
             current_handlers: HashMap::new(),
             has_messages: false,
+            sanitized_name: None,
         }
     }
 
     /// Generate indentation string
     fn indent(&self) -> String {
         "  ".repeat(self.indent_level)
+    }
+
+    /// Check if a name conflicts with built-in ArkUI components
+    fn is_builtin_component(name: &str) -> bool {
+        // List of built-in ArkUI components that could conflict
+        const BUILTIN_COMPONENTS: &[&str] = &[
+            "Button", "Column", "Row", "Text", "Image", "List", "Grid", "Scroll",
+            "Stack", "Flex", "GridRow", "GridCol", "Counter", "Toggle", "Checkbox",
+            "Radio", "Select", "Slider", "Progress", "Rating", "TextInput", "TextArea",
+            "Search", "Divider", "Span", "Canvas", "Video", "Web", "XComponent",
+            "AlphabetIndexer", "Badge", "Blank", "Clock", "DataPanel", "DatePicker",
+            "DatePickerDialog", "LoadingProgress", "Marquee", "Navigation", "NavRouter",
+            "NavDestination", "Navigator", "Panel", "Refresh", "RelativeContainer",
+            "SideBarContainer", "Stepper", "StepperItem", "Swiper", "Tabs", "TabContent",
+            "TimePicker", "TimePickerDialog", "Timer", "TextPicker", "TextPickerDialog",
+            "Toast", "Dialog", "AlertDialog", "ActionSheet", "Menu", "MenuItem",
+            "MenuGroup", "ContextMenu", "Popup", "PromptAction", "Hyperlink",
+        ];
+
+        BUILTIN_COMPONENTS.contains(&name)
+    }
+
+    /// Sanitize widget name to avoid conflicts with built-in components
+    fn sanitize_widget_name(name: &str) -> String {
+        if Self::is_builtin_component(name) {
+            // Append "Widget" suffix to avoid conflict
+            format!("{}Widget", name)
+        } else {
+            name.to_string()
+        }
     }
 
     /// Generate full project
@@ -109,6 +142,10 @@ impl ArkGenerator {
         self.current_handlers = widget.handlers.clone();
         self.has_messages = !widget.messages.is_empty();
 
+        // Sanitize widget name to avoid conflicts with built-in components
+        let sanitized_name = Self::sanitize_widget_name(&widget.name);
+        self.sanitized_name = Some(sanitized_name.clone());
+
         let mut lines = Vec::new();
 
         // Add import statement for ArkUI components
@@ -125,7 +162,7 @@ impl ArkGenerator {
         // @Entry @Component struct
         lines.push("@Entry".to_string());
         lines.push("@Component".to_string());
-        lines.push(format!("struct {} {{", widget.name));
+        lines.push(format!("struct {} {{", sanitized_name));
 
         self.indent_level = 1;
 
@@ -370,11 +407,13 @@ impl ArkGenerator {
         match text {
             AuraTextContent::Literal(s) => Ok(format!("Text(\"{}\")", s)),
             AuraTextContent::Interpolated { template, bindings } => {
-                // Convert ${.field} to ${this.field} for ArkTS template literals
+                // Convert ${.field} or ${..field} to ${this.field} for ArkTS template literals
                 let mut result = template.clone();
                 for binding in bindings {
                     // Replace ${.field} with ${this.field}
                     result = result.replace(&format!("${{.{}}}", binding), &format!("${{this.{}}}", binding));
+                    // Also handle ${..field} (double dot) pattern
+                    result = result.replace(&format!("${{..{}}}", binding), &format!("${{this.{}}}", binding));
                 }
                 Ok(format!("Text(`{}`)", result))
             }
