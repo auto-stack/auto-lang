@@ -195,6 +195,60 @@ impl JetProject {
             }
         }
 
+        // Process pages/ directory (Plan 136)
+        let pages_dir = front_dir.join("pages");
+        if pages_dir.exists() {
+            for entry in fs::read_dir(&pages_dir)
+                .map_err(|e| format!("Failed to read pages directory: {}", e))?
+            {
+                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let path = entry.path();
+
+                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    let file_stem = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("page");
+
+                    match Self::compile_at_file(&path, file_stem) {
+                        Ok((files, names)) => {
+                            kotlin_files.extend(files);
+                            widget_names.extend(names);
+                        }
+                        Err(e) => {
+                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process components/ directory (Plan 136)
+        let components_dir = front_dir.join("components");
+        if components_dir.exists() {
+            for entry in fs::read_dir(&components_dir)
+                .map_err(|e| format!("Failed to read components directory: {}", e))?
+            {
+                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let path = entry.path();
+
+                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    let file_stem = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("component");
+
+                    match Self::compile_at_file(&path, file_stem) {
+                        Ok((files, names)) => {
+                            kotlin_files.extend(files);
+                            widget_names.extend(names);
+                        }
+                        Err(e) => {
+                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,
@@ -283,6 +337,100 @@ impl JetProject {
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
                                 let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("widget");
+
+                                match Self::compile_at_file(&path, stem) {
+                                    Ok((files, names)) => {
+                                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
+                                            UIArtifact {
+                                                source_path: path.clone(),
+                                                widget_name: widget_name.clone(),
+                                                output_path: PathBuf::from(p),
+                                                source_hash: hash,
+                                                content_hash: hash_string(c),
+                                                backend: UIBackend::Jet,
+                                            }
+                                        }).collect();
+
+                                        cache.update(path.clone(), hash, artifacts);
+                                        kotlin_files.extend(files);
+                                        widget_names.extend(names);
+                                        changed_files.push(file_name);
+                                    }
+                                    Err(e) => {
+                                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                                    }
+                                }
+                            } else {
+                                println!("  {} (cached)", file_name.bright_green());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process pages/ directory (Plan 136)
+        let pages_dir = front_dir.join("pages");
+        if pages_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&pages_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let hash = hash_string(&content);
+
+                            if cache.is_dirty(&path, hash) {
+                                println!("  {} (changed)", file_name.bright_yellow());
+                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
+
+                                match Self::compile_at_file(&path, stem) {
+                                    Ok((files, names)) => {
+                                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
+                                            UIArtifact {
+                                                source_path: path.clone(),
+                                                widget_name: widget_name.clone(),
+                                                output_path: PathBuf::from(p),
+                                                source_hash: hash,
+                                                content_hash: hash_string(c),
+                                                backend: UIBackend::Jet,
+                                            }
+                                        }).collect();
+
+                                        cache.update(path.clone(), hash, artifacts);
+                                        kotlin_files.extend(files);
+                                        widget_names.extend(names);
+                                        changed_files.push(file_name);
+                                    }
+                                    Err(e) => {
+                                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                                    }
+                                }
+                            } else {
+                                println!("  {} (cached)", file_name.bright_green());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process components/ directory (Plan 136)
+        let components_dir = front_dir.join("components");
+        if components_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&components_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let hash = hash_string(&content);
+
+                            if cache.is_dirty(&path, hash) {
+                                println!("  {} (changed)", file_name.bright_yellow());
+                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("component");
 
                                 match Self::compile_at_file(&path, stem) {
                                     Ok((files, names)) => {
