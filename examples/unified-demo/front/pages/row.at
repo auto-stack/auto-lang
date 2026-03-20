@@ -1,0 +1,18 @@
+// pages/row.at - Row demo page
+
+/// Row demo page showcasing horizontal layout.
+
+widget RowPage {
+    view {
+        col {
+            h2 "Row Demo"
+            text "Row arranges children horizontally."
+
+            row (gap: "8") {
+                text "Left"
+                text "Center"
+                text "Right"
+            }
+        }
+    }
+}

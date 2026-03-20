@@ -821,6 +821,9 @@ fun {}Preview() {{
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
 
+        // Add clickable import
+        self.add_import("androidx.compose.foundation.clickable");
+
         if !href.is_empty() {
             // External link - use Text with clickable modifier
             let text_content = if text.is_empty() {
@@ -843,11 +846,27 @@ fun {}Preview() {{
                 ind, ind, text_content, ind, href, ind
             ))
         } else {
-            // Internal navigation - use navigation generator
-            self.navigation_generator.add_route(to, to);
+            // Internal navigation - generate navController.navigate call
+            // Get text from children if not provided
+            let link_text = if text.is_empty() {
+                let mut s = String::new();
+                for child in children {
+                    if let AuraNode::Text(content) = child {
+                        if let AuraTextContent::Literal(t) = content {
+                            s.push_str(t);
+                        }
+                    }
+                }
+                s
+            } else {
+                text.to_string()
+            };
+
+            // Generate clickable Text with navigation
+            let nav_call = self.navigation_generator.generate_navigate_call(to);
             Ok(format!(
-                "{}Button(onClick = {{ /* navigate to {} */ }}) {{\n{}    Text(\"{}\")\n{}}}\n",
-                ind, to, ind, text, ind
+                "{}Text(\n{}    \"{}\",\n{}    modifier = Modifier.clickable {{ {} }}\n{})\n",
+                ind, ind, link_text, ind, nav_call, ind
             ))
         }
     }
@@ -1209,6 +1228,22 @@ impl BackendGenerator for JetGenerator {
         self.add_import("androidx.compose.ui.unit.dp");
         self.add_import("androidx.compose.ui.tooling.preview.Preview");
 
+        // Check if this widget has routes (router widget)
+        let has_routes = widget.routes.is_some();
+
+        // If has routes, add navigation imports and process routes
+        if let Some(ref routes) = widget.routes {
+            // Add navigation imports
+            self.add_import("androidx.navigation.NavHostController");
+            self.add_import("androidx.navigation.compose.NavHost");
+            self.add_import("androidx.navigation.compose.composable");
+            self.add_import("androidx.navigation.compose.rememberNavController");
+
+            // Add routes to navigation generator
+            self.navigation_generator.clear_routes();
+            self.navigation_generator.add_routes_from_aura(&routes.routes);
+        }
+
         // Generate Msg sealed class (ELM architecture)
         let msg_sealed = self.generate_msg_sealed(widget);
 
@@ -1216,6 +1251,13 @@ impl BackendGenerator for JetGenerator {
         let state_decls = self.generate_state_declarations(widget);
         let dispatch_fn = self.generate_dispatch_function(widget)?;
         let view_body = self.generate_view_body(widget)?;
+
+        // Generate NavHost if this is a router widget
+        let nav_host_code = if has_routes {
+            self.navigation_generator.generate_nav_host("/")?
+        } else {
+            String::new()
+        };
 
         // Assemble final code
         let package_decl = self.generate_package();
@@ -1237,6 +1279,12 @@ impl BackendGenerator for JetGenerator {
         // Msg sealed class (if any messages)
         if !msg_sealed.is_empty() {
             code.push_str(&msg_sealed);
+            code.push_str("\n\n");
+        }
+
+        // NavHost (if router widget)
+        if !nav_host_code.is_empty() {
+            code.push_str(&nav_host_code);
             code.push_str("\n\n");
         }
 

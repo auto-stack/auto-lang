@@ -1,0 +1,29 @@
+// components/counter.at - Counter component
+
+/// Counter widget demonstrating state management with ELM architecture.
+///
+/// A simple counter that can be incremented and decremented.
+
+widget Counter {
+    msg Msg { Inc, Dec }
+
+    model { var count int = 0 }
+
+    view {
+        col {
+            text "Counter Demo"
+
+            text f"Count: ${.count}"
+
+            row {
+                button "-" { onclick: .Dec }
+                button "+" { onclick: .Inc }
+            }
+        }
+    }
+
+    on {
+        .Inc => { .count = .count + 1 }
+        .Dec => { .count = .count - 1 }
+    }
+}

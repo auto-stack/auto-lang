@@ -1,0 +1,18 @@
+// pages/column.at - Column demo page
+
+/// Column demo page showcasing vertical layout.
+
+widget ColumnPage {
+    view {
+        col {
+            h2 "Column Demo"
+            text "Column arranges children vertically."
+
+            col (gap: "8") {
+                text "Item 1"
+                text "Item 2"
+                text "Item 3"
+            }
+        }
+    }
+}

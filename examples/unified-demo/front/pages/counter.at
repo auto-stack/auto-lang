@@ -1,0 +1,13 @@
+// pages/counter.at - Counter demo page
+
+/// Counter demo page showcasing the Counter component.
+
+widget CounterPage {
+    view {
+        col {
+            h2 "Counter Demo"
+            text "A simple counter component demonstrating state management."
+            Counter {}
+        }
+    }
+}

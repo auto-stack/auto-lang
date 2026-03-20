@@ -1,23 +1,24 @@
-widget Counter {
-    msg Msg { Inc, Dec }
+// front/app.at - Main app with routing
 
-    model { var count int = 0 }
+/// Main application widget with routing support.
+///
+/// This is the entry point for the unified-demo app.
+/// It defines all routes and renders the appropriate page based on navigation.
+
+widget App {
+    routes {
+        "/" => use index
+        "/counter" => use counter
+        "/column" => use column
+        "/row" => use row
+    }
 
     view {
         col {
-            text "Counter Demo"
-
-            text f"Count: ${.count}"
-
-            row {
-                button "-" { onclick: .Dec }
-                button "+" { onclick: .Inc }
+            header {
+                text "Auto UI Demo"
             }
+            outlet
         }
-    }
-
-    on {
-        .Inc => { .count = .count + 1 }
-        .Dec => { .count = .count - 1 }
     }
 }

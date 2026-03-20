@@ -1,0 +1,22 @@
+// pages/index.at - Homepage with navigation links
+
+/// Index page listing all available component demos.
+
+widget IndexPage {
+    view {
+        col {
+            h1 "Component Gallery"
+            text "Jetpack Compose Demo - Phase 1"
+
+            link (to: "/counter") {
+                text "Counter Demo"
+            }
+            link (to: "/column") {
+                text "Column Demo"
+            }
+            link (to: "/row") {
+                text "Row Demo"
+            }
+        }
+    }
+}
