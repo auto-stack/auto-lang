@@ -221,4 +221,17 @@ mod tests {
             assert!(component.has_children);
         }
     }
+
+    #[test]
+    fn test_heading_elements_map_to_text() {
+        let registry = ArkComponentRegistry::new();
+
+        // Heading elements should map to Text
+        for tag in ["h1", "h2", "h3", "h4", "h5", "h6"] {
+            let component = registry.get(tag).unwrap();
+            assert_eq!(component.name, "Text", "{} should map to Text", tag);
+            assert!(component.has_content);
+            assert!(!component.has_children);
+        }
+    }
 }
