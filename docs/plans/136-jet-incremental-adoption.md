@@ -407,11 +407,37 @@ cat jet/app/src/main/java/com/example/unified_demo/App.kt
 
 1. ✅ `unified-demo` 有清晰的 pages/ 和 components/ 目录结构
 2. ✅ `app.at` 定义了 routes 块
-3. ✅ Jet Generator 生成 `Routes` sealed class
-4. ✅ Jet Generator 生成 `NavHost` 结构
+3. ✅ Jet Generator 处理 widget.routes 生成 NavHost
+4. ✅ Jet Generator 生成 NavHost 结构
 5. ✅ Link 组件生成 `navController.navigate()` 调用
 6. ✅ 首页显示所有 demo 链接
 7. ✅ 点击链接可以跳转到对应 demo 页面
+
+## Actual Implementation Notes
+
+**routes 处理实现位置：**
+- `generator.rs` 第 1232-1260 行
+- 检测 `widget.routes.is_some()` 判断是否为路由 widget
+- 使用 `NavigationGenerator::add_routes_from_aura()` 添加路由
+- 调用 `NavigationGenerator::generate_nav_host("/")` 生成 NavHost
+
+**Link 组件实现位置：**
+- `generator.rs` 第 814-870 行
+- 通过 `AuraNode::Link` 处理
+- 生成 `Text(modifier = Modifier.clickable { navController.navigate("path") })`
+
+**已验证的文件结构：**
+```
+examples/unified-demo/front/
+├── app.at              # 入口，定义 routes
+├── components/
+│   └── counter.at      # Counter 组件定义
+└── pages/
+    ├── column.at       # Column demo
+    ├── counter.at      # Counter demo 页面
+    ├── index.at        # 首页（导航链接）
+    └── row.at          # Row demo
+```
 
 ---
 
