@@ -624,7 +624,8 @@ mod tests {
 
         assert!(files.contains_key("build-profile.json5"));
         assert!(files.contains_key("oh-package.json5"));
-        assert!(files.contains_key("entry/src/main/ets/pages/Index.ets"));
+        // Note: Page files (App.ets, etc.) are generated from AURA, not scaffolding
+        assert!(files.contains_key("entry/src/main/ets/entryability/EntryAbility.ets"));
     }
 
     #[test]
@@ -633,7 +634,11 @@ mod tests {
         let files = gen.generate_project_with_package("TestApp", "com.company.test");
 
         let oh_package = files.get("oh-package.json5").unwrap();
-        assert!(oh_package.contains("testapp"));
+        assert!(oh_package.contains("TestApp"));
+
+        // Check that custom package is in app.json5
+        let app_json = files.get("AppScope/app.json5").unwrap();
+        assert!(app_json.contains("com.company.test"));
     }
 
     #[test]
