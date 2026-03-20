@@ -1,10 +1,36 @@
 # Plan 136: Jet 后端增量适配
 
-> **Status:** 🚧 IN PROGRESS
+> **Status:** ✅ **COMPLETED** (2025-03-20)
 
 **Goal:** 在 `unified-demo` 项目中逐步扩展 Jet 后端支持，最终能展示核心组件的 demo 页面。采用"从小到大，逐步扩展"的策略。
 
 **Tech Stack:** Rust, Kotlin, Jetpack Compose, Material3, NavHost
+
+---
+
+## Implementation Summary
+
+**Completed Tasks:**
+1. ✅ 创建 `pages/` 和 `components/` 目录结构
+2. ✅ 拆分 Counter 组件到 `components/counter.at`
+3. ✅ 创建首页 `pages/index.at`（带导航链接）
+4. ✅ 创建 Column demo 页面 `pages/column.at`
+5. ✅ 创建 Row demo 页面 `pages/row.at`
+6. ✅ 改造 `app.at` 支持 routes
+7. ✅ 实现 Jet Generator 的 routes 处理（NavHost 生成）
+8. ✅ 实现 Link 组件转换（navController.navigate）
+9. ✅ 测试完整流程
+
+**Files Created:**
+- `examples/unified-demo/front/pages/index.at`
+- `examples/unified-demo/front/pages/counter.at`
+- `examples/unified-demo/front/pages/column.at`
+- `examples/unified-demo/front/pages/row.at`
+- `examples/unified-demo/front/components/counter.at`
+
+**Files Modified:**
+- `examples/unified-demo/front/app.at` - 添加 routes 块
+- `crates/auto-lang/src/ui_gen/jet/generator.rs` - routes 和 Link 处理
 
 ---
 
