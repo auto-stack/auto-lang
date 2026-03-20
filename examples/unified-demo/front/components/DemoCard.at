@@ -1,0 +1,20 @@
+// components/DemoCard.at - Demo card component for navigation
+
+/// Demo card for showcasing components on the index page.
+/// Displays title and description, clickable to navigate.
+
+widget DemoCard {
+    model {
+        title str = ""
+        description str = ""
+    }
+
+    view {
+        card(class: "p-4 rounded-lg cursor-pointer") {
+            col(gap: 8) {
+                h3(text: .title, class: "text-lg font-semibold")
+                text(text: .description, class: "text-sm text-gray-600")
+            }
+        }
+    }
+}

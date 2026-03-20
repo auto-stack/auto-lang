@@ -812,12 +812,28 @@ pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
 
     if !gradlew.exists() {
         println!("  ⚠ Gradle wrapper not found, generating...");
-        // Generate gradle wrapper if needed
-        std::process::Command::new("gradle")
-            .args(&["wrapper"])
-            .current_dir(&jet_dir)
-            .output()
-            .map_err(|e| format!("Failed to generate gradle wrapper: {}. Please install Gradle or Android Studio.", e))?;
+
+        // Try to find gradle in common locations
+        let gradle_cmd = find_gradle();
+
+        match gradle_cmd {
+            Some(gradle_path) => {
+                println!("  Using Gradle from: {}", gradle_path.display());
+                let result = std::process::Command::new(&gradle_path)
+                    .args(&["wrapper"])
+                    .current_dir(&jet_dir)
+                    .status()
+                    .map_err(|e| format!("Failed to generate gradle wrapper: {}", e))?;
+
+                if !result.success() {
+                    return Err("Failed to generate gradle wrapper. Please run 'gradle wrapper' manually in the jet directory.".into());
+                }
+                println!("  ✓ Gradle wrapper generated");
+            }
+            None => {
+                return Err("Gradle not found. Please install Gradle or Android Studio, or run the project in Android Studio.".into());
+            }
+        }
     } else {
         println!("  ✓ Gradle wrapper found");
     }
@@ -845,4 +861,68 @@ pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
     }
 
     Ok(())
+}
+
+/// Find gradle executable in common locations
+fn find_gradle() -> Option<std::path::PathBuf> {
+    // 1. Check PATH using std::env::split_paths
+    if let Ok(path_env) = std::env::var("PATH") {
+        for path in std::env::split_paths(&path_env) {
+            let gradle_exe = if cfg!(windows) {
+                path.join("gradle.bat")
+            } else {
+                path.join("gradle")
+            };
+            if gradle_exe.exists() {
+                return Some(gradle_exe);
+            }
+        }
+    }
+
+    // 2. Check user's .gradle/wrapper/dists directory
+    // Structure: .gradle/wrapper/dists/gradle-X.X.X-bin/<hash>/gradle-X.X.X/bin/gradle
+    let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    if let Ok(home) = std::env::var(home_var) {
+        let gradle_wrapper_dists = std::path::PathBuf::from(&home)
+            .join(".gradle/wrapper/dists");
+
+        if gradle_wrapper_dists.exists() {
+            // Look for gradle-*-bin directories (Level 1)
+            if let Ok(entries) = std::fs::read_dir(&gradle_wrapper_dists) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if name_str.starts_with("gradle-") && name_str.ends_with("-bin") {
+                        // Look inside for hash directories (Level 2)
+                        let hash_dir_level = entry.path();
+                        if let Ok(hash_entries) = std::fs::read_dir(&hash_dir_level) {
+                            for hash_entry in hash_entries.flatten() {
+                                let hash_dir = hash_entry.path();
+                                if hash_dir.is_dir() {
+                                    // Look for gradle-X.X.X directory inside hash dir (Level 3)
+                                    if let Ok(gradle_home_entries) = std::fs::read_dir(&hash_dir) {
+                                        for gradle_home_entry in gradle_home_entries.flatten() {
+                                            let gradle_home = gradle_home_entry.path();
+                                            if gradle_home.is_dir() {
+                                                let gradle_bin = if cfg!(windows) {
+                                                    gradle_home.join("bin/gradle.bat")
+                                                } else {
+                                                    gradle_home.join("bin/gradle")
+                                                };
+                                                if gradle_bin.exists() {
+                                                    return Some(gradle_bin);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }

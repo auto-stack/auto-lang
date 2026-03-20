@@ -8,7 +8,7 @@
 //! - gap-2 → 8.dp
 //! - px-4 → padding(horizontal = 16.dp)
 
-use crate::ui_gen::shared::{Color, ComputedStyle, Dimension, Display, FlexDirection, Size, TailwindParser};
+use crate::ui_gen::shared::{Color, ComputedStyle, Dimension, Display, FlexDirection, FontWeight, Size, TailwindParser, TextAlign};
 
 /// Tailwind class to Compose Modifier converter
 pub struct ModifierDsl {
@@ -21,8 +21,10 @@ pub struct ModifierDsl {
 
 /// Result of converting Tailwind classes
 pub struct ModifierResult {
-    /// Modifier chain components
+    /// Modifier chain components (for layout, spacing, etc.)
     pub modifiers: Vec<String>,
+    /// TextStyle components (for font size, weight, color)
+    pub text_style: Vec<String>,
     /// Arrangement for gap (if any)
     pub arrangement: Option<String>,
     /// Parsed computed style for additional use
@@ -68,12 +70,14 @@ impl ModifierDsl {
 
     /// Convert Color to Compose Color format
     fn color_to_compose(color: &Color) -> String {
-        format!("Color(0x{:02X}{:02X}{:02X})", color.r, color.g, color.b)
+        // ARGB format: 0xAARRGGBB (AA = alpha, RR = red, GG = green, BB = blue)
+        format!("Color(0xFF{:02X}{:02X}{:02X})", color.r, color.g, color.b)
     }
 
     /// Convert ComputedStyle to Modifier chain
     pub fn from_style(&self, style: &ComputedStyle) -> ModifierResult {
         let mut modifiers: Vec<String> = Vec::new();
+        let mut text_style: Vec<String> = Vec::new();
         let mut arrangement: Option<String> = None;
 
         // Gap → Arrangement
@@ -219,7 +223,7 @@ impl ModifierDsl {
             if radius.to_dp() >= 9999.0 {
                 modifiers.push("clip(CircleShape)".to_string());
             } else {
-                modifiers.push(format!("rounded({})", self.dimension_to_dp(radius)));
+                modifiers.push(format!("clip(RoundedCornerShape({}))", self.dimension_to_dp(radius)));
             }
         }
 
@@ -252,14 +256,47 @@ impl ModifierDsl {
             modifiers.push(format!("alpha({:.2}f)", opacity));
         }
 
-        // Font size (as modifier, though typically used in TextStyle)
+        // Text color (goes into TextStyle, not Modifier)
+        if let Some(color) = &style.text_color {
+            text_style.push(format!("color = {}", Self::color_to_compose(color)));
+        }
+
+        // Font size (goes into TextStyle, not Modifier)
         if let Some(size) = &style.font_size {
             let sp = size.to_dp();
-            modifiers.push(format!("fontSize({}.sp)", sp));
+            text_style.push(format!("fontSize = {}.sp", sp));
+        }
+
+        // Font weight (goes into TextStyle)
+        if let Some(weight) = &style.font_weight {
+            let weight_str = match weight {
+                FontWeight::Thin => "FontWeight.Thin",
+                FontWeight::ExtraLight => "FontWeight.ExtraLight",
+                FontWeight::Light => "FontWeight.Light",
+                FontWeight::Normal => "FontWeight.Normal",
+                FontWeight::Medium => "FontWeight.Medium",
+                FontWeight::SemiBold => "FontWeight.SemiBold",
+                FontWeight::Bold => "FontWeight.Bold",
+                FontWeight::ExtraBold => "FontWeight.ExtraBold",
+                FontWeight::Black => "FontWeight.Black",
+            };
+            text_style.push(format!("fontWeight = {}", weight_str));
+        }
+
+        // Text align (goes into TextStyle)
+        if let Some(align) = &style.text_align {
+            let align_str = match align {
+                TextAlign::Left | TextAlign::Start => "TextAlign.Start",
+                TextAlign::Center => "TextAlign.Center",
+                TextAlign::Right | TextAlign::End => "TextAlign.End",
+                TextAlign::Justify => "TextAlign.Justify",
+            };
+            text_style.push(format!("textAlign = {}", align_str));
         }
 
         ModifierResult {
             modifiers,
+            text_style,
             arrangement,
             style: style.clone(),
         }
@@ -278,6 +315,31 @@ impl ModifierDsl {
             "Modifier".to_string()
         } else {
             format!("Modifier.{}", result.modifiers.join("."))
+        }
+    }
+
+    /// Generate TextStyle code from class (for Text components)
+    pub fn generate_text_style(&self, class: &str, base_style: Option<&str>) -> Option<String> {
+        let result = self.convert_class(class);
+        if result.text_style.is_empty() && base_style.is_none() {
+            return None;
+        }
+
+        // Build TextStyle with base style and overrides
+        let mut style_parts = Vec::new();
+
+        // If we have a base style (like MaterialTheme.typography.headlineLarge), use it
+        if let Some(base) = base_style {
+            style_parts.push(base.to_string());
+        }
+
+        // Add text style overrides
+        style_parts.extend(result.text_style);
+
+        if style_parts.is_empty() {
+            None
+        } else {
+            Some(style_parts.join(", "))
         }
     }
 
@@ -344,7 +406,7 @@ mod tests {
     fn test_rounded_conversion() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("rounded-lg");
-        assert!(result.modifiers.iter().any(|m| m.contains("rounded")));
+        assert!(result.modifiers.iter().any(|m| m.contains("clip(RoundedCornerShape")));
     }
 
     #[test]

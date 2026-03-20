@@ -866,9 +866,31 @@ fun {}Preview() {{
         // Add clickable import
         self.add_import("androidx.compose.foundation.clickable");
 
-        if !href.is_empty() {
-            // External link - use Text with clickable modifier
-            let text_content = if text.is_empty() {
+        // Generate navigation call
+        let nav_call = if !href.is_empty() {
+            format!("/* open {} */", href)
+        } else {
+            self.navigation_generator.generate_navigate_call(to)
+        };
+
+        // Check if link has non-text children (like Card)
+        let has_element_children = children.iter().any(|c| matches!(c, AuraNode::Element { .. } | AuraNode::Component { .. }));
+
+        if has_element_children {
+            // Link wraps an element (e.g., Card) - generate a Box with clickable modifier
+            // The clickable modifier goes on the parent container
+            let mut children_content = String::new();
+            for child in children {
+                children_content.push_str(&self.node_to_compose(child, indent + 1)?);
+            }
+
+            Ok(format!(
+                "{}Box(\n{}    modifier = Modifier.clickable {{ {} }}\n{}) {{\n{}}}\n",
+                ind, ind, nav_call, ind, children_content
+            ))
+        } else {
+            // Simple text link - generate clickable Text
+            let link_text = if text.is_empty() {
                 // Get text from children
                 let mut s = String::new();
                 for child in children {
@@ -883,29 +905,6 @@ fun {}Preview() {{
                 text.to_string()
             };
 
-            Ok(format!(
-                "{}Text(\n{}    \"{}\",\n{}    modifier = Modifier.clickable {{ /* open {} */ }}\n{})\n",
-                ind, ind, text_content, ind, href, ind
-            ))
-        } else {
-            // Internal navigation - generate navController.navigate call
-            // Get text from children if not provided
-            let link_text = if text.is_empty() {
-                let mut s = String::new();
-                for child in children {
-                    if let AuraNode::Text(content) = child {
-                        if let AuraTextContent::Literal(t) = content {
-                            s.push_str(t);
-                        }
-                    }
-                }
-                s
-            } else {
-                text.to_string()
-            };
-
-            // Generate clickable Text with navigation
-            let nav_call = self.navigation_generator.generate_navigate_call(to);
             Ok(format!(
                 "{}Text(\n{}    \"{}\",\n{}    modifier = Modifier.clickable {{ {} }}\n{})\n",
                 ind, ind, link_text, ind, nav_call, ind
@@ -930,11 +929,23 @@ fun {}Preview() {{
             item_content.push_str(&self.node_to_compose(child, indent + 2)?);
         }
 
+        // Check if this is a static grid (no items/data prop, but has element children)
+        let has_data_source = props.contains_key("items") || props.contains_key("data");
+        let is_static_grid = (tag == "grid" || tag == "lazy-grid") && !has_data_source;
+
         // Use ListGenerator for the actual generation
         let result = match tag {
             "list" | "lazy-column" => self.list_generator.generate_lazy_column(props, &item_content),
             "list-row" | "lazy-row" => self.list_generator.generate_lazy_row(props, &item_content),
-            "grid" | "lazy-grid" => self.list_generator.generate_lazy_grid(props, &item_content),
+            "grid" | "lazy-grid" => {
+                if is_static_grid {
+                    // Static grid with FlowRow for responsive layout
+                    self.list_generator.generate_static_grid(props, &item_content)
+                } else {
+                    // Dynamic grid with LazyVerticalGrid
+                    self.list_generator.generate_lazy_grid(props, &item_content)
+                }
+            }
             "flow-row" => self.list_generator.generate_flow_row(props, &item_content),
             "flow-col" | "flow-column" => self.list_generator.generate_flow_column(props, &item_content),
             _ => Err(GenError::UnsupportedExpr(format!("Unknown list tag: {}", tag))),
@@ -969,6 +980,24 @@ fun {}Preview() {{
         let text_prop = props.get("text")
             .and_then(|p| self.extract_string_value(p));
 
+        // Get class prop for Tailwind styling
+        let class_prop = props.get("class")
+            .and_then(|p| self.extract_string_value(p));
+
+        // Add imports for TextStyle if we have class-based styling
+        if class_prop.is_some() && is_text_like {
+            self.add_import("androidx.compose.ui.text.TextStyle");
+            self.add_import("androidx.compose.ui.text.font.FontWeight");
+            self.add_import("androidx.compose.ui.unit.sp");
+        }
+
+        // Add common imports for class-based modifiers
+        if class_prop.is_some() {
+            self.add_import("androidx.compose.foundation.shape.RoundedCornerShape");
+            self.add_import("androidx.compose.ui.graphics.Color");
+            self.add_import("androidx.compose.ui.draw.clip");
+        }
+
         // Get typography style for heading tags
         let typography_style = match tag {
             "h1" => Some("headlineLarge"),
@@ -987,28 +1016,66 @@ fun {}Preview() {{
         }
 
         if is_text_like {
-            // Text-like components: Text("content")
+            // Text-like components: Text("content", modifier = Modifier, style = TextStyle(...))
             let text = text_prop.unwrap_or_default();
 
-            // Build style parameter if needed
-            let style_param = if let Some(style) = typography_style {
+            // Build modifier from class (excluding text style properties)
+            let modifier_param = if let Some(class) = &class_prop {
+                let modifier_chain = self.modifier_dsl.generate_modifier_chain(class);
+                if modifier_chain == "Modifier" {
+                    String::new()
+                } else {
+                    format!(", modifier = {}", modifier_chain)
+                }
+            } else {
+                String::new()
+            };
+
+            // Build style parameter - combine typography style with class-based text styles
+            let style_param = if let Some(class) = &class_prop {
+                // Get text style from Tailwind classes (without base style - we'll handle merge separately)
+                let text_style_only = self.modifier_dsl.generate_text_style(class, None);
+                let base_style = typography_style.map(|s| format!("MaterialTheme.typography.{}", s));
+
+                if let Some(text_style) = text_style_only {
+                    if let Some(base) = &base_style {
+                        // Has base style + overrides - use copy syntax
+                        format!(", style = {}.copy({})", base, text_style)
+                    } else {
+                        // No base style - create TextStyle directly
+                        format!(", style = TextStyle({})", text_style)
+                    }
+                } else if let Some(base) = base_style {
+                    format!(", style = {}", base)
+                } else {
+                    String::new()
+                }
+            } else if let Some(style) = typography_style {
                 format!(", style = MaterialTheme.typography.{}", style)
             } else {
                 String::new()
             };
 
             if children.is_empty() {
-                Ok(format!("{}{}(\"{}\"{})\n", ind, compose_name, text, style_param))
+                Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, text, modifier_param, style_param))
             } else {
                 // Has children - use them as content
-                Ok(format!("{}{}(\"{}\"{})\n", ind, compose_name, children_content.trim(), style_param))
+                Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, children_content.trim(), modifier_param, style_param))
             }
         } else {
-            // Container-like components: Box { ... }
-            if children_content.is_empty() {
-                Ok(format!("{}{}()\n", ind, compose_name))
+            // Container-like components: Column(modifier = Modifier) { ... }
+            // Build modifier from class if present
+            let modifier_param = if let Some(class) = &class_prop {
+                let modifier_chain = self.modifier_dsl.generate_modifier_chain(class);
+                format!("modifier = {}", modifier_chain)
             } else {
-                Ok(format!("{}{} {{\n{}}}\n", ind, compose_name, children_content))
+                "modifier = Modifier".to_string()
+            };
+
+            if children_content.is_empty() {
+                Ok(format!("{}{}({})\n", ind, compose_name, modifier_param))
+            } else {
+                Ok(format!("{}{}({}) {{\n{}}}\n", ind, compose_name, modifier_param, children_content))
             }
         }
     }

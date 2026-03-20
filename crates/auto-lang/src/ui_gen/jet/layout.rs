@@ -10,6 +10,7 @@
 //! - `scroll` → `Column + verticalScroll`
 
 use crate::aura::{AuraExpr, AuraPropValue};
+use crate::ui_gen::jet::modifier::ModifierDsl;
 use crate::ui_gen::GenResult;
 use std::collections::HashMap;
 
@@ -17,6 +18,8 @@ use std::collections::HashMap;
 pub struct LayoutGenerator {
     /// Track imports needed for layout components
     imports: Vec<String>,
+    /// Tailwind to Compose modifier converter
+    modifier_dsl: ModifierDsl,
 }
 
 /// Layout properties extracted from AURA
@@ -43,6 +46,7 @@ impl LayoutGenerator {
     pub fn new() -> Self {
         Self {
             imports: Vec::new(),
+            modifier_dsl: ModifierDsl::new(),
         }
     }
 
@@ -120,15 +124,26 @@ impl LayoutGenerator {
         // Build modifier chain
         let mut modifier_parts = Vec::new();
 
-        // Add padding if specified
+        // Add padding if specified (explicit prop)
         if let Some(padding) = layout_props.padding {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add class-based modifiers
-        if let Some(class) = &layout_props.class {
-            modifier_parts.push(self.class_to_modifier(class));
-        }
+        // Add class-based modifiers (padding, margin, etc.)
+        // Also extract arrangement from class (gap)
+        let class_arrangement = if let Some(class) = &layout_props.class {
+            let result = self.class_to_modifier_result(class);
+
+            // Add modifiers (padding, margin, etc.)
+            if !result.modifiers.is_empty() {
+                modifier_parts.push(result.modifiers.join("."));
+            }
+
+            // Return arrangement from class (gap)
+            result.arrangement
+        } else {
+            None
+        };
 
         // Build final modifier
         if modifier_parts.is_empty() {
@@ -138,6 +153,7 @@ impl LayoutGenerator {
         }
 
         // Vertical arrangement (gap + arrange)
+        // Priority: explicit gap prop > class-based gap > arrange prop
         let arrangement = if let Some(gap) = layout_props.gap {
             let dp = gap * 4; // Tailwind to Dp multiplier
             match layout_props.vertical_arrange.as_deref() {
@@ -148,6 +164,9 @@ impl LayoutGenerator {
                 Some("evenly") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceEvenly)", dp),
                 _ => format!("Arrangement.spacedBy({}.dp)", dp),
             }
+        } else if let Some(class_arr) = class_arrangement {
+            // Use arrangement from class (gap)
+            class_arr
         } else if let Some(arrange) = &layout_props.vertical_arrange {
             match arrange.as_str() {
                 "center" => "Arrangement.Center".to_string(),
@@ -203,9 +222,12 @@ impl LayoutGenerator {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add class-based modifiers
+        // Add class-based modifiers (only if non-empty)
         if let Some(class) = &layout_props.class {
-            modifier_parts.push(self.class_to_modifier(class));
+            let class_mods = self.class_to_modifier(class);
+            if !class_mods.is_empty() {
+                modifier_parts.push(class_mods);
+            }
         }
 
         // Build final modifier
@@ -271,9 +293,12 @@ impl LayoutGenerator {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add class-based modifiers
+        // Add class-based modifiers (only if non-empty)
         if let Some(class) = &layout_props.class {
-            modifier_parts.push(self.class_to_modifier(class));
+            let class_mods = self.class_to_modifier(class);
+            if !class_mods.is_empty() {
+                modifier_parts.push(class_mods);
+            }
         }
 
         // Build final modifier
@@ -310,19 +335,55 @@ impl LayoutGenerator {
     /// Generate Card component
     pub fn generate_card(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
         self.add_import("androidx.compose.material3.Card");
+        self.add_import("androidx.compose.foundation.layout.Box");
         self.add_import("androidx.compose.ui.Modifier");
+        self.add_import("androidx.compose.foundation.shape.RoundedCornerShape");
+        self.add_import("androidx.compose.ui.draw.clip");
+        self.add_import("androidx.compose.ui.graphics.Color");
 
         let class = Self::extract_string(props, "class");
 
-        let modifier = if let Some(class_str) = class {
-            format!("Modifier.{}", self.class_to_modifier(&class_str))
-        } else {
+        // Separate modifiers: external (clip, shadow) vs internal (padding)
+        let mut external_mods = Vec::new();
+        let mut internal_mods = Vec::new();
+
+        if let Some(class_str) = class {
+            let result = self.modifier_dsl.convert_class(&class_str);
+
+            for modifier in &result.modifiers {
+                // Padding should be inside the card, not on the card itself
+                if modifier.starts_with("padding") {
+                    internal_mods.push(modifier.clone());
+                } else {
+                    external_mods.push(modifier.clone());
+                }
+            }
+        }
+
+        // External modifier (on Card): clip, background, etc.
+        let external_modifier = if external_mods.is_empty() {
             "Modifier".to_string()
+        } else {
+            format!("Modifier.{}", external_mods.join("."))
+        };
+
+        // Internal modifier (on content): padding
+        let internal_modifier = if internal_mods.is_empty() {
+            "Modifier".to_string()
+        } else {
+            format!("Modifier.{}", internal_mods.join("."))
+        };
+
+        // Wrap children with a Box that has internal padding
+        let wrapped_children = if internal_mods.is_empty() {
+            children.to_string()
+        } else {
+            format!("Box(modifier = {}) {{\n        {}\n    }}", internal_modifier, children)
         };
 
         Ok(format!(
             "Card(\n        modifier = {}\n    ) {{\n        {}\n    }}",
-            modifier, children
+            external_modifier, wrapped_children
         ))
     }
 
@@ -338,7 +399,10 @@ impl LayoutGenerator {
         let mut modifier_parts = vec!["verticalScroll(rememberScrollState())".to_string()];
 
         if let Some(class_str) = class {
-            modifier_parts.push(self.class_to_modifier(&class_str));
+            let class_mods = self.class_to_modifier(&class_str);
+            if !class_mods.is_empty() {
+                modifier_parts.push(class_mods);
+            }
         }
 
         Ok(format!(
@@ -348,67 +412,25 @@ impl LayoutGenerator {
         ))
     }
 
-    /// Convert Tailwind class string to Modifier chain
+    /// Convert Tailwind class string to Modifier chain using ModifierDsl
+    /// Returns empty string if no modifiers are generated
     fn class_to_modifier(&self, class: &str) -> String {
-        // Simplified conversion - in production, use ModifierDsl
-        let mut modifiers = Vec::new();
+        // Use the full ModifierDsl converter for comprehensive Tailwind support
+        let result = self.modifier_dsl.convert_class(class);
 
-        for part in class.split_whitespace() {
-            // Padding
-            if let Some(rest) = part.strip_prefix("px-") {
-                if let Ok(n) = rest.parse::<u32>() {
-                    modifiers.push(format!("padding(horizontal = {}.dp)", n * 4));
-                }
-            }
-            if let Some(rest) = part.strip_prefix("py-") {
-                if let Ok(n) = rest.parse::<u32>() {
-                    modifiers.push(format!("padding(vertical = {}.dp)", n * 4));
-                }
-            }
-            if let Some(rest) = part.strip_prefix("p-") {
-                if let Ok(n) = rest.parse::<u32>() {
-                    modifiers.push(format!("padding({}.dp)", n * 4));
-                }
-            }
-
-            // Size
-            if part == "w-full" {
-                modifiers.push("fillMaxWidth()".to_string());
-            }
-            if part == "h-full" {
-                modifiers.push("fillMaxHeight()".to_string());
-            }
-
-            // Rounded
-            if part == "rounded" {
-                modifiers.push("rounded(4.dp)".to_string());
-            }
-            if part == "rounded-sm" {
-                modifiers.push("rounded(2.dp)".to_string());
-            }
-            if part == "rounded-lg" {
-                modifiers.push("rounded(8.dp)".to_string());
-            }
-            if part == "rounded-xl" {
-                modifiers.push("rounded(12.dp)".to_string());
-            }
-
-            // Background colors (simplified)
-            if let Some(color) = part.strip_prefix("bg-") {
-                if let Some(hex) = self.tailwind_color_to_hex(color) {
-                    modifiers.push(format!("background(Color({}))", hex));
-                }
-            }
-        }
-
-        if modifiers.is_empty() {
-            "Modifier".to_string()
+        if result.modifiers.is_empty() {
+            String::new()
         } else {
-            modifiers.join(".")
+            result.modifiers.join(".")
         }
     }
 
-    /// Convert Tailwind color name to hex
+    /// Convert Tailwind class string to full ModifierResult (includes arrangement for gap)
+    fn class_to_modifier_result(&self, class: &str) -> crate::ui_gen::jet::modifier::ModifierResult {
+        self.modifier_dsl.convert_class(class)
+    }
+
+    /// Convert Tailwind color name to hex (kept for backward compatibility)
     fn tailwind_color_to_hex(&self, name: &str) -> Option<String> {
         let colors = [
             ("white", "0xFFFFFFFF"),

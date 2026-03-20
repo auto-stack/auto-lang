@@ -542,6 +542,22 @@ impl TailwindParser {
             style.margin.y = Some(val);
             return true;
         }
+        if let Some(val) = self.parse_spacing_value(class, "mt-") {
+            style.margin.top = Some(val);
+            return true;
+        }
+        if let Some(val) = self.parse_spacing_value(class, "mb-") {
+            style.margin.bottom = Some(val);
+            return true;
+        }
+        if let Some(val) = self.parse_spacing_value(class, "ml-") {
+            style.margin.left = Some(val);
+            return true;
+        }
+        if let Some(val) = self.parse_spacing_value(class, "mr-") {
+            style.margin.right = Some(val);
+            return true;
+        }
         if class == "mx-auto" {
             style.margin.x = Some(Dimension::Auto);
             return true;
@@ -1023,6 +1039,19 @@ mod tests {
         assert_eq!(style.padding.all, Some(Dimension::Dp(16.0)));
         assert_eq!(style.padding.x, Some(Dimension::Dp(8.0)));
         assert_eq!(style.padding.y, Some(Dimension::Dp(16.0)));
+
+        // Test margin sides
+        let style_m = parser.parse("m-4 mx-2 my-4 mt-2 mb-4 ml-2 mr-2");
+        assert_eq!(style_m.margin.all, Some(Dimension::Dp(16.0)));
+        assert_eq!(style_m.margin.x, Some(Dimension::Dp(8.0)));
+        assert_eq!(style_m.margin.y, Some(Dimension::Dp(16.0)));
+        assert_eq!(style_m.margin.top, Some(Dimension::Dp(8.0)));
+        assert_eq!(style_m.margin.bottom, Some(Dimension::Dp(16.0)));
+        assert_eq!(style_m.margin.left, Some(Dimension::Dp(8.0)));
+        assert_eq!(style_m.margin.right, Some(Dimension::Dp(8.0)));
+
+        // Test margin.bottom() method
+        assert_eq!(style_m.margin.bottom(), Some(Dimension::Dp(16.0)));
     }
 
     #[test]

@@ -223,7 +223,7 @@ impl ListGenerator {
         ))
     }
 
-    /// Generate FlowRow component
+    /// Generate FlowRow component (for dynamic data)
     pub fn generate_flow_row(
         &mut self,
         props: &HashMap<String, AuraPropValue>,
@@ -249,6 +249,125 @@ impl ListGenerator {
             "FlowRow(\n        modifier = {}\n    ) {{\n        {}\n    }}",
             modifier, map_content
         ))
+    }
+
+    /// Generate static grid using FlowRow for static children (cards, etc.)
+    /// This is used when grid has static child elements instead of dynamic data
+    pub fn generate_static_grid(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children_content: &str,
+    ) -> GenResult<String> {
+        self.add_import("androidx.compose.foundation.layout.ExperimentalLayoutApi");
+        self.add_import("androidx.compose.foundation.layout.FlowRow");
+        self.add_import("androidx.compose.foundation.layout.Arrangement");
+        self.add_import("androidx.compose.ui.Modifier");
+        self.add_import("androidx.compose.foundation.shape.RoundedCornerShape");
+        self.add_import("androidx.compose.ui.graphics.Color");
+        self.add_import("androidx.compose.ui.draw.clip");
+
+        let mut gap = Self::extract_int(props, "gap").map(|n| n as u32);
+        let class = Self::extract_string(props, "class");
+
+        // Parse gap from class if not in props (e.g., "gap-4")
+        if gap.is_none() {
+            if let Some(class_str) = &class {
+                for part in class_str.split_whitespace() {
+                    if let Some(rest) = part.strip_prefix("gap-") {
+                        if let Ok(n) = rest.parse::<u32>() {
+                            gap = Some(n);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut params = Vec::new();
+
+        // Modifier (excluding gap which is handled by Arrangement)
+        let modifier = if let Some(class_str) = &class {
+            let class_mods = self.class_to_modifier_excluding_gap(&class_str);
+            if class_mods.is_empty() {
+                "Modifier".to_string()
+            } else {
+                format!("Modifier.{}", class_mods)
+            }
+        } else {
+            "Modifier".to_string()
+        };
+        params.push(format!("modifier = {}", modifier));
+
+        // Horizontal arrangement (gap)
+        if let Some(gap_val) = gap {
+            let dp = gap_val * 4;
+            params.push(format!("horizontalArrangement = Arrangement.spacedBy({}.dp)", dp));
+            params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", dp));
+        }
+
+        Ok(format!(
+            "FlowRow(\n        {}\n    ) {{\n        {}\n    }}",
+            params.join(",\n        "),
+            children_content
+        ))
+    }
+
+    /// Convert Tailwind class string to Modifier chain, excluding gap classes
+    fn class_to_modifier_excluding_gap(&self, class: &str) -> String {
+        let mut modifiers = Vec::new();
+
+        for part in class.split_whitespace() {
+            // Skip gap classes - they are handled by Arrangement
+            if part.starts_with("gap-") {
+                continue;
+            }
+
+            // Padding
+            if let Some(rest) = part.strip_prefix("px-") {
+                if let Ok(n) = rest.parse::<u32>() {
+                    modifiers.push(format!("padding(horizontal = {}.dp)", n * 4));
+                }
+            }
+            if let Some(rest) = part.strip_prefix("py-") {
+                if let Ok(n) = rest.parse::<u32>() {
+                    modifiers.push(format!("padding(vertical = {}.dp)", n * 4));
+                }
+            }
+            if let Some(rest) = part.strip_prefix("p-") {
+                if let Ok(n) = rest.parse::<u32>() {
+                    modifiers.push(format!("padding({}.dp)", n * 4));
+                }
+            }
+
+            // Size
+            if part == "w-full" {
+                modifiers.push("fillMaxWidth()".to_string());
+            }
+            if part == "h-full" {
+                modifiers.push("fillMaxHeight()".to_string());
+            }
+
+            // Rounded - use clip(RoundedCornerShape(...))
+            if part == "rounded" {
+                modifiers.push("clip(RoundedCornerShape(4.dp))".to_string());
+            }
+            if part == "rounded-lg" {
+                modifiers.push("clip(RoundedCornerShape(8.dp))".to_string());
+            }
+
+            // Background colors
+            if let Some(color) = part.strip_prefix("bg-") {
+                if let Some(hex) = self.tailwind_color_to_hex(color) {
+                    modifiers.push(format!("background(Color({}))", hex));
+                }
+            }
+        }
+
+        if modifiers.is_empty() {
+            String::new()
+        } else {
+            modifiers.join(".")
+        }
     }
 
     /// Generate FlowColumn component
@@ -366,6 +485,7 @@ impl ListGenerator {
     }
 
     /// Convert Tailwind class string to Modifier chain
+    /// Returns empty string if no modifiers are generated
     fn class_to_modifier(&self, class: &str) -> String {
         let mut modifiers = Vec::new();
 
@@ -395,12 +515,12 @@ impl ListGenerator {
                 modifiers.push("fillMaxHeight()".to_string());
             }
 
-            // Rounded
+            // Rounded - use clip(RoundedCornerShape(...))
             if part == "rounded" {
-                modifiers.push("rounded(4.dp)".to_string());
+                modifiers.push("clip(RoundedCornerShape(4.dp))".to_string());
             }
             if part == "rounded-lg" {
-                modifiers.push("rounded(8.dp)".to_string());
+                modifiers.push("clip(RoundedCornerShape(8.dp))".to_string());
             }
 
             // Background colors
@@ -412,7 +532,7 @@ impl ListGenerator {
         }
 
         if modifiers.is_empty() {
-            "Modifier".to_string()
+            String::new()
         } else {
             modifiers.join(".")
         }

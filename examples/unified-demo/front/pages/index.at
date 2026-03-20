@@ -1,6 +1,7 @@
 // pages/index.at - Homepage with navigation links
 
 /// Index page listing all available component demos.
+/// Uses a responsive grid layout for demo cards.
 
 widget IndexPage {
     view {

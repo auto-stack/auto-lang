@@ -19,7 +19,10 @@
 6. ✅ 改造 `app.at` 支持 routes
 7. ✅ 实现 Jet Generator 的 routes 处理（NavHost 生成）
 8. ✅ 实现 Link 组件转换（navController.navigate）
-9. ✅ 测试完整流程
+9. ✅ **Card 组件支持**（Material3 Card）
+10. ✅ **Tailwind class 样式支持**（与 Vue/Tauri 一致）
+11. ✅ **Grid 静态子元素支持**（FlowRow 响应式布局）
+12. ✅ **Link 支持元素子节点**（Card 包裹在 Link 中）
 
 **Files Created:**
 - `examples/unified-demo/front/pages/index.at`
@@ -27,10 +30,196 @@
 - `examples/unified-demo/front/pages/column.at`
 - `examples/unified-demo/front/pages/row.at`
 - `examples/unified-demo/front/components/counter.at`
+- `examples/unified-demo/front/components/DemoCard.at`
 
 **Files Modified:**
 - `examples/unified-demo/front/app.at` - 添加 routes 块
-- `crates/auto-lang/src/ui_gen/jet/generator.rs` - routes 和 Link 处理
+- `crates/auto-lang/src/ui_gen/jet/generator.rs` - routes, Link, Card 处理
+- `crates/auto-lang/src/ui_gen/jet/layout.rs` - Card 组件, class_to_modifier 修复
+- `crates/auto-lang/src/ui_gen/jet/list.rs` - 静态 Grid (FlowRow) 支持
+- `crates/auto-lang/src/ui_gen/jet/modifier.rs` - rounded → clip(RoundedCornerShape)
+
+---
+
+## Tailwind Class 样式支持 (2025-03-20 更新)
+
+### 概述
+
+为了与 Vue/Tauri 后端保持一致的样式体验，Jet 后端现在支持 Tailwind class 属性到 Compose Modifier 的转换。
+
+### 实现方式
+
+**TextStyle vs Modifier 分离：**
+- 字体样式（fontSize, fontWeight, color）→ `TextStyle(...)`
+- 布局样式（padding, background, rounded）→ `Modifier.xxx()`
+
+**关键代码位置：**
+- `modifier.rs` 第 43-60 行：`dimension_to_dp()` 转换
+- `modifier.rs` 第 219-226 行：`rounded` → `clip(RoundedCornerShape)`
+- `generator.rs` 第 977-987 行：添加样式相关 imports
+- `generator.rs` 第 1006-1032 行：TextStyle 生成
+
+### Tailwind → Compose 映射表
+
+| Tailwind Class | Compose Modifier |
+|----------------|------------------|
+| `p-4`, `px-4`, `py-4` | `padding(16.dp)`, `padding(horizontal = 16.dp)` |
+| `gap-4` | `Arrangement.spacedBy(16.dp)` |
+| `rounded-lg` | `clip(RoundedCornerShape(8.dp))` |
+| `rounded-full` | `clip(CircleShape)` |
+| `bg-blue-500` | `background(Color(0xFF3B82F6))` |
+| `text-lg` | `TextStyle(fontSize = 18.sp)` |
+| `font-bold` | `TextStyle(fontWeight = FontWeight.Bold)` |
+| `text-gray-600` | `TextStyle(color = Color(0x4B5563))` |
+
+### 单位换算
+
+Tailwind 单位 → Compose Dp：`1 Tailwind unit = 4 dp`
+
+```kotlin
+// p-4 → padding(16.dp)  (4 * 4 = 16)
+// gap-2 → spacedBy(8.dp)  (2 * 4 = 8)
+// rounded-lg → RoundedCornerShape(8.dp)  (lg = 8 Tailwind units)
+```
+
+---
+
+## Card 组件支持 (2025-03-20 更新)
+
+### 实现方式
+
+Card 组件映射到 Material3 的 `Card` composable：
+
+```kotlin
+Card(
+    modifier = Modifier.padding(16.dp).clip(RoundedCornerShape(8.dp))
+) {
+    // children
+}
+```
+
+### AURA 语法
+
+```auto
+card(class: "p-4 rounded-lg hover:shadow-lg") {
+    col(class: "gap-2") {
+        h3(text: "Title", class: "text-lg font-semibold")
+        text(text: "Description", class: "text-sm text-gray-600")
+    }
+}
+```
+
+### 代码位置
+
+- `layout.rs` 第 323-353 行：`generate_card()` 方法
+
+---
+
+## Link 支持元素子节点 (2025-03-20 更新)
+
+### 实现方式
+
+当 Link 包含非文本子元素（如 Card）时，生成 `Box` + `clickable`：
+
+```kotlin
+Box(
+    modifier = Modifier.clickable { navController.navigate("/counter") }
+) {
+    Card(...) { ... }
+}
+```
+
+### AURA 语法
+
+```auto
+link (to: "/counter") {
+    card(class: "p-4 rounded-lg") {
+        text("Counter Demo")
+    }
+}
+```
+
+### 代码位置
+
+- `generator.rs` 第 846-904 行：`link_to_compose()` 方法
+
+---
+
+## 静态 Grid 支持 (2025-03-20 更新)
+
+### 实现方式
+
+当 `grid` 没有动态数据源（`items` prop）但有静态子元素时，使用 `FlowRow` 生成响应式布局：
+
+```kotlin
+FlowRow(
+    modifier = Modifier,
+    horizontalArrangement = Arrangement.spacedBy(16.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp)
+) {
+    // 静态子元素（如 Card）
+}
+```
+
+### AURA 语法
+
+```auto
+grid(class: "gap-4") {
+    link (to: "/counter") { card { ... } }
+    link (to: "/column") { card { ... } }
+    link (to: "/row") { card { ... } }
+}
+```
+
+### 代码位置
+
+- `list.rs` 第 254-295 行：`generate_static_grid()` 方法
+- `generator.rs` 第 906-942 行：`list_element_to_compose()` 静态 grid 检测
+
+---
+
+## 生成的首页示例
+
+```kotlin
+// IndexPage.kt
+@Composable
+fun IndexPage(navController: NavHostController, modifier: Modifier = Modifier) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text("Component Gallery", style = TextStyle(
+            MaterialTheme.typography.headlineLarge,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold
+        ))
+        Text("Jetpack Compose Demo - Phase 1", style = TextStyle(
+            color = Color(0x4B5563)
+        ))
+
+        FlowRow(
+            modifier = Modifier,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Counter Demo Card
+            Box(modifier = Modifier.clickable { navController.navigate("/counter") }) {
+                Card(modifier = Modifier.padding(16.dp).clip(RoundedCornerShape(8.dp))) {
+                    Column(modifier = Modifier) {
+                        Text("Counter Demo", style = TextStyle(
+                            MaterialTheme.typography.headlineSmall,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ))
+                        Text("A simple counter...", style = TextStyle(
+                            color = Color(0x4B5563),
+                            fontSize = 14.sp
+                        ))
+                    }
+                }
+            }
+            // ... more cards
+        }
+    }
+}
+```
 
 ---
 
@@ -48,24 +237,27 @@
 
 ## 第一阶段范围
 
-### 组件清单（5个）
+### 组件清单（8个）
 
 | 组件 | 类型 | 状态 | 说明 |
 |------|------|------|------|
 | `Button` | 基础 | ✅ 已有 | 已在 Counter 中使用 |
 | `Text` | 基础 | ✅ 已有 | 已在 Counter 中使用 |
-| `Column` | 布局 | 🆕 新增 | 垂直排列子元素 |
-| `Row` | 布局 | 🆕 新增 | 水平排列子元素 |
-| `Link` | 导航 | 🆕 新增 | 页面跳转 |
+| `Column` | 布局 | ✅ 完成 | 垂直排列子元素 |
+| `Row` | 布局 | ✅ 完成 | 水平排列子元素 |
+| `Link` | 导航 | ✅ 完成 | 页面跳转，支持包裹元素 |
+| `Card` | 容器 | ✅ 新增 | Material3 卡片组件 |
+| `Grid` | 布局 | ✅ 新增 | FlowRow 响应式网格 |
+| `Tailwind class` | 样式 | ✅ 新增 | class 属性样式支持 |
 
 ### 页面清单（4个）
 
-| 页面 | 内容 |
-|------|------|
-| `index.at` | 首页，列出所有 demo 链接 |
-| `counter.at` | Counter demo（保留现有） |
-| `column.at` | Column demo（示例 + 说明） |
-| `row.at` | Row demo（示例 + 说明） |
+| 页面 | 内容 | 状态 |
+|------|------|------|
+| `index.at` | 首页，Card 展示 demo 列表 | ✅ 完成 |
+| `counter.at` | Counter demo（保留现有） | ✅ 完成 |
+| `column.at` | Column demo（示例 + 说明） | ✅ 完成 |
+| `row.at` | Row demo（示例 + 说明） | ✅ 完成 |
 
 ### Jet Generator 新增功能
 
@@ -412,6 +604,10 @@ cat jet/app/src/main/java/com/example/unified_demo/App.kt
 5. ✅ Link 组件生成 `navController.navigate()` 调用
 6. ✅ 首页显示所有 demo 链接
 7. ✅ 点击链接可以跳转到对应 demo 页面
+8. ✅ **Card 组件正确生成 Material3 Card**
+9. ✅ **Tailwind class 属性转换为 Compose Modifier/TextStyle**
+10. ✅ **静态 Grid 使用 FlowRow 生成响应式布局**
+11. ✅ **Link 可以包裹 Card 等元素子节点**
 
 ## Actual Implementation Notes
 
@@ -422,9 +618,24 @@ cat jet/app/src/main/java/com/example/unified_demo/App.kt
 - 调用 `NavigationGenerator::generate_nav_host("/")` 生成 NavHost
 
 **Link 组件实现位置：**
-- `generator.rs` 第 814-870 行
+- `generator.rs` 第 846-904 行
 - 通过 `AuraNode::Link` 处理
-- 生成 `Text(modifier = Modifier.clickable { navController.navigate("path") })`
+- 支持文本子节点（生成 Text + clickable）
+- 支持元素子节点（生成 Box + clickable）
+
+**Card 组件实现位置：**
+- `layout.rs` 第 323-353 行
+- 生成 Material3 Card composable
+
+**Tailwind class 处理实现位置：**
+- `modifier.rs` 第 43-60 行：dimension_to_dp() 单位换算
+- `modifier.rs` 第 219-226 行：rounded → clip(RoundedCornerShape)
+- `layout.rs` 第 373-387 行：class_to_modifier() 返回空字符串处理
+- `list.rs` 第 413-463 行：class_to_modifier() 简化版实现
+
+**静态 Grid 实现位置：**
+- `list.rs` 第 254-295 行：generate_static_grid() 方法
+- `generator.rs` 第 905-942 行：静态 grid 检测和调用
 
 **已验证的文件结构：**
 ```
@@ -432,11 +643,24 @@ examples/unified-demo/front/
 ├── app.at              # 入口，定义 routes
 ├── components/
 │   └── counter.at      # Counter 组件定义
+│   └── DemoCard.at     # Demo card 组件
 └── pages/
     ├── column.at       # Column demo
     ├── counter.at      # Counter demo 页面
-    ├── index.at        # 首页（导航链接）
+    ├── index.at        # 首页（Card 导航链接）
     └── row.at          # Row demo
+```
+
+**生成的 Kotlin 文件：**
+```
+examples/unified-demo/jet/app/src/main/java/com/example/unified_demo/ui/widgets/
+├── App.kt              # 入口 + NavHost
+├── IndexPage.kt        # 首页（FlowRow + Card + Link）
+├── CounterPage.kt      # Counter demo 页面
+├── ColumnPage.kt       # Column demo 页面
+├── RowPage.kt          # Row demo 页面
+├── Counter.kt          # Counter 组件
+└── DemoCard.kt         # Demo card 组件
 ```
 
 ---
