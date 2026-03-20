@@ -1641,9 +1641,23 @@ lines.push("      }".to_string());
 
 ---
 
-### Bug 4: Wrong Self-Reference Syntax (Double Dot)
+### Bug 7: Modifier Format - CORRECT (Verified)
 
-| Generated (Wrong) | Correct |
+**Analysis**: Comparing `ark/modifier.rs` and `jet/modifier.rs`:
+
+| File | Format | Example | Correct for Target? |
+|------|--------|---------|-----------------|
+| `ark/modifier.rs` | `.methodName(value)` | `.fontSize(30)` | ✅ TypeScript/ArkTS |
+| `jet/modifier.rs` | `Modifier.methodName(value)` | `Modifier.fontSize(30)` | ✅ Kotlin/Compose |
+
+**Conclusion**: No `Modifier.` pattern contamination in ark files. The modifier.rs code is correct.
+
+---
+
+### Other Issues in Generated Counter.ets
+
+1. **No style modifiers in output** - Source has no styles defined
+2. **No imports** - Missing `import { Button } from '@kit.ArkUI';`| Generated (Wrong) | Correct |
 |-------------------|---------|
 | `${..count}`, `Msg..Dec`, `Msg..Inc` | `${this.count}`, `Msg.Dec`, `Msg.Inc` |
 
