@@ -33,6 +33,7 @@ zip = { workspace = true }
 glob-match = { workspace = true }
 encoding_rs = { workspace = true }
 is_executable = { workspace = true }
+base64 = "0.22"
 
 # Serialization (Phase 1+)
 serde = { workspace = true }

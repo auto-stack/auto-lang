@@ -1,0 +1,558 @@
+//! ArkTS (HarmonyOS) Generator
+//!
+//! Main generator that produces ArkTS code from AURA widgets.
+//!
+//! ## Output Format
+//!
+//! ```arkts
+//! @Entry
+//! @Component
+//! struct MyWidget {
+//!     @State count: number = 0
+//!
+//!     build() {
+//!         Column() {
+//!             Button(this.count.toString())
+//!                 .onClick(() => {
+//!                     this.count++
+//!                 })
+//!         }
+//!     }
+//! }
+//! ```
+
+use super::components::ArkComponentRegistry;
+use super::modifier::{class_to_modifier, prop_to_modifier};
+use super::project::ArkProjectGenerator;
+use super::state::{generate_dispatch_function, generate_msg_sealed, generate_state_declarations};
+use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::ui_gen::{BackendGenerator, GenResult};
+use std::collections::HashMap;
+
+/// ArkTS code generator for HarmonyOS
+///
+/// This is the main entry point for generating ArkTS code from AURA widgets.
+///
+/// # Architecture
+///
+/// ```text
+/// ArkGenerator
+///     ├── ArkComponentRegistry (AURA → ArkTS component mappings)
+///     ├── StateGenerator (@State declarations, dispatch function)
+///     ├── ModifierDsl (AURA styles → ArkTS modifiers)
+///     └── ProjectGenerator (full HarmonyOS project)
+/// ```
+///
+/// # Example
+///
+/// ```rust
+/// use auto_lang::ui_gen::ark::ArkGenerator;
+/// use auto_lang::ui_gen::BackendGenerator;
+///
+/// let mut gen = ArkGenerator::new();
+/// // gen.generate(&widget); // Generate widget code
+/// // gen.generate_project("MyApp"); // Generate full project
+/// ```
+pub struct ArkGenerator {
+    /// Current widget name
+    current_widget: Option<String>,
+
+    /// Component registry
+    registry: ArkComponentRegistry,
+
+    /// Collected modifiers for current component
+    current_modifiers: Vec<String>,
+
+    /// Current indentation level
+    indent_level: usize,
+
+    /// Current widget's handlers (for event resolution)
+    current_handlers: HashMap<String, LogicPayload>,
+
+    /// Whether current widget has messages
+    has_messages: bool,
+}
+
+impl ArkGenerator {
+    /// Create a new ArkGenerator
+    pub fn new() -> Self {
+        Self {
+            current_widget: None,
+            registry: ArkComponentRegistry::new(),
+            current_modifiers: Vec::new(),
+            indent_level: 0,
+            current_handlers: HashMap::new(),
+            has_messages: false,
+        }
+    }
+
+    /// Generate indentation string
+    fn indent(&self) -> String {
+        "  ".repeat(self.indent_level)
+    }
+
+    /// Generate full project
+    pub fn generate_project(&self, name: &str) -> HashMap<String, String> {
+        let gen = ArkProjectGenerator::new(name);
+        gen.generate()
+    }
+
+    /// Generate full project with custom package
+    pub fn generate_project_with_package(&self, name: &str, package: &str) -> HashMap<String, String> {
+        let gen = ArkProjectGenerator::with_package(name, package);
+        gen.generate()
+    }
+
+    /// Generate @Entry @Component struct from widget
+    pub fn generate_entry_component(&mut self, widget: &AuraWidget) -> GenResult<String> {
+        self.current_widget = Some(widget.name.clone());
+        self.current_handlers = widget.handlers.clone();
+        self.has_messages = !widget.messages.is_empty();
+
+        let mut lines = Vec::new();
+
+        // Msg sealed class (if messages exist)
+        if self.has_messages {
+            let msg_class = generate_msg_sealed(widget);
+            if !msg_class.is_empty() {
+                lines.push(msg_class);
+                lines.push("".to_string());
+            }
+        }
+
+        // @Entry @Component struct
+        lines.push("@Entry".to_string());
+        lines.push("@Component".to_string());
+        lines.push(format!("struct {} {{", widget.name));
+
+        self.indent_level = 1;
+
+        // State declarations
+        let state_decls = generate_state_declarations(widget);
+        if !state_decls.is_empty() {
+            for line in state_decls.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+            lines.push("".to_string());
+        }
+
+        // Dispatch function (if handlers exist)
+        let dispatch_fn = generate_dispatch_function(widget);
+        if !dispatch_fn.is_empty() {
+            for line in dispatch_fn.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+            lines.push("".to_string());
+        }
+
+        // build() method
+        lines.push(format!("{}build() {{", self.indent()));
+        self.indent_level = 2;
+
+        // Generate UI tree from view_tree (not root)
+        let ui_code = self.generate_node(&widget.view_tree)?;
+        for line in ui_code.lines() {
+            lines.push(format!("{}{}", self.indent(), line));
+        }
+
+        self.indent_level = 1;
+        lines.push(format!("{}}}", self.indent()));
+
+        self.indent_level = 0;
+        lines.push("}".to_string());
+
+        Ok(lines.join("\n"))
+    }
+
+    /// Generate ArkTS code for a single node
+    fn generate_node(&mut self, node: &AuraNode) -> GenResult<String> {
+        match node {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+            } => self.generate_element(tag, props, events, children),
+            AuraNode::Text(text_content) => self.generate_text(text_content),
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                body,
+            } => self.generate_for_loop(var, index.as_deref(), iterable, body),
+            AuraNode::Conditional {
+                condition,
+                then_body,
+                else_body,
+            } => self.generate_conditional(condition, then_body, else_body.as_deref()),
+            AuraNode::Component { name, props, events } => {
+                self.generate_component(name, props, events)
+            }
+            AuraNode::Outlet => Ok("// Outlet - router placeholder".to_string()),
+            AuraNode::Link {
+                to,
+                text,
+                href,
+                children,
+            } => self.generate_link(to, text, href, children),
+        }
+    }
+
+    /// Generate element component
+    fn generate_element(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        children: &[AuraNode],
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Look up component
+        if let Some(component) = self.registry.get(tag) {
+            // Component call
+            let modifiers = self.generate_modifiers(props, events);
+            lines.push(format!("{}(){}", component.name, modifiers));
+
+            // Children
+            if component.has_children && !children.is_empty() {
+                lines.last_mut().unwrap().push_str(" {");
+                self.indent_level += 1;
+
+                for child in children {
+                    let child_code = self.generate_node(child)?;
+                    for line in child_code.lines() {
+                        lines.push(format!("{}{}", self.indent(), line));
+                    }
+                }
+
+                self.indent_level -= 1;
+                lines.push(format!("{}}}", self.indent()));
+            } else if component.has_content {
+                // Text content from props
+                if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
+                    lines.last_mut().unwrap().push_str(&format!("('{}')", text));
+                }
+            }
+        } else {
+            // Unknown component - emit as comment
+            lines.push(format!("/* Unknown component: {} */", tag));
+        }
+
+        Ok(lines.join("\n"))
+    }
+
+    /// Generate modifiers from props and events
+    fn generate_modifiers(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+    ) -> String {
+        let mut modifiers = Vec::new();
+
+        // Process props - extract string/number values from AuraExpr
+        for (key, value) in props {
+            if key == "text" {
+                continue;
+            }
+            if let Some(modifier) = self.prop_to_modifier(key, value) {
+                modifiers.push(modifier);
+            }
+        }
+
+        // Process events - generate onClick handlers
+        for (event_name, event) in events {
+            if event_name == "click" || event_name == "onclick" {
+                let handler = &event.handler;
+                let params = if event.params.is_empty() {
+                    String::new()
+                } else {
+                    format!("({})", event.params.join(", "))
+                };
+                modifiers.push(format!(
+                    ".onClick(() => {{\n    {}this.dispatch(Msg.{})\n  }})",
+                    params, handler
+                ));
+            }
+        }
+
+        // Process class bindings from ClassBinding variant
+        for value in props.values() {
+            if let AuraPropValue::ClassBinding(bindings) = value {
+                for binding in bindings {
+                    // Evaluate condition to determine if class should apply
+                    if let Some(modifier) = class_to_modifier(&binding.class_name) {
+                        // For now, apply the class unconditionally
+                        // TODO: Support conditional class application
+                        modifiers.push(modifier);
+                    }
+                }
+            }
+        }
+
+        if modifiers.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n{}",
+                modifiers
+                    .iter()
+                    .map(|m| format!("{}{}", self.indent(), m))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        }
+    }
+
+    /// Convert prop to modifier
+    fn prop_to_modifier(&self, key: &str, value: &AuraPropValue) -> Option<String> {
+        match value {
+            AuraPropValue::Expr(expr) => self.expr_to_modifier(key, expr),
+            AuraPropValue::ClassBinding(_) => None, // Handled separately
+        }
+    }
+
+    /// Convert AuraExpr to modifier
+    fn expr_to_modifier(&self, key: &str, expr: &AuraExpr) -> Option<String> {
+        match expr {
+            AuraExpr::Literal(s) => prop_to_modifier(key, s, None),
+            AuraExpr::Int(n) => prop_to_modifier(key, &n.to_string(), None),
+            AuraExpr::Float(n) => prop_to_modifier(key, &n.to_string(), None),
+            AuraExpr::Bool(b) => prop_to_modifier(key, &b.to_string(), None),
+            AuraExpr::StateRef(name) => {
+                // Generate binding to state
+                Some(format!(".{}(this.{})", key, name))
+            }
+            _ => None,
+        }
+    }
+
+    /// Generate text node
+    fn generate_text(&self, text: &AuraTextContent) -> GenResult<String> {
+        match text {
+            AuraTextContent::Literal(s) => Ok(format!("Text(\"{}\")", s)),
+            AuraTextContent::Interpolated { template, bindings } => {
+                // Convert ${.field} to this.field
+                let mut result = template.clone();
+                for binding in bindings {
+                    result = result.replace(&format!("${{.{}}}", binding), &format!("{{{{this.{}}}}}", binding));
+                }
+                Ok(format!("Text(`{}`)", result))
+            }
+        }
+    }
+
+    /// Generate for loop
+    fn generate_for_loop(
+        &mut self,
+        var: &str,
+        index: Option<&str>,
+        iterable: &str,
+        body: &[AuraNode],
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Generate ForEach for ArkTS
+        let index_param = index.map(|i| format!(", {}: number", i)).unwrap_or_default();
+        lines.push(format!(
+            "{}ForEach(this.{}, ({}: any{}) => {{",
+            self.indent(),
+            iterable,
+            var,
+            index_param
+        ));
+        self.indent_level += 1;
+
+        for child in body {
+            let child_code = self.generate_node(child)?;
+            for line in child_code.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+        }
+
+        self.indent_level -= 1;
+        lines.push(format!("{}}})", self.indent()));
+
+        Ok(lines.join("\n"))
+    }
+
+    /// Generate component instantiation
+    fn generate_component(
+        &mut self,
+        name: &str,
+        props: &HashMap<String, AuraExpr>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Component call
+        lines.push(format!("{}()", name));
+
+        // Generate modifiers from props
+        let modifiers: Vec<String> = props
+            .iter()
+            .filter_map(|(key, expr)| self.expr_to_modifier(key, expr))
+            .collect();
+
+        // Add event handlers
+        let event_modifiers: Vec<String> = events
+            .iter()
+            .filter_map(|(event_name, event)| {
+                if event_name == "click" || event_name == "onclick" {
+                    Some(format!(
+                        ".onClick(() => {{ this.dispatch(Msg.{}) }})",
+                        event.handler
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !modifiers.is_empty() || !event_modifiers.is_empty() {
+            let all_modifiers: Vec<String> = modifiers.into_iter().chain(event_modifiers).collect();
+            lines.last_mut().unwrap().push_str(&format!(
+                "\n{}",
+                all_modifiers
+                    .iter()
+                    .map(|m| format!("{}{}", self.indent(), m))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+
+        Ok(lines.join("\n"))
+    }
+
+    /// Generate navigation link
+    fn generate_link(
+        &mut self,
+        to: &str,
+        text: &str,
+        href: &str,
+        children: &[AuraNode],
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Use external href if provided, otherwise use internal to
+        let target = if !href.is_empty() { href } else { to };
+
+        if !text.is_empty() {
+            // Simple text link
+            lines.push(format!("Text(\"{}\")", text));
+            lines.last_mut().unwrap().push_str(&format!(
+                "\n{}.onClick(() => {{\n    // Navigate to: {}\n  }})",
+                self.indent(),
+                target
+            ));
+        } else if !children.is_empty() {
+            // Link with children
+            lines.push(format!("Column()"));
+            lines.last_mut().unwrap().push_str(&format!(
+                "\n{}.onClick(() => {{\n    // Navigate to: {}\n  }})",
+                self.indent(),
+                target
+            ));
+            lines.last_mut().unwrap().push_str(" {");
+            self.indent_level += 1;
+
+            for child in children {
+                let child_code = self.generate_node(child)?;
+                for line in child_code.lines() {
+                    lines.push(format!("{}{}", self.indent(), line));
+                }
+            }
+
+            self.indent_level -= 1;
+            lines.push(format!("{}}}", self.indent()));
+        }
+
+        Ok(lines.join("\n"))
+    }
+
+    /// Generate conditional
+    fn generate_conditional(
+        &mut self,
+        condition: &str,
+        then_body: &[AuraNode],
+        else_body: Option<&[AuraNode]>,
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        lines.push(format!("{}if ({}) {{", self.indent(), condition));
+        self.indent_level += 1;
+
+        for child in then_body {
+            let child_code = self.generate_node(child)?;
+            for line in child_code.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+        }
+
+        self.indent_level -= 1;
+
+        if let Some(else_nodes) = else_body {
+            lines.push(format!("{}}} else {{", self.indent()));
+            self.indent_level += 1;
+
+            for child in else_nodes {
+                let child_code = self.generate_node(child)?;
+                for line in child_code.lines() {
+                    lines.push(format!("{}{}", self.indent(), line));
+                }
+            }
+
+            self.indent_level -= 1;
+        }
+
+        lines.push(format!("{}}}", self.indent()));
+
+        Ok(lines.join("\n"))
+    }
+}
+
+impl Default for ArkGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BackendGenerator for ArkGenerator {
+    fn generate(&mut self, widget: &AuraWidget) -> GenResult<String> {
+        self.generate_entry_component(widget)
+    }
+
+    fn extension(&self) -> &'static str {
+        "ets"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generator_extension() {
+        let gen = ArkGenerator::new();
+        assert_eq!(gen.extension(), "ets");
+    }
+
+    #[test]
+    fn test_project_generation() {
+        let gen = ArkGenerator::new();
+        let files = gen.generate_project("TestApp");
+
+        assert!(files.contains_key("build-profile.json5"));
+        assert!(files.contains_key("oh-package.json5"));
+        assert!(files.contains_key("entry/src/main/ets/pages/Index.ets"));
+    }
+
+    #[test]
+    fn test_custom_package() {
+        let gen = ArkGenerator::new();
+        let files = gen.generate_project_with_package("TestApp", "com.company.test");
+
+        let oh_package = files.get("oh-package.json5").unwrap();
+        assert!(oh_package.contains("testapp"));
+    }
+}

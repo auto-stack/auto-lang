@@ -308,6 +308,9 @@ impl Automan {
         if backend == "jet" {
             return self.open_jet_project();
         }
+        if backend == "ark" || backend == "arkts" {
+            return self.open_ark_project();
+        }
 
         // Fall back to port builder for embedded IDEs
         self.open_ide_for_port_builder()
@@ -343,6 +346,10 @@ impl Automan {
             BackendType::Jet => {
                 println!("Opening Jetpack Compose project (backend: jet)");
                 self.open_jet_project()
+            }
+            BackendType::Arkts => {
+                println!("Opening ArkTS/HarmonyOS project (backend: ark)");
+                self.open_ark_project()
             }
             BackendType::Vue | BackendType::Tauri => {
                 println!("Opening {:?} project with VSCode...", backend);
@@ -579,6 +586,135 @@ impl Automan {
         None
     }
 
+    /// Open ArkTS/HarmonyOS project with DevEco Studio
+    fn open_ark_project(&self) -> AutoResult<()> {
+        // Get current directory (project root)
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        // Ark project is in the ark/ subdirectory
+        let project_dir = root_dir.join("ark");
+
+        // Check if ark directory exists, if not, create it
+        if !project_dir.exists() {
+            println!("Ark project directory not found, generating...");
+            // Generate the ark project first
+            let output_dir = root_dir.join("ark");
+            crate::ark::generate_ark_project(&root_dir, Some(&output_dir), true)?;
+        }
+
+        println!("Opening ArkTS/HarmonyOS project with DevEco Studio...");
+        println!("Project root: {}", root_dir.display());
+        println!("Ark project: {}", project_dir.display());
+
+        // Try to find DevEco Studio installation
+        let deveco_path = self.find_deveco_studio();
+
+        if let Some(deveco) = deveco_path {
+            println!("DevEco Studio: {}", deveco);
+            std::process::Command::new(&deveco)
+                .arg(&project_dir)
+                .spawn()
+                .map_err(|e| format!("Failed to launch DevEco Studio: {}", e))?;
+        } else {
+            // Fallback: open with system default handler
+            println!("DevEco Studio not found in default locations.");
+            println!("Opening project folder with system default...");
+
+            #[cfg(target_os = "windows")]
+            {
+                let path_str = project_dir.to_string_lossy().replace("/", "\\");
+                std::process::Command::new("explorer.exe")
+                    .arg(&path_str)
+                    .output()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("open")
+                    .arg(&project_dir)
+                    .output()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("xdg-open")
+                    .arg(&project_dir)
+                    .output()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Find DevEco Studio installation path
+    fn find_deveco_studio(&self) -> Option<String> {
+        #[cfg(target_os = "windows")]
+        {
+            // Common DevEco Studio installation paths on Windows
+            let candidates = vec![
+                // Custom installations
+                "D:\\soft\\DevEco Studio\\bin\\deveco.exe".to_string(),
+                // User-specific installation
+                format!(
+                    "{}\\AppData\\Local\\Programs\\DevEco Studio\\bin\\deveco.exe",
+                    std::env::var("USERPROFILE").unwrap_or_default()
+                ),
+                // Program Files
+                "C:\\Program Files\\DevEco Studio\\bin\\deveco.exe".to_string(),
+                "C:\\Program Files (x86)\\DevEco Studio\\bin\\deveco.exe".to_string(),
+                // Check PATH for deveco.exe
+                "deveco.exe".to_string(),
+            ];
+
+            for path in candidates {
+                if std::path::Path::new(&path).exists() || path == "deveco.exe" {
+                    // For "deveco.exe", check if it's in PATH
+                    if path == "deveco.exe" {
+                        if std::process::Command::new(&path)
+                            .arg("--version")
+                            .output()
+                            .is_ok()
+                        {
+                            return Some(path);
+                        }
+                    } else {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let app_path = "/Applications/DevEco Studio.app";
+            if std::path::Path::new(app_path).exists() {
+                return Some(app_path.to_string());
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Check common snap and flatpak installations
+            let candidates = vec![
+                "/snap/bin/deveco-studio",
+                "/usr/local/deveco-studio/bin/deveco.sh",
+                "deveco-studio", // In PATH
+            ];
+
+            for path in candidates {
+                if std::path::Path::new(path).exists() || path == "deveco-studio" {
+                    return Some(path.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
     pub fn scan(&mut self) -> AutoResult<()> {
         // self.pac.print_targets();
         // 3. Resolve targets in the pac, including:
@@ -641,6 +777,20 @@ impl Automan {
                     }
                 }
             }
+            "ark" => {
+                // Ark backend: build ArkTS/HarmonyOS project
+                println!("Building ArkTS/HarmonyOS project (backend: ark)");
+                self.build_ark()?;
+
+                // Run garbage collection if needed
+                if let Some(ref cache) = self.cache {
+                    if cache.should_gc() {
+                        println!("Running cache garbage collection...");
+                        let freed_mb = cache.run_gc()? / (1024 * 1024);
+                        println!("Cache GC: freed {} MB", freed_mb);
+                    }
+                }
+            }
             _ => {
                 // Default C backend
                 println!("Transpiling auto code to c code");
@@ -675,6 +825,13 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::jet::build_jet_project(&root_dir)
+    }
+
+    /// Build ArkTS/HarmonyOS project (full workflow: generate, hvigor build)
+    fn build_ark(&mut self) -> AutoResult<()> {
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        crate::ark::build_ark_project(&root_dir)
     }
 
     pub fn export(&mut self, port_name: String, format: String) -> AutoResult<()> {
@@ -751,6 +908,26 @@ impl Automan {
                         crate::jet::generate_jet_project(&root_dir, Some(out.as_path()), project)?;
                     } else {
                         crate::jet::generate_jet_project(&root_dir, None, project)?;
+                    }
+                }
+                BackendType::Arkts => {
+                    println!("Generating ArkTS code (backend: ark)");
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+                    // For multi-backend, create output subdirectory
+                    let output_path = if frontends.len() > 1 {
+                        output.as_ref().map(|o| {
+                            std::path::PathBuf::from(o).join("ark")
+                        }).or_else(|| Some(root_dir.join("ark")))
+                    } else {
+                        output.as_ref().map(|o| std::path::PathBuf::from(o))
+                    };
+
+                    if let Some(ref out) = output_path {
+                        crate::ark::generate_ark_project(&root_dir, Some(out.as_path()), project)?;
+                    } else {
+                        crate::ark::generate_ark_project(&root_dir, None, project)?;
                     }
                 }
                 BackendType::Vue => {
@@ -880,6 +1057,10 @@ impl Automan {
             auto_lang::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
                 crate::jet::run_jet_project(&root_dir, args)
+            }
+            auto_lang::config::BackendType::Arkts => {
+                println!("Running ArkTS/HarmonyOS project (backend: ark)");
+                crate::ark::run_ark_project(&root_dir, args)
             }
             _ => {
                 Err(format!("Backend {:?} does not support run command", backend).into())

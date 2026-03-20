@@ -1,5 +1,6 @@
 // pac.at - Unified Backend Demo
 // Demonstrates Plan 130: Single UI project (not a workspace)
+// Plan 138: Multi-backend support (vue, jet, ark)
 //
 // Directory structure:
 //   unified-demo/
@@ -9,14 +10,18 @@
 //   └── .am/                <- AutoMan state
 //
 // After build:
-//   └── vue/                <- Generated Vue project
+//   ├── vue/                <- Generated Vue project
+//   ├── jet/                <- Generated Jetpack Compose project
+//   └── ark/                <- Generated ArkTS/HarmonyOS project
 //
 // Usage:
-//   auto build              # Build Vue project
-//   auto run                # Run dev server
+//   auto build              # Build for all backends
+//   auto run                # Run dev server (vue)
+//   auto gen --project      # Generate project files
 
 name: "unified-demo"
 version: "1.0.0"
 scene: "ui"
 
-backend: "jet"
+// Multi-backend configuration (Plan 138)
+backend: ["vue", "jet", "arkts"]

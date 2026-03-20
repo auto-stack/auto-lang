@@ -46,7 +46,10 @@ pub mod tauri;
 // Phase 7: Jetpack Compose project support
 pub mod jet;
 
-// Phase 8: API code generation (Plan 130)
+// Phase 8: ArkTS/HarmonyOS project support
+pub mod ark;
+
+// Phase 9: API code generation (Plan 130)
 pub mod api_gen;
 
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
@@ -89,6 +92,9 @@ pub use tauri::*;
 
 // Re-exports (Phase 7: Jet)
 pub use jet::*;
+
+// Re-exports (Phase 8: Ark)
+pub use ark::*;
 
 // NOTE: All types migrated in Phases 1-5
 // NOTE: stubs.rs removed in Phase 6 (cleanup)
