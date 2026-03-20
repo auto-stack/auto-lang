@@ -4116,6 +4116,14 @@ impl Codegen {
                 self.code.extend_from_slice(&key_index.to_le_bytes());
                 self.code.push(1); // field_count = 1
             }
+            // Plan 095: Compile-time expression #{ expr }
+            // For now, compile the inner expression normally
+            // TODO: In full implementation, evaluate at compile time and substitute the result
+            Expr::Comptime(hash_brace) => {
+                // Compile the inner expression
+                // The result will be on the stack
+                self.compile_expr(&hash_brace.expr)?;
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }

@@ -1,0 +1,18 @@
+// == Comptime Example: 配置验证 ==
+//
+// 描述：展示使用条件表达式验证配置参数
+// 注意：compile_error 需要 CTEE 支持
+
+// #[expect_value(1024)]
+fn main() {
+    // 验证缓冲区大小
+    let BUFFER_SIZE = 1024
+
+    // 使用条件表达式
+    if BUFFER_SIZE >= 1024 {
+        BUFFER_SIZE
+    } else {
+        // 如果太小，使用默认值
+        1024
+    }
+}

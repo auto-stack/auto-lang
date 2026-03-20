@@ -267,6 +267,10 @@ impl<'db> DepScanner<'db> {
             | Expr::Go { expr } => {
                 self.walk_expr(expr, deps);
             }
+            // Plan 095: Compile-time expression - walk inner expression
+            | Expr::Comptime(hash_brace) => {
+                self.walk_expr(&hash_brace.expr, deps);
+            }
         }
     }
 

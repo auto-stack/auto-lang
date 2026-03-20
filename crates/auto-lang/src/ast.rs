@@ -369,6 +369,9 @@ pub enum Expr {
     Go {
         expr: Box<Expr>,  // Must be ~T (Future)
     },
+    /// Plan 095: Compile-time expression #{ expr }
+    /// Evaluates expr at compile time and substitutes the result
+    Comptime(Box<HashBrace>),
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -474,6 +477,7 @@ impl fmt::Display for Expr {
             Expr::Await { expr } => write!(f, "({}.await)", expr),
             // Plan 126: .go postfix operator for spawning background tasks
             Expr::Go { expr } => write!(f, "({}.go)", expr),
+            Expr::Comptime(hash_brace) => write!(f, "{}", hash_brace),
         }
     }
 }
@@ -960,6 +964,8 @@ impl ToNode for Expr {
                 node.add_kid(expr.to_node());
                 node
             }
+            // Plan 095: Compile-time expression #{ expr }
+            Expr::Comptime(hash_brace) => hash_brace.to_node(),
         }
     }
 }

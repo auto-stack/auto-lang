@@ -1,0 +1,19 @@
+// == Comptime Example: 斐波那契数列 ==
+//
+// 描述：展示使用循环计算斐波那契数
+
+// #[expect_value(8)]
+fn main() {
+    // 计算斐波那契数列第 6 项 (从 0 开始)
+    // F(0)=0, F(1)=1, F(2)=1, F(3)=2, F(4)=3, F(5)=5, F(6)=8
+    var a = 0
+    var b = 1
+
+    for i in 0..6 {
+        var temp = a + b
+        a = b
+        b = temp
+    }
+
+    a
+}

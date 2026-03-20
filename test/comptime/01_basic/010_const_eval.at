@@ -1,0 +1,11 @@
+// == Comptime Example: 常量表达式求值 ==
+//
+// 描述：展示 #{ } 块在编译期执行表达式并返回结果
+
+// #[expect_value(3)]
+// #[expect_output("3")]
+fn main() {
+    // 编译期计算 1 + 2
+    let result = #{ 1 + 2 }
+    result
+}

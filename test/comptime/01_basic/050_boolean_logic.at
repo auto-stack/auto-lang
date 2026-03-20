@@ -1,0 +1,10 @@
+// == Comptime Example: 编译期布尔逻辑 ==
+//
+// 描述：展示 #{ } 块中的布尔运算
+
+// #[expect_value(true)]
+fn main() {
+    // 编译期布尔运算
+    let flag = #{ true and (1 < 2) }
+    flag
+}

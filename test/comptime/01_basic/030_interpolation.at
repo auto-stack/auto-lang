@@ -1,0 +1,14 @@
+// == Comptime Example: 编译期变量插值 ==
+//
+// 描述：展示 #{ } 在字符串中进行编译期变量插值
+// 注意：当前实现中，#{expr} 会被求值并转换
+
+// #[expect_value(42)]
+fn main() {
+    // 定义一个变量
+    let answer = 42
+
+    // 在编译期插值中使用
+    let result = #{ answer }
+    result
+}

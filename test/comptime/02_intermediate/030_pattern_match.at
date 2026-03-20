@@ -1,0 +1,18 @@
+// == Comptime Example: 编译期模式匹配 ==
+//
+// 描述：展示 #is 根据类型在编译期选择不同实现
+// 注意：当前实现为基本的模式匹配
+
+// #[expect_value("matched_int")]
+fn main() {
+    let val = 42
+
+    #is val {
+        42 => {
+            "matched_int"
+        }
+        else => {
+            "no_match"
+        }
+    }
+}

@@ -1,0 +1,10 @@
+// == Comptime Example: 字符串处理 ==
+//
+// 描述：展示字符串的基本操作
+
+// #[expect_value(97)]
+fn main() {
+    // 获取字符的 ASCII 码
+    let str = "a"
+    str[0]
+}

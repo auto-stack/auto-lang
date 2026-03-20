@@ -1382,6 +1382,13 @@ impl<'a> Parser<'a> {
             TokenKind::Grid => Expr::Grid(self.grid()?),
             // dot
             TokenKind::Dot => self.dot_item()?,
+            // Plan 095: Compile-time expression #{ expr }
+            TokenKind::HashBrace => {
+                self.next(); // skip #{
+                let expr = self.parse_expr()?;
+                self.expect(TokenKind::RBrace)?;
+                Expr::Comptime(Box::new(HashBrace { expr }))
+            }
             // normal
             _ => self.atom()?,
         };

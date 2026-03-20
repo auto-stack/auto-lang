@@ -1,0 +1,14 @@
+// == Comptime Example: 阶乘计算 ==
+//
+// 描述：展示使用循环计算阶乘
+// 注意：编译期 #for 需要 CTEE 支持
+
+// #[expect_value(120)]
+fn main() {
+    // 计算 5! = 5 * 4 * 3 * 2 * 1 = 120
+    var factorial = 1
+    for i in 1..6 {
+        factorial = factorial * i
+    }
+    factorial
+}

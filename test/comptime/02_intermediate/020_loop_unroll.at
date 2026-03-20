@@ -1,0 +1,14 @@
+// == Comptime Example: 循环展开 ==
+//
+// 描述：展示使用运行时 for 循环
+// 注意：编译期 #for 需要 CTEE 支持，当前使用运行时循环
+
+// #[expect_value(6)]
+fn main() {
+    // 运行时循环计算 1+2+3
+    var sum = 0
+    for i in 0..3 {
+        sum = sum + (i + 1)
+    }
+    sum
+}

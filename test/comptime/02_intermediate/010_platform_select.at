@@ -1,0 +1,16 @@
+// == Comptime Example: 平台选择 ==
+//
+// 描述：展示使用运行时 if 根据条件选择不同代码分支
+// 注意：编译期 #if 需要 CTEE 支持，当前使用运行时条件
+
+// #[expect_value("desktop")]
+fn main() {
+    // 模拟编译期平台选择
+    let platform = "desktop"
+
+    if platform == "desktop" {
+        "desktop"
+    } else {
+        "mobile"
+    }
+}
