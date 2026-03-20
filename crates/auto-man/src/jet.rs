@@ -552,12 +552,25 @@ impl JetProject {
         fs::create_dir_all(&self.output_dir)
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
+        // Check if any kotlin files use navigation (to add dependency)
+        let uses_navigation = self.kotlin_files.iter().any(|(_, content)| {
+            content.contains("NavHostController") ||
+            content.contains("NavHost(") ||
+            content.contains("rememberNavController")
+        });
+
         // Generate full project structure using ProjectGenerator
         // Configure with widget names so MainActivity.kt can import them
         let mut config = JetProjectConfig::new(&self.name);
         for widget_name in &self.widget_names {
             config = config.with_widget(widget_name);
         }
+
+        // Add navigation dependency if needed
+        if uses_navigation {
+            config = config.with_dependency("navigation", "2.7.6");
+        }
+
         let mut generator = ProjectGenerator::with_config(config);
         let project_files = generator.generate();
 
