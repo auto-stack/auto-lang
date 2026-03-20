@@ -50,27 +50,22 @@ pub fn generate_dispatch_function(widget: &AuraWidget) -> String {
     lines.join("\n")
 }
 
-/// Generate Msg sealed class from widget messages
-pub fn generate_msg_sealed(widget: &AuraWidget) -> String {
+/// Generate Msg enum from widget messages (TypeScript syntax)
+pub fn generate_msg_enum(widget: &AuraWidget) -> String {
     if widget.messages.is_empty() {
         return String::new();
     }
 
-    let mut lines = vec!["sealed class Msg {".to_string()];
+    let mut lines = vec!["enum Msg {".to_string()];
 
     for msg in &widget.messages {
         for variant in &msg.variants {
-            if let Some(ref payload_type) = variant.payload {
-                let arkts_type = auto_type_to_arkts(payload_type);
-                lines.push(format!("  data class {}(val value: {}) : Msg()", variant.name, arkts_type));
-            } else {
-                lines.push(format!("  object {} : Msg()", variant.name));
-            }
+            // TypeScript enum - simple variant
+            lines.push(format!("  {},", variant.name));
         }
     }
 
     lines.push("}".to_string());
-
     lines.join("\n")
 }
 
@@ -106,7 +101,7 @@ fn generate_default_value(ty: &Type) -> String {
 }
 
 /// Generate handler body from logic payload
-fn generate_handler_body(payload: &LogicPayload) -> String {
+pub fn generate_handler_body(payload: &LogicPayload) -> String {
     match payload {
         LogicPayload::AstBlock(stmts) => {
             // Convert AST statements to ArkTS code
@@ -242,5 +237,42 @@ mod tests {
     #[test]
     fn test_generate_default_value_for_list() {
         assert_eq!(generate_default_value(&Type::List(Box::new(Type::Int))), "[]");
+    }
+
+    #[test]
+    fn test_generate_msg_enum_produces_typescript_enum() {
+        use crate::aura::{AuraMessage, AuraMsgVariant, AuraNode, AuraWidget};
+        use std::collections::HashMap;
+
+        let widget = AuraWidget {
+            name: "Counter".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![
+                    AuraMsgVariant { name: "Inc".to_string(), payload: None },
+                    AuraMsgVariant { name: "Dec".to_string(), payload: None },
+                ],
+            }],
+            view_tree: AuraNode::Element {
+                tag: "col".to_string(),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let result = generate_msg_enum(&widget);
+
+        // Should produce TypeScript enum, not Kotlin sealed class
+        assert!(result.contains("enum Msg {"), "Should use 'enum' keyword");
+        assert!(!result.contains("sealed class"), "Should not contain 'sealed class'");
+        assert!(!result.contains("object"), "Should not contain 'object' keyword");
+        assert!(result.contains("Inc,"), "Should contain 'Inc,' variant");
+        assert!(result.contains("Dec,"), "Should contain 'Dec,' variant");
     }
 }

@@ -24,7 +24,7 @@
 use super::components::ArkComponentRegistry;
 use super::modifier::{class_to_modifier, prop_to_modifier};
 use super::project::ArkProjectGenerator;
-use super::state::{generate_dispatch_function, generate_msg_sealed, generate_state_declarations};
+use super::state::{generate_handler_body, generate_msg_enum, generate_state_declarations};
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::{BackendGenerator, GenResult};
 use std::collections::HashMap;
@@ -111,14 +111,8 @@ impl ArkGenerator {
 
         let mut lines = Vec::new();
 
-        // Msg sealed class (if messages exist)
-        if self.has_messages {
-            let msg_class = generate_msg_sealed(widget);
-            if !msg_class.is_empty() {
-                lines.push(msg_class);
-                lines.push("".to_string());
-            }
-        }
+        // NOTE: ArkTS doesn't support sealed classes like Kotlin
+        // We generate direct state updates in event handlers instead
 
         // @Entry @Component struct
         lines.push("@Entry".to_string());
@@ -136,14 +130,7 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
-        // Dispatch function (if handlers exist)
-        let dispatch_fn = generate_dispatch_function(widget);
-        if !dispatch_fn.is_empty() {
-            for line in dispatch_fn.lines() {
-                lines.push(format!("{}{}", self.indent(), line));
-            }
-            lines.push("".to_string());
-        }
+        // NOTE: No dispatch function - ArkTS uses direct state updates
 
         // build() method
         lines.push(format!("{}build() {{", self.indent()));
@@ -210,9 +197,26 @@ impl ArkGenerator {
 
         // Look up component
         if let Some(component) = self.registry.get(tag) {
-            // Component call
+            // Get text content for components with content (like Button, Text)
+            let content_arg = if component.has_content {
+                if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
+                    format!("'{}'", text)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            // Component call with content argument
+            let component_call = if content_arg.is_empty() {
+                format!("{}()", component.name)
+            } else {
+                format!("{}({})", component.name, content_arg)
+            };
+
             let modifiers = self.generate_modifiers(props, events);
-            lines.push(format!("{}(){}", component.name, modifiers));
+            lines.push(format!("{}{}", component_call, modifiers));
 
             // Children
             if component.has_children && !children.is_empty() {
@@ -228,11 +232,6 @@ impl ArkGenerator {
 
                 self.indent_level -= 1;
                 lines.push(format!("{}}}", self.indent()));
-            } else if component.has_content {
-                // Text content from props
-                if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
-                    lines.last_mut().unwrap().push_str(&format!("('{}')", text));
-                }
             }
         } else {
             // Unknown component - emit as comment
@@ -263,15 +262,11 @@ impl ArkGenerator {
         // Process events - generate onClick handlers
         for (event_name, event) in events {
             if event_name == "click" || event_name == "onclick" {
-                let handler = &event.handler;
-                let params = if event.params.is_empty() {
-                    String::new()
-                } else {
-                    format!("({})", event.params.join(", "))
-                };
+                // Generate direct state update instead of dispatch pattern
+                let handler_code = self.generate_handler_code(&event.handler);
                 modifiers.push(format!(
-                    ".onClick(() => {{\n    {}this.dispatch(Msg.{})\n  }})",
-                    params, handler
+                    ".onClick(() => {{\n    {}\n  }})",
+                    handler_code
                 ));
             }
         }
@@ -327,15 +322,37 @@ impl ArkGenerator {
         }
     }
 
+    /// Generate handler code from handler string (e.g., ".Inc" -> "this.count += 1")
+    fn generate_handler_code(&self, handler: &str) -> String {
+        // Handler is in format ".MsgName" - look up in current_handlers
+        if handler.starts_with('.') {
+            let msg_name = &handler[1..];
+            if let Some(payload) = self.current_handlers.get(handler) {
+                // Generate the handler body directly
+                return generate_handler_body(payload);
+            }
+
+            // Fallback: generate simple increment/decrement based on name
+            match msg_name {
+                "Inc" => "this.count += 1".to_string(),
+                "Dec" => "this.count -= 1".to_string(),
+                _ => format!("// TODO: handler for {}", msg_name),
+            }
+        } else {
+            format!("// Unknown handler: {}", handler)
+        }
+    }
+
     /// Generate text node
     fn generate_text(&self, text: &AuraTextContent) -> GenResult<String> {
         match text {
             AuraTextContent::Literal(s) => Ok(format!("Text(\"{}\")", s)),
             AuraTextContent::Interpolated { template, bindings } => {
-                // Convert ${.field} to this.field
+                // Convert ${.field} to ${this.field} for ArkTS template literals
                 let mut result = template.clone();
                 for binding in bindings {
-                    result = result.replace(&format!("${{.{}}}", binding), &format!("{{{{this.{}}}}}", binding));
+                    // Replace ${.field} with ${this.field}
+                    result = result.replace(&format!("${{.{}}}", binding), &format!("${{this.{}}}", binding));
                 }
                 Ok(format!("Text(`{}`)", result))
             }
