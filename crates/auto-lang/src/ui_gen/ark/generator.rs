@@ -148,33 +148,61 @@ impl ArkGenerator {
 
         let mut lines = Vec::new();
 
-        // Add import statement for ArkUI components (only Button - Column, Row, Text are built-in)
-        lines.push("import { Button } from '@kit.ArkUI';".to_string());
-
-        // Check if widget has routes - add NavPathStack import
+        // Check if widget has routes
         let has_routes = widget.routes.is_some();
-        if has_routes {
-            lines.push("import { NavPathStack } from '@kit.ArkUI';".to_string());
-        }
+        // Check if widget uses navigation (has links)
+        let uses_navigation = Self::widget_uses_navigation(&widget.view_tree);
+
+        // Find the index/default route component (first route or route with path "/")
+        let index_component = if let Some(ref routes) = widget.routes {
+            routes.routes.first().map(|r| Self::module_to_component(&r.module))
+        } else {
+            None
+        };
+
+        // Add import statement for ArkUI components (only Button - Column, Row, Text, NavPathStack are built-in)
+        lines.push("import { Button } from '@kit.ArkUI';".to_string());
         lines.push(String::new());
 
-        // Generate Msg enum if widget has messages (before @Entry)
+        // For App widget with routes, import child pages
+        if let Some(ref routes) = widget.routes {
+            for route in &routes.routes {
+                let component_name = Self::module_to_component(&route.module);
+                lines.push(format!("import {{ {} }} from './{}';", component_name, component_name));
+            }
+            if !routes.routes.is_empty() {
+                lines.push(String::new());
+            }
+        }
+
+        // Generate Msg enum if widget has messages (before @Entry/@Component)
         let msg_enum = generate_msg_enum(widget);
         if !msg_enum.is_empty() {
             lines.push(msg_enum);
             lines.push("".to_string());
         }
 
-        // @Entry @Component struct
-        lines.push("@Entry".to_string());
+        // @Entry only for App widget (has routes), @Component for child pages
+        if has_routes {
+            lines.push("@Entry".to_string());
+        }
         lines.push("@Component".to_string());
-        lines.push(format!("struct {} {{", sanitized_name));
+
+        // Add export for child pages (non-App widgets)
+        let struct_keyword = if has_routes { "struct" } else { "export struct" };
+        lines.push(format!("{} {} {{", struct_keyword, sanitized_name));
 
         self.indent_level = 1;
 
-        // Add NavPathStack state if widget has routes
+        // Add NavPathStack with @Provide decorator if widget has routes (App widget)
         if has_routes {
-            lines.push(format!("{}@State navPathStack: NavPathStack = new NavPathStack()", self.indent()));
+            lines.push(format!("{}@Provide('pathStack') pathStack: NavPathStack = new NavPathStack()", self.indent()));
+            lines.push(String::new());
+        }
+
+        // Add @Consume decorator if widget uses navigation but doesn't have routes (child page with links)
+        if uses_navigation && !has_routes {
+            lines.push(format!("{}@Consume('pathStack') pathStack: NavPathStack", self.indent()));
             lines.push(String::new());
         }
 
@@ -230,10 +258,22 @@ impl ArkGenerator {
         lines.push(format!("{}build() {{", self.indent()));
         self.indent_level = 2;
 
+        // For child pages (no routes), wrap content in NavDestination
+        if !has_routes {
+            lines.push(format!("{}NavDestination() {{", self.indent()));
+            self.indent_level += 1;
+        }
+
         // Generate UI tree from view_tree (not root)
-        let ui_code = self.generate_node_with_routes(&widget.view_tree, has_routes)?;
+        let ui_code = self.generate_node_with_routes(&widget.view_tree, has_routes, index_component.as_deref())?;
         for line in ui_code.lines() {
             lines.push(format!("{}{}", self.indent(), line));
+        }
+
+        // Close NavDestination for child pages
+        if !has_routes {
+            self.indent_level -= 1;
+            lines.push(format!("{}}}", self.indent()));
         }
 
         self.indent_level = 1;
@@ -243,6 +283,24 @@ impl ArkGenerator {
         lines.push("}".to_string());
 
         Ok(lines.join("\n"))
+    }
+
+    /// Check if widget uses navigation (has Link nodes that navigate)
+    fn widget_uses_navigation(node: &AuraNode) -> bool {
+        match node {
+            AuraNode::Link { .. } => true,
+            AuraNode::Element { children, .. } => {
+                children.iter().any(|c| Self::widget_uses_navigation(c))
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                then_body.iter().any(|c| Self::widget_uses_navigation(c))
+                    || else_body.as_ref().map_or(false, |e| e.iter().any(|c| Self::widget_uses_navigation(c)))
+            }
+            AuraNode::ForLoop { body, .. } => {
+                body.iter().any(|c| Self::widget_uses_navigation(c))
+            }
+            _ => false,
+        }
     }
 
     /// Convert page module name to @Builder function name
@@ -264,7 +322,7 @@ impl ArkGenerator {
     }
 
     /// Generate ArkTS code for a node, with route awareness
-    fn generate_node_with_routes(&mut self, node: &AuraNode, has_routes: bool) -> GenResult<String> {
+    fn generate_node_with_routes(&mut self, node: &AuraNode, has_routes: bool, index_component: Option<&str>) -> GenResult<String> {
         match node {
             AuraNode::Element {
                 tag,
@@ -274,13 +332,17 @@ impl ArkGenerator {
             } => {
                 // Special handling for root col when routes exist - wrap in Navigation
                 if tag == "col" && has_routes {
-                    return self.generate_navigation_root(props, events, children);
+                    return self.generate_navigation_root(props, events, children, index_component);
                 }
                 self.generate_element(tag, props, events, children)
             }
             AuraNode::Outlet => {
-                // Outlet in navigation context - handled by navDestination
-                Ok("// Outlet - router placeholder".to_string())
+                // Outlet in navigation context - render index page directly
+                if let Some(index) = index_component {
+                    Ok(format!("{}()", index))
+                } else {
+                    Ok("// Outlet - no default route".to_string())
+                }
             }
             _ => self.generate_node(node),
         }
@@ -292,16 +354,18 @@ impl ArkGenerator {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, crate::aura::AuraEvent>,
         children: &[AuraNode],
+        index_component: Option<&str>,
     ) -> GenResult<String> {
         let mut lines = Vec::new();
 
-        // Navigation component with navPathStack
-        lines.push("Navigation(this.navPathStack) {".to_string());
+        // Navigation component with pathStack
+        lines.push("Navigation(this.pathStack) {".to_string());
         self.indent_level += 1;
 
         // Generate children (header, outlet, etc.)
         for child in children {
-            let child_code = self.generate_node(child)?;
+            // Pass index_component to handle Outlet replacement
+            let child_code = self.generate_node_with_routes(child, true, index_component)?;
             for line in child_code.lines() {
                 lines.push(format!("{}{}", self.indent(), line));
             }
@@ -312,6 +376,10 @@ impl ArkGenerator {
 
         // Add navDestination modifier for route handling
         lines.push(format!("{}.navDestination(this.buildNavDestination)", self.indent()));
+
+        // Add common Navigation modifiers
+        lines.last_mut().unwrap().push_str("\n    .hideTitleBar(true)");
+        lines.last_mut().unwrap().push_str("\n    .mode(NavigationMode.Stack)");
 
         // Add modifiers
         let modifiers = self.generate_modifiers(props, events);
@@ -662,26 +730,19 @@ impl ArkGenerator {
 
         if !text.is_empty() {
             // Simple text link - use Column with onClick for navigation
-            lines.push(format!("Column()"));
-            lines.last_mut().unwrap().push_str(&format!(
-                "\n{}.onClick(() => {{\n    this.navPathStack.pushPathByName('{}')\n  }})",
-                self.indent(),
-                route_name
-            ));
-            lines.last_mut().unwrap().push_str(" {");
+            // ArkTS syntax: Column() { children }.onClick(() => { ... })
+            lines.push(format!("Column() {{"));
             self.indent_level += 1;
             lines.push(format!("{}Text(\"{}\")", self.indent(), text));
             self.indent_level -= 1;
             lines.push(format!("{}}}", self.indent()));
+            // onClick modifier comes AFTER the closing brace
+            lines.push(format!("{}.onClick(() => {{", self.indent()));
+            lines.push(format!("{}  this.pathStack.pushPathByName('{}', '')", self.indent(), route_name));
+            lines.push(format!("{}}})", self.indent()));
         } else if !children.is_empty() {
             // Link with children
-            lines.push(format!("Column()"));
-            lines.last_mut().unwrap().push_str(&format!(
-                "\n{}.onClick(() => {{\n    this.navPathStack.pushPathByName('{}')\n  }})",
-                self.indent(),
-                route_name
-            ));
-            lines.last_mut().unwrap().push_str(" {");
+            lines.push(format!("Column() {{"));
             self.indent_level += 1;
 
             for child in children {
@@ -693,6 +754,10 @@ impl ArkGenerator {
 
             self.indent_level -= 1;
             lines.push(format!("{}}}", self.indent()));
+            // onClick modifier comes AFTER the closing brace
+            lines.push(format!("{}.onClick(() => {{", self.indent()));
+            lines.push(format!("{}  this.pathStack.pushPathByName('{}', '')", self.indent(), route_name));
+            lines.push(format!("{}}})", self.indent()));
         }
 
         Ok(lines.join("\n"))
@@ -846,7 +911,7 @@ mod tests {
 
     #[test]
     fn test_generated_file_has_imports() {
-        // Create a simple widget
+        // Create a simple widget without routes (child page - should have @Component only)
         let widget = AuraWidget {
             name: "TestWidget".to_string(),
             state_vars: vec![],
@@ -872,12 +937,18 @@ mod tests {
             "Should contain ArkUI import statement for Button only"
         );
 
-        // Import should appear before @Entry decorator
+        // Import should appear before @Component decorator (child pages don't have @Entry)
         let import_pos = code.find("import").expect("Import should exist");
-        let entry_pos = code.find("@Entry").expect("@Entry should exist");
+        let component_pos = code.find("@Component").expect("@Component should exist");
         assert!(
-            import_pos < entry_pos,
-            "Import should appear before @Entry decorator"
+            import_pos < component_pos,
+            "Import should appear before @Component decorator"
+        );
+
+        // Child pages (without routes) should NOT have @Entry
+        assert!(
+            !code.contains("@Entry"),
+            "Child pages without routes should not have @Entry decorator"
         );
     }
 
@@ -913,6 +984,120 @@ mod tests {
             !code.contains("Unknown component"),
             "Should not contain 'Unknown component' comment, got: {}",
             code
+        );
+    }
+
+    #[test]
+    fn test_app_widget_with_routes_has_entry() {
+        // Test that App widget with routes has @Entry and @Provide
+        use crate::aura::{AuraRoute, AuraRoutes};
+
+        let widget = AuraWidget {
+            name: "App".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "col".to_string(),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: Some(AuraRoutes {
+                routes: vec![AuraRoute {
+                    path: "/".to_string(),
+                    module: "index".to_string(),
+                    params: vec![],
+                }],
+            }),
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // App widget with routes should have @Entry
+        assert!(
+            code.contains("@Entry"),
+            "App widget with routes should have @Entry decorator"
+        );
+
+        // App widget should have @Provide for pathStack
+        assert!(
+            code.contains("@Provide('pathStack')"),
+            "App widget should have @Provide('pathStack') for navigation"
+        );
+
+        // NavPathStack is built-in, should NOT be imported
+        assert!(
+            !code.contains("import { NavPathStack }"),
+            "NavPathStack is built-in and should not be imported"
+        );
+
+        // App widget should import child pages
+        assert!(
+            code.contains("import { IndexPage } from './IndexPage';"),
+            "App widget should import child pages"
+        );
+
+        // App widget should have Navigation component
+        assert!(
+            code.contains("Navigation(this.pathStack)"),
+            "App widget should have Navigation component with pathStack"
+        );
+    }
+
+    #[test]
+    fn test_child_page_with_navigation_has_consume() {
+        // Test that child pages with navigation links have @Consume and are wrapped in NavDestination
+        let widget = AuraWidget {
+            name: "IndexPage".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Link {
+                to: "counter".to_string(),
+                text: "Go to Counter".to_string(),
+                href: String::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None, // No routes - this is a child page
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // Child page should NOT have @Entry
+        assert!(
+            !code.contains("@Entry"),
+            "Child page without routes should not have @Entry decorator"
+        );
+
+        // Child page WITH navigation links should have @Consume for pathStack
+        assert!(
+            code.contains("@Consume('pathStack')"),
+            "Child page with navigation links should have @Consume('pathStack')"
+        );
+
+        // Child page should be wrapped in NavDestination
+        assert!(
+            code.contains("NavDestination()"),
+            "Child page content should be wrapped in NavDestination()"
+        );
+
+        // NavPathStack is built-in, should NOT be imported
+        assert!(
+            !code.contains("import { NavPathStack }"),
+            "NavPathStack is built-in and should not be imported"
+        );
+
+        // Child page should have export keyword
+        assert!(
+            code.contains("export struct"),
+            "Child page should be exported with 'export struct'"
         );
     }
 }

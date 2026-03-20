@@ -319,6 +319,15 @@ impl ArkProject {
             println!("{} {}", "  Generated".bright_green(), relative_path);
         }
 
+        // main_pages.json should only contain App - other pages are NavDestinations
+        // (handled by Navigation component, not as separate entry pages)
+        let main_pages_path = self.output_dir.join("entry/src/main/resources/base/profile/main_pages.json");
+        let main_pages_content = serde_json::json!({
+            "src": ["pages/App"]
+        }).to_string();
+        fs::write(&main_pages_path, main_pages_content)
+            .map_err(|e| format!("Failed to write main_pages.json: {}", e))?;
+
         println!();
         println!("═════════════════════════════════");
         println!("{}", "  ArkTS/HarmonyOS project generated!".bright_green().bold());
