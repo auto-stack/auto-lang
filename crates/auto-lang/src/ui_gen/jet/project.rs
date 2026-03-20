@@ -730,36 +730,11 @@ dependencies {{
         let theme_name = self.config.theme_name();
         let _app_name = &self.config.name;
 
-        // Generate widget imports
-        let widget_imports: Vec<String> = self
-            .config
-            .widgets
-            .iter()
-            .map(|w| format!("import {package}.ui.widgets.{w}"))
-            .collect();
-        let widget_imports_str = widget_imports.join("\n");
+        // Generate widget imports - only import App (the main entry point)
+        let widget_imports_str = format!("import {package}.ui.widgets.App");
 
-        // Generate widget calls in content
-        let widget_calls: Vec<String> = self
-            .config
-            .widgets
-            .iter()
-            .map(|w| format!("                {w}()"))
-            .collect();
-        let widget_calls_str = if widget_calls.is_empty() {
-            r#"                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) {
-                    androidx.compose.material3.Text(
-                        text = "Hello Auto!",
-                        style = MaterialTheme.typography.headlineLarge
-                    )
-                }"#
-            .to_string()
-        } else {
-            widget_calls.join("\n")
-        };
+        // Only call App() - it contains the NavHost and all navigation logic
+        let widget_calls_str = "                App()";
 
         let content = format!(
             r#"package {package}

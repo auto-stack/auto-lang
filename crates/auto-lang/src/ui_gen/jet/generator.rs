@@ -1295,23 +1295,29 @@ impl BackendGenerator for JetGenerator {
         let package_decl = self.generate_package();
         let composable_name = &widget.name;
 
-        // Check if this widget has Link nodes (needs navController parameter)
-        let has_link = Self::has_link_node(&widget.view_tree);
-
-        // Add navigation imports if has Link nodes
-        if has_link {
-            self.add_import("androidx.navigation.NavHostController");
+        // Add navigation imports based on widget type
+        // Router widgets need all navigation imports; Page widgets need NavHostController for param
+        self.add_import("androidx.navigation.NavHostController");
+        if has_routes {
+            // Router - also needs NavHost, composable, and rememberNavController
+            self.add_import("androidx.navigation.compose.NavHost");
+            self.add_import("androidx.navigation.compose.composable");
+            self.add_import("androidx.navigation.compose.rememberNavController");
+        } else {
+            // Page - needs rememberNavController for Preview
             self.add_import("androidx.navigation.compose.rememberNavController");
         }
 
         // Generate imports (after potentially adding navigation imports)
         let imports = self.generate_imports();
 
-        // Generate appropriate Preview based on navController requirement
-        let preview = if has_link {
-            self.generate_preview_with_nav(composable_name)
-        } else {
+        // Generate appropriate Preview based on whether this is a router or a page
+        let preview = if has_routes {
+            // Router - no navController param, just call the function
             self.generate_preview(composable_name)
+        } else {
+            // Page with navController param, use preview_with_nav
+            self.generate_preview_with_nav(composable_name)
         };
 
         // Build the complete code
@@ -1337,16 +1343,16 @@ impl BackendGenerator for JetGenerator {
             code.push_str("\n\n");
         }
 
-        // Composable function - add navController param if has Link nodes
-        if has_link {
-            code.push_str(&format!("@Composable\nfun {}(\n    navController: NavHostController,\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
-        } else {
-            code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
-        }
-
-        // If has routes, create navController
+        // Composable function
+        // - Router widgets (has_routes): create navController internally, no param needed
+        // - Page widgets: receive navController from NavHost
         if has_routes {
+            // Router widget (like App) - creates its own navController
+            code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
             code.push_str("    val navController = rememberNavController()\n\n");
+        } else {
+            // Regular page widget - receives navController from NavHost
+            code.push_str(&format!("@Composable\nfun {}(\n    navController: NavHostController,\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
         }
 
         // State declarations
