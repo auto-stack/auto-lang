@@ -2,13 +2,13 @@
 
 /// Main entry page
 widget Index {
-    state {
-        message: "快速入门"
+    model {
+        message str = "快速入门"
     }
 
     view {
         col (class: "w-full h-full bg-gray-100") {
-            text (class: "text-2xl font-bold w-full text-left pl-4", text: message) {}
+            text (class: "text-2xl font-bold w-full text-left pl-4", text: .message) {}
             Banner {}
         }
     }
