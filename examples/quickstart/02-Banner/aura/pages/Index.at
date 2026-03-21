@@ -1,0 +1,38 @@
+// pages/Index.at - Swiper banner demo
+
+/// Main page with auto-playing banner
+widget Index {
+    state {
+        message: "快速入门"
+        bannerList: [
+            { id: "pic0", src: "$r('app.media.banner_pic0')" },
+            { id: "pic1", src: "$r('app.media.banner_pic1')" },
+            { id: "pic2", src: "$r('app.media.banner_pic2')" },
+        ]
+    }
+
+    view {
+        col (class: "w-full h-full bg-gray-100") {
+            text (class: "text-2xl font-bold w-full text-left pl-4", text: message) {}
+            Banner { items: bannerList }
+        }
+    }
+}
+
+/// Swiper banner component
+widget Banner {
+    props {
+        items: Array
+    }
+
+    view {
+        swiper (class: "auto-play loop") {
+            for item in items {
+                image (
+                    class: "w-full pt-3 px-4 rounded-2xl object-contain",
+                    src: item.src
+                ) {}
+            }
+        }
+    }
+}
