@@ -7,7 +7,7 @@ widget App {
     }
 
     view {
-        col (class: "h-full") {
+        col (style: "h-full") {
             outlet
         }
     }

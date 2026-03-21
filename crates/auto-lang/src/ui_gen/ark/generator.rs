@@ -554,11 +554,11 @@ impl ArkGenerator {
             if key == "text" || key == "src" {
                 continue;
             }
-            // Handle class prop using ArkModifierDsl
-            if key == "class" {
-                if let Some(class_str) = self.extract_class_string(value) {
-                    let class_modifiers = dsl.convert_class(&class_str);
-                    modifiers.extend(class_modifiers);
+            // Handle style prop using ArkModifierDsl
+            if key == "style" {
+                if let Some(style_str) = self.extract_style_string(value) {
+                    let style_modifiers = dsl.convert_style(&style_str);
+                    modifiers.extend(style_modifiers);
                 }
                 continue;
             }
@@ -586,15 +586,15 @@ impl ArkGenerator {
             }
         }
 
-        // Process class bindings from ClassBinding variant
+        // Process style bindings from StyleBinding variant
         for value in props.values() {
-            if let AuraPropValue::ClassBinding(bindings) = value {
+            if let AuraPropValue::StyleBinding(bindings) = value {
                 for binding in bindings {
-                    // Use ArkModifierDsl for class conversion
-                    let class_modifiers = dsl.convert_class(&binding.class_name);
-                    // For now, apply the class unconditionally
-                    // TODO: Support conditional class application
-                    modifiers.extend(class_modifiers);
+                    // Use ArkModifierDsl for style conversion
+                    let style_modifiers = dsl.convert_style(&binding.style_name);
+                    // For now, apply the style unconditionally
+                    // TODO: Support conditional style application
+                    modifiers.extend(style_modifiers);
                 }
             }
         }
@@ -613,13 +613,13 @@ impl ArkGenerator {
         }
     }
 
-    /// Extract class string from AuraPropValue
-    fn extract_class_string(&self, value: &AuraPropValue) -> Option<String> {
+    /// Extract style string from AuraPropValue
+    fn extract_style_string(&self, value: &AuraPropValue) -> Option<String> {
         match value {
             AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
-            AuraPropValue::ClassBinding(bindings) => {
-                // Combine all class names
-                Some(bindings.iter().map(|b| b.class_name.as_str()).collect::<Vec<_>>().join(" "))
+            AuraPropValue::StyleBinding(bindings) => {
+                // Combine all style names
+                Some(bindings.iter().map(|b| b.style_name.as_str()).collect::<Vec<_>>().join(" "))
             }
             _ => None,
         }
@@ -629,7 +629,7 @@ impl ArkGenerator {
     fn prop_to_modifier(&self, key: &str, value: &AuraPropValue) -> Option<String> {
         match value {
             AuraPropValue::Expr(expr) => self.expr_to_modifier(key, expr),
-            AuraPropValue::ClassBinding(_) => None, // Handled separately
+            AuraPropValue::StyleBinding(_) => None, // Handled separately
         }
     }
 

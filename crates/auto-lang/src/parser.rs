@@ -8255,12 +8255,12 @@ impl<'a> Parser<'a> {
                 } else {
                     self.expect(TokenKind::Colon)?;
 
-                    // Check for class binding: class: { completed: todo.done }
-                    if key == "class" && self.is_kind(TokenKind::LBrace) {
-                        let binding = self.parse_class_binding()?;
+                    // Check for style binding: style: { completed: todo.done }
+                    if key == "style" && self.is_kind(TokenKind::LBrace) {
+                        let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
-                            value: ViewPropValue::ClassBinding(binding),
+                            value: ViewPropValue::StyleBinding(binding),
                         });
                     } else {
                         let value = self.parse_expr()?;
@@ -8279,8 +8279,8 @@ impl<'a> Parser<'a> {
         }
 
         // Parse children or inline props/events in braces
-        // Support syntax: col { child1 child2 class: "..." }
-        // Also supports primary prop shorthand: text "Hello" { class: "..." }
+        // Support syntax: col { child1 child2 style: "..." }
+        // Also supports primary prop shorthand: text "Hello" { style: "..." }
         if self.is_kind(TokenKind::LBrace) {
             self.next();
             self.skip_empty_lines();
@@ -8317,11 +8317,11 @@ impl<'a> Parser<'a> {
                     if key.starts_with("on") {
                         let (handler, params) = self.parse_event_handler()?;
                         events.push(ViewEvent { name: key, handler, params });
-                    } else if key == "class" && self.is_kind(TokenKind::LBrace) {
-                        let binding = self.parse_class_binding()?;
+                    } else if key == "style" && self.is_kind(TokenKind::LBrace) {
+                        let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
-                            value: ViewPropValue::ClassBinding(binding),
+                            value: ViewPropValue::StyleBinding(binding),
                         });
                     } else {
                         let value = self.parse_expr()?;
@@ -8344,13 +8344,13 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RBrace)?;
         }
 
-        // Transform `center` to `col` with default centering classes
+        // Transform `center` to `col` with default centering styles
         if tag == "center" {
-            let default_class = "w-full h-full justify-center items-center";
+            let default_style = "w-full h-full justify-center items-center";
 
-            // Check if there was a user class before consuming props
-            let user_class_opt = props.iter()
-                .find(|p| p.name == "class")
+            // Check if there was a user style before consuming props
+            let user_style_opt = props.iter()
+                .find(|p| p.name == "style")
                 .and_then(|p| {
                     if let ViewPropValue::Expr(Expr::Str(s)) = &p.value {
                         Some(s.to_string())
@@ -8361,18 +8361,18 @@ impl<'a> Parser<'a> {
 
             // Build merged props
             let mut merged_props: Vec<ViewProp> = props.into_iter()
-                .filter(|p| p.name != "class")
+                .filter(|p| p.name != "style")
                 .collect();
 
-            let final_class = if let Some(user_class) = user_class_opt {
-                format!("{} {}", default_class, user_class.trim())
+            let final_style = if let Some(user_style) = user_style_opt {
+                format!("{} {}", default_style, user_style.trim())
             } else {
-                default_class.to_string()
+                default_style.to_string()
             };
 
             merged_props.push(ViewProp {
-                name: "class".to_string(),
-                value: ViewPropValue::Expr(Expr::Str(AutoStr::from(&final_class))),
+                name: "style".to_string(),
+                value: ViewPropValue::Expr(Expr::Str(AutoStr::from(&final_style))),
             });
 
             Ok(ViewNode::Element {
@@ -8391,8 +8391,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse class binding: { completed: todo.done, editing: todo.editing }
-    fn parse_class_binding(&mut self) -> AutoResult<Vec<ClassBindingEntry>> {
+    /// Parse style binding: { completed: todo.done, editing: todo.editing }
+    fn parse_style_binding(&mut self) -> AutoResult<Vec<StyleBindingEntry>> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
@@ -8404,8 +8404,8 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // Parse class name (can be identifier or string)
-            let class_name = if self.is_kind(TokenKind::Str) || self.cur.text.starts_with('"') {
+            // Parse style name (can be identifier or string)
+            let style_name = if self.is_kind(TokenKind::Str) || self.cur.text.starts_with('"') {
                 // Quoted string
                 let s = self.cur.text.to_string();
                 self.next();
@@ -8423,8 +8423,8 @@ impl<'a> Parser<'a> {
             // Parse condition expression
             let condition = self.parse_expr()?;
 
-            entries.push(ClassBindingEntry {
-                class_name,
+            entries.push(StyleBindingEntry {
+                style_name,
                 condition,
             });
 
@@ -9976,8 +9976,8 @@ widget Test {
                         assert_eq!(tag, "button");
                         // Should have text prop from string literal
                         assert!(props.iter().any(|p| p.name == "text"));
-                        // Should have class prop from parentheses
-                        assert!(props.iter().any(|p| p.name == "class"));
+                        // Should have style prop from parentheses
+                        assert!(props.iter().any(|p| p.name == "style"));
                         // Should have onclick event
                         assert!(!events.is_empty());
                     }

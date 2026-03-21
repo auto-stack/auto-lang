@@ -640,16 +640,16 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         ViewPropValue::Expr(expr) => {
                             AuraPropValue::Expr(extract_expr(expr)?)
                         }
-                        ViewPropValue::ClassBinding(bindings) => {
-                            let aura_bindings: Vec<AuraClassBinding> = bindings.iter()
+                        ViewPropValue::StyleBinding(bindings) => {
+                            let aura_bindings: Vec<AuraStyleBinding> = bindings.iter()
                                 .map(|b| {
-                                    Ok(AuraClassBinding {
-                                        class_name: b.class_name.clone(),
+                                    Ok(AuraStyleBinding {
+                                        style_name: b.style_name.clone(),
                                         condition: extract_expr(&b.condition)?,
                                     })
                                 })
                                 .collect::<ExtractResult<_>>()?;
-                            AuraPropValue::ClassBinding(aura_bindings)
+                            AuraPropValue::StyleBinding(aura_bindings)
                         }
                     };
                     Ok((p.name.clone(), value))
@@ -730,7 +730,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         ViewPropValue::Expr(expr) => {
                             Some(extract_expr(expr).map(|v| (p.name.clone(), v)))
                         }
-                        ViewPropValue::ClassBinding(_) => {
+                        ViewPropValue::StyleBinding(_) => {
                             // Class bindings not supported for component props
                             None
                         }

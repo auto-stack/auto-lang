@@ -579,14 +579,14 @@ impl RustGenerator {
                     _ => builder.to_string(),
                 }
             }
-            AuraPropValue::ClassBinding(bindings) => {
+            AuraPropValue::StyleBinding(bindings) => {
                 // For Rust, we'll generate conditional class application
                 // This is a simplified approach - a real implementation would need to
                 // integrate with the view builder pattern
                 let class_conditions: Vec<String> = bindings.iter()
                     .map(|b| {
                         let cond = self.expr_to_rust(&b.condition);
-                        format!("if {} {{ \"{}\" }} else {{ \"\" }}", cond, b.class_name)
+                        format!("if {} {{ \"{}\" }} else {{ \"\" }}", cond, b.style_name)
                     })
                     .collect();
                 if class_conditions.is_empty() {

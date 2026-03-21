@@ -140,11 +140,11 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
                         AuraPropValue::Expr(expr) => {
                             serialize_expr(expr, output);
                         }
-                        AuraPropValue::ClassBinding(bindings) => {
-                            output.push_str("ClassBinding({");
+                        AuraPropValue::StyleBinding(bindings) => {
+                            output.push_str("StyleBinding({");
                             for (i, b) in bindings.iter().enumerate() {
                                 if i > 0 { output.push_str(", "); }
-                                output.push_str(&format!("\"{}\": ", b.class_name));
+                                output.push_str(&format!("\"{}\": ", b.style_name));
                                 serialize_expr(&b.condition, output);
                             }
                             output.push_str("})");

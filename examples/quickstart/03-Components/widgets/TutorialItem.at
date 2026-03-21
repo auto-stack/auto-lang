@@ -9,12 +9,12 @@ widget TutorialItem {
     }
 
     view {
-        row (class: "w-full p-3 bg-white rounded-2xl") {
-            col (class: "flex-1 mr-3") {
-                text (class: "text-sm", text: .title) {}
-                text (class: "text-xs text-gray-600", text: .brief) {}
+        row (style: "w-full p-3 bg-white rounded-2xl") {
+            col (style: "flex-1 mr-3") {
+                text (style: "text-sm", text: .title) {}
+                text (style: "text-xs text-gray-600", text: .brief) {}
             }
-            image (class: "h-16 w-28 rounded-2xl object-cover", src: .imageSrc) {}
+            image (style: "h-16 w-28 rounded-2xl object-cover", src: .imageSrc) {}
         }
     }
 }

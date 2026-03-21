@@ -35,20 +35,20 @@ impl ArkModifierDsl {
         }
     }
 
-    /// Convert a Tailwind class string to ArkTS modifiers
-    pub fn convert_class(&self, class: &str) -> Vec<String> {
-        let style = self.parser.parse(class);
+    /// Convert a Tailwind style string to ArkTS modifiers
+    pub fn convert_style(&self, style_str: &str) -> Vec<String> {
+        let style = self.parser.parse(style_str);
         let mut modifiers = self.style_to_modifiers(&style);
 
-        // Handle component-specific classes that aren't Tailwind
+        // Handle component-specific styles that aren't Tailwind
         // Swiper modifiers
-        if class.contains("auto-play") || class.contains("autoplay") {
+        if style_str.contains("auto-play") || style_str.contains("autoplay") {
             modifiers.push(".autoPlay(true)".to_string());
         }
-        if class.contains("loop") && !class.contains("animation-loop") {
+        if style_str.contains("loop") && !style_str.contains("animation-loop") {
             modifiers.push(".loop(true)".to_string());
         }
-        if class.contains("indicator") && !class.contains("no-indicator") {
+        if style_str.contains("indicator") && !style_str.contains("no-indicator") {
             modifiers.push(".indicator(true)".to_string());
         }
 
@@ -415,10 +415,10 @@ impl ArkModifierDsl {
         self.object_fit_to_modifier(fit)
     }
 
-    /// Convert multiple classes to a single modifier string
+    /// Convert multiple styles to a single modifier string
     #[allow(dead_code)]
-    pub fn convert_class_to_string(&self, class: &str) -> String {
-        self.convert_class(class).join("")
+    pub fn convert_style_to_string(&self, style_str: &str) -> String {
+        self.convert_style(style_str).join("")
     }
 }
 
@@ -486,11 +486,11 @@ pub fn prop_to_modifier(key: &str, value: &str, _value_type: Option<&Type>) -> O
     }
 }
 
-/// Convert a single Tailwind class to ArkTS modifier (legacy, use ArkModifierDsl instead)
+/// Convert a single Tailwind style to ArkTS modifier (legacy, use ArkModifierDsl instead)
 #[allow(dead_code)]
-pub fn class_to_modifier(class_name: &str) -> Option<String> {
+pub fn style_str_to_modifier(style_name: &str) -> Option<String> {
     let dsl = ArkModifierDsl::new();
-    let modifiers = dsl.convert_class(class_name);
+    let modifiers = dsl.convert_style(style_name);
     modifiers.into_iter().next()
 }
 
@@ -525,11 +525,11 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // Simple padding
-        let mods = dsl.convert_class("p-4");
+        let mods = dsl.convert_style("p-4");
         assert!(mods.iter().any(|m| m.contains(".padding")));
 
         // Horizontal padding
-        let mods = dsl.convert_class("px-4");
+        let mods = dsl.convert_style("px-4");
         assert!(mods.iter().any(|m| m.contains("left") && m.contains("right")));
     }
 
@@ -538,11 +538,11 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // Simple margin
-        let mods = dsl.convert_class("m-4");
+        let mods = dsl.convert_style("m-4");
         assert!(mods.iter().any(|m| m.contains(".margin")));
 
         // Auto margin
-        let mods = dsl.convert_class("mx-auto");
+        let mods = dsl.convert_style("mx-auto");
         assert!(mods.iter().any(|m| m.contains("auto")));
     }
 
@@ -551,15 +551,15 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // Font size
-        let mods = dsl.convert_class("text-lg");
+        let mods = dsl.convert_style("text-lg");
         assert!(mods.iter().any(|m| m.contains(".fontSize")));
 
         // Font weight
-        let mods = dsl.convert_class("font-bold");
+        let mods = dsl.convert_style("font-bold");
         assert!(mods.iter().any(|m| m.contains(".fontWeight") && m.contains("Bold")));
 
         // Text align
-        let mods = dsl.convert_class("text-center");
+        let mods = dsl.convert_style("text-center");
         assert!(mods.iter().any(|m| m.contains(".textAlign") && m.contains("Center")));
     }
 
@@ -568,11 +568,11 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // Text color
-        let mods = dsl.convert_class("text-blue-500");
+        let mods = dsl.convert_style("text-blue-500");
         assert!(mods.iter().any(|m| m.contains(".fontColor")));
 
         // Background color
-        let mods = dsl.convert_class("bg-blue-500");
+        let mods = dsl.convert_style("bg-blue-500");
         assert!(mods.iter().any(|m| m.contains(".backgroundColor")));
     }
 
@@ -581,11 +581,11 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // Rounded
-        let mods = dsl.convert_class("rounded-lg");
+        let mods = dsl.convert_style("rounded-lg");
         assert!(mods.iter().any(|m| m.contains(".borderRadius")));
 
         // Full circle
-        let mods = dsl.convert_class("rounded-full");
+        let mods = dsl.convert_style("rounded-full");
         assert!(mods.iter().any(|m| m.contains("50%")));
     }
 
@@ -594,7 +594,7 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // Multiple classes
-        let mods = dsl.convert_class("p-4 text-lg font-bold bg-blue-500 rounded-lg");
+        let mods = dsl.convert_style("p-4 text-lg font-bold bg-blue-500 rounded-lg");
         assert!(mods.len() >= 4);
 
         // Check each modifier is present
@@ -610,7 +610,7 @@ mod tests {
     fn test_ark_dsl_convert_to_string() {
         let dsl = ArkModifierDsl::new();
 
-        let result = dsl.convert_class_to_string("p-4 text-lg");
+        let result = dsl.convert_style_to_string("p-4 text-lg");
         assert!(result.contains(".padding"));
         assert!(result.contains(".fontSize"));
     }
@@ -697,11 +697,11 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // With hyphen
-        let mods = dsl.convert_class("auto-play");
+        let mods = dsl.convert_style("auto-play");
         assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true) for 'auto-play'");
 
         // Without hyphen
-        let mods = dsl.convert_class("autoplay");
+        let mods = dsl.convert_style("autoplay");
         assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true) for 'autoplay'");
     }
 
@@ -709,7 +709,7 @@ mod tests {
     fn test_swiper_loop_modifier() {
         let dsl = ArkModifierDsl::new();
 
-        let mods = dsl.convert_class("loop");
+        let mods = dsl.convert_style("loop");
         assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true) for 'loop'");
     }
 
@@ -717,7 +717,7 @@ mod tests {
     fn test_swiper_indicator_modifier() {
         let dsl = ArkModifierDsl::new();
 
-        let mods = dsl.convert_class("indicator");
+        let mods = dsl.convert_style("indicator");
         assert!(mods.iter().any(|m| m == ".indicator(true)"), "Expected .indicator(true) for 'indicator'");
     }
 
@@ -725,12 +725,12 @@ mod tests {
     fn test_swiper_combined_modifiers() {
         let dsl = ArkModifierDsl::new();
 
-        let mods = dsl.convert_class("auto-play loop");
+        let mods = dsl.convert_style("auto-play loop");
         assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true)");
         assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true)");
 
         // With additional Tailwind classes
-        let mods = dsl.convert_class("auto-play loop w-full h-200");
+        let mods = dsl.convert_style("auto-play loop w-full h-200");
         assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true)");
         assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true)");
         assert!(mods.iter().any(|m| m.contains(".width")), "Expected width modifier");
@@ -742,7 +742,7 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // "no-indicator" should NOT add .indicator(true)
-        let mods = dsl.convert_class("no-indicator");
+        let mods = dsl.convert_style("no-indicator");
         assert!(!mods.iter().any(|m| m.contains("indicator")), "Should not have indicator modifier for 'no-indicator'");
     }
 
@@ -751,7 +751,7 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         // "animation-loop" should NOT add .loop(true) for Swiper
-        let mods = dsl.convert_class("animation-loop");
+        let mods = dsl.convert_style("animation-loop");
         assert!(!mods.iter().any(|m| m == ".loop(true)"), "animation-loop should not add Swiper .loop(true)");
     }
 }

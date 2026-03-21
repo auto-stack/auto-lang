@@ -207,15 +207,15 @@ pub enum AuraPropValue {
     /// Regular expression value
     Expr(AuraExpr),
 
-    /// Class binding: { completed: todo.done }
-    ClassBinding(Vec<AuraClassBinding>),
+    /// Style binding: { completed: todo.done }
+    StyleBinding(Vec<AuraStyleBinding>),
 }
 
-/// A single class binding entry
+/// A single style binding entry
 #[derive(Debug, Clone)]
-pub struct AuraClassBinding {
-    /// Class name (e.g., "completed")
-    pub class_name: String,
+pub struct AuraStyleBinding {
+    /// Style name (e.g., "completed")
+    pub style_name: String,
 
     /// Condition expression
     pub condition: AuraExpr,

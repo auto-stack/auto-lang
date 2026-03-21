@@ -6,7 +6,7 @@ use EnablementItem
 /// Main page showcasing custom components
 widget Index {
     view {
-        col (class: "w-full h-full bg-gray-100 p-4 gap-4") {
+        col (style: "w-full h-full bg-gray-100 p-4 gap-4") {
             TutorialItem {
                 title: "Step1 快速入门介绍",
                 brief: "本篇教程实现了快速入门。",

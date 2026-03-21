@@ -265,21 +265,21 @@ pub struct ViewProp {
     pub value: ViewPropValue,
 }
 
-/// View property value - can be an expression or a class binding
+/// View property value - can be an expression or a style binding
 #[derive(Debug, Clone)]
 pub enum ViewPropValue {
     /// Regular expression value
     Expr(Expr),
 
-    /// Class binding: { completed: todo.done, editing: todo.editing }
-    ClassBinding(Vec<ClassBindingEntry>),
+    /// Style binding: { completed: todo.done, editing: todo.editing }
+    StyleBinding(Vec<StyleBindingEntry>),
 }
 
-/// A single class binding entry
+/// A single style binding entry
 #[derive(Debug, Clone)]
-pub struct ClassBindingEntry {
-    /// Class name (e.g., "completed")
-    pub class_name: String,
+pub struct StyleBindingEntry {
+    /// Style name (e.g., "completed")
+    pub style_name: String,
 
     /// Condition expression (e.g., todo.done)
     pub condition: Expr,

@@ -9,10 +9,10 @@ widget EnablementItem {
     }
 
     view {
-        col (class: "w-40 bg-white rounded-2xl") {
-            image (class: "w-full h-24 object-cover rounded-t-2xl", src: .imageSrc) {}
-            text (class: "text-sm px-3 mt-2", text: .title) {}
-            text (class: "text-xs text-gray-600 px-3 mt-1", text: .brief) {}
+        col (style: "w-40 bg-white rounded-2xl") {
+            image (style: "w-full h-24 object-cover rounded-t-2xl", src: .imageSrc) {}
+            text (style: "text-sm px-3 mt-2", text: .title) {}
+            text (style: "text-xs text-gray-600 px-3 mt-1", text: .brief) {}
         }
     }
 }

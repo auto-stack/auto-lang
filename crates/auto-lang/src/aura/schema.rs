@@ -64,7 +64,7 @@ pub enum PropType {
     /// Lambda/closure: |x| x * 2
     Closure,
     /// Class binding object: { active: .isSelected }
-    ClassBinding,
+    StyleBinding,
     /// Interpolated string: `Hello ${.name}`
     Interpolated,
     /// One of a set of string values (enum-like)
@@ -101,7 +101,7 @@ impl PropType {
             PropType::MsgRef => "msg_ref".to_string(),
             PropType::Expr => "expr".to_string(),
             PropType::Closure => "closure".to_string(),
-            PropType::ClassBinding => "class_binding".to_string(),
+            PropType::StyleBinding => "class_binding".to_string(),
             PropType::Interpolated => "interpolated".to_string(),
             PropType::OneOf(options) => format!("one_of({})", options.join(" | ")),
             PropType::Union(types) => {
@@ -306,7 +306,7 @@ impl AuraSchema {
             tag: "col",
             category: ElementCategory::Layout,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "gap", type_: PropType::Int, required: false, default: Some("0"), description: "Spacing between children" },
                 PropDef { name: "padding", type_: PropType::Union(vec![PropType::Int, PropType::String]), required: false, default: Some("0"), description: "Inner padding" },
                 PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end", "stretch"]), required: false, default: Some("start"), description: "Cross-axis alignment" },
@@ -319,7 +319,7 @@ impl AuraSchema {
             tag: "row",
             category: ElementCategory::Layout,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "gap", type_: PropType::Int, required: false, default: Some("0"), description: "Spacing between children" },
                 PropDef { name: "padding", type_: PropType::Union(vec![PropType::Int, PropType::String]), required: false, default: Some("0"), description: "Inner padding" },
                 PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end", "stretch"]), required: false, default: Some("center"), description: "Cross-axis alignment" },
@@ -332,7 +332,7 @@ impl AuraSchema {
             tag: "grid",
             category: ElementCategory::Layout,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "columns", type_: PropType::Int, required: false, default: Some("1"), description: "Number of columns" },
                 PropDef { name: "gap", type_: PropType::Int, required: false, default: Some("0"), description: "Cell spacing" },
             ],
@@ -344,7 +344,7 @@ impl AuraSchema {
             tag: "scroll",
             category: ElementCategory::Layout,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "direction", type_: PropType::OneOf(vec!["vertical", "horizontal", "both"]), required: false, default: Some("vertical"), description: "Scroll direction" },
             ],
             allows_children: true,
@@ -355,7 +355,7 @@ impl AuraSchema {
             tag: "container",
             category: ElementCategory::Layout,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "max_width", type_: PropType::Int, required: false, default: None, description: "Maximum width in pixels" },
                 PropDef { name: "padding", type_: PropType::Union(vec![PropType::Int, PropType::String]), required: false, default: None, description: "Inner padding" },
             ],
@@ -371,7 +371,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Button label text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message to send when clicked" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether button is disabled" },
             ],
             allows_children: false,
@@ -387,7 +387,7 @@ impl AuraSchema {
                 PropDef { name: "type", type_: PropType::OneOf(vec!["text", "password", "email", "number"]), required: false, default: Some("text"), description: "Input type" },
                 PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on value change" },
                 PropDef { name: "onenter", type_: PropType::MsgRef, required: false, default: None, description: "Message on Enter key" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether input is disabled" },
             ],
             allows_children: false,
@@ -400,7 +400,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "checked", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Checked state" },
                 PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on toggle" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether checkbox is disabled" },
             ],
             allows_children: false,
@@ -413,7 +413,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "checked", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Checked state" },
                 PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on toggle" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Toggle switch",
@@ -425,7 +425,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "href", type_: PropType::String, required: true, default: None, description: "Link URL" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Link text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Hyperlink",
@@ -437,7 +437,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "lang", type_: PropType::String, required: false, default: Some("text"), description: "Programming language for syntax highlighting" },
                 PropDef { name: "code", type_: PropType::String, required: false, default: None, description: "Code content" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Code block with syntax highlighting",
@@ -449,7 +449,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "auto", type_: PropType::String, required: false, default: None, description: "Auto (AURA) source code" },
                 PropDef { name: "vue", type_: PropType::String, required: false, default: None, description: "Generated Vue.js code" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Tabbed code block showing Auto and Vue code side by side",
@@ -464,7 +464,7 @@ impl AuraSchema {
                 PropDef { name: "title", type_: PropType::String, required: false, default: Some("Preview"), description: "Section title" },
                 PropDef { name: "auto", type_: PropType::String, required: false, default: None, description: "Auto (AURA) source code" },
                 PropDef { name: "vue", type_: PropType::String, required: false, default: None, description: "Generated Vue.js code" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Preview card with collapsible code section - like shadcn-vue docs",
@@ -479,7 +479,7 @@ impl AuraSchema {
                 category: ElementCategory::Typography,
                 props: vec![
                     PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Heading text" },
-                    PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                    PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 ],
                 allows_children: false,
                 description: Box::leak(format!("Level {} heading", level).into_boxed_str()),
@@ -501,7 +501,7 @@ impl AuraSchema {
             category: ElementCategory::Typography,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Paragraph text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Paragraph text",
@@ -512,7 +512,7 @@ impl AuraSchema {
             category: ElementCategory::Typography,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Span text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Inline text span",
@@ -524,7 +524,7 @@ impl AuraSchema {
             tag: "list",
             category: ElementCategory::List,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Generic list container",
@@ -534,7 +534,7 @@ impl AuraSchema {
             tag: "list_item",
             category: ElementCategory::List,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message when clicked" },
             ],
             allows_children: true,
@@ -549,7 +549,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "src", type_: PropType::String, required: true, default: None, description: "Image URL" },
                 PropDef { name: "alt", type_: PropType::String, required: false, default: Some(""), description: "Alt text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "fit", type_: PropType::OneOf(vec!["cover", "contain", "fill", "none"]), required: false, default: Some("cover"), description: "Object fit mode" },
             ],
             allows_children: false,
@@ -561,7 +561,7 @@ impl AuraSchema {
             category: ElementCategory::Media,
             props: vec![
                 PropDef { name: "name", type_: PropType::String, required: true, default: None, description: "Icon name" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "size", type_: PropType::Int, required: false, default: Some("24"), description: "Icon size in pixels" },
             ],
             allows_children: false,
@@ -574,7 +574,7 @@ impl AuraSchema {
             tag: "divider",
             category: ElementCategory::Utility,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "direction", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Divider direction" },
             ],
             allows_children: false,
@@ -585,7 +585,7 @@ impl AuraSchema {
             tag: "spacer",
             category: ElementCategory::Utility,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "size", type_: PropType::Int, required: false, default: None, description: "Spacer size in pixels (or flex if omitted)" },
             ],
             allows_children: false,
@@ -602,7 +602,7 @@ impl AuraSchema {
                 PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "destructive"]), required: false, default: Some("default"), description: "Alert style variant" },
                 PropDef { name: "title", type_: PropType::String, required: false, default: None, description: "Alert title" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Alert description text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert message box",
@@ -616,7 +616,7 @@ impl AuraSchema {
                 PropDef { name: "position", type_: PropType::OneOf(vec!["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"]), required: false, default: Some("bottom-right"), description: "Toast position" },
                 PropDef { name: "rich_colors", type_: PropType::Bool, required: false, default: Some("false"), description: "Use rich colors" },
                 PropDef { name: "expand", type_: PropType::Bool, required: false, default: Some("false"), description: "Expand toasts" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Toast notification container (Sonner)",
@@ -638,7 +638,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Dropdown menu container",
@@ -649,7 +649,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Dropdown menu trigger",
@@ -661,7 +661,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("bottom"), description: "Content position side" },
                 PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("center"), description: "Content alignment" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Dropdown menu content",
@@ -675,7 +675,7 @@ impl AuraSchema {
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Dropdown menu item",
@@ -685,7 +685,7 @@ impl AuraSchema {
             tag: "dropdown_separator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Dropdown menu separator",
@@ -696,7 +696,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Dropdown menu label",
@@ -708,7 +708,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Popover container",
@@ -719,7 +719,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Popover trigger",
@@ -731,7 +731,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("bottom"), description: "Content position side" },
                 PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("center"), description: "Content alignment" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Popover content",
@@ -743,7 +743,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sheet (side drawer) container",
@@ -754,7 +754,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sheet trigger",
@@ -765,7 +765,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("right"), description: "Sheet position side" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sheet content",
@@ -775,7 +775,7 @@ impl AuraSchema {
             tag: "sheet_header",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sheet header",
@@ -786,7 +786,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Title text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sheet title",
@@ -796,7 +796,7 @@ impl AuraSchema {
             tag: "sheet_footer",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sheet footer",
@@ -807,7 +807,7 @@ impl AuraSchema {
             tag: "breadcrumb",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Breadcrumb navigation container",
@@ -817,7 +817,7 @@ impl AuraSchema {
             tag: "breadcrumb_list",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Breadcrumb list",
@@ -827,7 +827,7 @@ impl AuraSchema {
             tag: "breadcrumb_item",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Breadcrumb item",
@@ -840,7 +840,7 @@ impl AuraSchema {
                 PropDef { name: "href", type_: PropType::String, required: false, default: None, description: "Link URL" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Link text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Breadcrumb link",
@@ -850,7 +850,7 @@ impl AuraSchema {
             tag: "breadcrumb_separator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Breadcrumb separator",
@@ -861,7 +861,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Current page text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Breadcrumb current page",
@@ -879,7 +879,7 @@ impl AuraSchema {
                 PropDef { name: "type", type_: PropType::OneOf(vec!["single", "multiple"]), required: false, default: Some("single"), description: "Accordion type" },
                 PropDef { name: "collapsible", type_: PropType::Bool, required: false, default: Some("false"), description: "Allow collapsing all items" },
                 PropDef { name: "default", type_: PropType::String, required: false, default: None, description: "Default expanded item value" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Accordion container",
@@ -890,7 +890,7 @@ impl AuraSchema {
             category: ElementCategory::Content,
             props: vec![
                 PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Item value (required)" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Accordion item",
@@ -901,7 +901,7 @@ impl AuraSchema {
             category: ElementCategory::Content,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Trigger text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Accordion trigger",
@@ -911,7 +911,7 @@ impl AuraSchema {
             tag: "accordion_content",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Accordion content",
@@ -923,7 +923,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog container",
@@ -934,7 +934,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog trigger",
@@ -944,7 +944,7 @@ impl AuraSchema {
             tag: "alert_dialog_content",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog content",
@@ -954,7 +954,7 @@ impl AuraSchema {
             tag: "alert_dialog_header",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog header",
@@ -964,7 +964,7 @@ impl AuraSchema {
             tag: "alert_dialog_footer",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog footer",
@@ -975,7 +975,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Title text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog title",
@@ -986,7 +986,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Description text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog description",
@@ -998,7 +998,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Action button text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog action button",
@@ -1009,7 +1009,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Cancel button text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Alert dialog cancel button",
@@ -1022,7 +1022,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "query", type_: PropType::StateRef, required: false, default: None, description: "Search query binding" },
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Type a command..."), description: "Search placeholder" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Command palette container",
@@ -1033,7 +1033,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Type a command..."), description: "Input placeholder" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Command palette search input",
@@ -1043,7 +1043,7 @@ impl AuraSchema {
             tag: "command_list",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Command palette list container",
@@ -1064,7 +1064,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "heading", type_: PropType::String, required: false, default: None, description: "Group heading" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Command palette group",
@@ -1077,7 +1077,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Item value" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Select handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Command palette item",
@@ -1088,7 +1088,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Shortcut text (e.g., ⌘K)" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Command palette keyboard shortcut",
@@ -1098,7 +1098,7 @@ impl AuraSchema {
             tag: "command_separator",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Command palette separator",
@@ -1111,7 +1111,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "id", type_: PropType::String, required: false, default: None, description: "Form ID" },
                 PropDef { name: "onsubmit", type_: PropType::MsgRef, required: false, default: None, description: "Submit handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form container",
@@ -1123,7 +1123,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "name", type_: PropType::String, required: true, default: None, description: "Field name" },
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Field value binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form field",
@@ -1133,7 +1133,7 @@ impl AuraSchema {
             tag: "form_item",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form item wrapper",
@@ -1145,7 +1145,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "for", type_: PropType::String, required: false, default: None, description: "Label for attribute" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form label",
@@ -1155,7 +1155,7 @@ impl AuraSchema {
             tag: "form_control",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form control wrapper",
@@ -1166,7 +1166,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Description text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form field description",
@@ -1176,7 +1176,7 @@ impl AuraSchema {
             tag: "form_message",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form validation message",
@@ -1188,7 +1188,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "orientation", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Menu orientation" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Navigation menu container",
@@ -1198,7 +1198,7 @@ impl AuraSchema {
             tag: "nav_menu_list",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Navigation menu list",
@@ -1209,7 +1209,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Item value" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Navigation menu item",
@@ -1223,7 +1223,7 @@ impl AuraSchema {
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Link text" },
                 PropDef { name: "active", type_: PropType::Bool, required: false, default: Some("false"), description: "Active state" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Navigation menu link",
@@ -1234,7 +1234,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Trigger text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Navigation menu trigger",
@@ -1244,7 +1244,7 @@ impl AuraSchema {
             tag: "nav_menu_content",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Navigation menu content",
@@ -1254,7 +1254,7 @@ impl AuraSchema {
             tag: "nav_menu_indicator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Navigation menu indicator",
@@ -1268,7 +1268,7 @@ impl AuraSchema {
                 PropDef { name: "side", type_: PropType::OneOf(vec!["left", "right"]), required: false, default: Some("left"), description: "Sidebar position" },
                 PropDef { name: "variant", type_: PropType::OneOf(vec!["sidebar", "floating", "inset"]), required: false, default: Some("sidebar"), description: "Sidebar variant" },
                 PropDef { name: "collapsible", type_: PropType::OneOf(vec!["offcanvas", "icon", "none"]), required: false, default: Some("offcanvas"), description: "Collapsible mode" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar container",
@@ -1278,7 +1278,7 @@ impl AuraSchema {
             tag: "sidebar_header",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar header",
@@ -1288,7 +1288,7 @@ impl AuraSchema {
             tag: "sidebar_content",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar content",
@@ -1298,7 +1298,7 @@ impl AuraSchema {
             tag: "sidebar_footer",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar footer",
@@ -1308,7 +1308,7 @@ impl AuraSchema {
             tag: "sidebar_group",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar group",
@@ -1319,7 +1319,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Group label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar group label",
@@ -1329,7 +1329,7 @@ impl AuraSchema {
             tag: "sidebar_group_content",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar group content",
@@ -1339,7 +1339,7 @@ impl AuraSchema {
             tag: "sidebar_menu",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar menu",
@@ -1349,7 +1349,7 @@ impl AuraSchema {
             tag: "sidebar_menu_item",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar menu item",
@@ -1363,7 +1363,7 @@ impl AuraSchema {
                 PropDef { name: "active", type_: PropType::Bool, required: false, default: Some("false"), description: "Active state" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Button text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar menu button",
@@ -1373,7 +1373,7 @@ impl AuraSchema {
             tag: "sidebar_trigger",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Sidebar trigger button",
@@ -1383,7 +1383,7 @@ impl AuraSchema {
             tag: "sidebar_provider",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Sidebar provider context",
@@ -1396,7 +1396,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Current step binding" },
                 PropDef { name: "orientation", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Stepper orientation" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Stepper container",
@@ -1408,7 +1408,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "step", type_: PropType::Int, required: true, default: None, description: "Step number" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Stepper item",
@@ -1419,7 +1419,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Stepper trigger",
@@ -1429,7 +1429,7 @@ impl AuraSchema {
             tag: "stepper_indicator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Stepper indicator",
@@ -1440,7 +1440,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Step title text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Stepper title",
@@ -1451,7 +1451,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Step description text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Stepper description",
@@ -1461,7 +1461,7 @@ impl AuraSchema {
             tag: "stepper_separator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Stepper separator",
@@ -1479,7 +1479,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected date binding" },
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Pick a date"), description: "Placeholder text" },
                 PropDef { name: "weekday", type_: PropType::OneOf(vec!["short", "long"]), required: false, default: Some("short"), description: "Weekday format" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Calendar date picker",
@@ -1491,7 +1491,7 @@ impl AuraSchema {
             category: ElementCategory::Content,
             props: vec![
                 PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("center"), description: "Slide alignment" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Carousel container",
@@ -1501,7 +1501,7 @@ impl AuraSchema {
             tag: "carousel_content",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Carousel content wrapper",
@@ -1511,7 +1511,7 @@ impl AuraSchema {
             tag: "carousel_item",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Carousel slide item",
@@ -1521,7 +1521,7 @@ impl AuraSchema {
             tag: "carousel_prev",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Carousel previous button",
@@ -1531,7 +1531,7 @@ impl AuraSchema {
             tag: "carousel_next",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Carousel next button",
@@ -1544,7 +1544,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Combobox container",
@@ -1555,7 +1555,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Select..."), description: "Input placeholder" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Combobox search input",
@@ -1566,7 +1566,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Combobox trigger button",
@@ -1576,7 +1576,7 @@ impl AuraSchema {
             tag: "combobox_list",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Combobox options list",
@@ -1597,7 +1597,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "heading", type_: PropType::String, required: false, default: None, description: "Group heading" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Combobox option group",
@@ -1611,7 +1611,7 @@ impl AuraSchema {
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Select handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Combobox option item",
@@ -1642,7 +1642,7 @@ impl AuraSchema {
             tag: "context_menu_content",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Context menu content",
@@ -1655,7 +1655,7 @@ impl AuraSchema {
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Context menu item",
@@ -1665,7 +1665,7 @@ impl AuraSchema {
             tag: "context_menu_separator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Context menu separator",
@@ -1676,7 +1676,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Context menu label",
@@ -1689,7 +1689,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
                 PropDef { name: "direction", type_: PropType::OneOf(vec!["left", "right", "top", "bottom"]), required: false, default: Some("bottom"), description: "Drawer direction" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer container (Vaul)",
@@ -1709,7 +1709,7 @@ impl AuraSchema {
             tag: "drawer_content",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer content",
@@ -1719,7 +1719,7 @@ impl AuraSchema {
             tag: "drawer_header",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer header",
@@ -1729,7 +1729,7 @@ impl AuraSchema {
             tag: "drawer_footer",
             category: ElementCategory::Overlay,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer footer",
@@ -1740,7 +1740,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Title text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer title",
@@ -1751,7 +1751,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Description text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer description",
@@ -1763,7 +1763,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Close button text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Drawer close button",
@@ -1797,7 +1797,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![
                 PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("bottom"), description: "Content position" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Hover card content",
@@ -1813,7 +1813,7 @@ impl AuraSchema {
                 PropDef { name: "max", type_: PropType::Int, required: false, default: None, description: "Maximum value" },
                 PropDef { name: "step", type_: PropType::Int, required: false, default: Some("1"), description: "Step increment" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Number input field with controls",
@@ -1824,7 +1824,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: None, description: "Placeholder text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Number field input",
@@ -1834,7 +1834,7 @@ impl AuraSchema {
             tag: "number_field_increment",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Number field increment button",
@@ -1844,7 +1844,7 @@ impl AuraSchema {
             tag: "number_field_decrement",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Number field decrement button",
@@ -1859,7 +1859,7 @@ impl AuraSchema {
                 PropDef { name: "total", type_: PropType::Int, required: true, default: None, description: "Total items" },
                 PropDef { name: "per_page", type_: PropType::Int, required: false, default: Some("10"), description: "Items per page" },
                 PropDef { name: "sibling_count", type_: PropType::Int, required: false, default: Some("1"), description: "Sibling pages to show" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination container",
@@ -1869,7 +1869,7 @@ impl AuraSchema {
             tag: "pagination_list",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination list",
@@ -1881,7 +1881,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::Int, required: false, default: None, description: "Page number" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination page item",
@@ -1891,7 +1891,7 @@ impl AuraSchema {
             tag: "pagination_ellipsis",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Pagination ellipsis",
@@ -1902,7 +1902,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination previous button",
@@ -1913,7 +1913,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination next button",
@@ -1924,7 +1924,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination first page button",
@@ -1935,7 +1935,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Pagination last page button",
@@ -1950,7 +1950,7 @@ impl AuraSchema {
                 PropDef { name: "length", type_: PropType::Int, required: false, default: Some("4"), description: "Number of PIN digits" },
                 PropDef { name: "type", type_: PropType::OneOf(vec!["text", "password"]), required: false, default: Some("text"), description: "Input type" },
                 PropDef { name: "otp", type_: PropType::Bool, required: false, default: Some("true"), description: "Enable OTP autocomplete" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "PIN/OTP input container",
@@ -1960,7 +1960,7 @@ impl AuraSchema {
             tag: "pin_input_group",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "PIN input group wrapper",
@@ -1971,7 +1971,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "index", type_: PropType::Int, required: true, default: None, description: "Slot index (0-based)" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "PIN input slot",
@@ -1981,7 +1981,7 @@ impl AuraSchema {
             tag: "pin_input_separator",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "PIN input separator",
@@ -1996,7 +1996,7 @@ impl AuraSchema {
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Add tag..."), description: "Input placeholder" },
                 PropDef { name: "max", type_: PropType::Int, required: false, default: None, description: "Maximum tags" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tags input container",
@@ -2007,7 +2007,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: None, description: "Input placeholder" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Tags input text field",
@@ -2018,7 +2018,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Tag value" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tags input tag item",
@@ -2029,7 +2029,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Delete handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tags input delete button",
@@ -2043,7 +2043,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
                 PropDef { name: "type", type_: PropType::OneOf(vec!["single", "multiple"]), required: false, default: Some("single"), description: "Selection type" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Toggle group container",
@@ -2056,7 +2056,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Item value" },
                 PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "ARIA label" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Toggle group item",
@@ -2072,7 +2072,7 @@ impl AuraSchema {
             category: ElementCategory::Layout,
             props: vec![
                 PropDef { name: "ratio", type_: PropType::Int, required: false, default: Some("16"), description: "Aspect ratio (e.g., 16 for 16/9)" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Aspect ratio container",
@@ -2086,7 +2086,7 @@ impl AuraSchema {
                 PropDef { name: "orientation", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Button orientation" },
                 PropDef { name: "size", type_: PropType::OneOf(vec!["sm", "default", "lg"]), required: false, default: Some("default"), description: "Button size" },
                 PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "destructive", "outline", "secondary", "ghost", "link"]), required: false, default: Some("default"), description: "Button variant" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Button group container",
@@ -2098,7 +2098,7 @@ impl AuraSchema {
             category: ElementCategory::Content,
             props: vec![
                 PropDef { name: "config", type_: PropType::String, required: false, default: None, description: "Chart config object" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Chart container",
@@ -2111,7 +2111,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
                 PropDef { name: "default_open", type_: PropType::Bool, required: false, default: Some("false"), description: "Default open state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Collapsible container",
@@ -2122,7 +2122,7 @@ impl AuraSchema {
             category: ElementCategory::Content,
             props: vec![
                 PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Collapsible trigger",
@@ -2132,7 +2132,7 @@ impl AuraSchema {
             tag: "collapsible_content",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Collapsible content",
@@ -2143,7 +2143,7 @@ impl AuraSchema {
             tag: "input_group",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Input group wrapper",
@@ -2157,7 +2157,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "OTP value binding" },
                 PropDef { name: "length", type_: PropType::Int, required: false, default: Some("6"), description: "Number of OTP digits" },
                 PropDef { name: "pattern", type_: PropType::String, required: false, default: None, description: "Input pattern" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "OTP input container",
@@ -2169,7 +2169,7 @@ impl AuraSchema {
             category: ElementCategory::Content,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Keyboard key text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Keyboard key display",
@@ -2180,7 +2180,7 @@ impl AuraSchema {
             tag: "menubar",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Menubar container",
@@ -2201,7 +2201,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Trigger text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Menubar trigger",
@@ -2212,7 +2212,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("start"), description: "Content alignment" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Menubar content",
@@ -2225,7 +2225,7 @@ impl AuraSchema {
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Menubar item",
@@ -2235,7 +2235,7 @@ impl AuraSchema {
             tag: "menubar_separator",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Menubar separator",
@@ -2246,7 +2246,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Menubar label",
@@ -2260,7 +2260,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
                 PropDef { name: "name", type_: PropType::String, required: false, default: None, description: "Form field name" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Native HTML select",
@@ -2273,7 +2273,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Date range binding" },
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Pick a date range"), description: "Placeholder text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Date range picker calendar",
@@ -2285,7 +2285,7 @@ impl AuraSchema {
             category: ElementCategory::Layout,
             props: vec![
                 PropDef { name: "direction", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Resize direction" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Resizable panel group",
@@ -2298,7 +2298,7 @@ impl AuraSchema {
                 PropDef { name: "default_size", type_: PropType::Int, required: false, default: None, description: "Default panel size (%)" },
                 PropDef { name: "min_size", type_: PropType::Int, required: false, default: None, description: "Minimum panel size (%)" },
                 PropDef { name: "max_size", type_: PropType::Int, required: false, default: None, description: "Maximum panel size (%)" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Resizable panel",
@@ -2309,7 +2309,7 @@ impl AuraSchema {
             category: ElementCategory::Layout,
             props: vec![
                 PropDef { name: "with_handle", type_: PropType::Bool, required: false, default: Some("false"), description: "Show drag handle" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Resizable panel handle",
@@ -2322,7 +2322,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
                 PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Autocomplete container",
@@ -2333,7 +2333,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Search..."), description: "Input placeholder" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Autocomplete input",
@@ -2343,7 +2343,7 @@ impl AuraSchema {
             tag: "autocomplete_list",
             category: ElementCategory::Form,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Autocomplete options list",
@@ -2356,7 +2356,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Item value" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Select handler" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Autocomplete option item",
@@ -2378,7 +2378,7 @@ impl AuraSchema {
             category: ElementCategory::Display,
             props: vec![
                 PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "outline"]), required: false, default: Some("default"), description: "Card variant style" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Card container with sections",
@@ -2388,7 +2388,7 @@ impl AuraSchema {
             tag: "cardheader",
             category: ElementCategory::Display,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Card header section",
@@ -2399,7 +2399,7 @@ impl AuraSchema {
             category: ElementCategory::Display,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Title text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Card title",
@@ -2410,7 +2410,7 @@ impl AuraSchema {
             category: ElementCategory::Display,
             props: vec![
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Description text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Card description",
@@ -2420,7 +2420,7 @@ impl AuraSchema {
             tag: "cardcontent",
             category: ElementCategory::Display,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Card content section",
@@ -2430,7 +2430,7 @@ impl AuraSchema {
             tag: "cardfooter",
             category: ElementCategory::Display,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Card footer section",
@@ -2443,7 +2443,7 @@ impl AuraSchema {
             props: [
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Badge text" },
                 PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "secondary", "destructive", "outline"]), required: false, default: Some("default"), description: "Badge variant" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ].to_vec(),
             allows_children: true,
             description: "Badge for status or labels",
@@ -2455,7 +2455,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "defaultvalue", type_: PropType::String, required: false, default: None, description: "Default active tab" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tabs container",
@@ -2465,7 +2465,7 @@ impl AuraSchema {
             tag: "tabslist",
             category: ElementCategory::Navigation,
             props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tabs list container",
@@ -2477,7 +2477,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Tab value identifier" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Tab label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tab trigger button",
@@ -2488,7 +2488,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Tab value identifier" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Tab content panel",
@@ -2501,7 +2501,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "for", type_: PropType::String, required: false, default: None, description: "Associated form control ID" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
             description: "Form label",
@@ -2516,7 +2516,7 @@ impl AuraSchema {
                 PropDef { name: "value", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Textarea value" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "rows", type_: PropType::Int, required: false, default: None, description: "Number of rows" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Multi-line text input",
@@ -2529,7 +2529,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "orientation", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Separator orientation" },
                 PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "Optional label for separator" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
             description: "Visual divider",

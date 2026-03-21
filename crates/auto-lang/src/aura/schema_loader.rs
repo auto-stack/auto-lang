@@ -616,7 +616,7 @@ impl SchemaLoader {
                 "bool" => PropType::Bool,
                 "state_ref" => PropType::StateRef,
                 "msg_ref" => PropType::MsgRef,
-                "class_binding" => PropType::ClassBinding,
+                "class_binding" => PropType::StyleBinding,
                 _ => PropType::String,
             }).collect())
         } else if type_str.starts_with("one_of:") {
@@ -634,7 +634,7 @@ impl SchemaLoader {
                 "msg_ref" => PropType::MsgRef,
                 "expr" => PropType::Expr,
                 "closure" => PropType::Closure,
-                "class_binding" => PropType::ClassBinding,
+                "class_binding" => PropType::StyleBinding,
                 "interpolated" => PropType::Interpolated,
                 _ => PropType::String,
             }

@@ -1871,9 +1871,9 @@ impl VueGenerator {
                 for (key, value) in props {
                     let value_str = match value {
                         AuraPropValue::Expr(expr) => self.expr_to_auto_string(expr),
-                        AuraPropValue::ClassBinding(bindings) => {
+                        AuraPropValue::StyleBinding(bindings) => {
                             let binding_strs: Vec<String> = bindings.iter()
-                                .map(|b| format!("{}: {}", b.class_name, self.expr_to_auto_string(&b.condition)))
+                                .map(|b| format!("{}: {}", b.style_name, self.expr_to_auto_string(&b.condition)))
                                 .collect();
                             format!("{{{}}}", binding_strs.join(", "))
                         }
@@ -2352,12 +2352,12 @@ impl VueGenerator {
                 AuraPropValue::Expr(AuraExpr::Literal(s)) => {
                     classes.push(s.clone());
                 }
-                AuraPropValue::ClassBinding(bindings) => {
+                AuraPropValue::StyleBinding(bindings) => {
                     // Generate dynamic class binding: { completed: todo.done, editing: todo.editing }
                     let binding_strs: Vec<String> = bindings.iter()
                         .map(|b| {
                             let cond = self.expr_to_js(&b.condition).unwrap_or_else(|_| "false".to_string());
-                            format!("{}: {}", b.class_name, cond)
+                            format!("{}: {}", b.style_name, cond)
                         })
                         .collect();
                     dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
@@ -2792,7 +2792,7 @@ impl VueGenerator {
                     _ => Ok(format!("\"{{{{ {} }}}}\"", "value")),
                 }
             }
-            AuraPropValue::ClassBinding(_) => {
+            AuraPropValue::StyleBinding(_) => {
                 // Class bindings are handled separately in extract_classes
                 Ok("\"\"".to_string())
             }
@@ -2811,7 +2811,7 @@ impl VueGenerator {
                     _ => Ok("value".to_string()),
                 }
             }
-            AuraPropValue::ClassBinding(_) => {
+            AuraPropValue::StyleBinding(_) => {
                 Ok("".to_string())
             }
         }

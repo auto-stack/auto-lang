@@ -185,26 +185,26 @@ AURA 生成后，根据 `pac.at` 中的 `backend` 配置，分发给不同的转
 // ✅ 推荐：内容在前，样式在后
 col {
     text "Hello" {
-        class: "text-xl"
+        style: "text-xl"
     }
-    class: "p-4 bg-white"
+    style: "p-4 bg-white"
 }
 
 // ❌ 不推荐：样式混杂在参数中
-col (class: "p-4 bg-white") {
-    text (class: "text-xl", text: "Hello") {}
+col (style: "p-4 bg-white") {
+    text (style: "text-xl", text: "Hello") {}
 }
 ```
 
 ### 6.2 center 组件 (居中容器语法糖)
 
-`center` 是 `col` 的语法糖，自动添加居中相关的 Tailwind 类。
+`center` 是 `col` 的语法糖，自动添加居中相关的 Tailwind 样式。
 
 **语法**:
 ```auto
 center {
     // children
-    class: "optional-extra-classes"  // 可选，会追加到默认类
+    style: "optional-extra-styles"  // 可选，会追加到默认样式
 }
 ```
 
@@ -213,17 +213,17 @@ center {
 // 输入
 center {
     text "Hello"
-    class: "bg-white"
+    style: "bg-white"
 }
 
 // 转换为
 col {
     text "Hello"
-    class: "w-full h-full justify-center items-center bg-white"
+    style: "w-full h-full justify-center items-center bg-white"
 }
 ```
 
-**默认类**:
+**默认样式**:
 - `w-full` - 宽度100%
 - `h-full` - 高度100%
 - `justify-center` - 垂直居中
@@ -242,19 +242,19 @@ col {
 
 **语法**:
 ```auto
-text "content" { class: "..." }
+text "content" { style: "..." }
 ```
 
 **转换规则**:
 ```auto
 // 输入
 text "Hello, World!" {
-    class: "text-2xl font-bold"
+    style: "text-2xl font-bold"
 }
 
 // 等价于
 text (text: "Hello, World!") {
-    class: "text-2xl font-bold"
+    style: "text-2xl font-bold"
 }
 ```
 
@@ -273,18 +273,18 @@ text (text: "Hello, World!") {
 **注意事项**:
 - 主属性简写仅适用于**字符串字面量**
 - 动态绑定仍需使用完整语法：`text (text: .message)`
-- 主属性简写后仍可添加 `{ class: ... }` 块
+- 主属性简写后仍可添加 `{ style: ... }` 块
 
-### 6.4 class 属性后置 (Trailing Class Syntax)
+### 6.4 style 属性后置 (Trailing Style Syntax)
 
-样式属性（尤其是 `class`）可以放在元素体中的子元素之后。
+样式属性（尤其是 `style`）可以放在元素体中的子元素之后。
 
 **语法**:
 ```auto
 element {
     child1
     child2
-    class: "tailwind-classes"
+    style: "tailwind-styles"
     onclick: .Handler  // 事件也可以后置
 }
 ```
@@ -302,12 +302,12 @@ element {
 // 完整示例
 col {
     text "Welcome" {
-        class: "text-2xl font-bold"
+        style: "text-2xl font-bold"
     }
     text "Subtitle" {
-        class: "text-gray-600"
+        style: "text-gray-600"
     }
-    class: "p-4 bg-white rounded-lg"
+    style: "p-4 bg-white rounded-lg"
 }
 ```
 
@@ -319,9 +319,9 @@ widget App {
     view {
         center {
             text "Hello, World!" {
-                class: "text-2xl font-bold"
+                style: "text-2xl font-bold"
             }
-            class: "bg-white"
+            style: "bg-white"
         }
     }
 }
@@ -330,30 +330,30 @@ widget App {
 #### 列表项模式
 ```auto
 row {
-    image (src: .avatar, class: "w-12 h-12 rounded-full") {}
+    image (src: .avatar, style: "w-12 h-12 rounded-full") {}
     col {
         text .name {
-            class: "font-medium"
+            style: "font-medium"
         }
         text .email {
-            class: "text-sm text-gray-500"
+            style: "text-sm text-gray-500"
         }
     }
-    class: "p-3 items-center"
+    style: "p-3 items-center"
 }
 ```
 
 #### 卡片模式
 ```auto
 col {
-    image (src: .cover, class: "w-full h-32 object-cover") {}
+    image (src: .cover, style: "w-full h-32 object-cover") {}
     col {
         h3 .title {}
         p .description {
-            class: "text-gray-600"
+            style: "text-gray-600"
         }
     }
-    class: "bg-white rounded-xl overflow-hidden shadow-md"
+    style: "bg-white rounded-xl overflow-hidden shadow-md"
 }
 ```
 
@@ -361,11 +361,11 @@ col {
 
 | 简化语法 | 标准语法 | 说明 |
 |----------|----------|------|
-| `center { }` | `col (class: "w-full h-full justify-center items-center") { }` | 居中容器 |
+| `center { }` | `col (style: "w-full h-full justify-center items-center") { }` | 居中容器 |
 | `text "content"` | `text (text: "content")` | 主属性简写 |
 | `button "Label"` | `button (text: "Label")` | 主属性简写 |
 | `h1 "Title"` | `h1 (text: "Title")` | 主属性简写 |
-| `{ child class: "..." }` | `(class: "...") { child }` | 样式后置 |
+| `{ child style: "..." }` | `(style: "...") { child }` | 样式后置 |
 
 ---
 
