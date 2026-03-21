@@ -18,7 +18,7 @@
 //! | `bg-blue-500` | `.backgroundColor()` |
 //! | `rounded-lg` | `.borderRadius()` |
 
-use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color, ObjectFit};
+use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color, ObjectFit, BorderRadiusSpec};
 
 use crate::ast::Type;
 
@@ -105,7 +105,10 @@ impl ArkModifierDsl {
         }
 
         // Border radius
-        if let Some(radius) = &style.border_radius {
+        // Use border_radius_spec if available (supports corner-specific), otherwise fall back to border_radius
+        if let Some(spec) = &style.border_radius_spec {
+            modifiers.push(self.border_radius_spec_to_modifier(spec));
+        } else if let Some(radius) = &style.border_radius {
             modifiers.push(self.dimension_to_border_radius(radius));
         }
 
@@ -255,6 +258,35 @@ impl ArkModifierDsl {
         match dim {
             Dimension::Dp(v) if *v >= 9999.0 => ".borderRadius('50%')".to_string(), // full circle
             _ => format!(".borderRadius({})", self.dimension_to_value(dim)),
+        }
+    }
+
+    /// Convert BorderRadiusSpec to ArkTS borderRadius modifier
+    fn border_radius_spec_to_modifier(&self, spec: &BorderRadiusSpec) -> String {
+        match spec {
+            BorderRadiusSpec::All(dim) => {
+                self.dimension_to_border_radius(dim)
+            }
+            BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left } => {
+                let mut parts = Vec::new();
+                if let Some(v) = top_left {
+                    parts.push(format!("topLeft: {}", self.dimension_to_value(v)));
+                }
+                if let Some(v) = top_right {
+                    parts.push(format!("topRight: {}", self.dimension_to_value(v)));
+                }
+                if let Some(v) = bottom_right {
+                    parts.push(format!("bottomRight: {}", self.dimension_to_value(v)));
+                }
+                if let Some(v) = bottom_left {
+                    parts.push(format!("bottomLeft: {}", self.dimension_to_value(v)));
+                }
+                if parts.is_empty() {
+                    String::new()
+                } else {
+                    format!(".borderRadius({{ {} }})", parts.join(", "))
+                }
+            }
         }
     }
 

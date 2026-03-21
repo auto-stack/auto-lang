@@ -46,6 +46,7 @@ pub struct ComputedStyle {
 
     // Border
     pub border_radius: Option<Dimension>,
+    pub border_radius_spec: Option<BorderRadiusSpec>,
     pub border_width: Option<Dimension>,
     pub border_color: Option<Color>,
 
@@ -287,6 +288,35 @@ pub enum ObjectFit {
     Fill,
     ScaleDown,
     None,
+}
+
+/// Border radius with corner-specific support
+#[derive(Debug, Clone, PartialEq)]
+pub enum BorderRadiusSpec {
+    /// All corners have the same radius
+    All(Dimension),
+    /// Individual corner radii
+    Corners {
+        top_left: Option<Dimension>,
+        top_right: Option<Dimension>,
+        bottom_right: Option<Dimension>,
+        bottom_left: Option<Dimension>,
+    },
+}
+
+impl BorderRadiusSpec {
+    /// Check if this is a simple all-corners radius
+    pub fn is_all(&self) -> bool {
+        matches!(self, BorderRadiusSpec::All(_))
+    }
+
+    /// Get the uniform radius if all corners are the same
+    pub fn as_uniform(&self) -> Option<&Dimension> {
+        match self {
+            BorderRadiusSpec::All(dim) => Some(dim),
+            BorderRadiusSpec::Corners { .. } => None,
+        }
+    }
 }
 
 /// Tailwind class parser
@@ -604,6 +634,13 @@ impl TailwindParser {
         // Border radius
         if let Some(radius) = self.parse_border_radius(class) {
             style.border_radius = Some(radius);
+            style.border_radius_spec = Some(BorderRadiusSpec::All(radius));
+            return true;
+        }
+
+        // Corner-specific border radius (rounded-t-, rounded-b-, etc.)
+        if let Some(spec) = self.parse_corner_border_radius(class) {
+            style.border_radius_spec = Some(spec);
             return true;
         }
 
@@ -795,6 +832,124 @@ impl TailwindParser {
         if class == "rounded-full" {
             return Some(Dimension::Dp(9999.0)); // Circular
         }
+        None
+    }
+
+    /// Parse corner-specific border radius classes
+    /// Supports: rounded-t-, rounded-b-, rounded-l-, rounded-r-,
+    ///           rounded-tl-, rounded-tr-, rounded-bl-, rounded-br-
+    fn parse_corner_border_radius(&self, class: &str) -> Option<BorderRadiusSpec> {
+        // Map size suffix to Dimension
+        let parse_size = |suffix: &str| -> Option<Dimension> {
+            match suffix {
+                "none" => Some(Dimension::Dp(0.0)),
+                "sm" => Some(Dimension::Dp(2.0)),
+                "" | "md" => Some(Dimension::Dp(4.0)),
+                "lg" => Some(Dimension::Dp(8.0)),
+                "xl" => Some(Dimension::Dp(12.0)),
+                "2xl" => Some(Dimension::Dp(16.0)),
+                "3xl" => Some(Dimension::Dp(24.0)),
+                "full" => Some(Dimension::Dp(9999.0)),
+                _ => None,
+            }
+        };
+
+        // Top corners (topLeft + topRight)
+        if let Some(suffix) = class.strip_prefix("rounded-t-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: Some(dim),
+                    top_right: Some(dim),
+                    bottom_right: None,
+                    bottom_left: None,
+                });
+            }
+        }
+
+        // Bottom corners (bottomLeft + bottomRight)
+        if let Some(suffix) = class.strip_prefix("rounded-b-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: None,
+                    top_right: None,
+                    bottom_right: Some(dim),
+                    bottom_left: Some(dim),
+                });
+            }
+        }
+
+        // Left corners (topLeft + bottomLeft)
+        if let Some(suffix) = class.strip_prefix("rounded-l-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: Some(dim),
+                    top_right: None,
+                    bottom_right: None,
+                    bottom_left: Some(dim),
+                });
+            }
+        }
+
+        // Right corners (topRight + bottomRight)
+        if let Some(suffix) = class.strip_prefix("rounded-r-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: None,
+                    top_right: Some(dim),
+                    bottom_right: Some(dim),
+                    bottom_left: None,
+                });
+            }
+        }
+
+        // Single corner: topLeft
+        if let Some(suffix) = class.strip_prefix("rounded-tl-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: Some(dim),
+                    top_right: None,
+                    bottom_right: None,
+                    bottom_left: None,
+                });
+            }
+        }
+
+        // Single corner: topRight
+        if let Some(suffix) = class.strip_prefix("rounded-tr-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: None,
+                    top_right: Some(dim),
+                    bottom_right: None,
+                    bottom_left: None,
+                });
+            }
+        }
+
+        // Single corner: bottomRight
+        if let Some(suffix) = class.strip_prefix("rounded-br-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: None,
+                    top_right: None,
+                    bottom_right: Some(dim),
+                    bottom_left: None,
+                });
+            }
+        }
+
+        // Single corner: bottomLeft
+        if let Some(suffix) = class.strip_prefix("rounded-bl-") {
+            if let Some(dim) = parse_size(suffix) {
+                return Some(BorderRadiusSpec::Corners {
+                    top_left: None,
+                    top_right: None,
+                    bottom_right: None,
+                    bottom_left: Some(dim),
+                });
+            }
+        }
+
         None
     }
 }
@@ -1005,6 +1160,123 @@ mod tests {
 
         let style = parser.parse("layout-weight-5");
         assert_eq!(style.layout_weight, Some(5));
+    }
+
+    // ========================================================================
+    // Task 11 Tests: Corner-Specific BorderRadius
+    // ========================================================================
+
+    #[test]
+    fn test_parse_corner_border_radius_top() {
+        let parser = TailwindParser::new();
+
+        // Top corners (topLeft + topRight)
+        let style = parser.parse("rounded-t-2xl");
+        assert!(style.border_radius_spec.is_some());
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+                assert_eq!(*top_left, Some(Dimension::Dp(16.0)));
+                assert_eq!(*top_right, Some(Dimension::Dp(16.0)));
+                assert!(bottom_right.is_none());
+                assert!(bottom_left.is_none());
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+    }
+
+    #[test]
+    fn test_parse_corner_border_radius_bottom() {
+        let parser = TailwindParser::new();
+
+        // Bottom corners (bottomLeft + bottomRight)
+        let style = parser.parse("rounded-b-lg");
+        assert!(style.border_radius_spec.is_some());
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+                assert!(top_left.is_none());
+                assert!(top_right.is_none());
+                assert_eq!(*bottom_right, Some(Dimension::Dp(8.0)));
+                assert_eq!(*bottom_left, Some(Dimension::Dp(8.0)));
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+    }
+
+    #[test]
+    fn test_parse_corner_border_radius_left() {
+        let parser = TailwindParser::new();
+
+        // Left corners (topLeft + bottomLeft)
+        let style = parser.parse("rounded-l-xl");
+        assert!(style.border_radius_spec.is_some());
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+                assert_eq!(*top_left, Some(Dimension::Dp(12.0)));
+                assert!(top_right.is_none());
+                assert!(bottom_right.is_none());
+                assert_eq!(*bottom_left, Some(Dimension::Dp(12.0)));
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+    }
+
+    #[test]
+    fn test_parse_corner_border_radius_right() {
+        let parser = TailwindParser::new();
+
+        // Right corners (topRight + bottomRight)
+        let style = parser.parse("rounded-r-sm");
+        assert!(style.border_radius_spec.is_some());
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+                assert!(top_left.is_none());
+                assert_eq!(*top_right, Some(Dimension::Dp(2.0)));
+                assert_eq!(*bottom_right, Some(Dimension::Dp(2.0)));
+                assert!(bottom_left.is_none());
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+    }
+
+    #[test]
+    fn test_parse_corner_border_radius_single_corners() {
+        let parser = TailwindParser::new();
+
+        // Single corner: topLeft
+        let style = parser.parse("rounded-tl-3xl");
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { top_left, .. }) => {
+                assert_eq!(*top_left, Some(Dimension::Dp(24.0)));
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+
+        // Single corner: topRight
+        let style = parser.parse("rounded-tr-full");
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { top_right, .. }) => {
+                assert_eq!(*top_right, Some(Dimension::Dp(9999.0)));
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+
+        // Single corner: bottomRight
+        let style = parser.parse("rounded-br-none");
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { bottom_right, .. }) => {
+                assert_eq!(*bottom_right, Some(Dimension::Dp(0.0)));
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
+
+        // Single corner: bottomLeft
+        let style = parser.parse("rounded-bl-md");
+        match &style.border_radius_spec {
+            Some(BorderRadiusSpec::Corners { bottom_left, .. }) => {
+                assert_eq!(*bottom_left, Some(Dimension::Dp(4.0)));
+            }
+            _ => panic!("Expected BorderRadiusSpec::Corners"),
+        }
     }
 
     #[test]
