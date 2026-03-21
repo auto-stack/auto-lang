@@ -18,19 +18,9 @@
 //! | `bg-blue-500` | `.backgroundColor()` |
 //! | `rounded-lg` | `.borderRadius()` |
 
-use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color};
+use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color, ObjectFit};
 
 use crate::ast::Type;
-
-/// Object fit mode for images
-#[derive(Debug, Clone, PartialEq)]
-pub enum ObjectFit {
-    Contain,
-    Cover,
-    Fill,
-    ScaleDown,
-    None,
-}
 
 /// ArkTS Modifier DSL - converts Tailwind classes to ArkTS modifiers
 pub struct ArkModifierDsl {
@@ -113,6 +103,26 @@ impl ArkModifierDsl {
         // Justify content (for Column/Row containers)
         if let Some(justify) = &style.justify_content {
             modifiers.push(self.justify_content_to_modifier(justify));
+        }
+
+        // Font family
+        if let Some(family) = &style.font_family {
+            modifiers.push(self.font_family_to_modifier(family));
+        }
+
+        // Line height
+        if let Some(height) = &style.line_height {
+            modifiers.push(self.line_height_to_modifier(height));
+        }
+
+        // Object fit
+        if let Some(fit) = &style.object_fit {
+            modifiers.push(self.object_fit_to_modifier(fit));
+        }
+
+        // Layout weight
+        if let Some(weight) = &style.layout_weight {
+            modifiers.push(self.layout_weight_to_modifier(*weight as i32));
         }
 
         // Note: gap-* classes are NOT supported as chainable modifiers in ArkTS

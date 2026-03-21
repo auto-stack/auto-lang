@@ -53,6 +53,16 @@ pub struct ComputedStyle {
     pub shadow: Option<Shadow>,
     pub opacity: Option<f32>,
 
+    // Additional typography
+    pub font_family: Option<String>,
+    pub line_height: Option<Dimension>,
+
+    // Object fit (for images)
+    pub object_fit: Option<ObjectFit>,
+
+    // Layout weight (flex children)
+    pub layout_weight: Option<u32>,
+
     // Custom classes (not recognized)
     pub custom_classes: Vec<String>,
 }
@@ -267,6 +277,16 @@ impl Color {
 #[derive(Debug, Clone, Copy)]
 pub struct Shadow {
     pub elevation: Dimension,
+}
+
+/// Object fit mode for images
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectFit {
+    Contain,
+    Cover,
+    Fill,
+    ScaleDown,
+    None,
 }
 
 /// Tailwind class parser
@@ -636,6 +656,50 @@ impl TailwindParser {
             }
         }
 
+        // Object fit
+        if class == "object-contain" {
+            style.object_fit = Some(ObjectFit::Contain);
+            return true;
+        }
+        if class == "object-cover" {
+            style.object_fit = Some(ObjectFit::Cover);
+            return true;
+        }
+        if class == "object-fill" {
+            style.object_fit = Some(ObjectFit::Fill);
+            return true;
+        }
+        if class == "object-scale-down" {
+            style.object_fit = Some(ObjectFit::ScaleDown);
+            return true;
+        }
+        if class == "object-none" {
+            style.object_fit = Some(ObjectFit::None);
+            return true;
+        }
+
+        // Line height (leading-{n})
+        if let Some(val) = self.parse_spacing_value(class, "leading-") {
+            style.line_height = Some(val);
+            return true;
+        }
+
+        // Layout weight (flex-{n})
+        if class.starts_with("flex-") {
+            if let Ok(val) = class[5..].parse::<u32>() {
+                style.layout_weight = Some(val);
+                return true;
+            }
+        }
+
+        // Layout weight alternative (layout-weight-{n})
+        if class.starts_with("layout-weight-") {
+            if let Ok(val) = class[14..].parse::<u32>() {
+                style.layout_weight = Some(val);
+                return true;
+            }
+        }
+
         false
     }
 
@@ -878,5 +942,79 @@ mod tests {
 
         assert_eq!(style.display, Display::Flex);
         assert_eq!(style.custom_classes, vec!["my-custom-class", "another-one"]);
+    }
+
+    // ========================================================================
+    // Task 3 Tests: New Tailwind Classes (object-fit, leading, flex-weight)
+    // ========================================================================
+
+    #[test]
+    fn test_parse_object_fit() {
+        let parser = TailwindParser::new();
+
+        let style = parser.parse("object-contain");
+        assert_eq!(style.object_fit, Some(ObjectFit::Contain));
+
+        let style = parser.parse("object-cover");
+        assert_eq!(style.object_fit, Some(ObjectFit::Cover));
+
+        let style = parser.parse("object-fill");
+        assert_eq!(style.object_fit, Some(ObjectFit::Fill));
+
+        let style = parser.parse("object-scale-down");
+        assert_eq!(style.object_fit, Some(ObjectFit::ScaleDown));
+
+        let style = parser.parse("object-none");
+        assert_eq!(style.object_fit, Some(ObjectFit::None));
+    }
+
+    #[test]
+    fn test_parse_line_height() {
+        let parser = TailwindParser::new();
+
+        // leading-4 = 4 * 4 = 16dp
+        let style = parser.parse("leading-4");
+        assert_eq!(style.line_height, Some(Dimension::Dp(16.0)));
+
+        // leading-6 = 6 * 4 = 24dp
+        let style = parser.parse("leading-6");
+        assert_eq!(style.line_height, Some(Dimension::Dp(24.0)));
+
+        // leading-8 = 8 * 4 = 32dp
+        let style = parser.parse("leading-8");
+        assert_eq!(style.line_height, Some(Dimension::Dp(32.0)));
+    }
+
+    #[test]
+    fn test_parse_layout_weight() {
+        let parser = TailwindParser::new();
+
+        // flex-{n} for layout weight
+        let style = parser.parse("flex-1");
+        assert_eq!(style.layout_weight, Some(1));
+
+        let style = parser.parse("flex-2");
+        assert_eq!(style.layout_weight, Some(2));
+
+        let style = parser.parse("flex-3");
+        assert_eq!(style.layout_weight, Some(3));
+
+        // layout-weight-{n} alternative
+        let style = parser.parse("layout-weight-1");
+        assert_eq!(style.layout_weight, Some(1));
+
+        let style = parser.parse("layout-weight-5");
+        assert_eq!(style.layout_weight, Some(5));
+    }
+
+    #[test]
+    fn test_parse_combined_new_classes() {
+        let parser = TailwindParser::new();
+
+        // Test combining multiple new classes
+        let style = parser.parse("object-cover leading-6 flex-1");
+        assert_eq!(style.object_fit, Some(ObjectFit::Cover));
+        assert_eq!(style.line_height, Some(Dimension::Dp(24.0)));
+        assert_eq!(style.layout_weight, Some(1));
     }
 }
