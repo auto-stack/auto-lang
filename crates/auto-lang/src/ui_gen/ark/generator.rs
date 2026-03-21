@@ -689,8 +689,10 @@ impl ArkGenerator {
     ) -> GenResult<String> {
         let mut lines = Vec::new();
 
-        // Generate ForEach for ArkTS
+        let index_name = index.unwrap_or("index");
         let index_param = index.map(|i| format!(", {}: number", i)).unwrap_or_default();
+
+        // Generate ForEach with key function
         lines.push(format!(
             "{}ForEach(this.{}, ({}: any{}) => {{",
             self.indent(),
@@ -708,7 +710,16 @@ impl ArkGenerator {
         }
 
         self.indent_level -= 1;
-        lines.push(format!("{}}})", self.indent()));
+
+        // Add key function - use item.id if available, otherwise use index
+        lines.push(format!(
+            "{}}}}}, ({}: any, {}: number) => {}.id ?? {}",
+            self.indent(),
+            var,
+            index_name,
+            var,
+            index_name
+        ));
 
         Ok(lines.join("\n"))
     }
