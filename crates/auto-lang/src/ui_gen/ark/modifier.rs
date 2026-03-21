@@ -22,6 +22,16 @@ use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser
 
 use crate::ast::Type;
 
+/// Object fit mode for images
+#[derive(Debug, Clone, PartialEq)]
+pub enum ObjectFit {
+    Contain,
+    Cover,
+    Fill,
+    ScaleDown,
+    None,
+}
+
 /// ArkTS Modifier DSL - converts Tailwind classes to ArkTS modifiers
 pub struct ArkModifierDsl {
     parser: TailwindParser,
@@ -311,6 +321,43 @@ impl ArkModifierDsl {
         }
     }
 
+    /// Convert ObjectFit to ArkTS objectFit modifier
+    fn object_fit_to_modifier(&self, fit: &ObjectFit) -> String {
+        let ark_fit = match fit {
+            ObjectFit::Contain => "ImageFit.Contain",
+            ObjectFit::Cover => "ImageFit.Cover",
+            ObjectFit::Fill => "ImageFit.Fill",
+            ObjectFit::ScaleDown => "ImageFit.ScaleDown",
+            ObjectFit::None => "ImageFit.None",
+        };
+        format!(".objectFit({})", ark_fit)
+    }
+
+    /// Convert Dimension to ArkTS lineHeight modifier
+    fn dimension_to_line_height(&self, dim: &Dimension) -> String {
+        format!(".lineHeight({})", self.dimension_to_value(dim))
+    }
+
+    /// Convert font family string to ArkTS fontFamily modifier
+    pub fn font_family_to_modifier(&self, family: &str) -> String {
+        format!(".fontFamily('{}')", family)
+    }
+
+    /// Convert layout weight to ArkTS layoutWeight modifier
+    pub fn layout_weight_to_modifier(&self, weight: i32) -> String {
+        format!(".layoutWeight({})", weight)
+    }
+
+    /// Convert Dimension to lineHeight modifier (public API)
+    pub fn line_height_to_modifier(&self, dim: &Dimension) -> String {
+        self.dimension_to_line_height(dim)
+    }
+
+    /// Convert ObjectFit to objectFit modifier (public API)
+    pub fn object_fit_to_modifier_public(&self, fit: &ObjectFit) -> String {
+        self.object_fit_to_modifier(fit)
+    }
+
     /// Convert multiple classes to a single modifier string
     pub fn convert_class_to_string(&self, class: &str) -> String {
         self.convert_class(class).join("")
@@ -514,5 +561,71 @@ mod tests {
         // Ensure backwards compatibility
         assert!(class_to_modifier("p-4").unwrap().contains(".padding"));
         assert!(class_to_modifier("font-bold").unwrap().contains(".fontWeight"));
+    }
+
+    // ========================================================================
+    // Additional Modifier Tests (Task 2 - QuickStart Sprint A)
+    // ========================================================================
+
+    #[test]
+    fn test_font_family_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        let result = dsl.font_family_to_modifier("HarmonyOS Sans");
+        assert_eq!(result, ".fontFamily('HarmonyOS Sans')");
+
+        let result = dsl.font_family_to_modifier("Arial");
+        assert_eq!(result, ".fontFamily('Arial')");
+    }
+
+    #[test]
+    fn test_line_height_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        // With Dp value
+        let result = dsl.line_height_to_modifier(&Dimension::Dp(24.0));
+        assert_eq!(result, ".lineHeight(24)");
+
+        // With Px value
+        let result = dsl.line_height_to_modifier(&Dimension::Px(20.0));
+        assert_eq!(result, ".lineHeight(20)");
+
+        // With Rem value (converted to px-like)
+        let result = dsl.line_height_to_modifier(&Dimension::Rem(1.5));
+        assert_eq!(result, ".lineHeight(24)"); // 1.5 * 16 = 24
+    }
+
+    #[test]
+    fn test_object_fit_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        let result = dsl.object_fit_to_modifier_public(&ObjectFit::Contain);
+        assert_eq!(result, ".objectFit(ImageFit.Contain)");
+
+        let result = dsl.object_fit_to_modifier_public(&ObjectFit::Cover);
+        assert_eq!(result, ".objectFit(ImageFit.Cover)");
+
+        let result = dsl.object_fit_to_modifier_public(&ObjectFit::Fill);
+        assert_eq!(result, ".objectFit(ImageFit.Fill)");
+
+        let result = dsl.object_fit_to_modifier_public(&ObjectFit::ScaleDown);
+        assert_eq!(result, ".objectFit(ImageFit.ScaleDown)");
+
+        let result = dsl.object_fit_to_modifier_public(&ObjectFit::None);
+        assert_eq!(result, ".objectFit(ImageFit.None)");
+    }
+
+    #[test]
+    fn test_layout_weight_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        let result = dsl.layout_weight_to_modifier(1);
+        assert_eq!(result, ".layoutWeight(1)");
+
+        let result = dsl.layout_weight_to_modifier(2);
+        assert_eq!(result, ".layoutWeight(2)");
+
+        let result = dsl.layout_weight_to_modifier(0);
+        assert_eq!(result, ".layoutWeight(0)");
     }
 }
