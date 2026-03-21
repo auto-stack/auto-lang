@@ -459,10 +459,24 @@ impl ArkGenerator {
 
         // Look up component
         if let Some(component) = self.registry.get(tag) {
-            // Get text content for components with content (like Button, Text)
+            // Get content argument for components:
+            // - Components with content (like Button, Text) use the text prop
+            // - Image component uses the src prop as constructor argument
             let content_arg = if component.has_content {
                 if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
                     format!("'{}'", text)
+                } else {
+                    String::new()
+                }
+            } else if tag == "image" {
+                // Image component takes src as argument
+                if let Some(AuraPropValue::Expr(AuraExpr::Literal(src))) = props.get("src") {
+                    // Check if it's a resource reference like $r('app.media.xxx')
+                    if src.starts_with("$r(") {
+                        src.clone()
+                    } else {
+                        format!("'{}'", src)
+                    }
                 } else {
                     String::new()
                 }
@@ -528,7 +542,8 @@ impl ArkGenerator {
 
         // Process props - extract string/number values from AuraExpr
         for (key, value) in props {
-            if key == "text" {
+            // Skip props that are handled as constructor arguments
+            if key == "text" || key == "src" {
                 continue;
             }
             // Handle class prop using ArkModifierDsl
@@ -1132,6 +1147,86 @@ mod tests {
         assert!(
             code.contains("export struct"),
             "Child page should be exported with 'export struct'"
+        );
+    }
+
+    #[test]
+    fn test_image_with_url_source() {
+        // Test that Image component with URL source generates correct code
+        let mut props = HashMap::new();
+        props.insert("src".to_string(), AuraPropValue::Expr(AuraExpr::Literal("https://example.com/logo.png".to_string())));
+
+        let widget = AuraWidget {
+            name: "TestApp".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "image".to_string(),
+                props,
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // Image should have URL as constructor argument (quoted)
+        assert!(
+            code.contains("Image('https://example.com/logo.png')"),
+            "Image with URL should have quoted URL as constructor argument, got: {}",
+            code
+        );
+
+        // Should NOT have .src() modifier
+        assert!(
+            !code.contains(".src("),
+            "Image src should NOT be a modifier, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_image_with_resource_reference() {
+        // Test that Image component with $r() resource reference generates correct code
+        let mut props = HashMap::new();
+        props.insert("src".to_string(), AuraPropValue::Expr(AuraExpr::Literal("$r('app.media.icon')".to_string())));
+
+        let widget = AuraWidget {
+            name: "TestApp".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "image".to_string(),
+                props,
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // Image should have $r() as constructor argument (NOT quoted)
+        assert!(
+            code.contains("Image($r('app.media.icon'))"),
+            "Image with $r() should have resource reference as constructor argument without quotes, got: {}",
+            code
+        );
+
+        // Should NOT have extra quotes around $r()
+        assert!(
+            !code.contains("Image('$r("),
+            "Image $r() should NOT be wrapped in extra quotes, got: {}",
+            code
         );
     }
 }
