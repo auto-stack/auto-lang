@@ -8214,14 +8214,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Check for "text "content"" syntax: text node with regular string
-        // This creates an actual text node (ViewNode::Text), not an element with text prop
-        if tag == "text" && self.is_kind(TokenKind::Str) {
-            let content = self.cur.text.to_string();
-            self.next();
-            return Ok(ViewNode::text(content));
-        }
-
         // Check for string literal as primary property shorthand:
         // tag "value" → tag (primary_prop: "value")
         // The primary prop depends on the element type (from get_primary_prop)
@@ -8287,19 +8279,36 @@ impl<'a> Parser<'a> {
         }
 
         // Parse children or inline props/events in braces
+        // Support syntax: col { child1 child2 class: "..." }
+        // Also supports primary prop shorthand: text "Hello" { class: "..." }
         if self.is_kind(TokenKind::LBrace) {
             self.next();
             self.skip_empty_lines();
 
-            // If we have a primary prop value, parse props/events instead of children
-            if has_primary_prop_value {
-                while !self.is_kind(TokenKind::RBrace) {
-                    self.skip_empty_lines();
-                    if self.is_kind(TokenKind::RBrace) {
-                        break;
-                    }
+            // Parse children (view nodes) and trailing props/events
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RBrace) {
+                    break;
+                }
 
-                    // Parse key: value pairs (props/events)
+                // Check if this looks like a prop: identifier followed by colon
+                // e.g., "class:" or "onclick:"
+                let is_prop_like = if self.is_kind(TokenKind::Ident) {
+                    // Peek at next token to see if it's a colon
+                    if let Ok(next_token) = self.lexer.next() {
+                        let is_colon = next_token.kind == TokenKind::Colon;
+                        self.lexer.push_token(next_token);
+                        is_colon
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if is_prop_like {
+                    // Parse as prop/event
                     let key = self.cur.text.to_string();
                     self.next();
                     self.expect(TokenKind::Colon)?;
@@ -8325,66 +8334,12 @@ impl<'a> Parser<'a> {
                     if self.is_kind(TokenKind::Comma) {
                         self.next();
                     }
-                    self.skip_empty_lines();
+                } else {
+                    // Parse as child view node
+                    let child = self.parse_view_node()?;
+                    children.push(child);
                 }
-            } else {
-                // Parse children (view nodes) and trailing props/events
-                // Support syntax: col { child1 child2 class: "..." }
-                while !self.is_kind(TokenKind::RBrace) {
-                    self.skip_empty_lines();
-                    if self.is_kind(TokenKind::RBrace) {
-                        break;
-                    }
-
-                    // Check if this looks like a prop: identifier followed by colon
-                    // e.g., "class:" or "onclick:"
-                    let is_prop_like = if self.is_kind(TokenKind::Ident) {
-                        // Peek at next token to see if it's a colon
-                        if let Ok(next_token) = self.lexer.next() {
-                            let is_colon = next_token.kind == TokenKind::Colon;
-                            self.lexer.push_token(next_token);
-                            is_colon
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-
-                    if is_prop_like {
-                        // Parse as prop/event
-                        let key = self.cur.text.to_string();
-                        self.next();
-                        self.expect(TokenKind::Colon)?;
-
-                        // Check if it's an event (onclick, etc.)
-                        if key.starts_with("on") {
-                            let (handler, params) = self.parse_event_handler()?;
-                            events.push(ViewEvent { name: key, handler, params });
-                        } else if key == "class" && self.is_kind(TokenKind::LBrace) {
-                            let binding = self.parse_class_binding()?;
-                            props.push(ViewProp {
-                                name: key,
-                                value: ViewPropValue::ClassBinding(binding),
-                            });
-                        } else {
-                            let value = self.parse_expr()?;
-                            props.push(ViewProp {
-                                name: key,
-                                value: ViewPropValue::Expr(value),
-                            });
-                        }
-
-                        if self.is_kind(TokenKind::Comma) {
-                            self.next();
-                        }
-                    } else {
-                        // Parse as child view node
-                        let child = self.parse_view_node()?;
-                        children.push(child);
-                    }
-                    self.skip_empty_lines();
-                }
+                self.skip_empty_lines();
             }
             self.expect(TokenKind::RBrace)?;
         }
