@@ -4,18 +4,33 @@
 
 widget IndexPage {
     view {
-        col {
-            h1 "Component Gallery"
-            text "Jetpack Compose Demo - Phase 1"
+        col (class: "p-8 gap-8") {
+            // Hero section
+            col (class: "items-center") {
+                h1 (class: "text-4xl font-bold text-center", text: "Component Gallery") {}
+                text (class: "text-lg text-gray-600 text-center", text: "Jetpack Compose Demo - Phase 1") {}
+            }
 
-            link (to: "/counter") {
-                text "Counter Demo"
-            }
-            link (to: "/column") {
-                text "Column Demo"
-            }
-            link (to: "/row") {
-                text "Row Demo"
+            // Component grid
+            col (class: "gap-4") {
+                link (to: "/counter") {
+                    col (class: "p-4 rounded-lg bg-gray-100") {
+                        text (class: "font-semibold text-gray-800", text: "Counter Demo") {}
+                        text (class: "text-sm text-gray-500", text: "State management with ELM architecture") {}
+                    }
+                }
+                link (to: "/column") {
+                    col (class: "p-4 rounded-lg bg-gray-100") {
+                        text (class: "font-semibold text-gray-800", text: "Column Demo") {}
+                        text (class: "text-sm text-gray-500", text: "Vertical layout with Column component") {}
+                    }
+                }
+                link (to: "/row") {
+                    col (class: "p-4 rounded-lg bg-gray-100") {
+                        text (class: "font-semibold text-gray-800", text: "Row Demo") {}
+                        text (class: "text-sm text-gray-500", text: "Horizontal layout with Row component") {}
+                    }
+                }
             }
         }
     }

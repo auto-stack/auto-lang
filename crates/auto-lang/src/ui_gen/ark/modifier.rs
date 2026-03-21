@@ -1,8 +1,331 @@
 //! ArkTS Modifier DSL
 //!
-//! Converts AURA style properties to ArkTS chainable modifiers.
+//! Converts Tailwind CSS classes to ArkTS chainable modifiers.
+//! Uses the shared TailwindParser for consistent parsing across backends.
+//!
+//! ## Supported Classes
+//!
+//! | Tailwind | ArkTS Modifier |
+//! |----------|----------------|
+//! | `p-4`, `px-2`, `py-4` | `.padding()` |
+//! | `m-4`, `mx-auto` | `.margin()` |
+//! | `w-full`, `w-32` | `.width()` |
+//! | `h-full`, `h-32` | `.height()` |
+//! | `text-lg`, `text-sm` | `.fontSize()` |
+//! | `font-bold`, `font-medium` | `.fontWeight()` |
+//! | `text-center`, `text-left` | `.textAlign()` |
+//! | `text-blue-500` | `.fontColor()` |
+//! | `bg-blue-500` | `.backgroundColor()` |
+//! | `rounded-lg` | `.borderRadius()` |
+
+use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color};
 
 use crate::ast::Type;
+
+/// ArkTS Modifier DSL - converts Tailwind classes to ArkTS modifiers
+pub struct ArkModifierDsl {
+    parser: TailwindParser,
+}
+
+impl ArkModifierDsl {
+    /// Create a new ArkModifierDsl instance
+    pub fn new() -> Self {
+        Self {
+            parser: TailwindParser::new(),
+        }
+    }
+
+    /// Convert a Tailwind class string to ArkTS modifiers
+    pub fn convert_class(&self, class: &str) -> Vec<String> {
+        let style = self.parser.parse(class);
+        self.style_to_modifiers(&style)
+    }
+
+    /// Convert a ComputedStyle to ArkTS modifiers
+    fn style_to_modifiers(&self, style: &ComputedStyle) -> Vec<String> {
+        let mut modifiers = Vec::new();
+
+        // Padding
+        if !style.padding.is_empty() {
+            modifiers.push(self.spacing_to_padding(&style.padding));
+        }
+
+        // Margin
+        if !style.margin.is_empty() {
+            modifiers.push(self.spacing_to_margin(&style.margin));
+        }
+
+        // Width
+        if style.width != Size::Auto {
+            modifiers.push(self.size_to_width(&style.width));
+        }
+
+        // Height
+        if style.height != Size::Auto {
+            modifiers.push(self.size_to_height(&style.height));
+        }
+
+        // Font size
+        if let Some(size) = &style.font_size {
+            modifiers.push(self.dimension_to_font_size(size));
+        }
+
+        // Font weight
+        if let Some(weight) = &style.font_weight {
+            modifiers.push(self.font_weight_to_modifier(weight));
+        }
+
+        // Text align
+        if let Some(align) = &style.text_align {
+            modifiers.push(self.text_align_to_modifier(align));
+        }
+
+        // Text color (fontColor in ArkTS)
+        if let Some(color) = &style.text_color {
+            modifiers.push(self.color_to_font_color(color));
+        }
+
+        // Background color
+        if let Some(color) = &style.background_color {
+            modifiers.push(self.color_to_background_color(color));
+        }
+
+        // Border radius
+        if let Some(radius) = &style.border_radius {
+            modifiers.push(self.dimension_to_border_radius(radius));
+        }
+
+        // Align items (for Column/Row containers)
+        if let Some(align) = &style.align_items {
+            modifiers.push(self.align_items_to_modifier(align));
+        }
+
+        // Justify content (for Column/Row containers)
+        if let Some(justify) = &style.justify_content {
+            modifiers.push(self.justify_content_to_modifier(justify));
+        }
+
+        // Note: gap-* classes are NOT supported as chainable modifiers in ArkTS
+        // Column/Row space must be passed as constructor parameter: Column({ space: 16 })
+        // This would require special handling in the generator, so we skip gap for now
+
+        modifiers
+    }
+
+    /// Convert Spacing to ArkTS padding modifier
+    fn spacing_to_padding(&self, spacing: &Spacing) -> String {
+        // If all sides are equal, use simple form
+        if let Some(all) = spacing.all {
+            return format!(".padding({})", self.dimension_to_value(&all));
+        }
+
+        // If x and y are set (but different), use { left, right, top, bottom }
+        let top = spacing.top();
+        let right = spacing.right();
+        let bottom = spacing.bottom();
+        let left = spacing.left();
+
+        // Check if x and y patterns
+        if spacing.x.is_some() && spacing.y.is_some() && spacing.top.is_none() && spacing.bottom.is_none() {
+            let x_val = self.dimension_to_value(spacing.x.as_ref().unwrap());
+            let y_val = self.dimension_to_value(spacing.y.as_ref().unwrap());
+            return format!(".padding({{ left: {}, right: {}, top: {}, bottom: {} }})", x_val, x_val, y_val, y_val);
+        }
+
+        // Build individual sides
+        let mut parts = Vec::new();
+        if let Some(v) = top { parts.push(format!("top: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = right { parts.push(format!("right: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = bottom { parts.push(format!("bottom: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = left { parts.push(format!("left: {}", self.dimension_to_value(&v))); }
+
+        if parts.is_empty() {
+            String::new()
+        } else if parts.len() == 1 {
+            format!(".padding({})", parts[0].split(": ").nth(1).unwrap_or("0"))
+        } else {
+            format!(".padding({{ {} }})", parts.join(", "))
+        }
+    }
+
+    /// Convert Spacing to ArkTS margin modifier
+    fn spacing_to_margin(&self, spacing: &Spacing) -> String {
+        // If all sides are equal, use simple form
+        if let Some(all) = spacing.all {
+            return format!(".margin({})", self.dimension_to_value(&all));
+        }
+
+        // Check if x is auto (mx-auto)
+        if let Some(Dimension::Auto) = spacing.x {
+            return ".margin({ left: 'auto', right: 'auto' })".to_string();
+        }
+
+        // If x and y patterns
+        if spacing.x.is_some() && spacing.y.is_some() && spacing.top.is_none() && spacing.bottom.is_none() {
+            let x_val = self.dimension_to_value(spacing.x.as_ref().unwrap());
+            let y_val = self.dimension_to_value(spacing.y.as_ref().unwrap());
+            return format!(".margin({{ left: {}, right: {}, top: {}, bottom: {} }})", x_val, x_val, y_val, y_val);
+        }
+
+        // Build individual sides
+        let mut parts = Vec::new();
+        if let Some(v) = spacing.top() { parts.push(format!("top: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = spacing.right() { parts.push(format!("right: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = spacing.bottom() { parts.push(format!("bottom: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = spacing.left() { parts.push(format!("left: {}", self.dimension_to_value(&v))); }
+
+        if parts.is_empty() {
+            String::new()
+        } else if parts.len() == 1 {
+            format!(".margin({})", parts[0].split(": ").nth(1).unwrap_or("0"))
+        } else {
+            format!(".margin({{ {} }})", parts.join(", "))
+        }
+    }
+
+    /// Convert Size to ArkTS width modifier
+    fn size_to_width(&self, size: &Size) -> String {
+        match size {
+            Size::Auto => String::new(),
+            Size::Full => ".width('100%')".to_string(),
+            Size::Screen => ".width('100%')".to_string(),
+            Size::Fixed(dim) => format!(".width({})", self.dimension_to_value(dim)),
+            Size::Percent(p) => format!(".width('{}%')", p),
+            Size::MinContent => ".width('min-content')".to_string(),
+            Size::MaxContent => ".width('max-content')".to_string(),
+            Size::FitContent => ".width('fit-content')".to_string(),
+        }
+    }
+
+    /// Convert Size to ArkTS height modifier
+    fn size_to_height(&self, size: &Size) -> String {
+        match size {
+            Size::Auto => String::new(),
+            Size::Full => ".height('100%')".to_string(),
+            Size::Screen => ".height('100%')".to_string(),
+            Size::Fixed(dim) => format!(".height({})", self.dimension_to_value(dim)),
+            Size::Percent(p) => format!(".height('{}%')", p),
+            Size::MinContent => ".height('min-content')".to_string(),
+            Size::MaxContent => ".height('max-content')".to_string(),
+            Size::FitContent => ".height('fit-content')".to_string(),
+        }
+    }
+
+    /// Convert Dimension to ArkTS fontSize modifier
+    fn dimension_to_font_size(&self, dim: &Dimension) -> String {
+        format!(".fontSize({})", self.dimension_to_value(dim))
+    }
+
+    /// Convert Dimension to ArkTS borderRadius modifier
+    fn dimension_to_border_radius(&self, dim: &Dimension) -> String {
+        match dim {
+            Dimension::Dp(v) if *v >= 9999.0 => ".borderRadius('50%')".to_string(), // full circle
+            _ => format!(".borderRadius({})", self.dimension_to_value(dim)),
+        }
+    }
+
+    /// Convert FontWeight to ArkTS fontWeight modifier
+    fn font_weight_to_modifier(&self, weight: &FontWeight) -> String {
+        let ark_weight = match weight {
+            FontWeight::Thin => "Lighter",
+            FontWeight::ExtraLight => "Lighter",
+            FontWeight::Light => "Light",
+            FontWeight::Normal => "Normal",
+            FontWeight::Medium => "Medium",
+            FontWeight::SemiBold => "Bold",
+            FontWeight::Bold => "Bold",
+            FontWeight::ExtraBold => "Bolder",
+            FontWeight::Black => "Bolder",
+        };
+        format!(".fontWeight(FontWeight.{})", ark_weight)
+    }
+
+    /// Convert TextAlign to ArkTS textAlign modifier
+    fn text_align_to_modifier(&self, align: &TextAlign) -> String {
+        let ark_align = match align {
+            TextAlign::Left => "Start",
+            TextAlign::Center => "Center",
+            TextAlign::Right => "End",
+            TextAlign::Justify => "Justify",
+            TextAlign::Start => "Start",
+            TextAlign::End => "End",
+        };
+        format!(".textAlign(TextAlign.{})", ark_align)
+    }
+
+    /// Convert Color to ArkTS fontColor modifier
+    fn color_to_font_color(&self, color: &Color) -> String {
+        format!(".fontColor('{}')", self.color_to_hex(color))
+    }
+
+    /// Convert Color to ArkTS backgroundColor modifier
+    fn color_to_background_color(&self, color: &Color) -> String {
+        format!(".backgroundColor('{}')", self.color_to_hex(color))
+    }
+
+    /// Convert Color to hex string
+    fn color_to_hex(&self, color: &Color) -> String {
+        if color.a < 1.0 {
+            format!("#{:02X}{:02X}{:02X}{:02X}", color.r, color.g, color.b, (color.a * 255.0) as u8)
+        } else {
+            format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b)
+        }
+    }
+
+    /// Convert AlignItems to ArkTS alignItems modifier
+    fn align_items_to_modifier(&self, align: &AlignItems) -> String {
+        let ark_align = match align {
+            AlignItems::Start => "HorizontalAlign.Start",
+            AlignItems::Center => "HorizontalAlign.Center",
+            AlignItems::End => "HorizontalAlign.End",
+            AlignItems::Stretch => "HorizontalAlign.Start", // No direct equivalent
+            AlignItems::Baseline => "HorizontalAlign.Start", // No direct equivalent
+        };
+        format!(".alignItems({})", ark_align)
+    }
+
+    /// Convert JustifyContent to ArkTS justifyContent modifier
+    fn justify_content_to_modifier(&self, justify: &JustifyContent) -> String {
+        let ark_justify = match justify {
+            JustifyContent::Start => "FlexAlign.Start",
+            JustifyContent::Center => "FlexAlign.Center",
+            JustifyContent::End => "FlexAlign.End",
+            JustifyContent::Between => "FlexAlign.SpaceBetween",
+            JustifyContent::Around => "FlexAlign.SpaceAround",
+            JustifyContent::Evenly => "FlexAlign.SpaceEvenly",
+        };
+        format!(".justifyContent({})", ark_justify)
+    }
+
+    /// Convert Dimension to ArkTS value string
+    fn dimension_to_value(&self, dim: &Dimension) -> String {
+        match dim {
+            Dimension::Px(v) => v.to_string(),
+            Dimension::Dp(v) => v.to_string(),
+            Dimension::Rem(v) => (v * 16.0).to_string(), // Convert rem to px-like value
+            Dimension::Percent(v) => format!("'{}%'", v),
+            Dimension::Full => "'100%'".to_string(),
+            Dimension::Auto => "'auto'".to_string(),
+            Dimension::Vw(v) => format!("'{}%'", v),
+            Dimension::Vh(v) => format!("'{}%'", v),
+        }
+    }
+
+    /// Convert multiple classes to a single modifier string
+    pub fn convert_class_to_string(&self, class: &str) -> String {
+        self.convert_class(class).join("")
+    }
+}
+
+impl Default for ArkModifierDsl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Legacy functions kept for backwards compatibility
+// ============================================================================
 
 /// Convert a style property to ArkTS modifier
 pub fn style_to_modifier(key: &str, value: &str) -> Option<String> {
@@ -58,58 +381,11 @@ pub fn prop_to_modifier(key: &str, value: &str, _value_type: Option<&Type>) -> O
     }
 }
 
-/// Convert AURA class to ArkTS style modifier
+/// Convert a single Tailwind class to ArkTS modifier (legacy, use ArkModifierDsl instead)
 pub fn class_to_modifier(class_name: &str) -> Option<String> {
-    // Map common Tailwind-like classes to ArkTS modifiers
-    match class_name {
-        // Flex
-        "flex-1" => Some(".layoutWeight(1)".to_string()),
-        "flex-2" => Some(".layoutWeight(2)".to_string()),
-
-        // Padding
-        cls if cls.starts_with("p-") => {
-            let size = cls.strip_prefix("p-").unwrap();
-            Some(format!(".padding({})", size))
-        }
-        cls if cls.starts_with("px-") => {
-            let size = cls.strip_prefix("px-").unwrap();
-            Some(format!(".padding({{ left: {}, right: {} }})", size, size))
-        }
-        cls if cls.starts_with("py-") => {
-            let size = cls.strip_prefix("py-").unwrap();
-            Some(format!(".padding({{ top: {}, bottom: {} }})", size, size))
-        }
-
-        // Margin
-        cls if cls.starts_with("m-") => {
-            let size = cls.strip_prefix("m-").unwrap();
-            Some(format!(".margin({})", size))
-        }
-
-        // Width/Height
-        cls if cls.starts_with("w-") => {
-            let size = cls.strip_prefix("w-").unwrap();
-            Some(format!(".width('{}')", size))
-        }
-        cls if cls.starts_with("h-") => {
-            let size = cls.strip_prefix("h-").unwrap();
-            Some(format!(".height('{}')", size))
-        }
-
-        // Text
-        "text-center" => Some(".textAlign(TextAlign.Center)".to_string()),
-        "text-left" => Some(".textAlign(TextAlign.Start)".to_string()),
-        "text-right" => Some(".textAlign(TextAlign.End)".to_string()),
-        "font-bold" => Some(".fontWeight(FontWeight.Bold)".to_string()),
-        "font-normal" => Some(".fontWeight(FontWeight.Normal)".to_string()),
-
-        // Rounded
-        "rounded" => Some(".borderRadius(4)".to_string()),
-        "rounded-lg" => Some(".borderRadius(8)".to_string()),
-        "rounded-full" => Some(".borderRadius(9999)".to_string()),
-
-        _ => None,
-    }
+    let dsl = ArkModifierDsl::new();
+    let modifiers = dsl.convert_class(class_name);
+    modifiers.into_iter().next()
 }
 
 #[cfg(test)]
@@ -134,10 +410,109 @@ mod tests {
         assert!(result.is_none());
     }
 
+    // ========================================================================
+    // ArkModifierDsl Tests
+    // ========================================================================
+
     #[test]
-    fn test_class_to_modifier() {
-        assert_eq!(class_to_modifier("p-4"), Some(".padding(4)".to_string()));
-        assert_eq!(class_to_modifier("w-full"), Some(".width('full')".to_string()));
-        assert_eq!(class_to_modifier("font-bold"), Some(".fontWeight(FontWeight.Bold)".to_string()));
+    fn test_ark_dsl_padding() {
+        let dsl = ArkModifierDsl::new();
+
+        // Simple padding
+        let mods = dsl.convert_class("p-4");
+        assert!(mods.iter().any(|m| m.contains(".padding")));
+
+        // Horizontal padding
+        let mods = dsl.convert_class("px-4");
+        assert!(mods.iter().any(|m| m.contains("left") && m.contains("right")));
+    }
+
+    #[test]
+    fn test_ark_dsl_margin() {
+        let dsl = ArkModifierDsl::new();
+
+        // Simple margin
+        let mods = dsl.convert_class("m-4");
+        assert!(mods.iter().any(|m| m.contains(".margin")));
+
+        // Auto margin
+        let mods = dsl.convert_class("mx-auto");
+        assert!(mods.iter().any(|m| m.contains("auto")));
+    }
+
+    #[test]
+    fn test_ark_dsl_typography() {
+        let dsl = ArkModifierDsl::new();
+
+        // Font size
+        let mods = dsl.convert_class("text-lg");
+        assert!(mods.iter().any(|m| m.contains(".fontSize")));
+
+        // Font weight
+        let mods = dsl.convert_class("font-bold");
+        assert!(mods.iter().any(|m| m.contains(".fontWeight") && m.contains("Bold")));
+
+        // Text align
+        let mods = dsl.convert_class("text-center");
+        assert!(mods.iter().any(|m| m.contains(".textAlign") && m.contains("Center")));
+    }
+
+    #[test]
+    fn test_ark_dsl_colors() {
+        let dsl = ArkModifierDsl::new();
+
+        // Text color
+        let mods = dsl.convert_class("text-blue-500");
+        assert!(mods.iter().any(|m| m.contains(".fontColor")));
+
+        // Background color
+        let mods = dsl.convert_class("bg-blue-500");
+        assert!(mods.iter().any(|m| m.contains(".backgroundColor")));
+    }
+
+    #[test]
+    fn test_ark_dsl_border_radius() {
+        let dsl = ArkModifierDsl::new();
+
+        // Rounded
+        let mods = dsl.convert_class("rounded-lg");
+        assert!(mods.iter().any(|m| m.contains(".borderRadius")));
+
+        // Full circle
+        let mods = dsl.convert_class("rounded-full");
+        assert!(mods.iter().any(|m| m.contains("50%")));
+    }
+
+    #[test]
+    fn test_ark_dsl_combined_classes() {
+        let dsl = ArkModifierDsl::new();
+
+        // Multiple classes
+        let mods = dsl.convert_class("p-4 text-lg font-bold bg-blue-500 rounded-lg");
+        assert!(mods.len() >= 4);
+
+        // Check each modifier is present
+        let combined = mods.join("");
+        assert!(combined.contains(".padding"));
+        assert!(combined.contains(".fontSize"));
+        assert!(combined.contains(".fontWeight"));
+        assert!(combined.contains(".backgroundColor"));
+        assert!(combined.contains(".borderRadius"));
+    }
+
+    #[test]
+    fn test_ark_dsl_convert_to_string() {
+        let dsl = ArkModifierDsl::new();
+
+        let result = dsl.convert_class_to_string("p-4 text-lg");
+        assert!(result.contains(".padding"));
+        assert!(result.contains(".fontSize"));
+    }
+
+    #[test]
+    fn test_legacy_class_to_modifier() {
+        // Ensure backwards compatibility
+        assert!(class_to_modifier("p-4").unwrap().contains(".padding"));
+        assert!(class_to_modifier("font-bold").unwrap().contains(".fontWeight"));
     }
 }

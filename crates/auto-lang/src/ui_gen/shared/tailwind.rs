@@ -23,6 +23,8 @@ pub struct ComputedStyle {
     // Layout
     pub display: Display,
     pub flex_direction: Option<FlexDirection>,
+    pub align_items: Option<AlignItems>,
+    pub justify_content: Option<JustifyContent>,
     pub gap: Option<Dimension>,
 
     // Spacing
@@ -75,6 +77,27 @@ pub enum FlexDirection {
     RowReverse,
     Column,
     ColumnReverse,
+}
+
+/// Align items (cross axis)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignItems {
+    Start,
+    Center,
+    End,
+    Stretch,
+    Baseline,
+}
+
+/// Justify content (main axis)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JustifyContent {
+    Start,
+    Center,
+    End,
+    Between,
+    Around,
+    Evenly,
 }
 
 /// Generic dimension value
@@ -375,6 +398,54 @@ impl TailwindParser {
         // Gap
         if let Some(gap) = self.parse_spacing_value(class, "gap-") {
             style.gap = Some(gap);
+            return true;
+        }
+
+        // Align items (cross axis)
+        if class == "items-start" {
+            style.align_items = Some(AlignItems::Start);
+            return true;
+        }
+        if class == "items-center" {
+            style.align_items = Some(AlignItems::Center);
+            return true;
+        }
+        if class == "items-end" {
+            style.align_items = Some(AlignItems::End);
+            return true;
+        }
+        if class == "items-stretch" {
+            style.align_items = Some(AlignItems::Stretch);
+            return true;
+        }
+        if class == "items-baseline" {
+            style.align_items = Some(AlignItems::Baseline);
+            return true;
+        }
+
+        // Justify content (main axis)
+        if class == "justify-start" {
+            style.justify_content = Some(JustifyContent::Start);
+            return true;
+        }
+        if class == "justify-center" {
+            style.justify_content = Some(JustifyContent::Center);
+            return true;
+        }
+        if class == "justify-end" {
+            style.justify_content = Some(JustifyContent::End);
+            return true;
+        }
+        if class == "justify-between" {
+            style.justify_content = Some(JustifyContent::Between);
+            return true;
+        }
+        if class == "justify-around" {
+            style.justify_content = Some(JustifyContent::Around);
+            return true;
+        }
+        if class == "justify-evenly" {
+            style.justify_content = Some(JustifyContent::Evenly);
             return true;
         }
 

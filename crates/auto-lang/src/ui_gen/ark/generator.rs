@@ -22,7 +22,7 @@
 //! ```
 
 use super::components::ArkComponentRegistry;
-use super::modifier::{class_to_modifier, prop_to_modifier};
+use super::modifier::{prop_to_modifier, ArkModifierDsl};
 use super::project::ArkProjectGenerator;
 use super::state::{generate_dispatch_function, generate_handler_body, generate_msg_enum, generate_state_declarations};
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
@@ -477,10 +477,13 @@ impl ArkGenerator {
                 format!("{}({})", component.name, content_arg)
             };
 
+            // Generate modifiers (to be placed AFTER the component body)
             let modifiers = self.generate_modifiers(props, events);
-            lines.push(format!("{}{}", component_call, modifiers));
 
-            // Children
+            // Start component call
+            lines.push(component_call);
+
+            // Children - body comes BEFORE modifiers
             if component.has_children && !children.is_empty() {
                 lines.last_mut().unwrap().push_str(" {");
                 self.indent_level += 1;
@@ -493,7 +496,18 @@ impl ArkGenerator {
                 }
 
                 self.indent_level -= 1;
-                lines.push(format!("{}}}", self.indent()));
+                // Close body, then add modifiers on same line
+                let closing = format!("{}}}", self.indent());
+                if modifiers.is_empty() {
+                    lines.push(closing);
+                } else {
+                    lines.push(format!("{}{}", closing, modifiers));
+                }
+            } else {
+                // No children - add modifiers directly
+                if !modifiers.is_empty() {
+                    lines.last_mut().unwrap().push_str(&modifiers);
+                }
             }
         } else {
             // Unknown component - emit as comment
@@ -510,10 +524,19 @@ impl ArkGenerator {
         events: &HashMap<String, crate::aura::AuraEvent>,
     ) -> String {
         let mut modifiers = Vec::new();
+        let dsl = ArkModifierDsl::new();
 
         // Process props - extract string/number values from AuraExpr
         for (key, value) in props {
             if key == "text" {
+                continue;
+            }
+            // Handle class prop using ArkModifierDsl
+            if key == "class" {
+                if let Some(class_str) = self.extract_class_string(value) {
+                    let class_modifiers = dsl.convert_class(&class_str);
+                    modifiers.extend(class_modifiers);
+                }
                 continue;
             }
             if let Some(modifier) = self.prop_to_modifier(key, value) {
@@ -544,12 +567,11 @@ impl ArkGenerator {
         for value in props.values() {
             if let AuraPropValue::ClassBinding(bindings) = value {
                 for binding in bindings {
-                    // Evaluate condition to determine if class should apply
-                    if let Some(modifier) = class_to_modifier(&binding.class_name) {
-                        // For now, apply the class unconditionally
-                        // TODO: Support conditional class application
-                        modifiers.push(modifier);
-                    }
+                    // Use ArkModifierDsl for class conversion
+                    let class_modifiers = dsl.convert_class(&binding.class_name);
+                    // For now, apply the class unconditionally
+                    // TODO: Support conditional class application
+                    modifiers.extend(class_modifiers);
                 }
             }
         }
@@ -565,6 +587,18 @@ impl ArkGenerator {
                     .collect::<Vec<_>>()
                     .join("\n")
             )
+        }
+    }
+
+    /// Extract class string from AuraPropValue
+    fn extract_class_string(&self, value: &AuraPropValue) -> Option<String> {
+        match value {
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
+            AuraPropValue::ClassBinding(bindings) => {
+                // Combine all class names
+                Some(bindings.iter().map(|b| b.class_name.as_str()).collect::<Vec<_>>().join(" "))
+            }
+            _ => None,
         }
     }
 
