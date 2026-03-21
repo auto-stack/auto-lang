@@ -26,6 +26,7 @@ use super::modifier::{prop_to_modifier, ArkModifierDsl};
 use super::project::ArkProjectGenerator;
 use super::state::{generate_dispatch_function, generate_handler_body, generate_msg_enum, generate_state_declarations};
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::ui_gen::widget::WidgetRegistry;
 use crate::ui_gen::{BackendGenerator, GenResult};
 use std::collections::HashMap;
 
@@ -59,8 +60,12 @@ pub struct ArkGenerator {
     /// Current widget name
     current_widget: Option<String>,
 
-    /// Component registry
+    /// Component registry (legacy - will be removed in Task 7)
+    #[allow(dead_code)]
     registry: ArkComponentRegistry,
+
+    /// Widget registry for looking up widget specifications
+    widget_registry: WidgetRegistry,
 
     /// Collected modifiers for current component
     #[allow(dead_code)]
@@ -82,6 +87,7 @@ impl ArkGenerator {
         Self {
             current_widget: None,
             registry: ArkComponentRegistry::new(),
+            widget_registry: WidgetRegistry::with_defaults(),
             current_modifiers: Vec::new(),
             indent_level: 0,
             current_handlers: HashMap::new(),
@@ -465,71 +471,84 @@ impl ArkGenerator {
     ) -> GenResult<String> {
         let mut lines = Vec::new();
 
-        // Look up component
-        if let Some(component) = self.registry.get(tag) {
-            // Get content argument for components:
-            // - Components with content (like Button, Text) use the text prop
-            // - Image component uses the src prop as constructor argument
-            let content_arg = if component.has_content {
-                if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
-                    format!("'{}'", text)
-                } else {
-                    String::new()
-                }
-            } else if tag == "image" {
-                // Image component takes src as argument
-                if let Some(AuraPropValue::Expr(AuraExpr::Literal(src))) = props.get("src") {
-                    // Check if it's a resource reference like $r('app.media.xxx')
-                    if src.starts_with("$r(") {
-                        src.clone()
+        // Look up widget in the new widget registry
+        if let Some(widget) = self.widget_registry.get(tag) {
+            // Get the ArkTS backend mapping
+            if let Some(ark_mapping) = widget.backend("ark") {
+                let component_name = &ark_mapping.component;
+
+                // Determine if this component has content (text argument)
+                // Components with primary_prop = "text" have content
+                let has_content = widget.primary_prop.as_ref().map(|p| p == "text").unwrap_or(false);
+
+                // Get content argument for components:
+                // - Components with content (like Button, Text) use the text prop
+                // - Image component uses the src prop as constructor argument
+                let content_arg = if has_content {
+                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
+                        format!("'{}'", text)
                     } else {
-                        format!("'{}'", src)
+                        String::new()
+                    }
+                } else if tag == "image" {
+                    // Image component takes src as argument
+                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(src))) = props.get("src") {
+                        // Check if it's a resource reference like $r('app.media.xxx')
+                        if src.starts_with("$r(") {
+                            src.clone()
+                        } else {
+                            format!("'{}'", src)
+                        }
+                    } else {
+                        String::new()
                     }
                 } else {
                     String::new()
-                }
-            } else {
-                String::new()
-            };
+                };
 
-            // Component call with content argument
-            let component_call = if content_arg.is_empty() {
-                format!("{}()", component.name)
-            } else {
-                format!("{}({})", component.name, content_arg)
-            };
+                // Component call with content argument
+                let component_call = if content_arg.is_empty() {
+                    format!("{}()", component_name)
+                } else {
+                    format!("{}({})", component_name, content_arg)
+                };
 
-            // Generate modifiers (to be placed AFTER the component body)
-            let modifiers = self.generate_modifiers(props, events);
+                // Generate modifiers (to be placed AFTER the component body)
+                let modifiers = self.generate_modifiers(props, events);
 
-            // Start component call
-            lines.push(component_call);
+                // Start component call
+                lines.push(component_call);
 
-            // Children - body comes BEFORE modifiers
-            if component.has_children && !children.is_empty() {
-                lines.last_mut().unwrap().push_str(" {");
-                self.indent_level += 1;
+                // Children - body comes BEFORE modifiers
+                // Use has_children from widget spec
+                if widget.has_children && !children.is_empty() {
+                    lines.last_mut().unwrap().push_str(" {");
+                    self.indent_level += 1;
 
-                for child in children {
-                    let child_code = self.generate_node(child)?;
-                    for line in child_code.lines() {
-                        lines.push(format!("{}{}", self.indent(), line));
+                    for child in children {
+                        let child_code = self.generate_node(child)?;
+                        for line in child_code.lines() {
+                            lines.push(format!("{}{}", self.indent(), line));
+                        }
+                    }
+
+                    self.indent_level -= 1;
+                    // Close body, then add modifiers on same line
+                    let closing = format!("{}}}", self.indent());
+                    if modifiers.is_empty() {
+                        lines.push(closing);
+                    } else {
+                        lines.push(format!("{}{}", closing, modifiers));
+                    }
+                } else {
+                    // No children - add modifiers directly
+                    if !modifiers.is_empty() {
+                        lines.last_mut().unwrap().push_str(&modifiers);
                     }
                 }
-
-                self.indent_level -= 1;
-                // Close body, then add modifiers on same line
-                let closing = format!("{}}}", self.indent());
-                if modifiers.is_empty() {
-                    lines.push(closing);
-                } else {
-                    lines.push(format!("{}{}", closing, modifiers));
-                }
             } else {
-                // No children - add modifiers directly
-                if !modifiers.is_empty() {
-                    lines.last_mut().unwrap().push_str(&modifiers);
-                }
+                // No ArkTS mapping - emit as comment
+                lines.push(format!("/* No ArkTS mapping for: {} */", tag));
             }
         } else {
             // Unknown component - emit as comment
@@ -898,6 +917,24 @@ mod tests {
     fn test_generator_extension() {
         let gen = ArkGenerator::new();
         assert_eq!(gen.extension(), "ets");
+    }
+
+    #[test]
+    fn test_generator_uses_widget_registry() {
+        // The generator should have access to the widget registry
+        // and it should have default widgets registered
+        let gen = ArkGenerator::new();
+
+        // Test that the widget_registry has default widgets
+        let widget = gen.widget_registry.get("col");
+        assert!(widget.is_some(), "col widget should be registered");
+        assert_eq!(widget.unwrap().name, "Column");
+
+        // Test other default widgets
+        assert!(gen.widget_registry.get("row").is_some());
+        assert!(gen.widget_registry.get("text").is_some());
+        assert!(gen.widget_registry.get("button").is_some());
+        assert!(gen.widget_registry.get("image").is_some());
     }
 
     #[test]
