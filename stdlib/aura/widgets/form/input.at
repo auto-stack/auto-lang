@@ -5,16 +5,65 @@
 #[backend(jet, component = "OutlinedTextField", import = "androidx.compose.material3.OutlinedTextField")]
 #[backend(vue, component = "Input", import = "@/components/ui/input/Input")]
 
-/// Input component for text entry.
+/// Input component for text entry with various types.
+///
+/// # Props
+/// - value: Current input value
+/// - placeholder: Placeholder text
+/// - inputType: Input type ("text", "password", "email", "number", "search")
+/// - disabled: Whether input is disabled
+///
+/// # Events
+/// - onchange: Value change event (Msg.Change(value))
+/// - onfocus: Focus event (Msg.Focus)
+/// - onblur: Blur event (Msg.Blur)
+///
+/// # Example
+/// ```auto
+/// Input (value: .name, placeholder: "Enter name", onchange: .UpdateName) {}
+/// Input (inputType: "password", placeholder: "Password") {}
+/// ```
 widget Input {
-    msg Msg { Change(value: str) }
+    msg Msg {
+        Change(value: str)
+        Focus
+        Blur
+    }
 
     model {
         value str = ""
-        placeholder str = ""
-        type str = "text"
+        placeholder str = "Enter text..."
+        inputType str = "text"    // text, password, email, number, search
         disabled bool = false
+        focused bool = false
     }
 
-    view {}
+    computed {
+        inputClass => if .focused { "input focused" } else { "input" }
+    }
+
+    view {
+        input {
+            style: .inputClass
+            type: .inputType
+            value: .value
+            placeholder: .placeholder
+            disabled: .disabled
+            onchange: .Change
+            onfocus: .Focus
+            onblur: .Blur
+        }
+    }
+
+    on {
+        Change(value) => {
+            // Value updated by parent
+        }
+        Focus => {
+            focused = true
+        }
+        Blur => {
+            focused = false
+        }
+    }
 }

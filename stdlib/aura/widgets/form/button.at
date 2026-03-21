@@ -8,22 +8,45 @@
 /// Button component for user interactions.
 ///
 /// # Props
-/// - text: Button label
-/// - variant: "default" | "outline" | "ghost"
+/// - text: Button label text
+/// - variant: "default" | "outline" | "ghost" | "destructive"
 /// - size: "sm" | "md" | "lg"
 /// - disabled: Whether button is disabled
 ///
 /// # Events
-/// - onclick: Click event
+/// - onclick: Click event (Msg.Click)
+///
+/// # Example
+/// ```auto
+/// Button (text: "Submit", variant: "primary", onclick: .Submit) {}
+/// Button (text: "Cancel", variant: "outline") {}
+/// ```
 widget Button {
     msg Msg { Click }
 
     model {
         text str = ""
-        variant str = "default"
-        size str = "md"
+        variant str = "default"  // default, outline, ghost, destructive
+        size str = "md"          // sm, md, lg
         disabled bool = false
     }
 
-    view {}
+    computed {
+        classes => f"btn btn-${.variant} btn-${.size}"
+    }
+
+    view {
+        button {
+            style: .classes
+            text: .text
+            onclick: .Click
+            disabled: .disabled
+        }
+    }
+
+    on {
+        Click => {
+            // Emit click event (handled by parent)
+        }
+    }
 }
