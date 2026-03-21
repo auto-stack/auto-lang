@@ -352,4 +352,28 @@ mod tests {
             assert_eq!(ark.component, "Column", "{} should map to Column", tag);
         }
     }
+
+    #[test]
+    fn test_all_layout_widgets() {
+        let registry = WidgetRegistry::with_defaults();
+        for tag in ["col", "row", "stack", "scroll"] {
+            assert!(registry.contains(tag), "Missing layout widget: {}", tag);
+        }
+    }
+
+    #[test]
+    fn test_all_form_widgets() {
+        let registry = WidgetRegistry::with_defaults();
+        for tag in ["button", "input"] {
+            assert!(registry.contains(tag), "Missing form widget: {}", tag);
+        }
+    }
+
+    #[test]
+    fn test_case_insensitive_lookup() {
+        let registry = WidgetRegistry::with_defaults();
+        assert!(registry.get("BUTTON").is_some());
+        assert!(registry.get("Button").is_some());
+        assert!(registry.get("button").is_some());
+    }
 }
