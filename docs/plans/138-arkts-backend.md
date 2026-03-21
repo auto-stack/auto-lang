@@ -1838,3 +1838,86 @@ struct Index {
 - [x] Child pages wrapped in `NavDestination()` component
 - [x] IndexPage with navigation links has `@Consume('pathStack')` for pathStack access
 - [x] Outlet replaced with `IndexPage()` directly (ArkTS has no default route concept)
+
+---
+
+## Task 10: Tailwind CSS Support (Phase 1)
+
+**Goal**: Integrate shared `TailwindParser` into ArkTS generator for tailwind-to-ArkTS modifier transpilation.
+
+### ArkTS API Reference (from DevEco Studio SDK)
+
+| Tailwind | ArkTS Method | Signature |
+|----------|--------------|-----------|
+| `w-*`, `h-*` | `.width()`, `.height()` | `(value: Length)` |
+| `p-*`, `px-*`, `py-*` | `.padding()` | `(value: Padding \| Length)` |
+| `m-*`, `mx-*`, `my-*` | `.margin()` | `(value: Margin \| Length)` |
+| `text-*` (size) | `.fontSize()` | `(value: number \| string)` |
+| `font-*` (weight) | `.fontWeight()` | `(value: FontWeight)` |
+| `text-center/left/right` | `.textAlign()` | `(value: TextAlign)` |
+| `text-*` (color) | `.fontColor()` | `(value: ResourceColor)` |
+| `bg-*` | `.backgroundColor()` | `(value: ResourceColor)` |
+| `rounded-*` | `.borderRadius()` | `(value: Length)` |
+
+### Implementation Steps
+
+**Step 1**: Create `ArkModifierDsl` struct in `ark/modifier.rs`
+
+```rust
+use crate::ui_gen::shared::tailwind::{TailwindParser, ComputedStyle, Dimension};
+
+pub struct ArkModifierDsl {
+    parser: TailwindParser,
+}
+
+impl ArkModifierDsl {
+    pub fn new() -> Self {
+        Self { parser: TailwindParser::new() }
+    }
+
+    pub fn convert_class(&self, class: &str) -> Vec<String> {
+        let style = self.parser.parse(class);
+        self.style_to_modifiers(&style)
+    }
+}
+```
+
+**Step 2**: Implement conversion methods
+
+- `dimension_to_arkts()` - Convert Dimension to ArkTS value
+- `gap_to_modifier()` - gap-* → `.space()`
+- `padding_to_modifiers()` - p-* → `.padding()`
+- `font_size_to_modifier()` - text-* → `.fontSize()`
+- `font_weight_to_modifier()` - font-* → `.fontWeight()`
+- `text_align_to_modifier()` - text-center → `.textAlign()`
+- `border_radius_to_modifier()` - rounded-* → `.borderRadius()`
+- `color_to_modifier()` - bg-*/text-* → `.backgroundColor()`/`.fontColor()`
+
+**Step 3**: Update `generator.rs` to use `ArkModifierDsl`
+
+Process `class` prop in `generate_modifiers()`:
+
+```rust
+if let Some(AuraPropValue::Expr(AuraExpr::Literal(class_str))) = props.get("class") {
+    let class_modifiers = self.modifier_dsl.convert_class(class_str);
+    modifiers.extend(class_modifiers);
+}
+```
+
+**Step 4**: Add unit tests
+
+**Step 5**: Add tailwind classes to unified-demo pages
+
+### Tailwind Classes to Support
+
+- Layout: `flex`, `flex-col`, `flex-row`, `gap-*`
+- Spacing: `p-*`, `px-*`, `py-*`, `pt-*`, `pb-*`, `pl-*`, `pr-*`
+- Typography: `text-*` (sizes), `font-*` (weights), `text-center/left/right`
+- Colors: `bg-*`, `text-*`
+- Border: `rounded-*`
+
+### Verification
+
+- [ ] `cargo test -p auto-lang ark::modifier` passes
+- [ ] `auto gen` generates proper modifiers
+- [ ] DevEco Studio compiles and runs
