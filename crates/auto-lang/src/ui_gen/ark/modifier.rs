@@ -38,7 +38,21 @@ impl ArkModifierDsl {
     /// Convert a Tailwind class string to ArkTS modifiers
     pub fn convert_class(&self, class: &str) -> Vec<String> {
         let style = self.parser.parse(class);
-        self.style_to_modifiers(&style)
+        let mut modifiers = self.style_to_modifiers(&style);
+
+        // Handle component-specific classes that aren't Tailwind
+        // Swiper modifiers
+        if class.contains("auto-play") || class.contains("autoplay") {
+            modifiers.push(".autoPlay(true)".to_string());
+        }
+        if class.contains("loop") && !class.contains("animation-loop") {
+            modifiers.push(".loop(true)".to_string());
+        }
+        if class.contains("indicator") && !class.contains("no-indicator") {
+            modifiers.push(".indicator(true)".to_string());
+        }
+
+        modifiers
     }
 
     /// Convert a ComputedStyle to ArkTS modifiers
@@ -637,5 +651,72 @@ mod tests {
 
         let result = dsl.layout_weight_to_modifier(0);
         assert_eq!(result, ".layoutWeight(0)");
+    }
+
+    // ========================================================================
+    // Swiper Modifier Tests (Task 8 - QuickStart Sprint A)
+    // ========================================================================
+
+    #[test]
+    fn test_swiper_auto_play_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        // With hyphen
+        let mods = dsl.convert_class("auto-play");
+        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true) for 'auto-play'");
+
+        // Without hyphen
+        let mods = dsl.convert_class("autoplay");
+        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true) for 'autoplay'");
+    }
+
+    #[test]
+    fn test_swiper_loop_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        let mods = dsl.convert_class("loop");
+        assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true) for 'loop'");
+    }
+
+    #[test]
+    fn test_swiper_indicator_modifier() {
+        let dsl = ArkModifierDsl::new();
+
+        let mods = dsl.convert_class("indicator");
+        assert!(mods.iter().any(|m| m == ".indicator(true)"), "Expected .indicator(true) for 'indicator'");
+    }
+
+    #[test]
+    fn test_swiper_combined_modifiers() {
+        let dsl = ArkModifierDsl::new();
+
+        let mods = dsl.convert_class("auto-play loop");
+        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true)");
+        assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true)");
+
+        // With additional Tailwind classes
+        let mods = dsl.convert_class("auto-play loop w-full h-200");
+        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true)");
+        assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true)");
+        assert!(mods.iter().any(|m| m.contains(".width")), "Expected width modifier");
+        assert!(mods.iter().any(|m| m.contains(".height")), "Expected height modifier");
+    }
+
+    #[test]
+    fn test_swiper_no_indicator_excluded() {
+        let dsl = ArkModifierDsl::new();
+
+        // "no-indicator" should NOT add .indicator(true)
+        let mods = dsl.convert_class("no-indicator");
+        assert!(!mods.iter().any(|m| m.contains("indicator")), "Should not have indicator modifier for 'no-indicator'");
+    }
+
+    #[test]
+    fn test_swiper_animation_loop_not_confused() {
+        let dsl = ArkModifierDsl::new();
+
+        // "animation-loop" should NOT add .loop(true) for Swiper
+        let mods = dsl.convert_class("animation-loop");
+        assert!(!mods.iter().any(|m| m == ".loop(true)"), "animation-loop should not add Swiper .loop(true)");
     }
 }
