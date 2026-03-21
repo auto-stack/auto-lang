@@ -103,8 +103,9 @@ impl ArkProject {
         // Supports multiple directory structures:
         // 1. source/front/ (standard)
         // 2. front/ (alternative)
-        // 3. pages/ directly in root (quickstart tutorials)
+        // 3. pages/ or widgets/ directly in root (quickstart tutorials)
         // 4. aura/ subdirectory (alternative quickstart)
+        // 5. app.at directly in root (simple single-file projects)
         let front_dir = if root_dir.join("source").join("front").exists() {
             root_dir.join("source").join("front")
         } else if root_dir.join("front").exists() {
@@ -114,6 +115,9 @@ impl ArkProject {
             root_dir.to_path_buf()
         } else if root_dir.join("aura").exists() {
             root_dir.join("aura")
+        } else if root_dir.join("app.at").exists() {
+            // Simple single-file project: app.at directly in root
+            root_dir.to_path_buf()
         } else {
             root_dir.join("source").join("front")
         };
