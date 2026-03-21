@@ -648,8 +648,13 @@ impl Automan {
                     .map_err(|e| format!("Failed to launch DevEco Studio: {}", e))?;
             }
         } else {
-            // Fallback: open with system default handler
-            println!("DevEco Studio not found in default locations.");
+            // DevEco Studio not found in PATH
+            println!();
+            println!("{}", "DevEco Studio not found in PATH.".bright_yellow());
+            println!();
+            println!("Please add DevEco Studio's bin directory to your PATH environment variable:");
+            println!("  Example: set PATH=%PATH%;D:\\Huawei\\DevEco Studio\\bin");
+            println!();
             println!("Opening project folder with system default...");
 
             #[cfg(target_os = "windows")]
@@ -697,50 +702,44 @@ impl Automan {
     }
 
     /// Find DevEco Studio installation path
+    /// Uses PATH lookup - user must have DevEco Studio's bin directory in PATH
     fn find_deveco_studio(&self) -> Option<String> {
         #[cfg(target_os = "windows")]
         {
-            // Common DevEco Studio installation paths on Windows
-            let candidates = vec![
-                // Huawei default installation
-                "D:\\Huawei\\DevEco Studio\\bin\\devecostudio64.exe".to_string(),
-                // Custom installations
-                "D:\\soft\\DevEco Studio\\bin\\deveco.exe".to_string(),
-                // User-specific installation
-                format!(
-                    "{}\\AppData\\Local\\Programs\\DevEco Studio\\bin\\deveco.exe",
-                    std::env::var("USERPROFILE").unwrap_or_default()
-                ),
-                // Program Files
-                "C:\\Program Files\\DevEco Studio\\bin\\deveco.exe".to_string(),
-                "C:\\Program Files (x86)\\DevEco Studio\\bin\\deveco.exe".to_string(),
-                // Check PATH for deveco.exe
-                "deveco.exe".to_string(),
-            ];
-
-            for path in candidates {
-                if std::path::Path::new(&path).exists() || path == "deveco.exe" {
-                    // For "deveco.exe", check if it's in PATH
-                    if path == "deveco.exe" {
-                        if std::process::Command::new(&path)
-                            .arg("--version")
-                            .output()
-                            .is_ok()
-                        {
-                            return Some(path);
-                        }
-                    } else {
-                        return Some(path);
-                    }
+            // Try to find devecostudio64.exe in PATH
+            let exe_names = vec!["devecostudio64.exe", "deveco.exe"];
+            for exe in exe_names {
+                if std::process::Command::new(exe)
+                    .arg("--version")
+                    .output()
+                    .is_ok()
+                {
+                    return Some(exe.to_string());
                 }
             }
         }
 
         #[cfg(target_os = "macos")]
         {
-            let app_path = "/Applications/DevEco Studio.app";
-            if std::path::Path::new(app_path).exists() {
-                return Some(app_path.to_string());
+            // Check common installation locations
+            let candidates = vec![
+                "/Applications/DevEco Studio.app",
+                "/Applications/DevEco Studio.app/Contents/MacOS/deveco",
+            ];
+
+            for path in candidates {
+                if std::path::Path::new(path).exists() {
+                    return Some(path.to_string());
+                }
+            }
+
+            // Also try PATH
+            if std::process::Command::new("deveco")
+                .arg("--version")
+                .output()
+                .is_ok()
+            {
+                return Some("deveco".to_string());
             }
         }
 
@@ -750,13 +749,21 @@ impl Automan {
             let candidates = vec![
                 "/snap/bin/deveco-studio",
                 "/usr/local/deveco-studio/bin/deveco.sh",
-                "deveco-studio", // In PATH
             ];
 
             for path in candidates {
-                if std::path::Path::new(path).exists() || path == "deveco-studio" {
+                if std::path::Path::new(path).exists() {
                     return Some(path.to_string());
                 }
+            }
+
+            // Also try PATH
+            if std::process::Command::new("deveco-studio")
+                .arg("--version")
+                .output()
+                .is_ok()
+            {
+                return Some("deveco-studio".to_string());
             }
         }
 
