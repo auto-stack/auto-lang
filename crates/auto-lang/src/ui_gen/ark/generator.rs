@@ -182,7 +182,11 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
-        // @Entry only for App widget (has routes), @Component for child pages
+        // @Preview for non-entry components (helpful for DevEco Studio preview)
+        // @Entry only for App widget (has routes), @Component for all
+        if !has_routes {
+            lines.push("@Preview".to_string());
+        }
         if has_routes {
             lines.push("@Entry".to_string());
         }
