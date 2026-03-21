@@ -78,6 +78,12 @@ impl ArkComponentRegistry {
             has_content: false,
         });
 
+        self.register("swiper", ArkComponent {
+            name: "Swiper".to_string(),
+            has_children: true,
+            has_content: false,
+        });
+
         self.register("list", ArkComponent {
             name: "List".to_string(),
             has_children: true,
