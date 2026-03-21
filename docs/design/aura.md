@@ -173,8 +173,205 @@ AURA 生成后，根据 `pac.at` 中的 `backend` 配置，分发给不同的转
 
 ---
 
-## 6. 架构收益总结
+## 6. 简化语法层 (Simplified Syntax Layer)
+
+为了提升开发体验，AURA 在表层语法层提供了一系列语法糖，让开发者可以用更简洁的方式表达常见的 UI 模式。这些简化在解析阶段被转换为标准的 AURA 结构。
+
+### 6.1 核心简化原则
+
+**内容优先于样式**：子元素和内容应该出现在样式属性之前，提高代码可读性。
+
+```auto
+// ✅ 推荐：内容在前，样式在后
+col {
+    text "Hello" {
+        class: "text-xl"
+    }
+    class: "p-4 bg-white"
+}
+
+// ❌ 不推荐：样式混杂在参数中
+col (class: "p-4 bg-white") {
+    text (class: "text-xl", text: "Hello") {}
+}
+```
+
+### 6.2 center 组件 (居中容器语法糖)
+
+`center` 是 `col` 的语法糖，自动添加居中相关的 Tailwind 类。
+
+**语法**:
+```auto
+center {
+    // children
+    class: "optional-extra-classes"  // 可选，会追加到默认类
+}
+```
+
+**转换规则**:
+```auto
+// 输入
+center {
+    text "Hello"
+    class: "bg-white"
+}
+
+// 转换为
+col {
+    text "Hello"
+    class: "w-full h-full justify-center items-center bg-white"
+}
+```
+
+**默认类**:
+- `w-full` - 宽度100%
+- `h-full` - 高度100%
+- `justify-center` - 垂直居中
+- `items-center` - 水平居中
+
+**后端映射**:
+| 后端 | 生成代码 |
+|------|----------|
+| ArkTS | `Column().width('100%').height('100%').alignItems(HorizontalAlign.Center).justifyContent(FlexAlign.Center)` |
+| Jetpack Compose | `Column(modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center))` |
+| React | `<div className="w-full h-full flex justify-center items-center">` |
+
+### 6.3 text 主属性简写 (Primary Prop Shorthand)
+
+`text` 组件的 `text` 属性是主属性，可以直接使用字符串字面量。
+
+**语法**:
+```auto
+text "content" { class: "..." }
+```
+
+**转换规则**:
+```auto
+// 输入
+text "Hello, World!" {
+    class: "text-2xl font-bold"
+}
+
+// 等价于
+text (text: "Hello, World!") {
+    class: "text-2xl font-bold"
+}
+```
+
+**适用组件**:
+以下组件的主属性都是 `text`，支持相同的简写语法：
+
+| 组件 | 主属性 | 示例 |
+|------|--------|------|
+| `text` | text | `text "Hello"` |
+| `h1`-`h6` | text | `h1 "Title"` |
+| `p` | text | `p "Paragraph"` |
+| `button` | text | `button "Click me"` |
+| `label` | text | `label "Name:"` |
+| `a` / `link` | text | `a "Learn more"` |
+
+**注意事项**:
+- 主属性简写仅适用于**字符串字面量**
+- 动态绑定仍需使用完整语法：`text (text: .message)`
+- 主属性简写后仍可添加 `{ class: ... }` 块
+
+### 6.4 class 属性后置 (Trailing Class Syntax)
+
+样式属性（尤其是 `class`）可以放在元素体中的子元素之后。
+
+**语法**:
+```auto
+element {
+    child1
+    child2
+    class: "tailwind-classes"
+    onclick: .Handler  // 事件也可以后置
+}
+```
+
+**解析规则**:
+1. 解析元素标签
+2. 解析参数列表 `(props)` 如果存在
+3. 解析 `{ }` 体：
+   - 如果看起来像 `key: value`（标识符后跟冒号），解析为属性/事件
+   - 否则解析为子元素
+4. 属性和子元素可以混合，但建议子元素在前
+
+**示例**:
+```auto
+// 完整示例
+col {
+    text "Welcome" {
+        class: "text-2xl font-bold"
+    }
+    text "Subtitle" {
+        class: "text-gray-600"
+    }
+    class: "p-4 bg-white rounded-lg"
+}
+```
+
+### 6.5 常用组件简化模式
+
+#### Hello World 模式
+```auto
+widget App {
+    view {
+        center {
+            text "Hello, World!" {
+                class: "text-2xl font-bold"
+            }
+            class: "bg-white"
+        }
+    }
+}
+```
+
+#### 列表项模式
+```auto
+row {
+    image (src: .avatar, class: "w-12 h-12 rounded-full") {}
+    col {
+        text .name {
+            class: "font-medium"
+        }
+        text .email {
+            class: "text-sm text-gray-500"
+        }
+    }
+    class: "p-3 items-center"
+}
+```
+
+#### 卡片模式
+```auto
+col {
+    image (src: .cover, class: "w-full h-32 object-cover") {}
+    col {
+        h3 .title {}
+        p .description {
+            class: "text-gray-600"
+        }
+    }
+    class: "bg-white rounded-xl overflow-hidden shadow-md"
+}
+```
+
+### 6.6 语法糖对照表
+
+| 简化语法 | 标准语法 | 说明 |
+|----------|----------|------|
+| `center { }` | `col (class: "w-full h-full justify-center items-center") { }` | 居中容器 |
+| `text "content"` | `text (text: "content")` | 主属性简写 |
+| `button "Label"` | `button (text: "Label")` | 主属性简写 |
+| `h1 "Title"` | `h1 (text: "Title")` | 主属性简写 |
+| `{ child class: "..." }` | `(class: "...") { child }` | 样式后置 |
+
+---
+
+## 7. 架构收益总结
 
 1. **无状态视图的纯粹性**：AURA 的 `view_tree` 绝对干净，不包含任何业务逻辑，这为未来的可视化编辑器（Visual Editor）双向同步铺平了道路。
 2. **极低的转译器开发成本**：由于复杂的类型推导、作用域解析和宏展开已经在前端生成 AURA 时完成，新增一个目标平台（例如 Flutter/Dart 后端）只需编写一个几百行的 AURA 遍历生成器即可。
 3. **多端性能极致**：AOT（提前编译）路线生成的是目标平台最原生、最符合 Best Practice 的代码，完全没有类似跨端框架的巨大运行时损耗。
+4. **简化语法的渐进式采用**：开发者可以根据需要选择简化语法或完整语法，不会影响最终生成的代码质量。
