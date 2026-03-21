@@ -29,6 +29,7 @@ impl WidgetRegistry {
     /// Register default widget specifications
     fn register_defaults(&mut self) {
         self.register_layout_widgets();
+        self.register_form_widgets();
         // Other categories will be added in later tasks
     }
 
@@ -118,6 +119,55 @@ impl WidgetRegistry {
         self.register(scroll);
     }
 
+    fn register_form_widgets(&mut self) {
+        // Button
+        let mut button = WidgetSpec::new("Button", WidgetCategory::Form)
+            .with_alias("button");
+        button.primary_prop = Some("text".to_string());
+        button.backends.insert("ark".to_string(), BackendMapping {
+            component: "Button".to_string(),
+            import: Some("@kit.ArkUI".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        button.backends.insert("jet".to_string(), BackendMapping {
+            component: "Button".to_string(),
+            import: Some("androidx.compose.material3.Button".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        button.backends.insert("vue".to_string(), BackendMapping {
+            component: "Button".to_string(),
+            import: Some("@/components/ui/button/Button".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        self.register(button);
+
+        // Input (TextInput in Ark)
+        let mut input = WidgetSpec::new("Input", WidgetCategory::Form)
+            .with_alias("input");
+        input.backends.insert("ark".to_string(), BackendMapping {
+            component: "TextInput".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        input.backends.insert("jet".to_string(), BackendMapping {
+            component: "OutlinedTextField".to_string(),
+            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        input.backends.insert("vue".to_string(), BackendMapping {
+            component: "Input".to_string(),
+            import: Some("@/components/ui/input/Input".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        self.register(input);
+    }
+
     /// Register a widget
     pub fn register(&mut self, spec: WidgetSpec) {
         // Register under the canonical name
@@ -168,5 +218,17 @@ mod tests {
         assert_eq!(col.name, "Column");
         assert_eq!(col.category, WidgetCategory::Layout);
         assert!(col.has_children);
+    }
+
+    #[test]
+    fn test_default_widgets_button() {
+        let registry = WidgetRegistry::with_defaults();
+        let button = registry.get("button").unwrap();
+        assert_eq!(button.name, "Button");
+        assert_eq!(button.category, WidgetCategory::Form);
+
+        let ark_mapping = button.backend("ark").unwrap();
+        assert_eq!(ark_mapping.component, "Button");
+        assert_eq!(ark_mapping.import, Some("@kit.ArkUI".to_string()));
     }
 }
