@@ -30,7 +30,9 @@ impl WidgetRegistry {
     fn register_defaults(&mut self) {
         self.register_layout_widgets();
         self.register_form_widgets();
-        // Other categories will be added in later tasks
+        self.register_display_widgets();
+        self.register_navigation_widgets();
+        self.register_semantic_widgets();
     }
 
     fn register_layout_widgets(&mut self) {
@@ -168,6 +170,97 @@ impl WidgetRegistry {
         self.register(input);
     }
 
+    fn register_display_widgets(&mut self) {
+        // Text
+        let mut text = WidgetSpec::new("Text", WidgetCategory::Display)
+            .with_alias("text");
+        text.primary_prop = Some("text".to_string());
+        text.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        text.backends.insert("jet".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: Some("androidx.compose.material3.Text".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        text.backends.insert("vue".to_string(), BackendMapping {
+            component: "span".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        self.register(text);
+
+        // Image
+        let mut image = WidgetSpec::new("Image", WidgetCategory::Display)
+            .with_alias("image");
+        image.backends.insert("ark".to_string(), BackendMapping {
+            component: "Image".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        image.backends.insert("jet".to_string(), BackendMapping {
+            component: "Image".to_string(),
+            import: Some("androidx.compose.foundation.Image".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        image.backends.insert("vue".to_string(), BackendMapping {
+            component: "img".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        self.register(image);
+    }
+
+    fn register_navigation_widgets(&mut self) {
+        // Swiper
+        let mut swiper = WidgetSpec::new("Swiper", WidgetCategory::Navigation)
+            .with_alias("swiper");
+        swiper.has_children = true;
+        swiper.backends.insert("ark".to_string(), BackendMapping {
+            component: "Swiper".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        self.register(swiper);
+    }
+
+    fn register_semantic_widgets(&mut self) {
+        // Semantic HTML elements map to Column in Ark
+        for tag in ["header", "footer", "nav", "main", "aside", "article", "section"] {
+            let mut widget = WidgetSpec::new(tag, WidgetCategory::Semantic);
+            widget.has_children = true;
+            widget.backends.insert("ark".to_string(), BackendMapping {
+                component: "Column".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+            });
+            self.register(widget);
+        }
+
+        // Heading elements map to Text
+        for tag in ["h1", "h2", "h3", "h4", "h5", "h6"] {
+            let mut widget = WidgetSpec::new(tag, WidgetCategory::Display);
+            widget.primary_prop = Some("text".to_string());
+            widget.backends.insert("ark".to_string(), BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+            });
+            self.register(widget);
+        }
+    }
+
     /// Register a widget
     pub fn register(&mut self, spec: WidgetSpec) {
         // Register under the canonical name
@@ -230,5 +323,33 @@ mod tests {
         let ark_mapping = button.backend("ark").unwrap();
         assert_eq!(ark_mapping.component, "Button");
         assert_eq!(ark_mapping.import, Some("@kit.ArkUI".to_string()));
+    }
+
+    #[test]
+    fn test_default_widgets_text() {
+        let registry = WidgetRegistry::with_defaults();
+        let text = registry.get("text").unwrap();
+        assert_eq!(text.name, "Text");
+        assert_eq!(text.category, WidgetCategory::Display);
+    }
+
+    #[test]
+    fn test_default_widgets_image() {
+        let registry = WidgetRegistry::with_defaults();
+        let image = registry.get("image").unwrap();
+        assert_eq!(image.name, "Image");
+
+        let ark_mapping = image.backend("ark").unwrap();
+        assert_eq!(ark_mapping.component, "Image");
+    }
+
+    #[test]
+    fn test_semantic_widgets_map_to_column() {
+        let registry = WidgetRegistry::with_defaults();
+        for tag in ["header", "footer", "nav", "main"] {
+            let widget = registry.get(tag).unwrap();
+            let ark = widget.backend("ark").unwrap();
+            assert_eq!(ark.component, "Column", "{} should map to Column", tag);
+        }
     }
 }
