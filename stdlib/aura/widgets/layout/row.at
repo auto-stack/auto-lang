@@ -1,0 +1,17 @@
+// stdlib/aura/widgets/layout/row.at
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Row layout component.
+///
+/// Arranges children horizontally.
+widget Row {
+    model {
+        gap int = 0
+    }
+
+    view {}
+}

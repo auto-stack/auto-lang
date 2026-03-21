@@ -1,0 +1,8 @@
+// stdlib/aura/widgets/mod.at
+
+// Re-export all widgets for short imports
+pub use layout: Column, Row, Stack, Scroll, Grid
+pub use form: Button, Input, Switch, Checkbox, Slider
+pub use display: Text, Image, Icon, Progress, Divider
+pub use navigation: Swiper, Tab
+pub use semantic: Header, Footer, Main
