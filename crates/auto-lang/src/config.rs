@@ -163,7 +163,7 @@ impl BackendType {
             "tauri" => Some(Self::Tauri),
             "gpui" => Some(Self::Gpui),
             "iced" => Some(Self::Iced),
-            "arkts" => Some(Self::Arkts),
+            "arkts" | "ark" => Some(Self::Arkts),
             "cangjie" => Some(Self::Cangjie),
             "godot" => Some(Self::Godot),
             "rust" => Some(Self::Rust),

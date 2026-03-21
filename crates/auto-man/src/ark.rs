@@ -99,11 +99,21 @@ impl ArkProject {
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "MyApp".to_string());
 
-        // Determine front directory
+        // Determine front/source directory
+        // Supports multiple directory structures:
+        // 1. source/front/ (standard)
+        // 2. front/ (alternative)
+        // 3. pages/ directly in root (quickstart tutorials)
+        // 4. aura/ subdirectory (alternative quickstart)
         let front_dir = if root_dir.join("source").join("front").exists() {
             root_dir.join("source").join("front")
         } else if root_dir.join("front").exists() {
             root_dir.join("front")
+        } else if root_dir.join("pages").exists() || root_dir.join("widgets").exists() {
+            // Quickstart structure: pages/ and widgets/ directly in root
+            root_dir.to_path_buf()
+        } else if root_dir.join("aura").exists() {
+            root_dir.join("aura")
         } else {
             root_dir.join("source").join("front")
         };
