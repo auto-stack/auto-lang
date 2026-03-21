@@ -3,8 +3,11 @@
 /// Simple Hello World application
 widget App {
     view {
-        col (class: "w-full h-full justify-center items-center bg-white") {
-            text (class: "text-2xl font-bold", text: "Hello, World!") {}
+        col {
+            text (text: "Hello, World!") {
+                class: "text-2xl font-bold"
+            }
+            class: "w-full h-full justify-center items-center bg-white"
         }
     }
 }

@@ -8328,14 +8328,61 @@ impl<'a> Parser<'a> {
                     self.skip_empty_lines();
                 }
             } else {
-                // Parse children (view nodes)
+                // Parse children (view nodes) and trailing props/events
+                // Support syntax: col { child1 child2 class: "..." }
                 while !self.is_kind(TokenKind::RBrace) {
                     self.skip_empty_lines();
                     if self.is_kind(TokenKind::RBrace) {
                         break;
                     }
-                    let child = self.parse_view_node()?;
-                    children.push(child);
+
+                    // Check if this looks like a prop: identifier followed by colon
+                    // e.g., "class:" or "onclick:"
+                    let is_prop_like = if self.is_kind(TokenKind::Ident) {
+                        // Peek at next token to see if it's a colon
+                        if let Ok(next_token) = self.lexer.next() {
+                            let is_colon = next_token.kind == TokenKind::Colon;
+                            self.lexer.push_token(next_token);
+                            is_colon
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                    if is_prop_like {
+                        // Parse as prop/event
+                        let key = self.cur.text.to_string();
+                        self.next();
+                        self.expect(TokenKind::Colon)?;
+
+                        // Check if it's an event (onclick, etc.)
+                        if key.starts_with("on") {
+                            let (handler, params) = self.parse_event_handler()?;
+                            events.push(ViewEvent { name: key, handler, params });
+                        } else if key == "class" && self.is_kind(TokenKind::LBrace) {
+                            let binding = self.parse_class_binding()?;
+                            props.push(ViewProp {
+                                name: key,
+                                value: ViewPropValue::ClassBinding(binding),
+                            });
+                        } else {
+                            let value = self.parse_expr()?;
+                            props.push(ViewProp {
+                                name: key,
+                                value: ViewPropValue::Expr(value),
+                            });
+                        }
+
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next();
+                        }
+                    } else {
+                        // Parse as child view node
+                        let child = self.parse_view_node()?;
+                        children.push(child);
+                    }
                     self.skip_empty_lines();
                 }
             }
