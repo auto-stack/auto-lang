@@ -1,4 +1,4 @@
 // 03-Components - Custom components demo
 name: "Components"
-platform: "ark"
+backend: "ark"
 src: ["aura"]

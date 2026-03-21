@@ -49,6 +49,7 @@ examples/**/vue/*
 examples/**/jet/*
 examples/**/tauri/*
 examples/**/rust/
+examples/**/ark/
 
 # Vue project output at root
 /dist/

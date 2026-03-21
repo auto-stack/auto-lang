@@ -1,0 +1,14 @@
+// app.at - Main app entry point
+
+/// Main application widget with routing support
+widget App {
+    routes {
+        "/" => use index
+    }
+
+    view {
+        col (class: "h-full") {
+            outlet
+        }
+    }
+}
