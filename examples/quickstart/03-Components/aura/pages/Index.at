@@ -1,0 +1,22 @@
+// pages/Index.at - Components gallery
+
+use TutorialItem
+use EnablementItem
+
+/// Main page showcasing custom components
+widget Index {
+    view {
+        col (class: "w-full h-full bg-gray-100 p-4 gap-4") {
+            TutorialItem {
+                title: "Step1 快速入门介绍",
+                brief: "本篇教程实现了快速入门。",
+                imageSrc: "$r('app.media.enablement_pic1')"
+            }
+            EnablementItem {
+                title: "HarmonyOS第一课",
+                brief: "基于真实的开发场景。",
+                imageSrc: "$r('app.media.enablement_pic1')"
+            }
+        }
+    }
+}

@@ -1,0 +1,18 @@
+// widgets/EnablementItem.at - Card-style item
+
+/// Enablement card component with vertical layout
+widget EnablementItem {
+    props {
+        title: String
+        brief: String
+        imageSrc: String
+    }
+
+    view {
+        col (class: "w-40 bg-white rounded-2xl") {
+            image (class: "w-full h-24 object-cover rounded-t-2xl", src: imageSrc) {}
+            text (class: "text-sm px-3 mt-2", text: title) {}
+            text (class: "text-xs text-gray-600 px-3 mt-1", text: brief) {}
+        }
+    }
+}
