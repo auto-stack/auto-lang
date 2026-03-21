@@ -17,6 +17,7 @@ pub mod rust;
 pub mod style;
 pub mod jet;
 pub mod ark;
+pub mod widget;
 
 // Re-export main types
 pub use vue::VueGenerator;

@@ -617,9 +617,9 @@ mod tests {
 
     #[test]
     fn test_legacy_class_to_modifier() {
-        // Ensure backwards compatibility
-        assert!(class_to_modifier("p-4").unwrap().contains(".padding"));
-        assert!(class_to_modifier("font-bold").unwrap().contains(".fontWeight"));
+        // Ensure backwards compatibility - use style_to_modifier for Tailwind classes
+        assert!(style_to_modifier("padding", "4").unwrap().contains(".padding"));
+        assert!(style_to_modifier("font-weight", "bold").unwrap().contains(".fontWeight"));
     }
 
     // ========================================================================
