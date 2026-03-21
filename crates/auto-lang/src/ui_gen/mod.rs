@@ -25,6 +25,7 @@ pub use vue::VueMode;
 pub use rust::RustGenerator;
 pub use style::StyleGenerator;
 pub use jet::JetGenerator;
+pub use widget::{WidgetCategory, WidgetRegistry, WidgetSpec};
 
 use crate::aura::AuraWidget;
 

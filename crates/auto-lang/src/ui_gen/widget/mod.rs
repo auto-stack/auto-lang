@@ -31,6 +31,8 @@
 //! spec.backends.insert("jet".to_string(), mapping);
 //! ```
 
+mod registry;
 mod spec;
 
+pub use registry::WidgetRegistry;
 pub use spec::{BackendMapping, WidgetCategory, WidgetSpec};
