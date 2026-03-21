@@ -612,10 +612,41 @@ impl Automan {
 
         if let Some(deveco) = deveco_path {
             println!("DevEco Studio: {}", deveco);
-            std::process::Command::new(&deveco)
-                .arg(&project_dir)
-                .spawn()
-                .map_err(|e| format!("Failed to launch DevEco Studio: {}", e))?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let project_path = project_dir.to_string_lossy().replace("/", "\\");
+                let deveco_path_fixed = deveco.replace("/", "\\");
+
+                // Detect if we're in PowerShell or cmd.exe
+                let is_powershell = self.is_powershell();
+
+                if is_powershell {
+                    // Use PowerShell's Start-Process
+                    let ps_command = format!(
+                        "Start-Process '{}' -ArgumentList '{}'",
+                        deveco_path_fixed, project_path
+                    );
+                    std::process::Command::new("powershell.exe")
+                        .args(["-NoProfile", "-Command", &ps_command])
+                        .spawn()
+                        .map_err(|e| format!("Failed to launch DevEco Studio: {}", e))?;
+                } else {
+                    // Use cmd.exe approach or direct spawn
+                    std::process::Command::new(&deveco)
+                        .arg(&project_dir)
+                        .spawn()
+                        .map_err(|e| format!("Failed to launch DevEco Studio: {}", e))?;
+                }
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                std::process::Command::new(&deveco)
+                    .arg(&project_dir)
+                    .spawn()
+                    .map_err(|e| format!("Failed to launch DevEco Studio: {}", e))?;
+            }
         } else {
             // Fallback: open with system default handler
             println!("DevEco Studio not found in default locations.");
@@ -650,12 +681,29 @@ impl Automan {
         Ok(())
     }
 
+    /// Detect if current shell is PowerShell (vs cmd.exe or others)
+    #[cfg(target_os = "windows")]
+    fn is_powershell(&self) -> bool {
+        // Check common environment variables that indicate PowerShell
+        // PSModulePath is set in PowerShell but not in cmd.exe
+        std::env::var("PSModulePath").is_ok()
+            // Also check TERM_PROGRAM which might be set in some terminals
+            || std::env::var("TERM_PROGRAM").map(|v| v.contains("powershell") || v.contains("pwsh")).unwrap_or(false)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn is_powershell(&self) -> bool {
+        false
+    }
+
     /// Find DevEco Studio installation path
     fn find_deveco_studio(&self) -> Option<String> {
         #[cfg(target_os = "windows")]
         {
             // Common DevEco Studio installation paths on Windows
             let candidates = vec![
+                // Huawei default installation
+                "D:\\Huawei\\DevEco Studio\\bin\\devecostudio64.exe".to_string(),
                 // Custom installations
                 "D:\\soft\\DevEco Studio\\bin\\deveco.exe".to_string(),
                 // User-specific installation
