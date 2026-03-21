@@ -150,6 +150,8 @@ impl ArkGenerator {
 
         // Check if widget has routes
         let has_routes = widget.routes.is_some();
+        // Check if this is the App widget (entry point)
+        let is_app_widget = widget.name == "App";
         // Check if widget uses navigation (has links)
         let uses_navigation = Self::widget_uses_navigation(&widget.view_tree);
 
@@ -182,18 +184,17 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
-        // @Preview for non-entry components (helpful for DevEco Studio preview)
-        // @Entry only for App widget (has routes), @Component for all
-        if !has_routes {
-            lines.push("@Preview".to_string());
-        }
-        if has_routes {
+        // @Entry for App widget (with or without routes)
+        // @Preview for child pages (helpful for DevEco Studio preview)
+        if is_app_widget {
             lines.push("@Entry".to_string());
+        } else {
+            lines.push("@Preview".to_string());
         }
         lines.push("@Component".to_string());
 
         // Add export for child pages (non-App widgets)
-        let struct_keyword = if has_routes { "struct" } else { "export struct" };
+        let struct_keyword = if is_app_widget { "struct" } else { "export struct" };
         lines.push(format!("{} {} {{", struct_keyword, sanitized_name));
 
         self.indent_level = 1;
@@ -262,8 +263,9 @@ impl ArkGenerator {
         lines.push(format!("{}build() {{", self.indent()));
         self.indent_level = 2;
 
-        // For child pages (no routes), wrap content in NavDestination
-        if !has_routes {
+        // For child pages (not App widget), wrap content in NavDestination
+        // App widget without routes renders content directly
+        if !is_app_widget {
             lines.push(format!("{}NavDestination() {{", self.indent()));
             self.indent_level += 1;
         }
@@ -274,8 +276,8 @@ impl ArkGenerator {
             lines.push(format!("{}{}", self.indent(), line));
         }
 
-        // Close NavDestination for child pages
-        if !has_routes {
+        // Close NavDestination for child pages (not App widget)
+        if !is_app_widget {
             self.indent_level -= 1;
             lines.push(format!("{}}}", self.indent()));
         }
@@ -1109,6 +1111,59 @@ mod tests {
         assert!(
             code.contains("Navigation(this.pathStack)"),
             "App widget should have Navigation component with pathStack"
+        );
+    }
+
+    #[test]
+    fn test_app_widget_without_routes_is_entry_page() {
+        // Test that App widget without routes is a simple entry page (no Navigation)
+        let widget = AuraWidget {
+            name: "App".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "col".to_string(),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                children: vec![AuraNode::Text(AuraTextContent::Literal("Hello, World!".to_string()))],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None, // No routes - simple entry page
+        };
+
+        let mut gen = ArkGenerator::new();
+        let code = gen.generate_entry_component(&widget).unwrap();
+
+        // App widget without routes should STILL have @Entry (it's the entry point)
+        assert!(
+            code.contains("@Entry"),
+            "App widget without routes should have @Entry decorator (it's the entry page)"
+        );
+
+        // App widget without routes should NOT have @Provide (no navigation)
+        assert!(
+            !code.contains("@Provide('pathStack')"),
+            "App widget without routes should not have @Provide('pathStack')"
+        );
+
+        // App widget without routes should NOT have Navigation component
+        assert!(
+            !code.contains("Navigation("),
+            "App widget without routes should not have Navigation component"
+        );
+
+        // App widget without routes should NOT be wrapped in NavDestination
+        assert!(
+            !code.contains("NavDestination()"),
+            "App widget without routes should not be wrapped in NavDestination"
+        );
+
+        // App widget without routes should NOT be exported (it's the entry)
+        assert!(
+            !code.contains("export struct"),
+            "App widget should not be exported (it's the entry point)"
         );
     }
 
