@@ -1,4 +1,3 @@
 // 02-Banner - Swiper banner with auto-play
 name: "Banner"
 backend: "ark"
-src: ["aura"]

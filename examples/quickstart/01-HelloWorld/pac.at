@@ -1,4 +1,3 @@
 // 01-HelloWorld - Basic HarmonyOS app
 name: "HelloWorld"
 backend: "ark"
-src: ["aura"]
