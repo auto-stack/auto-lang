@@ -8389,12 +8389,51 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RBrace)?;
         }
 
-        Ok(ViewNode::Element {
-            tag,
-            props,
-            events,
-            children,
-        })
+        // Transform `center` to `col` with default centering classes
+        if tag == "center" {
+            let default_class = "w-full h-full justify-center items-center";
+
+            // Check if there was a user class before consuming props
+            let user_class_opt = props.iter()
+                .find(|p| p.name == "class")
+                .and_then(|p| {
+                    if let ViewPropValue::Expr(Expr::Str(s)) = &p.value {
+                        Some(s.to_string())
+                    } else {
+                        None
+                    }
+                });
+
+            // Build merged props
+            let mut merged_props: Vec<ViewProp> = props.into_iter()
+                .filter(|p| p.name != "class")
+                .collect();
+
+            let final_class = if let Some(user_class) = user_class_opt {
+                format!("{} {}", default_class, user_class.trim())
+            } else {
+                default_class.to_string()
+            };
+
+            merged_props.push(ViewProp {
+                name: "class".to_string(),
+                value: ViewPropValue::Expr(Expr::Str(AutoStr::from(&final_class))),
+            });
+
+            Ok(ViewNode::Element {
+                tag: "col".to_string(),
+                props: merged_props,
+                events,
+                children,
+            })
+        } else {
+            Ok(ViewNode::Element {
+                tag,
+                props,
+                events,
+                children,
+            })
+        }
     }
 
     /// Parse class binding: { completed: todo.done, editing: todo.editing }
