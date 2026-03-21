@@ -228,6 +228,32 @@ Located in `crates/auto-lang/test/a2r/`:
 - **Functions**: `fn add(a int, b int) int { a + b }`
 - **Imports**: `use math::add` or `use c <stdio.h>`
 
+### AURA Styling Property Location Rule
+
+In AURA widgets, styling properties (especially `class`) should be placed **after children** in the element body. This prioritizes content over styling for better readability.
+
+**Preferred syntax:**
+```auto
+col {
+    text (text: "Hello, World!") {
+        class: "text-2xl font-bold"
+    }
+    class: "w-full h-full justify-center items-center bg-white"
+}
+```
+
+**Why:**
+- Content is more important than styling - children come first
+- Long Tailwind classes don't clutter the argument list
+- Easier to see the structure at a glance
+
+**Alternative (still supported):**
+```auto
+col (class: "w-full h-full justify-center items-center bg-white") {
+    text (class: "text-2xl font-bold", text: "Hello, World!") {}
+}
+```
+
 ### Module Imports
 
 AutoLang supports a module path syntax for importing modules:
