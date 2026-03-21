@@ -1,0 +1,15 @@
+// stdlib/aura/widgets/display/text.at
+
+#[spec(category = Display, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "span")]
+
+/// Text display component.
+widget Text {
+    model {
+        text str = ""
+    }
+
+    view {}
+}

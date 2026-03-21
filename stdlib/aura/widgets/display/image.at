@@ -1,0 +1,16 @@
+// stdlib/aura/widgets/display/image.at
+
+#[spec(category = Display, primary_prop = "src")]
+#[backend(ark, component = "Image")]
+#[backend(jet, component = "Image", import = "androidx.compose.foundation.Image")]
+#[backend(vue, component = "img")]
+
+/// Image display component.
+widget Image {
+    model {
+        src str = ""
+        alt str = ""
+    }
+
+    view {}
+}
