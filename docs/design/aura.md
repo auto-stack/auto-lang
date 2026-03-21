@@ -369,7 +369,52 @@ col {
 
 ---
 
-## 7. 架构收益总结
+## 7. Widget Library
+
+AURA widgets are defined in `stdlib/aura/widgets/` with backend-specific
+annotations.
+
+### 7.1 Widget Definition
+
+```auto
+#[spec(category = Form, primary_prop = "text")]
+#[backend(ark, component = "Button", import = "@kit.ArkUI")]
+widget Button {
+    model {
+        text str = ""
+    }
+    view {}
+}
+```
+
+### 7.2 Importing Widgets
+
+Core widgets are auto-imported. Extended widgets require explicit import:
+
+```auto
+use aura.widgets: Swiper, Tab
+```
+
+### 7.3 Widget Categories
+
+| Category | Widgets |
+|----------|---------|
+| Layout | Column, Row, Stack, Scroll |
+| Form | Button, Input |
+| Display | Text, Image |
+| Navigation | Swiper |
+| Semantic | header, footer, nav, main |
+
+### 7.4 Backend Mappings
+
+Each widget can have mappings for multiple backends:
+- `ark`: HarmonyOS ArkTS components
+- `jet`: Android Jetpack Compose
+- `vue`: Vue 3 components
+
+---
+
+## 8. 架构收益总结
 
 1. **无状态视图的纯粹性**：AURA 的 `view_tree` 绝对干净，不包含任何业务逻辑，这为未来的可视化编辑器（Visual Editor）双向同步铺平了道路。
 2. **极低的转译器开发成本**：由于复杂的类型推导、作用域解析和宏展开已经在前端生成 AURA 时完成，新增一个目标平台（例如 Flutter/Dart 后端）只需编写一个几百行的 AURA 遍历生成器即可。
