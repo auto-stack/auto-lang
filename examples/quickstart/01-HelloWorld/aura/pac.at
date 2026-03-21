@@ -1,0 +1,4 @@
+// 01-HelloWorld - Basic HarmonyOS app
+name: "HelloWorld"
+platform: "ark"
+src: ["aura"]
