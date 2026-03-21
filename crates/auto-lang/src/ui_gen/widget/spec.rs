@@ -39,6 +39,8 @@ pub struct WidgetSpec {
     pub primary_prop: Option<String>,
     /// Whether widget supports children
     pub has_children: bool,
+    /// Alias tag names (e.g., "col" for "Column")
+    pub aliases: Vec<String>,
     /// Backend-specific mappings
     pub backends: HashMap<String, BackendMapping>,
 }
@@ -51,8 +53,15 @@ impl WidgetSpec {
             category,
             primary_prop: None,
             has_children: false,
+            aliases: Vec::new(),
             backends: HashMap::new(),
         }
+    }
+
+    /// Add an alias for this widget
+    pub fn with_alias(mut self, alias: &str) -> Self {
+        self.aliases.push(alias.to_lowercase());
+        self
     }
 
     /// Get backend mapping
@@ -72,6 +81,7 @@ mod tests {
             category: WidgetCategory::Form,
             primary_prop: Some("text".to_string()),
             has_children: false,
+            aliases: Vec::new(),
             backends: HashMap::new(),
         };
         assert_eq!(spec.name, "Button");
@@ -84,7 +94,16 @@ mod tests {
         assert_eq!(spec.category, WidgetCategory::Display);
         assert_eq!(spec.primary_prop, None);
         assert_eq!(spec.has_children, false);
+        assert!(spec.aliases.is_empty());
         assert!(spec.backends.is_empty());
+    }
+
+    #[test]
+    fn test_widget_spec_with_alias() {
+        let spec = WidgetSpec::new("Column", WidgetCategory::Layout)
+            .with_alias("col");
+        assert_eq!(spec.name, "Column");
+        assert_eq!(spec.aliases, vec!["col"]);
     }
 
     #[test]
