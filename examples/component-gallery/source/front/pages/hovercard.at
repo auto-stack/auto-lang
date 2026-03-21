@@ -22,7 +22,7 @@ widget HovercardPage {
                             }
                         }
                         hovercard-content {
-                            col (gap: "3", class: "w-80") {
+                            col (gap: "3", style: "w-80") {
                                 row (gap: "4") {
                                     avatar {
                                         avatar-image (src: "https://github.com/shadcn.png") {}

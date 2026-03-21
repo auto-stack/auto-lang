@@ -13,7 +13,7 @@ widget CommandPage {
 
             h2 "Simple"
             preview-card (id: "command-basic") {
-                command (class: "rounded-lg border shadow-md") {
+                command (style: "rounded-lg border shadow-md") {
                     command-input (placeholder: "Type a command or search...") {}
                     command-list {
                         command-empty "No results found."

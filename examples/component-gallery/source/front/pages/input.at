@@ -20,7 +20,7 @@ widget InputPage {
 
             h3 "File"
             preview-card (id: "input-file") {
-                col (gap: "1.5", class: "w-full max-w-sm") {
+                col (gap: "1.5", style: "w-full max-w-sm") {
                     label (text: "Picture", for: "picture") {}
                     input (id: "picture", type: "file") {}
                 }
@@ -33,7 +33,7 @@ widget InputPage {
 
             h3 "With Label"
             preview-card (id: "input-label") {
-                col (gap: "1.5", class: "w-full max-w-sm") {
+                col (gap: "1.5", style: "w-full max-w-sm") {
                     label (text: "Email", for: "email") {}
                     input (id: "email", placeholder: "Email", type: "email") {}
                 }
@@ -41,7 +41,7 @@ widget InputPage {
 
             h3 "With Button"
             preview-card (id: "input-button") {
-                row (gap: "2", class: "w-full max-w-sm items-center") {
+                row (gap: "2", style: "w-full max-w-sm items-center") {
                     input (placeholder: "Email", type: "email") {}
                     button (text: "Subscribe", type: "submit") {}
                 }

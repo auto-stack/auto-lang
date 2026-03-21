@@ -25,7 +25,7 @@ widget Badge {
     }
 
     view {
-        span { class: .badgeClass, text: .text }
+        span { style: .badgeClass, text: .text }
     }
 }
 

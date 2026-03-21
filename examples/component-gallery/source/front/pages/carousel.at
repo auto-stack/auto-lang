@@ -14,26 +14,26 @@ widget CarouselPage {
             // Basic Example
             h2 "Basic"
             preview-card (id: "carousel-basic") {
-                carousel (class: "w-full max-w-xs") {
+                carousel (style: "w-full max-w-xs") {
                     carousel-content {
                         carousel-item {
                             card {
-                                card-content (class: "flex aspect-square items-center justify-center p-6") {
-                                    span (text: "1", class: "text-4xl font-semibold") {}
+                                card-content (style: "flex aspect-square items-center justify-center p-6") {
+                                    span (text: "1", style: "text-4xl font-semibold") {}
                                 }
                             }
                         }
                         carousel-item {
                             card {
-                                card-content (class: "flex aspect-square items-center justify-center p-6") {
-                                    span (text: "2", class: "text-4xl font-semibold") {}
+                                card-content (style: "flex aspect-square items-center justify-center p-6") {
+                                    span (text: "2", style: "text-4xl font-semibold") {}
                                 }
                             }
                         }
                         carousel-item {
                             card {
-                                card-content (class: "flex aspect-square items-center justify-center p-6") {
-                                    span (text: "3", class: "text-4xl font-semibold") {}
+                                card-content (style: "flex aspect-square items-center justify-center p-6") {
+                                    span (text: "3", style: "text-4xl font-semibold") {}
                                 }
                             }
                         }
@@ -45,49 +45,49 @@ widget CarouselPage {
 
             // Sizes Example
             h2 "Sizes"
-            text (text: "Use the basis utility class on CarouselItem to set the size.", class: "text-muted-foreground") {}
+            text (text: "Use the basis utility class on CarouselItem to set the size.", style: "text-muted-foreground") {}
             preview-card (id: "carousel-sizes") {
-                carousel (class: "w-full max-w-sm") {
+                carousel (style: "w-full max-w-sm") {
                     carousel-content {
-                        carousel-item (class: "basis-1/2 md:basis-1/3") {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "1", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "1", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/2 md:basis-1/3") {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "2", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "2", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/2 md:basis-1/3") {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "3", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "3", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/2 md:basis-1/3") {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "4", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "4", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/2 md:basis-1/3") {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "5", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "5", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/2 md:basis-1/3") {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "6", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "6", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
@@ -99,35 +99,35 @@ widget CarouselPage {
 
             // Spacing Example
             h2 "Spacing"
-            text (text: "Use pl-4 on CarouselItem and -ml-4 on CarouselContent for spacing.", class: "text-muted-foreground") {}
+            text (text: "Use pl-4 on CarouselItem and -ml-4 on CarouselContent for spacing.", style: "text-muted-foreground") {}
             preview-card (id: "carousel-spacing") {
-                carousel (class: "w-full max-w-sm") {
-                    carousel-content (class: "-ml-4") {
-                        carousel-item (class: "pl-4 basis-1/2") {
+                carousel (style: "w-full max-w-sm") {
+                    carousel-content (style: "-ml-4") {
+                        carousel-item (style: "pl-4 basis-1/2") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "1", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "1", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "pl-4 basis-1/2") {
+                        carousel-item (style: "pl-4 basis-1/2") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "2", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "2", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "pl-4 basis-1/2") {
+                        carousel-item (style: "pl-4 basis-1/2") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "3", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "3", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "pl-4 basis-1/2") {
+                        carousel-item (style: "pl-4 basis-1/2") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "4", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "4", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
@@ -139,36 +139,36 @@ widget CarouselPage {
 
             // Orientation Example
             h2 "Orientation"
-            text (text: "Use the orientation prop to set vertical or horizontal direction.", class: "text-muted-foreground") {}
+            text (text: "Use the orientation prop to set vertical or horizontal direction.", style: "text-muted-foreground") {}
             preview-card (id: "carousel-orientation") {
-                div (class: "py-12 flex justify-center") {
-                    carousel (orientation: "vertical", class: "w-full max-w-xs h-[200px]") {
-                        carousel-content (class: "-mt-1 h-[200px]") {
-                            carousel-item (class: "pt-1 md:basis-1/2") {
+                div (style: "py-12 flex justify-center") {
+                    carousel (orientation: "vertical", style: "w-full max-w-xs h-[200px]") {
+                        carousel-content (style: "-mt-1 h-[200px]") {
+                            carousel-item (style: "pt-1 md:basis-1/2") {
                                 card {
-                                    card-content (class: "flex items-center justify-center p-6") {
-                                        span (text: "1", class: "text-3xl font-semibold") {}
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "1", style: "text-3xl font-semibold") {}
                                     }
                                 }
                             }
-                            carousel-item (class: "pt-1 md:basis-1/2") {
+                            carousel-item (style: "pt-1 md:basis-1/2") {
                                 card {
-                                    card-content (class: "flex items-center justify-center p-6") {
-                                        span (text: "2", class: "text-3xl font-semibold") {}
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "2", style: "text-3xl font-semibold") {}
                                     }
                                 }
                             }
-                            carousel-item (class: "pt-1 md:basis-1/2") {
+                            carousel-item (style: "pt-1 md:basis-1/2") {
                                 card {
-                                    card-content (class: "flex items-center justify-center p-6") {
-                                        span (text: "3", class: "text-3xl font-semibold") {}
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "3", style: "text-3xl font-semibold") {}
                                     }
                                 }
                             }
-                            carousel-item (class: "pt-1 md:basis-1/2") {
+                            carousel-item (style: "pt-1 md:basis-1/2") {
                                 card {
-                                    card-content (class: "flex items-center justify-center p-6") {
-                                        span (text: "4", class: "text-3xl font-semibold") {}
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "4", style: "text-3xl font-semibold") {}
                                     }
                                 }
                             }
@@ -181,42 +181,42 @@ widget CarouselPage {
 
             // Options Example
             h2 "Options"
-            text (text: "Pass Embla options using the opts prop.", class: "text-muted-foreground") {}
+            text (text: "Pass Embla options using the opts prop.", style: "text-muted-foreground") {}
             preview-card (id: "carousel-options") {
-                carousel (align: "start", loop: "true", class: "w-full max-w-sm") {
+                carousel (align: "start", loop: "true", style: "w-full max-w-sm") {
                     carousel-content {
-                        carousel-item (class: "basis-1/3") {
+                        carousel-item (style: "basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "1", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "1", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/3") {
+                        carousel-item (style: "basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "2", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "2", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/3") {
+                        carousel-item (style: "basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "3", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "3", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/3") {
+                        carousel-item (style: "basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "4", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "4", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }
-                        carousel-item (class: "basis-1/3") {
+                        carousel-item (style: "basis-1/3") {
                             card {
-                                card-content (class: "flex items-center justify-center p-6") {
-                                    span (text: "5", class: "text-3xl font-semibold") {}
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "5", style: "text-3xl font-semibold") {}
                                 }
                             }
                         }

@@ -13,7 +13,7 @@ widget ScrollAreaPage {
 
             h2 "Vertical Scroll"
             preview-card (id: "scroll-vertical") {
-                scroll (class: "h-72 w-48 rounded-md border") {
+                scroll (style: "h-72 w-48 rounded-md border") {
                     col (gap: "2") {
                         text "Scroll Area"
                         separator {}

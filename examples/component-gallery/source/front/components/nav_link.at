@@ -27,7 +27,7 @@ widget NavLink {
 
     view {
         a {
-            class: .linkClass
+            style: .linkClass
             href: .href
             target: .target
             onclick: .Click
@@ -42,7 +42,7 @@ widget Breadcrumb {
     }
 
     view {
-        nav { class: "breadcrumb" }
+        nav { style: "breadcrumb" }
     }
 }
 
@@ -58,9 +58,9 @@ widget BreadcrumbItem {
 
     view {
         if .current {
-            span { class: "breadcrumb-item current", text: .text }
+            span { style: "breadcrumb-item current", text: .text }
         } else {
-            a { class: "breadcrumb-item", href: .href, text: .text }
+            a { style: "breadcrumb-item", href: .href, text: .text }
         }
     }
 }
@@ -84,7 +84,7 @@ widget Pagination {
     }
 
     view {
-        nav { class: "pagination" }
+        nav { style: "pagination" }
     }
 }
 

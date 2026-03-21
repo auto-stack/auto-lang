@@ -25,7 +25,7 @@ widget Drawer {
     }
 
     view {
-        div { class: "drawer" }
+        div { style: "drawer" }
     }
 }
 
@@ -49,14 +49,14 @@ widget DrawerContent {
     }
 
     view {
-        div { class: f"drawer-content ${.class}" }
+        div { style: f"drawer-content ${.class}" }
     }
 }
 
 /// Drawer header section
 widget DrawerHeader {
     view {
-        div { class: "flex flex-col space-y-2 text-center sm:text-left" }
+        div { style: "flex flex-col space-y-2 text-center sm:text-left" }
     }
 }
 
@@ -67,7 +67,7 @@ widget DrawerTitle {
     }
 
     view {
-        h2 { class: "text-lg font-semibold", text: .text }
+        h2 { style: "text-lg font-semibold", text: .text }
     }
 }
 
@@ -78,14 +78,14 @@ widget DrawerDescription {
     }
 
     view {
-        p { class: "text-sm text-muted-foreground", text: .text }
+        p { style: "text-sm text-muted-foreground", text: .text }
     }
 }
 
 /// Drawer footer section
 widget DrawerFooter {
     view {
-        div { class: "flex flex-col sm:flex-row sm:justify-end sm:space-x-2" }
+        div { style: "flex flex-col sm:flex-row sm:justify-end sm:space-x-2" }
     }
 }
 

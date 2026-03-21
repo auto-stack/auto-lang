@@ -33,11 +33,11 @@ widget SelectPage {
             h2 "Scrollable"
             preview-card (id: "select-scrollable") {
                 select {
-                    select-trigger (class: "w-[280px]") {
+                    select-trigger (style: "w-[280px]") {
                         select-value (placeholder: "Select a timezone") {}
                     }
                     select-content {
-                        scroll (class: "h-[200px]") {
+                        scroll (style: "h-[200px]") {
                             select-item (text: "Pacific Standard Time", value: "pst") {}
                             select-item (text: "Mountain Standard Time", value: "mst") {}
                             select-item (text: "Central Standard Time", value: "cst") {}

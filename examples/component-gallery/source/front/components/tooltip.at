@@ -28,7 +28,7 @@ widget Tooltip {
     }
 
     view {
-        div { class: "tooltip" }
+        div { style: "tooltip" }
     }
 
     on {
@@ -49,14 +49,14 @@ widget TooltipProvider {
     }
 
     view {
-        div { class: "tooltip-provider" }
+        div { style: "tooltip-provider" }
     }
 }
 
 /// Tooltip trigger element
 widget TooltipTrigger {
     view {
-        span { class: "tooltip-trigger" }
+        span { style: "tooltip-trigger" }
     }
 }
 
@@ -69,7 +69,7 @@ widget TooltipContent {
     }
 
     view {
-        div { class: f"tooltip-content ${.side} ${.class}", text: .text }
+        div { style: f"tooltip-content ${.side} ${.class}", text: .text }
     }
 }
 

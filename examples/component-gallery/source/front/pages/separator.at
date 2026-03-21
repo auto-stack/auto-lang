@@ -22,7 +22,7 @@ widget SeparatorPage {
 
             h2 "Vertical"
             preview-card (id: "separator-vertical") {
-                row (gap: "4", class: "h-8 items-center") {
+                row (gap: "4", style: "h-8 items-center") {
                     text "Left"
                     separator (orientation: "vertical") {}
                     text "Right"

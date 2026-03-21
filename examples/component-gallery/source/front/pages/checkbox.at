@@ -13,7 +13,7 @@ widget CheckboxPage {
 
             h2 "Simple"
             preview-card (id: "checkbox-basic") {
-                row (gap: "2", class: "items-center") {
+                row (gap: "2", style: "items-center") {
                     checkbox (id: "terms1") {}
                     label (text: "Accept terms and conditions", for: "terms1") {}
                 }
@@ -21,7 +21,7 @@ widget CheckboxPage {
 
             h2 "Disabled"
             preview-card (id: "checkbox-disabled") {
-                row (gap: "2", class: "items-center") {
+                row (gap: "2", style: "items-center") {
                     checkbox (id: "terms2", disabled: "true") {}
                     label (text: "Accept terms and conditions", for: "terms2") {}
                 }
@@ -29,7 +29,7 @@ widget CheckboxPage {
 
             h2 "Checked"
             preview-card (id: "checkbox-checked") {
-                row (gap: "2", class: "items-center") {
+                row (gap: "2", style: "items-center") {
                     checkbox (id: "terms3", checked: "true") {}
                     label (text: "Accept terms and conditions", for: "terms3") {}
                 }

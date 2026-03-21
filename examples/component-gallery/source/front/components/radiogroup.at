@@ -24,7 +24,7 @@ widget RadioGroup {
     }
 
     view {
-        div { class: "grid gap-2", role: "radiogroup" }
+        div { style: "grid gap-2", role: "radiogroup" }
     }
 }
 
@@ -39,10 +39,10 @@ widget RadioItem {
     }
 
     view {
-        div { class: "flex items-center space-x-2" } {
+        div { style: "flex items-center space-x-2" } {
             button {
                 type: "radio",
-                class: "aspect-square h-4 w-4 rounded-full border border-primary text-primary ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                style: "aspect-square h-4 w-4 rounded-full border border-primary text-primary ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
                 onclick: .Click,
                 disabled: .disabled
             }

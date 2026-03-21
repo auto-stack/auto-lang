@@ -23,7 +23,7 @@ widget Popover {
     }
 
     view {
-        div { class: "popover" }
+        div { style: "popover" }
     }
 }
 
@@ -48,7 +48,7 @@ widget PopoverContent {
     }
 
     view {
-        div { class: f"popover-content ${.class}" }
+        div { style: f"popover-content ${.class}" }
     }
 }
 
@@ -58,7 +58,7 @@ widget PopoverDemo {
         popover {
             popover-trigger | Open Popover
             popover-content {
-                col (class: "gap-4") {
+                col (style: "gap-4") {
                     h4 | Dimensions
                     text | Set the dimensions for the layer.
                     row (gap: "2") {

@@ -8,26 +8,26 @@ widget App {
     }
 
     view {
-        col (class: "min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-8") {
+        col (style: "min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-8") {
             // Header
-            col (class: "text-center mb-8") {
-                text (text: "Multi-Frontend Demo", class: "text-3xl font-bold text-gray-800") {}
-                text (text: "Same code, multiple platforms", class: "text-gray-600") {}
+            col (style: "text-center mb-8") {
+                text (text: "Multi-Frontend Demo", style: "text-3xl font-bold text-gray-800") {}
+                text (text: "Same code, multiple platforms", style: "text-gray-600") {}
             }
 
             // Card
-            card (class: "max-w-md mx-auto bg-white rounded-xl shadow-lg p-6") {
-                text (text: "{message}", class: "text-lg mb-4") {}
+            card (style: "max-w-md mx-auto bg-white rounded-xl shadow-lg p-6") {
+                text (text: "{message}", style: "text-lg mb-4") {}
 
                 // Counter
-                row (class: "flex items-center justify-center gap-4") {
-                    button (text: "-", class: "btn btn-error") {}
-                    text (text: "{count}", class: "text-2xl font-mono w-12 text-center") {}
-                    button (text: "+", class: "btn btn-success") {}
+                row (style: "flex items-center justify-center gap-4") {
+                    button (text: "-", style: "btn btn-error") {}
+                    text (text: "{count}", style: "text-2xl font-mono w-12 text-center") {}
+                    button (text: "+", style: "btn btn-success") {}
                 }
 
                 // Platform info (detected at runtime)
-                text (text: "Running on: web/desktop", class: "text-sm text-gray-500 mt-4") {}
+                text (text: "Running on: web/desktop", style: "text-sm text-gray-500 mt-4") {}
             }
         }
     }

@@ -26,7 +26,7 @@ widget Dialog {
     }
 
     view {
-        div { class: "dialog" }
+        div { style: "dialog" }
     }
 }
 
@@ -50,14 +50,14 @@ widget DialogContent {
     }
 
     view {
-        div { class: f"dialog-content ${.class}" }
+        div { style: f"dialog-content ${.class}" }
     }
 }
 
 /// Dialog header section
 widget DialogHeader {
     view {
-        div { class: "flex flex-col space-y-1.5 text-center sm:text-left" }
+        div { style: "flex flex-col space-y-1.5 text-center sm:text-left" }
     }
 }
 
@@ -68,7 +68,7 @@ widget DialogTitle {
     }
 
     view {
-        h2 { class: "text-lg font-semibold leading-none tracking-tight", text: .text }
+        h2 { style: "text-lg font-semibold leading-none tracking-tight", text: .text }
     }
 }
 
@@ -79,14 +79,14 @@ widget DialogDescription {
     }
 
     view {
-        p { class: "text-sm text-muted-foreground", text: .text }
+        p { style: "text-sm text-muted-foreground", text: .text }
     }
 }
 
 /// Dialog footer section
 widget DialogFooter {
     view {
-        div { class: "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" }
+        div { style: "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" }
     }
 }
 

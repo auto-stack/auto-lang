@@ -26,15 +26,15 @@ widget Calendar {
     }
 
     view {
-        div { class: "rounded-md border" } {
+        div { style: "rounded-md border" } {
             // Calendar header with navigation
-            div { class: "flex items-center justify-between p-4" } {
+            div { style: "flex items-center justify-between p-4" } {
                 button { text: "<", onclick: .PrevMonth }
                 text (text: f"${.month}/${.year}") {}
                 button { text: ">", onclick: .NextMonth }
             }
             // Calendar grid
-            div { class: "calendar-grid" }
+            div { style: "calendar-grid" }
         }
     }
 

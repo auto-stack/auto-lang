@@ -26,7 +26,7 @@ widget Toaster {
     }
 
     view {
-        div { class: .toasterClass }
+        div { style: .toasterClass }
     }
 }
 

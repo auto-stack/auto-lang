@@ -18,7 +18,7 @@ widget LabelPage {
 
             h2 "With Input"
             preview-card (id: "label-input") {
-                col (gap: "1.5", class: "w-64") {
+                col (gap: "1.5", style: "w-64") {
                     label (text: "Email", for: "email") {}
                     input (id: "email", placeholder: "Enter your email") {}
                 }

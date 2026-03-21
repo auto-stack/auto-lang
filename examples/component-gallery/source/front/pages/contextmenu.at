@@ -14,10 +14,10 @@ widget ContextmenuPage {
             h1 "Example"
             preview-card (id: "contextmenu-basic") {
                 context-menu {
-                    context-menu-trigger (class: "flex h-[149px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm") {
+                    context-menu-trigger (style: "flex h-[149px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm") {
                         text "Right click here"
                     }
-                    context-menu-content (class: "w-53") {
+                    context-menu-content (style: "w-53") {
                         context-menu-item (text: "Back") {
                             context-menu-shortcut(text: "⌘[")
                         }

@@ -23,7 +23,7 @@ widget Accordion {
     }
 
     view {
-        div { class: "accordion" }
+        div { style: "accordion" }
     }
 }
 
@@ -45,7 +45,7 @@ widget AccordionItem {
     }
 
     view {
-        div { class: "accordion-item" }
+        div { style: "accordion-item" }
     }
 }
 
@@ -60,7 +60,7 @@ widget AccordionDemo {
         col {
             h3 | Single Expand Accordion
 
-            div { class: "accordion" }
+            div { style: "accordion" }
         }
     }
 }

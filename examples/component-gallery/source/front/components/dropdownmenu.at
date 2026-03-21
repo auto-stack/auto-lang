@@ -25,7 +25,7 @@ widget DropdownMenu {
     }
 
     view {
-        div { class: "dropdown-menu" }
+        div { style: "dropdown-menu" }
     }
 }
 
@@ -38,7 +38,7 @@ widget DropdownMenuTrigger {
     }
 
     view {
-        button { class: "dropdown-menu-trigger", text: .text, onclick: .Click }
+        button { style: "dropdown-menu-trigger", text: .text, onclick: .Click }
     }
 }
 
@@ -50,7 +50,7 @@ widget DropdownMenuContent {
     }
 
     view {
-        div { class: f"dropdown-menu-content ${.align}" }
+        div { style: f"dropdown-menu-content ${.align}" }
     }
 }
 
@@ -72,14 +72,14 @@ widget DropdownMenuItem {
     }
 
     view {
-        div { class: .itemClass, text: .text, onclick: .Click }
+        div { style: .itemClass, text: .text, onclick: .Click }
     }
 }
 
 /// DropdownMenu separator
 widget DropdownMenuSeparator {
     view {
-        div { class: "dropdown-menu-separator" }
+        div { style: "dropdown-menu-separator" }
     }
 }
 
@@ -90,7 +90,7 @@ widget DropdownMenuLabel {
     }
 
     view {
-        div { class: "dropdown-menu-label", text: .text }
+        div { style: "dropdown-menu-label", text: .text }
     }
 }
 

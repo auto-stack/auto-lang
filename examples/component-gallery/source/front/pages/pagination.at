@@ -13,7 +13,7 @@ widget PaginationPage {
 
             h2 "Simple"
             preview-card (id: "pagination-basic") {
-                row (gap: "2", class: "items-center") {
+                row (gap: "2", style: "items-center") {
                     pagination {}
                 }
             }

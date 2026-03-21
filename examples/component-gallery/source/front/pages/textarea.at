@@ -13,17 +13,17 @@ widget TextareaPage {
 
             h2 "Simple"
             preview-card (id: "textarea-basic") {
-                textarea (placeholder: "Type your message here.", class: "w-64") {}
+                textarea (placeholder: "Type your message here.", style: "w-64") {}
             }
 
             h2 "Disabled"
             preview-card (id: "textarea-disabled") {
-                textarea (placeholder: "Disabled textarea", class: "w-64", disabled: "true") {}
+                textarea (placeholder: "Disabled textarea", style: "w-64", disabled: "true") {}
             }
 
             h2 "With Label"
             preview-card (id: "textarea-label") {
-                col (gap: "1.5", class: "w-64") {
+                col (gap: "1.5", style: "w-64") {
                     label (text: "Email", for: "email") {}
                     input (id: "email", placeholder: "Enter your email") {}
                 }

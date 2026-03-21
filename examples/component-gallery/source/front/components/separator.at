@@ -29,7 +29,7 @@ widget Separator {
 
     view {
         div {
-            class: .separatorClass,
+            style: .separatorClass,
             role: if .decorative { "none" } else { "separator" },
             "aria-orientation": if .decorative { "undefined" } else { .orientation }
         }

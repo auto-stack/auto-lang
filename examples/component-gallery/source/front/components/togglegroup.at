@@ -32,7 +32,7 @@ widget ToggleGroup {
     }
 
     view {
-        div { class: .groupClass, role: "group" }
+        div { style: .groupClass, role: "group" }
     }
 }
 
@@ -56,7 +56,7 @@ widget ToggleItem {
     }
 
     view {
-        button { class: .itemClass, text: .text, onclick: .Click, disabled: .disabled, "aria-pressed": .pressed }
+        button { style: .itemClass, text: .text, onclick: .Click, disabled: .disabled, "aria-pressed": .pressed }
     }
 }
 

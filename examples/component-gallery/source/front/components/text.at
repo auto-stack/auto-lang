@@ -30,7 +30,7 @@ widget Text {
 
     view {
         text {
-            class: .textClass
+            style: .textClass
             content: .displayText
         }
     }
@@ -39,22 +39,22 @@ widget Text {
 /// Heading components
 widget H1 {
     model { content str = "" }
-    view { text { class: "heading-1", content: .content } }
+    view { text { style: "heading-1", content: .content } }
 }
 
 widget H2 {
     model { content str = "" }
-    view { text { class: "heading-2", content: .content } }
+    view { text { style: "heading-2", content: .content } }
 }
 
 widget H3 {
     model { content str = "" }
-    view { text { class: "heading-3", content: .content } }
+    view { text { style: "heading-3", content: .content } }
 }
 
 widget Paragraph {
     model { content str = "" }
-    view { text { class: "paragraph", content: .content } }
+    view { text { style: "paragraph", content: .content } }
 }
 
 /// Text demo for documentation page

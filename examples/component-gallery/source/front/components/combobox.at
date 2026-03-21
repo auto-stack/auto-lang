@@ -47,14 +47,14 @@ widget ComboboxInput {
     }
 
     view {
-        input { class: "combobox-input", placeholder: .placeholder, value: .value, onchange: .Change }
+        input { style: "combobox-input", placeholder: .placeholder, value: .value, onchange: .Change }
     }
 }
 
 /// Combobox list container
 widget ComboboxList {
     view {
-        div { class: "combobox-list" }
+        div { style: "combobox-list" }
     }
 }
 
@@ -65,7 +65,7 @@ widget ComboboxEmpty {
     }
 
     view {
-        p { class: "py-6 text-center text-sm", text: .text }
+        p { style: "py-6 text-center text-sm", text: .text }
     }
 }
 
@@ -80,14 +80,14 @@ widget ComboboxItem {
     }
 
     view {
-        div { class: "combobox-item", text: .text, onclick: .Click }
+        div { style: "combobox-item", text: .text, onclick: .Click }
     }
 }
 
 /// Combobox group
 widget ComboboxGroup {
     view {
-        div { class: "combobox-group" }
+        div { style: "combobox-group" }
     }
 }
 

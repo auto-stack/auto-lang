@@ -13,7 +13,7 @@ widget AccordionPage {
 
             h2 "Simple"
             preview-card (id: "accordion-basic") {
-                accordion (type: "single", collapsible: "true", class: "w-full") {
+                accordion (type: "single", collapsible: "true", style: "w-full") {
                     accordion-item (value: "item-1") {
                         accordion-trigger "Is it accessible?"
                         accordion-content {

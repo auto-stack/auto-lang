@@ -30,7 +30,7 @@ widget Select {
     }
 
     view {
-        div { class: "select" }
+        div { style: "select" }
     }
 }
 
@@ -41,7 +41,7 @@ widget SelectTrigger {
     }
 
     view {
-        button { class: f"select-trigger ${.class}" }
+        button { style: f"select-trigger ${.class}" }
     }
 }
 
@@ -52,7 +52,7 @@ widget SelectValue {
     }
 
     view {
-        span { class: "select-value", text: .placeholder }
+        span { style: "select-value", text: .placeholder }
     }
 }
 
@@ -63,7 +63,7 @@ widget SelectContent {
     }
 
     view {
-        div { class: f"select-content ${.class}" }
+        div { style: f"select-content ${.class}" }
     }
 }
 
@@ -78,14 +78,14 @@ widget SelectItem {
     }
 
     view {
-        div { class: "select-item", text: .text, onclick: .Click }
+        div { style: "select-item", text: .text, onclick: .Click }
     }
 }
 
 /// Select group
 widget SelectGroup {
     view {
-        div { class: "select-group" }
+        div { style: "select-group" }
     }
 }
 
@@ -96,7 +96,7 @@ widget SelectLabel {
     }
 
     view {
-        div { class: "select-label", text: .text }
+        div { style: "select-label", text: .text }
     }
 }
 

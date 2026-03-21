@@ -21,30 +21,30 @@ widget TodoApp {
 
     // View tree
     view {
-        col (class: "todoapp") {
+        col (style: "todoapp") {
             // Header
             h1 (text: "todos") {}
 
             // Counter display
-            row (class: "counter") {
+            row (style: "counter") {
                 text `Count: ${.count}`
                 text `Double: ${.doubleCount}`
             }
 
             // Buttons
-            row (class: "actions") {
+            row (style: "actions") {
                 button (text: "+ Add", onclick: .Add) {}
                 button (text: "Clear", onclick: .Clear) {}
             }
 
             // Conditional message
             if .isEmpty {
-                col (class: "empty-state") {
+                col (style: "empty-state") {
                     text "No items yet!"
                     text "Click '+ Add' to add one."
                 }
             } else {
-                row (class: "status") {
+                row (style: "status") {
                     text `Has ${.count} items`
                 }
             }

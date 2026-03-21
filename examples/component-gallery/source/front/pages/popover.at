@@ -20,7 +20,7 @@ widget PopoverPage {
                         }
                         popover-content {
                             col (gap: "4") {
-                                h4 (text: "Dimensions", class: "font-medium") {}
+                                h4 (text: "Dimensions", style: "font-medium") {}
                                 text "Set the dimensions for the layer."
                             }
                         }

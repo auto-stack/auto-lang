@@ -36,14 +36,14 @@ widget Carousel {
     }
 
     view {
-        div { class: .carouselClass, role: "region", "aria-roledescription": "carousel" }
+        div { style: .carouselClass, role: "region", "aria-roledescription": "carousel" }
     }
 }
 
 /// Carousel content container
 widget CarouselContent {
     view {
-        div { class: "flex" }
+        div { style: "flex" }
     }
 }
 
@@ -54,28 +54,28 @@ widget CarouselItem {
     }
 
     view {
-        div { class: f"min-w-0 shrink-0 grow-0 basis-full ${.class}" }
+        div { style: f"min-w-0 shrink-0 grow-0 basis-full ${.class}" }
     }
 }
 
 /// Carousel previous button
 widget CarouselPrevious {
     view {
-        button { class: "carousel-previous", variant: "outline", size: "icon" }
+        button { style: "carousel-previous", variant: "outline", size: "icon" }
     }
 }
 
 /// Carousel next button
 widget CarouselNext {
     view {
-        button { class: "carousel-next", variant: "outline", size: "icon" }
+        button { style: "carousel-next", variant: "outline", size: "icon" }
     }
 }
 
 /// Demo widget for Carousel documentation
 widget CarouselDemo {
     view {
-        carousel (class: "w-full max-w-xs") {
+        carousel (style: "w-full max-w-xs") {
             carousel-content {
                 carousel-item {
                     card {

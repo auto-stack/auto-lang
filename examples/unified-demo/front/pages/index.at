@@ -4,31 +4,31 @@
 
 widget IndexPage {
     view {
-        col (class: "p-8 gap-8") {
+        col (style: "p-8 gap-8") {
             // Hero section
-            col (class: "items-center") {
-                h1 (class: "text-4xl font-bold text-center", text: "Component Gallery") {}
-                text (class: "text-lg text-gray-600 text-center", text: "Jetpack Compose Demo - Phase 1") {}
+            col (style: "items-center") {
+                h1 (style: "text-4xl font-bold text-center", text: "Component Gallery") {}
+                text (style: "text-lg text-gray-600 text-center", text: "Jetpack Compose Demo - Phase 1") {}
             }
 
             // Component grid
-            col (class: "gap-4") {
+            col (style: "gap-4") {
                 link (to: "/counter") {
-                    col (class: "p-4 rounded-lg bg-gray-100") {
-                        text (class: "font-semibold text-gray-800", text: "Counter Demo") {}
-                        text (class: "text-sm text-gray-500", text: "State management with ELM architecture") {}
+                    col (style: "p-4 rounded-lg bg-gray-100") {
+                        text (style: "font-semibold text-gray-800", text: "Counter Demo") {}
+                        text (style: "text-sm text-gray-500", text: "State management with ELM architecture") {}
                     }
                 }
                 link (to: "/column") {
-                    col (class: "p-4 rounded-lg bg-gray-100") {
-                        text (class: "font-semibold text-gray-800", text: "Column Demo") {}
-                        text (class: "text-sm text-gray-500", text: "Vertical layout with Column component") {}
+                    col (style: "p-4 rounded-lg bg-gray-100") {
+                        text (style: "font-semibold text-gray-800", text: "Column Demo") {}
+                        text (style: "text-sm text-gray-500", text: "Vertical layout with Column component") {}
                     }
                 }
                 link (to: "/row") {
-                    col (class: "p-4 rounded-lg bg-gray-100") {
-                        text (class: "font-semibold text-gray-800", text: "Row Demo") {}
-                        text (class: "text-sm text-gray-500", text: "Horizontal layout with Row component") {}
+                    col (style: "p-4 rounded-lg bg-gray-100") {
+                        text (style: "font-semibold text-gray-800", text: "Row Demo") {}
+                        text (style: "text-sm text-gray-500", text: "Horizontal layout with Row component") {}
                     }
                 }
             }

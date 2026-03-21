@@ -23,7 +23,7 @@ widget HoverCard {
     }
 
     view {
-        div { class: "hover-card" }
+        div { style: "hover-card" }
     }
 }
 
@@ -46,7 +46,7 @@ widget HoverCardContent {
     }
 
     view {
-        div { class: f"hover-card-content ${.class}" }
+        div { style: f"hover-card-content ${.class}" }
     }
 }
 
@@ -56,8 +56,8 @@ widget HoverCardDemo {
         hover-card {
             hover-card-trigger | @nextjs
             hover-card-content {
-                col (class: "gap-3") {
-                    avatar (class: "h-12 w-12 rounded-full") {}
+                col (style: "gap-3") {
+                    avatar (style: "h-12 w-12 rounded-full") {}
                     col (gap: "1") {
                         h4 | Next.js
                         text | The React Framework – created and maintained by @vercel.

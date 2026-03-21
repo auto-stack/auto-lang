@@ -4,14 +4,14 @@
 
 widget RowPage {
     view {
-        col (class: "p-4 gap-4") {
-            h2 (class: "text-xl font-bold text-gray-800", text: "Row Demo") {}
-            text (class: "text-base text-gray-600", text: "Row arranges children horizontally.") {}
+        col (style: "p-4 gap-4") {
+            h2 (style: "text-xl font-bold text-gray-800", text: "Row Demo") {}
+            text (style: "text-base text-gray-600", text: "Row arranges children horizontally.") {}
 
-            row (class: "p-4 gap-4 bg-green-50 rounded-lg") {
-                text (class: "p-2 bg-white rounded", text: "Left") {}
-                text (class: "p-2 bg-white rounded", text: "Center") {}
-                text (class: "p-2 bg-white rounded", text: "Right") {}
+            row (style: "p-4 gap-4 bg-green-50 rounded-lg") {
+                text (style: "p-2 bg-white rounded", text: "Left") {}
+                text (style: "p-2 bg-white rounded", text: "Center") {}
+                text (style: "p-2 bg-white rounded", text: "Right") {}
             }
         }
     }

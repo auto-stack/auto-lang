@@ -28,21 +28,21 @@ widget Breadcrumb {
     }
 
     view {
-        nav { class: f"breadcrumb ${.class}", "aria-label": "breadcrumb" }
+        nav { style: f"breadcrumb ${.class}", "aria-label": "breadcrumb" }
     }
 }
 
 /// Breadcrumb list container
 widget BreadcrumbList {
     view {
-        ol { class: "flex flex-wrap items-center gap-1.5 break-px text-sm text-muted-foreground sm:gap-2.5" }
+        ol { style: "flex flex-wrap items-center gap-1.5 break-px text-sm text-muted-foreground sm:gap-2.5" }
     }
 }
 
 /// Breadcrumb item
 widget BreadcrumbItem {
     view {
-        li { class: "inline-flex items-center gap-1.5" }
+        li { style: "inline-flex items-center gap-1.5" }
     }
 }
 
@@ -54,7 +54,7 @@ widget BreadcrumbLink {
     }
 
     view {
-        a { class: "transition-colors hover:text-foreground", text: .text, href: .href }
+        a { style: "transition-colors hover:text-foreground", text: .text, href: .href }
     }
 }
 
@@ -65,14 +65,14 @@ widget BreadcrumbPage {
     }
 
     view {
-        span { class: "font-normal text-foreground", text: .text, "aria-current": "page" }
+        span { style: "font-normal text-foreground", text: .text, "aria-current": "page" }
     }
 }
 
 /// Breadcrumb separator
 widget BreadcrumbSeparator {
     view {
-        li { class: "[&>svg]:px-2", role: "presentation", "aria-hidden": true } {
+        li { style: "[&>svg]:px-2", role: "presentation", "aria-hidden": true } {
             text | /
         }
     }

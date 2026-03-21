@@ -29,7 +29,7 @@ widget AlertDialog {
     }
 
     view {
-        div { class: "alert-dialog" }
+        div { style: "alert-dialog" }
     }
 }
 
@@ -53,21 +53,21 @@ widget AlertDialogContent {
     }
 
     view {
-        div { class: f"alert-dialog-content ${.class}" }
+        div { style: f"alert-dialog-content ${.class}" }
     }
 }
 
 /// AlertDialog header section
 widget AlertDialogHeader {
     view {
-        div { class: "flex flex-col space-y-2 text-center sm:text-left" }
+        div { style: "flex flex-col space-y-2 text-center sm:text-left" }
     }
 }
 
 /// AlertDialog footer section
 widget AlertDialogFooter {
     view {
-        div { class: "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" }
+        div { style: "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" }
     }
 }
 
@@ -78,7 +78,7 @@ widget AlertDialogTitle {
     }
 
     view {
-        h2 { class: "text-lg font-semibold", text: .text }
+        h2 { style: "text-lg font-semibold", text: .text }
     }
 }
 
@@ -89,7 +89,7 @@ widget AlertDialogDescription {
     }
 
     view {
-        p { class: "text-sm text-muted-foreground", text: .text }
+        p { style: "text-sm text-muted-foreground", text: .text }
     }
 }
 

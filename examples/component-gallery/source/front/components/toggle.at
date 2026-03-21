@@ -34,7 +34,7 @@ widget Toggle {
 
     view {
         button {
-            class: .toggleClass,
+            style: .toggleClass,
             onclick: .Change,
             disabled: .disabled,
             "aria-pressed": .pressed
@@ -60,13 +60,13 @@ widget ToggleDemo {
         col (gap: "4") {
             row (gap: "2") {
                 Toggle (pressed: .bold) {
-                    text (text: "B", class: "font-bold") {}
+                    text (text: "B", style: "font-bold") {}
                 }
                 Toggle (pressed: .italic) {
-                    text (text: "I", class: "italic") {}
+                    text (text: "I", style: "italic") {}
                 }
                 Toggle (pressed: .underline) {
-                    text (text: "U", class: "underline") {}
+                    text (text: "U", style: "underline") {}
                 }
             }
             text (text: f"Bold: ${.bold}, Italic: ${.italic}, Underline: ${.underline}") {}

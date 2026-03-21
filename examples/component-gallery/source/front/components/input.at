@@ -30,7 +30,7 @@ widget Input {
 
     view {
         input {
-            class: .inputClass
+            style: .inputClass
             type: .inputType
             value: .value
             placeholder: .placeholder

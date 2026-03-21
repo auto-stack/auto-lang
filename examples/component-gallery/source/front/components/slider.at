@@ -28,11 +28,11 @@ widget Slider {
     }
 
     view {
-        div { class: "relative flex w-full touch-none select-none items-center" } {
-            div { class: "relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20" } {
-                div { class: "absolute h-full bg-primary", style: f"right: ${100 - .percentage}%" }
+        div { style: "relative flex w-full touch-none select-none items-center" } {
+            div { style: "relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20" } {
+                div { style: "absolute h-full bg-primary", style: f"right: ${100 - .percentage}%" }
             }
-            div { class: "slider-thumb", style: f"left: ${.percentage}%" }
+            div { style: "slider-thumb", style: f"left: ${.percentage}%" }
         }
     }
 

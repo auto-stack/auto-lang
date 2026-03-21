@@ -14,11 +14,11 @@ widget RadiogroupPage {
             h2 "Simple"
             preview-card (id: "radiogroup-basic") {
                 radiogroup (default: "option-one") {
-                    row (gap: "2", class: "items-center") {
+                    row (gap: "2", style: "items-center") {
                         radioitem (value: "option-one", id: "option-one") {}
                         label (text: "Option One", for: "option-one") {}
                     }
-                    row (gap: "2", class: "items-center") {
+                    row (gap: "2", style: "items-center") {
                         radioitem (value: "option-two", id: "option-two") {}
                         label (text: "Option Two", for: "option-two") {}
                     }

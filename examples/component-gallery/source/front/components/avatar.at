@@ -24,7 +24,7 @@ widget Avatar {
     }
 
     view {
-        div { class: .avatarClass } {
+        div { style: .avatarClass } {
             if .src != "" {
                 img { src: .src, alt: "Avatar" }
             }
@@ -41,7 +41,7 @@ widget AvatarImage {
     }
 
     view {
-        img { class: "aspect-square h-full w-full", src: .src, alt: .alt }
+        img { style: "aspect-square h-full w-full", src: .src, alt: .alt }
     }
 }
 
@@ -52,7 +52,7 @@ widget AvatarFallback {
     }
 
     view {
-        div { class: "flex h-full w-full items-center justify-center rounded-full bg-muted", text: .text }
+        div { style: "flex h-full w-full items-center justify-center rounded-full bg-muted", text: .text }
     }
 }
 

@@ -4,9 +4,9 @@
 
 widget CounterPage {
     view {
-        col (class: "p-4 gap-4") {
-            h2 (class: "text-xl font-bold text-gray-800", text: "Counter Demo") {}
-            text (class: "text-base text-gray-600", text: "A simple counter component demonstrating state management.") {}
+        col (style: "p-4 gap-4") {
+            h2 (style: "text-xl font-bold text-gray-800", text: "Counter Demo") {}
+            text (style: "text-base text-gray-600", text: "A simple counter component demonstrating state management.") {}
             Counter {}
         }
     }

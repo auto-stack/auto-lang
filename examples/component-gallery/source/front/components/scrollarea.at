@@ -9,7 +9,7 @@
 ///
 /// # Usage
 /// ```
-/// scroll-area (class: "h-72 w-48") {
+/// scroll-area (style: "h-72 w-48") {
 ///     col {
 ///         // scrollable content
 ///     }
@@ -23,14 +23,14 @@ widget ScrollArea {
     }
 
     view {
-        div { class: f"scroll-area ${.class}" }
+        div { style: f"scroll-area ${.class}" }
     }
 }
 
 /// ScrollArea viewport
 widget ScrollAreaViewport {
     view {
-        div { class: "scroll-area-viewport" }
+        div { style: "scroll-area-viewport" }
     }
 }
 
@@ -41,14 +41,14 @@ widget ScrollAreaScrollbar {
     }
 
     view {
-        div { class: f"scroll-area-scrollbar ${.orientation}" }
+        div { style: f"scroll-area-scrollbar ${.orientation}" }
     }
 }
 
 /// ScrollArea thumb
 widget ScrollAreaThumb {
     view {
-        div { class: "scroll-area-thumb" }
+        div { style: "scroll-area-thumb" }
     }
 }
 
@@ -57,7 +57,7 @@ widget ScrollAreaDemo {
     view {
         col (gap: "4") {
             h3 | Vertical Scroll
-            ScrollArea (class: "h-32 w-48 rounded-md border") {
+            ScrollArea (style: "h-32 w-48 rounded-md border") {
                 col (gap: "2") {
                     text | Item 1
                     text | Item 2

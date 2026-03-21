@@ -10,7 +10,7 @@
 /// # Usage
 /// ```
 /// aspect-ratio (ratio: 16/9) {
-///     img (src: "image.jpg", class: "object-cover w-full h-full") {}
+///     img (src: "image.jpg", style: "object-cover w-full h-full") {}
 /// }
 /// ```
 
@@ -20,7 +20,7 @@ widget AspectRatio {
     }
 
     view {
-        div { class: "aspect-ratio" }
+        div { style: "aspect-ratio" }
     }
 }
 
@@ -28,9 +28,9 @@ widget AspectRatio {
 widget AspectRatioDemo {
     view {
         col (gap: "4") {
-            div (class: "w-[450px]") {
+            div (style: "w-[450px]") {
                 aspect-ratio (ratio: 1.777) {
-                    img (src: "https://images.unsplash.com/photo-1588345921523-c2dcdb7f1dcd?w=800&dpr=2&q=80", alt: "Demo image", class: "rounded-md object-cover w-full h-full") {}
+                    img (src: "https://images.unsplash.com/photo-1588345921523-c2dcdb7f1dcd?w=800&dpr=2&q=80", alt: "Demo image", style: "rounded-md object-cover w-full h-full") {}
                 }
             }
         }

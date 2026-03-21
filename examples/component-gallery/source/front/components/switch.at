@@ -31,7 +31,7 @@ widget Switch {
     view {
         button {
             type: "switch",
-            class: .switchClass,
+            style: .switchClass,
             onclick: .Change,
             disabled: .disabled,
             role: "switch",

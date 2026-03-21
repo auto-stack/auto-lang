@@ -35,7 +35,7 @@ widget Collapsible {
     }
 
     view {
-        div { class: .collapsibleClass, "data-state": if .open { "open" } else { "closed" } }
+        div { style: .collapsibleClass, "data-state": if .open { "open" } else { "closed" } }
     }
 
     on {
@@ -50,7 +50,7 @@ widget CollapsibleTrigger {
     msg Msg { Click }
 
     view {
-        button { class: "collapsible-trigger", onclick: .Click }
+        button { style: "collapsible-trigger", onclick: .Click }
     }
 }
 
@@ -61,7 +61,7 @@ widget CollapsibleContent {
     }
 
     view {
-        div { class: f"collapsible-content ${.class}" }
+        div { style: f"collapsible-content ${.class}" }
     }
 }
 
@@ -75,12 +75,12 @@ widget CollapsibleDemo {
         col (gap: "4") {
             Collapsible (open: .expanded) {
                 collapsible-trigger {
-                    row (gap: "2", class: "items-center") {
+                    row (gap: "2", style: "items-center") {
                         button (text: if .expanded { "Collapse" } else { "Expand" }, variant: "outline") {}
                     }
                 }
                 collapsible-content {
-                    div { class: "rounded-md border px-4 py-2 font-mono text-sm" } {
+                    div { style: "rounded-md border px-4 py-2 font-mono text-sm" } {
                         text | @radix-ui/colors
                         text | @radix-ui/react-collapsible
                     }

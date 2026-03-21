@@ -31,7 +31,7 @@ widget CardPage {
             // Login Form Example
             h2 "Login Form"
             preview-card (id: "card-login") {
-                card (class: "w-full max-w-sm") {
+                card (style: "w-full max-w-sm") {
                     card-header {
                         card-title "Login to your account"
                         card-description "Enter your email below to login to your account."
@@ -47,18 +47,18 @@ widget CardPage {
                                     input (id: "email", type: "email", placeholder: "m@example.com") {}
                                 }
                                 col (gap: "2") {
-                                    row (class: "flex items-center") {
+                                    row (style: "flex items-center") {
                                         label (text: "Password", for: "password") {}
-                                        link (text: "Forgot your password?", href: "#", class: "ml-auto inline-block text-sm underline-offset-4 hover:underline") {}
+                                        link (text: "Forgot your password?", href: "#", style: "ml-auto inline-block text-sm underline-offset-4 hover:underline") {}
                                     }
                                     input (id: "password", type: "password") {}
                                 }
                             }
                         }
                     }
-                    card-footer (class: "flex-col gap-2") {
-                        button (text: "Login", class: "w-full") {}
-                        button (text: "Login with Google", variant: "outline", class: "w-full") {}
+                    card-footer (style: "flex-col gap-2") {
+                        button (text: "Login", style: "w-full") {}
+                        button (text: "Login with Google", variant: "outline", style: "w-full") {}
                     }
                 }
             }
@@ -93,7 +93,7 @@ widget CardPage {
                             }
                         }
                     }
-                    card-footer (class: "flex justify-between") {
+                    card-footer (style: "flex justify-between") {
                         button (text: "Cancel", variant: "outline") {}
                         button "Deploy"
                     }
@@ -108,52 +108,52 @@ widget CardPage {
                         card-title "Notifications"
                         card-description "You have 3 unread messages."
                     }
-                    card-content (class: "grid gap-4") {
+                    card-content (style: "grid gap-4") {
                         col (gap: "4") {
-                            row (class: "flex items-center justify-between") {
+                            row (style: "flex items-center justify-between") {
                                 col (gap: "1") {
-                                    text (text: "Push Notifications", class: "text-sm font-medium") {}
-                                    text (text: "Send notifications to device.", class: "text-sm text-muted-foreground") {}
+                                    text (text: "Push Notifications", style: "text-sm font-medium") {}
+                                    text (text: "Send notifications to device.", style: "text-sm text-muted-foreground") {}
                                 }
                                 switch {}
                             }
                             separator {}
                             col (gap: "4") {
-                                row (class: "flex items-start gap-4") {
+                                row (style: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/01.png", alt: "Avatar") {}
                                         avatar-fallback "OM"
                                     }
-                                    col (gap: "1", class: "grid gap-1") {
-                                        text (text: "Your call has been confirmed.", class: "text-sm") {}
-                                        text (text: "1 hour ago", class: "text-sm text-muted-foreground") {}
+                                    col (gap: "1", style: "grid gap-1") {
+                                        text (text: "Your call has been confirmed.", style: "text-sm") {}
+                                        text (text: "1 hour ago", style: "text-sm text-muted-foreground") {}
                                     }
                                 }
-                                row (class: "flex items-start gap-4") {
+                                row (style: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/02.png", alt: "Avatar") {}
                                         avatar-fallback "JD"
                                     }
-                                    col (gap: "1", class: "grid gap-1") {
-                                        text (text: "You have a new message!", class: "text-sm") {}
-                                        text (text: "1 hour ago", class: "text-sm text-muted-foreground") {}
+                                    col (gap: "1", style: "grid gap-1") {
+                                        text (text: "You have a new message!", style: "text-sm") {}
+                                        text (text: "1 hour ago", style: "text-sm text-muted-foreground") {}
                                     }
                                 }
-                                row (class: "flex items-start gap-4") {
+                                row (style: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/03.png", alt: "Avatar") {}
                                         avatar-fallback "WW"
                                     }
-                                    col (gap: "1", class: "grid gap-1") {
-                                        text (text: "Your subscription is expiring soon!", class: "text-sm") {}
-                                        text (text: "2 hours ago", class: "text-sm text-muted-foreground") {}
+                                    col (gap: "1", style: "grid gap-1") {
+                                        text (text: "Your subscription is expiring soon!", style: "text-sm") {}
+                                        text (text: "2 hours ago", style: "text-sm text-muted-foreground") {}
                                     }
                                 }
                             }
                         }
                     }
                     card-footer {
-                        button (text: "Mark all as read", variant: "outline", class: "w-full") {}
+                        button (text: "Mark all as read", variant: "outline", style: "w-full") {}
                     }
                 }
             }

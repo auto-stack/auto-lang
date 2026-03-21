@@ -13,16 +13,16 @@ widget SkeletonPage {
 
             h2 "Simple"
             preview-card (id: "skeleton-basic") {
-                skeleton (class: "w-48 h-4") {}
+                skeleton (style: "w-48 h-4") {}
             }
 
             h2 "Card Skeleton"
             preview-card (id: "skeleton-card") {
-                col (gap: "4", class: "w-64") {
-                    skeleton (class: "h-12 w-12 rounded-full") {}
+                col (gap: "4", style: "w-64") {
+                    skeleton (style: "h-12 w-12 rounded-full") {}
                     col (gap: "2") {
-                        skeleton (class: "h-4 w-full") {}
-                        skeleton (class: "h-4 w-3/4") {}
+                        skeleton (style: "h-4 w-full") {}
+                        skeleton (style: "h-4 w-3/4") {}
                     }
                 }
             }

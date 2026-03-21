@@ -17,61 +17,61 @@ widget TablePage {
                     table-caption "A list of your recent invoices."
                     table-header {
                         table-row {
-                            table-head (text: "Invoice", class: "w-[100px]") {}
+                            table-head (text: "Invoice", style: "w-[100px]") {}
                             table-head "Status"
                             table-head "Method"
-                            table-head (text: "Amount", class: "text-right") {}
+                            table-head (text: "Amount", style: "text-right") {}
                         }
                     }
                     table-body {
                         table-row {
-                            table-cell (text: "INV001", class: "font-medium") {}
+                            table-cell (text: "INV001", style: "font-medium") {}
                             table-cell "Paid"
                             table-cell "Credit Card"
-                            table-cell (text: "$250.00", class: "text-right") {}
+                            table-cell (text: "$250.00", style: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV002", class: "font-medium") {}
+                            table-cell (text: "INV002", style: "font-medium") {}
                             table-cell "Pending"
                             table-cell "PayPal"
-                            table-cell (text: "$150.00", class: "text-right") {}
+                            table-cell (text: "$150.00", style: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV003", class: "font-medium") {}
+                            table-cell (text: "INV003", style: "font-medium") {}
                             table-cell "Unpaid"
                             table-cell "Bank Transfer"
-                            table-cell (text: "$350.00", class: "text-right") {}
+                            table-cell (text: "$350.00", style: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV004", class: "font-medium") {}
+                            table-cell (text: "INV004", style: "font-medium") {}
                             table-cell "Paid"
                             table-cell "Credit Card"
-                            table-cell (text: "$450.00", class: "text-right") {}
+                            table-cell (text: "$450.00", style: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV005", class: "font-medium") {}
+                            table-cell (text: "INV005", style: "font-medium") {}
                             table-cell "Paid"
                             table-cell "PayPal"
-                            table-cell (text: "$550.00", class: "text-right") {}
+                            table-cell (text: "$550.00", style: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV006", class: "font-medium") {}
+                            table-cell (text: "INV006", style: "font-medium") {}
                             table-cell "Pending"
                             table-cell "Bank Transfer"
-                            table-cell (text: "$200.00", class: "text-right") {}
+                            table-cell (text: "$200.00", style: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV007", class: "font-medium") {}
+                            table-cell (text: "INV007", style: "font-medium") {}
                             table-cell "Unpaid"
                             table-cell "Credit Card"
-                            table-cell (text: "$300.00", class: "text-right") {}
+                            table-cell (text: "$300.00", style: "text-right") {}
                         }
                     }
                 }
             }
 
             h2 "Data Table"
-            text (text: "You can use the Table component to build more complex data tables. Combine it with @tanstack/vue-table to create tables with sorting, filtering and pagination.", class: "text-muted-foreground") {}
+            text (text: "You can use the Table component to build more complex data tables. Combine it with @tanstack/vue-table to create tables with sorting, filtering and pagination.", style: "text-muted-foreground") {}
 
             h2 "Properties"
             table {

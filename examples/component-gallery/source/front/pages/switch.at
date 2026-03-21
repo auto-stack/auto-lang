@@ -18,7 +18,7 @@ widget SwitchPage {
 
             h2 "With Label"
             preview-card (id: "switch-label") {
-                row (gap: "2", class: "items-center") {
+                row (gap: "2", style: "items-center") {
                     switch (id: "airplane-mode") {}
                     label (text: "Airplane Mode", for: "airplane-mode") {}
                 }

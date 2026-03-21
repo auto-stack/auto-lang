@@ -27,7 +27,7 @@ widget CopyButton {
 
     view {
         button {
-            class: .buttonClass
+            style: .buttonClass
             onclick: .Copy
         }
     }
@@ -61,7 +61,7 @@ widget CopyIconButton {
 
     view {
         button {
-            class: "copy-icon-button"
+            style: "copy-icon-button"
             onclick: .Copy
             text: .icon
         }
@@ -97,7 +97,7 @@ widget CopyButtonDemo {
 
             h3 | Combined with Code Block
 
-            div { class: "code-with-copy" }
+            div { style: "code-with-copy" }
         }
     }
 }

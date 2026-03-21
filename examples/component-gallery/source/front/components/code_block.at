@@ -27,7 +27,7 @@ widget CodeBlock {
     }
 
     view {
-        div { class: "code-container" }
+        div { style: "code-container" }
     }
 }
 
@@ -49,7 +49,7 @@ widget Code {
     }
 
     view {
-        code { class: .codeClass, text: .content }
+        code { style: .codeClass, text: .content }
     }
 }
 

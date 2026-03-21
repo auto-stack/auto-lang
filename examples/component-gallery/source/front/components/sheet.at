@@ -25,7 +25,7 @@ widget Sheet {
     }
 
     view {
-        div { class: "sheet" }
+        div { style: "sheet" }
     }
 }
 
@@ -50,14 +50,14 @@ widget SheetContent {
     }
 
     view {
-        div { class: f"sheet-content ${.side} ${.class}" }
+        div { style: f"sheet-content ${.side} ${.class}" }
     }
 }
 
 /// Sheet header section
 widget SheetHeader {
     view {
-        div { class: "flex flex-col space-y-2 text-center sm:text-left" }
+        div { style: "flex flex-col space-y-2 text-center sm:text-left" }
     }
 }
 
@@ -68,7 +68,7 @@ widget SheetTitle {
     }
 
     view {
-        h2 { class: "text-lg font-semibold", text: .text }
+        h2 { style: "text-lg font-semibold", text: .text }
     }
 }
 
@@ -79,21 +79,21 @@ widget SheetDescription {
     }
 
     view {
-        p { class: "text-sm text-muted-foreground", text: .text }
+        p { style: "text-sm text-muted-foreground", text: .text }
     }
 }
 
 /// Sheet footer section
 widget SheetFooter {
     view {
-        div { class: "flex flex-col sm:flex-row sm:justify-end sm:space-x-2" }
+        div { style: "flex flex-col sm:flex-row sm:justify-end sm:space-x-2" }
     }
 }
 
 /// Sheet close button
 widget SheetClose {
     view {
-        button { class: "sheet-close" }
+        button { style: "sheet-close" }
     }
 }
 

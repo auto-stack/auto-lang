@@ -33,7 +33,7 @@ widget Toast {
     }
 
     view {
-        div { class: .toastClass, role: "alert", "aria-live": "assertive" } {
+        div { style: .toastClass, role: "alert", "aria-live": "assertive" } {
             col (gap: "1") {
                 if .title != "" {
                     toast-title (text: .title) {}
@@ -60,7 +60,7 @@ widget ToastTitle {
     }
 
     view {
-        div { class: "toast-title text-sm font-semibold", text: .text }
+        div { style: "toast-title text-sm font-semibold", text: .text }
     }
 }
 
@@ -71,7 +71,7 @@ widget ToastDescription {
     }
 
     view {
-        div { class: "toast-description text-sm opacity-90", text: .text }
+        div { style: "toast-description text-sm opacity-90", text: .text }
     }
 }
 
@@ -84,14 +84,14 @@ widget ToastAction {
     }
 
     view {
-        button { class: "toast-action", text: .text, onclick: .Click, variant: "outline", size: "sm" }
+        button { style: "toast-action", text: .text, onclick: .Click, variant: "outline", size: "sm" }
     }
 }
 
 /// Toast close button
 widget ToastClose {
     view {
-        button { class: "toast-close", variant: "ghost", size: "icon" } {
+        button { style: "toast-close", variant: "ghost", size: "icon" } {
             text | ✕
         }
     }

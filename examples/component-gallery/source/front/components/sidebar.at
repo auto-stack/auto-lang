@@ -74,7 +74,7 @@ widget Sidebar {
     }
 
     view {
-        div { class: "sidebar" }
+        div { style: "sidebar" }
     }
 }
 
@@ -93,7 +93,7 @@ widget SidebarSection {
     }
 
     view {
-        div { class: "sidebar-section" }
+        div { style: "sidebar-section" }
     }
 }
 
@@ -113,7 +113,7 @@ widget SidebarLink {
 
     view {
         a {
-            class: .linkClass
+            style: .linkClass
             href: .href
             onclick: .Click
             text: .text
@@ -131,7 +131,7 @@ widget SidebarDemo {
         row {
             Sidebar (activePage: .activePage) {}
 
-            div { class: "main-content" }
+            div { style: "main-content" }
         }
     }
 }

@@ -26,14 +26,14 @@ widget Menubar {
     }
 
     view {
-        div { class: f"menubar ${.class}" }
+        div { style: f"menubar ${.class}" }
     }
 }
 
 /// Menubar menu container
 widget MenubarMenu {
     view {
-        div { class: "menubar-menu" }
+        div { style: "menubar-menu" }
     }
 }
 
@@ -46,7 +46,7 @@ widget MenubarTrigger {
     }
 
     view {
-        button { class: "menubar-trigger", text: .text, onclick: .Click }
+        button { style: "menubar-trigger", text: .text, onclick: .Click }
     }
 }
 
@@ -57,7 +57,7 @@ widget MenubarContent {
     }
 
     view {
-        div { class: f"menubar-content ${.align}" }
+        div { style: f"menubar-content ${.align}" }
     }
 }
 
@@ -71,14 +71,14 @@ widget MenubarItem {
     }
 
     view {
-        div { class: "menubar-item", text: .text, onclick: .Click }
+        div { style: "menubar-item", text: .text, onclick: .Click }
     }
 }
 
 /// Menubar separator
 widget MenubarSeparator {
     view {
-        div { class: "menubar-separator" }
+        div { style: "menubar-separator" }
     }
 }
 
@@ -89,7 +89,7 @@ widget MenubarLabel {
     }
 
     view {
-        div { class: "menubar-label", text: .text }
+        div { style: "menubar-label", text: .text }
     }
 }
 
@@ -101,7 +101,7 @@ widget MenubarCheckboxItem {
     }
 
     view {
-        div { class: "menubar-checkbox-item" } {
+        div { style: "menubar-checkbox-item" } {
             checkbox (checked: .checked) {}
             text (text: .text) {}
         }

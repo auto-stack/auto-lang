@@ -29,7 +29,7 @@ widget Button {
 
     view {
         button {
-            class: .classes
+            style: .classes
             text: .text
             onclick: .Click
             disabled: .disabled

@@ -27,14 +27,14 @@ widget Form {
     }
 
     view {
-        form { class: f"space-y-6 ${.class}", onsubmit: .Submit }
+        form { style: f"space-y-6 ${.class}", onsubmit: .Submit }
     }
 }
 
 /// Form item container
 widget FormItem {
     view {
-        div { class: "space-y-2" }
+        div { style: "space-y-2" }
     }
 }
 
@@ -46,14 +46,14 @@ widget FormLabel {
     }
 
     view {
-        label { class: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", text: .text }
+        label { style: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", text: .text }
     }
 }
 
 /// Form control wrapper
 widget FormControl {
     view {
-        div { class: "form-control" }
+        div { style: "form-control" }
     }
 }
 
@@ -64,7 +64,7 @@ widget FormDescription {
     }
 
     view {
-        p { class: "text-[0.8rem] text-muted-foreground", text: .text }
+        p { style: "text-[0.8rem] text-muted-foreground", text: .text }
     }
 }
 
@@ -84,7 +84,7 @@ widget FormMessage {
     }
 
     view {
-        p { class: .messageClass, text: .text }
+        p { style: .messageClass, text: .text }
     }
 }
 

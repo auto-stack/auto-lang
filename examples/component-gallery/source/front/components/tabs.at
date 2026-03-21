@@ -20,7 +20,7 @@ widget Tabs {
     }
 
     view {
-        div { class: f"tabs tabs-${.orientation}" }
+        div { style: f"tabs tabs-${.orientation}" }
     }
 }
 
@@ -42,7 +42,7 @@ widget TabTrigger {
 
     view {
         button {
-            class: .tabClass
+            style: .tabClass
             disabled: .disabled
             onclick: .Click
         }
@@ -61,7 +61,7 @@ widget TabContent {
     }
 
     view {
-        div { class: .contentClass }
+        div { style: .contentClass }
     }
 }
 
@@ -85,7 +85,7 @@ widget TabsDemo {
                 TabTrigger (id: "api", label: "API", active: .activeTab == "api") {}
             }
 
-            div { class: "tabs-content" }
+            div { style: "tabs-content" }
         }
     }
 
@@ -111,7 +111,7 @@ widget VerticalTabsDemo {
                 TabTrigger (id: "privacy", label: "Privacy") {}
             }
 
-            div { class: "tabs-content" }
+            div { style: "tabs-content" }
         }
     }
 }

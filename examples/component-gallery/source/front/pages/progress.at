@@ -13,7 +13,7 @@ widget ProgressPage {
 
             h2 "Simple"
             preview-card (id: "progress-basic") {
-                progress (value: "33", class: "w-60") {}
+                progress (value: "33", style: "w-60") {}
             }
 
             h2 "Properties"

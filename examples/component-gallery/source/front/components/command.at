@@ -28,7 +28,7 @@ widget Command {
     }
 
     view {
-        div { class: f"command ${.class}" }
+        div { style: f"command ${.class}" }
     }
 }
 
@@ -39,7 +39,7 @@ widget CommandDialog {
     }
 
     view {
-        div { class: "command-dialog" }
+        div { style: "command-dialog" }
     }
 }
 
@@ -51,9 +51,9 @@ widget CommandInput {
     }
 
     view {
-        div { class: "flex items-center border-b px-3" } {
-            text (text: "🔍", class: "mr-2 h-4 w-4 shrink-0 opacity-50") {}
-            input { class: "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50", placeholder: .placeholder, value: .value }
+        div { style: "flex items-center border-b px-3" } {
+            text (text: "🔍", style: "mr-2 h-4 w-4 shrink-0 opacity-50") {}
+            input { style: "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50", placeholder: .placeholder, value: .value }
         }
     }
 }
@@ -65,7 +65,7 @@ widget CommandList {
     }
 
     view {
-        div { class: "command-list", "max-height": f"${.maxheight}px" }
+        div { style: "command-list", "max-height": f"${.maxheight}px" }
     }
 }
 
@@ -76,7 +76,7 @@ widget CommandEmpty {
     }
 
     view {
-        p { class: "py-6 text-center text-sm", text: .text }
+        p { style: "py-6 text-center text-sm", text: .text }
     }
 }
 
@@ -87,9 +87,9 @@ widget CommandGroup {
     }
 
     view {
-        div { class: "command-group" } {
+        div { style: "command-group" } {
             if .heading != "" {
-                div { class: "command-group-heading", text: .heading }
+                div { style: "command-group-heading", text: .heading }
             }
         }
     }
@@ -105,10 +105,10 @@ widget CommandItem {
     }
 
     view {
-        div { class: "command-item", onclick: .Click } {
+        div { style: "command-item", onclick: .Click } {
             text (text: .text) {}
             if .shortcut != "" {
-                text (text: .shortcut, class: "command-shortcut") {}
+                text (text: .shortcut, style: "command-shortcut") {}
             }
         }
     }
@@ -117,7 +117,7 @@ widget CommandItem {
 /// Command separator
 widget CommandSeparator {
     view {
-        div { class: "command-separator" }
+        div { style: "command-separator" }
     }
 }
 
