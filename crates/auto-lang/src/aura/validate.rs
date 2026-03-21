@@ -2,10 +2,22 @@
 //!
 //! This module validates AURA widgets against the schema,
 //! providing helpful error messages for incorrect code.
+//!
+//! ## Import Validation
+//!
+//! AURA uses a hybrid import system:
+//! - **Core widgets** are auto-imported (no `use` statement needed)
+//! - **Extended widgets** require explicit `use aura.widgets: WidgetName`
+//!
+//! Auto-imported core widgets:
+//! - Layout: col, row, stack, scroll
+//! - Display: text, image
+//! - Form: button, input
 
 use crate::ast::ViewNode;
 use crate::ast::WidgetDecl;
 use crate::aura::schema::AuraSchema;
+use crate::ui_gen::widget::AUTO_IMPORTED_WIDGETS;
 use miette::{Diagnostic, SourceSpan};
 use std::collections::HashSet;
 use thiserror::Error;
@@ -72,6 +84,18 @@ pub enum ValidationError {
         span: SourceSpan,
     },
 
+    /// E0987: Widget not imported (extended widget requires explicit use statement)
+    #[error("widget '{widget}' requires explicit import")]
+    #[diagnostic(
+        code(aura::E0987),
+        help("add `use aura.widgets: {widget}` to import this widget, or use a core widget (col, row, text, button, input)")
+    )]
+    MissingImport {
+        widget: String,
+        #[label("widget not imported")]
+        span: SourceSpan,
+    },
+
     /// Multiple validation errors
     #[error("multiple validation errors")]
     MultipleErrors {
@@ -82,6 +106,8 @@ pub enum ValidationError {
 /// Widget validator using AURA schema
 pub struct WidgetValidator {
     schema: AuraSchema,
+    /// Explicitly imported widgets (via `use aura.widgets: WidgetName`)
+    imports: HashSet<String>,
 }
 
 impl WidgetValidator {
@@ -95,12 +121,42 @@ impl WidgetValidator {
                     suggestion: None,
                 }],
             })?;
-        Ok(Self { schema })
+        Ok(Self {
+            schema,
+            imports: HashSet::new(),
+        })
     }
 
     /// Create a validator with a custom schema
     pub fn with_schema(schema: AuraSchema) -> Self {
-        Self { schema }
+        Self {
+            schema,
+            imports: HashSet::new(),
+        }
+    }
+
+    /// Add an explicit import (from `use aura.widgets: WidgetName`)
+    pub fn add_import(&mut self, widget_name: &str) {
+        self.imports.insert(widget_name.to_lowercase());
+    }
+
+    /// Set all imports at once (clears existing imports)
+    pub fn set_imports(&mut self, imports: impl IntoIterator<Item = impl AsRef<str>>) {
+        self.imports.clear();
+        for name in imports {
+            self.imports.insert(name.as_ref().to_lowercase());
+        }
+    }
+
+    /// Check if a widget is available (either auto-imported or explicitly imported)
+    pub fn is_widget_available(&self, tag: &str) -> bool {
+        let tag_lower = tag.to_lowercase();
+        // Auto-imported widgets are always available
+        if AUTO_IMPORTED_WIDGETS.contains(&tag_lower.as_str()) {
+            return true;
+        }
+        // Check if explicitly imported
+        self.imports.contains(&tag_lower)
     }
 
     /// Validate a widget declaration
@@ -158,7 +214,7 @@ impl WidgetValidator {
     fn validate_view_tree(&self, node: &ViewNode, errors: &mut Vec<ValidationError>) {
         match node {
             ViewNode::Element { tag, props, children, .. } => {
-                // Check if element is known
+                // Check if element is known in schema
                 if let Some(element_def) = self.schema.get_element(tag) {
                     // Validate props
                     self.validate_element_props(tag, props, element_def.props.as_slice(), errors);
@@ -176,13 +232,17 @@ impl WidgetValidator {
                         self.validate_view_tree(child, errors);
                     }
                 } else {
-                    // Unknown element - provide suggestion
-                    let suggestion = self.schema.suggest_similar(tag);
-                    errors.push(ValidationError::UnknownElement {
-                        tag: tag.clone(),
-                        span: SourceSpan::from(0..0),
-                        suggestion: suggestion.map(|s| s.to_string()),
-                    });
+                    // Element not in schema - check if it's an extended widget
+                    // that needs to be imported
+                    if !self.is_widget_available(tag) {
+                        // Not auto-imported and not explicitly imported
+                        // Provide suggestion for similar known elements
+                        let suggestion = self.schema.suggest_similar(tag);
+                        errors.push(ValidationError::MissingImport {
+                            widget: tag.clone(),
+                            span: SourceSpan::from(0..0),
+                        });
+                    }
 
                     // Still validate children for unknown elements
                     for child in children {
@@ -400,6 +460,15 @@ pub fn format_validation_errors(errors: &[ValidationError]) -> String {
                 }
                 output.push_str(&format!("  = help: valid props for '{}': {}\n", tag, valid_props.join(", ")));
             }
+            ValidationError::MissingImport { widget, .. } => {
+                output.push_str(&format!(
+                    "  = help: add `use aura.widgets: {}` to import this widget\n",
+                    widget
+                ));
+                output.push_str(&format!(
+                    "  = help: or use a core widget (col, row, stack, scroll, text, image, button, input)\n"
+                ));
+            }
             _ => {}
         }
     }
@@ -480,5 +549,65 @@ mod tests {
         let output = format_validation_errors(&errors);
         assert!(output.contains("unknown view element 'buton'"));
         assert!(output.contains("did you mean 'button'"));
+    }
+
+    #[test]
+    fn test_auto_imported_widgets() {
+        // Core widgets should be auto-imported
+        for widget in ["col", "row", "stack", "scroll", "text", "image", "button", "input"] {
+            assert!(AUTO_IMPORTED_WIDGETS.contains(&widget), "Missing auto-imported widget: {}", widget);
+        }
+    }
+
+    #[test]
+    fn test_widget_available_auto_imported() {
+        let validator = WidgetValidator::new().unwrap();
+
+        // Auto-imported widgets should be available without explicit import
+        for widget in ["col", "row", "text", "button"] {
+            assert!(validator.is_widget_available(widget), "Auto-imported widget '{}' not available", widget);
+        }
+    }
+
+    #[test]
+    fn test_widget_available_explicit_import() {
+        let mut validator = WidgetValidator::new().unwrap();
+
+        // Extended widget (swiper) should not be available without import
+        assert!(!validator.is_widget_available("swiper"), "Extended widget 'swiper' should not be available without import");
+
+        // Add explicit import
+        validator.add_import("swiper");
+        assert!(validator.is_widget_available("swiper"), "Extended widget 'swiper' should be available after import");
+    }
+
+    #[test]
+    fn test_widget_available_multiple_imports() {
+        let mut validator = WidgetValidator::new().unwrap();
+
+        // Set multiple imports at once
+        validator.set_imports(vec!["swiper", "checkbox", "slider"]);
+
+        assert!(validator.is_widget_available("swiper"));
+        assert!(validator.is_widget_available("checkbox"));
+        assert!(validator.is_widget_available("slider"));
+
+        // Core widgets should still work available
+        assert!(validator.is_widget_available("col"));
+        assert!(validator.is_widget_available("text"));
+    }
+
+    #[test]
+    fn test_missing_import_error_format() {
+        let errors = vec![
+            ValidationError::MissingImport {
+                widget: "swiper".to_string(),
+                span: SourceSpan::from(0..0),
+            },
+        ];
+
+        let output = format_validation_errors(&errors);
+        assert!(output.contains("widget 'swiper' requires explicit import"));
+        assert!(output.contains("use aura.widgets: swiper"));
     }
 }

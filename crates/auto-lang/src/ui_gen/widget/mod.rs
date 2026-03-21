@@ -35,4 +35,5 @@ mod registry;
 mod spec;
 
 pub use registry::WidgetRegistry;
+pub use registry::AUTO_IMPORTED_WIDGETS;
 pub use spec::{BackendMapping, WidgetCategory, WidgetSpec};

@@ -4,7 +4,17 @@
 //! The registry stores widget specs and allows case-insensitive lookup by tag name.
 
 use super::spec::{BackendMapping, WidgetCategory, WidgetSpec};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Core widgets that are auto-imported (no explicit `use` statement needed)
+pub const AUTO_IMPORTED_WIDGETS: &[&str] = &[
+    // Layout
+    "col", "row", "stack", "scroll",
+    // Display
+    "text", "image",
+    // Form
+    "button", "input",
+];
 
 /// Widget registry for looking up widget specifications
 pub struct WidgetRegistry {
@@ -285,6 +295,16 @@ impl WidgetRegistry {
     /// Check if a widget exists
     pub fn contains(&self, tag: &str) -> bool {
         self.widgets.contains_key(&tag.to_lowercase())
+    }
+
+    /// Check if a widget is auto-imported (no explicit `use` statement needed)
+    pub fn is_auto_imported(tag: &str) -> bool {
+        AUTO_IMPORTED_WIDGETS.contains(&tag.to_lowercase().as_str())
+    }
+
+    /// Get the list of auto-imported widgets
+    pub fn auto_imported_widgets() -> &'static [&'static str] {
+        AUTO_IMPORTED_WIDGETS
     }
 }
 
