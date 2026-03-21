@@ -2,11 +2,15 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+> **Merged:** Plan 139 (ArkTS Generator Bug Fixes) has been merged into this plan (2025-03-21).
+
 **Goal:** Add ArkTS (HarmonyOS/Harmony Next) backend support for AutoUI, enabling AURA widgets to be transpiled into ArkTS code for HarmonyOS applications.
 
 **Architecture:** AURA Widget → ArkGenerator → ArkTS Code (.ets files) → HarmonyOS Project Structure. Follows the same pattern as jet backend with component registry, state management, and project scaffolding.
 
 **Tech Stack:** Rust, ArkTS, HarmonyOS SDK, hvigor build system
+
+**Status:** ✅ **COMPLETE** - Project runs correctly in DevEco Studio (verified 2025-03-21)
 
 ---
 
@@ -1808,20 +1812,29 @@ struct Index {
 
 ## Success Criteria
 
-- [ ] `ark/` module compiles without errors
-- [ ] `ArkComponentRegistry` has basic components (Column, Row, Text, Button)
-- [ ] `ArkProjectGenerator` creates valid HarmonyOS project structure
-- [ ] `ArkGenerator` generates valid ArkTS code with @Entry/@Component/@State
-- [ ] Message dispatch pattern generates correctly
-- [ ] `auto gen` creates `arkts/` directory with valid project
-- [ ] Generated project can be opened in DevEco Studio
+- [x] `ark/` module compiles without errors
+- [x] `ArkComponentRegistry` has basic components (Column, Row, Text, Button)
+- [x] `ArkProjectGenerator` creates valid HarmonyOS project structure
+- [x] `ArkGenerator` generates valid ArkTS code with @Entry/@Component/@State
+- [x] Message dispatch pattern generates correctly
+- [x] `auto gen` creates `ark/` directory with valid project
+- [x] Generated project can be opened in DevEco Studio
+- [x] **Project runs correctly in DevEco Studio** (verified 2025-03-21)
 
 ### Bug Fix Verification
 
-- [ ] **Bug 1**: Msg uses `enum Msg { Inc, Dec }` syntax
-- [ ] **Bug 2**: Switch uses `case Msg.Inc:` syntax
-- [ ] **Bug 3**: Each case has `break;` statement
-- [ ] **Bug 4**: No `..` syntax, use `this.count` or `Msg.Inc`
-- [ ] **Bug 5**: Button label in constructor: `Button('-')`
-- [ ] **Bug 6**: Required imports at top of file
-- [ ] Generated Counter.ets matches correct reference (can compile in DevEco)
+- [x] **Bug 1**: Msg uses `enum Msg { Inc, Dec }` syntax
+- [x] **Bug 2**: Switch uses `case Msg.Inc:` syntax
+- [x] **Bug 3**: Each case has `break;` statement
+- [x] **Bug 4**: No `..` syntax, use `this.count` or `Msg.Inc`
+- [x] **Bug 5**: Button label in constructor: `Button('-')`
+- [x] **Bug 6**: Required imports at top of file
+- [x] Generated Counter.ets matches correct reference (can compile in DevEco)
+
+### Navigation & Routing Fixes (2025-03-21)
+
+- [x] `pushPathByName` uses empty string `''` instead of object `{}`
+- [x] `main_pages.json` only contains `pages/App` (other pages are NavDestinations)
+- [x] Child pages wrapped in `NavDestination()` component
+- [x] IndexPage with navigation links has `@Consume('pathStack')` for pathStack access
+- [x] Outlet replaced with `IndexPage()` directly (ArkTS has no default route concept)
