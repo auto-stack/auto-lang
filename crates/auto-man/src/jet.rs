@@ -34,6 +34,7 @@ fn parse_pac_name(content: &str) -> Option<String> {
 }
 
 /// Parse backend from pac.at content (supports array format)
+#[allow(dead_code)]
 fn parse_pac_backend(content: &str) -> Option<String> {
     // First, try to parse as array: backend: ["vue", "jet"]
     for line in content.lines() {

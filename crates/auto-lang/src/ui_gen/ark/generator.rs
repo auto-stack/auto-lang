@@ -63,6 +63,7 @@ pub struct ArkGenerator {
     registry: ArkComponentRegistry,
 
     /// Collected modifiers for current component
+    #[allow(dead_code)]
     current_modifiers: Vec<String>,
 
     /// Current indentation level
@@ -397,6 +398,7 @@ impl ArkGenerator {
     }
 
     /// Generate buildNavDestination builder for navDestination
+    #[allow(dead_code)]
     fn generate_nav_destination_builder(&self, routes: &crate::aura::AuraRoutes) -> String {
         let mut lines = Vec::new();
 

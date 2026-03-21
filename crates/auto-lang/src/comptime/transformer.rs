@@ -287,7 +287,7 @@ impl CTEE {
     /// Convert a Value to an iterator of Values
     fn value_to_iter(&self, value: &Value) -> AutoResult<Vec<Value>> {
         match value {
-            Value::Array(arr) => {
+            Value::Array(_arr) => {
                 // Extract values from AutoVal array
                 // For now, return empty (needs proper array iteration)
                 Ok(vec![])

@@ -15,6 +15,7 @@ pub struct ModifierDsl {
     /// Shared Tailwind parser
     parser: TailwindParser,
     /// Tailwind unit to Dp multiplier (default: 4)
+    #[allow(dead_code)]
     unit_multiplier: f32,
 }
 

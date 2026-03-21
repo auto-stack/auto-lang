@@ -167,6 +167,7 @@ impl JetGenerator {
     }
 
     /// Check if a node tree contains any Link nodes (for navController requirement)
+    #[allow(dead_code)]
     fn has_link_node(node: &crate::aura::AuraNode) -> bool {
         match node {
             crate::aura::AuraNode::Link { .. } => true,

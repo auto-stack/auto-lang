@@ -410,11 +410,13 @@ impl ArkModifierDsl {
     }
 
     /// Convert ObjectFit to objectFit modifier (public API)
+    #[allow(dead_code)]
     pub fn object_fit_to_modifier_public(&self, fit: &ObjectFit) -> String {
         self.object_fit_to_modifier(fit)
     }
 
     /// Convert multiple classes to a single modifier string
+    #[allow(dead_code)]
     pub fn convert_class_to_string(&self, class: &str) -> String {
         self.convert_class(class).join("")
     }
@@ -485,6 +487,7 @@ pub fn prop_to_modifier(key: &str, value: &str, _value_type: Option<&Type>) -> O
 }
 
 /// Convert a single Tailwind class to ArkTS modifier (legacy, use ArkModifierDsl instead)
+#[allow(dead_code)]
 pub fn class_to_modifier(class_name: &str) -> Option<String> {
     let dsl = ArkModifierDsl::new();
     let modifiers = dsl.convert_class(class_name);

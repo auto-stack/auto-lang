@@ -1331,7 +1331,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
 /// Compile a .at file to Vue component
 /// Returns (vue_code, widget_names)
-fn compile_at_to_vue(at_path: &Path, content: &str) -> Result<(String, Vec<String>), String> {
+fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<String>), String> {
     use auto_lang::Parser;
     use auto_lang::session::CompilerSession;
     use auto_lang::ui_gen::BackendGenerator;

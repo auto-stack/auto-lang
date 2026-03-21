@@ -480,7 +480,7 @@ impl ComponentRegistry {
         });
 
         // Typography headings
-        for (tag, size) in [("h1", 32.0), ("h2", 28.0), ("h3", 24.0), ("h4", 20.0), ("h5", 18.0), ("h6", 16.0)] {
+        for (tag, _size) in [("h1", 32.0), ("h2", 28.0), ("h3", 24.0), ("h4", 20.0), ("h5", 18.0), ("h6", 16.0)] {
             self.register(ComponentMapping {
                 tag: tag.to_string(),
                 vue: VueMapping {
