@@ -19,11 +19,9 @@
 //! ```
 
 mod generator;
-mod components;
 mod state;
 mod project;
 mod modifier;
 
 pub use generator::ArkGenerator;
-pub use components::ArkComponentRegistry;
 pub use project::ArkProjectGenerator;

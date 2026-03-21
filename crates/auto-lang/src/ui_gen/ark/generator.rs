@@ -21,7 +21,6 @@
 //! }
 //! ```
 
-use super::components::ArkComponentRegistry;
 use super::modifier::{prop_to_modifier, ArkModifierDsl};
 use super::project::ArkProjectGenerator;
 use super::state::{generate_dispatch_function, generate_handler_body, generate_msg_enum, generate_state_declarations};
@@ -38,7 +37,7 @@ use std::collections::HashMap;
 ///
 /// ```text
 /// ArkGenerator
-///     ├── ArkComponentRegistry (AURA → ArkTS component mappings)
+///     ├── WidgetRegistry (AURA → ArkTS component mappings)
 ///     ├── StateGenerator (@State declarations, dispatch function)
 ///     ├── ModifierDsl (AURA styles → ArkTS modifiers)
 ///     └── ProjectGenerator (full HarmonyOS project)
@@ -60,12 +59,8 @@ pub struct ArkGenerator {
     /// Current widget name
     current_widget: Option<String>,
 
-    /// Component registry (legacy - will be removed in Task 7)
-    #[allow(dead_code)]
-    registry: ArkComponentRegistry,
-
     /// Widget registry for looking up widget specifications
-    widget_registry: WidgetRegistry,
+    registry: WidgetRegistry,
 
     /// Collected modifiers for current component
     #[allow(dead_code)]
@@ -86,8 +81,7 @@ impl ArkGenerator {
     pub fn new() -> Self {
         Self {
             current_widget: None,
-            registry: ArkComponentRegistry::new(),
-            widget_registry: WidgetRegistry::with_defaults(),
+            registry: WidgetRegistry::with_defaults(),
             current_modifiers: Vec::new(),
             indent_level: 0,
             current_handlers: HashMap::new(),
@@ -472,7 +466,7 @@ impl ArkGenerator {
         let mut lines = Vec::new();
 
         // Look up widget in the new widget registry
-        if let Some(widget) = self.widget_registry.get(tag) {
+        if let Some(widget) = self.registry.get(tag) {
             // Get the ArkTS backend mapping
             if let Some(ark_mapping) = widget.backend("ark") {
                 let component_name = &ark_mapping.component;
@@ -925,16 +919,16 @@ mod tests {
         // and it should have default widgets registered
         let gen = ArkGenerator::new();
 
-        // Test that the widget_registry has default widgets
-        let widget = gen.widget_registry.get("col");
+        // Test that the registry has default widgets
+        let widget = gen.registry.get("col");
         assert!(widget.is_some(), "col widget should be registered");
         assert_eq!(widget.unwrap().name, "Column");
 
         // Test other default widgets
-        assert!(gen.widget_registry.get("row").is_some());
-        assert!(gen.widget_registry.get("text").is_some());
-        assert!(gen.widget_registry.get("button").is_some());
-        assert!(gen.widget_registry.get("image").is_some());
+        assert!(gen.registry.get("row").is_some());
+        assert!(gen.registry.get("text").is_some());
+        assert!(gen.registry.get("button").is_some());
+        assert!(gen.registry.get("image").is_some());
     }
 
     #[test]
