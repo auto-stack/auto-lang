@@ -1,0 +1,115 @@
+// stdlib/aura/widgets/overlay/Sheet.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "Sheet")]
+#[backend(jet, component = "BottomSheetScaffold", import = "androidx.compose.material3.BottomSheetScaffold")]
+#[backend(vue, component = "div")]
+
+/// Sheet component for side panels.
+///
+/// A panel that slides in from the edge of the screen.
+/// Supports sliding from left, right, top, or bottom.
+///
+/// # Example
+/// ```auto
+/// Sheet (open: .showSheet) {
+///     SheetTrigger { text: "Open Sheet" }
+///     SheetContent (side: "right") {
+///         SheetHeader {
+///             SheetTitle { text: "Edit Profile" }
+///             SheetDescription { text: "Make changes to your profile." }
+///         }
+///         SheetFooter {
+///             button { text: "Save changes" }
+///         }
+///     }
+/// }
+/// ```
+widget Sheet {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "SheetTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Sheet trigger button.
+///
+/// Opens the sheet when clicked.
+widget SheetTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "side")]
+#[backend(ark, component = "SheetContent")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Sheet content container.
+///
+/// Contains the main content of the sheet.
+/// Use `side` prop to control which edge the sheet slides from.
+widget SheetContent {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "SheetHeader")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Sheet header section.
+///
+/// Contains the title and description of the sheet.
+widget SheetHeader {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "SheetTitle")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "h2")]
+
+/// Sheet title.
+///
+/// The main heading of the sheet.
+widget SheetTitle {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "SheetDescription")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "p")]
+
+/// Sheet description.
+///
+/// A description or additional context for the sheet.
+widget SheetDescription {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "SheetFooter")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Sheet footer section.
+///
+/// Contains action buttons at the bottom of the sheet.
+widget SheetFooter {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "SheetClose")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Sheet close button.
+///
+/// Closes the sheet when clicked.
+widget SheetClose {
+    view {}
+}
