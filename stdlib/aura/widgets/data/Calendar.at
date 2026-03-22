@@ -1,0 +1,206 @@
+// stdlib/aura/widgets/data/Calendar.at
+
+#[spec(category = Data, has_children = false)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Calendar component for date selection.
+///
+/// Provides a visual calendar grid with month navigation and date selection.
+/// Use for date pickers, event scheduling, and date range selection.
+///
+/// # Example
+/// ```auto
+/// Calendar (selected: .selectedDate) {}
+/// ```
+///
+/// # Props
+/// - `selected`: Currently selected date (ISO format string)
+/// - `onselect`: Callback when date is selected
+widget Calendar {
+    msg Msg {
+        Select(date: str)
+        PrevMonth
+        NextMonth
+    }
+
+    model {
+        selected str = ""
+        month int = 1
+        year int = 2025
+        class str = ""
+    }
+
+    view {
+        div { style: f"rounded-md border p-3 ${.class}" } {
+            // Calendar header with navigation
+            div { style: "flex items-center justify-between" } {
+                button (variant: "outline", size: "icon", onclick: .PrevMonth) {
+                    icon (name: "chevron-left", style: "h-4 w-4") {}
+                }
+                text (text: f"${.month}/${.year}", style: "text-sm font-medium") {}
+                button (variant: "outline", size: "icon", onclick: .NextMonth) {
+                    icon (name: "chevron-right", style: "h-4 w-4") {}
+                }
+            }
+            // Calendar grid placeholder
+            div { style: "mt-4" }
+        }
+    }
+
+    on {
+        PrevMonth => {
+            month = month - 1
+            if month < 1 {
+                month = 12
+                year = year - 1
+            }
+        }
+        NextMonth => {
+            month = month + 1
+            if month > 12 {
+                month = 1
+                year = year + 1
+            }
+        }
+    }
+}
+
+// ============================================================================
+// CalendarHeader
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Calendar header with month/year display and navigation.
+///
+/// Contains prev/next buttons and current month display.
+widget CalendarHeader {
+    msg Msg {
+        PrevMonth
+        NextMonth
+    }
+
+    model {
+        month int = 1
+        year int = 2025
+    }
+
+    view {
+        div { style: "flex items-center justify-between" } {
+            button (variant: "outline", size: "icon", onclick: .PrevMonth) {
+                icon (name: "chevron-left", style: "h-4 w-4") {}
+            }
+            text (text: f"${.month}/${.year}", style: "text-sm font-medium") {}
+            button (variant: "outline", size: "icon", onclick: .NextMonth) {
+                icon (name: "chevron-right", style: "h-4 w-4") {}
+            }
+        }
+    }
+}
+
+// ============================================================================
+// CalendarGrid
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Calendar grid showing days of the month.
+///
+/// Displays weekday headers and day cells in a grid layout.
+widget CalendarGrid {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { style: f"mt-4 ${.class}" }
+    }
+}
+
+// ============================================================================
+// CalendarDayHeader
+// ============================================================================
+
+#[spec(category = Data, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// Calendar day header (weekday name).
+///
+/// # Props
+/// - `text`: Weekday abbreviation (e.g., "Mon", "Tue")
+widget CalendarDayHeader {
+    model {
+        text str = ""
+    }
+
+    view {
+        text (text: .text, style: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]") {}
+    }
+}
+
+// ============================================================================
+// CalendarDay
+// ============================================================================
+
+#[spec(category = Data, has_children = false, primary_prop = "day")]
+#[backend(ark, component = "Button")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Calendar day cell.
+///
+/// Clickable day number in the calendar grid.
+///
+/// # Props
+/// - `day`: Day number (1-31)
+/// - `selected`: Whether this day is selected
+/// - `today`: Whether this day is today
+/// - `disabled`: Whether this day is disabled (outside month)
+widget CalendarDay {
+    msg Msg {
+        Select
+    }
+
+    model {
+        day int = 1
+        selected bool = false
+        today bool = false
+        disabled bool = false
+    }
+
+    view {
+        button (onclick: .Select, disabled: .disabled) {}
+    }
+}
+
+// ============================================================================
+// CalendarWeek
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Calendar week row.
+///
+/// Contains 7 CalendarDay cells.
+widget CalendarWeek {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { style: f"flex w-full mt-2 ${.class}" }
+    }
+}
