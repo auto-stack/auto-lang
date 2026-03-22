@@ -1,0 +1,188 @@
+// stdlib/aura/widgets/feedback/Toast.at
+
+#[spec(category = Feedback, has_children = true, primary_prop = "variant")]
+#[backend(ark, component = "Toast")]
+#[backend(jet, component = "Toast", import = "androidx.compose.material3.Snackbar")]
+#[backend(vue, component = "div")]
+
+/// Toast component for displaying toast messages.
+///
+/// # Features
+/// - Multiple toast types (default, success, error, warning)
+/// - Auto-dismiss timer
+/// - Stacking toasts
+/// - Action buttons
+///
+/// # Example
+/// ```auto
+/// Toast (title: "Success", description: "Changes saved!", variant: "success") {
+///     ToastAction (text: "Undo", onclick: .Undo) {}
+/// }
+/// ```
+widget Toast {
+    msg Msg {
+        Dismiss
+        Action
+    }
+
+    model {
+        title str = ""
+        description str = ""
+        variant str = "default"  // default, success, error, warning
+        duration int = 5000
+    }
+
+    computed {
+        toastClass => f"toast toast-${.variant}"
+    }
+
+    view {
+        div { style: .toastClass, role: "alert", "aria-live": "assertive" } {
+            col (gap: "1") {
+                if .title != "" {
+                    ToastTitle (text: .title) {}
+                }
+                if .description != "" {
+                    ToastDescription (text: .description) {}
+                }
+            }
+            ToastClose { onclick: .Dismiss }
+        }
+    }
+
+    on {
+        Dismiss => {
+            // Toast is dismissed
+        }
+    }
+}
+
+#[spec(category = Feedback, has_children = true, primary_prop = "position")]
+#[backend(ark, component = "ToastProvider")]
+#[backend(jet, component = "ToastProvider", import = "androidx.compose.runtime.CompositionLocalProvider")]
+#[backend(vue, component = "div")]
+
+/// Toast provider for managing toast state.
+///
+/// # Example
+/// ```auto
+/// ToastProvider (position: "bottom-right") {
+///     // App content
+/// }
+/// ```
+widget ToastProvider {
+    model {
+        position str = "bottom-right"  // top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+    }
+
+    view {
+        div { style: "toast-provider" }
+    }
+}
+
+#[spec(category = Feedback, has_children = false, primary_prop = "position")]
+#[backend(ark, component = "ToastViewport")]
+#[backend(jet, component = "Box", import = "androidx.compose.foundation.layout.Box")]
+#[backend(vue, component = "div")]
+
+/// Toast viewport for positioning toasts.
+///
+/// # Example
+/// ```auto
+/// ToastViewport (position: "bottom-right") {}
+/// ```
+widget ToastViewport {
+    model {
+        position str = "bottom-right"
+    }
+
+    view {
+        div { style: "toast-viewport" }
+    }
+}
+
+#[spec(category = Feedback, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ToastTitle")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// Toast title component.
+///
+/// # Example
+/// ```auto
+/// ToastTitle (text: "Success") {}
+/// ```
+widget ToastTitle {
+    model {
+        text str = ""
+    }
+
+    view {
+        div { style: "toast-title text-sm font-semibold", text: .text }
+    }
+}
+
+#[spec(category = Feedback, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ToastDescription")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// Toast description component.
+///
+/// # Example
+/// ```auto
+/// ToastDescription (text: "Changes saved!") {}
+/// ```
+widget ToastDescription {
+    model {
+        text str = ""
+    }
+
+    view {
+        div { style: "toast-description text-sm opacity-90", text: .text }
+    }
+}
+
+#[spec(category = Feedback, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ToastAction")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Toast action button.
+///
+/// # Example
+/// ```auto
+/// ToastAction (text: "Undo", onclick: .Undo) {}
+/// ```
+widget ToastAction {
+    msg Msg { Click }
+
+    model {
+        text str = "Action"
+    }
+
+    view {
+        button { style: "toast-action", text: .text, onclick: .Click, variant: "outline", size: "sm" }
+    }
+}
+
+#[spec(category = Feedback, has_children = false)]
+#[backend(ark, component = "ToastClose")]
+#[backend(jet, component = "IconButton", import = "androidx.compose.material3.IconButton")]
+#[backend(vue, component = "button")]
+
+/// Toast close button.
+///
+/// # Example
+/// ```auto
+/// ToastClose { onclick: .Dismiss }
+/// ```
+widget ToastClose {
+    msg Msg { Click }
+
+    view {
+        button { style: "toast-close", variant: "ghost", size: "icon", onclick: .Click } {
+            text | X
+        }
+    }
+}
