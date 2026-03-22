@@ -1,0 +1,115 @@
+// stdlib/aura/widgets/overlay/Drawer.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "Drawer")]
+#[backend(jet, component = "ModalNavigationDrawer", import = "androidx.compose.material3.ModalNavigationDrawer")]
+#[backend(vue, component = "div")]
+
+/// Drawer component for slide-out panels.
+///
+/// A panel that slides in from the side of the screen, typically used for navigation.
+/// Supports sliding from any direction with animated transitions.
+///
+/// # Example
+/// ```auto
+/// Drawer (open: .showDrawer) {
+///     DrawerTrigger { text: "Open Drawer" }
+///     DrawerContent {
+///         DrawerHeader {
+///             DrawerTitle { text: "Menu" }
+///             DrawerDescription { text: "Choose an option." }
+///         }
+///         DrawerFooter {
+///             DrawerClose { text: "Cancel" }
+///             button { text: "Submit" }
+///         }
+///     }
+/// }
+/// ```
+widget Drawer {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DrawerTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Drawer trigger button.
+///
+/// Opens the drawer when clicked.
+widget DrawerTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "DrawerContent")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Drawer content container.
+///
+/// Contains the main content of the drawer.
+widget DrawerContent {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "DrawerHeader")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Drawer header section.
+///
+/// Contains the title and description of the drawer.
+widget DrawerHeader {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DrawerTitle")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "h2")]
+
+/// Drawer title.
+///
+/// The main heading of the drawer.
+widget DrawerTitle {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DrawerDescription")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "p")]
+
+/// Drawer description.
+///
+/// A description or additional context for the drawer.
+widget DrawerDescription {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "DrawerFooter")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Drawer footer section.
+///
+/// Contains action buttons at the bottom of the drawer.
+widget DrawerFooter {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DrawerClose")]
+#[backend(jet, component = "OutlinedButton", import = "androidx.compose.material3.OutlinedButton")]
+#[backend(vue, component = "button")]
+
+/// Drawer close button.
+///
+/// Closes the drawer when clicked.
+widget DrawerClose {
+    view {}
+}
