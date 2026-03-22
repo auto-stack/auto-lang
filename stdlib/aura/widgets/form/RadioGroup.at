@@ -1,0 +1,100 @@
+// stdlib/aura/widgets/form/RadioGroup.at
+
+// ============================================================================
+// RadioGroup - Container for mutually exclusive radio options
+// ============================================================================
+
+#[spec(category = Form, has_children = true, primary_prop = "value")]
+#[backend(ark, component = "RadioContainer", import = "@kit.ArkUI")]
+#[backend(jet, component = "RadioButtonGroup", import = "androidx.compose.material3.RadioButtonGroup")]
+#[backend(vue, component = "RadioGroup", import = "@/components/ui/radio/RadioGroup")]
+
+/// RadioGroup component for mutually exclusive selections.
+///
+/// # Props
+/// - value: Current selected value (primary prop - can use shorthand syntax)
+/// - disabled: Whether entire group is disabled
+///
+/// # Events
+/// - onchange: Change event (Msg.Change(value))
+///
+/// # Example
+/// ```auto
+/// RadioGroup (value: .selected, onchange: .Select) {
+///     RadioItem (value: "option1", text: "Option 1") {}
+///     RadioItem (value: "option2", text: "Option 2") {}
+/// }
+/// ```
+widget RadioGroup {
+    msg Msg { Change(value: str) }
+
+    model {
+        #[primary]
+        value str = ""
+        disabled bool = false
+    }
+
+    view {
+        div {
+            style: "grid gap-2"
+            role: "radiogroup"
+        }
+    }
+
+    on {
+        Change(value) => {
+            value = value
+        }
+    }
+}
+
+// ============================================================================
+// RadioItem - Individual radio button option
+// ============================================================================
+
+#[spec(category = Form, has_children = false)]
+#[backend(ark, component = "Radio")]
+#[backend(jet, component = "RadioButton")]
+#[backend(vue, component = "RadioItem", import = "@/components/ui/radio/RadioItem")]
+
+/// Individual radio button option within a RadioGroup.
+///
+/// # Props
+/// - value: Option value
+/// - text: Display label text
+/// - disabled: Whether this item is disabled
+///
+/// # Events
+/// - onclick: Click event (Msg.Click)
+///
+/// # Example
+/// ```auto
+/// RadioItem (value: "apple", text: "Apple") {}
+/// ```
+widget RadioItem {
+    msg Msg { Click }
+
+    model {
+        value str = ""
+        text str = ""
+        disabled bool = false
+    }
+
+    computed {
+        isChecked => false  // Set by parent RadioGroup
+    }
+
+    view {
+        div { style: "flex items-center space-x-2" } {
+            button {
+                type: "radio"
+                style: "aspect-square h-4 w-4 rounded-full border border-primary text-primary ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                onclick: .Click
+                disabled: .disabled
+                role: "radio"
+                "aria-checked": .isChecked
+            }
+            label { text: .text }
+        }
+    }
+}
