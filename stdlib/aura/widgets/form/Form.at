@@ -1,0 +1,209 @@
+// stdlib/aura/widgets/form/Form.at
+
+// ============================================================================
+// Form - Main form container
+// ============================================================================
+
+#[spec(category = Form, has_children = true)]
+#[backend(ark, component = "Form")]
+#[backend(jet, component = "Form")]
+#[backend(vue, component = "form")]
+
+/// Form component for form validation and submission.
+///
+/// # Props
+/// - class: Additional CSS classes
+///
+/// # Events
+/// - onsubmit: Submit event (Msg.Submit)
+///
+/// # Example
+/// ```auto
+/// Form (onsubmit: .Submit) {
+///     FormField {
+///         FormLabel | Email
+///         FormControl {
+///             Input (value: .email) {}
+///         }
+///         FormDescription | Enter your email address
+///         FormMessage (text: .emailError) {}
+///     }
+/// }
+/// ```
+widget Form {
+    msg Msg { Submit }
+
+    model {
+        class str = ""
+    }
+
+    view {
+        form {
+            style: f"space-y-6 ${.class}"
+            onsubmit: .Submit
+        }
+    }
+}
+
+// ============================================================================
+// FormField - Field container with spacing
+// ============================================================================
+
+#[spec(category = Form, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column")]
+#[backend(vue, component = "div")]
+
+/// Form field container with proper spacing.
+///
+/// # Example
+/// ```auto
+/// FormField {
+///     FormLabel | Username
+///     FormControl {
+///         Input (value: .username) {}
+///     }
+/// }
+/// ```
+widget FormField {
+    view {
+        div { style: "space-y-2" }
+    }
+}
+
+// ============================================================================
+// FormLabel - Accessible form label
+// ============================================================================
+
+#[spec(category = Form, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text")]
+#[backend(vue, component = "label")]
+
+/// Accessible label for form controls.
+///
+/// # Props
+/// - text: Label text (primary prop - can use shorthand syntax)
+/// - for: ID of the associated form control
+///
+/// # Example
+/// ```auto
+/// FormLabel | Email
+/// FormLabel (text: "Password", for: "password-input") {}
+/// ```
+widget FormLabel {
+    model {
+        #[primary]
+        text str = ""
+        for str = ""
+    }
+
+    view {
+        label {
+            style: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            text: .text
+            for: .for
+        }
+    }
+}
+
+// ============================================================================
+// FormControl - Wrapper for form inputs
+// ============================================================================
+
+#[spec(category = Form, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Box")]
+#[backend(vue, component = "div")]
+
+/// Wrapper for form input controls.
+///
+/// # Example
+/// ```auto
+/// FormControl {
+///     Input (value: .email) {}
+/// }
+/// ```
+widget FormControl {
+    view {
+        div { style: "form-control" }
+    }
+}
+
+// ============================================================================
+// FormDescription - Helper text for form fields
+// ============================================================================
+
+#[spec(category = Form, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text")]
+#[backend(vue, component = "p")]
+
+/// Helper text displayed below form controls.
+///
+/// # Props
+/// - text: Description text (primary prop - can use shorthand syntax)
+///
+/// # Example
+/// ```auto
+/// FormDescription | We'll never share your email.
+/// FormDescription (text: "Must be at least 8 characters") {}
+/// ```
+widget FormDescription {
+    model {
+        #[primary]
+        text str = ""
+    }
+
+    view {
+        p {
+            style: "text-[0.8rem] text-muted-foreground"
+            text: .text
+        }
+    }
+}
+
+// ============================================================================
+// FormMessage - Error/success message for form fields
+// ============================================================================
+
+#[spec(category = Form, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text")]
+#[backend(vue, component = "p")]
+
+/// Error or success message for form field validation.
+///
+/// # Props
+/// - text: Message text (primary prop - can use shorthand syntax)
+/// - type: Message type ("error", "success", "info")
+///
+/// # Example
+/// ```auto
+/// FormMessage (text: "Invalid email address", type: "error") {}
+/// FormMessage (text: "Looks good!", type: "success") {}
+/// ```
+widget FormMessage {
+    model {
+        #[primary]
+        text str = ""
+        type str = "error"  // error, success, info
+    }
+
+    computed {
+        messageClass => if .type == "error" {
+            "text-[0.8rem] font-medium text-destructive"
+        } else if .type == "success" {
+            "text-[0.8rem] font-medium text-green-600"
+        } else {
+            "text-[0.8rem] font-medium text-muted-foreground"
+        }
+    }
+
+    view {
+        p {
+            style: .messageClass
+            text: .text
+        }
+    }
+}
