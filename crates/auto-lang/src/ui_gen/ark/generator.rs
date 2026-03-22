@@ -170,7 +170,8 @@ impl ArkGenerator {
         // For App widget with routes, import child pages
         if let Some(ref routes) = widget.routes {
             for route in &routes.routes {
-                let component_name = Self::module_to_component(&route.module);
+                // Import uses actual widget name (e.g., Index from ./Index)
+                let component_name = Self::capitalize_module(&route.module);
                 lines.push(format!("import {{ {} }} from './{}';", component_name, component_name));
             }
             if !routes.routes.is_empty() {
@@ -319,13 +320,19 @@ impl ArkGenerator {
         format!("{}{}Builder", first, rest)
     }
 
-    /// Convert module name to component name
-    fn module_to_component(module: &str) -> String {
-        // e.g., "counter" -> "CounterPage" or "index" -> "IndexPage"
+    /// Capitalize module name (e.g., "counter" -> "Counter", "index" -> "Index")
+    fn capitalize_module(module: &str) -> String {
         let mut chars = module.chars();
         let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
         let rest: String = chars.collect();
-        format!("{}{}Page", first, rest)
+        format!("{}{}", first, rest)
+    }
+
+    /// Convert module name to component name
+    /// This should match the actual widget name in the source file
+    fn module_to_component(module: &str) -> String {
+        // e.g., "counter" -> "Counter", "index" -> "Index"
+        Self::capitalize_module(module)
     }
 
     /// Generate ArkTS code for a node, with route awareness
@@ -404,13 +411,14 @@ impl ArkGenerator {
 
         lines.push("@Builder".to_string());
         lines.push("buildNavDestination(name: string) {".to_string());
-        lines.push("  if (name === 'index') {".to_string());
-        lines.push("    IndexPage()".to_string());
-        lines.push("  }".to_string());
 
-        for route in &routes.routes {
-            if route.module != "index" {
-                let component_name = Self::module_to_component(&route.module);
+        for (i, route) in routes.routes.iter().enumerate() {
+            let component_name = Self::module_to_component(&route.module);
+            if route.module == "index" || i == 0 {
+                lines.push(format!("  if (name === '{}') {{", route.module));
+                lines.push(format!("    {}()", component_name));
+                lines.push("  }".to_string());
+            } else {
                 lines.push(format!("  else if (name === '{}') {{", route.module));
                 lines.push(format!("    {}()", component_name));
                 lines.push("  }".to_string());
@@ -1160,7 +1168,7 @@ mod tests {
 
         // App widget should import child pages
         assert!(
-            code.contains("import { IndexPage } from './IndexPage';"),
+            code.contains("import { Index } from './Index';"),
             "App widget should import child pages"
         );
 
