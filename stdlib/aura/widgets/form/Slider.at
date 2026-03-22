@@ -1,0 +1,55 @@
+// stdlib/aura/widgets/form/Slider.at
+
+#[spec(category = Form, has_children = false, primary_prop = "value")]
+#[backend(ark, component = "Slider", import = "@kit.ArkUI")]
+#[backend(jet, component = "Slider", import = "androidx.compose.material3.Slider")]
+#[backend(vue, component = "Slider", import = "@/components/ui/slider/Slider")]
+
+/// Slider component for range selections.
+///
+/// # Props
+/// - value: Current slider value (primary prop - can use shorthand syntax)
+/// - min: Minimum value
+/// - max: Maximum value
+/// - step: Step increment
+/// - disabled: Whether slider is disabled
+///
+/// # Events
+/// - onchange: Change event (Msg.Change(value))
+///
+/// # Example
+/// ```auto
+/// Slider (value: .volume, min: 0, max: 100, onchange: .ChangeVolume) {}
+/// Slider (value: .brightness) {}
+/// ```
+widget Slider {
+    msg Msg { Change(value: int) }
+
+    model {
+        #[primary]
+        value int = 50
+        min int = 0
+        max int = 100
+        step int = 1
+        disabled bool = false
+    }
+
+    computed {
+        percentage => (.value - .min) * 100 / (.max - .min)
+    }
+
+    view {
+        div { style: "relative flex w-full touch-none select-none items-center" } {
+            div { style: "relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20" } {
+                div { style: "absolute h-full bg-primary", style: f"right: ${100 - .percentage}%" }
+            }
+            div { style: "slider-thumb", style: f"left: ${.percentage}%" }
+        }
+    }
+
+    on {
+        Change(value) => {
+            value = value
+        }
+    }
+}
