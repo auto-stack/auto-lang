@@ -1,3 +1,3 @@
 // stdlib/aura/widgets/display/mod.at
 
-pub use Text, Image, Icon, Progress, Divider
+pub use Text, Image, Badge, Avatar, Separator, Skeleton
