@@ -1,0 +1,33 @@
+// stdlib/aura/widgets/feedback/Progress.at
+
+#[spec(category = Feedback, has_children = false, primary_prop = "value")]
+#[backend(ark, component = "LinearProgressIndicator")]
+#[backend(jet, component = "LinearProgressIndicator", import = "androidx.compose.material3.LinearProgressIndicator")]
+#[backend(vue, component = "div")]
+
+/// Progress component for showing completion status.
+///
+/// # Features
+/// - Shows progress as a percentage (0-100)
+/// - Animated transition when value changes
+///
+/// # Example
+/// ```auto
+/// Progress (value: 60, max: 100) {}
+/// ```
+widget Progress {
+    model {
+        value int = 0  // 0-100
+        max int = 100
+    }
+
+    computed {
+        percentage => if .max > 0 { .value * 100 / .max } else { 0 }
+    }
+
+    view {
+        div { style: "relative h-2 w-full overflow-hidden rounded-full bg-muted/20" } {
+            div { style: "h-full bg-primary transition-all", style: f"transform: translateX(-${100 - .percentage}%)" }
+        }
+    }
+}
