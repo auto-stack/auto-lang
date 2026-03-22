@@ -602,12 +602,12 @@ impl ArkGenerator {
                 // Get content argument from primary_prop
                 // The primary_prop defines the shorthand property (e.g., Text "Hello" uses "text" prop)
                 let content_arg = if let Some(primary_prop) = &widget.primary_prop {
-                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(value))) = merged_props.get(primary_prop) {
-                        // Check if it's a resource reference like $r('app.media.xxx')
-                        if value.starts_with("$r(") {
-                            value.clone()
-                        } else {
-                            format!("'{}'", value)
+                    if let Some(prop_value) = merged_props.get(primary_prop) {
+                        match prop_value {
+                            AuraPropValue::Expr(expr) => {
+                                self.expr_to_ark_string(expr)
+                            }
+                            _ => String::new()
                         }
                     } else {
                         String::new()
@@ -842,6 +842,31 @@ impl ArkGenerator {
             }
         } else {
             format!("// Unknown handler: {}", handler)
+        }
+    }
+
+    /// Convert AuraExpr to ArkTS code string
+    fn expr_to_ark_string(&self, expr: &AuraExpr) -> String {
+        match expr {
+            AuraExpr::Literal(value) => {
+                // Check if it's a resource reference like $r('app.media.xxx')
+                if value.starts_with("$r(") {
+                    value.clone()
+                } else {
+                    format!("'{}'", value)
+                }
+            }
+            AuraExpr::StateRef(field) => {
+                format!("this.{}", field)
+            }
+            AuraExpr::FieldAccess { object, field } => {
+                let obj_str = self.expr_to_ark_string(object);
+                format!("{}.{}", obj_str, field)
+            }
+            AuraExpr::Int(n) => n.to_string(),
+            AuraExpr::Float(f) => f.to_string(),
+            AuraExpr::Bool(b) => b.to_string(),
+            _ => String::new(),
         }
     }
 

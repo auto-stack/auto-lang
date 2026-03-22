@@ -388,6 +388,30 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
             }))
         }
 
+        // Dot expression: .field → property reference (treated as interpolated text)
+        // This handles cases like Text .title where .title is passed as an argument
+        Expr::Dot(obj, field) => {
+            match obj.as_ref() {
+                // .field → state reference
+                Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self" => {
+                    // Create interpolated text with single binding
+                    let field_name = field.as_str();
+                    Ok(AuraNode::Text(AuraTextContent::Interpolated {
+                        template: format!("${{.{}}}", field_name),
+                        bindings: vec![field_name.to_string()],
+                    }))
+                }
+                // Other dot expressions: object.field → try to extract as child element
+                _ => {
+                    // Fall through to error for now
+                    Err(ExtractError::UnsupportedExpr(format!(
+                        "Cannot extract view tree from dot expression: {:?}",
+                        expr
+                    )))
+                }
+            }
+        }
+
         _ => Err(ExtractError::UnsupportedExpr(format!(
             "Cannot extract view tree from: {:?}",
             expr

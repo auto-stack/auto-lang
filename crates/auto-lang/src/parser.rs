@@ -7518,6 +7518,9 @@ impl<'a> Parser<'a> {
             Some(Expr::Ident(id))
         } else if self.is_literal() {
             Some(self.literal()?)
+        } else if self.is_kind(TokenKind::Dot) {
+            // Handle .field as primary prop (e.g., Text .title)
+            Some(self.dot_item()?)
         } else {
             None
         };
@@ -8261,7 +8264,9 @@ impl<'a> Parser<'a> {
         // Check for string literal as primary property shorthand:
         // tag "value" → tag (primary_prop: "value")
         // The primary prop depends on the element type (from get_primary_prop)
+        // Also handle .field as primary prop: Text .title → Text (text: .title)
         let has_primary_prop_value = self.is_kind(TokenKind::Str);
+        let has_dot_primary = self.is_kind(TokenKind::Dot);
         if has_primary_prop_value {
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
                 let content = self.cur.text.clone();
@@ -8273,6 +8278,15 @@ impl<'a> Parser<'a> {
             } else {
                 // No primary prop defined for this element, skip the string
                 self.next();
+            }
+        } else if has_dot_primary {
+            // Handle .field as primary prop (e.g., Text .title)
+            if let Some(primary_prop) = Self::get_primary_prop(&tag) {
+                let dot_expr = self.dot_item()?;
+                props.push(ViewProp {
+                    name: primary_prop.to_string(),
+                    value: ViewPropValue::Expr(dot_expr),
+                });
             }
         }
 
