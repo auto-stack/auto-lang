@@ -1,0 +1,193 @@
+// stdlib/aura/widgets/navigation/Breadcrumb.at
+
+// ============================================================================
+// Breadcrumb - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "Breadcrumb")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "nav")]
+
+/// Breadcrumb component for navigation path display.
+///
+/// Displays a hierarchical navigation path with links and current page indicator.
+/// Useful for showing the user's location within a site hierarchy.
+///
+/// # Features
+/// - Hierarchical path display
+/// - Link and current page states
+/// - Custom separator
+/// - Accessible navigation
+///
+/// # Example
+/// ```auto
+/// Breadcrumb {
+///     BreadcrumbList {
+///         BreadcrumbItem {
+///             BreadcrumbLink (text: "Home", href: "/") {}
+///         }
+///         BreadcrumbSeparator {}
+///         BreadcrumbItem {
+///             BreadcrumbLink (text: "Components", href: "/components") {}
+///         }
+///         BreadcrumbSeparator {}
+///         BreadcrumbItem {
+///             BreadcrumbPage (text: "Button") {}
+///         }
+///     }
+/// }
+/// ```
+widget Breadcrumb {
+    model {
+        class str = ""
+    }
+
+    view {
+        tag: "nav"
+        style: f"breadcrumb ${.class}"
+        aria-label: "breadcrumb"
+    }
+}
+
+// ============================================================================
+// BreadcrumbList - List container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true)]
+#[backend(ark, component = "BreadcrumbList")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "ol")]
+
+/// Breadcrumb list container.
+///
+/// Contains the breadcrumb items in an ordered list.
+///
+/// # Example
+/// ```auto
+/// BreadcrumbList {
+///     BreadcrumbItem { BreadcrumbLink (text: "Home", href: "/") {} }
+///     BreadcrumbSeparator {}
+///     BreadcrumbItem { BreadcrumbPage (text: "Current") {} }
+/// }
+/// ```
+widget BreadcrumbList {
+    view {
+        tag: "ol"
+        style: "flex flex-wrap items-center gap-1.5 break-px text-sm text-muted-foreground sm:gap-2.5"
+    }
+}
+
+// ============================================================================
+// BreadcrumbItem - Single item
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true)]
+#[backend(ark, component = "BreadcrumbItem")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "li")]
+
+/// Breadcrumb item container.
+///
+/// Contains a link or page element.
+///
+/// # Example
+/// ```auto
+/// BreadcrumbItem {
+///     BreadcrumbLink (text: "Products", href: "/products") {}
+/// }
+/// ```
+widget BreadcrumbItem {
+    view {
+        tag: "li"
+        style: "inline-flex items-center gap-1.5"
+    }
+}
+
+// ============================================================================
+// BreadcrumbLink - Clickable link
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "BreadcrumbLink")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "a")]
+
+/// Breadcrumb clickable link.
+///
+/// A navigation link within the breadcrumb.
+///
+/// # Example
+/// ```auto
+/// BreadcrumbLink (text: "Home", href: "/") {}
+/// ```
+widget BreadcrumbLink {
+    model {
+        text str = ""
+        href str = "#"
+    }
+
+    view {
+        tag: "a"
+        style: "transition-colors hover:text-foreground"
+        text: .text
+        href: .href
+    }
+}
+
+// ============================================================================
+// BreadcrumbPage - Current page (non-clickable)
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "BreadcrumbPage")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "span")]
+
+/// Breadcrumb current page indicator.
+///
+/// Displays the current page name without a link.
+/// Indicates the user's current location.
+///
+/// # Example
+/// ```auto
+/// BreadcrumbPage (text: "Button") {}
+/// ```
+widget BreadcrumbPage {
+    model {
+        text str = ""
+    }
+
+    view {
+        tag: "span"
+        style: "font-normal text-foreground"
+        text: .text
+        aria-current: "page"
+    }
+}
+
+// ============================================================================
+// BreadcrumbSeparator - Divider between items
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "BreadcrumbSeparator")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "li")]
+
+/// Breadcrumb separator.
+///
+/// Visual divider between breadcrumb items.
+///
+/// # Example
+/// ```auto
+/// BreadcrumbSeparator {}
+/// ```
+widget BreadcrumbSeparator {
+    view {
+        tag: "li"
+        style: "[&>svg]:px-2"
+        role: "presentation"
+        aria-hidden: true
+    }
+}

@@ -1,0 +1,236 @@
+// stdlib/aura/widgets/navigation/Pagination.at
+
+// ============================================================================
+// Pagination - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "page")]
+#[backend(ark, component = "Pagination")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "nav")]
+
+/// Pagination component for page navigation.
+///
+/// A navigation component for moving between pages of content.
+/// Supports first, previous, next, last, and numbered page buttons.
+///
+/// # Features
+/// - Page number navigation
+/// - Previous/Next buttons
+/// - First/Last buttons
+/// - Ellipsis for large page counts
+/// - Accessible navigation
+///
+/// # Example
+/// ```auto
+/// Pagination (page: .currentPage, total: .totalPages) {
+///     PaginationFirst {}
+///     PaginationPrevious {}
+///     PaginationItem (text: "1", active: .currentPage == 1) {}
+///     PaginationEllipsis {}
+///     PaginationItem (text: f"${.currentPage}") {}
+///     PaginationEllipsis {}
+///     PaginationItem (text: f"${.totalPages}") {}
+///     PaginationNext {}
+///     PaginationLast {}
+/// }
+/// ```
+widget Pagination {
+    msg Msg {
+        Change(page: int)
+        First
+        Last
+        Previous
+        Next
+    }
+
+    model {
+        page int = 1
+        total int = 10
+        perPage int = 10
+    }
+
+    view {
+        tag: "nav"
+        style: "pagination"
+        role: "navigation"
+        aria-label: "pagination"
+    }
+}
+
+// ============================================================================
+// PaginationFirst - First page button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "PaginationFirst")]
+#[backend(jet, component = "IconButton", import = "androidx.compose.material3.IconButton")]
+#[backend(vue, component = "button")]
+
+/// Pagination first page button.
+///
+/// Navigates to the first page.
+///
+/// # Example
+/// ```auto
+/// PaginationFirst {}
+/// ```
+widget PaginationFirst {
+    msg Msg { Click }
+
+    view {
+        tag: "button"
+        style: "pagination-first"
+        variant: "ghost"
+        size: "icon"
+    }
+}
+
+// ============================================================================
+// PaginationPrevious - Previous page button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "PaginationPrevious")]
+#[backend(jet, component = "IconButton", import = "androidx.compose.material3.IconButton")]
+#[backend(vue, component = "button")]
+
+/// Pagination previous page button.
+///
+/// Navigates to the previous page.
+///
+/// # Example
+/// ```auto
+/// PaginationPrevious {}
+/// ```
+widget PaginationPrevious {
+    msg Msg { Click }
+
+    view {
+        tag: "button"
+        style: "pagination-previous"
+        variant: "ghost"
+        size: "icon"
+    }
+}
+
+// ============================================================================
+// PaginationNext - Next page button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "PaginationNext")]
+#[backend(jet, component = "IconButton", import = "androidx.compose.material3.IconButton")]
+#[backend(vue, component = "button")]
+
+/// Pagination next page button.
+///
+/// Navigates to the next page.
+///
+/// # Example
+/// ```auto
+/// PaginationNext {}
+/// ```
+widget PaginationNext {
+    msg Msg { Click }
+
+    view {
+        tag: "button"
+        style: "pagination-next"
+        variant: "ghost"
+        size: "icon"
+    }
+}
+
+// ============================================================================
+// PaginationLast - Last page button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "PaginationLast")]
+#[backend(jet, component = "IconButton", import = "androidx.compose.material3.IconButton")]
+#[backend(vue, component = "button")]
+
+/// Pagination last page button.
+///
+/// Navigates to the last page.
+///
+/// # Example
+/// ```auto
+/// PaginationLast {}
+/// ```
+widget PaginationLast {
+    msg Msg { Click }
+
+    view {
+        tag: "button"
+        style: "pagination-last"
+        variant: "ghost"
+        size: "icon"
+    }
+}
+
+// ============================================================================
+// PaginationItem - Page number button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "PaginationItem")]
+#[backend(jet, component = "FilterChip", import = "androidx.compose.material3.FilterChip")]
+#[backend(vue, component = "button")]
+
+/// Pagination page number button.
+///
+/// Displays a specific page number.
+///
+/// # Example
+/// ```auto
+/// PaginationItem (text: "1", active: true) {}
+/// ```
+widget PaginationItem {
+    msg Msg { Click }
+
+    model {
+        text str = "1"
+        active bool = false
+    }
+
+    computed {
+        itemClass => if .active {
+            "pagination-item active"
+        } else {
+            "pagination-item"
+        }
+    }
+
+    view {
+        tag: "button"
+        style: .itemClass
+        text: .text
+    }
+}
+
+// ============================================================================
+// PaginationEllipsis - Ellipsis indicator
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "PaginationEllipsis")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "span")]
+
+/// Pagination ellipsis indicator.
+///
+/// Indicates skipped pages in the pagination.
+///
+/// # Example
+/// ```auto
+/// PaginationEllipsis {}
+/// ```
+widget PaginationEllipsis {
+    view {
+        tag: "span"
+        style: "pagination-ellipsis"
+        text: "..."
+    }
+}

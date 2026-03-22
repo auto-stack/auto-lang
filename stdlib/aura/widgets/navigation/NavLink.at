@@ -1,0 +1,52 @@
+// stdlib/aura/widgets/navigation/NavLink.at
+
+// ============================================================================
+// NavLink - Navigation link
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "NavLink")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "a")]
+
+/// NavLink component for navigation items.
+///
+/// A navigation link with active state styling, icon support,
+/// and external link detection.
+///
+/// # Features
+/// - Active state styling
+/// - Icon support
+/// - Badge support
+/// - External link detection
+///
+/// # Example
+/// ```auto
+/// NavLink (text: "Home", href: "/", active: .currentPage == "home") {}
+/// NavLink (text: "GitHub", href: "https://github.com", external: true) {}
+/// NavLink (text: "Messages", href: "/messages", badge: "3") {}
+/// ```
+widget NavLink {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        href str = ""
+        active bool = false
+        icon str = ""
+        badge str = ""
+        external bool = false
+    }
+
+    computed {
+        linkClass => if .active { "nav-link active" } else { "nav-link" }
+        target => if .external { "_blank" } else { "_self" }
+    }
+
+    view {
+        tag: "a"
+        style: .linkClass
+        href: .href
+        target: .target
+    }
+}

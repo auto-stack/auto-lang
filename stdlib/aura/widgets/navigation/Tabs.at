@@ -1,0 +1,152 @@
+// stdlib/aura/widgets/navigation/Tabs.at
+
+// ============================================================================
+// Tabs - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "activeTab")]
+#[backend(ark, component = "Tabs")]
+#[backend(jet, component = "TabRow", import = "androidx.compose.material3.TabRow")]
+#[backend(vue, component = "div")]
+
+/// Tabs component for tabbed navigation.
+///
+/// A horizontal or vertical tab navigation component that allows users
+/// to switch between different content panels.
+///
+/// # Features
+/// - Horizontal and vertical tabs
+/// - Animated tab switching
+/// - Disabled tab support
+/// - Badge on tab labels
+///
+/// # Example
+/// ```auto
+/// Tabs (activeTab: .activeTab, onchange: .TabChange) {
+///     TabsList {
+///         TabsTrigger (id: "preview", label: "Preview", active: .activeTab == "preview") {}
+///         TabsTrigger (id: "code", label: "Code", active: .activeTab == "code") {}
+///     }
+///     TabsContent (id: "preview", active: .activeTab == "preview") {
+///         text "Preview content"
+///     }
+///     TabsContent (id: "code", active: .activeTab == "code") {
+///         text "Code content"
+///     }
+/// }
+/// ```
+widget Tabs {
+    msg Msg {
+        Change(tabId: str)
+    }
+
+    model {
+        activeTab str = ""
+        orientation str = "horizontal"  // horizontal, vertical
+    }
+
+    view {
+        style: f"tabs tabs-${.orientation}"
+    }
+}
+
+// ============================================================================
+// TabsList - Container for tab triggers
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true)]
+#[backend(ark, component = "TabsList")]
+#[backend(jet, component = "TabRow", import = "androidx.compose.material3.TabRow")]
+#[backend(vue, component = "div")]
+
+/// Tabs list container.
+///
+/// Contains the tab trigger buttons.
+///
+/// # Example
+/// ```auto
+/// TabsList {
+///     TabsTrigger (id: "tab1", label: "Tab 1") {}
+///     TabsTrigger (id: "tab2", label: "Tab 2") {}
+/// }
+/// ```
+widget TabsList {
+    view {
+        style: "tabs-list"
+    }
+}
+
+// ============================================================================
+// TabsTrigger - Single tab trigger button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "label")]
+#[backend(ark, component = "TabsTrigger")]
+#[backend(jet, component = "Tab", import = "androidx.compose.material3.Tab")]
+#[backend(vue, component = "button")]
+
+/// Single tab trigger button.
+///
+/// Clicking activates the associated tab content.
+///
+/// # Example
+/// ```auto
+/// TabsTrigger (id: "preview", label: "Preview", active: true) {}
+/// ```
+widget TabsTrigger {
+    msg Msg { Click }
+
+    model {
+        id str = ""
+        label str = ""
+        active bool = false
+        disabled bool = false
+        badge str = ""
+    }
+
+    computed {
+        tabClass => if .active { "tab-trigger active" } else { "tab-trigger" }
+    }
+
+    view {
+        style: .tabClass
+        disabled: .disabled
+    }
+}
+
+// ============================================================================
+// TabsContent - Tab content panel
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "id")]
+#[backend(ark, component = "TabsContent")]
+#[backend(jet, component = "Box", import = "androidx.compose.foundation.layout.Box")]
+#[backend(vue, component = "div")]
+
+/// Tab content panel.
+///
+/// Contains the content for a specific tab.
+/// Only visible when the associated tab is active.
+///
+/// # Example
+/// ```auto
+/// TabsContent (id: "preview", active: .activeTab == "preview") {
+///     col {
+///         text "Preview content here"
+///     }
+/// }
+/// ```
+widget TabsContent {
+    model {
+        id str = ""
+        active bool = false
+    }
+
+    computed {
+        contentClass => if .active { "tab-content active" } else { "tab-content hidden" }
+    }
+
+    view {
+        style: .contentClass
+    }
+}

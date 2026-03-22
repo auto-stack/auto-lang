@@ -1,0 +1,197 @@
+// stdlib/aura/widgets/navigation/DropdownMenu.at
+
+// ============================================================================
+// DropdownMenu - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "DropdownMenu")]
+#[backend(jet, component = "Box", import = "androidx.compose.foundation.layout.Box")]
+#[backend(vue, component = "div")]
+
+/// DropdownMenu component for dropdown navigation.
+///
+/// A dropdown menu triggered by a button click, commonly used
+/// for context menus or user actions.
+///
+/// # Features
+/// - Triggered by click
+/// - Keyboard navigation
+/// - Nested menus support
+///
+/// # Example
+/// ```auto
+/// DropdownMenu (open: .showMenu) {
+///     DropdownMenuTrigger { text: "Open Menu" }
+///     DropdownMenuContent {
+///         DropdownMenuLabel { text: "My Account" }
+///         DropdownMenuSeparator {}
+///         DropdownMenuItem (text: "Profile") {}
+///         DropdownMenuItem (text: "Settings") {}
+///         DropdownMenuSeparator {}
+///         DropdownMenuItem (text: "Logout") {}
+///     }
+/// }
+/// ```
+widget DropdownMenu {
+    model {
+        open bool = false
+    }
+
+    view {
+        style: "dropdown-menu"
+    }
+}
+
+// ============================================================================
+// DropdownMenuTrigger - Trigger button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DropdownMenuTrigger")]
+#[backend(jet, component = "Button", import = "androidx.compose.material3.Button")]
+#[backend(vue, component = "button")]
+
+/// DropdownMenu trigger button.
+///
+/// Opens the dropdown menu when clicked.
+///
+/// # Example
+/// ```auto
+/// DropdownMenuTrigger (text: "Open Menu") {}
+/// ```
+widget DropdownMenuTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = "Open"
+    }
+
+    view {
+        tag: "button"
+        style: "dropdown-menu-trigger"
+        text: .text
+    }
+}
+
+// ============================================================================
+// DropdownMenuContent - Content container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "align")]
+#[backend(ark, component = "DropdownMenuContent")]
+#[backend(jet, component = "DropdownMenu", import = "androidx.compose.material3.DropdownMenu")]
+#[backend(vue, component = "div")]
+
+/// DropdownMenu content container.
+///
+/// Contains the menu items.
+///
+/// # Example
+/// ```auto
+/// DropdownMenuContent {
+///     DropdownMenuItem (text: "Item 1") {}
+///     DropdownMenuItem (text: "Item 2") {}
+/// }
+/// ```
+widget DropdownMenuContent {
+    model {
+        align str = "start"  // start, center, end
+        sideOffset int = 4
+    }
+
+    view {
+        style: f"dropdown-menu-content ${.align}"
+    }
+}
+
+// ============================================================================
+// DropdownMenuItem - Menu item
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DropdownMenuItem")]
+#[backend(jet, component = "DropdownMenuItem", import = "androidx.compose.material3.DropdownMenuItem")]
+#[backend(vue, component = "div")]
+
+/// DropdownMenu item.
+///
+/// A clickable item in the dropdown menu.
+///
+/// # Example
+/// ```auto
+/// DropdownMenuItem (text: "Profile", disabled: false) {}
+/// ```
+widget DropdownMenuItem {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        disabled bool = false
+    }
+
+    computed {
+        itemClass => if .disabled {
+            "dropdown-menu-item disabled"
+        } else {
+            "dropdown-menu-item"
+        }
+    }
+
+    view {
+        style: .itemClass
+        text: .text
+        disabled: .disabled
+    }
+}
+
+// ============================================================================
+// DropdownMenuSeparator - Visual separator
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "DropdownMenuSeparator")]
+#[backend(jet, component = "HorizontalDivider", import = "androidx.compose.material3.HorizontalDivider")]
+#[backend(vue, component = "div")]
+
+/// DropdownMenu separator.
+///
+/// Visual divider between menu items.
+///
+/// # Example
+/// ```auto
+/// DropdownMenuSeparator {}
+/// ```
+widget DropdownMenuSeparator {
+    view {
+        style: "dropdown-menu-separator"
+    }
+}
+
+// ============================================================================
+// DropdownMenuLabel - Menu label
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DropdownMenuLabel")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// DropdownMenu label.
+///
+/// A non-clickable label for grouping menu items.
+///
+/// # Example
+/// ```auto
+/// DropdownMenuLabel (text: "Actions") {}
+/// ```
+widget DropdownMenuLabel {
+    model {
+        text str = ""
+    }
+
+    view {
+        style: "dropdown-menu-label"
+        text: .text
+    }
+}

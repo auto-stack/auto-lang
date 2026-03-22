@@ -1,0 +1,251 @@
+// stdlib/aura/widgets/navigation/MenuBar.at
+
+// ============================================================================
+// Menubar - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "Menubar")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Menubar component for horizontal menu navigation.
+///
+/// A horizontal navigation bar commonly used in desktop applications
+/// with dropdown menus.
+///
+/// # Features
+/// - Horizontal menu bar
+/// - Nested submenus
+/// - Keyboard navigation
+///
+/// # Example
+/// ```auto
+/// Menubar {
+///     MenubarMenu {
+///         MenubarTrigger { text: "File" }
+///         MenubarContent {
+///             MenubarItem { text: "New File" }
+///             MenubarItem { text: "Open" }
+///             MenubarSeparator {}
+///             MenubarItem { text: "Save" }
+///         }
+///     }
+///     MenubarMenu {
+///         MenubarTrigger { text: "Edit" }
+///         MenubarContent {
+///             MenubarItem { text: "Undo" }
+///             MenubarItem { text: "Redo" }
+///         }
+///     }
+/// }
+/// ```
+widget Menubar {
+    model {
+        class str = ""
+    }
+
+    view {
+        style: f"menubar ${.class}"
+    }
+}
+
+// ============================================================================
+// MenubarMenu - Menu container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true)]
+#[backend(ark, component = "MenubarMenu")]
+#[backend(jet, component = "Box", import = "androidx.compose.foundation.layout.Box")]
+#[backend(vue, component = "div")]
+
+/// Menubar menu container.
+///
+/// Contains a trigger and content for a dropdown menu.
+///
+/// # Example
+/// ```auto
+/// MenubarMenu {
+///     MenubarTrigger { text: "File" }
+///     MenubarContent {
+///         MenubarItem { text: "New" }
+///     }
+/// }
+/// ```
+widget MenubarMenu {
+    view {
+        style: "menubar-menu"
+    }
+}
+
+// ============================================================================
+// MenubarTrigger - Trigger button
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "MenubarTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Menubar trigger button.
+///
+/// Opens the dropdown menu when clicked.
+///
+/// # Example
+/// ```auto
+/// MenubarTrigger { text: "File" }
+/// ```
+widget MenubarTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+    }
+
+    view {
+        tag: "button"
+        style: "menubar-trigger"
+        text: .text
+    }
+}
+
+// ============================================================================
+// MenubarContent - Dropdown content
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "align")]
+#[backend(ark, component = "MenubarContent")]
+#[backend(jet, component = "DropdownMenu", import = "androidx.compose.material3.DropdownMenu")]
+#[backend(vue, component = "div")]
+
+/// Menubar content/dropdown.
+///
+/// Contains the menu items for the dropdown.
+///
+/// # Example
+/// ```auto
+/// MenubarContent {
+///     MenubarItem { text: "New" }
+///     MenubarItem { text: "Open" }
+/// }
+/// ```
+widget MenubarContent {
+    model {
+        align str = "start"
+    }
+
+    view {
+        style: f"menubar-content ${.align}"
+    }
+}
+
+// ============================================================================
+// MenubarItem - Menu item
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "MenubarItem")]
+#[backend(jet, component = "DropdownMenuItem", import = "androidx.compose.material3.DropdownMenuItem")]
+#[backend(vue, component = "div")]
+
+/// Menubar item.
+///
+/// A clickable item in the dropdown menu.
+///
+/// # Example
+/// ```auto
+/// MenubarItem (text: "New File", disabled: false) {}
+/// ```
+widget MenubarItem {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        disabled bool = false
+    }
+
+    view {
+        style: "menubar-item"
+        text: .text
+        disabled: .disabled
+    }
+}
+
+// ============================================================================
+// MenubarSeparator - Visual separator
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false)]
+#[backend(ark, component = "MenubarSeparator")]
+#[backend(jet, component = "HorizontalDivider", import = "androidx.compose.material3.HorizontalDivider")]
+#[backend(vue, component = "div")]
+
+/// Menubar separator.
+///
+/// Visual divider between menu items.
+///
+/// # Example
+/// ```auto
+/// MenubarSeparator {}
+/// ```
+widget MenubarSeparator {
+    view {
+        style: "menubar-separator"
+    }
+}
+
+// ============================================================================
+// MenubarLabel - Group label
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "MenubarLabel")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// Menubar label.
+///
+/// A non-interactive label for grouping items.
+///
+/// # Example
+/// ```auto
+/// MenubarLabel { text: "File Options" }
+/// ```
+widget MenubarLabel {
+    model {
+        text str = ""
+    }
+
+    view {
+        style: "menubar-label"
+        text: .text
+    }
+}
+
+// ============================================================================
+// MenubarCheckboxItem - Checkbox menu item
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "MenubarCheckboxItem")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Menubar checkbox item.
+///
+/// A menu item with a checkbox for toggleable options.
+///
+/// # Example
+/// ```auto
+/// MenubarCheckboxItem (text: "Show Toolbar", checked: true) {}
+/// ```
+widget MenubarCheckboxItem {
+    model {
+        text str = ""
+        checked bool = false
+    }
+
+    view {
+        style: "menubar-checkbox-item"
+    }
+}

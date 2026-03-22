@@ -1,0 +1,129 @@
+// stdlib/aura/widgets/navigation/Sidebar.at
+
+// ============================================================================
+// Sidebar - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "activePage")]
+#[backend(ark, component = "Sidebar")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Sidebar component for documentation navigation.
+///
+/// A vertical navigation component commonly used for documentation
+/// or dashboard layouts.
+///
+/// # Features
+/// - Collapsible sections
+/// - Active state highlighting
+/// - Search integration
+/// - Mobile responsive
+///
+/// # Example
+/// ```auto
+/// Sidebar (activePage: .activePage) {
+///     SidebarSection (title: "Getting Started", expanded: true) {
+///         SidebarLink (text: "Introduction", href: "/intro", active: .activePage == "intro") {}
+///         SidebarLink (text: "Installation", href: "/install", active: .activePage == "install") {}
+///     }
+///     SidebarSection (title: "Components", expanded: true) {
+///         SidebarLink (text: "Button", href: "/button", active: .activePage == "button") {}
+///         SidebarLink (text: "Input", href: "/input", active: .activePage == "input") {}
+///     }
+/// }
+/// ```
+widget Sidebar {
+    msg Msg {
+        Navigate(page: str)
+        ToggleSection(section: str)
+        Search(query: str)
+    }
+
+    model {
+        activePage str = "index"
+        expandedSections List = ["getting-started", "components"]
+        searchQuery str = ""
+        mobileOpen bool = false
+    }
+
+    view {
+        style: "sidebar"
+    }
+}
+
+// ============================================================================
+// SidebarSection - Collapsible section
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "title")]
+#[backend(ark, component = "SidebarSection")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Sidebar collapsible section.
+///
+/// Groups related navigation links with expand/collapse functionality.
+///
+/// # Example
+/// ```auto
+/// SidebarSection (title: "Components", expanded: true) {
+///     SidebarLink (text: "Button", href: "/button") {}
+///     SidebarLink (text: "Input", href: "/input") {}
+/// }
+/// ```
+widget SidebarSection {
+    msg Msg { Toggle }
+
+    model {
+        title str = ""
+        expanded bool = true
+    }
+
+    computed {
+        icon => if .expanded { "▼" } else { "▶" }
+        contentClass => if .expanded { "sidebar-section-content open" } else { "sidebar-section-content" }
+    }
+
+    view {
+        style: "sidebar-section"
+    }
+}
+
+// ============================================================================
+// SidebarLink - Navigation link
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "SidebarLink")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "a")]
+
+/// Sidebar navigation link.
+///
+/// A clickable link within the sidebar.
+///
+/// # Example
+/// ```auto
+/// SidebarLink (text: "Button", href: "/button", active: true) {}
+/// ```
+widget SidebarLink {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        href str = ""
+        active bool = false
+    }
+
+    computed {
+        linkClass => if .active { "sidebar-link active" } else { "sidebar-link" }
+    }
+
+    view {
+        tag: "a"
+        style: .linkClass
+        href: .href
+        text: .text
+    }
+}

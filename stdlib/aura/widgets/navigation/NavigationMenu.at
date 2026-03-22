@@ -1,0 +1,209 @@
+// stdlib/aura/widgets/navigation/NavigationMenu.at
+
+// ============================================================================
+// NavigationMenu - Main container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "NavigationMenu")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "nav")]
+
+/// NavigationMenu component for site navigation.
+///
+/// A responsive navigation component with support for nested dropdowns
+/// and active state tracking.
+///
+/// # Features
+/// - Responsive navigation
+/// - Nested dropdowns
+/// - Active state tracking
+/// - Keyboard navigation
+///
+/// # Example
+/// ```auto
+/// NavigationMenu {
+///     NavigationMenuList {
+///         NavigationMenuItem {
+///             NavigationMenuLink (text: "Home", href: "/", active: true) {}
+///         }
+///         NavigationMenuItem {
+///             NavigationMenuTrigger { text: "Products" }
+///             NavigationMenuContent {
+///                 col (gap: "2") {
+///                     NavigationMenuLink (text: "Product 1", href: "/products/1") {}
+///                     NavigationMenuLink (text: "Product 2", href: "/products/2") {}
+///                 }
+///             }
+///         }
+///     }
+/// }
+/// ```
+widget NavigationMenu {
+    model {
+        class str = ""
+    }
+
+    view {
+        tag: "nav"
+        style: f"navigation-menu ${.class}"
+    }
+}
+
+// ============================================================================
+// NavigationMenuList - List container
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true)]
+#[backend(ark, component = "NavigationMenuList")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "ul")]
+
+/// NavigationMenu list container.
+///
+/// Contains the navigation menu items.
+///
+/// # Example
+/// ```auto
+/// NavigationMenuList {
+///     NavigationMenuItem { NavigationMenuLink (text: "Home", href: "/") {} }
+///     NavigationMenuItem { NavigationMenuLink (text: "About", href: "/about") {} }
+/// }
+/// ```
+widget NavigationMenuList {
+    view {
+        tag: "ul"
+        style: "navigation-menu-list"
+    }
+}
+
+// ============================================================================
+// NavigationMenuItem - Single menu item
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true)]
+#[backend(ark, component = "NavigationMenuItem")]
+#[backend(jet, component = "Box", import = "androidx.compose.foundation.layout.Box")]
+#[backend(vue, component = "li")]
+
+/// NavigationMenu item container.
+///
+/// Contains a link or trigger with content.
+///
+/// # Example
+/// ```auto
+/// NavigationMenuItem {
+///     NavigationMenuLink (text: "Products", href: "/products") {}
+/// }
+/// ```
+widget NavigationMenuItem {
+    view {
+        tag: "li"
+        style: "navigation-menu-item"
+    }
+}
+
+// ============================================================================
+// NavigationMenuTrigger - Trigger button for dropdown
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "NavigationMenuTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// NavigationMenu trigger button.
+///
+/// Opens a dropdown menu when clicked.
+///
+/// # Example
+/// ```auto
+/// NavigationMenuTrigger { text: "Products" }
+/// ```
+widget NavigationMenuTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+    }
+
+    view {
+        tag: "button"
+        style: "navigation-menu-trigger"
+        text: .text
+    }
+}
+
+// ============================================================================
+// NavigationMenuLink - Navigation link
+// ============================================================================
+
+#[spec(category = Navigation, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "NavigationMenuLink")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "a")]
+
+/// NavigationMenu link.
+///
+/// A clickable navigation link.
+///
+/// # Example
+/// ```auto
+/// NavigationMenuLink (text: "Home", href: "/", active: true) {}
+/// ```
+widget NavigationMenuLink {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        href str = "#"
+        active bool = false
+    }
+
+    computed {
+        linkClass => if .active {
+            "navigation-menu-link active"
+        } else {
+            "navigation-menu-link"
+        }
+    }
+
+    view {
+        tag: "a"
+        style: .linkClass
+        text: .text
+        href: .href
+    }
+}
+
+// ============================================================================
+// NavigationMenuContent - Dropdown content
+// ============================================================================
+
+#[spec(category = Navigation, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "NavigationMenuContent")]
+#[backend(jet, component = "DropdownMenu", import = "androidx.compose.material3.DropdownMenu")]
+#[backend(vue, component = "div")]
+
+/// NavigationMenu content/dropdown.
+///
+/// Contains items displayed when the trigger is clicked.
+///
+/// # Example
+/// ```auto
+/// NavigationMenuContent {
+///     col (gap: "2") {
+///         NavigationMenuLink (text: "Item 1", href: "/item1") {}
+///         NavigationMenuLink (text: "Item 2", href: "/item2") {}
+///     }
+/// }
+/// ```
+widget NavigationMenuContent {
+    model {
+        class str = ""
+    }
+
+    view {
+        style: f"navigation-menu-content ${.class}"
+    }
+}
