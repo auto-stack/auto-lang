@@ -1,0 +1,25 @@
+// Index.at - Main page with Grid and List
+
+use Banner
+use EnablementView
+use TutorialView
+
+/// Main page with Banner, Grid, and List
+widget Index {
+    view {
+        Col {
+            Text "快速入门" {
+                style: "text-2xl font-bold w-full text-left pl-4"
+            }
+            Scroll {
+                Col {
+                    Banner {}
+                    EnablementView {}
+                    TutorialView {}
+                }
+                style: "flex-1"
+            }
+            style: "w-full h-full bg-gray-100"
+        }
+    }
+}

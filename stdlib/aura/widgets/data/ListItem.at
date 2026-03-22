@@ -1,0 +1,25 @@
+// stdlib/aura/widgets/data/ListItem.at
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "ListItem")]
+#[backend(jet, component = "item", import = "androidx.compose.foundation.lazy.LazyListScope.item")]
+#[backend(vue, component = "li", import = "")]
+
+/// ListItem component for List children.
+///
+/// Wrapper component for items in a List.
+///
+/// # Example
+/// ```auto
+/// List {
+///     ListItem { Row { ... } }
+///     ListItem { Row { ... } }
+/// }
+/// ```
+widget ListItem {
+    view {
+        // ArkTS: ListItem() { ... }
+        // Jet: item { ... }
+        // Vue: <li class="list-item">...</li>
+    }
+}

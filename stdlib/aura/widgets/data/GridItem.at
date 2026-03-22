@@ -1,0 +1,25 @@
+// stdlib/aura/widgets/data/GridItem.at
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "GridItem")]
+#[backend(jet, component = "item", import = "androidx.compose.foundation.lazy.grid.GridItem")]
+#[backend(vue, component = "div", import = "")]
+
+/// GridItem component for Grid children.
+///
+/// Wrapper component for items in a Grid.
+///
+/// # Example
+/// ```auto
+/// Grid {
+///     GridItem { Card { ... } }
+///     GridItem { Card { ... } }
+/// }
+/// ```
+widget GridItem {
+    view {
+        // ArkTS: GridItem() { ... }
+        // Jet: item { ... }
+        // Vue: <div class="grid-item">...</div>
+    }
+}

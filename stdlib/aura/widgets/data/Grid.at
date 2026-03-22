@@ -1,0 +1,32 @@
+// stdlib/aura/widgets/data/Grid.at
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Grid")]
+#[backend(jet, component = "LazyVerticalGrid", import = "androidx.compose.foundation.lazy.grid.LazyVerticalGrid")]
+#[backend(vue, component = "div", import = "")]
+
+/// Grid component for displaying items in a grid layout.
+///
+/// A container that arranges children in a grid pattern.
+/// Supports horizontal scrolling when rowsTemplate is set to '1fr'.
+///
+/// # Modifiers (via style prop)
+/// - `rows-1` - Single row (horizontal scrolling)
+/// - `gap-{n}` - Gap between items
+/// - `px-{n}` - Horizontal padding
+///
+/// # Example
+/// ```auto
+/// Grid {
+///     GridItem { Card { ... } }
+///     GridItem { Card { ... } }
+///     style: "rows-1 gap-2 px-4"
+/// }
+/// ```
+widget Grid {
+    view {
+        // ArkTS: Grid() { ... }.rowsTemplate('1fr').columnsGap(8)
+        // Jet: LazyVerticalGrid(columns = GridCells.Fixed(2)) { ... }
+        // Vue: <div class="grid">...</div>
+    }
+}

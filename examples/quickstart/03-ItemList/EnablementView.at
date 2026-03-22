@@ -1,0 +1,60 @@
+// EnablementView.at - Grid section
+
+use EnablementItem
+
+/// Enablement section with horizontal scrolling grid
+widget EnablementView {
+    view {
+        Col {
+            Text "赋能套件" {
+                style: "text-base font-medium text-left pl-4 mb-2"
+            }
+            Grid {
+                GridItem {
+                    EnablementItem {
+                        title: "HarmonyOS第一课",
+                        brief: "基于真实的开发场景，提供向导式学习。",
+                        imageSrc: "$r('app.media.enablement_pic1')"
+                    }
+                }
+                GridItem {
+                    EnablementItem {
+                        title: "开发指南",
+                        brief: "提供系统能力概述、快速入门。",
+                        imageSrc: "$r('app.media.enablement_pic2')"
+                    }
+                }
+                GridItem {
+                    EnablementItem {
+                        title: "最佳实践",
+                        brief: "针对新发布特性及热点特性提供详细的技术解析。",
+                        imageSrc: "$r('app.media.enablement_pic3')"
+                    }
+                }
+                GridItem {
+                    EnablementItem {
+                        title: "Codelabs",
+                        brief: "以教学为目的的代码样例及详细的开发指导。",
+                        imageSrc: "$r('app.media.enablement_pic4')"
+                    }
+                }
+                GridItem {
+                    EnablementItem {
+                        title: "Sample",
+                        brief: "面向不同类型的开发者提供的鸿蒙生态应用开发优秀实践。",
+                        imageSrc: "$r('app.media.enablement_pic5')"
+                    }
+                }
+                GridItem {
+                    EnablementItem {
+                        title: "API参考",
+                        brief: "面向开发者提供鸿蒙系统开放接口的全集。",
+                        imageSrc: "$r('app.media.enablement_pic6')"
+                    }
+                }
+                style: "rows-1 gap-2 px-4"
+            }
+            style: "mt-4 items-start"
+        }
+    }
+}

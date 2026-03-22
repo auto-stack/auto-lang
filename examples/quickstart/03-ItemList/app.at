@@ -1,0 +1,10 @@
+// app.at - Main app entry point
+
+use Index
+
+/// Item list demo application
+widget App {
+    view {
+        Index {}
+    }
+}

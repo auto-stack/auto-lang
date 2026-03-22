@@ -1,0 +1,32 @@
+// stdlib/aura/widgets/data/List.at
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "List")]
+#[backend(jet, component = "LazyColumn", import = "androidx.compose.foundation.lazy.LazyColumn")]
+#[backend(vue, component = "ul", import = "")]
+
+/// List component for displaying items in a vertical list.
+///
+/// A container that arranges children vertically.
+/// Supports vertical scrolling automatically when content exceeds bounds.
+///
+/// # Modifiers (via style prop)
+/// - `gap-{n}` - Gap between items
+/// - `px-{n}` - Horizontal padding
+/// - `space-{n}` - Space between items
+///
+/// # Example
+/// ```auto
+/// List {
+///     ListItem { Row { ... } }
+///     ListItem { Row { ... } }
+///     style: "px-4"
+/// }
+/// ```
+widget List {
+    view {
+        // ArkTS: List({ space: 12 }) { ... }
+        // Jet: LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) { ... }
+        // Vue: <ul class="list">...</ul>
+    }
+}

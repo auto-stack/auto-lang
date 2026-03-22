@@ -2607,6 +2607,114 @@ impl WidgetRegistry {
             extra_components: Vec::new(),
         });
         self.register(calendar_day);
+
+        // Grid
+        let mut grid = WidgetSpec::new("Grid", WidgetCategory::Data)
+            .with_alias("grid");
+        grid.has_children = true;
+        grid.backends.insert("ark".to_string(), BackendMapping {
+            component: "Grid".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        grid.backends.insert("jet".to_string(), BackendMapping {
+            component: "LazyVerticalGrid".to_string(),
+            import: Some("androidx.compose.foundation.lazy.grid.LazyVerticalGrid".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        grid.backends.insert("vue".to_string(), BackendMapping {
+            component: "div".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(grid);
+
+        // GridItem
+        let mut grid_item = WidgetSpec::new("GridItem", WidgetCategory::Data)
+            .with_alias("grid-item");
+        grid_item.has_children = true;
+        grid_item.backends.insert("ark".to_string(), BackendMapping {
+            component: "GridItem".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        grid_item.backends.insert("jet".to_string(), BackendMapping {
+            component: "item".to_string(),
+            import: Some("androidx.compose.foundation.lazy.grid.GridItem".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        grid_item.backends.insert("vue".to_string(), BackendMapping {
+            component: "div".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(grid_item);
+
+        // List
+        let mut list = WidgetSpec::new("List", WidgetCategory::Data)
+            .with_alias("list");
+        list.has_children = true;
+        list.backends.insert("ark".to_string(), BackendMapping {
+            component: "List".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        list.backends.insert("jet".to_string(), BackendMapping {
+            component: "LazyColumn".to_string(),
+            import: Some("androidx.compose.foundation.lazy.LazyColumn".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        list.backends.insert("vue".to_string(), BackendMapping {
+            component: "ul".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(list);
+
+        // ListItem
+        let mut list_item = WidgetSpec::new("ListItem", WidgetCategory::Data)
+            .with_alias("list-item");
+        list_item.has_children = true;
+        list_item.backends.insert("ark".to_string(), BackendMapping {
+            component: "ListItem".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        list_item.backends.insert("jet".to_string(), BackendMapping {
+            component: "item".to_string(),
+            import: Some("androidx.compose.foundation.lazy.LazyListScope.item".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        list_item.backends.insert("vue".to_string(), BackendMapping {
+            component: "li".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(list_item);
     }
 
     fn register_semantic_widgets(&mut self) {
