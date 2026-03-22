@@ -13,6 +13,9 @@ pub enum WidgetCategory {
     Display,
     Navigation,
     Semantic,
+    Overlay,
+    Feedback,
+    Data,
 }
 
 /// Backend-specific component mapping
