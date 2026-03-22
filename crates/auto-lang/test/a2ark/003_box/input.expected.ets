@@ -4,10 +4,8 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestBox {
   build() {
-    NavDestination() {
-      Stack() {
-              Text('Overlay')
-            }
-    }
+    Stack() {
+          Text('Overlay')
+        }
   }
 }

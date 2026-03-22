@@ -4,8 +4,6 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestText {
   build() {
-    NavDestination() {
-      Text('Hello, World!')
-    }
+    Text('Hello, World!')
   }
 }

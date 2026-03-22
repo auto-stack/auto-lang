@@ -4,11 +4,9 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestColumn {
   build() {
-    NavDestination() {
-      Column() {
-              Text('Hello')
-              Text('World')
-            }
-    }
+    Column() {
+          Text('Hello')
+          Text('World')
+        }
   }
 }

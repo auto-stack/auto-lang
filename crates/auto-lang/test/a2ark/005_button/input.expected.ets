@@ -4,8 +4,6 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestButton {
   build() {
-    NavDestination() {
-      Button('Submit')
-    }
+    Button('Submit')
   }
 }

@@ -4,26 +4,27 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestDialog {
   build() {
-    NavDestination() {
-      Column() {
-              Text('Dialog Demo')
-              AlertDialog() {
-                        Button() {
-                                    Text('Open Dialog')
-                                  }
-                        Column() {
-                                    Column() {
-                                                  Text() {
-                                                                  Text('Confirm Action')
-                                                                }
-                                                }
-                                    Row() {
-                                                  Button('Cancel')
-                                                  Button('Confirm')
-                                                }
-                                  }
-                      }
-            }
-    }
+    Column() {
+          Text('Dialog Demo')
+                .fontSize(18)
+                .fontWeight(FontWeight.Bold)
+          AlertDialog() {
+                  Button() {
+                            Text('Open Dialog')
+                          }
+                  Column() {
+                            Column() {
+                                        Text() {
+                                                      Text('Confirm Action')
+                                                    }
+                                      }
+                            Row() {
+                                        Button('Cancel')
+                                        Button('Confirm')
+                                      }
+                          }
+                }
+        }
+        .padding(16)
   }
 }

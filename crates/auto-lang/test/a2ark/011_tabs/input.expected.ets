@@ -4,19 +4,20 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestTabs {
   build() {
-    NavDestination() {
-      Column() {
-              Text('Tab Navigation')
-              Tabs() {
-                        Row() {
-                                    Text()
-                                    Text()
-                                  }
-                        TabContent() {
-                                    Text('Welcome to the home page')
-                                  }
-                      }
-            }
-    }
+    Column() {
+          Text('Tab Navigation')
+                .fontSize(18)
+                .fontWeight(FontWeight.Bold)
+          Tabs() {
+                  Row() {
+                            Text()
+                            Text()
+                          }
+                  TabContent() {
+                            Text('Welcome to the home page')
+                          }
+                }
+        }
+        .padding(16)
   }
 }

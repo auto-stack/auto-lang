@@ -4,11 +4,9 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestFormWidgets {
   build() {
-    NavDestination() {
-      Column() {
-              Checkbox()
-              Toggle()
-            }
-    }
+    Column() {
+          Checkbox()
+          Toggle()
+        }
   }
 }
