@@ -1,0 +1,83 @@
+// stdlib/aura/widgets/feedback/Alert.at
+
+#[spec(category = Feedback, has_children = true, primary_prop = "variant")]
+#[backend(ark, component = "Alert")]
+#[backend(jet, component = "Alert", import = "androidx.compose.material3.Alert")]
+#[backend(vue, component = "div")]
+
+/// Alert component for displaying contextual feedback messages.
+///
+/// # Features
+/// - Visual feedback with icon support
+/// - Two variants: default and destructive
+///
+/// # Variants
+/// - default: Informational alert with standard styling
+/// - destructive: Warning/error alert with red accent
+///
+/// # Example
+/// ```auto
+/// Alert (variant: "default") {
+///     AlertTitle (text: "Success") {}
+///     AlertDescription (text: "Your changes have been saved.") {}
+/// }
+/// ```
+widget Alert {
+    model {
+        variant str = "default"  // default, destructive
+    }
+
+    computed {
+        alertClass => if .variant == "destructive" {
+            "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-destructive text-destructive bg-destructive/10 border-destructive/50"
+        } else {
+            "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground bg-background"
+        }
+    }
+
+    view {
+        div { style: .alertClass, role: "alert" }
+    }
+}
+
+#[spec(category = Feedback, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertTitle")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "h5")]
+
+/// Alert title component for the alert heading.
+///
+/// # Example
+/// ```auto
+/// AlertTitle (text: "Success") {}
+/// ```
+widget AlertTitle {
+    model {
+        text str = ""
+    }
+
+    view {
+        h5 { style: "mb-1 font-medium leading-none tracking-tight", text: .text }
+    }
+}
+
+#[spec(category = Feedback, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertDescription")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// Alert description for the alert body text.
+///
+/// # Example
+/// ```auto
+/// AlertDescription (text: "Your changes have been saved.") {}
+/// ```
+widget AlertDescription {
+    model {
+        text str = ""
+    }
+
+    view {
+        div { style: "text-sm [&_p]:leading-relaxed", text: .text }
+    }
+}
