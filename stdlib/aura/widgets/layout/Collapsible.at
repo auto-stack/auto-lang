@@ -1,0 +1,113 @@
+// stdlib/aura/widgets/layout/Collapsible.at
+
+// ============================================================================
+// Collapsible - Main container
+// ============================================================================
+
+#[spec(category = Layout, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "Collapsible")]
+#[backend(jet, component = "AnimatedVisibility", import = "androidx.compose.animation.AnimatedVisibility")]
+#[backend(vue, component = "div")]
+
+/// Collapsible component for expandable content sections.
+///
+/// Provides animated expand/collapse functionality with keyboard accessibility.
+/// Can be controlled (via `open` prop) or uncontrolled.
+///
+/// # Example
+/// ```auto
+/// Collapsible (open: .expanded) {
+///     CollapsibleTrigger {
+///         button (text: if .expanded { "Collapse" } else { "Expand" }) {}
+///     }
+///     CollapsibleContent {
+///         text "Hidden content revealed when expanded"
+///     }
+/// }
+/// ```
+widget Collapsible {
+    msg Msg { Toggle }
+
+    model {
+        open bool = false
+    }
+
+    computed {
+        collapsibleClass => if .open {
+            "collapsible open"
+        } else {
+            "collapsible"
+        }
+        state => if .open { "open" } else { "closed" }
+    }
+
+    view {
+        style: .collapsibleClass
+        "data-state": .state
+    }
+
+    on {
+        Toggle => {
+            open = !open
+        }
+    }
+}
+
+// ============================================================================
+// CollapsibleTrigger - Trigger button
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CollapsibleTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Collapsible trigger button.
+///
+/// Clicking toggles the collapsible's expanded state.
+///
+/// # Example
+/// ```auto
+/// CollapsibleTrigger {
+///     row {
+///         text "Toggle"
+///         icon (name: "chevron-down") {}
+///     }
+/// }
+/// ```
+widget CollapsibleTrigger {
+    msg Msg { Click }
+
+    view {
+        style: "collapsible-trigger"
+        onclick: .Click
+    }
+}
+
+// ============================================================================
+// CollapsibleContent - Content area
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CollapsibleContent")]
+#[backend(jet, component = "AnimatedVisibility", import = "androidx.compose.animation.AnimatedVisibility")]
+#[backend(vue, component = "div")]
+
+/// Collapsible content area.
+///
+/// Contains the content that is shown/hidden when the collapsible is toggled.
+///
+/// # Example
+/// ```auto
+/// CollapsibleContent {
+///     col {
+///         text "Line 1"
+///         text "Line 2"
+///     }
+/// }
+/// ```
+widget CollapsibleContent {
+    view {
+        style: "collapsible-content"
+    }
+}
