@@ -1,0 +1,49 @@
+// stdlib/aura/widgets/overlay/Popover.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "Popover")]
+#[backend(jet, component = "DropdownMenu", import = "androidx.compose.material3.DropdownMenu")]
+#[backend(vue, component = "div")]
+
+/// Popover component for floating content.
+///
+/// A positioned floating panel triggered by click or hover.
+/// Useful for displaying additional information or actions.
+///
+/// # Example
+/// ```auto
+/// Popover {
+///     PopoverTrigger { text: "Open Popover" }
+///     PopoverContent (side: "bottom") {
+///         text "Popover content"
+///     }
+/// }
+/// ```
+widget Popover {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "PopoverTrigger")]
+#[backend(jet, component = "OutlinedButton", import = "androidx.compose.material3.OutlinedButton")]
+#[backend(vue, component = "button")]
+
+/// Popover trigger button.
+///
+/// Opens the popover when clicked.
+widget PopoverTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "side")]
+#[backend(ark, component = "PopoverContent")]
+#[backend(jet, component = "DropdownMenuItem", import = "androidx.compose.material3.DropdownMenuItem")]
+#[backend(vue, component = "div")]
+
+/// Popover content container.
+///
+/// Contains the main content of the popover.
+/// Use `side` prop to control positioning (top, right, bottom, left).
+widget PopoverContent {
+    view {}
+}
