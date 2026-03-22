@@ -329,10 +329,24 @@ impl ArkGenerator {
             self.indent_level += 1;
         }
 
+        // Check if root is a custom component (for App widget, needs container wrapper)
+        let root_is_custom_component = is_app_widget && !has_routes && self.is_custom_component_node(&widget.view_tree);
+        if root_is_custom_component {
+            // Wrap custom component in Column for @Entry requirement
+            lines.push(format!("{}Column() {{", self.indent()));
+            self.indent_level += 1;
+        }
+
         // Generate UI tree from view_tree (not root)
         let ui_code = self.generate_node_with_routes(&widget.view_tree, has_routes, index_component.as_deref())?;
         for line in ui_code.lines() {
             lines.push(format!("{}{}", self.indent(), line));
+        }
+
+        // Close Column wrapper for custom component
+        if root_is_custom_component {
+            self.indent_level -= 1;
+            lines.push(format!("{}}}", self.indent()));
         }
 
         // Close NavDestination for child pages (not App widget)
@@ -386,6 +400,18 @@ impl ArkGenerator {
             AuraNode::ForLoop { body, .. } => {
                 body.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
             }
+            _ => false,
+        }
+    }
+
+    /// Check if a node is a custom component (for @Entry root wrapping)
+    fn is_custom_component_node(&self, node: &AuraNode) -> bool {
+        match node {
+            AuraNode::Element { tag, .. } => {
+                // Check if this is a custom component (capitalized, not in registry)
+                self.is_capitalized_component(tag)
+            }
+            AuraNode::Component { .. } => true,
             _ => false,
         }
     }
