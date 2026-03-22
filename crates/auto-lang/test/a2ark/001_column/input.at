@@ -1,0 +1,8 @@
+widget TestColumn {
+    view {
+        col {
+            text "Hello"
+            text "World"
+        }
+    }
+}

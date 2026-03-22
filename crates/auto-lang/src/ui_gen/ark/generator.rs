@@ -1332,4 +1332,99 @@ mod tests {
             code
         );
     }
+
+    // ============================================================================
+    // a2ark Test Framework - AURA -> ArkTS transpilation tests
+    // ============================================================================
+
+    use std::path::PathBuf;
+    use std::fs::{read_to_string, File};
+    use std::io::Write;
+
+    /// Helper function for a2ark tests
+    ///
+    /// This function reads an AURA widget from test/a2ark/{case}/input.at,
+    /// generates ArkTS code, and compares it with input.expected.ets.
+    /// If the output differs, it writes to input.wrong.ets for debugging.
+    fn test_a2ark(case: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        println!("Directory of cargo: {}", d.display());
+
+        let src_path = d.join(format!("test/a2ark/{}/input.at", case));
+        println!("src_path: {}", src_path.display());
+
+        let src = read_to_string(&src_path)?;
+        println!("Source:\n{}", src);
+
+        // Parse the AURA source file with UI scenario (required for widget syntax)
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src.as_str());
+        parser = parser.with_session(session);
+        let ast = parser.parse()?;
+
+        // Extract AURA widgets from AST
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)?;
+                widgets.push(aura_widget);
+            }
+        }
+
+        if widgets.is_empty() {
+            return Err("No widget declarations found in input file".into());
+        }
+
+        // Generate ArkTS code for each widget
+        let mut gen = super::ArkGenerator::new();
+        let mut output = String::new();
+        for widget in &widgets {
+            let code = gen.generate_entry_component(widget)?;
+            output.push_str(&code);
+            output.push('\n');
+        }
+
+        // Read expected output
+        let exp_path = d.join(format!("test/a2ark/{}/input.expected.ets", case));
+        let expected = if exp_path.is_file() {
+            read_to_string(&exp_path)?
+        } else {
+            // Create empty expected file if it doesn't exist
+            String::new()
+        };
+
+        // Normalize whitespace for comparison (trailing whitespace, newlines)
+        let output_normalized = normalize_output(&output);
+        let expected_normalized = normalize_output(&expected);
+
+        if output_normalized != expected_normalized {
+            // Write wrong output for debugging
+            let wrong_path = d.join(format!("test/a2ark/{}/input.wrong.ets", case));
+            let mut file = File::create(&wrong_path)?;
+            file.write_all(output.as_bytes())?;
+            println!("Written wrong output to: {}", wrong_path.display());
+
+            return Err(format!(
+                "Output mismatch for {}. See input.wrong.ets for actual output.\nExpected:\n{}\n\nActual:\n{}",
+                case, expected_normalized, output_normalized
+            ).into());
+        }
+
+        Ok(())
+    }
+
+    /// Normalize output for comparison (trim trailing whitespace, normalize newlines)
+    fn normalize_output(s: &str) -> String {
+        s.lines()
+            .map(|line| line.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim_end()
+            .to_string()
+    }
+
+    #[test]
+    fn test_001_column() {
+        test_a2ark("001_column").unwrap();
+    }
 }
