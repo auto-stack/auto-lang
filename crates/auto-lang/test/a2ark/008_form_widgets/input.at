@@ -1,0 +1,8 @@
+widget TestFormWidgets {
+    view {
+        col {
+            checkbox {}
+            switch {}
+        }
+    }
+}

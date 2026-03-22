@@ -1442,4 +1442,24 @@ mod tests {
     fn test_004_text() {
         test_a2ark("004_text").unwrap();
     }
+
+    #[test]
+    fn test_005_button() {
+        test_a2ark("005_button").unwrap();
+    }
+
+    #[test]
+    fn test_006_input() {
+        test_a2ark("006_input").unwrap();
+    }
+
+    #[test]
+    fn test_007_image() {
+        test_a2ark("007_image").unwrap();
+    }
+
+    #[test]
+    fn test_008_form_widgets() {
+        test_a2ark("008_form_widgets").unwrap();
+    }
 }
