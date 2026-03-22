@@ -473,6 +473,31 @@ pub fn prop_to_modifier(key: &str, value: &str, _value_type: Option<&Type>) -> O
         // Text content
         "text" => Some(value.to_string()),
 
+        // Layout alignment (for Column/Row containers)
+        // align → alignItems (horizontal alignment in Column, vertical in Row)
+        "align" => {
+            let ark_value = match value {
+                "center" => "HorizontalAlign.Center",
+                "start" | "left" => "HorizontalAlign.Start",
+                "end" | "right" => "HorizontalAlign.End",
+                _ => "HorizontalAlign.Start",
+            };
+            Some(format!(".alignItems({})", ark_value))
+        }
+        // arrange → justifyContent (vertical distribution in Column, horizontal in Row)
+        "arrange" => {
+            let ark_value = match value {
+                "center" => "FlexAlign.Center",
+                "start" | "top" => "FlexAlign.Start",
+                "end" | "bottom" => "FlexAlign.End",
+                "between" | "space-between" => "FlexAlign.SpaceBetween",
+                "around" | "space-around" => "FlexAlign.SpaceAround",
+                "evenly" | "space-evenly" => "FlexAlign.SpaceEvenly",
+                _ => "FlexAlign.Start",
+            };
+            Some(format!(".justifyContent({})", ark_value))
+        }
+
         // Style properties
         "width" | "height" | "fontSize" | "margin" | "padding" | "borderRadius"
         | "backgroundColor" | "opacity" | "borderWidth" | "borderColor" => {
@@ -514,6 +539,34 @@ mod tests {
     fn test_unknown_modifier_returns_none() {
         let result = style_to_modifier("unknown", "value");
         assert!(result.is_none());
+    }
+
+    // ========================================================================
+    // Align/Arrange Modifier Tests (for Center widget support)
+    // ========================================================================
+
+    #[test]
+    fn test_align_center_modifier() {
+        let result = prop_to_modifier("align", "center", None);
+        assert_eq!(result, Some(".alignItems(HorizontalAlign.Center)".to_string()));
+    }
+
+    #[test]
+    fn test_align_start_modifier() {
+        let result = prop_to_modifier("align", "start", None);
+        assert_eq!(result, Some(".alignItems(HorizontalAlign.Start)".to_string()));
+    }
+
+    #[test]
+    fn test_arrange_center_modifier() {
+        let result = prop_to_modifier("arrange", "center", None);
+        assert_eq!(result, Some(".justifyContent(FlexAlign.Center)".to_string()));
+    }
+
+    #[test]
+    fn test_arrange_between_modifier() {
+        let result = prop_to_modifier("arrange", "between", None);
+        assert_eq!(result, Some(".justifyContent(FlexAlign.SpaceBetween)".to_string()));
     }
 
     // ========================================================================

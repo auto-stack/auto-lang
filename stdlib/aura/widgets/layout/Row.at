@@ -1,4 +1,4 @@
-// stdlib/aura/widgets/layout/row.at
+// stdlib/aura/widgets/layout/Row.at
 
 #[spec(category = Layout, has_children = true)]
 #[backend(ark, component = "Row")]
@@ -7,11 +7,15 @@
 
 /// Row layout component.
 ///
-/// Arranges children horizontally.
+/// Arranges children horizontally. Use `class` prop for Tailwind styling.
+///
+/// # Example
+/// ```auto
+/// Row (class: "gap-2 items-center") {
+///     text "Left"
+///     text "Right"
+/// }
+/// ```
 widget Row {
-    model {
-        gap int = 0
-    }
-
     view {}
 }

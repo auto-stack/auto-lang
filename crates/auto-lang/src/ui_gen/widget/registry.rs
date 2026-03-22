@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 /// Core widgets that are auto-imported (no explicit `use` statement needed)
 pub const AUTO_IMPORTED_WIDGETS: &[&str] = &[
     // Layout
-    "col", "row", "stack", "scroll",
+    "col", "row", "stack", "scroll", "center",
     // Display
     "text", "image",
     // Form
@@ -69,6 +69,32 @@ impl WidgetRegistry {
             events: HashMap::new(),
         });
         self.register(col);
+
+        // Center - Column with center alignment (syntax sugar)
+        let mut center = WidgetSpec::new("Center", WidgetCategory::Layout)
+            .with_alias("center");
+        center.has_children = true;
+        center.default_props.insert("align".to_string(), "center".to_string());
+        center.default_props.insert("arrange".to_string(), "center".to_string());
+        center.backends.insert("ark".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: None, // Built-in
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        center.backends.insert("jet".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: Some("androidx.compose.foundation.layout.Column".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        center.backends.insert("vue".to_string(), BackendMapping {
+            component: "div".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+        });
+        self.register(center);
 
         // Row
         let mut row = WidgetSpec::new("Row", WidgetCategory::Layout)
@@ -208,6 +234,7 @@ impl WidgetRegistry {
         // Image
         let mut image = WidgetSpec::new("Image", WidgetCategory::Display)
             .with_alias("image");
+        image.primary_prop = Some("src".to_string());
         image.backends.insert("ark".to_string(), BackendMapping {
             component: "Image".to_string(),
             import: None,
@@ -376,9 +403,30 @@ mod tests {
     #[test]
     fn test_all_layout_widgets() {
         let registry = WidgetRegistry::with_defaults();
-        for tag in ["col", "row", "stack", "scroll"] {
+        for tag in ["col", "row", "stack", "scroll", "center"] {
             assert!(registry.contains(tag), "Missing layout widget: {}", tag);
         }
+    }
+
+    #[test]
+    fn test_center_widget() {
+        let registry = WidgetRegistry::with_defaults();
+        let center = registry.get("center").unwrap();
+        assert_eq!(center.name, "Center");
+        assert_eq!(center.category, WidgetCategory::Layout);
+        assert!(center.has_children);
+
+        // Check default props
+        assert_eq!(center.default_props.get("align"), Some(&"center".to_string()));
+        assert_eq!(center.default_props.get("arrange"), Some(&"center".to_string()));
+
+        // Check backends
+        let ark = center.backend("ark").unwrap();
+        assert_eq!(ark.component, "Column");
+        let jet = center.backend("jet").unwrap();
+        assert_eq!(jet.component, "Column");
+        let vue = center.backend("vue").unwrap();
+        assert_eq!(vue.component, "div");
     }
 
     #[test]

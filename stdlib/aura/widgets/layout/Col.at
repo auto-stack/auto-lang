@@ -1,0 +1,21 @@
+// stdlib/aura/widgets/layout/Col.at
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Column layout component.
+///
+/// Arranges children vertically. Use `class` prop for Tailwind styling.
+///
+/// # Example
+/// ```auto
+/// Col (class: "gap-4 p-2") {
+///     text "Item 1"
+///     text "Item 2"
+/// }
+/// ```
+widget Col {
+    view {}
+}

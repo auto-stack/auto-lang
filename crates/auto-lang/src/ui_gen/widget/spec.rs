@@ -43,6 +43,8 @@ pub struct WidgetSpec {
     pub aliases: Vec<String>,
     /// Backend-specific mappings
     pub backends: HashMap<String, BackendMapping>,
+    /// Default props from view block (e.g., align: "center", arrange: "center")
+    pub default_props: HashMap<String, String>,
 }
 
 impl WidgetSpec {
@@ -55,6 +57,7 @@ impl WidgetSpec {
             has_children: false,
             aliases: Vec::new(),
             backends: HashMap::new(),
+            default_props: HashMap::new(),
         }
     }
 
@@ -83,6 +86,7 @@ mod tests {
             has_children: false,
             aliases: Vec::new(),
             backends: HashMap::new(),
+            default_props: HashMap::new(),
         };
         assert_eq!(spec.name, "Button");
     }

@@ -389,7 +389,7 @@ impl ArkGenerator {
         lines.last_mut().unwrap().push_str("\n    .mode(NavigationMode.Stack)");
 
         // Add modifiers
-        let modifiers = self.generate_modifiers(props, events);
+        let modifiers = self.generate_modifiers(props, events, None);
         if !modifiers.is_empty() {
             lines.last_mut().unwrap().push_str(&modifiers);
         }
@@ -467,31 +467,28 @@ impl ArkGenerator {
 
         // Look up widget in the new widget registry
         if let Some(widget) = self.registry.get(tag) {
+            // Merge default props from widget spec with user-provided props
+            // User props take precedence over default props
+            let mut merged_props = props.clone();
+            for (key, value) in &widget.default_props {
+                if !merged_props.contains_key(key) {
+                    merged_props.insert(key.clone(), AuraPropValue::Expr(AuraExpr::Literal(value.clone())));
+                }
+            }
+
             // Get the ArkTS backend mapping
             if let Some(ark_mapping) = widget.backend("ark") {
                 let component_name = &ark_mapping.component;
 
-                // Determine if this component has content (text argument)
-                // Components with primary_prop = "text" have content
-                let has_content = widget.primary_prop.as_ref().map(|p| p == "text").unwrap_or(false);
-
-                // Get content argument for components:
-                // - Components with content (like Button, Text) use the text prop
-                // - Image component uses the src prop as constructor argument
-                let content_arg = if has_content {
-                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(text))) = props.get("text") {
-                        format!("'{}'", text)
-                    } else {
-                        String::new()
-                    }
-                } else if tag == "image" {
-                    // Image component takes src as argument
-                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(src))) = props.get("src") {
+                // Get content argument from primary_prop
+                // The primary_prop defines the shorthand property (e.g., Text "Hello" uses "text" prop)
+                let content_arg = if let Some(primary_prop) = &widget.primary_prop {
+                    if let Some(AuraPropValue::Expr(AuraExpr::Literal(value))) = merged_props.get(primary_prop) {
                         // Check if it's a resource reference like $r('app.media.xxx')
-                        if src.starts_with("$r(") {
-                            src.clone()
+                        if value.starts_with("$r(") {
+                            value.clone()
                         } else {
-                            format!("'{}'", src)
+                            format!("'{}'", value)
                         }
                     } else {
                         String::new()
@@ -508,7 +505,7 @@ impl ArkGenerator {
                 };
 
                 // Generate modifiers (to be placed AFTER the component body)
-                let modifiers = self.generate_modifiers(props, events);
+                let modifiers = self.generate_modifiers(&merged_props, events, widget.primary_prop.as_deref());
 
                 // Start component call
                 lines.push(component_call);
@@ -557,15 +554,18 @@ impl ArkGenerator {
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, crate::aura::AuraEvent>,
+        primary_prop: Option<&str>,
     ) -> String {
         let mut modifiers = Vec::new();
         let dsl = ArkModifierDsl::new();
 
         // Process props - extract string/number values from AuraExpr
         for (key, value) in props {
-            // Skip props that are handled as constructor arguments
-            if key == "text" || key == "src" {
-                continue;
+            // Skip props that are handled as constructor arguments (primary_prop)
+            if let Some(primary) = primary_prop {
+                if key == primary {
+                    continue;
+                }
             }
             // Handle style prop using ArkModifierDsl
             if key == "style" {

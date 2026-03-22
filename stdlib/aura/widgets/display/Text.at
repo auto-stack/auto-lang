@@ -1,6 +1,6 @@
-// stdlib/aura/widgets/display/text.at
+// stdlib/aura/widgets/display/Text.at
 
-#[spec(category = Display, primary_prop = "content")]
+#[spec(category = Display, primary_prop = "text")]
 #[backend(ark, component = "Text")]
 #[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
 #[backend(vue, component = "span")]
@@ -8,19 +8,21 @@
 /// Text display component.
 ///
 /// # Props
-/// - content: Text content to display
+/// - text: Text content to display (primary prop - can use shorthand syntax)
 /// - style: Text style ("default", "heading", "paragraph", "code", "muted")
 /// - truncate: Whether to truncate long text
 /// - maxLength: Maximum length before truncation (0 = no limit)
 ///
 /// # Example
 /// ```auto
-/// Text (content: "Hello, World!") {}
-/// Text (content: "Long text...", truncate: true, maxLength: 30) {}
+/// Text "Hello, World!" {}
+/// Text (text: "Hello, World!") {}
+/// Text (text: "Long text...", truncate: true, maxLength: 30) {}
 /// ```
 widget Text {
     model {
-        content str = ""
+        #[primary]
+        text str = ""
         style str = "default"  // default, heading, paragraph, code, muted
         truncate bool = false
         maxLength int = 0  // 0 = no limit
@@ -28,13 +30,13 @@ widget Text {
 
     computed {
         displayText => if .truncate && .maxLength > 0 {
-            if .content.len() > .maxLength {
-                f"${.content.slice(0, .maxLength)}..."
+            if .text.len() > .maxLength {
+                f"${.text.slice(0, .maxLength)}..."
             } else {
-                .content
+                .text
             }
         } else {
-            .content
+            .text
         }
         textClass => f"text text-${.style}"
     }
@@ -49,24 +51,24 @@ widget Text {
 
 /// Heading 1 component.
 widget H1 {
-    model { content str = "" }
-    view { text { style: "heading-1", content: .content } }
+    model { #[primary] text str = "" }
+    view { text { style: "heading-1", content: .text } }
 }
 
 /// Heading 2 component.
 widget H2 {
-    model { content str = "" }
-    view { text { style: "heading-2", content: .content } }
+    model { #[primary] text str = "" }
+    view { text { style: "heading-2", content: .text } }
 }
 
 /// Heading 3 component.
 widget H3 {
-    model { content str = "" }
-    view { text { style: "heading-3", content: .content } }
+    model { #[primary] text str = "" }
+    view { text { style: "heading-3", content: .text } }
 }
 
 /// Paragraph component.
 widget Paragraph {
-    model { content str = "" }
-    view { text { style: "paragraph", content: .content } }
+    model { #[primary] text str = "" }
+    view { text { style: "paragraph", content: .text } }
 }

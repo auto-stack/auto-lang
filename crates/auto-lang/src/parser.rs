@@ -8003,6 +8003,9 @@ impl<'a> Parser<'a> {
                 break;
             }
 
+            // Plan 119: Parse #[primary] annotation for model fields
+            let is_primary = self.parse_model_field_primary()?;
+
             // Plan 130: Support `var` keyword for mutable model fields
             // Default is immutable (like `let`), use `var` to allow modification in `on` handlers
             let mutable = if self.cur.text.as_str() == "var" {
@@ -8021,12 +8024,53 @@ impl<'a> Parser<'a> {
             } else {
                 Expr::Nil
             };
-            fields.push(ModelField { name, ty, init, mutable });
+            fields.push(ModelField { name, ty, init, mutable, is_primary });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
 
         Ok(ModelBlock { fields })
+    }
+
+    /// Parse `#[primary]` annotation for model fields (Plan 119)
+    /// Returns true if #[primary] is present, false otherwise
+    fn parse_model_field_primary(&mut self) -> AutoResult<bool> {
+        if !self.is_kind(TokenKind::Hash) {
+            return Ok(false);
+        }
+
+        self.next(); // skip #
+
+        if !self.is_kind(TokenKind::LSquare) {
+            // Not an annotation, put the # back (unexpected, but handle gracefully)
+            return Ok(false);
+        }
+
+        self.next(); // skip [
+
+        let mut is_primary = false;
+
+        if self.is_kind(TokenKind::Ident) {
+            let annot = self.cur.text.clone();
+            match annot.as_str() {
+                "primary" => {
+                    is_primary = true;
+                    self.next(); // skip 'primary'
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Unknown model field annotation '{}'. Valid: #[primary]", annot),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+
+            if self.is_kind(TokenKind::RSquare) {
+                self.next(); // skip ]
+            }
+        }
+
+        Ok(is_primary)
     }
 
     /// Parse computed block, returning the ComputedBlock directly
@@ -8831,21 +8875,36 @@ impl<'a> Parser<'a> {
         // Elements with "id" as primary prop
         // These are typically components/containers that need identification
         match tag {
-            "preview-card" | "codeblock" | "tab" | "tabs" | "dialog" |
-            "sheet" | "popover" | "dropdown-menu" | "context-menu" |
-            "alert-dialog" | "drawer" | "modal" => Some("id"),
+            "preview-card" | "PreviewCard" | "codeblock" | "Codeblock" |
+            "tab" | "Tab" | "tabs" | "Tabs" | "dialog" | "Dialog" |
+            "sheet" | "Sheet" | "popover" | "Popover" |
+            "dropdown-menu" | "DropdownMenu" | "context-menu" | "ContextMenu" |
+            "alert-dialog" | "AlertDialog" | "drawer" | "Drawer" |
+            "modal" | "Modal" => Some("id"),
 
             // Elements with "name" as primary prop (form inputs)
-            "input" | "select" | "textarea" | "checkbox" | "switch" |
-            "radio-group" | "slider" | "range" | "combobox" | "autocomplete" => Some("name"),
+            "input" | "Input" | "select" | "Select" | "textarea" | "Textarea" |
+            "checkbox" | "Checkbox" | "switch" | "Switch" |
+            "radio-group" | "RadioGroup" | "slider" | "Slider" |
+            "range" | "Range" | "combobox" | "Combobox" |
+            "autocomplete" | "Autocomplete" => Some("name"),
+
+            // Elements with "src" as primary prop (images/media)
+            "image" | "Image" | "img" | "video" | "Video" |
+            "audio" | "Audio" | "icon" | "Icon" => Some("src"),
 
             // Elements with "text" as primary prop
             // All text content elements and buttons
-            "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" |
-            "p" | "span" | "label" | "button" | "a" | "link" |
-            "th" | "td" | "li" | "option" | "summary" |
-            "badge" | "tag" | "chip" | "toast" | "alert" |
-            "menu-item" | "context-menu-item" | "dropdown-item" => Some("text"),
+            "text" | "Text" | "h1" | "H1" | "h2" | "H2" | "h3" | "H3" |
+            "h4" | "H4" | "h5" | "H5" | "h6" | "H6" |
+            "p" | "P" | "span" | "Span" | "label" | "Label" |
+            "button" | "Button" | "a" | "link" | "Link" |
+            "th" | "Th" | "td" | "Td" | "li" | "Li" |
+            "option" | "Option" | "summary" | "Summary" |
+            "badge" | "Badge" | "tag" | "Tag" | "chip" | "Chip" |
+            "toast" | "Toast" | "alert" | "Alert" |
+            "menu-item" | "MenuItem" | "context-menu-item" | "ContextMenuItem" |
+            "dropdown-item" | "DropdownItem" => Some("text"),
 
             // Default: text prop for all other elements
             _ => Some("text"),

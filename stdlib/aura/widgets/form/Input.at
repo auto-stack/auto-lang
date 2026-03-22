@@ -1,4 +1,4 @@
-// stdlib/aura/widgets/form/input.at
+// stdlib/aura/widgets/form/Input.at
 
 #[spec(category = Form, primary_prop = "value")]
 #[backend(ark, component = "TextInput")]
@@ -8,7 +8,7 @@
 /// Input component for text entry with various types.
 ///
 /// # Props
-/// - value: Current input value
+/// - value: Current input value (primary prop - can use shorthand syntax)
 /// - placeholder: Placeholder text
 /// - inputType: Input type ("text", "password", "email", "number", "search")
 /// - disabled: Whether input is disabled
@@ -31,6 +31,7 @@ widget Input {
     }
 
     model {
+        #[primary]
         value str = ""
         placeholder str = "Enter text..."
         inputType str = "text"    // text, password, email, number, search

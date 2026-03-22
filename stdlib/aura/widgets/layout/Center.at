@@ -1,0 +1,31 @@
+// stdlib/aura/widgets/layout/Center.at
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Center layout component.
+///
+/// Centers children both horizontally and vertically. Syntax sugar for Col
+/// with center alignment. Use `class` prop for additional Tailwind styling.
+///
+/// # Example
+/// ```auto
+/// Center {
+///     text "Centered content"
+/// }
+///
+/// // With additional styling
+/// Center (class: "bg-gray-100 p-4 rounded") {
+///     text "Centered in a box"
+/// }
+/// ```
+widget Center {
+    view {
+        // Vue: flex items-center justify-center
+        // Jet/Ark: Column with Alignment.CenterHorizontally + Arrangement.Center
+        align: "center"
+        arrange: "center"
+    }
+}

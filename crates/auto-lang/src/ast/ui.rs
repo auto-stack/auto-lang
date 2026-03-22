@@ -110,6 +110,10 @@ pub struct ModelField {
     /// Default is false (immutable, like `let`)
     /// When true, allows modification in `on` handlers
     pub mutable: bool,
+
+    /// Whether this field is the primary property for shorthand syntax (Plan 119)
+    /// When true, allows: `Text "Hello" {}` instead of `Text (text: "Hello") {}`
+    pub is_primary: bool,
 }
 
 // ============================================================================
