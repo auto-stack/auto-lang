@@ -1,0 +1,63 @@
+// stdlib/aura/widgets/overlay/Tooltip.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "Tooltip")]
+#[backend(jet, component = "TooltipBox", import = "androidx.compose.material3.TooltipBox")]
+#[backend(vue, component = "div")]
+
+/// Tooltip component for displaying information on hover/focus.
+///
+/// A small popup that appears on hover or focus to provide additional context.
+/// Supports configurable delay and positioning.
+///
+/// # Example
+/// ```auto
+/// TooltipProvider {
+///     Tooltip {
+///         TooltipTrigger {
+///             button { text: "Hover me" }
+///         }
+///         TooltipContent (side: "top") { text: "Tooltip text" }
+///     }
+/// }
+/// ```
+widget Tooltip {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "delayDuration")]
+#[backend(ark, component = "TooltipProvider")]
+#[backend(jet, component = "TooltipBox", import = "androidx.compose.material3.TooltipBox")]
+#[backend(vue, component = "div")]
+
+/// Tooltip provider wrapper.
+///
+/// Wraps tooltips to provide shared configuration.
+widget TooltipProvider {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "TooltipTrigger")]
+#[backend(jet, component = "PlainTooltip", import = "androidx.compose.material3.PlainTooltip")]
+#[backend(vue, component = "span")]
+
+/// Tooltip trigger element.
+///
+/// The element that triggers the tooltip on hover or focus.
+widget TooltipTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "TooltipContent")]
+#[backend(jet, component = "PlainTooltip", import = "androidx.compose.material3.PlainTooltip")]
+#[backend(vue, component = "div")]
+
+/// Tooltip content/popup.
+///
+/// The content displayed when the tooltip is shown.
+/// Use `side` prop to control positioning (top, right, bottom, left).
+widget TooltipContent {
+    view {}
+}
