@@ -322,9 +322,14 @@ impl ArkGenerator {
         lines.push(format!("{}build() {{", self.indent()));
         self.indent_level = 2;
 
-        // For child pages (not App widget), wrap content in NavDestination
-        // App widget without routes renders content directly
-        if !is_app_widget {
+        // Check if this widget uses navigation (has Link nodes)
+        let uses_navigation = Self::widget_uses_navigation(&widget.view_tree);
+
+        // For child pages that use navigation, wrap content in NavDestination
+        // This is needed for @Consume('pathStack') to work properly
+        // Regular widgets without navigation links don't need NavDestination
+        let needs_nav_destination = !is_app_widget && uses_navigation;
+        if needs_nav_destination {
             lines.push(format!("{}NavDestination() {{", self.indent()));
             self.indent_level += 1;
         }
@@ -349,8 +354,8 @@ impl ArkGenerator {
             lines.push(format!("{}}}", self.indent()));
         }
 
-        // Close NavDestination for child pages (not App widget)
-        if !is_app_widget {
+        // Close NavDestination for child pages that use navigation
+        if needs_nav_destination {
             self.indent_level -= 1;
             lines.push(format!("{}}}", self.indent()));
         }
