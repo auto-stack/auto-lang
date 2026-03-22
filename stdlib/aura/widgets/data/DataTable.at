@@ -1,0 +1,262 @@
+// stdlib/aura/widgets/data/DataTable.at
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Advanced data table with sorting, filtering, pagination, and selection.
+///
+/// DataTable extends Table with interactive features:
+/// - Column sorting (click headers)
+/// - Row filtering/search
+/// - Pagination with configurable page size
+/// - Row selection with checkboxes
+/// - Row action menus
+///
+/// # Example
+/// ```auto
+/// DataTable {
+///     DataTableToolbar {
+///         input (placeholder: "Search...")
+///     }
+///     Table {
+///         TableHeader {
+///             TableRow {
+///                 TableHead { checkbox {} }
+///                 TableHead | Status
+///                 TableHead | Email
+///             }
+///         }
+///         TableBody {
+///             // ... rows
+///         }
+///     }
+///     DataTablePagination {
+///         text | Page 1 of 10
+///     }
+/// }
+/// ```
+widget DataTable {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { style: f"w-full ${.class}" }
+    }
+}
+
+// ============================================================================
+// DataTableToolbar
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Toolbar for DataTable with search and action buttons.
+///
+/// Place at top of DataTable for filtering and actions.
+widget DataTableToolbar {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { style: f"flex items-center justify-between py-4 ${.class}" }
+    }
+}
+
+// ============================================================================
+// DataTablePagination
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Pagination controls for DataTable.
+///
+/// Includes page size selector, page info, and navigation buttons.
+widget DataTablePagination {
+    model {
+        class str = ""
+        currentPage int = 1
+        totalPages int = 1
+        pageSize int = 10
+    }
+
+    view {
+        div { style: f"flex items-center justify-between py-4 ${.class}" }
+    }
+}
+
+// ============================================================================
+// DataTablePageSizeSelector
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Page size selector for DataTable pagination.
+widget DataTablePageSizeSelector {
+    model {
+        sizes []int = [5, 10, 20, 50]
+        current int = 10
+    }
+
+    view {
+        row { style: "flex items-center gap-2" } {
+            text (text: "Rows per page", style: "text-sm text-muted-foreground") {}
+        }
+    }
+}
+
+// ============================================================================
+// DataTablePageInfo
+// ============================================================================
+
+#[spec(category = Data, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "span")]
+
+/// Page information display for DataTable pagination.
+///
+/// # Props
+/// - `text`: Page info text (e.g., "Page 1 of 10")
+widget DataTablePageInfo {
+    model {
+        text str = ""
+    }
+
+    view {
+        text (text: .text, style: "text-sm text-muted-foreground") {}
+    }
+}
+
+// ============================================================================
+// DataTableNavButtons
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Navigation buttons for DataTable pagination.
+widget DataTableNavButtons {
+    model {
+        canPrev bool = true
+        canNext bool = true
+    }
+
+    view {
+        row { gap: "2" }
+    }
+}
+
+// ============================================================================
+// DataTableSelectionInfo
+// ============================================================================
+
+#[spec(category = Data, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "span")]
+
+/// Selection information display for DataTable.
+///
+/// Shows count of selected rows.
+///
+/// # Props
+/// - `text`: Selection info text (e.g., "2 of 5 row(s) selected")
+widget DataTableSelectionInfo {
+    model {
+        text str = ""
+    }
+
+    view {
+        text (text: .text, style: "text-sm text-muted-foreground") {}
+    }
+}
+
+// ============================================================================
+// DataTableColumnMenu
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Column visibility menu for DataTable.
+///
+/// Allows toggling column visibility.
+widget DataTableColumnMenu {
+    model {
+        class str = ""
+    }
+
+    view {
+        dropdown-menu { style: .class }
+    }
+}
+
+// ============================================================================
+// DataTableFilterInput
+// ============================================================================
+
+#[spec(category = Data, has_children = false, primary_prop = "placeholder")]
+#[backend(ark, component = "TextField")]
+#[backend(jet, component = "OutlinedTextField", import = "androidx.compose.material3.OutlinedTextField")]
+#[backend(vue, component = "input")]
+
+/// Filter input for DataTable.
+///
+/// Search/filter input for table data.
+///
+/// # Props
+/// - `placeholder`: Placeholder text
+/// - `class`: Additional CSS classes
+widget DataTableFilterInput {
+    model {
+        placeholder str = "Search..."
+        class str = ""
+    }
+
+    view {
+        input { placeholder: .placeholder, style: .class }
+    }
+}
+
+// ============================================================================
+// DataTableSortButton
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Button")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Sort button for DataTable column headers.
+///
+/// Shows sort direction indicator.
+widget DataTableSortButton {
+    model {
+        text str = ""
+        direction str = ""  // "", "asc", "desc"
+    }
+
+    view {
+        button { variant: "ghost", style: "-ml-4" } {
+            text (text: .text) {}
+            icon (name: "arrow-up-down", style: "ml-2 h-4 w-4") {}
+        }
+    }
+}
