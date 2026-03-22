@@ -1,0 +1,118 @@
+// stdlib/aura/widgets/layout/ScrollArea.at
+
+// ============================================================================
+// ScrollArea - Main scrollable container
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "ScrollArea")]
+#[backend(jet, component = "LazyColumn", import = "androidx.compose.foundation.lazy.LazyColumn")]
+#[backend(vue, component = "div")]
+
+/// ScrollArea component for scrollable containers.
+///
+/// Provides custom styled scrollbars with configurable visibility modes.
+/// Supports both vertical and horizontal scrolling.
+///
+/// # Scrollbar Visibility
+/// - auto: Show scrollbar when needed
+/// - always: Always show scrollbar
+/// - scroll: Show only while scrolling
+/// - hover: Show on hover
+///
+/// # Example
+/// ```auto
+/// ScrollArea (scrollbarVisibility: "auto", class: "h-72 w-48") {
+///     col {
+///         text "Item 1"
+///         text "Item 2"
+///         text "Item 3"
+///     }
+/// }
+/// ```
+widget ScrollArea {
+    model {
+        scrollbarVisibility str = "auto"  // auto, always, scroll, hover
+    }
+
+    view {
+        style: "scroll-area"
+    }
+}
+
+// ============================================================================
+// ScrollAreaViewport - Viewport content area
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "ScrollAreaViewport")]
+#[backend(jet, component = "LazyColumn", import = "androidx.compose.foundation.lazy.LazyColumn")]
+#[backend(vue, component = "div")]
+
+/// ScrollArea viewport for content.
+///
+/// The inner container that holds scrollable content.
+///
+/// # Example
+/// ```auto
+/// ScrollAreaViewport {
+///     col {
+///         text "Content item"
+///     }
+/// }
+/// ```
+widget ScrollAreaViewport {
+    view {
+        style: "scroll-area-viewport"
+    }
+}
+
+// ============================================================================
+// ScrollAreaScrollbar - Scrollbar component
+// ============================================================================
+
+#[spec(category = Layout, has_children = false)]
+#[backend(ark, component = "ScrollAreaScrollbar")]
+#[backend(jet, component = "VerticalScrollbar", import = "androidx.compose.foundation.Scrollbar")]
+#[backend(vue, component = "div")]
+
+/// ScrollArea scrollbar for custom scrollbars.
+///
+/// Can be oriented vertically or horizontally.
+///
+/// # Example
+/// ```auto
+/// ScrollAreaScrollbar (orientation: "vertical") {}
+/// ```
+widget ScrollAreaScrollbar {
+    model {
+        orientation str = "vertical"  // vertical, horizontal
+    }
+
+    view {
+        style: f"scroll-area-scrollbar ${.orientation}"
+    }
+}
+
+// ============================================================================
+// ScrollAreaThumb - Scrollbar thumb
+// ============================================================================
+
+#[spec(category = Layout, has_children = false)]
+#[backend(ark, component = "ScrollAreaThumb")]
+#[backend(jet, component = "ScrollbarThumb", import = "androidx.compose.foundation.Scrollbar")]
+#[backend(vue, component = "div")]
+
+/// ScrollArea thumb for draggable scrollbar indicator.
+///
+/// The draggable portion of the scrollbar.
+///
+/// # Example
+/// ```auto
+/// ScrollAreaThumb {}
+/// ```
+widget ScrollAreaThumb {
+    view {
+        style: "scroll-area-thumb"
+    }
+}
