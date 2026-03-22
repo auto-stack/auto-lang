@@ -1,0 +1,172 @@
+// stdlib/aura/widgets/layout/Card.at
+
+// ============================================================================
+// Card - Main container
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "Card")]
+#[backend(jet, component = "Card", import = "androidx.compose.material3.Card")]
+#[backend(vue, component = "div")]
+
+/// Card container component for grouping related content.
+///
+/// Provides a styled container with optional header, content, and footer sections.
+/// Supports multiple variants for different visual styles.
+///
+/// # Variants
+/// - default: Standard card with border
+/// - outlined: Card with outline only
+/// - elevated: Card with shadow
+///
+/// # Example
+/// ```auto
+/// Card (variant: "elevated") {
+///     CardHeader {
+///         CardTitle { text "Card Title" }
+///         CardDescription { text "Card description" }
+///     }
+///     CardContent {
+///         text "Main content goes here"
+///     }
+///     CardFooter {
+///         button (text: "Action") {}
+///     }
+/// }
+/// ```
+widget Card {
+    model {
+        variant str = "default"  // default, outlined, elevated
+    }
+
+    computed {
+        cardClass => f"card card-${.variant}"
+    }
+
+    view {
+        style: .cardClass
+    }
+}
+
+// ============================================================================
+// CardHeader - Header section
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CardHeader")]
+#[backend(jet, component = "CardHeader", import = "androidx.compose.material3.CardHeader")]
+#[backend(vue, component = "div")]
+
+/// Card header section for titles and descriptions.
+///
+/// Typically contains CardTitle and CardDescription widgets.
+///
+/// # Example
+/// ```auto
+/// CardHeader {
+///     CardTitle { text "Title" }
+///     CardDescription { text "Subtitle" }
+/// }
+/// ```
+widget CardHeader {
+    view {
+        style: "card-header"
+    }
+}
+
+// ============================================================================
+// CardContent - Main content section
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CardContent")]
+#[backend(jet, component = "CardContent", import = "androidx.compose.material3.CardContent")]
+#[backend(vue, component = "div")]
+
+/// Card content section for main content.
+///
+/// The primary content area of a card.
+///
+/// # Example
+/// ```auto
+/// CardContent {
+///     text "This is the main content"
+/// }
+/// ```
+widget CardContent {
+    view {
+        style: "card-content"
+    }
+}
+
+// ============================================================================
+// CardFooter - Footer section
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CardFooter")]
+#[backend(jet, component = "CardFooter", import = "androidx.compose.material3.CardFooter")]
+#[backend(vue, component = "div")]
+
+/// Card footer section for actions and metadata.
+///
+/// Typically contains buttons or additional information.
+///
+/// # Example
+/// ```auto
+/// CardFooter {
+///     button (text: "Submit") {}
+///     button (text: "Cancel", variant: "outline") {}
+/// }
+/// ```
+widget CardFooter {
+    view {
+        style: "card-footer"
+    }
+}
+
+// ============================================================================
+// CardTitle - Title within CardHeader
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CardTitle")]
+#[backend(jet, component = "CardTitle", import = "androidx.compose.material3.CardTitle")]
+#[backend(vue, component = "h3")]
+
+/// Card title component.
+///
+/// Displays a prominent title within CardHeader.
+///
+/// # Example
+/// ```auto
+/// CardTitle { text "Product Name" }
+/// ```
+widget CardTitle {
+    view {
+        style: "card-title"
+    }
+}
+
+// ============================================================================
+// CardDescription - Description within CardHeader
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "CardDescription")]
+#[backend(jet, component = "CardDescription", import = "androidx.compose.material3.CardDescription")]
+#[backend(vue, component = "p")]
+
+/// Card description component.
+///
+/// Displays a secondary description within CardHeader.
+///
+/// # Example
+/// ```auto
+/// CardDescription { text "A brief description of the card content" }
+/// ```
+widget CardDescription {
+    view {
+        style: "card-description"
+    }
+}
