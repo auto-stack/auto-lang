@@ -5,7 +5,7 @@
 // ============================================================================
 
 #[spec(category = Navigation, has_children = true, primary_prop = "activePage")]
-#[backend(ark, component = "Sidebar")]
+#[backend(ark, component = "SideBarContainer", import = "@kit.ArkUI")]
 #[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
 #[backend(vue, component = "div")]
 

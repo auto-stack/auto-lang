@@ -5,7 +5,7 @@
 // ============================================================================
 
 #[spec(category = Form, has_children = true, primary_prop = "value")]
-#[backend(ark, component = "RadioContainer", import = "@kit.ArkUI")]
+#[backend(ark, component = "Column")]
 #[backend(jet, component = "RadioButtonGroup", import = "androidx.compose.material3.RadioButtonGroup")]
 #[backend(vue, component = "RadioGroup", import = "@/components/ui/radio/RadioGroup")]
 

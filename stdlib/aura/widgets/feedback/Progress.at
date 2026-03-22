@@ -1,7 +1,7 @@
 // stdlib/aura/widgets/feedback/Progress.at
 
 #[spec(category = Feedback, has_children = false, primary_prop = "value")]
-#[backend(ark, component = "LinearProgressIndicator")]
+#[backend(ark, component = "Progress", import = "@kit.ArkUI")]
 #[backend(jet, component = "LinearProgressIndicator", import = "androidx.compose.material3.LinearProgressIndicator")]
 #[backend(vue, component = "div")]
 

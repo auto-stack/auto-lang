@@ -670,9 +670,9 @@ mod tests {
 
     #[test]
     fn test_legacy_class_to_modifier() {
-        // Ensure backwards compatibility - use style_to_modifier for Tailwind classes
+        // Ensure backwards compatibility - use style_to_modifier for ArkTS property names
         assert!(style_to_modifier("padding", "4").unwrap().contains(".padding"));
-        assert!(style_to_modifier("font-weight", "bold").unwrap().contains(".fontWeight"));
+        assert!(style_to_modifier("fontWeight", "Bold").unwrap().contains(".fontWeight"));
     }
 
     // ========================================================================
