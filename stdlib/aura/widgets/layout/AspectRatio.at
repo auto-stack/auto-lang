@@ -1,0 +1,38 @@
+// stdlib/aura/widgets/layout/AspectRatio.at
+
+#[spec(category = Layout, has_children = true, primary_prop = "ratio")]
+#[backend(ark, component = "AspectRatio")]
+#[backend(jet, component = "AspectRatio", import = "androidx.compose.foundation.layout.AspectRatio")]
+#[backend(vue, component = "div")]
+
+/// AspectRatio component for maintaining content proportions.
+///
+/// Displays content within a desired aspect ratio, useful for images,
+/// videos, and other media that needs consistent proportions.
+///
+/// # Common Ratios
+/// - 1.0: Square (1:1)
+/// - 1.333: Standard TV (4:3)
+/// - 1.777: Widescreen (16:9)
+/// - 2.333: Ultrawide (21:9)
+///
+/// # Example
+/// ```auto
+/// AspectRatio (ratio: 1.777) {
+///     img (src: "image.jpg", class: "object-cover w-full h-full") {}
+/// }
+///
+/// // Square image
+/// AspectRatio (ratio: 1.0) {
+///     img (src: "avatar.jpg", class: "rounded-full") {}
+/// }
+/// ```
+widget AspectRatio {
+    model {
+        ratio float = 1.0  // width/height ratio (e.g., 16/9 = 1.777)
+    }
+
+    view {
+        style: "aspect-ratio"
+    }
+}
