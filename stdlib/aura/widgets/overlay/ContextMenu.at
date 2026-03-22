@@ -1,0 +1,113 @@
+// stdlib/aura/widgets/overlay/ContextMenu.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "ContextMenu")]
+#[backend(jet, component = "DropdownMenu", import = "androidx.compose.material3.DropdownMenu")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu component for right-click menus.
+///
+/// A menu that appears on right-click, providing contextual actions.
+/// Supports keyboard navigation and nested submenus.
+///
+/// # Example
+/// ```auto
+/// ContextMenu {
+///     ContextMenuTrigger {
+///         text "Right click me"
+///     }
+///     ContextMenuContent {
+///         ContextMenuItem { text: "Copy" }
+///         ContextMenuItem { text: "Paste" }
+///         ContextMenuSeparator {}
+///         ContextMenuItem { text: "Delete" }
+///     }
+/// }
+/// ```
+widget ContextMenu {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "ContextMenuTrigger")]
+#[backend(jet, component = "Box", import = "androidx.compose.foundation.layout.Box")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu trigger area.
+///
+/// The area that triggers the context menu on right-click.
+widget ContextMenuTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "ContextMenuContent")]
+#[backend(jet, component = "DropdownMenu", import = "androidx.compose.material3.DropdownMenu")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu content/dropdown.
+///
+/// Contains the menu items of the context menu.
+widget ContextMenuContent {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ContextMenuItem")]
+#[backend(jet, component = "DropdownMenuItem", import = "androidx.compose.material3.DropdownMenuItem")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu item.
+///
+/// An individual menu item that can be clicked.
+widget ContextMenuItem {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false)]
+#[backend(ark, component = "ContextMenuSeparator")]
+#[backend(jet, component = "HorizontalDivider", import = "androidx.compose.material3.HorizontalDivider")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu separator.
+///
+/// A visual divider between menu items.
+widget ContextMenuSeparator {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ContextMenuCheckboxItem")]
+#[backend(jet, component = "DropdownMenuItem", import = "androidx.compose.material3.DropdownMenuItem")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu checkbox item.
+///
+/// A menu item with a checkbox for toggling options.
+widget ContextMenuCheckboxItem {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ContextMenuRadioItem")]
+#[backend(jet, component = "DropdownMenuItem", import = "androidx.compose.material3.DropdownMenuItem")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu radio item.
+///
+/// A menu item for selecting from mutually exclusive options.
+widget ContextMenuRadioItem {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "ContextMenuLabel")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "div")]
+
+/// ContextMenu label.
+///
+/// A non-interactive label for grouping menu items.
+widget ContextMenuLabel {
+    view {}
+}
