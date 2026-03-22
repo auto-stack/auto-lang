@@ -1,0 +1,48 @@
+// stdlib/aura/widgets/overlay/HoverCard.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "HoverCard")]
+#[backend(jet, component = "Card", import = "androidx.compose.material3.Card")]
+#[backend(vue, component = "div")]
+
+/// HoverCard component for preview content on hover.
+///
+/// A card that appears on hover, useful for showing previews or additional information.
+///
+/// # Example
+/// ```auto
+/// HoverCard {
+///     HoverCardTrigger { text: "@nextjs" }
+///     HoverCardContent (side: "bottom") {
+///         text "Preview content"
+///     }
+/// }
+/// ```
+widget HoverCard {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "HoverCardTrigger")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "button")]
+
+/// HoverCard trigger element.
+///
+/// The element that triggers the hover card when hovered.
+widget HoverCardTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "side")]
+#[backend(ark, component = "HoverCardContent")]
+#[backend(jet, component = "Card", import = "androidx.compose.material3.Card")]
+#[backend(vue, component = "div")]
+
+/// HoverCard content container.
+///
+/// Contains the main content of the hover card.
+/// Use `side` prop to control positioning (top, right, bottom, left).
+widget HoverCardContent {
+    view {}
+}
