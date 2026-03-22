@@ -1,0 +1,34 @@
+// stdlib/aura/widgets/display/Swiper.at
+
+#[spec(category = Display, has_children = true)]
+#[backend(ark, component = "Swiper")]
+#[backend(jet, component = "HorizontalPager", import = "androidx.compose.foundation.pager.HorizontalPager")]
+#[backend(vue, component = "Swiper", import = "swiper/vue")]
+
+/// Swiper/Carousel component for sliding content.
+///
+/// A container that displays one child at a time with swipe navigation.
+/// Commonly used for image carousels, onboarding screens, and card sliders.
+///
+/// # Modifiers (via style prop)
+/// - `auto-play` - Enable automatic slide progression
+/// - `loop` - Enable infinite looping
+/// - `indicator` - Show navigation dots
+/// - `no-indicator` - Hide navigation dots
+///
+/// # Example
+/// ```auto
+/// Swiper {
+///     Image "banner1.png" { style: "w-full rounded-2xl" }
+///     Image "banner2.png" { style: "w-full rounded-2xl" }
+///     Image "banner3.png" { style: "w-full rounded-2xl" }
+///     style: "auto-play loop indicator"
+/// }
+/// ```
+widget Swiper {
+    view {
+        // ArkTS: Swiper() { ... }.autoPlay(true).loop(true).indicator(...)
+        // Jet: HorizontalPager(state) { ... }
+        // Vue: <Swiper :autoplay="true" :loop="true">...</Swiper>
+    }
+}

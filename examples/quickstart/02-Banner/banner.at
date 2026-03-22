@@ -4,10 +4,16 @@
 widget Banner {
     view {
         Swiper {
+            Image "$r('app.media.banner_pic0')" {
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
             Image "$r('app.media.banner_pic1')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
             }
-            style: "auto-play loop"
+            Image "$r('app.media.banner_pic2')" {
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            style: "auto-play loop indicator"
         }
     }
 }
