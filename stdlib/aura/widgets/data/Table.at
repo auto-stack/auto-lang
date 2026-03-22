@@ -1,0 +1,193 @@
+// stdlib/aura/widgets/data/Table.at
+
+// ============================================================================
+// Table Component (Compound)
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Table component for displaying tabular data.
+///
+/// Arranges data in rows and columns with header and body sections.
+/// Use `class` prop for Tailwind styling.
+///
+/// # Example
+/// ```auto
+/// Table {
+///     TableHeader {
+///         TableRow {
+///             TableHead | Name
+///             TableHead | Email
+///         }
+///     }
+///     TableBody {
+///         TableRow {
+///             TableCell | John
+///             TableCell | john@example.com
+///         }
+///     }
+/// }
+/// ```
+widget Table {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { style: "relative w-full overflow-auto" } {
+            table { style: f"w-full caption-bottom text-sm ${.class}" }
+        }
+    }
+}
+
+// ============================================================================
+// TableHeader
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "thead")]
+
+/// Table header section.
+///
+/// Contains TableRow widgets with TableHead cells.
+widget TableHeader {
+    view {
+        thead { style: "[&_tr]:border-b" }
+    }
+}
+
+// ============================================================================
+// TableBody
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "tbody")]
+
+/// Table body section.
+///
+/// Contains TableRow widgets with TableCell cells.
+widget TableBody {
+    view {
+        tbody { style: "[&_tr:last-child]:border-0" }
+    }
+}
+
+// ============================================================================
+// TableFooter
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "tfoot")]
+
+/// Table footer section.
+///
+/// Contains summary or totals rows.
+widget TableFooter {
+    view {
+        tfoot { style: "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0" }
+    }
+}
+
+// ============================================================================
+// TableRow
+// ============================================================================
+
+#[spec(category = Data, has_children = true)]
+#[backend(ark, component = "Row")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "tr")]
+
+/// Table row component.
+///
+/// Contains TableHead or TableCell widgets.
+widget TableRow {
+    view {
+        tr { style: "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted" }
+    }
+}
+
+// ============================================================================
+// TableHead
+// ============================================================================
+
+#[spec(category = Data, has_children = true, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "th")]
+
+/// Table header cell.
+///
+/// Use `text` prop for simple text or children for complex content.
+///
+/// # Props
+/// - `text`: Cell text content
+/// - `colspan`: Number of columns to span (default: 1)
+widget TableHead {
+    model {
+        text str = ""
+        colspan int = 1
+    }
+
+    view {
+        th { style: "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]", text: .text, colspan: .colspan }
+    }
+}
+
+// ============================================================================
+// TableCell
+// ============================================================================
+
+#[spec(category = Data, has_children = true, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "td")]
+
+/// Table data cell.
+///
+/// Use `text` prop for simple text or children for complex content.
+///
+/// # Props
+/// - `text`: Cell text content
+/// - `colspan`: Number of columns to span (default: 1)
+widget TableCell {
+    model {
+        text str = ""
+        colspan int = 1
+    }
+
+    view {
+        td { style: "p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]", text: .text, colspan: .colspan }
+    }
+}
+
+// ============================================================================
+// TableCaption
+// ============================================================================
+
+#[spec(category = Data, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "caption")]
+
+/// Table caption for accessibility and description.
+///
+/// # Props
+/// - `text`: Caption text
+widget TableCaption {
+    model {
+        text str = ""
+    }
+
+    view {
+        caption { style: "mt-4 text-sm text-muted-foreground", text: .text }
+    }
+}
