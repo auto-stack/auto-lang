@@ -1,0 +1,51 @@
+// stdlib/aura/widgets/form/Textarea.at
+
+#[spec(category = Form, has_children = false, primary_prop = "value")]
+#[backend(ark, component = "TextArea", import = "@kit.ArkUI")]
+#[backend(jet, component = "OutlinedTextField", import = "androidx.compose.material3.OutlinedTextField")]
+#[backend(vue, component = "Textarea", import = "@/components/ui/textarea/Textarea")]
+
+/// Textarea component for multi-line text input.
+///
+/// # Props
+/// - value: Current textarea value (primary prop - can use shorthand syntax)
+/// - placeholder: Placeholder text
+/// - disabled: Whether textarea is disabled
+/// - rows: Number of visible text rows
+///
+/// # Events
+/// - onchange: Change event (Msg.Change(value))
+///
+/// # Example
+/// ```auto
+/// Textarea (value: .description, placeholder: "Enter description...", onchange: .Update) {}
+/// Textarea (value: .bio, rows: 6) {}
+/// ```
+widget Textarea {
+    msg Msg { Change(value: str) }
+
+    model {
+        #[primary]
+        value str = ""
+        placeholder str = ""
+        disabled bool = false
+        rows int = 4
+    }
+
+    view {
+        textarea {
+            style: "flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            placeholder: .placeholder
+            value: .value
+            rows: .rows
+            disabled: .disabled
+            onchange: .Change
+        }
+    }
+
+    on {
+        Change(value) => {
+            value = value
+        }
+    }
+}
