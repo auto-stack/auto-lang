@@ -25,22 +25,19 @@ deps: {
 }
 
 // Component registry
+// Note: Most UI components (Button, Input, Text, Card, Badge, Accordion, Tabs, etc.)
+// are now auto-imported from stdlib/aura/widgets. Only gallery-specific components
+// that don't exist in stdlib are registered here.
 components: {
-    // UI components (Phase 1)
-    Button: "./components/button.at"
-    Input: "./components/input.at"
-    Text: "./components/text.at"
-    Card: "./components/card.at"
-    Badge: "./components/badge.at"
-    Label: "./components/label.at"
-    Accordion: "./components/accordion.at"
-    Tabs: "./components/tabs.at"
-
-    // Documentation components
+    // Gallery-specific components (not in stdlib)
+    Carousel: "./components/carousel.at"
     CodeBlock: "./components/code_block.at"
+    Combobox: "./components/combobox.at"
+    Command: "./components/command.at"
     CopyButton: "./components/copy_button.at"
-    Sidebar: "./components/sidebar.at"
-    NavLink: "./components/nav_link.at"
+    DatePicker: "./components/datepicker.at"
+    Toggle: "./components/toggle.at"
+    ToggleGroup: "./components/togglegroup.at"
 }
 
 // Pages
