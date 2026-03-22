@@ -1,0 +1,40 @@
+// stdlib/aura/widgets/display/Separator.at
+
+#[spec(category = Display, has_children = false, primary_prop = "orientation")]
+#[backend(ark, component = "Divider")]
+#[backend(jet, component = "HorizontalDivider", import = "androidx.compose.material3.HorizontalDivider")]
+#[backend(vue, component = "hr")]
+
+/// Separator component for visual division.
+///
+/// # Props
+/// - orientation: Direction of separator ("horizontal", "vertical")
+/// - decorative: Whether separator is purely decorative (no semantic role)
+///
+/// # Example
+/// ```auto
+/// Separator {}
+/// Separator (orientation: "vertical", decorative: true) {}
+/// ```
+widget Separator {
+    model {
+        orientation str = "horizontal"  // horizontal, vertical
+        decorative bool = false
+    }
+
+    computed {
+        separatorClass => if .orientation == "vertical" {
+            "separator vertical h-full w-[1px]"
+        } else {
+            "separator horizontal h-[1px] w-full"
+        }
+    }
+
+    view {
+        div {
+            style: .separatorClass,
+            role: if .decorative { "none" } else { "separator" },
+            "aria-orientation": if .decorative { "undefined" } else { .orientation }
+        }
+    }
+}
