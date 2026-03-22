@@ -1,0 +1,58 @@
+// stdlib/aura/widgets/form/Checkbox.at
+
+#[spec(category = Form, has_children = false, primary_prop = "checked")]
+#[backend(ark, component = "Checkbox", import = "@kit.ArkUI")]
+#[backend(jet, component = "Checkbox", import = "androidx.compose.material3.Checkbox")]
+#[backend(vue, component = "Checkbox", import = "@/components/ui/checkbox/Checkbox")]
+
+/// Checkbox component for boolean selections.
+///
+/// # Props
+/// - checked: Current checked state (primary prop - can use shorthand syntax)
+/// - disabled: Whether checkbox is disabled
+/// - id: Optional identifier for accessibility
+///
+/// # Events
+/// - onchange: Change event (Msg.Change(checked))
+///
+/// # Example
+/// ```auto
+/// Checkbox (checked: .isChecked, onchange: .Toggle) {}
+/// Checkbox (checked: .agreed) {}
+/// ```
+widget Checkbox {
+    msg Msg { Change(checked: bool) }
+
+    model {
+        #[primary]
+        checked bool = false
+        disabled bool = false
+        id str = ""
+    }
+
+    computed {
+        checkboxClass => if .checked {
+            "checkbox checked"
+        } else {
+            "checkbox"
+        }
+    }
+
+    view {
+        button {
+            type: "checkbox"
+            style: .checkboxClass
+            onclick: .Change
+            disabled: .disabled
+            id: .id
+            role: "checkbox"
+            "aria-checked": .checked
+        }
+    }
+
+    on {
+        Change(checked) => {
+            checked = checked
+        }
+    }
+}
