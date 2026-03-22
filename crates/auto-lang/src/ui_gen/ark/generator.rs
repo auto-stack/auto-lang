@@ -27,7 +27,7 @@ use super::state::{generate_dispatch_function, generate_handler_body, generate_m
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::widget::WidgetRegistry;
 use crate::ui_gen::{BackendGenerator, GenResult};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// ArkTS code generator for HarmonyOS
 ///
@@ -62,6 +62,9 @@ pub struct ArkGenerator {
     /// Widget registry for looking up widget specifications
     registry: WidgetRegistry,
 
+    /// Custom widget imports (from use statements)
+    custom_widgets: HashSet<String>,
+
     /// Collected modifiers for current component
     #[allow(dead_code)]
     current_modifiers: Vec<String>,
@@ -82,12 +85,33 @@ impl ArkGenerator {
         Self {
             current_widget: None,
             registry: WidgetRegistry::with_defaults(),
+            custom_widgets: HashSet::new(),
             current_modifiers: Vec::new(),
             indent_level: 0,
             current_handlers: HashMap::new(),
             has_messages: false,
             sanitized_name: None,
         }
+    }
+
+    /// Register custom widget imports (from use statements)
+    pub fn register_custom_widget(&mut self, name: &str) {
+        self.custom_widgets.insert(name.to_string());
+    }
+
+    /// Register multiple custom widget imports
+    pub fn register_custom_widgets(&mut self, names: &[&str]) {
+        for name in names {
+            self.custom_widgets.insert(name.to_string());
+        }
+    }
+
+    /// Check if a tag looks like a custom component (starts with uppercase, not in registry)
+    fn is_capitalized_component(&self, tag: &str) -> bool {
+        // If it starts with uppercase and is not a built-in component, it's likely a custom widget
+        tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+            && !Self::is_builtin_component(tag)
+            && !self.registry.get(tag).is_some()
     }
 
     /// Generate indentation string
@@ -135,6 +159,19 @@ impl ArkGenerator {
     pub fn generate_project_with_package(&self, name: &str, package: &str) -> HashMap<String, String> {
         let gen = ArkProjectGenerator::with_package(name, package);
         gen.generate()
+    }
+
+    /// Generate @Entry @Component struct from widget with custom imports
+    pub fn generate_entry_component_with_imports(
+        &mut self,
+        widget: &AuraWidget,
+        custom_imports: &[String],
+    ) -> GenResult<String> {
+        // Register custom widgets from imports
+        for import in custom_imports {
+            self.register_custom_widget(import);
+        }
+        self.generate_entry_component(widget)
     }
 
     /// Generate @Entry @Component struct from widget
@@ -548,6 +585,26 @@ impl ArkGenerator {
             } else {
                 // No ArkTS mapping - emit as comment
                 lines.push(format!("/* No ArkTS mapping for: {} */", tag));
+            }
+        } else if self.custom_widgets.contains(tag) || self.is_capitalized_component(tag) {
+            // Custom widget (from use statement) - call it directly as a component
+            let component_name = Self::capitalize_module(tag);
+            lines.push(format!("{}()", component_name));
+
+            // Handle children if any
+            if !children.is_empty() {
+                lines.last_mut().unwrap().push_str(" {");
+                self.indent_level += 1;
+
+                for child in children {
+                    let child_code = self.generate_node(child)?;
+                    for line in child_code.lines() {
+                        lines.push(format!("{}{}", self.indent(), line));
+                    }
+                }
+
+                self.indent_level -= 1;
+                lines.push(format!("{}}}", self.indent()));
             }
         } else {
             // Unknown component - emit as comment
