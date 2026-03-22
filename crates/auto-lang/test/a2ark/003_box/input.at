@@ -1,0 +1,7 @@
+widget TestBox {
+    view {
+        box {
+            text "Overlay"
+        }
+    }
+}

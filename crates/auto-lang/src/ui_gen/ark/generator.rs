@@ -1427,4 +1427,14 @@ mod tests {
     fn test_001_column() {
         test_a2ark("001_column").unwrap();
     }
+
+    #[test]
+    fn test_002_row() {
+        test_a2ark("002_row").unwrap();
+    }
+
+    #[test]
+    fn test_003_box() {
+        test_a2ark("003_box").unwrap();
+    }
 }
