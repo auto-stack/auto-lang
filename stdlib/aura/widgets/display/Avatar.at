@@ -1,0 +1,48 @@
+// stdlib/aura/widgets/display/Avatar.at
+
+#[spec(category = Display, primary_prop = "fallback")]
+#[backend(ark, component = "Avatar")]
+#[backend(jet, component = "Avatar", import = "androidx.compose.material3.Avatar")]
+#[backend(vue, component = "div")]
+
+/// Avatar component for user profile images.
+///
+/// # Props
+/// - fallback: Fallback text when no image (primary prop - usually initials)
+/// - src: Image source URL
+/// - size: Avatar size ("sm", "md", "lg")
+///
+/// # Sizes
+/// - sm: Small avatar
+/// - md: Medium avatar (default)
+/// - lg: Large avatar
+///
+/// # Example
+/// ```auto
+/// Avatar "JD" {}
+/// Avatar (fallback: "AB", src: "/avatar.png") {}
+/// Avatar (fallback: "CD", size: "lg") {}
+/// ```
+widget Avatar {
+    model {
+        #[primary]
+        fallback str = "U"
+        src str = ""
+        size str = "md"  // sm, md, lg
+    }
+
+    computed {
+        avatarClass => f"avatar avatar-${.size}"
+    }
+
+    view {
+        div { style: .avatarClass } {
+            if .src != "" {
+                img { src: .src, alt: "Avatar" }
+            }
+            if .src == "" {
+                div { style: "flex h-full w-full items-center justify-center rounded-full bg-muted", text: .fallback }
+            }
+        }
+    }
+}
