@@ -1,0 +1,55 @@
+// stdlib/aura/widgets/form/Switch.at
+
+#[spec(category = Form, has_children = false, primary_prop = "checked")]
+#[backend(ark, component = "Toggle", import = "@kit.ArkUI")]
+#[backend(jet, component = "Switch", import = "androidx.compose.material3.Switch")]
+#[backend(vue, component = "Switch", import = "@/components/ui/switch/Switch")]
+
+/// Switch component for toggle selections.
+///
+/// # Props
+/// - checked: Current on/off state (primary prop - can use shorthand syntax)
+/// - disabled: Whether switch is disabled
+///
+/// # Events
+/// - onchange: Change event (Msg.Change(checked))
+///
+/// # Example
+/// ```auto
+/// Switch (checked: .isEnabled, onchange: .Toggle) {}
+/// Switch (checked: .notifications) {}
+/// ```
+widget Switch {
+    msg Msg { Change(checked: bool) }
+
+    model {
+        #[primary]
+        checked bool = false
+        disabled bool = false
+    }
+
+    computed {
+        switchClass => if .checked {
+            "switch checked"
+        } else {
+            "switch"
+        }
+    }
+
+    view {
+        button {
+            type: "switch"
+            style: .switchClass
+            onclick: .Change
+            disabled: .disabled
+            role: "switch"
+            "aria-checked": .checked
+        }
+    }
+
+    on {
+        Change(checked) => {
+            checked = checked
+        }
+    }
+}
