@@ -1,0 +1,127 @@
+// stdlib/aura/widgets/overlay/AlertDialog.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "AlertDialog")]
+#[backend(jet, component = "AlertDialog", import = "androidx.compose.material3.AlertDialog")]
+#[backend(vue, component = "dialog")]
+
+/// AlertDialog component for confirmation dialogs.
+///
+/// A modal dialog that requires user confirmation before proceeding.
+/// Typically used for destructive actions or important decisions.
+///
+/// # Example
+/// ```auto
+/// AlertDialog (open: .showAlert) {
+///     AlertDialogTrigger { text: "Delete Account" }
+///     AlertDialogContent {
+///         AlertDialogHeader {
+///             AlertDialogTitle { text: "Are you sure?" }
+///             AlertDialogDescription { text: "This action cannot be undone." }
+///         }
+///         AlertDialogFooter {
+///             AlertDialogCancel { text: "Cancel" }
+///             AlertDialogAction { text: "Continue" }
+///         }
+///     }
+/// }
+/// ```
+widget AlertDialog {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertDialogTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// AlertDialog trigger button.
+///
+/// Opens the alert dialog when clicked.
+widget AlertDialogTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "AlertDialogContent")]
+#[backend(jet, component = "Surface", import = "androidx.compose.material3.Surface")]
+#[backend(vue, component = "div")]
+
+/// AlertDialog content container.
+///
+/// Contains the main content of the alert dialog.
+widget AlertDialogContent {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "AlertDialogHeader")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// AlertDialog header section.
+///
+/// Contains the title and description of the alert dialog.
+widget AlertDialogHeader {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "AlertDialogFooter")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// AlertDialog footer section.
+///
+/// Contains action buttons at the bottom of the alert dialog.
+widget AlertDialogFooter {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertDialogTitle")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "h2")]
+
+/// AlertDialog title.
+///
+/// The main heading of the alert dialog.
+widget AlertDialogTitle {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertDialogDescription")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "p")]
+
+/// AlertDialog description.
+///
+/// A description or additional context for the alert dialog.
+widget AlertDialogDescription {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertDialogAction")]
+#[backend(jet, component = "Button", import = "androidx.compose.material3.Button")]
+#[backend(vue, component = "button")]
+
+/// AlertDialog action button (confirm).
+///
+/// The primary action button that confirms the alert dialog.
+widget AlertDialogAction {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "AlertDialogCancel")]
+#[backend(jet, component = "OutlinedButton", import = "androidx.compose.material3.OutlinedButton")]
+#[backend(vue, component = "button")]
+
+/// AlertDialog cancel button.
+///
+/// Closes the alert dialog without performing the action.
+widget AlertDialogCancel {
+    view {}
+}
