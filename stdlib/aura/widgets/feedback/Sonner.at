@@ -1,0 +1,35 @@
+// stdlib/aura/widgets/feedback/Sonner.at
+
+#[spec(category = Feedback, has_children = false, primary_prop = "position")]
+#[backend(ark, component = "Sonner")]
+#[backend(jet, component = "SnackbarHost", import = "androidx.compose.material3.SnackbarHost")]
+#[backend(vue, component = "div")]
+
+/// Toaster component for displaying toast notifications.
+///
+/// # Features
+/// - Multiple toast types (success, error, warning, info)
+/// - Auto-dismiss with configurable duration
+/// - Stackable notifications
+/// - Position configurable
+///
+/// # Example
+/// ```auto
+/// Toaster (position: "bottom-right", richColors: true) {}
+/// // Then call toast.success("Message") in event handlers
+/// ```
+widget Toaster {
+    model {
+        position str = "bottom-right"  // top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+        richColors bool = true
+        expand bool = false
+    }
+
+    computed {
+        toasterClass => f"toaster group"
+    }
+
+    view {
+        div { style: .toasterClass }
+    }
+}
