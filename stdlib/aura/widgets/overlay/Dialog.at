@@ -1,0 +1,114 @@
+// stdlib/aura/widgets/overlay/Dialog.at
+
+#[spec(category = Overlay, has_children = true, primary_prop = "open")]
+#[backend(ark, component = "Dialog")]
+#[backend(jet, component = "Dialog", import = "androidx.compose.material3.AlertDialog")]
+#[backend(vue, component = "dialog")]
+
+/// Dialog component for modal interactions.
+///
+/// A modal overlay that displays content requiring user attention or interaction.
+/// Supports keyboard navigation and animated open/close transitions.
+///
+/// # Example
+/// ```auto
+/// Dialog (open: .showDialog) {
+///     DialogTrigger { text: "Open" }
+///     DialogContent {
+///         DialogHeader {
+///             DialogTitle { text: "Edit Profile" }
+///             DialogDescription { text: "Make changes to your profile." }
+///         }
+///         DialogFooter {
+///             button { text: "Save changes" }
+///         }
+///     }
+/// }
+/// ```
+widget Dialog {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DialogTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Dialog trigger button.
+///
+/// Opens the dialog when clicked.
+widget DialogTrigger {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true, primary_prop = "class")]
+#[backend(ark, component = "DialogContent")]
+#[backend(jet, component = "Surface", import = "androidx.compose.material3.Surface")]
+#[backend(vue, component = "div")]
+
+/// Dialog content container.
+///
+/// Contains the main content of the dialog.
+widget DialogContent {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "DialogHeader")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Dialog header section.
+///
+/// Contains the title and description of the dialog.
+widget DialogHeader {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DialogTitle")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "h2")]
+
+/// Dialog title.
+///
+/// The main heading of the dialog.
+widget DialogTitle {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DialogDescription")]
+#[backend(jet, component = "Text", import = "androidx.compose.material3.Text")]
+#[backend(vue, component = "p")]
+
+/// Dialog description.
+///
+/// A description or additional context for the dialog.
+widget DialogDescription {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = true)]
+#[backend(ark, component = "DialogFooter")]
+#[backend(jet, component = "Row", import = "androidx.compose.foundation.layout.Row")]
+#[backend(vue, component = "div")]
+
+/// Dialog footer section.
+///
+/// Contains action buttons at the bottom of the dialog.
+widget DialogFooter {
+    view {}
+}
+
+#[spec(category = Overlay, has_children = false, primary_prop = "text")]
+#[backend(ark, component = "DialogClose")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Dialog close button.
+///
+/// Closes the dialog when clicked.
+widget DialogClose {
+    view {}
+}
