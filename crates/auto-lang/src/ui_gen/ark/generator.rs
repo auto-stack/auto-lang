@@ -548,7 +548,29 @@ impl ArkGenerator {
 
         Ok(lines.join("\n"))
     }
+}
 
+/// Get sort order for a modifier string (lower = earlier in output)
+fn modifier_order(modifier: &str) -> u8 {
+    // Order: width/height -> layout (align/justify) -> spacing -> typography -> visual -> events
+    if modifier.contains(".width") || modifier.contains(".height") {
+        1
+    } else if modifier.contains(".alignItems") || modifier.contains(".justifyContent") {
+        2
+    } else if modifier.contains(".padding") || modifier.contains(".margin") {
+        3
+    } else if modifier.contains(".fontSize") || modifier.contains(".fontWeight") || modifier.contains(".fontColor") || modifier.contains(".fontFamily") {
+        4
+    } else if modifier.contains(".backgroundColor") || modifier.contains(".borderRadius") || modifier.contains(".border") {
+        5
+    } else if modifier.contains(".onClick") {
+        10
+    } else {
+        8 // Default: middle of the pack
+    }
+}
+
+impl ArkGenerator {
     /// Generate modifiers from props and events
     fn generate_modifiers(
         &self,
@@ -615,6 +637,8 @@ impl ArkGenerator {
         if modifiers.is_empty() {
             String::new()
         } else {
+            // Sort modifiers for stable output order
+            modifiers.sort_by(|a, b| modifier_order(a).cmp(&modifier_order(b)));
             format!(
                 "\n{}",
                 modifiers
