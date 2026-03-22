@@ -3,11 +3,11 @@
 /// Swiper banner component with auto-play
 widget Banner {
     view {
-        swiper (class: "auto-play loop") {
-            image (
-                class: "w-full pt-3 px-4 rounded-2xl object-contain",
-                src: "$r('app.media.banner_pic1')"
-            ) {}
+        Swiper {
+            Image "$r('app.media.banner_pic1')" {
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            style: "auto-play loop"
         }
     }
 }

@@ -212,6 +212,33 @@ impl ArkProject {
             }
         }
 
+        // Process .at files directly in front_dir (quickstart structure)
+        // Skip app.at (already processed) and pac.at (project config)
+        for entry in fs::read_dir(&front_dir)
+            .map_err(|e| format!("Failed to read front directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let path = entry.path();
+
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                // Skip app.at and pac.at
+                if file_name == "app.at" || file_name == "pac.at" {
+                    continue;
+                }
+
+                match Self::compile_at_file(&path, &name) {
+                    Ok((files, names)) => {
+                        arkts_files.extend(files);
+                        widget_names.extend(names);
+                    }
+                    Err(e) => {
+                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,

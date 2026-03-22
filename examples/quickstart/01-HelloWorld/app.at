@@ -5,7 +5,7 @@ widget App {
     view {
         Center {
             Text "Hello, World!" {
-                class: "text-2xl font-bold"
+                style: "text-2xl font-bold"
             }
         }
     }

@@ -184,6 +184,11 @@ impl ArkGenerator {
         let sanitized_name = Self::sanitize_widget_name(&widget.name);
         self.sanitized_name = Some(sanitized_name.clone());
 
+        // Scan view tree for custom components (capitalized tags not in registry)
+        let mut detected_components = HashSet::new();
+        self.collect_custom_components(&widget.view_tree, &mut detected_components);
+        self.custom_widgets.extend(detected_components);
+
         let mut lines = Vec::new();
 
         // Check if widget has routes
@@ -214,6 +219,21 @@ impl ArkGenerator {
             if !routes.routes.is_empty() {
                 lines.push(String::new());
             }
+        }
+
+        // Import custom widgets used in view (detected from custom_widgets set)
+        let custom_imports: Vec<_> = self.custom_widgets.iter()
+            .filter(|w| {
+                // Only import if it's used in the view tree
+                Self::widget_uses_custom_component(&widget.view_tree, w)
+            })
+            .collect();
+
+        for custom_widget in &custom_imports {
+            lines.push(format!("import {{ {} }} from './{}';", custom_widget, custom_widget));
+        }
+        if !custom_imports.is_empty() {
+            lines.push(String::new());
         }
 
         // Generate Msg enum if widget has messages (before @Entry/@Component)
@@ -345,6 +365,60 @@ impl ArkGenerator {
                 body.iter().any(|c| Self::widget_uses_navigation(c))
             }
             _ => false,
+        }
+    }
+
+    /// Check if a view tree uses a specific custom component
+    fn widget_uses_custom_component(node: &AuraNode, component_name: &str) -> bool {
+        match node {
+            AuraNode::Element { tag, children, .. } => {
+                // Check if this element is the custom component
+                if tag == component_name {
+                    return true;
+                }
+                // Recursively check children
+                children.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                then_body.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
+                    || else_body.as_ref().map_or(false, |e| e.iter().any(|c| Self::widget_uses_custom_component(c, component_name)))
+            }
+            AuraNode::ForLoop { body, .. } => {
+                body.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
+            }
+            _ => false,
+        }
+    }
+
+    /// Scan view tree for custom components (capitalized tags not in registry)
+    fn collect_custom_components(&self, node: &AuraNode, components: &mut HashSet<String>) {
+        match node {
+            AuraNode::Element { tag, children, .. } => {
+                // Check if this is a custom component (capitalized, not built-in, not in registry)
+                if self.is_capitalized_component(tag) {
+                    components.insert(tag.clone());
+                }
+                // Recursively scan children
+                for child in children {
+                    self.collect_custom_components(child, components);
+                }
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                for child in then_body {
+                    self.collect_custom_components(child, components);
+                }
+                if let Some(else_nodes) = else_body {
+                    for child in else_nodes {
+                        self.collect_custom_components(child, components);
+                    }
+                }
+            }
+            AuraNode::ForLoop { body, .. } => {
+                for child in body {
+                    self.collect_custom_components(child, components);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -655,7 +729,7 @@ impl ArkGenerator {
                 }
             }
             // Handle style prop using ArkModifierDsl
-            if key == "style" {
+            if key == "style" || key == "class" {
                 if let Some(style_str) = self.extract_style_string(value) {
                     let style_modifiers = dsl.convert_style(&style_str);
                     modifiers.extend(style_modifiers);

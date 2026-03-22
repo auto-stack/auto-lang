@@ -6,9 +6,12 @@ use banner: Banner
 widget App {
     view {
         Center {
-            col (class: "w-full h-full bg-gray-100") {
-                text (text: "快速入门", class: "text-2xl font-bold w-full text-left pl-4") {}
+            Col {
+                Text "快速入门" {
+                    style: "text-2xl font-bold w-full text-left pl-4"
+                }
                 Banner {}
+                style: "w-full h-full bg-gray-100"
             }
         }
     }
