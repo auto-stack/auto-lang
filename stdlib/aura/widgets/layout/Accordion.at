@@ -1,0 +1,146 @@
+// stdlib/aura/widgets/layout/Accordion.at
+
+// ============================================================================
+// Accordion - Main container
+// ============================================================================
+
+#[spec(category = Layout, has_children = true, primary_prop = "type")]
+#[backend(ark, component = "Accordion")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Accordion component for collapsible content sections.
+///
+/// Displays a list of items that can be expanded/collapsed.
+/// Supports single or multiple items expanded at once.
+///
+/// # Types
+/// - single: Only one item can be expanded at a time
+/// - multiple: Multiple items can be expanded simultaneously
+///
+/// # Example
+/// ```auto
+/// Accordion (type: "single", defaultValue: "item-1") {
+///     AccordionItem (value: "item-1") {
+///         AccordionTrigger { text "Section 1" }
+///         AccordionContent { text "Content 1" }
+///     }
+///     AccordionItem (value: "item-2") {
+///         AccordionTrigger { text "Section 2" }
+///         AccordionContent { text "Content 2" }
+///     }
+/// }
+/// ```
+widget Accordion {
+    msg Msg {
+        Toggle(itemId: str)
+    }
+
+    model {
+        items List = []  // List of {id, title, content}
+        expandedItems List = []
+        type str = "single"  // single, multiple
+        defaultValue str = ""
+    }
+
+    view {
+        style: "accordion"
+    }
+}
+
+// ============================================================================
+// AccordionItem - Single accordion item
+// ============================================================================
+
+#[spec(category = Layout, has_children = true, primary_prop = "value")]
+#[backend(ark, component = "AccordionItem")]
+#[backend(jet, component = "Column", import = "androidx.compose.foundation.layout.Column")]
+#[backend(vue, component = "div")]
+
+/// Single accordion item container.
+///
+/// Contains AccordionTrigger and AccordionContent.
+///
+/// # Example
+/// ```auto
+/// AccordionItem (value: "unique-id") {
+///     AccordionTrigger { text "Click to expand" }
+///     AccordionContent { text "Hidden content" }
+/// }
+/// ```
+widget AccordionItem {
+    msg Msg {
+        Toggle
+    }
+
+    model {
+        value str = ""
+        title str = ""
+        expanded bool = false
+    }
+
+    computed {
+        icon => if .expanded { "▼" } else { "▶" }
+        contentClass => if .expanded { "accordion-content open" } else { "accordion-content" }
+    }
+
+    view {
+        style: "accordion-item"
+    }
+}
+
+// ============================================================================
+// AccordionTrigger - Trigger button for item
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "AccordionTrigger")]
+#[backend(jet, component = "TextButton", import = "androidx.compose.material3.TextButton")]
+#[backend(vue, component = "button")]
+
+/// Accordion item trigger button.
+///
+/// Clicking toggles the parent item's expanded state.
+///
+/// # Example
+/// ```auto
+/// AccordionTrigger {
+///     row {
+///         text "Product Information"
+///         icon (name: "chevron-down") {}
+///     }
+/// }
+/// ```
+widget AccordionTrigger {
+    view {
+        style: "accordion-trigger"
+    }
+}
+
+// ============================================================================
+// AccordionContent - Content area for item
+// ============================================================================
+
+#[spec(category = Layout, has_children = true)]
+#[backend(ark, component = "AccordionContent")]
+#[backend(jet, component = "AnimatedVisibility", import = "androidx.compose.animation.AnimatedVisibility")]
+#[backend(vue, component = "div")]
+
+/// Accordion item content area.
+///
+/// Contains the content shown when the accordion item is expanded.
+///
+/// # Example
+/// ```auto
+/// AccordionContent {
+///     col {
+///         text "Detailed product information here."
+///         text "Additional details..."
+///     }
+/// }
+/// ```
+widget AccordionContent {
+    view {
+        style: "accordion-content"
+    }
+}
