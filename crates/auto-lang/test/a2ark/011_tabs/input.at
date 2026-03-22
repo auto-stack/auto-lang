@@ -1,0 +1,16 @@
+widget TestTabs {
+    view {
+        col (class: "gap-4 p-4") {
+            text (text: "Tab Navigation", class: "text-lg font-bold") {}
+            tabs {
+                TabsList {
+                    TabsTrigger (label: "Home") {}
+                    TabsTrigger (label: "Settings") {}
+                }
+                TabsContent {
+                    text "Welcome to the home page"
+                }
+            }
+        }
+    }
+}

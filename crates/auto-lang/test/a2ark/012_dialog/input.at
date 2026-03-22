@@ -1,0 +1,23 @@
+widget TestDialog {
+    view {
+        col (class: "gap-4 p-4") {
+            text (text: "Dialog Demo", class: "text-lg font-bold") {}
+            Dialog {
+                DialogTrigger {
+                    text "Open Dialog"
+                }
+                DialogContent {
+                    DialogHeader {
+                        DialogTitle {
+                            text "Confirm Action"
+                        }
+                    }
+                    DialogFooter {
+                        button (text: "Cancel") {}
+                        button (text: "Confirm") {}
+                    }
+                }
+            }
+        }
+    }
+}

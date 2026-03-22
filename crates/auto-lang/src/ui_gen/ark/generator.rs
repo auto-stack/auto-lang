@@ -1462,4 +1462,19 @@ mod tests {
     fn test_008_form_widgets() {
         test_a2ark("008_form_widgets").unwrap();
     }
+
+    #[test]
+    fn test_010_table() {
+        test_a2ark("010_table").unwrap();
+    }
+
+    #[test]
+    fn test_011_tabs() {
+        test_a2ark("011_tabs").unwrap();
+    }
+
+    #[test]
+    fn test_012_dialog() {
+        test_a2ark("012_dialog").unwrap();
+    }
 }

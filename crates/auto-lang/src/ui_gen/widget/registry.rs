@@ -1017,6 +1017,13 @@ impl WidgetRegistry {
         let mut tabs_list = WidgetSpec::new("TabsList", WidgetCategory::Navigation)
             .with_alias("tabs-list");
         tabs_list.has_children = true;
+        tabs_list.backends.insert("ark".to_string(), BackendMapping {
+            component: "Row".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         tabs_list.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsList".to_string(),
             import: Some("@/components/ui/tabs/TabsList".to_string()),
@@ -1030,6 +1037,13 @@ impl WidgetRegistry {
         let mut tabs_trigger = WidgetSpec::new("TabsTrigger", WidgetCategory::Navigation)
             .with_alias("tabs-trigger");
         tabs_trigger.has_children = true;
+        tabs_trigger.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         tabs_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsTrigger".to_string(),
             import: Some("@/components/ui/tabs/TabsTrigger".to_string()),
@@ -1043,6 +1057,13 @@ impl WidgetRegistry {
         let mut tabs_content = WidgetSpec::new("TabsContent", WidgetCategory::Navigation)
             .with_alias("tabs-content");
         tabs_content.has_children = true;
+        tabs_content.backends.insert("ark".to_string(), BackendMapping {
+            component: "TabContent".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         tabs_content.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsContent".to_string(),
             import: Some("@/components/ui/tabs/TabsContent".to_string()),
@@ -1547,6 +1568,13 @@ impl WidgetRegistry {
         let mut dialog_trigger = WidgetSpec::new("DialogTrigger", WidgetCategory::Overlay)
             .with_alias("dialog-trigger");
         dialog_trigger.has_children = true;
+        dialog_trigger.backends.insert("ark".to_string(), BackendMapping {
+            component: "Button".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         dialog_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogTrigger".to_string(),
             import: Some("@/components/ui/dialog/DialogTrigger".to_string()),
@@ -1560,6 +1588,13 @@ impl WidgetRegistry {
         let mut dialog_content = WidgetSpec::new("DialogContent", WidgetCategory::Overlay)
             .with_alias("dialog-content");
         dialog_content.has_children = true;
+        dialog_content.backends.insert("ark".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         dialog_content.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogContent".to_string(),
             import: Some("@/components/ui/dialog/DialogContent".to_string()),
@@ -1573,6 +1608,13 @@ impl WidgetRegistry {
         let mut dialog_header = WidgetSpec::new("DialogHeader", WidgetCategory::Overlay)
             .with_alias("dialog-header");
         dialog_header.has_children = true;
+        dialog_header.backends.insert("ark".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         dialog_header.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogHeader".to_string(),
             import: Some("@/components/ui/dialog/DialogHeader".to_string()),
@@ -1586,6 +1628,13 @@ impl WidgetRegistry {
         let mut dialog_footer = WidgetSpec::new("DialogFooter", WidgetCategory::Overlay)
             .with_alias("dialog-footer");
         dialog_footer.has_children = true;
+        dialog_footer.backends.insert("ark".to_string(), BackendMapping {
+            component: "Row".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         dialog_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogFooter".to_string(),
             import: Some("@/components/ui/dialog/DialogFooter".to_string()),
@@ -1599,6 +1648,13 @@ impl WidgetRegistry {
         let mut dialog_title = WidgetSpec::new("DialogTitle", WidgetCategory::Overlay)
             .with_alias("dialog-title");
         dialog_title.has_children = true;
+        dialog_title.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         dialog_title.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogTitle".to_string(),
             import: Some("@/components/ui/dialog/DialogTitle".to_string()),
@@ -1612,6 +1668,13 @@ impl WidgetRegistry {
         let mut dialog_desc = WidgetSpec::new("DialogDescription", WidgetCategory::Overlay)
             .with_alias("dialog-description");
         dialog_desc.has_children = true;
+        dialog_desc.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         dialog_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogDescription".to_string(),
             import: Some("@/components/ui/dialog/DialogDescription".to_string()),
@@ -2304,6 +2367,13 @@ impl WidgetRegistry {
         let mut table_header = WidgetSpec::new("TableHeader", WidgetCategory::Data)
             .with_alias("table-header");
         table_header.has_children = true;
+        table_header.backends.insert("ark".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_header.backends.insert("vue".to_string(), BackendMapping {
             component: "TableHeader".to_string(),
             import: Some("@/components/ui/table/TableHeader".to_string()),
@@ -2317,6 +2387,13 @@ impl WidgetRegistry {
         let mut table_body = WidgetSpec::new("TableBody", WidgetCategory::Data)
             .with_alias("table-body");
         table_body.has_children = true;
+        table_body.backends.insert("ark".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_body.backends.insert("vue".to_string(), BackendMapping {
             component: "TableBody".to_string(),
             import: Some("@/components/ui/table/TableBody".to_string()),
@@ -2330,6 +2407,13 @@ impl WidgetRegistry {
         let mut table_footer = WidgetSpec::new("TableFooter", WidgetCategory::Data)
             .with_alias("table-footer");
         table_footer.has_children = true;
+        table_footer.backends.insert("ark".to_string(), BackendMapping {
+            component: "Column".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "TableFooter".to_string(),
             import: Some("@/components/ui/table/TableFooter".to_string()),
@@ -2343,6 +2427,13 @@ impl WidgetRegistry {
         let mut table_row = WidgetSpec::new("TableRow", WidgetCategory::Data)
             .with_alias("table-row");
         table_row.has_children = true;
+        table_row.backends.insert("ark".to_string(), BackendMapping {
+            component: "Row".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_row.backends.insert("vue".to_string(), BackendMapping {
             component: "TableRow".to_string(),
             import: Some("@/components/ui/table/TableRow".to_string()),
@@ -2356,6 +2447,13 @@ impl WidgetRegistry {
         let mut table_head = WidgetSpec::new("TableHead", WidgetCategory::Data)
             .with_alias("table-head");
         table_head.has_children = true;
+        table_head.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_head.backends.insert("vue".to_string(), BackendMapping {
             component: "TableHead".to_string(),
             import: Some("@/components/ui/table/TableHead".to_string()),
@@ -2369,6 +2467,13 @@ impl WidgetRegistry {
         let mut table_cell = WidgetSpec::new("TableCell", WidgetCategory::Data)
             .with_alias("table-cell");
         table_cell.has_children = true;
+        table_cell.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_cell.backends.insert("vue".to_string(), BackendMapping {
             component: "TableCell".to_string(),
             import: Some("@/components/ui/table/TableCell".to_string()),
@@ -2382,6 +2487,13 @@ impl WidgetRegistry {
         let mut table_caption = WidgetSpec::new("TableCaption", WidgetCategory::Data)
             .with_alias("table-caption");
         table_caption.has_children = true;
+        table_caption.backends.insert("ark".to_string(), BackendMapping {
+            component: "Text".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
         table_caption.backends.insert("vue".to_string(), BackendMapping {
             component: "TableCaption".to_string(),
             import: Some("@/components/ui/table/TableCaption".to_string()),

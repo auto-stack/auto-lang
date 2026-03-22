@@ -1,0 +1,21 @@
+widget TestTable {
+    view {
+        col (class: "gap-2 p-4") {
+            text (text: "Users Table", class: "text-lg font-bold") {}
+            Table {
+                TableHeader {
+                    TableRow {
+                        TableHead (text: "Name") {}
+                        TableHead (text: "Email") {}
+                    }
+                }
+                TableBody {
+                    TableRow {
+                        TableCell (text: "John") {}
+                        TableCell (text: "john@example.com") {}
+                    }
+                }
+            }
+        }
+    }
+}
