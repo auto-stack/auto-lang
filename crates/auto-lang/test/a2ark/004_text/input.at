@@ -1,0 +1,5 @@
+widget TestText {
+    view {
+        text "Hello, World!" {}
+    }
+}

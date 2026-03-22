@@ -1437,4 +1437,9 @@ mod tests {
     fn test_003_box() {
         test_a2ark("003_box").unwrap();
     }
+
+    #[test]
+    fn test_004_text() {
+        test_a2ark("004_text").unwrap();
+    }
 }
