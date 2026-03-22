@@ -1,0 +1,249 @@
+// stdlib/aura/widgets/form/Select.at
+
+// ============================================================================
+// Select - Main dropdown selection component
+// ============================================================================
+
+#[spec(category = Form, has_children = true, primary_prop = "value")]
+#[backend(ark, component = "Select", import = "@kit.ArkUI")]
+#[backend(jet, component = "ExposedDropdownMenuBox", import = "androidx.compose.material3.ExposedDropdownMenuBox")]
+#[backend(vue, component = "Select", import = "@/components/ui/select/Select")]
+
+/// Select component for dropdown selections.
+///
+/// # Props
+/// - value: Current selected value (primary prop - can use shorthand syntax)
+/// - disabled: Whether select is disabled
+///
+/// # Events
+/// - onchange: Change event (Msg.Change(value))
+///
+/// # Example
+/// ```auto
+/// Select (value: .selected, onchange: .Select) {
+///     SelectTrigger {
+///         SelectValue (placeholder: "Select an option") {}
+///     }
+///     SelectContent {
+///         SelectItem (value: "1", text: "Option 1") {}
+///         SelectItem (value: "2", text: "Option 2") {}
+///     }
+/// }
+/// ```
+widget Select {
+    msg Msg { Change(value: str) }
+
+    model {
+        #[primary]
+        value str = ""
+        disabled bool = false
+        open bool = false
+    }
+
+    view {
+        div {
+            style: "select"
+            role: "combobox"
+            "aria-expanded": .open
+        }
+    }
+
+    on {
+        Change(value) => {
+            value = value
+            open = false
+        }
+    }
+}
+
+// ============================================================================
+// SelectTrigger - Button that opens the dropdown
+// ============================================================================
+
+#[spec(category = Form, has_children = true)]
+#[backend(ark, component = "SelectTrigger")]
+#[backend(jet, component = "ExposedDropdownMenuBox")]
+#[backend(vue, component = "SelectTrigger", import = "@/components/ui/select/SelectTrigger")]
+
+/// Select trigger button that opens the dropdown.
+///
+/// # Props
+/// - class: Additional CSS classes
+///
+/// # Example
+/// ```auto
+/// SelectTrigger {
+///     SelectValue (placeholder: "Choose...") {}
+/// }
+/// ```
+widget SelectTrigger {
+    model {
+        class str = ""
+    }
+
+    view {
+        button { style: f"select-trigger ${.class}" }
+    }
+}
+
+// ============================================================================
+// SelectValue - Displays the selected value
+// ============================================================================
+
+#[spec(category = Form, has_children = false)]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text")]
+#[backend(vue, component = "SelectValue", import = "@/components/ui/select/SelectValue")]
+
+/// Displays the currently selected value or placeholder.
+///
+/// # Props
+/// - placeholder: Text to show when no value is selected
+///
+/// # Example
+/// ```auto
+/// SelectValue (placeholder: "Select an option") {}
+/// ```
+widget SelectValue {
+    model {
+        placeholder str = "Select an option"
+    }
+
+    view {
+        span {
+            style: "select-value"
+            text: .placeholder
+        }
+    }
+}
+
+// ============================================================================
+// SelectContent - Dropdown content container
+// ============================================================================
+
+#[spec(category = Form, has_children = true)]
+#[backend(ark, component = "SelectContent")]
+#[backend(jet, component = "ExposedDropdownMenu")]
+#[backend(vue, component = "SelectContent", import = "@/components/ui/select/SelectContent")]
+
+/// Container for dropdown options.
+///
+/// # Props
+/// - class: Additional CSS classes
+///
+/// # Example
+/// ```auto
+/// SelectContent {
+///     SelectItem (value: "1", text: "One") {}
+///     SelectItem (value: "2", text: "Two") {}
+/// }
+/// ```
+widget SelectContent {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { style: f"select-content ${.class}" }
+    }
+}
+
+// ============================================================================
+// SelectItem - Individual dropdown option
+// ============================================================================
+
+#[spec(category = Form, has_children = false)]
+#[backend(ark, component = "SelectOption")]
+#[backend(jet, component = "DropdownMenuItem")]
+#[backend(vue, component = "SelectItem", import = "@/components/ui/select/SelectItem")]
+
+/// Individual selectable option in the dropdown.
+///
+/// # Props
+/// - value: Option value
+/// - text: Display text
+/// - disabled: Whether item is disabled
+///
+/// # Events
+/// - onclick: Click event (Msg.Click)
+///
+/// # Example
+/// ```auto
+/// SelectItem (value: "apple", text: "Apple") {}
+/// ```
+widget SelectItem {
+    msg Msg { Click }
+
+    model {
+        value str = ""
+        text str = ""
+        disabled bool = false
+    }
+
+    view {
+        div {
+            style: "select-item"
+            text: .text
+            onclick: .Click
+            role: "option"
+        }
+    }
+}
+
+// ============================================================================
+// SelectGroup - Group of related options
+// ============================================================================
+
+#[spec(category = Form, has_children = true)]
+#[backend(ark, component = "Column")]
+#[backend(jet, component = "Column")]
+#[backend(vue, component = "SelectGroup", import = "@/components/ui/select/SelectGroup")]
+
+/// Groups related options together.
+///
+/// # Example
+/// ```auto
+/// SelectGroup {
+///     SelectLabel | Fruits
+///     SelectItem (value: "apple", text: "Apple") {}
+///     SelectItem (value: "banana", text: "Banana") {}
+/// }
+/// ```
+widget SelectGroup {
+    view {
+        div { style: "select-group" }
+    }
+}
+
+// ============================================================================
+// SelectLabel - Label for a group of options
+// ============================================================================
+
+#[spec(category = Form, has_children = false)]
+#[backend(ark, component = "Text")]
+#[backend(jet, component = "Text")]
+#[backend(vue, component = "SelectLabel", import = "@/components/ui/select/SelectLabel")]
+
+/// Label for a group of select options.
+///
+/// # Props
+/// - text: Label text
+///
+/// # Example
+/// ```auto
+/// SelectLabel | Fruits
+/// SelectLabel (text: "Vegetables") {}
+/// ```
+widget SelectLabel {
+    model {
+        #[primary]
+        text str = ""
+    }
+
+    view {
+        div {
+            style: "select-label"
+            text: .text
+        }
+    }
+}
