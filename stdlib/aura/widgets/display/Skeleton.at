@@ -1,0 +1,38 @@
+// stdlib/aura/widgets/display/Skeleton.at
+
+#[spec(category = Display, has_children = false, primary_prop = "class")]
+#[backend(ark, component = "Skeleton")]
+#[backend(jet, component = "Skeleton", import = "androidx.compose.material3.Skeleton")]
+#[backend(vue, component = "div")]
+
+/// Skeleton component for showing loading placeholders.
+///
+/// # Props
+/// - class: CSS classes for width/height (primary prop)
+/// - animated: Whether to show pulse animation
+///
+/// # Example
+/// ```auto
+/// Skeleton {}
+/// Skeleton (class: "h-12 w-12 rounded-full") {}
+/// Skeleton (class: "h-[125px] w-[250px] rounded-xl") {}
+/// ```
+widget Skeleton {
+    model {
+        #[primary]
+        class str = "h-4 w-[250px]"
+        animated bool = true
+    }
+
+    computed {
+        skeletonClass => if .animated {
+            f"animate-pulse rounded-md bg-muted ${.class}"
+        } else {
+            f"rounded-md bg-muted ${.class}"
+        }
+    }
+
+    view {
+        div { style: .skeletonClass }
+    }
+}
