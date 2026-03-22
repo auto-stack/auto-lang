@@ -25,6 +25,7 @@ widget Center {
     view {
         // Vue: flex items-center justify-center
         // Jet/Ark: Column with Alignment.CenterHorizontally + Arrangement.Center
+        style: "w-full h-full"
         align: "center"
         arrange: "center"
     }

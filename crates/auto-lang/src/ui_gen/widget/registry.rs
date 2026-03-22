@@ -82,6 +82,7 @@ impl WidgetRegistry {
         let mut center = WidgetSpec::new("Center", WidgetCategory::Layout)
             .with_alias("center");
         center.has_children = true;
+        center.default_props.insert("style".to_string(), "w-full h-full".to_string());
         center.default_props.insert("align".to_string(), "center".to_string());
         center.default_props.insert("arrange".to_string(), "center".to_string());
         center.backends.insert("ark".to_string(), BackendMapping {
@@ -2847,6 +2848,7 @@ mod tests {
         assert!(center.has_children);
 
         // Check default props
+        assert_eq!(center.default_props.get("style"), Some(&"w-full h-full".to_string()));
         assert_eq!(center.default_props.get("align"), Some(&"center".to_string()));
         assert_eq!(center.default_props.get("arrange"), Some(&"center".to_string()));
 
