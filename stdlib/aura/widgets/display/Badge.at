@@ -1,0 +1,47 @@
+// stdlib/aura/widgets/display/Badge.at
+
+#[spec(category = Display, primary_prop = "text")]
+#[backend(ark, component = "Badge")]
+#[backend(jet, component = "Badge", import = "androidx.compose.material3.Badge")]
+#[backend(vue, component = "span")]
+
+/// Badge component for displaying status, labels, or counts.
+///
+/// # Props
+/// - text: Badge text content (primary prop - can use shorthand syntax)
+/// - variant: Badge style variant ("default", "secondary", "destructive", "outline")
+/// - size: Badge size ("sm", "md", "lg")
+///
+/// # Variants
+/// - default: Standard badge
+/// - secondary: Muted badge
+/// - destructive: Error/warning badge
+/// - outline: Outlined badge
+///
+/// # Sizes
+/// - sm: Small badge
+/// - md: Medium badge (default)
+/// - lg: Large badge
+///
+/// # Example
+/// ```auto
+/// Badge "Active" {}
+/// Badge (text: "5", variant: "destructive") {}
+/// Badge (text: "New", variant: "outline", size: "sm") {}
+/// ```
+widget Badge {
+    model {
+        #[primary]
+        text str = ""
+        variant str = "default"  // default, secondary, destructive, outline
+        size str = "md"          // sm, md, lg
+    }
+
+    computed {
+        badgeClass => f"badge badge-${.variant} badge-${.size}"
+    }
+
+    view {
+        span { style: .badgeClass, text: .text }
+    }
+}
