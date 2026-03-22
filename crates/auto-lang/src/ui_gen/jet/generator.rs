@@ -31,7 +31,6 @@
 //! }
 //! ```
 
-use super::components::Material3Registry;
 use super::form::FormGenerator;
 use super::layout::LayoutGenerator;
 use super::list::ListGenerator;
@@ -40,7 +39,7 @@ use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
 use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraUnaryOp, AuraUpdateOp, AuraWidget, LogicPayload};
 use crate::ui_gen::shared::ComponentRegistry;
-use crate::ui_gen::{BackendGenerator, GenError, GenResult};
+use crate::ui_gen::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 use std::collections::{HashMap, HashSet};
 
 /// Jetpack Compose code generator for Android
@@ -82,9 +81,8 @@ pub struct JetGenerator {
     /// Collected imports
     imports: HashSet<String>,
 
-    /// Material3 component registry (legacy, for backward compatibility)
-    #[allow(dead_code)]
-    registry: Material3Registry,
+    /// Unified widget registry (replaces Material3Registry)
+    widget_registry: WidgetRegistry,
 
     /// Shared component registry (AURA → Vue/Jet mappings)
     #[allow(dead_code)]
@@ -141,7 +139,7 @@ impl JetGenerator {
             current_widget: None,
             package: "com.example.widgets".to_string(),
             imports: HashSet::new(),
-            registry: Material3Registry::new(),
+            widget_registry: WidgetRegistry::with_defaults(),
             component_registry: ComponentRegistry::new(),
             modifier_dsl: ModifierDsl::new(),
             state_converter: StateConverter::new(),
@@ -527,6 +525,17 @@ fun {}Preview() {{
         // Use LayoutGenerator for the actual generation
         let result = match tag {
             "col" | "column" => self.layout_generator.generate_column(props, &children_content),
+            "center" => {
+                // Center is syntax sugar for Column with center alignment
+                let mut merged_props = props.clone();
+                if !merged_props.contains_key("align") {
+                    merged_props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                }
+                if !merged_props.contains_key("arrange") {
+                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                }
+                self.layout_generator.generate_column(&merged_props, &children_content)
+            }
             "row" => self.layout_generator.generate_row(props, &children_content),
             "box" | "container" => self.layout_generator.generate_box(props, &children_content),
             "card" => self.layout_generator.generate_card(props, &children_content),
@@ -1029,6 +1038,17 @@ fun {}Preview() {{
     ) -> GenResult<String> {
         match tag {
             "col" | "column" => self.layout_generator.generate_column(props, children),
+            "center" => {
+                // Center is syntax sugar for Column with center alignment
+                let mut merged_props = props.clone();
+                if !merged_props.contains_key("align") {
+                    merged_props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                }
+                if !merged_props.contains_key("arrange") {
+                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+                }
+                self.layout_generator.generate_column(&merged_props, children)
+            }
             "row" => self.layout_generator.generate_row(props, children),
             "box" | "container" => self.layout_generator.generate_box(props, children),
             "card" => self.layout_generator.generate_card(props, children),
@@ -1576,16 +1596,16 @@ mod tests {
         let gen = JetGenerator::new();
 
         // Verify registry is properly initialized with common components
-        assert!(gen.registry.is_supported("button"));
-        assert!(gen.registry.is_supported("text"));
-        assert!(gen.registry.is_supported("col"));
-        assert!(gen.registry.is_supported("row"));
-        assert!(gen.registry.is_supported("input"));
-        assert!(gen.registry.is_supported("checkbox"));
-        assert!(gen.registry.is_supported("card"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "button"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "text"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "col"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "row"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "input"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "checkbox"));
+        assert!(gen.widget_registry.is_backend_supported("jet", "card"));
 
         // Verify unsupported element
-        assert!(!gen.registry.is_supported("nonexistent_element"));
+        assert!(!gen.widget_registry.is_backend_supported("jet", "nonexistent_element"));
     }
 
     #[test]
@@ -1593,11 +1613,11 @@ mod tests {
         let gen = JetGenerator::new();
 
         // Test primary component mappings
-        assert_eq!(gen.registry.primary_component("button"), Some("Button"));
-        assert_eq!(gen.registry.primary_component("text"), Some("Text"));
-        assert_eq!(gen.registry.primary_component("col"), Some("Column"));
-        assert_eq!(gen.registry.primary_component("row"), Some("Row"));
-        assert_eq!(gen.registry.primary_component("input"), Some("TextField"));
+        assert_eq!(gen.widget_registry.get_primary_component("jet", "button"), Some("Button".to_string()));
+        assert_eq!(gen.widget_registry.get_primary_component("jet", "text"), Some("Text".to_string()));
+        assert_eq!(gen.widget_registry.get_primary_component("jet", "col"), Some("Column".to_string()));
+        assert_eq!(gen.widget_registry.get_primary_component("jet", "row"), Some("Row".to_string()));
+        assert_eq!(gen.widget_registry.get_primary_component("jet", "input"), Some("OutlinedTextField".to_string()));
     }
 
     #[test]

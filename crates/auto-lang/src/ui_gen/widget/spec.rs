@@ -29,6 +29,77 @@ pub struct BackendMapping {
     pub props: HashMap<String, String>,
     /// Event mappings: AURA event -> backend event
     pub events: HashMap<String, String>,
+    /// Additional components exported from same module (for multi-component imports)
+    pub extra_components: Vec<String>,
+}
+
+impl BackendMapping {
+    /// Create a new backend mapping with a single component
+    pub fn new(component: &str, import: Option<&str>) -> Self {
+        Self {
+            component: component.to_string(),
+            import: import.map(|s| s.to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        }
+    }
+
+    /// Create a backend mapping with multiple components from the same import
+    pub fn with_components(components: &[&str], import: &str) -> Self {
+        if components.is_empty() {
+            return Self::new("", Some(import));
+        }
+        Self {
+            component: components[0].to_string(),
+            import: Some(import.to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: components[1..].iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Add a property mapping
+    pub fn with_prop(mut self, aura_prop: &str, backend_prop: &str) -> Self {
+        self.props.insert(aura_prop.to_string(), backend_prop.to_string());
+        self
+    }
+
+    /// Add an event mapping
+    pub fn with_event(mut self, aura_event: &str, backend_event: &str) -> Self {
+        self.events.insert(aura_event.to_string(), backend_event.to_string());
+        self
+    }
+
+    /// Add extra components
+    pub fn with_extra_components(mut self, components: &[&str]) -> Self {
+        self.extra_components.extend(components.iter().map(|s| s.to_string()));
+        self
+    }
+
+    /// Get all component names (primary + extras)
+    pub fn all_components(&self) -> Vec<&str> {
+        let mut result = vec![self.component.as_str()];
+        result.extend(self.extra_components.iter().map(|s| s.as_str()));
+        result
+    }
+
+    /// Get primary component name
+    pub fn primary_component(&self) -> &str {
+        &self.component
+    }
+}
+
+impl Default for BackendMapping {
+    fn default() -> Self {
+        Self {
+            component: String::new(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        }
+    }
 }
 
 /// Widget specification loaded from .at files
@@ -125,6 +196,7 @@ mod tests {
             import: Some("androidx.compose.material3.Button".to_string()),
             props,
             events: HashMap::new(),
+            extra_components: Vec::new(),
         };
 
         spec.backends.insert("jet".to_string(), mapping);

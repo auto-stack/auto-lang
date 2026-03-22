@@ -103,22 +103,28 @@
 //! | `radiogroup` | RadioGroup | v-model, name, disabled |
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
-use super::{BackendGenerator, GenError, GenResult};
+use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStmt, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
-// shadcn-vue Component Registry
+// shadcn-vue Component Registry (DEPRECATED)
 // ============================================================================
 
 /// Maps AURA element tags to shadcn-vue component imports
+///
+/// **DEPRECATED**: Use `WidgetRegistry` instead. This registry is kept for
+/// backward compatibility and will be removed in a future version.
+#[deprecated(since = "0.2.0", note = "Use WidgetRegistry instead")]
 pub struct ShadcnRegistry {
     /// Component imports needed: tag -> (module_path, component_names)
     components: HashMap<&'static str, (&'static str, Vec<&'static str>)>,
 }
 
+#[allow(deprecated)]
 impl ShadcnRegistry {
     /// Create registry with all shadcn-vue component mappings
+    #[allow(deprecated)]
     pub fn new() -> Self {
         let mut components = HashMap::new();
 
@@ -737,6 +743,7 @@ impl ShadcnRegistry {
     }
 }
 
+#[allow(deprecated)]
 impl Default for ShadcnRegistry {
     fn default() -> Self {
         Self::new()
@@ -786,10 +793,10 @@ pub struct VueGenerator {
     /// Generation mode (Plain or Shadcn)
     mode: VueMode,
 
-    /// shadcn-vue component registry
-    shadcn_registry: ShadcnRegistry,
+    /// Unified widget registry (replaces ShadcnRegistry)
+    widget_registry: WidgetRegistry,
 
-    /// Track which shadcn-vue components are used
+    /// Track which shadcn-vue components are used (for import collection)
     shadcn_components_used: HashSet<String>,
 
     /// Whether to output TypeScript (Plan 100: a2js → a2ts)
@@ -853,7 +860,7 @@ impl VueGenerator {
             component_refs: Vec::new(),
             wrapper_classes: String::new(),
             mode: VueMode::Plain,
-            shadcn_registry: ShadcnRegistry::new(),
+            widget_registry: WidgetRegistry::with_defaults(),
             shadcn_components_used: HashSet::new(),
             use_typescript: true,  // Plan 100: TypeScript by default
             previewcard_counter: 0,
@@ -870,6 +877,7 @@ impl VueGenerator {
     pub fn new_shadcn() -> Self {
         Self {
             mode: VueMode::Shadcn,
+            widget_registry: WidgetRegistry::with_defaults(),
             ..Self::new()
         }
     }
@@ -1334,7 +1342,7 @@ impl VueGenerator {
                 let html_tag = self.map_tag(tag, children.is_empty());
 
                 // Check if this is a shadcn-vue component
-                let is_shadcn_component = self.is_shadcn() && self.shadcn_registry.has_component(tag);
+                let is_shadcn_component = self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
 
                 // Build attributes
                 let (attrs, text_content, generated_children) = if is_shadcn_component {
@@ -2236,7 +2244,7 @@ impl VueGenerator {
 
         // In shadcn mode, skip default classes for components that have shadcn versions
         // (shadcn components have their own styling)
-        let skip_defaults = self.is_shadcn() && self.shadcn_registry.has_component(tag);
+        let skip_defaults = self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
 
         // Check if user has provided a class attribute
         let has_user_class = props.contains_key("class");
@@ -5402,39 +5410,37 @@ impl VueGenerator {
     }
 
     // ========================================================================
-    // shadcn-vue Support Methods
+    // shadcn-vue Support Methods (using unified WidgetRegistry)
     // ========================================================================
 
     /// Register a shadcn-vue component as used
     fn register_shadcn_component(&mut self, tag: &str) {
         if self.is_shadcn() {
-            if let Some(component_name) = self.shadcn_registry.primary_component(tag) {
-                self.shadcn_components_used.insert(component_name.to_string());
+            if let Some(component_name) = self.widget_registry.get_primary_component("vue", tag) {
+                self.shadcn_components_used.insert(component_name);
             }
         }
     }
 
-    /// Generate shadcn-vue import statements
+    /// Generate shadcn-vue import statements using unified registry
     fn generate_shadcn_imports(&self) -> String {
         if self.shadcn_components_used.is_empty() {
             return String::new();
         }
 
-        // Build reverse map: component_name -> import_path
-        let mut component_to_path: std::collections::HashMap<String, &'static str> = std::collections::HashMap::new();
-
-        for (_, (path, names)) in self.shadcn_registry.components.iter() {
-            for name in names {
-                component_to_path.insert(name.to_string(), *path);
-            }
-        }
-
-        // Group components by import path
-        let mut imports_by_path: std::collections::HashMap<&'static str, Vec<String>> = std::collections::HashMap::new();
+        // Collect all tags used and their imports
+        let mut imports_by_path: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
 
         for component_name in &self.shadcn_components_used {
-            if let Some(path) = component_to_path.get(component_name) {
-                imports_by_path.entry(*path).or_default().push(component_name.clone());
+            // Find the widget spec that contains this component
+            for (_, spec) in self.widget_registry.all_widgets().iter() {
+                if let Some(mapping) = spec.backend("vue") {
+                    if &mapping.component == component_name || mapping.extra_components.contains(component_name) {
+                        if let Some(ref import_path) = mapping.import {
+                            imports_by_path.entry(import_path.clone()).or_default().push(component_name.clone());
+                        }
+                    }
+                }
             }
         }
 
@@ -5451,9 +5457,9 @@ impl VueGenerator {
     }
 
     /// Get shadcn-vue component name for a tag
-    fn shadcn_component_name(&self, tag: &str) -> Option<&'static str> {
+    fn shadcn_component_name(&self, tag: &str) -> Option<String> {
         if self.is_shadcn() {
-            self.shadcn_registry.primary_component(tag)
+            self.widget_registry.get_primary_component("vue", tag)
         } else {
             None
         }

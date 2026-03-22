@@ -1,17 +1,26 @@
-//! Material3 Component Registry
+//! Material3 Component Registry (DEPRECATED)
 //!
 //! Maps AURA element tags to Jetpack Compose Material3 components.
+//!
+//! **DEPRECATED**: Use `WidgetRegistry` instead. This registry is kept for
+//! backward compatibility and will be removed in a future version.
 
 use std::collections::HashMap;
 
 /// Maps AURA element tags to Material3 component imports
+///
+/// **DEPRECATED**: Use `WidgetRegistry` instead. This registry is kept for
+/// backward compatibility and will be removed in a future version.
+#[deprecated(since = "0.2.0", note = "Use WidgetRegistry instead")]
 pub struct Material3Registry {
     /// Component imports: tag -> (package, component_names)
     components: HashMap<&'static str, (&'static str, Vec<&'static str>)>,
 }
 
+#[allow(deprecated)]
 impl Material3Registry {
     /// Create registry with all Material3 component mappings
+    #[allow(deprecated)]
     pub fn new() -> Self {
         let mut components = HashMap::new();
 
@@ -143,6 +152,7 @@ impl Material3Registry {
     }
 }
 
+#[allow(deprecated)]
 impl Default for Material3Registry {
     fn default() -> Self {
         Self::new()
