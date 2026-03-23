@@ -438,6 +438,9 @@ pub enum AuraExpr {
     /// Array literal
     Array(Vec<AuraExpr>),
 
+    /// Object literal: { key: value, ... }
+    Object(HashMap<String, AuraExpr>),
+
     /// Lambda expression: |params| body
     Lambda {
         /// Parameter names

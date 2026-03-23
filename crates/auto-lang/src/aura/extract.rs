@@ -184,6 +184,17 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
             Ok(AuraExpr::Array(elements))
         }
 
+        // Object literal: { key: value, ... }
+        Expr::Object(pairs) => {
+            let mut fields = HashMap::new();
+            for pair in pairs {
+                let key = key_to_string(&pair.key);
+                let value = extract_expr(&pair.value)?;
+                fields.insert(key, value);
+            }
+            Ok(AuraExpr::Object(fields))
+        }
+
         // Closure (lambda): |params| body
         Expr::Closure(closure) => {
             let params: Vec<String> = closure.params.iter()

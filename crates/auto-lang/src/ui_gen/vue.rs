@@ -2064,6 +2064,12 @@ impl VueGenerator {
                 let elements_str: Vec<String> = elements.iter().map(|e| self.expr_to_auto_string(e)).collect();
                 format!("[{}]", elements_str.join(", "))
             }
+            AuraExpr::Object(fields) => {
+                let pairs: Vec<String> = fields.iter()
+                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_auto_string(v)))
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
             AuraExpr::Lambda { params, body } => {
                 let params_str = params.join(", ");
                 format!("|{}| {}", params_str, self.expr_to_auto_string(body))
@@ -2606,6 +2612,15 @@ impl VueGenerator {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("[{}]", elems_js.join(", ")))
             }
+            AuraExpr::Object(fields) => {
+                let pairs_js: Vec<String> = fields.iter()
+                    .map(|(k, v)| {
+                        let v_js = self.expr_to_js(v)?;
+                        Ok(format!("{}: {}", k, v_js))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{{{}}}", pairs_js.join(", ")))
+            }
             AuraExpr::Lambda { params, body } => {
                 let body_js = self.expr_to_js(body)?;
                 Ok(format!("({}) => {}", params.join(", "), body_js))
@@ -2783,6 +2798,11 @@ impl VueGenerator {
                     self.extract_api_calls_from_expr(elem);
                 }
             }
+            AuraExpr::Object(fields) => {
+                for (_, v) in fields {
+                    self.extract_api_calls_from_expr(v);
+                }
+            }
             AuraExpr::Lambda { body, .. } => {
                 self.extract_api_calls_from_expr(body);
             }
@@ -2854,6 +2874,7 @@ impl VueGenerator {
             AuraExpr::Unary { operand, .. } => self.expr_has_api_calls(operand),
             AuraExpr::FieldAccess { object, .. } => self.expr_has_api_calls(object),
             AuraExpr::Array(elems) => elems.iter().any(|e| self.expr_has_api_calls(e)),
+            AuraExpr::Object(fields) => fields.values().any(|v| self.expr_has_api_calls(v)),
             AuraExpr::Lambda { body, .. } => self.expr_has_api_calls(body),
             AuraExpr::NavCall { params, .. } => {
                 params.values().any(|v| self.expr_has_api_calls(v))

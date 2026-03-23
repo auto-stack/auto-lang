@@ -341,6 +341,15 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             }
             output.push_str("])");
         }
+        AuraExpr::Object(fields) => {
+            output.push_str("Object({");
+            for (i, (key, value)) in fields.iter().enumerate() {
+                if i > 0 { output.push_str(", "); }
+                output.push_str(&format!("\"{}\": ", key));
+                serialize_expr(value, output);
+            }
+            output.push_str("})");
+        }
         AuraExpr::Lambda { params, body } => {
             output.push_str(&format!("Lambda({:?}, ", params));
             serialize_expr(body, output);

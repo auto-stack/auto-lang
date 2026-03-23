@@ -728,6 +728,12 @@ impl RustGenerator {
                     .collect();
                 format!("vec![{}]", elems_str.join(", "))
             }
+            AuraExpr::Object(fields) => {
+                let pairs: Vec<String> = fields.iter()
+                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_rust(v)))
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
             AuraExpr::Lambda { params, body } => {
                 let body_str = self.expr_to_rust(body);
                 format!("|{}| {}", params.join(", "), body_str)
