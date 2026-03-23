@@ -14,9 +14,9 @@ widget App {
     }
 
     view {
-        col (style: "h-full") {
-            header (style: "p-4 bg-blue-500") {
-                h1 (style: "text-xl font-bold text-white", text: "Auto UI Demo") {}
+        Col (class: "h-full") {
+            Col (class: "p-4 bg-blue-500") {
+                H1 (text: "Auto UI Demo") {}
             }
             outlet
         }

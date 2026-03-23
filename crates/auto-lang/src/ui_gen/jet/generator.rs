@@ -490,19 +490,53 @@ fun {}Preview() {{
         self.generic_element_to_compose(tag, props, events, children, indent)
     }
 
+    /// Normalize tag name to lowercase for comparison
+    /// Supports both PascalCase (Widget style) and lowercase (primitive style)
+    fn normalize_tag(tag: &str) -> &str {
+        match tag {
+            "Col" | "Column" => "column",
+            "Row" => "row",
+            "Box" | "Container" => "box",
+            "Card" => "card",
+            "Scroll" | "ScrollArea" => "scroll",
+            "Center" => "center",
+            "Button" => "button",
+            "Input" => "input",
+            "Textarea" => "textarea",
+            "Checkbox" => "checkbox",
+            "Switch" | "Toggle" => "switch",
+            "Slider" => "slider",
+            "List" | "LazyColumn" => "list",
+            "ListRow" | "LazyRow" => "list-row",
+            "Grid" | "LazyGrid" => "grid",
+            "FlowRow" => "flow-row",
+            "FlowCol" | "FlowColumn" => "flow-col",
+            "Text" | "Span" | "P" => "text",
+            "H1" | "H2" | "H3" | "H4" | "H5" | "H6" => tag, // Keep original for typography
+            "Image" | "Img" => "image",
+            "Icon" => "icon",
+            "Spacer" => "spacer",
+            "Divider" | "Separator" => "divider",
+            _ => tag, // Return as-is for user-defined components
+        }
+    }
+
     /// Check if tag is a layout element
     fn is_layout_tag(tag: &str) -> bool {
-        matches!(tag, "col" | "column" | "row" | "box" | "container" | "card" | "scroll")
+        let normalized = Self::normalize_tag(tag);
+        matches!(normalized, "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center")
     }
 
     /// Check if tag is a form element
     fn is_form_tag(tag: &str) -> bool {
-        matches!(tag, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button")
+        let normalized = Self::normalize_tag(tag);
+        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button")
     }
 
     /// Check if tag is a list element
     fn is_list_tag(tag: &str) -> bool {
-        matches!(tag, "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column")
+        let normalized = Self::normalize_tag(tag);
+        matches!(normalized, "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column")
     }
 
     /// Convert layout elements to Compose
@@ -515,6 +549,7 @@ fun {}Preview() {{
         indent: usize,
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
+        let normalized = Self::normalize_tag(tag);
 
         // Generate children content
         let mut children_content = String::new();
@@ -523,7 +558,7 @@ fun {}Preview() {{
         }
 
         // Use LayoutGenerator for the actual generation
-        let result = match tag {
+        let result = match normalized {
             "col" | "column" => self.layout_generator.generate_column(props, &children_content),
             "center" => {
                 // Center is syntax sugar for Column with center alignment
@@ -564,8 +599,9 @@ fun {}Preview() {{
         indent: usize,
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
+        let normalized = Self::normalize_tag(tag);
 
-        match tag {
+        match normalized {
             "button" => self.button_to_compose(props, events, children, indent),
             "input" => {
                 // Generate input with state binding
@@ -812,6 +848,47 @@ fun {}Preview() {{
     }
 
     /// Convert child component reference to Compose call
+    /// Map PascalCase component name to Compose component name
+    /// Returns the Compose component name and whether it's a built-in component
+    fn map_component_to_compose(&self, name: &str) -> (String, bool) {
+        match name {
+            // Layout components
+            "Col" | "Column" => ("Column".to_string(), true),
+            "Row" => ("Row".to_string(), true),
+            "Box" | "Container" => ("Box".to_string(), true),
+            "Card" => ("Card".to_string(), true),
+            "Scroll" | "ScrollArea" => (name.to_string(), true),
+            "Center" => ("Column".to_string(), true),
+
+            // Text components
+            "Text" | "Span" | "P" | "Paragraph" => ("Text".to_string(), true),
+            "H1" | "H2" | "H3" | "H4" | "H5" | "H6" => ("Text".to_string(), true),
+
+            // Form components
+            "Button" => ("Button".to_string(), true),
+            "Input" => ("OutlinedTextField".to_string(), true),
+            "Checkbox" => ("Checkbox".to_string(), true),
+            "Switch" | "Toggle" => ("Switch".to_string(), true),
+            "Slider" => ("Slider".to_string(), true),
+
+            // Display components
+            "Image" | "Img" => ("Image".to_string(), true),
+            "Icon" => ("Icon".to_string(), true),
+            "Spacer" => ("Spacer".to_string(), true),
+            "Divider" | "Separator" => ("HorizontalDivider".to_string(), true),
+
+            // List components
+            "List" | "LazyColumn" => ("LazyColumn".to_string(), true),
+            "ListRow" | "LazyRow" => ("LazyRow".to_string(), true),
+            "Grid" | "LazyGrid" => ("LazyVerticalGrid".to_string(), true),
+            "FlowRow" => ("FlowRow".to_string(), true),
+            "FlowCol" | "FlowColumn" => ("FlowColumn".to_string(), true),
+
+            // User-defined component
+            _ => (name.to_string(), false),
+        }
+    }
+
     fn component_to_compose(
         &mut self,
         name: &str,
@@ -821,8 +898,13 @@ fun {}Preview() {{
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
 
-        // Track component reference for imports
-        self.component_refs.push(name.to_string());
+        // Map component name to Compose component
+        let (compose_name, is_builtin) = self.map_component_to_compose(name);
+
+        // Track component reference for imports (only for user-defined components)
+        if !is_builtin {
+            self.component_refs.push(name.to_string());
+        }
 
         // Build props string
         let mut props_parts = Vec::new();
@@ -849,7 +931,7 @@ fun {}Preview() {{
             format!("\n{}    {}", ind, props_parts.join(&format!(",\n{}    ", ind)))
         };
 
-        Ok(format!("{}{}({})\n", ind, name, props_str))
+        Ok(format!("{}{}({})\n", ind, compose_name, props_str))
     }
 
     /// Convert link to Compose navigation
@@ -922,6 +1004,7 @@ fun {}Preview() {{
         indent: usize,
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
+        let normalized = Self::normalize_tag(tag);
 
         // Generate children content as item template
         let mut item_content = String::new();
@@ -931,10 +1014,10 @@ fun {}Preview() {{
 
         // Check if this is a static grid (no items/data prop, but has element children)
         let has_data_source = props.contains_key("items") || props.contains_key("data");
-        let is_static_grid = (tag == "grid" || tag == "lazy-grid") && !has_data_source;
+        let is_static_grid = (normalized == "grid" || normalized == "lazy-grid") && !has_data_source;
 
         // Use ListGenerator for the actual generation
-        let result = match tag {
+        let result = match normalized {
             "list" | "lazy-column" => self.list_generator.generate_lazy_column(props, &item_content),
             "list-row" | "lazy-row" => self.list_generator.generate_lazy_row(props, &item_content),
             "grid" | "lazy-grid" => {
@@ -967,11 +1050,27 @@ fun {}Preview() {{
         &mut self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
-        _events: &HashMap<String, AuraEvent>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         indent: usize,
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
+        let normalized = Self::normalize_tag(tag);
+
+        // Double-check: if this should be handled by layout/form/list handlers, delegate
+        // This handles cases where is_layout_tag etc. might have missed PascalCase tags
+        match normalized {
+            "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center" => {
+                return self.layout_element_to_compose(tag, props, events, children, indent);
+            }
+            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" => {
+                return self.form_element_to_compose(tag, props, events, children, indent);
+            }
+            "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column" => {
+                return self.list_element_to_compose(tag, props, events, children, indent);
+            }
+            _ => {}
+        }
 
         // Map common HTML-like tags to Compose
         let (compose_name, is_text_like) = self.map_tag_to_compose(tag);
@@ -998,15 +1097,23 @@ fun {}Preview() {{
             self.add_import("androidx.compose.ui.draw.clip");
         }
 
-        // Get typography style for heading tags
-        let typography_style = match tag {
+        // Get typography style for heading tags (both lowercase and PascalCase)
+        let typography_style = match normalized {
             "h1" => Some("headlineLarge"),
             "h2" => Some("headlineMedium"),
             "h3" => Some("headlineSmall"),
             "h4" => Some("titleLarge"),
             "h5" => Some("titleMedium"),
             "h6" => Some("titleSmall"),
-            _ => None,
+            _ => match tag {
+                "H1" => Some("headlineLarge"),
+                "H2" => Some("headlineMedium"),
+                "H3" => Some("headlineSmall"),
+                "H4" => Some("titleLarge"),
+                "H5" => Some("titleMedium"),
+                "H6" => Some("titleSmall"),
+                _ => None,
+            },
         };
 
         // Generate children content
@@ -1084,7 +1191,8 @@ fun {}Preview() {{
     /// Returns (component_name, is_text_like)
     /// For unknown tags, treat as user-defined component (not text-like)
     fn map_tag_to_compose(&self, tag: &str) -> (String, bool) {
-        match tag {
+        let normalized = Self::normalize_tag(tag);
+        match normalized {
             "text" | "span" | "p" => ("Text".to_string(), true),
             "div" | "section" | "article" | "header" | "footer" | "nav" | "main" | "aside" => ("Column".to_string(), false),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => ("Text".to_string(), true),
@@ -1093,9 +1201,25 @@ fun {}Preview() {{
             "spacer" => ("Spacer".to_string(), true),
             "divider" => ("HorizontalDivider".to_string(), true),
             _ => {
-                // Unknown tag - treat as user-defined component
-                // Use the tag name directly (e.g., "Counter" -> "Counter()")
-                (tag.to_string(), false)
+                // Check if it's a PascalCase version of a known tag
+                // e.g., "Text" -> "Text", "Col" -> "Column", "Row" -> "Row"
+                match tag {
+                    "Text" | "Span" | "P" => ("Text".to_string(), true),
+                    "H1" | "H2" | "H3" | "H4" | "H5" | "H6" => ("Text".to_string(), true),
+                    "Col" | "Column" => ("Column".to_string(), false),
+                    "Row" => ("Row".to_string(), false),
+                    "Box" | "Container" => ("Box".to_string(), false),
+                    "Card" => ("Card".to_string(), false),
+                    "Image" | "Img" => ("Image".to_string(), true),
+                    "Icon" => ("Icon".to_string(), true),
+                    "Spacer" => ("Spacer".to_string(), true),
+                    "Divider" | "Separator" => ("HorizontalDivider".to_string(), true),
+                    _ => {
+                        // Unknown tag - treat as user-defined component
+                        // Use the tag name directly (e.g., "Counter" -> "Counter()")
+                        (tag.to_string(), false)
+                    }
+                }
             }
         }
     }
@@ -2233,4 +2357,24 @@ mod tests {
         assert!(color_content.contains("Color(0x"));
         assert!(color_content.contains("import androidx.compose.ui.graphics.Color"));
     }
+}
+
+#[test]
+fn test_pascal_case_col_tag() {
+    use super::*;
+    
+    let mut gen = JetGenerator::new();
+    
+    // Test that Col is recognized as layout tag
+    assert!(JetGenerator::is_layout_tag("Col"), "Col should be a layout tag");
+    assert!(JetGenerator::is_layout_tag("col"), "col should be a layout tag");
+    assert!(JetGenerator::is_layout_tag("Column"), "Column should be a layout tag");
+    
+    // Test normalize_tag
+    assert_eq!(JetGenerator::normalize_tag("Col"), "column");
+    assert_eq!(JetGenerator::normalize_tag("col"), "col");
+    assert_eq!(JetGenerator::normalize_tag("Column"), "column");
+    
+    // Test H1 is NOT a layout tag (it's a text tag)
+    assert!(!JetGenerator::is_layout_tag("H1"), "H1 should not be a layout tag");
 }

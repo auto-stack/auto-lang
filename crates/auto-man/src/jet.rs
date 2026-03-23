@@ -485,7 +485,7 @@ impl JetProject {
         let mut widgets = Vec::new();
         for stmt in &ast.stmts {
             if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-                let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
+                        let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
                     .map_err(|e| e.to_string())?;
                 widgets.push(aura_widget);
             }
