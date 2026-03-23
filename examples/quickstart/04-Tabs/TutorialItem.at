@@ -1,0 +1,28 @@
+// widgets/TutorialItem.at - Tutorial list item
+
+/// Tutorial item component with horizontal layout
+widget TutorialItem {
+    model {
+        title str = ""
+        brief str = ""
+        imageSrc str = ""
+    }
+
+    view {
+        Row {
+            Col {
+                Text .title {
+                    style: "text-sm w-full text-left"
+                }
+                Text .brief {
+                    style: "text-xs text-gray-600 w-full text-left mt-1"
+                }
+                style: "flex-1 mr-3"
+            }
+            Image .imageSrc {
+                style: "h-16 w-28 rounded-2xl object-cover"
+            }
+            style: "w-full p-3 rounded-2xl bg-white"
+        }
+    }
+}

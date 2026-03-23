@@ -6,13 +6,13 @@ widget TestTabs {
         col {
             tabs {
                 TabsList {
-                    TabsTrigger tab1 (label: "Tab 1") {}
-                    TabsTrigger tab2 (label: "Tab 2") {}
+                    TabsTrigger "tab1" (label: "Tab 1") {}
+                    TabsTrigger "tab2" (label: "Tab 2") {}
                 }
-                TabsContent tab1 {
+                TabsContent "tab1" {
                     text "Content 1"
                 }
-                TabsContent tab2 {
+                TabsContent "tab2" {
                     text "Content 2"
                 }
             }

@@ -1,0 +1,16 @@
+// CourseLearning.at - Course Learning tab content (placeholder)
+
+/// Course learning page placeholder
+widget CourseLearning {
+    view {
+        Col {
+            Text "课程学习" {
+                style: "text-2xl font-bold"
+            }
+            Text "Coming soon..." {
+                style: "text-gray-500"
+            }
+            style: "w-full h-full justify-center items-center bg-white"
+        }
+    }
+}

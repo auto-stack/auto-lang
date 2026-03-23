@@ -4,11 +4,14 @@ widget TestTabs {
             text (text: "Tab Navigation", class: "text-lg font-bold") {}
             tabs {
                 TabsList {
-                    TabsTrigger (label: "Home") {}
-                    TabsTrigger (label: "Settings") {}
+                    TabsTrigger "home" (label: "Home") {}
+                    TabsTrigger "settings" (label: "Settings") {}
                 }
-                TabsContent {
+                TabsContent "home" {
                     text "Welcome to the home page"
+                }
+                TabsContent "settings" {
+                    text "Settings page"
                 }
             }
         }

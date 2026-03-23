@@ -155,8 +155,8 @@ impl ArkGenerator {
     fn is_tabs_pattern(node: &AuraNode) -> bool {
         match node {
             AuraNode::Element { tag, children, .. } => {
-                tag == "tabs" && children.iter().any(|c| {
-                    matches!(c, AuraNode::Element { tag, .. } if tag == "tabslist" || tag == "tabscontent")
+                tag.to_lowercase() == "tabs" && children.iter().any(|c| {
+                    matches!(c, AuraNode::Element { tag, .. } if tag.to_lowercase() == "tabslist" || tag.to_lowercase() == "tabscontent")
                 })
             }
             _ => false,
@@ -167,7 +167,7 @@ impl ArkGenerator {
     fn widget_has_tabs(node: &AuraNode) -> bool {
         match node {
             AuraNode::Element { tag, children, .. } => {
-                if tag == "tabs" {
+                if tag.to_lowercase() == "tabs" {
                     return true;
                 }
                 children.iter().any(|c| Self::widget_has_tabs(c))
@@ -221,7 +221,7 @@ impl ArkGenerator {
             let mut content_index = 0;
             for child in children {
                 if let AuraNode::Element { tag, props, children: content_children, .. } = child {
-                    if tag == "tabscontent" {
+                    if tag.to_lowercase() == "tabscontent" {
                         let tab_id = props.get("id").map(extract_string_from_prop).unwrap_or_default();
 
                         // Find matching tab item for label
@@ -301,7 +301,7 @@ fn extract_tab_triggers(tabs_list: &AuraNode) -> Vec<TabItem> {
     if let AuraNode::Element { children, .. } = tabs_list {
         for child in children {
             if let AuraNode::Element { tag, props, .. } = child {
-                if tag == "tabstrigger" {
+                if tag.to_lowercase() == "tabstrigger" {
                     let id = props.get("id").map(extract_string_from_prop).unwrap_or_default();
                     let label = props.get("label").map(extract_string_from_prop).unwrap_or_default();
                     items.push(TabItem {
@@ -530,6 +530,15 @@ impl ArkGenerator {
                 lines.push(format!("{}  }}", self.indent()));
             }
             lines.push(format!("{}}}", self.indent()));
+            lines.push(String::new());
+        }
+
+        // Generate @Builder for tabs if widget has tabs
+        if has_tabs {
+            let tabs_builder = self.generate_tabs_builder();
+            for line in tabs_builder.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
             lines.push(String::new());
         }
 
@@ -857,12 +866,13 @@ impl ArkGenerator {
         let mut lines = Vec::new();
 
         // Check for Tabs pattern before regular element handling
-        if tag == "tabs" && children.iter().any(|c| {
-            matches!(c, AuraNode::Element { tag, .. } if tag == "tabslist" || tag == "tabscontent")
+        // Tags may be lowercase or PascalCase (e.g., "tabslist" or "TabsList")
+        if tag.to_lowercase() == "tabs" && children.iter().any(|c| {
+            matches!(c, AuraNode::Element { tag, .. } if tag.to_lowercase() == "tabslist" || tag.to_lowercase() == "tabscontent")
         }) {
             // Extract TabsList children
             let tabs_list = children.iter().find(|c| {
-                matches!(c, AuraNode::Element { tag, .. } if tag == "tabslist")
+                matches!(c, AuraNode::Element { tag, .. } if tag.to_lowercase() == "tabslist")
             });
 
             let tab_items = if let Some(list) = tabs_list {

@@ -1038,6 +1038,7 @@ impl WidgetRegistry {
         let mut tabs_trigger = WidgetSpec::new("TabsTrigger", WidgetCategory::Navigation)
             .with_alias("tabs-trigger");
         tabs_trigger.has_children = true;
+        tabs_trigger.primary_prop = Some("id".to_string());
         tabs_trigger.backends.insert("ark".to_string(), BackendMapping {
             component: "Text".to_string(),
             import: None,
@@ -1058,6 +1059,7 @@ impl WidgetRegistry {
         let mut tabs_content = WidgetSpec::new("TabsContent", WidgetCategory::Navigation)
             .with_alias("tabs-content");
         tabs_content.has_children = true;
+        tabs_content.primary_prop = Some("id".to_string());
         tabs_content.backends.insert("ark".to_string(), BackendMapping {
             component: "TabContent".to_string(),
             import: None,

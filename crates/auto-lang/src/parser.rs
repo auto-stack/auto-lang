@@ -8955,7 +8955,8 @@ impl<'a> Parser<'a> {
             "sheet" | "Sheet" | "popover" | "Popover" |
             "dropdown-menu" | "DropdownMenu" | "context-menu" | "ContextMenu" |
             "alert-dialog" | "AlertDialog" | "drawer" | "Drawer" |
-            "modal" | "Modal" => Some("id"),
+            "modal" | "Modal" |
+            "tabs-trigger" | "TabsTrigger" | "tabs-content" | "TabsContent" => Some("id"),
 
             // Elements with "name" as primary prop (form inputs)
             "input" | "Input" | "select" | "Select" | "textarea" | "Textarea" |

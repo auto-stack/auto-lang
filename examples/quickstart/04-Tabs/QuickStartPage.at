@@ -1,0 +1,25 @@
+// QuickStartPage.at - Quick Start tab content
+
+use Banner
+use EnablementView
+use TutorialView
+
+/// Quick start page with Banner, Grid, and List
+widget QuickStartPage {
+    view {
+        Col {
+            Text "快速入门" {
+                style: "text-2xl font-bold w-full text-left pl-4"
+            }
+            Scroll {
+                Col {
+                    Banner {}
+                    EnablementView {}
+                    TutorialView {}
+                }
+                style: "flex-1"
+            }
+            style: "w-full h-full bg-gray-100"
+        }
+    }
+}
