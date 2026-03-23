@@ -180,7 +180,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "card".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/card/Card".to_string()),
+                import: Some("@/components/ui/card".to_string()),
                 component: "Card".to_string(),
                 props: vec![("variant", "variant")]
                     .into_iter()
@@ -202,7 +202,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "scroll".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/scroll-area/ScrollArea".to_string()),
+                import: Some("@/components/ui/scroll-area".to_string()),
                 component: "ScrollArea".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -223,7 +223,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "button".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/button/Button".to_string()),
+                import: Some("@/components/ui/button".to_string()),
                 component: "Button".to_string(),
                 props: vec![
                     ("text", "text"),
@@ -259,7 +259,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "input".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/input/Input".to_string()),
+                import: Some("@/components/ui/input".to_string()),
                 component: "Input".to_string(),
                 props: vec![
                     ("placeholder", "placeholder"),
@@ -297,7 +297,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "textarea".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/textarea/Textarea".to_string()),
+                import: Some("@/components/ui/textarea".to_string()),
                 component: "Textarea".to_string(),
                 props: vec![
                     ("placeholder", "placeholder"),
@@ -331,7 +331,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "checkbox".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/checkbox/Checkbox".to_string()),
+                import: Some("@/components/ui/checkbox".to_string()),
                 component: "Checkbox".to_string(),
                 props: vec![("disabled", "disabled")]
                     .into_iter()
@@ -359,7 +359,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "switch".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/switch/Switch".to_string()),
+                import: Some("@/components/ui/switch".to_string()),
                 component: "Switch".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -384,7 +384,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "select".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/select/Select".to_string()),
+                import: Some("@/components/ui/select".to_string()),
                 component: "Select".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -403,7 +403,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "slider".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/slider/Slider".to_string()),
+                import: Some("@/components/ui/slider".to_string()),
                 component: "Slider".to_string(),
                 props: vec![("min", "min"), ("max", "max")]
                     .into_iter()
@@ -431,7 +431,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "radiogroup".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/radio-group/RadioGroup".to_string()),
+                import: Some("@/components/ui/radio-group".to_string()),
                 component: "RadioGroup".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -510,7 +510,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "avatar".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/avatar/Avatar".to_string()),
+                import: Some("@/components/ui/avatar".to_string()),
                 component: "Avatar".to_string(),
                 props: vec![("src", "src"), ("name", "alt")]
                     .into_iter()
@@ -532,7 +532,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "badge".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/badge/Badge".to_string()),
+                import: Some("@/components/ui/badge".to_string()),
                 component: "Badge".to_string(),
                 props: vec![("variant", "variant")]
                     .into_iter()
@@ -598,7 +598,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "divider".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/separator/Separator".to_string()),
+                import: Some("@/components/ui/separator".to_string()),
                 component: "Separator".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -619,7 +619,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "tabs".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/tabs/Tabs".to_string()),
+                import: Some("@/components/ui/tabs".to_string()),
                 component: "Tabs".to_string(),
                 props: vec![("value", "modelValue")]
                     .into_iter()
@@ -644,7 +644,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "tab".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/tabs/TabsTrigger".to_string()),
+                import: Some("@/components/ui/tabs".to_string()),
                 component: "TabsTrigger".to_string(),
                 props: vec![("value", "value")]
                     .into_iter()
@@ -674,7 +674,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "progress".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/progress/Progress".to_string()),
+                import: Some("@/components/ui/progress".to_string()),
                 component: "Progress".to_string(),
                 props: vec![("value", "modelValue")]
                     .into_iter()
@@ -739,7 +739,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "dialog".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/dialog/Dialog".to_string()),
+                import: Some("@/components/ui/dialog".to_string()),
                 component: "Dialog".to_string(),
                 props: vec![("open", "open")]
                     .into_iter()
@@ -764,7 +764,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "modal".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/dialog/Dialog".to_string()),
+                import: Some("@/components/ui/dialog".to_string()),
                 component: "Dialog".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -783,7 +783,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "tooltip".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/tooltip/Tooltip".to_string()),
+                import: Some("@/components/ui/tooltip".to_string()),
                 component: "Tooltip".to_string(),
                 props: vec![("content", "content")]
                     .into_iter()
@@ -805,7 +805,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "popover".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/popover/Popover".to_string()),
+                import: Some("@/components/ui/popover".to_string()),
                 component: "Popover".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
@@ -829,7 +829,7 @@ impl ComponentRegistry {
         self.register(ComponentMapping {
             tag: "table".to_string(),
             vue: VueMapping {
-                import: Some("@/components/ui/table/Table".to_string()),
+                import: Some("@/components/ui/table".to_string()),
                 component: "Table".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
