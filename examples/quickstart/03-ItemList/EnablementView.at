@@ -30,7 +30,7 @@ widget EnablementView {
                         }
                     }
                 }
-                style: "rows-1 gap-2 px-4"
+                style: "rows-1 gap-2 px-4 h-42"
             }
             style: "mt-4 items-start"
         }
