@@ -1,48 +1,32 @@
-// TutorialView.at - List section
+// TutorialView.at - Tutorial section
 
 use TutorialItem
 
 /// Tutorial section with vertical scrolling list
 widget TutorialView {
+    model {
+        items: List = [
+            { title: "Step1 环境的搭建", brief: "本篇教程实现了快速入门——一个用于了解和学习HarmonyOS的应用程序。", imageSrc: "$r('app.media.tutorial_pic1')" },
+            { title: "Step2 使用Swiper构建运营广告位", brief: "Swiper组件提供滑动轮播显示的能力。", imageSrc: "$r('app.media.tutorial_pic2')" },
+            { title: "Step3 创建和组合视图", brief: "Item定义子组件相关特征。", imageSrc: "$r('app.media.tutorial_pic3')" },
+            { title: "Step4 网格和列表组建的使用", brief: "网格和列表组件中，当Item达到一定数量，内容超过屏幕大小时，可以自动提供滚动功能。", imageSrc: "$r('app.media.tutorial_pic4')" },
+            { title: "Step5 应用架构设计基础——MVVM模式", brief: "ArkUI采取MVVM模式，将数据与视图绑定在一起。", imageSrc: "$r('app.media.tutorial_pic5')" }
+        ]
+    }
+
     view {
         Col {
             Text "入门教程" {
                 style: "text-base font-medium text-left pl-4 mb-2"
             }
             List {
-                ListItem {
-                    TutorialItem {
-                        title: "Step1 环境的搭建",
-                        brief: "本篇教程实现了快速入门——一个用于了解和学习HarmonyOS的应用程序。",
-                        imageSrc: "$r('app.media.tutorial_pic1')"
-                    }
-                }
-                ListItem {
-                    TutorialItem {
-                        title: "Step2 使用Swiper构建运营广告位",
-                        brief: "Swiper组件提供滑动轮播显示的能力。",
-                        imageSrc: "$r('app.media.tutorial_pic2')"
-                    }
-                }
-                ListItem {
-                    TutorialItem {
-                        title: "Step3 创建和组合视图",
-                        brief: "Item定义子组件相关特征。",
-                        imageSrc: "$r('app.media.tutorial_pic3')"
-                    }
-                }
-                ListItem {
-                    TutorialItem {
-                        title: "Step4 网格和列表组建的使用",
-                        brief: "网格和列表组件中，当Item达到一定数量，内容超过屏幕大小时，可以自动提供滚动功能。",
-                        imageSrc: "$r('app.media.tutorial_pic4')"
-                    }
-                }
-                ListItem {
-                    TutorialItem {
-                        title: "Step5 应用架构设计基础——MVVM模式",
-                        brief: "ArkUI采取MVVM模式，将数据与视图绑定在一起。",
-                        imageSrc: "$r('app.media.tutorial_pic5')"
+                for item in .items {
+                    ListItem {
+                        TutorialItem {
+                            title: item.title,
+                            brief: item.brief,
+                            imageSrc: item.imageSrc
+                        }
                     }
                 }
                 style: "px-4"
