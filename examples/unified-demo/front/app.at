@@ -11,6 +11,10 @@ widget App {
         "/counter" => use counter
         "/column" => use column
         "/row" => use row
+        "/button" => use button
+        "/input" => use input
+        "/form" => use form
+        "/tabs" => use tabs
     }
 
     view {

@@ -1,0 +1,41 @@
+// pages/form.at - Form component demo
+
+/// Form component demonstration page.
+/// Shows form with validation using form-item components.
+
+widget FormPage {
+    view {
+        Col {
+            style: "p-8 gap-8"
+            // Header
+            Col {
+                style: "items-center"
+                H1 "Form Demo"
+                Text (variant: "muted") "Form with validation and labels"
+            }
+
+            // Simple Form
+            Col {
+                style: "gap-4 w-full max-w-md"
+                H3 "Simple Form"
+                Form {
+                    Col {
+                        style: "gap-4"
+                        FormItem {
+                            FormLabel "Username"
+                            Input (placeholder: "Enter username") {}
+                            FormDescription "This is your public display name."
+                            FormMessage {}
+                        }
+                        FormItem {
+                            FormLabel "Email"
+                            Input (type: "email", placeholder: "Enter email") {}
+                            FormMessage {}
+                        }
+                        Button (type: "submit") "Submit"
+                    }
+                }
+            }
+        }
+    }
+}

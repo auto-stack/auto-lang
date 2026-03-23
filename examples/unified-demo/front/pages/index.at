@@ -52,6 +52,54 @@ widget IndexPage {
                         }
                     }
                 }
+
+                // Button Demo Card
+                Link (to: "/button") {
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Button Demo"
+                            Text (variant: "muted") "Clickable buttons with variants and sizes"
+                        }
+                    }
+                }
+
+                // Input Demo Card
+                Link (to: "/input") {
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Input Demo"
+                            Text (variant: "muted") "Form input fields and configurations"
+                        }
+                    }
+                }
+
+                // Form Demo Card
+                Link (to: "/form") {
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Form Demo"
+                            Text (variant: "muted") "Form with validation and labels"
+                        }
+                    }
+                }
+
+                // Tabs Demo Card
+                Link (to: "/tabs") {
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Tabs Demo"
+                            Text (variant: "muted") "Tabbed navigation with content panels"
+                        }
+                    }
+                }
             }
         }
     }
