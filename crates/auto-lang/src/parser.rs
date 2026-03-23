@@ -8234,6 +8234,27 @@ impl<'a> Parser<'a> {
             return self.parse_view_link();
         }
 
+        // Check for string literal as child node (e.g., Button { "Subscribe" })
+        // This should be treated as a text node, not a component call
+        if self.is_kind(TokenKind::Str) {
+            let content = self.cur.text.clone();
+            self.next();
+            return Ok(ViewNode::text(content));
+        }
+
+        // Check for f-string as child node (e.g., Text { f"Count: ${.count}" })
+        if self.is_kind(TokenKind::FStrStart) {
+            let fstr_expr = self.fstr()?;
+            let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
+
+            // If there are bindings, it's interpolated; otherwise literal
+            if bindings.is_empty() {
+                return Ok(ViewNode::text(template));
+            } else {
+                return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
+            }
+        }
+
         // Parse element tag
         let tag = self.cur.text.to_string();
         self.next();

@@ -609,7 +609,7 @@ fun {}Preview() {{
         let ind = "    ".repeat(indent);
         let normalized = Self::normalize_tag(tag);
 
-        match normalized {
+        let result = match normalized {
             "button" => self.button_to_compose(props, events, children, indent),
             "input" => {
                 // Generate input with state binding
@@ -623,7 +623,15 @@ fun {}Preview() {{
             "slider" => self.form_generator.generate_slider(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             _ => Err(GenError::UnsupportedExpr(format!("Unknown form tag: {}", tag))),
+        };
+
+        // Collect imports from FormGenerator (clone to avoid borrow issues)
+        let form_imports: Vec<String> = self.form_generator.get_imports().to_vec();
+        for import in form_imports {
+            self.add_import(&import);
         }
+
+        result
     }
 
     /// Convert button to Compose Button with dispatch mechanism

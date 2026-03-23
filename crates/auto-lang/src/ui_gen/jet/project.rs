@@ -476,7 +476,7 @@ toolchainVersion=21
         // gradle-wrapper.properties
         let content = r#"distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
 networkTimeout=10000
 validateDistributionUrl=true
 zipStoreBase=GRADLE_USER_HOME
