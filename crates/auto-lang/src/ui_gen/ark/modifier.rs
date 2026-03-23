@@ -17,6 +17,26 @@
 //! | `text-blue-500` | `.fontColor()` |
 //! | `bg-blue-500` | `.backgroundColor()` |
 //! | `rounded-lg` | `.borderRadius()` |
+//!
+//! ## Grid-Specific Classes
+//!
+//! | Tailwind | ArkTS Modifier |
+//! |----------|----------------|
+//! | `rows-3` | `.rowsTemplate('1fr 1fr 1fr')` |
+//! | `cols-2` | `.columnsTemplate('1fr 1fr')` |
+//! | `row-gap-8` | `.rowsGap(8)` |
+//! | `col-gap-8` | `.columnsGap(8)` |
+//! | `scrollbar-off` | `.scrollBar(BarState.Off)` |
+//! | `scrollbar-on` | `.scrollBar(BarState.On)` |
+//! | `scrollbar-auto` | `.scrollBar(BarState.Auto)` |
+//!
+//! ## Swiper-Specific Classes
+//!
+//! | Tailwind | ArkTS Modifier |
+//! |----------|----------------|
+//! | `auto-play` or `autoplay` | `.autoPlay(true)` |
+//! | `loop` | `.loop(true)` |
+//! | `indicator` | `.indicator(true)` |
 
 use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color, ObjectFit, BorderRadiusSpec};
 
@@ -50,6 +70,36 @@ impl ArkModifierDsl {
         }
         if style_str.contains("indicator") && !style_str.contains("no-indicator") {
             modifiers.push(".indicator(true)".to_string());
+        }
+
+        // Grid modifiers
+        // rows-N → .rowsTemplate('1fr 1fr 1fr') (N times)
+        if let Some(rows) = Self::parse_grid_template(style_str, "rows-") {
+            modifiers.push(format!(".rowsTemplate('{}')", rows));
+        }
+        // cols-N → .columnsTemplate('1fr 1fr 1fr') (N times)
+        if let Some(cols) = Self::parse_grid_template(style_str, "cols-") {
+            modifiers.push(format!(".columnsTemplate('{}')", cols));
+        }
+        // row-gap-N → .rowsGap(N)
+        if let Some(gap) = Self::parse_gap_value(style_str, "row-gap-") {
+            modifiers.push(format!(".rowsGap({})", gap));
+        }
+        // col-gap-N → .columnsGap(N)
+        if let Some(gap) = Self::parse_gap_value(style_str, "col-gap-") {
+            modifiers.push(format!(".columnsGap({})", gap));
+        }
+        // scrollbar-off → .scrollBar(BarState.Off)
+        if style_str.contains("scrollbar-off") {
+            modifiers.push(".scrollBar(BarState.Off)".to_string());
+        }
+        // scrollbar-on → .scrollBar(BarState.On)
+        if style_str.contains("scrollbar-on") {
+            modifiers.push(".scrollBar(BarState.On)".to_string());
+        }
+        // scrollbar-auto → .scrollBar(BarState.Auto)
+        if style_str.contains("scrollbar-auto") {
+            modifiers.push(".scrollBar(BarState.Auto)".to_string());
         }
 
         modifiers
@@ -425,6 +475,37 @@ impl ArkModifierDsl {
 impl Default for ArkModifierDsl {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl ArkModifierDsl {
+    /// Parse grid template value from style string
+    /// e.g., "rows-3" → Some("1fr 1fr 1fr")
+    fn parse_grid_template(style_str: &str, prefix: &str) -> Option<String> {
+        // Find pattern like "rows-3" or "cols-2"
+        for part in style_str.split_whitespace() {
+            if part.starts_with(prefix) {
+                if let Ok(n) = part[prefix.len()..].parse::<usize>() {
+                    if n > 0 && n <= 12 {
+                        return Some((0..n).map(|_| "1fr").collect::<Vec<_>>().join(" "));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Parse gap value from style string
+    /// e.g., "row-gap-8" → Some(8)
+    fn parse_gap_value(style_str: &str, prefix: &str) -> Option<u32> {
+        for part in style_str.split_whitespace() {
+            if part.starts_with(prefix) {
+                if let Ok(n) = part[prefix.len()..].parse::<u32>() {
+                    return Some(n);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -806,5 +887,102 @@ mod tests {
         // "animation-loop" should NOT add .loop(true) for Swiper
         let mods = dsl.convert_style("animation-loop");
         assert!(!mods.iter().any(|m| m == ".loop(true)"), "animation-loop should not add Swiper .loop(true)");
+    }
+
+    // ========================================================================
+    // Grid Modifier Tests
+    // ========================================================================
+
+    #[test]
+    fn test_grid_rows_template() {
+        let dsl = ArkModifierDsl::new();
+
+        // rows-3 → .rowsTemplate('1fr 1fr 1fr')
+        let mods = dsl.convert_style("rows-3");
+        assert!(mods.iter().any(|m| m == ".rowsTemplate('1fr 1fr 1fr')"), "Expected rowsTemplate for rows-3");
+
+        // rows-1 → .rowsTemplate('1fr')
+        let mods = dsl.convert_style("rows-1");
+        assert!(mods.iter().any(|m| m == ".rowsTemplate('1fr')"), "Expected rowsTemplate for rows-1");
+
+        // rows-6 → .rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')
+        let mods = dsl.convert_style("rows-6");
+        assert!(mods.iter().any(|m| m == ".rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')"), "Expected rowsTemplate for rows-6");
+    }
+
+    #[test]
+    fn test_grid_cols_template() {
+        let dsl = ArkModifierDsl::new();
+
+        // cols-2 → .columnsTemplate('1fr 1fr')
+        let mods = dsl.convert_style("cols-2");
+        assert!(mods.iter().any(|m| m == ".columnsTemplate('1fr 1fr')"), "Expected columnsTemplate for cols-2");
+
+        // cols-4 → .columnsTemplate('1fr 1fr 1fr 1fr')
+        let mods = dsl.convert_style("cols-4");
+        assert!(mods.iter().any(|m| m == ".columnsTemplate('1fr 1fr 1fr 1fr')"), "Expected columnsTemplate for cols-4");
+    }
+
+    #[test]
+    fn test_grid_row_gap() {
+        let dsl = ArkModifierDsl::new();
+
+        // row-gap-8 → .rowsGap(8)
+        let mods = dsl.convert_style("row-gap-8");
+        assert!(mods.iter().any(|m| m == ".rowsGap(8)"), "Expected rowsGap for row-gap-8");
+
+        // row-gap-16 → .rowsGap(16)
+        let mods = dsl.convert_style("row-gap-16");
+        assert!(mods.iter().any(|m| m == ".rowsGap(16)"), "Expected rowsGap for row-gap-16");
+    }
+
+    #[test]
+    fn test_grid_col_gap() {
+        let dsl = ArkModifierDsl::new();
+
+        // col-gap-8 → .columnsGap(8)
+        let mods = dsl.convert_style("col-gap-8");
+        assert!(mods.iter().any(|m| m == ".columnsGap(8)"), "Expected columnsGap for col-gap-8");
+
+        // col-gap-4 → .columnsGap(4)
+        let mods = dsl.convert_style("col-gap-4");
+        assert!(mods.iter().any(|m| m == ".columnsGap(4)"), "Expected columnsGap for col-gap-4");
+    }
+
+    #[test]
+    fn test_grid_scrollbar_modifiers() {
+        let dsl = ArkModifierDsl::new();
+
+        // scrollbar-off → .scrollBar(BarState.Off)
+        let mods = dsl.convert_style("scrollbar-off");
+        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Off)"), "Expected scrollBar Off");
+
+        // scrollbar-on → .scrollBar(BarState.On)
+        let mods = dsl.convert_style("scrollbar-on");
+        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.On)"), "Expected scrollBar On");
+
+        // scrollbar-auto → .scrollBar(BarState.Auto)
+        let mods = dsl.convert_style("scrollbar-auto");
+        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Auto)"), "Expected scrollBar Auto");
+    }
+
+    #[test]
+    fn test_grid_combined_modifiers() {
+        let dsl = ArkModifierDsl::new();
+
+        // Combine multiple grid modifiers
+        let mods = dsl.convert_style("rows-3 cols-2 row-gap-8 col-gap-4 scrollbar-off");
+        assert!(mods.iter().any(|m| m.contains("rowsTemplate")), "Expected rowsTemplate");
+        assert!(mods.iter().any(|m| m.contains("columnsTemplate")), "Expected columnsTemplate");
+        assert!(mods.iter().any(|m| m.contains("rowsGap")), "Expected rowsGap");
+        assert!(mods.iter().any(|m| m.contains("columnsGap")), "Expected columnsGap");
+        assert!(mods.iter().any(|m| m.contains("scrollBar")), "Expected scrollBar");
+
+        // With Tailwind classes
+        let mods = dsl.convert_style("rows-1 h-169 px-4 pt-1 scrollbar-off");
+        assert!(mods.iter().any(|m| m.contains("rowsTemplate")), "Expected rowsTemplate");
+        assert!(mods.iter().any(|m| m.contains("height")), "Expected height");
+        assert!(mods.iter().any(|m| m.contains("padding")), "Expected padding");
+        assert!(mods.iter().any(|m| m.contains("scrollBar")), "Expected scrollBar");
     }
 }
