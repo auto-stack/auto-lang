@@ -195,6 +195,65 @@ impl ArkGenerator {
 
         lines.join("\n")
     }
+
+    /// Generate Tabs component with TabContent children
+    fn generate_tabs_component(&mut self, node: &AuraNode, tab_items: &[TabItem]) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Tabs header
+        lines.push("    Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {".to_string());
+
+        // Generate TabContent for each TabsContent child
+        if let AuraNode::Element { children, .. } = node {
+            let mut content_index = 0;
+            for child in children {
+                if let AuraNode::Element { tag, props, children: content_children, .. } = child {
+                    if tag == "tabscontent" {
+                        let tab_id = props.get("id").map(extract_string_from_prop).unwrap_or_default();
+
+                        // Find matching tab item for label
+                        let tab_item = tab_items.iter().find(|t| t.id == tab_id);
+
+                        lines.push("      TabContent() {".to_string());
+
+                        // Generate child content
+                        for content_child in content_children {
+                            let child_code = self.generate_node(content_child)?;
+                            for line in child_code.lines() {
+                                lines.push(format!("        {}", line));
+                            }
+                        }
+
+                        lines.push("      }".to_string());
+
+                        // Add tabBar with builder call
+                        if let Some(item) = tab_item {
+                            let icon_on = item.icon_on.as_deref().unwrap_or("");
+                            let icon_off = item.icon_off.as_deref().unwrap_or("");
+                            if !icon_on.is_empty() && !icon_off.is_empty() {
+                                lines.push(format!("      .tabBar(this.tabBarBuilder('{}', {}, $r('{}'), $r('{}')))",
+                                    item.label, content_index, icon_on, icon_off));
+                            } else {
+                                lines.push(format!("      .tabBar(this.tabBarBuilder('{}', {}))",
+                                    item.label, content_index));
+                            }
+                        }
+
+                        content_index += 1;
+                    }
+                }
+            }
+        }
+
+        lines.push("    }".to_string());
+
+        // Add Tabs modifiers
+        lines.push("    .vertical(false)".to_string());
+        lines.push("    .scrollable(false)".to_string());
+        lines.push("    .backgroundColor('#F1F3F5')".to_string());
+
+        Ok(lines.join("\n"))
+    }
 }
 
 /// Extracted tab item data for @Builder generation
