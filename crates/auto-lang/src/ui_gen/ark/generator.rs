@@ -2014,4 +2014,9 @@ mod tests {
     fn test_014_array_objects() {
         test_a2ark("014_array_objects").unwrap();
     }
+
+    #[test]
+    fn test_015_tabs() {
+        test_a2ark("015_tabs").unwrap();
+    }
 }
