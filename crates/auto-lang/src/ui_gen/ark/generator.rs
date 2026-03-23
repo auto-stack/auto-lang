@@ -835,6 +835,32 @@ impl ArkGenerator {
     ) -> GenResult<String> {
         let mut lines = Vec::new();
 
+        // Check for Tabs pattern before regular element handling
+        if tag == "tabs" && children.iter().any(|c| {
+            matches!(c, AuraNode::Element { tag, .. } if tag == "tabslist" || tag == "tabscontent")
+        }) {
+            // Extract TabsList children
+            let tabs_list = children.iter().find(|c| {
+                matches!(c, AuraNode::Element { tag, .. } if tag == "tabslist")
+            });
+
+            let tab_items = if let Some(list) = tabs_list {
+                extract_tab_triggers(list)
+            } else {
+                Vec::new()
+            };
+
+            // Create a temporary node for the tabs pattern
+            let tabs_node = AuraNode::Element {
+                tag: tag.to_string(),
+                props: props.clone(),
+                events: events.clone(),
+                children: children.to_vec(),
+            };
+
+            return self.generate_tabs_component(&tabs_node, &tab_items);
+        }
+
         // Look up widget in the new widget registry
         if let Some(widget) = self.registry.get(tag) {
             // Merge default props from widget spec with user-provided props
