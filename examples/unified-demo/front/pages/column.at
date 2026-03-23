@@ -4,11 +4,11 @@
 
 widget ColumnPage {
     view {
-        Col (class: "p-4 gap-4") {
+        Col (style: "p-4 gap-4") {
             H2 (text: "Column Demo") {}
-            Text (text: "Column arranges children vertically.", style: "muted") {}
+            Text (text: "Column arranges children vertically.", variant: "muted") {}
 
-            Col (class: "p-4 gap-2 bg-blue-50 rounded-lg") {
+            Col (style: "p-4 gap-2 bg-blue-50 rounded-lg") {
                 Text (text: "Item 1") {}
                 Text (text: "Item 2") {}
                 Text (text: "Item 3") {}

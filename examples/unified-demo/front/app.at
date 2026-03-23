@@ -14,8 +14,8 @@ widget App {
     }
 
     view {
-        Col (class: "h-full") {
-            Col (class: "p-4 bg-blue-500") {
+        Col (style: "h-full") {
+            Col (style: "p-4 bg-blue-500") {
                 H1 (text: "Auto UI Demo") {}
             }
             outlet

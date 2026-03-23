@@ -36,8 +36,8 @@ pub struct LayoutProps {
     pub horizontal_arrange: Option<String>,
     /// Vertical arrangement (for Column) - top/center/bottom/between/around/evenly
     pub vertical_arrange: Option<String>,
-    /// Tailwind CSS classes
-    pub class: Option<String>,
+    /// Tailwind CSS style classes (renamed from 'class' to 'style')
+    pub style: Option<String>,
     /// Modifier chain
     pub modifier: Option<String>,
 }
@@ -122,7 +122,9 @@ impl LayoutGenerator {
             .or_else(|| Self::extract_string(props, "horizontal_arrange"));
         let vertical_arrange = Self::extract_string(props, "arrange")
             .or_else(|| Self::extract_string(props, "vertical_arrange"));
-        let class = Self::extract_string(props, "class");
+        // Support both 'style' (new) and 'class' (legacy) for backwards compatibility
+        let style = Self::extract_string(props, "style")
+            .or_else(|| Self::extract_string(props, "class"));
 
         LayoutProps {
             gap,
@@ -130,7 +132,7 @@ impl LayoutGenerator {
             vertical_align,
             horizontal_arrange,
             vertical_arrange,
-            class,
+            style,
             modifier: None,
         }
     }
@@ -155,10 +157,10 @@ impl LayoutGenerator {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add class-based modifiers (padding, margin, etc.)
-        // Also extract arrangement from class (gap)
-        let class_arrangement = if let Some(class) = &layout_props.class {
-            let result = self.class_to_modifier_result(class);
+        // Add style-based modifiers (padding, margin, etc.)
+        // Also extract arrangement from style (gap)
+        let style_arrangement = if let Some(style) = &layout_props.style {
+            let result = self.class_to_modifier_result(style);
 
             // Add required imports based on style
             self.add_style_imports(&result.style);
@@ -168,7 +170,7 @@ impl LayoutGenerator {
                 modifier_parts.push(result.modifiers.join("."));
             }
 
-            // Return arrangement from class (gap)
+            // Return arrangement from style (gap)
             result.arrangement
         } else {
             None
@@ -182,7 +184,7 @@ impl LayoutGenerator {
         }
 
         // Vertical arrangement (gap + arrange)
-        // Priority: explicit gap prop > class-based gap > arrange prop
+        // Priority: explicit gap prop > style-based gap > arrange prop
         let arrangement = if let Some(gap) = layout_props.gap {
             let dp = gap * 4; // Tailwind to Dp multiplier
             match layout_props.vertical_arrange.as_deref() {
@@ -193,9 +195,9 @@ impl LayoutGenerator {
                 Some("evenly") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceEvenly)", dp),
                 _ => format!("Arrangement.spacedBy({}.dp)", dp),
             }
-        } else if let Some(class_arr) = class_arrangement {
-            // Use arrangement from class (gap)
-            class_arr
+        } else if let Some(style_arr) = style_arrangement {
+            // Use arrangement from style (gap)
+            style_arr
         } else if let Some(arrange) = &layout_props.vertical_arrange {
             match arrange.as_str() {
                 "center" => "Arrangement.Center".to_string(),
@@ -251,9 +253,9 @@ impl LayoutGenerator {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add class-based modifiers (only if non-empty)
-        if let Some(class) = &layout_props.class {
-            let result = self.class_to_modifier_result(class);
+        // Add style-based modifiers (only if non-empty)
+        if let Some(style) = &layout_props.style {
+            let result = self.class_to_modifier_result(style);
             self.add_style_imports(&result.style);
             if !result.modifiers.is_empty() {
                 modifier_parts.push(result.modifiers.join("."));
@@ -323,9 +325,9 @@ impl LayoutGenerator {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add class-based modifiers (only if non-empty)
-        if let Some(class) = &layout_props.class {
-            let result = self.class_to_modifier_result(class);
+        // Add style-based modifiers (only if non-empty)
+        if let Some(style) = &layout_props.style {
+            let result = self.class_to_modifier_result(style);
             self.add_style_imports(&result.style);
             if !result.modifiers.is_empty() {
                 modifier_parts.push(result.modifiers.join("."));

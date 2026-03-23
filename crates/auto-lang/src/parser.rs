@@ -8389,7 +8389,8 @@ impl<'a> Parser<'a> {
                         });
                     }
 
-                    if self.is_kind(TokenKind::Comma) {
+                    // Support both comma and semicolon as separators
+                    if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Semi) {
                         self.next();
                     }
                 } else {
@@ -8761,7 +8762,8 @@ impl<'a> Parser<'a> {
                     // Parse argument as string
                     let arg = self.parse_event_arg()?;
                     args.push(arg);
-                    if self.is_kind(TokenKind::Comma) {
+                    // Support both comma and semicolon as separators
+                    if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Semi) {
                         self.next();
                     }
                 }

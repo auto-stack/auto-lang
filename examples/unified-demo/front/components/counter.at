@@ -10,12 +10,12 @@ widget Counter {
     model { var count int = 0 }
 
     view {
-        Col (class: "gap-4 p-4") {
+        Col (style: "gap-4 p-4") {
             Text (text: "Counter Demo") {}
 
             Text (text: f"Count: ${.count}") {}
 
-            Row (class: "gap-2") {
+            Row (style: "gap-2") {
                 Button "-" { onclick: .Dec }
                 Button "+" { onclick: .Inc }
             }
