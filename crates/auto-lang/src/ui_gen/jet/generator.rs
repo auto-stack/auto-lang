@@ -726,6 +726,22 @@ fun {}Preview() {{
         }
     }
 
+    /// Convert Auto f-string template to Kotlin string interpolation
+    /// ${.field} -> $field
+    /// ${field} -> $field
+    fn convert_to_kotlin_interpolation(&self, s: &str) -> String {
+        let mut result = s.to_string();
+        // Convert ${.field} to $field (state reference)
+        result = regex::Regex::new(r"\$\{\.(\w+)\}")
+            .map(|re| re.replace_all(&result, "$$$1").to_string())
+            .unwrap_or(result);
+        // Convert ${field} to $field (variable reference)
+        result = regex::Regex::new(r"\$\{(\w+)\}")
+            .map(|re| re.replace_all(&result, "$$$1").to_string())
+            .unwrap_or(result);
+        result
+    }
+
     /// Convert for loop to Compose items() or forEach()
     fn for_loop_to_compose(
         &mut self,
@@ -1170,7 +1186,9 @@ fun {}Preview() {{
             };
 
             if children.is_empty() {
-                Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, text, modifier_param, style_param))
+                // Convert f-string interpolation to Kotlin format
+                let kotlin_text = self.convert_to_kotlin_interpolation(&text);
+                Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, kotlin_text, modifier_param, style_param))
             } else {
                 // Has children - use them as content
                 Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, children_content.trim(), modifier_param, style_param))
