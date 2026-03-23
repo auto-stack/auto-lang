@@ -1,33 +1,14 @@
-// Test for loop with property access
-use TestItem
-
+// Test for loop with array of simple values
 widget TestForLoop {
     model {
-        items List = []
+        items List = ["A", "B", "C"]
     }
 
     view {
         Column() {
             for item in .items {
-                TestItem {
-                    title: item.title,
-                    brief: item.brief
-                }
+                Text item
             }
-        }
-    }
-}
-
-widget TestItem {
-    model {
-        title str = ""
-        brief str = ""
-    }
-
-    view {
-        Row() {
-            Text .title {}
-            Text .brief {}
         }
     }
 }

@@ -23,7 +23,10 @@
 
 use super::modifier::{prop_to_modifier, ArkModifierDsl};
 use super::project::ArkProjectGenerator;
-use super::state::{generate_dispatch_function, generate_handler_body, generate_msg_enum, generate_state_declarations};
+use super::state::{
+    generate_dispatch_function, generate_handler_body, generate_interface,
+    generate_interfaces_with_prefix, generate_msg_enum, generate_state_declarations_with_prefix,
+};
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::widget::WidgetRegistry;
 use crate::ui_gen::{BackendGenerator, GenResult};
@@ -80,6 +83,10 @@ pub struct ArkGenerator {
 
     /// Loop variables in scope (to avoid prefixing with `this.`)
     loop_vars: HashSet<String>,
+
+    /// State variable interface types (state var name -> interface type name)
+    /// E.g., "items" -> "EnablementViewItem"
+    state_interfaces: HashMap<String, String>,
 }
 
 impl ArkGenerator {
@@ -95,6 +102,7 @@ impl ArkGenerator {
             has_messages: false,
             sanitized_name: None,
             loop_vars: HashSet::new(),
+            state_interfaces: HashMap::new(),
         }
     }
 
@@ -151,6 +159,16 @@ impl ArkGenerator {
         } else {
             name.to_string()
         }
+    }
+
+    /// Get the interface type for a state variable (for ForEach item type)
+    fn get_interface_type(&self, state_var_name: &str) -> String {
+        // Look up the interface type from state_interfaces map
+        if let Some(interface_name) = self.state_interfaces.get(state_var_name) {
+            return interface_name.clone();
+        }
+        // No interface defined - use `any` as fallback
+        "any".to_string()
     }
 
     /// Generate full project
@@ -247,6 +265,23 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
+        // Generate interfaces for array-of-objects state variables (before @Entry/@Component)
+        let interfaces = generate_interfaces_with_prefix(widget, &sanitized_name);
+
+        // Store interface type mappings for use in ForEach generation
+        for state_var in &widget.state_vars {
+            let base_interface_name = super::state::to_pascal_case(&state_var.name);
+            let prefixed_interface_name = format!("{}{}", sanitized_name, base_interface_name);
+            if interfaces.iter().any(|i| i.name == prefixed_interface_name) {
+                self.state_interfaces.insert(state_var.name.clone(), prefixed_interface_name);
+            }
+        }
+
+        for interface in &interfaces {
+            lines.push(generate_interface(interface));
+            lines.push("".to_string());
+        }
+
         // @Entry for App widget (with or without routes)
         // @Preview for child pages (helpful for DevEco Studio preview)
         if is_app_widget {
@@ -275,7 +310,7 @@ impl ArkGenerator {
         }
 
         // State declarations
-        let state_decls = generate_state_declarations(widget);
+        let state_decls = generate_state_declarations_with_prefix(widget, &sanitized_name);
         if !state_decls.is_empty() {
             for line in state_decls.lines() {
                 lines.push(format!("{}{}", self.indent(), line));
@@ -935,6 +970,21 @@ impl ArkGenerator {
             AuraExpr::Int(n) => n.to_string(),
             AuraExpr::Float(f) => f.to_string(),
             AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::Array(elems) => {
+                let items: Vec<String> = elems.iter()
+                    .map(|e| self.expr_to_ark_string(e))
+                    .collect();
+                format!("[{}]", items.join(", "))
+            }
+            AuraExpr::Object(fields) => {
+                let pairs: Vec<String> = fields.iter()
+                    .map(|(k, v)| {
+                        let val = self.expr_to_ark_string(v);
+                        format!("{}: {}", k, val)
+                    })
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
             _ => String::new(),
         }
     }
@@ -979,13 +1029,16 @@ impl ArkGenerator {
             self.loop_vars.insert(idx.to_string());
         }
 
-        // Generate ForEach with key function
+        // Get what interface type to use for loop variable
+        let item_type = self.get_interface_type(iterable_name);
+
+        // Generate ForEach with item type and key function
         lines.push(format!(
-            "{}ForEach(this.{}, ({}: any{}) => {{",
+            "{}ForEach(this.{}, ({}: {}) => {{",
             self.indent(),
             iterable_name,
             var,
-            index_param
+            item_type
         ));
         self.indent_level += 1;
 
@@ -998,14 +1051,14 @@ impl ArkGenerator {
 
         self.indent_level -= 1;
 
-        // Add key function - use item.id if available, otherwise use index
+        // Add key function with proper types and return type
+        // Key function: (item: Type): string => item.id)
         lines.push(format!(
-            "{}}}}}, ({}: any, {}: number) => {}.id ?? {}",
+            "{}}}, ({}: {}): string => {}.id)",
             self.indent(),
             var,
-            index_name,
-            var,
-            index_name
+            item_type,
+            var
         ));
 
         // Remove loop variable from loop_vars
@@ -1753,5 +1806,10 @@ mod tests {
     #[test]
     fn test_013_for_loop() {
         test_a2ark("013_for_loop").unwrap();
+    }
+
+    #[test]
+    fn test_014_array_objects() {
+        test_a2ark("014_array_objects").unwrap();
     }
 }

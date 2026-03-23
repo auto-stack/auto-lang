@@ -1,0 +1,17 @@
+// Test array with object literals in model
+widget TestArrayObjects {
+    model {
+        items List = [
+            { title: "A", brief: "B", imageSrc: "C" },
+            { title: "D", brief: "E", imageSrc: "F" }
+        ]
+    }
+
+    view {
+        Col {
+            for item in .items {
+                Text "test"
+            }
+        }
+    }
+}
