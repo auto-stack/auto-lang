@@ -8261,19 +8261,30 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Check for string literal as primary property shorthand:
+        // Check for string literal or f-string as primary property shorthand:
         // tag "value" → tag (primary_prop: "value")
+        // tag f"count: ${.n}" → tag (primary_prop: f"count: ${.n})
         // The primary prop depends on the element type (from get_primary_prop)
         // Also handle .field as primary prop: Text .title → Text (text: .title)
-        let has_primary_prop_value = self.is_kind(TokenKind::Str);
+        let has_primary_prop_value = self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart);
         let has_dot_primary = self.is_kind(TokenKind::Dot);
         if has_primary_prop_value {
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
-                let content = self.cur.text.clone();
-                self.next();
+                let is_fstr = self.is_kind(TokenKind::FStrStart);
+
+                // For f-strings, we need to parse the actual expression
+                let value = if is_fstr {
+                    // Parse the f-string to get proper Expr::FStr with bindings
+                    self.fstr()?
+                } else {
+                    let content = self.cur.text.clone();
+                    self.next();
+                    Expr::Str(content)
+                };
+
                 props.push(ViewProp {
                     name: primary_prop.to_string(),
-                    value: ViewPropValue::Expr(Expr::Str(content)),
+                    value: ViewPropValue::Expr(value),
                 });
             } else {
                 // No primary prop defined for this element, skip the string
@@ -8336,18 +8347,28 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RParen)?;
         }
 
-        // Check for string literal as primary property shorthand AFTER parentheses:
+        // Check for string literal or f-string as primary property shorthand AFTER parentheses:
         // tag (props) "value" → tag has props AND primary_prop: "value"
         // e.g., Text (variant: "muted") "Hello" → Text with variant="muted" and text="Hello"
-        if self.is_kind(TokenKind::Str) {
+        // Also supports f-string: Text f"Count: ${.count}" → Text with text=f"Count: ${.count}"
+        if self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart) {
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
                 // Only add if not already set
                 if !props.iter().any(|p| p.name == primary_prop) {
-                    let content = self.cur.text.clone();
-                    self.next();
+                    let is_fstr = self.is_kind(TokenKind::FStrStart);
+
+                    let value = if is_fstr {
+                        // Parse the f-string to get proper Expr::FStr with bindings
+                        self.fstr()?
+                    } else {
+                        let content = self.cur.text.clone();
+                        self.next();
+                        Expr::Str(content)
+                    };
+
                     props.push(ViewProp {
                         name: primary_prop.to_string(),
-                        value: ViewPropValue::Expr(Expr::Str(content)),
+                        value: ViewPropValue::Expr(value),
                     });
                 }
             }

@@ -196,6 +196,56 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
             })
         }
 
+        // F-string: treat as literal string with template markers
+        // The template will be converted to Kotlin/Compose string interpolation by the generator
+        Expr::FStr(fstr) => {
+            // Build template string from parts
+            let mut template = String::new();
+            let mut bindings = Vec::new();
+
+            for part in &fstr.parts {
+                match part {
+                    Expr::Str(s) => {
+                        template.push_str(s.as_str());
+                    }
+                    Expr::Dot(obj, field) => {
+                        // .field → state reference
+                        if let Expr::Ident(name) = obj.as_ref() {
+                            if name.as_str() == "." || name.as_str() == "self" {
+                                let field_name = field.as_str();
+                                template.push_str(&format!("${{.{}}}", field_name));
+                                bindings.push(field_name.to_string());
+                                continue;
+                            }
+                        }
+                        // Other dot expressions
+                        template.push_str(&format!("${{{}}}", part));
+                    }
+                    Expr::Ident(name) => {
+                        // Variable reference
+                        let name_str = name.as_str();
+                        if name_str.starts_with('.') {
+                            // State reference
+                            let field_name = &name_str[1..];
+                            template.push_str(&format!("${{.{}}}", field_name));
+                            bindings.push(field_name.to_string());
+                        } else {
+                            template.push_str(&format!("${{{}}}", name_str));
+                            bindings.push(name_str.to_string());
+                        }
+                    }
+                    _ => {
+                        // Complex expression - just stringify it
+                        template.push_str(&format!("${{{}}}", part));
+                    }
+                }
+            }
+
+            // For now, return as literal with bindings info encoded
+            // The generator will handle the conversion to Kotlin
+            Ok(AuraExpr::Literal(template))
+        }
+
         // Other expressions not yet supported in view
         _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),
     }
