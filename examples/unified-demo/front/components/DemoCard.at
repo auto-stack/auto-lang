@@ -10,10 +10,16 @@ widget DemoCard {
     }
 
     view {
-        card (style: "p-4 rounded-lg cursor-pointer") {
-            col (gap: 8) {
-                h3 (text: .title, style: "text-lg font-semibold")
-                text (text: .description, style: "text-sm text-gray-600")
+        Card {
+            style: "p-4 rounded-lg cursor-pointer"
+            Col {
+                gap: 8
+                H3 (text: .title) {
+                    style: "text-lg font-semibold"
+                }
+                Text (text: .description) {
+                    style: "text-sm text-gray-600"
+                }
             }
         }
     }

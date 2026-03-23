@@ -4,14 +4,16 @@
 
 widget RowPage {
     view {
-        Col (style: "p-4 gap-4") {
-            H2 (text: "Row Demo") {}
-            Text (text: "Row arranges children horizontally.", variant: "muted") {}
+        Col {
+            style: "p-4 gap-4"
+            H2 "Row Demo"
+            Text (variant: "muted") "Row arranges children horizontally."
 
-            Row (style: "p-4 gap-4 bg-green-50 rounded-lg") {
-                Text (text: "Left") {}
-                Text (text: "Center") {}
-                Text (text: "Right") {}
+            Row {
+                style: "p-4 gap-4 bg-green-50 rounded-lg"
+                Text "Left"
+                Text "Center"
+                Text "Right"
             }
         }
     }

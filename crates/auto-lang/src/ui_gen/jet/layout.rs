@@ -374,7 +374,9 @@ impl LayoutGenerator {
         self.add_import("androidx.compose.ui.draw.clip");
         self.add_import("androidx.compose.ui.graphics.Color");
 
-        let class = Self::extract_string(props, "class");
+        // Support both 'style' (new) and 'class' (legacy) for backwards compatibility
+        let class = Self::extract_string(props, "style")
+            .or_else(|| Self::extract_string(props, "class"));
 
         // Separate modifiers: external (clip, shadow) vs internal (padding)
         let mut external_mods = Vec::new();
@@ -428,7 +430,9 @@ impl LayoutGenerator {
         self.add_import("androidx.compose.foundation.rememberScrollState");
         self.add_import("androidx.compose.ui.Modifier");
 
-        let class = Self::extract_string(props, "class");
+        // Support both 'style' (new) and 'class' (legacy) for backwards compatibility
+        let class = Self::extract_string(props, "style")
+            .or_else(|| Self::extract_string(props, "class"));
 
         let mut modifier_parts = vec!["verticalScroll(rememberScrollState())".to_string()];
 

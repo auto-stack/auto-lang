@@ -5,41 +5,50 @@
 
 widget IndexPage {
     view {
-        Col { style: "p-8 gap-8";
+        Col {
+            style: "p-8 gap-8"
             // Hero section
-            Col { style: "items-center";
-                H1 (text: "Component Gallery") {}
-                Text (text: "Jetpack Compose Demo - Phase 1", variant: "muted") {}
+            Col {
+                style: "items-center"
+                H1 "Component Gallery"
+                Text (variant: "muted") "Jetpack Compose Demo - Phase 1"
             }
 
             // Component grid
-            Col { style: "gap-4";
+            Col {
+                style: "gap-4"
                 // Counter Demo Card
                 Link (to: "/counter") {
-                    Card (variant: "outlined") { style: "p-4 rounded-lg hover:shadow-lg cursor-pointer";
-                        Col { style: "gap-2";
-                            H3 (text: "Counter Demo") {}
-                            Text (text: "State management with ELM architecture", variant: "muted") {}
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Counter Demo"
+                            Text (variant: "muted") "State management with ELM architecture"
                         }
                     }
                 }
 
                 // Column Demo Card
                 Link (to: "/column") {
-                    Card (variant: "outlined") { style: "p-4 rounded-lg hover:shadow-lg cursor-pointer";
-                        Col { style: "gap-2";
-                            H3 (text: "Column Demo") {}
-                            Text (text: "Vertical layout with Column component", variant: "muted") {}
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Column Demo"
+                            Text (variant: "muted") "Vertical layout with Column component"
                         }
                     }
                 }
 
                 // Row Demo Card
                 Link (to: "/row") {
-                    Card (variant: "outlined") { style: "p-4 rounded-lg hover:shadow-lg cursor-pointer";
-                        Col { style: "gap-2";
-                            H3 (text: "Row Demo") {}
-                            Text (text: "Horizontal layout with Row component", variant: "muted") {}
+                    Card (variant: "outlined") {
+                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                        Col {
+                            style: "gap-2"
+                            H3 "Row Demo"
+                            Text (variant: "muted") "Horizontal layout with Row component"
                         }
                     }
                 }

@@ -8336,6 +8336,23 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RParen)?;
         }
 
+        // Check for string literal as primary property shorthand AFTER parentheses:
+        // tag (props) "value" → tag has props AND primary_prop: "value"
+        // e.g., Text (variant: "muted") "Hello" → Text with variant="muted" and text="Hello"
+        if self.is_kind(TokenKind::Str) {
+            if let Some(primary_prop) = Self::get_primary_prop(&tag) {
+                // Only add if not already set
+                if !props.iter().any(|p| p.name == primary_prop) {
+                    let content = self.cur.text.clone();
+                    self.next();
+                    props.push(ViewProp {
+                        name: primary_prop.to_string(),
+                        value: ViewPropValue::Expr(Expr::Str(content)),
+                    });
+                }
+            }
+        }
+
         // Parse children or inline props/events in braces
         // Support syntax: col { child1 child2 style: "..." }
         // Also supports primary prop shorthand: text "Hello" { style: "..." }

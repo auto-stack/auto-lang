@@ -4,9 +4,10 @@
 
 widget CounterPage {
     view {
-        Col (style: "p-4 gap-4") {
-            H2 (text: "Counter Demo") {}
-            Text (text: "A simple counter component demonstrating state management.", variant: "muted") {}
+        Col {
+            style: "p-4 gap-4"
+            H2 "Counter Demo"
+            Text (variant: "muted") "A simple counter component demonstrating state management."
             Counter {}
         }
     }
