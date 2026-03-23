@@ -162,7 +162,42 @@ impl ArkGenerator {
             _ => false,
         }
     }
+}
 
+/// Extracted tab item data for @Builder generation
+#[derive(Debug, Clone)]
+pub struct TabItem {
+    pub id: String,
+    pub label: String,
+    pub icon_on: Option<String>,
+    pub icon_off: Option<String>,
+}
+
+/// Extract tab triggers from TabsList
+fn extract_tab_triggers(tabs_list: &AuraNode) -> Vec<TabItem> {
+    let mut items = Vec::new();
+
+    if let AuraNode::Element { children, .. } = tabs_list {
+        for child in children {
+            if let AuraNode::Element { tag, props, .. } = child {
+                if tag == "tabstrigger" {
+                    let id = props.get("id").cloned().unwrap_or_default();
+                    let label = props.get("label").cloned().unwrap_or_default();
+                    items.push(TabItem {
+                        id,
+                        label,
+                        icon_on: props.get("iconOn").cloned(),
+                        icon_off: props.get("iconOff").cloned(),
+                    });
+                }
+            }
+        }
+    }
+
+    items
+}
+
+impl ArkGenerator {
     /// Sanitize widget name to avoid conflicts with built-in components
     fn sanitize_widget_name(name: &str) -> String {
         if Self::is_builtin_component(name) {
