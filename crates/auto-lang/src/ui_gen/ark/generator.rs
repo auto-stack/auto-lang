@@ -151,6 +151,18 @@ impl ArkGenerator {
         BUILTIN_COMPONENTS.contains(&name)
     }
 
+    /// Check if element is a Tabs container with TabsList + TabsContent children
+    fn is_tabs_pattern(node: &AuraNode) -> bool {
+        match node {
+            AuraNode::Element { tag, children, .. } => {
+                tag == "tabs" && children.iter().any(|c| {
+                    matches!(c, AuraNode::Element { tag, .. } if tag == "tabslist" || tag == "tabscontent")
+                })
+            }
+            _ => false,
+        }
+    }
+
     /// Sanitize widget name to avoid conflicts with built-in components
     fn sanitize_widget_name(name: &str) -> String {
         if Self::is_builtin_component(name) {
