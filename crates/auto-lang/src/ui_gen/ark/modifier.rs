@@ -106,14 +106,22 @@ impl ArkModifierDsl {
             modifiers.push(".scrollBar(BarState.Auto)".to_string());
         }
 
+        // Default scrollbar-off for Grid if no scrollbar-xx specified
+        let has_scrollbar = style_str.contains("scrollbar-off")
+            || style_str.contains("scrollbar-on")
+            || style_str.contains("scrollbar-auto");
+        if !has_scrollbar {
+            modifiers.push(".scrollBar(BarState.Off)".to_string());
+        }
+
         // Smart default height for Grid with rows-N but no explicit height
         // If rows-N is specified and no height in style, add a computed height
-        // Default: rows-N * 80vp per row (typical item height)
+        // Default: rows-N * 160vp per row (typical item height)
         let has_explicit_height = style.height != Size::Auto;
         if let Some(n) = row_count {
             if !has_explicit_height && !style_str.contains("h-") {
-                // Add default height: 80vp per row
-                let default_height = n * 80;
+                // Add default height: 160vp per row
+                let default_height = n * 160;
                 modifiers.push(format!(".height({})", default_height));
             }
         }
@@ -1021,13 +1029,13 @@ mod tests {
     fn test_grid_default_height() {
         let dsl = ArkModifierDsl::new();
 
-        // rows-3 without explicit height → should add default height (3 * 80 = 240)
+        // rows-3 without explicit height → should add default height (3 * 160 = 480)
         let mods = dsl.convert_style("rows-3");
-        assert!(mods.iter().any(|m| m == ".height(240)"), "Expected default height 240 for rows-3");
+        assert!(mods.iter().any(|m| m == ".height(480)"), "Expected default height 480 for rows-3");
 
-        // rows-1 without explicit height → should add default height (1 * 80 = 80)
+        // rows-1 without explicit height → should add default height (1 * 160 = 160)
         let mods = dsl.convert_style("rows-1");
-        assert!(mods.iter().any(|m| m == ".height(80)"), "Expected default height 80 for rows-1");
+        assert!(mods.iter().any(|m| m == ".height(160)"), "Expected default height 160 for rows-1");
 
         // rows-2 with explicit height → should NOT add default height
         let mods = dsl.convert_style("rows-2 h-200");
@@ -1039,5 +1047,27 @@ mod tests {
         // cols-2 without rows → should NOT add default height
         let mods = dsl.convert_style("cols-2");
         assert!(!mods.iter().any(|m| m.contains(".height")), "Should not add default height when only cols is specified");
+    }
+
+    #[test]
+    fn test_grid_default_scrollbar() {
+        let dsl = ArkModifierDsl::new();
+
+        // Grid without scrollbar-xx → should add default scrollbar-off
+        let mods = dsl.convert_style("rows-3");
+        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Off)"), "Expected default scrollbar-off");
+
+        // Grid with explicit scrollbar-on → should NOT add default
+        let mods = dsl.convert_style("rows-3 scrollbar-on");
+        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.On)"), "Expected scrollbar-on");
+        // Should have only one scrollBar modifier
+        let scrollbar_count = mods.iter().filter(|m| m.contains("scrollBar")).count();
+        assert_eq!(scrollbar_count, 1, "Should have only one scrollBar modifier when explicit");
+
+        // Grid with explicit scrollbar-auto → should NOT add default
+        let mods = dsl.convert_style("rows-3 scrollbar-auto");
+        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Auto)"), "Expected scrollbar-auto");
+        let scrollbar_count = mods.iter().filter(|m| m.contains("scrollBar")).count();
+        assert_eq!(scrollbar_count, 1, "Should have only one scrollBar modifier when explicit");
     }
 }
