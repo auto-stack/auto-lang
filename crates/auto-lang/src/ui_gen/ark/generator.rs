@@ -173,6 +173,22 @@ pub struct TabItem {
     pub icon_off: Option<String>,
 }
 
+/// Extract string from AuraPropValue (handles Expr(Literal) pattern)
+fn extract_string_from_prop(value: &AuraPropValue) -> String {
+    match value {
+        AuraPropValue::Expr(AuraExpr::Literal(s)) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+/// Extract optional string from AuraPropValue
+fn extract_optional_string_from_prop(value: &AuraPropValue) -> Option<String> {
+    match value {
+        AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 /// Extract tab triggers from TabsList
 fn extract_tab_triggers(tabs_list: &AuraNode) -> Vec<TabItem> {
     let mut items = Vec::new();
@@ -181,13 +197,13 @@ fn extract_tab_triggers(tabs_list: &AuraNode) -> Vec<TabItem> {
         for child in children {
             if let AuraNode::Element { tag, props, .. } = child {
                 if tag == "tabstrigger" {
-                    let id = props.get("id").cloned().unwrap_or_default();
-                    let label = props.get("label").cloned().unwrap_or_default();
+                    let id = props.get("id").map(extract_string_from_prop).unwrap_or_default();
+                    let label = props.get("label").map(extract_string_from_prop).unwrap_or_default();
                     items.push(TabItem {
                         id,
                         label,
-                        icon_on: props.get("iconOn").cloned(),
-                        icon_off: props.get("iconOff").cloned(),
+                        icon_on: props.get("iconOn").and_then(extract_optional_string_from_prop),
+                        icon_off: props.get("iconOff").and_then(extract_optional_string_from_prop),
                     });
                 }
             }
