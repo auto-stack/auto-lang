@@ -1070,6 +1070,18 @@ impl Automan {
         }
         println!();
 
+        // Check for AUTO_BACKEND environment variable (for non-interactive mode)
+        if let Ok(backend_env) = std::env::var("AUTO_BACKEND") {
+            let backend_lower = backend_env.to_lowercase();
+            for (i, name) in backend_names.iter().enumerate() {
+                if name.to_lowercase() == backend_lower {
+                    println!("{} Using backend from AUTO_BACKEND: {}", "→".bright_green(), name.bright_cyan());
+                    return self.run_backend(&frontends[i], args);
+                }
+            }
+            eprintln!("Warning: AUTO_BACKEND='{}' not found in available backends, falling back to interactive selection", backend_env);
+        }
+
         let selection = Select::new()
             .with_prompt("Select backend to run")
             .default(0)

@@ -1200,8 +1200,9 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
-    let front_dir = root_dir.join("source").join("front");
-    let mut changed_count = 0;
+    let front_dir = root_dir.join("front");
+    let output_dir = root_dir.join("vue");
+    let mut changed_files: Vec<(PathBuf, String, String)> = Vec::new(); // (output_path, vue_code, widget_name)
 
     // Check app.at for changes
     let app_at = front_dir.join("app.at");
@@ -1210,20 +1211,22 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
             let hash = hash_string(&content);
             if cache.is_dirty(&app_at, hash) {
                 println!("  {} (changed)", "app.at".bright_yellow());
-                // Generate Vue component
                 if let Ok((vue_code, widgets)) = compile_at_to_vue(&app_at, &content) {
+                    if let Some(widget_name) = widgets.first() {
+                        let output_path = output_dir.join("src").join("App.vue");
+                        changed_files.push((output_path, vue_code, widget_name.clone()));
+                    }
                     let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
                         UIArtifact {
                             source_path: app_at.clone(),
                             widget_name: w.clone(),
-                            output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                            output_path: PathBuf::from(format!("src/App.vue")),
                             source_hash: hash,
-                            content_hash: hash_string(&vue_code),
+                            content_hash: hash_string(&changed_files.first().map(|f| f.1.as_str()).unwrap_or("")),
                             backend: UIBackend::Vue,
                         }
                     }).collect();
                     cache.update(app_at.clone(), hash, artifacts);
-                    changed_count += 1;
                 }
             } else {
                 println!("  {} (cached)", "app.at".bright_green());
@@ -1242,23 +1245,68 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                     if let Ok(content) = fs::read_to_string(&path) {
                         let hash = hash_string(&content);
                         if cache.is_dirty(&path, hash) {
-                            println!("  {} (changed)", file_name.bright_yellow());
+                            println!("  widgets/{} (changed)", file_name.bright_yellow());
                             if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                                if let Some(widget_name) = widgets.first() {
+                                    let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
+                                    changed_files.push((output_path, vue_code, widget_name.clone()));
+                                }
                                 let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
                                     UIArtifact {
                                         source_path: path.clone(),
                                         widget_name: w.clone(),
                                         output_path: PathBuf::from(format!("src/components/{}.vue", w)),
                                         source_hash: hash,
-                                        content_hash: hash_string(&vue_code),
+                                        content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
                                         backend: UIBackend::Vue,
                                     }
                                 }).collect();
                                 cache.update(path.clone(), hash, artifacts);
-                                changed_count += 1;
                             }
                         } else {
-                            println!("  {} (cached)", file_name.bright_green());
+                            println!("  widgets/{} (cached)", file_name.bright_green());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check pages/ directory for changes
+    let pages_dir = front_dir.join("pages");
+    if pages_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&pages_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                    // Use file stem (e.g., "index") as the output file name, matching VueProject::generate behavior
+                    let file_stem = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("page");
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        let hash = hash_string(&content);
+                        if cache.is_dirty(&path, hash) {
+                            println!("  pages/{} (changed)", file_name.bright_yellow());
+                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
+                                // Use file_stem for output path (matching VueProject::generate behavior)
+                                let output_path = output_dir.join("src").join("pages").join(format!("{}.vue", file_stem));
+                                let widget_name = widgets.first().cloned().unwrap_or_else(|| file_stem.to_string());
+                                changed_files.push((output_path, vue_code, widget_name.clone()));
+                                let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                    UIArtifact {
+                                        source_path: path.clone(),
+                                        widget_name: w.clone(),
+                                        output_path: PathBuf::from(format!("src/pages/{}.vue", file_stem)),
+                                        source_hash: hash,
+                                        content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
+                                        backend: UIBackend::Vue,
+                                    }
+                                }).collect();
+                                cache.update(path.clone(), hash, artifacts);
+                            }
+                        } else {
+                            println!("  pages/{} (cached)", file_name.bright_green());
                         }
                     }
                 }
@@ -1269,8 +1317,22 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Save cache
     cache.save(root_dir).ok();
 
+    // Write changed files
+    let changed_count = changed_files.len();
     if changed_count > 0 {
-        println!("{} files changed, regenerating", changed_count.to_string().bright_yellow());
+        println!("{} files changed, writing...", changed_count.to_string().bright_yellow());
+        for (output_path, vue_code, _widget_name) in changed_files {
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).ok();
+            }
+            fs::write(&output_path, &vue_code)
+                .map_err(|e| format!("Failed to write {}: {}", output_path.display(), e))?;
+            // Extract file name from output path for logging
+            let file_name = output_path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            println!("  ✓ Wrote {}.vue", file_name.bright_green());
+        }
     } else {
         println!("{}", "No changes detected, using cached files".bright_green());
     }
@@ -1288,9 +1350,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     if !project.exists() {
         println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
         project.generate()?;
-    } else {
-        println!("▶ Step {}/{}: Regenerating source files...", current_step, total_steps);
-        project.regenerate_source_files()?;
+    } else if changed_count == 0 {
+        // Only regenerate if no incremental changes were detected
+        // This handles the case where output files are missing but source hasn't changed
+        println!("▶ Step {}/{}: Checking source files...", current_step, total_steps);
+        // Skip regeneration if we already did incremental updates
     }
 
     // Step 2: Generate API client code (if api.at exists)
