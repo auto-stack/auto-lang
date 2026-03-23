@@ -74,11 +74,15 @@ impl ArkModifierDsl {
 
         // Grid modifiers
         // rows-N → .rowsTemplate('1fr 1fr 1fr') (N times)
-        if let Some(rows) = Self::parse_grid_template(style_str, "rows-") {
+        let grid_rows = Self::parse_grid_template(style_str, "rows-");
+        let grid_cols = Self::parse_grid_template(style_str, "cols-");
+        let row_count = Self::parse_row_count(style_str);
+
+        if let Some(rows) = &grid_rows {
             modifiers.push(format!(".rowsTemplate('{}')", rows));
         }
         // cols-N → .columnsTemplate('1fr 1fr 1fr') (N times)
-        if let Some(cols) = Self::parse_grid_template(style_str, "cols-") {
+        if let Some(cols) = &grid_cols {
             modifiers.push(format!(".columnsTemplate('{}')", cols));
         }
         // row-gap-N → .rowsGap(N)
@@ -100,6 +104,18 @@ impl ArkModifierDsl {
         // scrollbar-auto → .scrollBar(BarState.Auto)
         if style_str.contains("scrollbar-auto") {
             modifiers.push(".scrollBar(BarState.Auto)".to_string());
+        }
+
+        // Smart default height for Grid with rows-N but no explicit height
+        // If rows-N is specified and no height in style, add a computed height
+        // Default: rows-N * 80vp per row (typical item height)
+        let has_explicit_height = style.height != Size::Auto;
+        if let Some(n) = row_count {
+            if !has_explicit_height && !style_str.contains("h-") {
+                // Add default height: 80vp per row
+                let default_height = n * 80;
+                modifiers.push(format!(".height({})", default_height));
+            }
         }
 
         modifiers
@@ -502,6 +518,21 @@ impl ArkModifierDsl {
             if part.starts_with(prefix) {
                 if let Ok(n) = part[prefix.len()..].parse::<u32>() {
                     return Some(n);
+                }
+            }
+        }
+        None
+    }
+
+    /// Parse row count from style string
+    /// e.g., "rows-3" → Some(3)
+    fn parse_row_count(style_str: &str) -> Option<u32> {
+        for part in style_str.split_whitespace() {
+            if part.starts_with("rows-") {
+                if let Ok(n) = part[5..].parse::<u32>() {
+                    if n > 0 && n <= 12 {
+                        return Some(n);
+                    }
                 }
             }
         }
@@ -984,5 +1015,29 @@ mod tests {
         assert!(mods.iter().any(|m| m.contains("height")), "Expected height");
         assert!(mods.iter().any(|m| m.contains("padding")), "Expected padding");
         assert!(mods.iter().any(|m| m.contains("scrollBar")), "Expected scrollBar");
+    }
+
+    #[test]
+    fn test_grid_default_height() {
+        let dsl = ArkModifierDsl::new();
+
+        // rows-3 without explicit height → should add default height (3 * 80 = 240)
+        let mods = dsl.convert_style("rows-3");
+        assert!(mods.iter().any(|m| m == ".height(240)"), "Expected default height 240 for rows-3");
+
+        // rows-1 without explicit height → should add default height (1 * 80 = 80)
+        let mods = dsl.convert_style("rows-1");
+        assert!(mods.iter().any(|m| m == ".height(80)"), "Expected default height 80 for rows-1");
+
+        // rows-2 with explicit height → should NOT add default height
+        let mods = dsl.convert_style("rows-2 h-200");
+        assert!(mods.iter().any(|m| m.contains("height")), "Expected height modifier");
+        // Should have only one height modifier
+        let height_count = mods.iter().filter(|m| m.contains(".height")).count();
+        assert_eq!(height_count, 1, "Should have only one height modifier when explicit height is set");
+
+        // cols-2 without rows → should NOT add default height
+        let mods = dsl.convert_style("cols-2");
+        assert!(!mods.iter().any(|m| m.contains(".height")), "Should not add default height when only cols is specified");
     }
 }
