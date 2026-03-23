@@ -93,6 +93,8 @@ impl ArkModifierDsl {
         if let Some(gap) = Self::parse_gap_value(style_str, "col-gap-") {
             modifiers.push(format!(".columnsGap({})", gap));
         }
+
+        // scrollbar-xx modifiers (explicit, for any component that supports them)
         // scrollbar-off → .scrollBar(BarState.Off)
         if style_str.contains("scrollbar-off") {
             modifiers.push(".scrollBar(BarState.Off)".to_string());
@@ -106,14 +108,6 @@ impl ArkModifierDsl {
             modifiers.push(".scrollBar(BarState.Auto)".to_string());
         }
 
-        // Default scrollbar-off for Grid if no scrollbar-xx specified
-        let has_scrollbar = style_str.contains("scrollbar-off")
-            || style_str.contains("scrollbar-on")
-            || style_str.contains("scrollbar-auto");
-        if !has_scrollbar {
-            modifiers.push(".scrollBar(BarState.Off)".to_string());
-        }
-
         // Smart default height for Grid with rows-N but no explicit height
         // If rows-N is specified and no height in style, add a computed height
         // Default: rows-N * 160vp per row (typical item height)
@@ -123,6 +117,14 @@ impl ArkModifierDsl {
                 // Add default height: 160vp per row
                 let default_height = n * 160;
                 modifiers.push(format!(".height({})", default_height));
+            }
+
+            // Default scrollbar-off for Grid (only when rows-N is specified)
+            let has_scrollbar = style_str.contains("scrollbar-off")
+                || style_str.contains("scrollbar-on")
+                || style_str.contains("scrollbar-auto");
+            if !has_scrollbar {
+                modifiers.push(".scrollBar(BarState.Off)".to_string());
             }
         }
 
