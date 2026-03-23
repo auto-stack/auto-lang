@@ -1206,15 +1206,22 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     // Check app.at for changes
     let app_at = front_dir.join("app.at");
+    let app_output_path = output_dir.join("src").join("App.vue");
     if app_at.exists() {
         if let Ok(content) = fs::read_to_string(&app_at) {
             let hash = hash_string(&content);
-            if cache.is_dirty(&app_at, hash) {
-                println!("  {} (changed)", "app.at".bright_yellow());
+            let source_changed = cache.is_dirty(&app_at, hash);
+            let output_missing = !app_output_path.exists();
+
+            if source_changed || output_missing {
+                if source_changed {
+                    println!("  {} (changed)", "app.at".bright_yellow());
+                } else {
+                    println!("  {} (output missing)", "app.at".bright_yellow());
+                }
                 if let Ok((vue_code, widgets)) = compile_at_to_vue(&app_at, &content) {
                     if let Some(widget_name) = widgets.first() {
-                        let output_path = output_dir.join("src").join("App.vue");
-                        changed_files.push((output_path, vue_code, widget_name.clone()));
+                        changed_files.push((app_output_path, vue_code, widget_name.clone()));
                     }
                     let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
                         UIArtifact {
@@ -1244,7 +1251,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                     if let Ok(content) = fs::read_to_string(&path) {
                         let hash = hash_string(&content);
-                        if cache.is_dirty(&path, hash) {
+                        // For widgets, we need to compile first to get widget name for output path
+                        // So we check cache first, then verify output exists
+                        let source_changed = cache.is_dirty(&path, hash);
+
+                        if source_changed {
                             println!("  widgets/{} (changed)", file_name.bright_yellow());
                             if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
                                 if let Some(widget_name) = widgets.first() {
@@ -1284,13 +1295,23 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("page");
+                    // Pre-compute output path for existence check
+                    let output_path = output_dir.join("src").join("pages").join(format!("{}.vue", file_stem));
+
                     if let Ok(content) = fs::read_to_string(&path) {
                         let hash = hash_string(&content);
-                        if cache.is_dirty(&path, hash) {
-                            println!("  pages/{} (changed)", file_name.bright_yellow());
+                        // Check if source changed OR output file is missing
+                        let source_changed = cache.is_dirty(&path, hash);
+                        let output_missing = !output_path.exists();
+
+                        if source_changed || output_missing {
+                            if source_changed {
+                                println!("  pages/{} (changed)", file_name.bright_yellow());
+                            } else {
+                                println!("  pages/{} (output missing)", file_name.bright_yellow());
+                            }
                             if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content) {
                                 // Use file_stem for output path (matching VueProject::generate behavior)
-                                let output_path = output_dir.join("src").join("pages").join(format!("{}.vue", file_stem));
                                 let widget_name = widgets.first().cloned().unwrap_or_else(|| file_stem.to_string());
                                 changed_files.push((output_path, vue_code, widget_name.clone()));
                                 let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {

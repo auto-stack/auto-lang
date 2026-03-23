@@ -1365,8 +1365,8 @@ impl VueGenerator {
 
                     // Props as attributes
                     for (key, value) in props {
-                        if key == "class" {
-                            continue; // Already handled
+                        if key == "class" || key == "style" {
+                            continue; // Already handled in extract_classes
                         }
                         if key == "gap" {
                             continue; // Handled in extract_classes for layout elements
@@ -2143,81 +2143,88 @@ impl VueGenerator {
         // Fallback to plain HTML tags
         match tag {
             // Layout (no shadcn components, use Tailwind)
-            "col" | "column" => "div".to_string(),
-            "row" => "div".to_string(),
-            "grid" => "div".to_string(),
-            "scroll" => "div".to_string(),
-            "container" => "div".to_string(),
-            "center" => "div".to_string(),
+            "col" | "column" | "Col" | "Column" => "div".to_string(),
+            "row" | "Row" => "div".to_string(),
+            "grid" | "Grid" => "div".to_string(),
+            "scroll" | "Scroll" => "div".to_string(),
+            "container" | "Container" => "div".to_string(),
+            "center" | "Center" => "div".to_string(),
 
             // HTML5 semantic elements
-            "header" => "header".to_string(),
-            "nav" => "nav".to_string(),
-            "main" => "main".to_string(),
-            "section" => "section".to_string(),
-            "aside" => "aside".to_string(),
-            "footer" => "footer".to_string(),
-            "article" => "article".to_string(),
+            "header" | "Header" => "header".to_string(),
+            "nav" | "Nav" => "nav".to_string(),
+            "main" | "Main" => "main".to_string(),
+            "section" | "Section" => "section".to_string(),
+            "aside" | "Aside" => "aside".to_string(),
+            "footer" | "Footer" => "footer".to_string(),
+            "article" | "Article" => "article".to_string(),
 
             // Content
-            "button" => "button".to_string(),
-            "input" => "input".to_string(),
-            "textarea" => "textarea".to_string(),
-            "checkbox" => "input".to_string(),
-            "toggle" => "button".to_string(),
-            "select" => "select".to_string(),
-            "option" => "option".to_string(),
-            "link" => "a".to_string(),
-            "codeblock" | "code-block" => "pre".to_string(),
-            "codepane" | "code-pane" => "div".to_string(),
-            "previewcard" | "preview-card" => "div".to_string(),
+            "button" | "Button" => "button".to_string(),
+            "input" | "Input" => "input".to_string(),
+            "textarea" | "Textarea" => "textarea".to_string(),
+            "checkbox" | "Checkbox" => "input".to_string(),
+            "toggle" | "Toggle" => "button".to_string(),
+            "select" | "Select" => "select".to_string(),
+            "option" | "Option" => "option".to_string(),
+            "link" | "Link" => "a".to_string(),
+            "codeblock" | "code-block" | "CodeBlock" | "Codeblock" => "pre".to_string(),
+            "codepane" | "code-pane" | "CodePane" => "div".to_string(),
+            "previewcard" | "preview-card" | "PreviewCard" => "div".to_string(),
 
-            // Typography (no shadcn components)
-            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
-            "text" | "label" | "span" => "span".to_string(),
-            "p" => "p".to_string(),
+            // Typography (no shadcn components) - PascalCase maps to lowercase HTML
+            "h1" | "H1" => "h1".to_string(),
+            "h2" | "H2" => "h2".to_string(),
+            "h3" | "H3" => "h3".to_string(),
+            "h4" | "H4" => "h4".to_string(),
+            "h5" | "H5" => "h5".to_string(),
+            "h6" | "H6" => "h6".to_string(),
+            "text" | "Text" => "span".to_string(),
+            "label" | "Label" => "label".to_string(),
+            "span" | "Span" => "span".to_string(),
+            "p" | "P" => "p".to_string(),
 
             // Data
-            "table" => "table".to_string(),
-            "thead" => "thead".to_string(),
-            "tbody" => "tbody".to_string(),
-            "tr" => "tr".to_string(),
-            "th" => "th".to_string(),
-            "td" => "td".to_string(),
-            "tree" => "ul".to_string(),
-            "tree_item" | "tree-item" => "li".to_string(),
+            "table" | "Table" => "table".to_string(),
+            "thead" | "Thead" => "thead".to_string(),
+            "tbody" | "Tbody" => "tbody".to_string(),
+            "tr" | "Tr" => "tr".to_string(),
+            "th" | "Th" => "th".to_string(),
+            "td" | "Td" => "td".to_string(),
+            "tree" | "Tree" => "ul".to_string(),
+            "tree_item" | "tree-item" | "TreeItem" => "li".to_string(),
 
             // Navigation
-            "tabs" => "div".to_string(),
-            "tab" => "button".to_string(),
+            "tabs" | "Tabs" => "div".to_string(),
+            "tab" | "Tab" => "button".to_string(),
 
             // Overlay
-            "modal" => "div".to_string(),
-            "tooltip" => "span".to_string(),
+            "modal" | "Modal" => "div".to_string(),
+            "tooltip" | "Tooltip" => "span".to_string(),
 
             // Form
-            "slider" => "input".to_string(),
-            "radio" => "input".to_string(),
-            "radiogroup" | "radio-group" => "div".to_string(),
+            "slider" | "Slider" => "input".to_string(),
+            "radio" | "Radio" => "input".to_string(),
+            "radiogroup" | "radio-group" | "RadioGroup" => "div".to_string(),
 
             // Feedback
-            "progress" => "progress".to_string(),
-            "badge" => "span".to_string(),
-            "spinner" => "div".to_string(),
+            "progress" | "Progress" => "progress".to_string(),
+            "badge" | "Badge" => "span".to_string(),
+            "spinner" | "Spinner" => "div".to_string(),
 
-            // Display
+            // Display - Card is a special component, not a plain div
             "card" => "div".to_string(),
-            "avatar" => "img".to_string(),
-            "aspectratio" | "aspect-ratio" => "div".to_string(),
+            "avatar" | "Avatar" => "img".to_string(),
+            "aspectratio" | "aspect-ratio" | "AspectRatio" => "div".to_string(),
 
             // Media
-            "image" => "img".to_string(),
-            "img" => "img".to_string(),
-            "icon" => "span".to_string(),
+            "image" | "Image" => "img".to_string(),
+            "img" | "Img" => "img".to_string(),
+            "icon" | "Icon" => "span".to_string(),
 
             // Utility
-            "divider" => "hr".to_string(),
-            "spacer" => "div".to_string(),
+            "divider" | "Divider" => "hr".to_string(),
+            "spacer" | "Spacer" => "div".to_string(),
 
             // Special
             "div" => "div".to_string(),
@@ -2236,23 +2243,94 @@ impl VueGenerator {
         }
     }
 
+    /// Normalize tag name to lowercase for matching
+    fn normalize_tag(tag: &str) -> &str {
+        // Handle PascalCase to lowercase conversion for common patterns
+        match tag {
+            "Col" | "Column" => "col",
+            "Row" => "row",
+            "Grid" => "grid",
+            "Scroll" => "scroll",
+            "Container" => "container",
+            "Center" => "center",
+            "Header" => "header",
+            "Nav" => "nav",
+            "Main" => "main",
+            "Section" => "section",
+            "Aside" => "aside",
+            "Footer" => "footer",
+            "Article" => "article",
+            "Button" => "button",
+            "Input" => "input",
+            "Textarea" => "textarea",
+            "Checkbox" => "checkbox",
+            "Toggle" => "toggle",
+            "Select" => "select",
+            "Link" => "link",
+            "H1" => "h1",
+            "H2" => "h2",
+            "H3" => "h3",
+            "H4" => "h4",
+            "H5" => "h5",
+            "H6" => "h6",
+            "Text" => "text",
+            "Label" => "label",
+            "P" => "p",
+            "Table" => "table",
+            "Thead" => "thead",
+            "Tbody" => "tbody",
+            "Tr" => "tr",
+            "Th" => "th",
+            "Td" => "td",
+            "Tree" => "tree",
+            "TreeItem" => "tree_item",
+            "Tabs" => "tabs",
+            "Tab" => "tab",
+            "Modal" => "modal",
+            "Tooltip" => "tooltip",
+            "Slider" => "slider",
+            "RadioGroup" => "radiogroup",
+            "Progress" => "progress",
+            "Badge" => "badge",
+            "Spinner" => "spinner",
+            "Card" => "card",
+            "CardHeader" => "cardheader",
+            "CardTitle" => "cardtitle",
+            "CardDescription" => "carddescription",
+            "CardContent" => "cardcontent",
+            "CardFooter" => "cardfooter",
+            "Avatar" => "avatar",
+            "AspectRatio" => "aspectratio",
+            "Image" => "image",
+            "Img" => "img",
+            "Icon" => "icon",
+            "Divider" => "divider",
+            "Separator" => "separator",
+            "Spacer" => "spacer",
+            _ => tag,
+        }
+    }
+
     /// Extract Tailwind classes from tag and props
     /// Returns (static_classes, dynamic_class_binding)
     fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>) {
         let mut classes = Vec::new();
         let mut dynamic_binding: Option<String> = None;
 
+        // Normalize tag to lowercase for matching
+        let normalized_tag = Self::normalize_tag(tag);
+
         // In shadcn mode, skip default classes for components that have shadcn versions
         // (shadcn components have their own styling)
         let skip_defaults = self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
 
-        // Check if user has provided a class attribute
-        let has_user_class = props.contains_key("class");
+        // Check if user has provided a class or style attribute
+        let has_user_class = props.contains_key("class") || props.contains_key("style");
 
         // For semantic HTML elements, skip defaults if user provides their own class
         // These elements are typically fully custom-styled
         let semantic_elements = ["header", "nav", "main", "aside", "footer", "article"];
-        let skip_semantic_defaults = has_user_class && semantic_elements.contains(&tag);
+        let skip_semantic_defaults = has_user_class && semantic_elements.contains(&normalized_tag);
 
         // Extract gap prop for layout elements
         let gap_class = if let Some(value) = props.get("gap") {
@@ -2266,7 +2344,7 @@ impl VueGenerator {
 
         // Default classes based on tag (only in Plain mode or for non-shadcn elements)
         if !skip_defaults && !skip_semantic_defaults {
-            match tag {
+            match normalized_tag {
                 // Layout
                 "col" | "column" => classes.push(format!("flex flex-col {}", gap_class)),
                 "row" => classes.push(format!("flex flex-row {}", gap_class)),
@@ -2354,8 +2432,9 @@ impl VueGenerator {
             }
         }
 
-        // Class prop
-        if let Some(value) = props.get("class") {
+        // Support both 'style' (new) and 'class' (legacy) props
+        // Priority: style > class
+        if let Some(value) = props.get("style").or_else(|| props.get("class")) {
             match value {
                 AuraPropValue::Expr(AuraExpr::Literal(s)) => {
                     classes.push(s.clone());

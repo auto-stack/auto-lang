@@ -196,7 +196,7 @@ impl WidgetRegistry {
         });
         card.backends.insert("vue".to_string(), BackendMapping {
             component: "Card".to_string(),
-            import: Some("@/components/ui/card/Card".to_string()),
+            import: Some("@/components/ui/card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -209,7 +209,7 @@ impl WidgetRegistry {
         card_header.has_children = true;
         card_header.backends.insert("vue".to_string(), BackendMapping {
             component: "CardHeader".to_string(),
-            import: Some("@/components/ui/card/CardHeader".to_string()),
+            import: Some("@/components/ui/card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -222,7 +222,7 @@ impl WidgetRegistry {
         card_content.has_children = true;
         card_content.backends.insert("vue".to_string(), BackendMapping {
             component: "CardContent".to_string(),
-            import: Some("@/components/ui/card/CardContent".to_string()),
+            import: Some("@/components/ui/card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -235,7 +235,7 @@ impl WidgetRegistry {
         card_footer.has_children = true;
         card_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "CardFooter".to_string(),
-            import: Some("@/components/ui/card/CardFooter".to_string()),
+            import: Some("@/components/ui/card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -248,7 +248,7 @@ impl WidgetRegistry {
         card_title.has_children = true;
         card_title.backends.insert("vue".to_string(), BackendMapping {
             component: "CardTitle".to_string(),
-            import: Some("@/components/ui/card/CardTitle".to_string()),
+            import: Some("@/components/ui/card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -261,7 +261,7 @@ impl WidgetRegistry {
         card_description.has_children = true;
         card_description.backends.insert("vue".to_string(), BackendMapping {
             component: "CardDescription".to_string(),
-            import: Some("@/components/ui/card/CardDescription".to_string()),
+            import: Some("@/components/ui/card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -281,7 +281,7 @@ impl WidgetRegistry {
         });
         scroll_area.backends.insert("vue".to_string(), BackendMapping {
             component: "ScrollArea".to_string(),
-            import: Some("@/components/ui/scroll-area/ScrollArea".to_string()),
+            import: Some("@/components/ui/scroll-area".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -294,7 +294,7 @@ impl WidgetRegistry {
         scroll_viewport.has_children = true;
         scroll_viewport.backends.insert("vue".to_string(), BackendMapping {
             component: "ScrollAreaViewport".to_string(),
-            import: Some("@/components/ui/scroll-area/ScrollAreaViewport".to_string()),
+            import: Some("@/components/ui/scroll-area".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -306,7 +306,7 @@ impl WidgetRegistry {
             .with_alias("scroll-area-scrollbar");
         scroll_scrollbar.backends.insert("vue".to_string(), BackendMapping {
             component: "ScrollAreaScrollbar".to_string(),
-            import: Some("@/components/ui/scroll-area/ScrollAreaScrollbar".to_string()),
+            import: Some("@/components/ui/scroll-area".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -318,7 +318,7 @@ impl WidgetRegistry {
             .with_alias("scroll-area-thumb");
         scroll_thumb.backends.insert("vue".to_string(), BackendMapping {
             component: "ScrollAreaThumb".to_string(),
-            import: Some("@/components/ui/scroll-area/ScrollAreaThumb".to_string()),
+            import: Some("@/components/ui/scroll-area".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -338,7 +338,7 @@ impl WidgetRegistry {
         });
         aspect_ratio.backends.insert("vue".to_string(), BackendMapping {
             component: "AspectRatio".to_string(),
-            import: Some("@/components/ui/aspect-ratio/AspectRatio".to_string()),
+            import: Some("@/components/ui/aspect-ratio".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -351,7 +351,7 @@ impl WidgetRegistry {
         collapsible.has_children = true;
         collapsible.backends.insert("vue".to_string(), BackendMapping {
             component: "Collapsible".to_string(),
-            import: Some("@/components/ui/collapsible/Collapsible".to_string()),
+            import: Some("@/components/ui/collapsible".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -364,7 +364,7 @@ impl WidgetRegistry {
         collapsible_trigger.has_children = true;
         collapsible_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "CollapsibleTrigger".to_string(),
-            import: Some("@/components/ui/collapsible/CollapsibleTrigger".to_string()),
+            import: Some("@/components/ui/collapsible".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -377,7 +377,7 @@ impl WidgetRegistry {
         collapsible_content.has_children = true;
         collapsible_content.backends.insert("vue".to_string(), BackendMapping {
             component: "CollapsibleContent".to_string(),
-            import: Some("@/components/ui/collapsible/CollapsibleContent".to_string()),
+            import: Some("@/components/ui/collapsible".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -397,7 +397,7 @@ impl WidgetRegistry {
         });
         accordion.backends.insert("vue".to_string(), BackendMapping {
             component: "Accordion".to_string(),
-            import: Some("@/components/ui/accordion/Accordion".to_string()),
+            import: Some("@/components/ui/accordion".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -410,7 +410,7 @@ impl WidgetRegistry {
         accordion_item.has_children = true;
         accordion_item.backends.insert("vue".to_string(), BackendMapping {
             component: "AccordionItem".to_string(),
-            import: Some("@/components/ui/accordion/AccordionItem".to_string()),
+            import: Some("@/components/ui/accordion".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -423,7 +423,7 @@ impl WidgetRegistry {
         accordion_trigger.has_children = true;
         accordion_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "AccordionTrigger".to_string(),
-            import: Some("@/components/ui/accordion/AccordionTrigger".to_string()),
+            import: Some("@/components/ui/accordion".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -436,7 +436,7 @@ impl WidgetRegistry {
         accordion_content.has_children = true;
         accordion_content.backends.insert("vue".to_string(), BackendMapping {
             component: "AccordionContent".to_string(),
-            import: Some("@/components/ui/accordion/AccordionContent".to_string()),
+            import: Some("@/components/ui/accordion".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -465,7 +465,7 @@ impl WidgetRegistry {
         });
         button.backends.insert("vue".to_string(), BackendMapping {
             component: "Button".to_string(),
-            import: Some("@/components/ui/button/Button".to_string()),
+            import: Some("@/components/ui/button".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -491,7 +491,7 @@ impl WidgetRegistry {
         });
         input.backends.insert("vue".to_string(), BackendMapping {
             component: "Input".to_string(),
-            import: Some("@/components/ui/input/Input".to_string()),
+            import: Some("@/components/ui/input".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -517,7 +517,7 @@ impl WidgetRegistry {
         });
         checkbox.backends.insert("vue".to_string(), BackendMapping {
             component: "Checkbox".to_string(),
-            import: Some("@/components/ui/checkbox/Checkbox".to_string()),
+            import: Some("@/components/ui/checkbox".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -544,7 +544,7 @@ impl WidgetRegistry {
         });
         switch.backends.insert("vue".to_string(), BackendMapping {
             component: "Switch".to_string(),
-            import: Some("@/components/ui/switch/Switch".to_string()),
+            import: Some("@/components/ui/switch".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -564,7 +564,7 @@ impl WidgetRegistry {
         });
         select.backends.insert("vue".to_string(), BackendMapping {
             component: "Select".to_string(),
-            import: Some("@/components/ui/select/Select".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -577,7 +577,7 @@ impl WidgetRegistry {
         select_trigger.has_children = true;
         select_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "SelectTrigger".to_string(),
-            import: Some("@/components/ui/select/SelectTrigger".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -589,7 +589,7 @@ impl WidgetRegistry {
             .with_alias("select-value");
         select_value.backends.insert("vue".to_string(), BackendMapping {
             component: "SelectValue".to_string(),
-            import: Some("@/components/ui/select/SelectValue".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -602,7 +602,7 @@ impl WidgetRegistry {
         select_content.has_children = true;
         select_content.backends.insert("vue".to_string(), BackendMapping {
             component: "SelectContent".to_string(),
-            import: Some("@/components/ui/select/SelectContent".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -616,7 +616,7 @@ impl WidgetRegistry {
         select_item.primary_prop = Some("value".to_string());
         select_item.backends.insert("vue".to_string(), BackendMapping {
             component: "SelectItem".to_string(),
-            import: Some("@/components/ui/select/SelectItem".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -629,7 +629,7 @@ impl WidgetRegistry {
         select_group.has_children = true;
         select_group.backends.insert("vue".to_string(), BackendMapping {
             component: "SelectGroup".to_string(),
-            import: Some("@/components/ui/select/SelectGroup".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -642,7 +642,7 @@ impl WidgetRegistry {
         select_label.has_children = true;
         select_label.backends.insert("vue".to_string(), BackendMapping {
             component: "SelectLabel".to_string(),
-            import: Some("@/components/ui/select/SelectLabel".to_string()),
+            import: Some("@/components/ui/select".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -668,7 +668,7 @@ impl WidgetRegistry {
         });
         slider.backends.insert("vue".to_string(), BackendMapping {
             component: "Slider".to_string(),
-            import: Some("@/components/ui/slider/Slider".to_string()),
+            import: Some("@/components/ui/slider".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -688,7 +688,7 @@ impl WidgetRegistry {
         });
         radio_group.backends.insert("vue".to_string(), BackendMapping {
             component: "RadioGroup".to_string(),
-            import: Some("@/components/ui/radio-group/RadioGroup".to_string()),
+            import: Some("@/components/ui/radio-group".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -701,7 +701,7 @@ impl WidgetRegistry {
         radio_item.has_children = true;
         radio_item.backends.insert("vue".to_string(), BackendMapping {
             component: "RadioGroupItem".to_string(),
-            import: Some("@/components/ui/radio-group/RadioGroupItem".to_string()),
+            import: Some("@/components/ui/radio-group".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -727,7 +727,7 @@ impl WidgetRegistry {
         });
         textarea.backends.insert("vue".to_string(), BackendMapping {
             component: "Textarea".to_string(),
-            import: Some("@/components/ui/textarea/Textarea".to_string()),
+            import: Some("@/components/ui/textarea".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -753,7 +753,7 @@ impl WidgetRegistry {
         form_field.has_children = true;
         form_field.backends.insert("vue".to_string(), BackendMapping {
             component: "FormField".to_string(),
-            import: Some("@/components/ui/form/FormField".to_string()),
+            import: Some("@/components/ui/form".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -766,7 +766,7 @@ impl WidgetRegistry {
         form_label.has_children = true;
         form_label.backends.insert("vue".to_string(), BackendMapping {
             component: "FormLabel".to_string(),
-            import: Some("@/components/ui/form/FormLabel".to_string()),
+            import: Some("@/components/ui/form".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -779,7 +779,7 @@ impl WidgetRegistry {
         form_control.has_children = true;
         form_control.backends.insert("vue".to_string(), BackendMapping {
             component: "FormControl".to_string(),
-            import: Some("@/components/ui/form/FormControl".to_string()),
+            import: Some("@/components/ui/form".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -792,7 +792,7 @@ impl WidgetRegistry {
         form_description.has_children = true;
         form_description.backends.insert("vue".to_string(), BackendMapping {
             component: "FormDescription".to_string(),
-            import: Some("@/components/ui/form/FormDescription".to_string()),
+            import: Some("@/components/ui/form".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -805,7 +805,7 @@ impl WidgetRegistry {
         form_message.has_children = true;
         form_message.backends.insert("vue".to_string(), BackendMapping {
             component: "FormMessage".to_string(),
-            import: Some("@/components/ui/form/FormMessage".to_string()),
+            import: Some("@/components/ui/form".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -881,7 +881,7 @@ impl WidgetRegistry {
         });
         badge.backends.insert("vue".to_string(), BackendMapping {
             component: "Badge".to_string(),
-            import: Some("@/components/ui/badge/Badge".to_string()),
+            import: Some("@/components/ui/badge".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -901,7 +901,7 @@ impl WidgetRegistry {
         });
         avatar.backends.insert("vue".to_string(), BackendMapping {
             component: "Avatar".to_string(),
-            import: Some("@/components/ui/avatar/Avatar".to_string()),
+            import: Some("@/components/ui/avatar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -914,7 +914,7 @@ impl WidgetRegistry {
         avatar_image.primary_prop = Some("src".to_string());
         avatar_image.backends.insert("vue".to_string(), BackendMapping {
             component: "AvatarImage".to_string(),
-            import: Some("@/components/ui/avatar/AvatarImage".to_string()),
+            import: Some("@/components/ui/avatar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -927,7 +927,7 @@ impl WidgetRegistry {
         avatar_fallback.has_children = true;
         avatar_fallback.backends.insert("vue".to_string(), BackendMapping {
             component: "AvatarFallback".to_string(),
-            import: Some("@/components/ui/avatar/AvatarFallback".to_string()),
+            import: Some("@/components/ui/avatar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -953,7 +953,7 @@ impl WidgetRegistry {
         });
         separator.backends.insert("vue".to_string(), BackendMapping {
             component: "Separator".to_string(),
-            import: Some("@/components/ui/separator/Separator".to_string()),
+            import: Some("@/components/ui/separator".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -972,7 +972,7 @@ impl WidgetRegistry {
         });
         skeleton.backends.insert("vue".to_string(), BackendMapping {
             component: "Skeleton".to_string(),
-            import: Some("@/components/ui/skeleton/Skeleton".to_string()),
+            import: Some("@/components/ui/skeleton".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1007,7 +1007,7 @@ impl WidgetRegistry {
         });
         tabs.backends.insert("vue".to_string(), BackendMapping {
             component: "Tabs".to_string(),
-            import: Some("@/components/ui/tabs/Tabs".to_string()),
+            import: Some("@/components/ui/tabs".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1027,7 +1027,7 @@ impl WidgetRegistry {
         });
         tabs_list.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsList".to_string(),
-            import: Some("@/components/ui/tabs/TabsList".to_string()),
+            import: Some("@/components/ui/tabs".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1047,7 +1047,7 @@ impl WidgetRegistry {
         });
         tabs_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsTrigger".to_string(),
-            import: Some("@/components/ui/tabs/TabsTrigger".to_string()),
+            import: Some("@/components/ui/tabs".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1067,7 +1067,7 @@ impl WidgetRegistry {
         });
         tabs_content.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsContent".to_string(),
-            import: Some("@/components/ui/tabs/TabsContent".to_string()),
+            import: Some("@/components/ui/tabs".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1080,7 +1080,7 @@ impl WidgetRegistry {
         breadcrumb.has_children = true;
         breadcrumb.backends.insert("vue".to_string(), BackendMapping {
             component: "Breadcrumb".to_string(),
-            import: Some("@/components/ui/breadcrumb/Breadcrumb".to_string()),
+            import: Some("@/components/ui/breadcrumb".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1093,7 +1093,7 @@ impl WidgetRegistry {
         breadcrumb_list.has_children = true;
         breadcrumb_list.backends.insert("vue".to_string(), BackendMapping {
             component: "BreadcrumbList".to_string(),
-            import: Some("@/components/ui/breadcrumb/BreadcrumbList".to_string()),
+            import: Some("@/components/ui/breadcrumb".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1106,7 +1106,7 @@ impl WidgetRegistry {
         breadcrumb_item.has_children = true;
         breadcrumb_item.backends.insert("vue".to_string(), BackendMapping {
             component: "BreadcrumbItem".to_string(),
-            import: Some("@/components/ui/breadcrumb/BreadcrumbItem".to_string()),
+            import: Some("@/components/ui/breadcrumb".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1119,7 +1119,7 @@ impl WidgetRegistry {
         breadcrumb_link.has_children = true;
         breadcrumb_link.backends.insert("vue".to_string(), BackendMapping {
             component: "BreadcrumbLink".to_string(),
-            import: Some("@/components/ui/breadcrumb/BreadcrumbLink".to_string()),
+            import: Some("@/components/ui/breadcrumb".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1132,7 +1132,7 @@ impl WidgetRegistry {
         breadcrumb_page.has_children = true;
         breadcrumb_page.backends.insert("vue".to_string(), BackendMapping {
             component: "BreadcrumbPage".to_string(),
-            import: Some("@/components/ui/breadcrumb/BreadcrumbPage".to_string()),
+            import: Some("@/components/ui/breadcrumb".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1144,7 +1144,7 @@ impl WidgetRegistry {
             .with_alias("breadcrumb-separator");
         breadcrumb_sep.backends.insert("vue".to_string(), BackendMapping {
             component: "BreadcrumbSeparator".to_string(),
-            import: Some("@/components/ui/breadcrumb/BreadcrumbSeparator".to_string()),
+            import: Some("@/components/ui/breadcrumb".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1158,7 +1158,7 @@ impl WidgetRegistry {
         nav_menu.has_children = true;
         nav_menu.backends.insert("vue".to_string(), BackendMapping {
             component: "NavigationMenu".to_string(),
-            import: Some("@/components/ui/navigation-menu/NavigationMenu".to_string()),
+            import: Some("@/components/ui/navigation-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1172,7 +1172,7 @@ impl WidgetRegistry {
         nav_menu_list.has_children = true;
         nav_menu_list.backends.insert("vue".to_string(), BackendMapping {
             component: "NavigationMenuList".to_string(),
-            import: Some("@/components/ui/navigation-menu/NavigationMenuList".to_string()),
+            import: Some("@/components/ui/navigation-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1186,7 +1186,7 @@ impl WidgetRegistry {
         nav_menu_item.has_children = true;
         nav_menu_item.backends.insert("vue".to_string(), BackendMapping {
             component: "NavigationMenuItem".to_string(),
-            import: Some("@/components/ui/navigation-menu/NavigationMenuItem".to_string()),
+            import: Some("@/components/ui/navigation-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1200,7 +1200,7 @@ impl WidgetRegistry {
         nav_menu_trigger.has_children = true;
         nav_menu_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "NavigationMenuTrigger".to_string(),
-            import: Some("@/components/ui/navigation-menu/NavigationMenuTrigger".to_string()),
+            import: Some("@/components/ui/navigation-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1214,7 +1214,7 @@ impl WidgetRegistry {
         nav_menu_content.has_children = true;
         nav_menu_content.backends.insert("vue".to_string(), BackendMapping {
             component: "NavigationMenuContent".to_string(),
-            import: Some("@/components/ui/navigation-menu/NavigationMenuContent".to_string()),
+            import: Some("@/components/ui/navigation-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1228,7 +1228,7 @@ impl WidgetRegistry {
         nav_menu_link.has_children = true;
         nav_menu_link.backends.insert("vue".to_string(), BackendMapping {
             component: "NavigationMenuLink".to_string(),
-            import: Some("@/components/ui/navigation-menu/NavigationMenuLink".to_string()),
+            import: Some("@/components/ui/navigation-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1241,7 +1241,7 @@ impl WidgetRegistry {
         pagination.has_children = true;
         pagination.backends.insert("vue".to_string(), BackendMapping {
             component: "Pagination".to_string(),
-            import: Some("@/components/ui/pagination/Pagination".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1254,7 +1254,7 @@ impl WidgetRegistry {
         pagination_list.has_children = true;
         pagination_list.backends.insert("vue".to_string(), BackendMapping {
             component: "PaginationList".to_string(),
-            import: Some("@/components/ui/pagination/PaginationList".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1267,7 +1267,7 @@ impl WidgetRegistry {
         pagination_item.has_children = true;
         pagination_item.backends.insert("vue".to_string(), BackendMapping {
             component: "PaginationItem".to_string(),
-            import: Some("@/components/ui/pagination/PaginationItem".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1279,7 +1279,7 @@ impl WidgetRegistry {
             .with_alias("pagination-link");
         pagination_link.backends.insert("vue".to_string(), BackendMapping {
             component: "PaginationLink".to_string(),
-            import: Some("@/components/ui/pagination/PaginationLink".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1291,7 +1291,7 @@ impl WidgetRegistry {
             .with_alias("pagination-ellipsis");
         pagination_ellipsis.backends.insert("vue".to_string(), BackendMapping {
             component: "PaginationEllipsis".to_string(),
-            import: Some("@/components/ui/pagination/PaginationEllipsis".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1303,7 +1303,7 @@ impl WidgetRegistry {
             .with_alias("pagination-next");
         pagination_next.backends.insert("vue".to_string(), BackendMapping {
             component: "PaginationNext".to_string(),
-            import: Some("@/components/ui/pagination/PaginationNext".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1315,7 +1315,7 @@ impl WidgetRegistry {
             .with_alias("pagination-previous");
         pagination_prev.backends.insert("vue".to_string(), BackendMapping {
             component: "PaginationPrevious".to_string(),
-            import: Some("@/components/ui/pagination/PaginationPrevious".to_string()),
+            import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1328,7 +1328,7 @@ impl WidgetRegistry {
         sidebar.has_children = true;
         sidebar.backends.insert("vue".to_string(), BackendMapping {
             component: "Sidebar".to_string(),
-            import: Some("@/components/ui/sidebar/Sidebar".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1341,7 +1341,7 @@ impl WidgetRegistry {
         sidebar_header.has_children = true;
         sidebar_header.backends.insert("vue".to_string(), BackendMapping {
             component: "SidebarHeader".to_string(),
-            import: Some("@/components/ui/sidebar/SidebarHeader".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1354,7 +1354,7 @@ impl WidgetRegistry {
         sidebar_content.has_children = true;
         sidebar_content.backends.insert("vue".to_string(), BackendMapping {
             component: "SidebarContent".to_string(),
-            import: Some("@/components/ui/sidebar/SidebarContent".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1367,7 +1367,7 @@ impl WidgetRegistry {
         sidebar_footer.has_children = true;
         sidebar_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "SidebarFooter".to_string(),
-            import: Some("@/components/ui/sidebar/SidebarFooter".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1380,7 +1380,7 @@ impl WidgetRegistry {
         sidebar_menu.has_children = true;
         sidebar_menu.backends.insert("vue".to_string(), BackendMapping {
             component: "SidebarMenu".to_string(),
-            import: Some("@/components/ui/sidebar/SidebarMenu".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1393,7 +1393,7 @@ impl WidgetRegistry {
         sidebar_menu_item.has_children = true;
         sidebar_menu_item.backends.insert("vue".to_string(), BackendMapping {
             component: "SidebarMenuItem".to_string(),
-            import: Some("@/components/ui/sidebar/SidebarMenuItem".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1406,7 +1406,7 @@ impl WidgetRegistry {
         sidebar_menu_btn.has_children = true;
         sidebar_menu_btn.backends.insert("vue".to_string(), BackendMapping {
             component: "SidebarMenuButton".to_string(),
-            import: Some("@/components/ui/sidebar/SidebarMenuButton".to_string()),
+            import: Some("@/components/ui/sidebar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1419,7 +1419,7 @@ impl WidgetRegistry {
         menu_bar.has_children = true;
         menu_bar.backends.insert("vue".to_string(), BackendMapping {
             component: "Menubar".to_string(),
-            import: Some("@/components/ui/menubar/Menubar".to_string()),
+            import: Some("@/components/ui/menubar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1432,7 +1432,7 @@ impl WidgetRegistry {
         menu_bar_menu.has_children = true;
         menu_bar_menu.backends.insert("vue".to_string(), BackendMapping {
             component: "MenubarMenu".to_string(),
-            import: Some("@/components/ui/menubar/MenubarMenu".to_string()),
+            import: Some("@/components/ui/menubar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1445,7 +1445,7 @@ impl WidgetRegistry {
         menu_bar_trigger.has_children = true;
         menu_bar_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "MenubarTrigger".to_string(),
-            import: Some("@/components/ui/menubar/MenubarTrigger".to_string()),
+            import: Some("@/components/ui/menubar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1458,7 +1458,7 @@ impl WidgetRegistry {
         menu_bar_content.has_children = true;
         menu_bar_content.backends.insert("vue".to_string(), BackendMapping {
             component: "MenubarContent".to_string(),
-            import: Some("@/components/ui/menubar/MenubarContent".to_string()),
+            import: Some("@/components/ui/menubar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1471,7 +1471,7 @@ impl WidgetRegistry {
         menu_bar_item.has_children = true;
         menu_bar_item.backends.insert("vue".to_string(), BackendMapping {
             component: "MenubarItem".to_string(),
-            import: Some("@/components/ui/menubar/MenubarItem".to_string()),
+            import: Some("@/components/ui/menubar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1484,7 +1484,7 @@ impl WidgetRegistry {
         dropdown_menu.has_children = true;
         dropdown_menu.backends.insert("vue".to_string(), BackendMapping {
             component: "DropdownMenu".to_string(),
-            import: Some("@/components/ui/dropdown-menu/DropdownMenu".to_string()),
+            import: Some("@/components/ui/dropdown-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1497,7 +1497,7 @@ impl WidgetRegistry {
         dropdown_trigger.has_children = true;
         dropdown_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "DropdownMenuTrigger".to_string(),
-            import: Some("@/components/ui/dropdown-menu/DropdownMenuTrigger".to_string()),
+            import: Some("@/components/ui/dropdown-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1510,7 +1510,7 @@ impl WidgetRegistry {
         dropdown_content.has_children = true;
         dropdown_content.backends.insert("vue".to_string(), BackendMapping {
             component: "DropdownMenuContent".to_string(),
-            import: Some("@/components/ui/dropdown-menu/DropdownMenuContent".to_string()),
+            import: Some("@/components/ui/dropdown-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1523,7 +1523,7 @@ impl WidgetRegistry {
         dropdown_item.has_children = true;
         dropdown_item.backends.insert("vue".to_string(), BackendMapping {
             component: "DropdownMenuItem".to_string(),
-            import: Some("@/components/ui/dropdown-menu/DropdownMenuItem".to_string()),
+            import: Some("@/components/ui/dropdown-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1536,7 +1536,7 @@ impl WidgetRegistry {
         nav_link.has_children = true;
         nav_link.backends.insert("vue".to_string(), BackendMapping {
             component: "NavLink".to_string(),
-            import: Some("@/components/ui/nav-link/NavLink".to_string()),
+            import: Some("@/components/ui/nav-link".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1558,7 +1558,7 @@ impl WidgetRegistry {
         });
         dialog.backends.insert("vue".to_string(), BackendMapping {
             component: "Dialog".to_string(),
-            import: Some("@/components/ui/dialog/Dialog".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1578,7 +1578,7 @@ impl WidgetRegistry {
         });
         dialog_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogTrigger".to_string(),
-            import: Some("@/components/ui/dialog/DialogTrigger".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1598,7 +1598,7 @@ impl WidgetRegistry {
         });
         dialog_content.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogContent".to_string(),
-            import: Some("@/components/ui/dialog/DialogContent".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1618,7 +1618,7 @@ impl WidgetRegistry {
         });
         dialog_header.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogHeader".to_string(),
-            import: Some("@/components/ui/dialog/DialogHeader".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1638,7 +1638,7 @@ impl WidgetRegistry {
         });
         dialog_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogFooter".to_string(),
-            import: Some("@/components/ui/dialog/DialogFooter".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1658,7 +1658,7 @@ impl WidgetRegistry {
         });
         dialog_title.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogTitle".to_string(),
-            import: Some("@/components/ui/dialog/DialogTitle".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1678,7 +1678,7 @@ impl WidgetRegistry {
         });
         dialog_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogDescription".to_string(),
-            import: Some("@/components/ui/dialog/DialogDescription".to_string()),
+            import: Some("@/components/ui/dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1698,7 +1698,7 @@ impl WidgetRegistry {
         });
         alert_dialog.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialog".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialog".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1711,7 +1711,7 @@ impl WidgetRegistry {
         alert_dialog_trigger.has_children = true;
         alert_dialog_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogTrigger".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogTrigger".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1724,7 +1724,7 @@ impl WidgetRegistry {
         alert_dialog_content.has_children = true;
         alert_dialog_content.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogContent".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogContent".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1737,7 +1737,7 @@ impl WidgetRegistry {
         alert_dialog_header.has_children = true;
         alert_dialog_header.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogHeader".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogHeader".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1750,7 +1750,7 @@ impl WidgetRegistry {
         alert_dialog_footer.has_children = true;
         alert_dialog_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogFooter".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogFooter".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1763,7 +1763,7 @@ impl WidgetRegistry {
         alert_dialog_title.has_children = true;
         alert_dialog_title.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogTitle".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogTitle".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1776,7 +1776,7 @@ impl WidgetRegistry {
         alert_dialog_desc.has_children = true;
         alert_dialog_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogDescription".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogDescription".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1789,7 +1789,7 @@ impl WidgetRegistry {
         alert_dialog_action.has_children = true;
         alert_dialog_action.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogAction".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogAction".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1802,7 +1802,7 @@ impl WidgetRegistry {
         alert_dialog_cancel.has_children = true;
         alert_dialog_cancel.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialogCancel".to_string(),
-            import: Some("@/components/ui/alert-dialog/AlertDialogCancel".to_string()),
+            import: Some("@/components/ui/alert-dialog".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1815,7 +1815,7 @@ impl WidgetRegistry {
         sheet.has_children = true;
         sheet.backends.insert("vue".to_string(), BackendMapping {
             component: "Sheet".to_string(),
-            import: Some("@/components/ui/sheet/Sheet".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1828,7 +1828,7 @@ impl WidgetRegistry {
         sheet_trigger.has_children = true;
         sheet_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "SheetTrigger".to_string(),
-            import: Some("@/components/ui/sheet/SheetTrigger".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1841,7 +1841,7 @@ impl WidgetRegistry {
         sheet_content.has_children = true;
         sheet_content.backends.insert("vue".to_string(), BackendMapping {
             component: "SheetContent".to_string(),
-            import: Some("@/components/ui/sheet/SheetContent".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1854,7 +1854,7 @@ impl WidgetRegistry {
         sheet_header.has_children = true;
         sheet_header.backends.insert("vue".to_string(), BackendMapping {
             component: "SheetHeader".to_string(),
-            import: Some("@/components/ui/sheet/SheetHeader".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1867,7 +1867,7 @@ impl WidgetRegistry {
         sheet_footer.has_children = true;
         sheet_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "SheetFooter".to_string(),
-            import: Some("@/components/ui/sheet/SheetFooter".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1880,7 +1880,7 @@ impl WidgetRegistry {
         sheet_title.has_children = true;
         sheet_title.backends.insert("vue".to_string(), BackendMapping {
             component: "SheetTitle".to_string(),
-            import: Some("@/components/ui/sheet/SheetTitle".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1893,7 +1893,7 @@ impl WidgetRegistry {
         sheet_desc.has_children = true;
         sheet_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "SheetDescription".to_string(),
-            import: Some("@/components/ui/sheet/SheetDescription".to_string()),
+            import: Some("@/components/ui/sheet".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1906,7 +1906,7 @@ impl WidgetRegistry {
         drawer.has_children = true;
         drawer.backends.insert("vue".to_string(), BackendMapping {
             component: "Drawer".to_string(),
-            import: Some("@/components/ui/drawer/Drawer".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1919,7 +1919,7 @@ impl WidgetRegistry {
         drawer_trigger.has_children = true;
         drawer_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "DrawerTrigger".to_string(),
-            import: Some("@/components/ui/drawer/DrawerTrigger".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1932,7 +1932,7 @@ impl WidgetRegistry {
         drawer_content.has_children = true;
         drawer_content.backends.insert("vue".to_string(), BackendMapping {
             component: "DrawerContent".to_string(),
-            import: Some("@/components/ui/drawer/DrawerContent".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1945,7 +1945,7 @@ impl WidgetRegistry {
         drawer_header.has_children = true;
         drawer_header.backends.insert("vue".to_string(), BackendMapping {
             component: "DrawerHeader".to_string(),
-            import: Some("@/components/ui/drawer/DrawerHeader".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1958,7 +1958,7 @@ impl WidgetRegistry {
         drawer_footer.has_children = true;
         drawer_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "DrawerFooter".to_string(),
-            import: Some("@/components/ui/drawer/DrawerFooter".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1971,7 +1971,7 @@ impl WidgetRegistry {
         drawer_title.has_children = true;
         drawer_title.backends.insert("vue".to_string(), BackendMapping {
             component: "DrawerTitle".to_string(),
-            import: Some("@/components/ui/drawer/DrawerTitle".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1984,7 +1984,7 @@ impl WidgetRegistry {
         drawer_desc.has_children = true;
         drawer_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "DrawerDescription".to_string(),
-            import: Some("@/components/ui/drawer/DrawerDescription".to_string()),
+            import: Some("@/components/ui/drawer".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -1997,7 +1997,7 @@ impl WidgetRegistry {
         popover.has_children = true;
         popover.backends.insert("vue".to_string(), BackendMapping {
             component: "Popover".to_string(),
-            import: Some("@/components/ui/popover/Popover".to_string()),
+            import: Some("@/components/ui/popover".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2010,7 +2010,7 @@ impl WidgetRegistry {
         popover_trigger.has_children = true;
         popover_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "PopoverTrigger".to_string(),
-            import: Some("@/components/ui/popover/PopoverTrigger".to_string()),
+            import: Some("@/components/ui/popover".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2023,7 +2023,7 @@ impl WidgetRegistry {
         popover_content.has_children = true;
         popover_content.backends.insert("vue".to_string(), BackendMapping {
             component: "PopoverContent".to_string(),
-            import: Some("@/components/ui/popover/PopoverContent".to_string()),
+            import: Some("@/components/ui/popover".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2036,7 +2036,7 @@ impl WidgetRegistry {
         tooltip.has_children = true;
         tooltip.backends.insert("vue".to_string(), BackendMapping {
             component: "Tooltip".to_string(),
-            import: Some("@/components/ui/tooltip/Tooltip".to_string()),
+            import: Some("@/components/ui/tooltip".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2049,7 +2049,7 @@ impl WidgetRegistry {
         tooltip_trigger.has_children = true;
         tooltip_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "TooltipTrigger".to_string(),
-            import: Some("@/components/ui/tooltip/TooltipTrigger".to_string()),
+            import: Some("@/components/ui/tooltip".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2062,7 +2062,7 @@ impl WidgetRegistry {
         tooltip_content.has_children = true;
         tooltip_content.backends.insert("vue".to_string(), BackendMapping {
             component: "TooltipContent".to_string(),
-            import: Some("@/components/ui/tooltip/TooltipContent".to_string()),
+            import: Some("@/components/ui/tooltip".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2075,7 +2075,7 @@ impl WidgetRegistry {
         hover_card.has_children = true;
         hover_card.backends.insert("vue".to_string(), BackendMapping {
             component: "HoverCard".to_string(),
-            import: Some("@/components/ui/hover-card/HoverCard".to_string()),
+            import: Some("@/components/ui/hover-card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2088,7 +2088,7 @@ impl WidgetRegistry {
         hover_card_trigger.has_children = true;
         hover_card_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "HoverCardTrigger".to_string(),
-            import: Some("@/components/ui/hover-card/HoverCardTrigger".to_string()),
+            import: Some("@/components/ui/hover-card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2101,7 +2101,7 @@ impl WidgetRegistry {
         hover_card_content.has_children = true;
         hover_card_content.backends.insert("vue".to_string(), BackendMapping {
             component: "HoverCardContent".to_string(),
-            import: Some("@/components/ui/hover-card/HoverCardContent".to_string()),
+            import: Some("@/components/ui/hover-card".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2114,7 +2114,7 @@ impl WidgetRegistry {
         context_menu.has_children = true;
         context_menu.backends.insert("vue".to_string(), BackendMapping {
             component: "ContextMenu".to_string(),
-            import: Some("@/components/ui/context-menu/ContextMenu".to_string()),
+            import: Some("@/components/ui/context-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2127,7 +2127,7 @@ impl WidgetRegistry {
         context_menu_trigger.has_children = true;
         context_menu_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "ContextMenuTrigger".to_string(),
-            import: Some("@/components/ui/context-menu/ContextMenuTrigger".to_string()),
+            import: Some("@/components/ui/context-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2140,7 +2140,7 @@ impl WidgetRegistry {
         context_menu_content.has_children = true;
         context_menu_content.backends.insert("vue".to_string(), BackendMapping {
             component: "ContextMenuContent".to_string(),
-            import: Some("@/components/ui/context-menu/ContextMenuContent".to_string()),
+            import: Some("@/components/ui/context-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2153,7 +2153,7 @@ impl WidgetRegistry {
         context_menu_item.has_children = true;
         context_menu_item.backends.insert("vue".to_string(), BackendMapping {
             component: "ContextMenuItem".to_string(),
-            import: Some("@/components/ui/context-menu/ContextMenuItem".to_string()),
+            import: Some("@/components/ui/context-menu".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2175,7 +2175,7 @@ impl WidgetRegistry {
         });
         alert.backends.insert("vue".to_string(), BackendMapping {
             component: "Alert".to_string(),
-            import: Some("@/components/ui/alert/Alert".to_string()),
+            import: Some("@/components/ui/alert".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2188,7 +2188,7 @@ impl WidgetRegistry {
         alert_title.has_children = true;
         alert_title.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertTitle".to_string(),
-            import: Some("@/components/ui/alert/AlertTitle".to_string()),
+            import: Some("@/components/ui/alert".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2201,7 +2201,7 @@ impl WidgetRegistry {
         alert_desc.has_children = true;
         alert_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDescription".to_string(),
-            import: Some("@/components/ui/alert/AlertDescription".to_string()),
+            import: Some("@/components/ui/alert".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2221,7 +2221,7 @@ impl WidgetRegistry {
         });
         toast.backends.insert("vue".to_string(), BackendMapping {
             component: "Toast".to_string(),
-            import: Some("@/components/ui/toast/Toast".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2234,7 +2234,7 @@ impl WidgetRegistry {
         toast_provider.has_children = true;
         toast_provider.backends.insert("vue".to_string(), BackendMapping {
             component: "ToastProvider".to_string(),
-            import: Some("@/components/ui/toast/ToastProvider".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2246,7 +2246,7 @@ impl WidgetRegistry {
             .with_alias("toast-viewport");
         toast_viewport.backends.insert("vue".to_string(), BackendMapping {
             component: "ToastViewport".to_string(),
-            import: Some("@/components/ui/toast/ToastViewport".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2259,7 +2259,7 @@ impl WidgetRegistry {
         toast_action.has_children = true;
         toast_action.backends.insert("vue".to_string(), BackendMapping {
             component: "ToastAction".to_string(),
-            import: Some("@/components/ui/toast/ToastAction".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2271,7 +2271,7 @@ impl WidgetRegistry {
             .with_alias("toast-close");
         toast_close.backends.insert("vue".to_string(), BackendMapping {
             component: "ToastClose".to_string(),
-            import: Some("@/components/ui/toast/ToastClose".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2284,7 +2284,7 @@ impl WidgetRegistry {
         toast_title.has_children = true;
         toast_title.backends.insert("vue".to_string(), BackendMapping {
             component: "ToastTitle".to_string(),
-            import: Some("@/components/ui/toast/ToastTitle".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2297,7 +2297,7 @@ impl WidgetRegistry {
         toast_desc.has_children = true;
         toast_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "ToastDescription".to_string(),
-            import: Some("@/components/ui/toast/ToastDescription".to_string()),
+            import: Some("@/components/ui/toast".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2323,7 +2323,7 @@ impl WidgetRegistry {
         });
         progress.backends.insert("vue".to_string(), BackendMapping {
             component: "Progress".to_string(),
-            import: Some("@/components/ui/progress/Progress".to_string()),
+            import: Some("@/components/ui/progress".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2335,7 +2335,7 @@ impl WidgetRegistry {
             .with_alias("sonner");
         sonner.backends.insert("vue".to_string(), BackendMapping {
             component: "Sonner".to_string(),
-            import: Some("@/components/ui/sonner/Sonner".to_string()),
+            import: Some("@/components/ui/sonner".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2357,7 +2357,7 @@ impl WidgetRegistry {
         });
         table.backends.insert("vue".to_string(), BackendMapping {
             component: "Table".to_string(),
-            import: Some("@/components/ui/table/Table".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2377,7 +2377,7 @@ impl WidgetRegistry {
         });
         table_header.backends.insert("vue".to_string(), BackendMapping {
             component: "TableHeader".to_string(),
-            import: Some("@/components/ui/table/TableHeader".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2397,7 +2397,7 @@ impl WidgetRegistry {
         });
         table_body.backends.insert("vue".to_string(), BackendMapping {
             component: "TableBody".to_string(),
-            import: Some("@/components/ui/table/TableBody".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2417,7 +2417,7 @@ impl WidgetRegistry {
         });
         table_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "TableFooter".to_string(),
-            import: Some("@/components/ui/table/TableFooter".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2437,7 +2437,7 @@ impl WidgetRegistry {
         });
         table_row.backends.insert("vue".to_string(), BackendMapping {
             component: "TableRow".to_string(),
-            import: Some("@/components/ui/table/TableRow".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2457,7 +2457,7 @@ impl WidgetRegistry {
         });
         table_head.backends.insert("vue".to_string(), BackendMapping {
             component: "TableHead".to_string(),
-            import: Some("@/components/ui/table/TableHead".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2477,7 +2477,7 @@ impl WidgetRegistry {
         });
         table_cell.backends.insert("vue".to_string(), BackendMapping {
             component: "TableCell".to_string(),
-            import: Some("@/components/ui/table/TableCell".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2497,7 +2497,7 @@ impl WidgetRegistry {
         });
         table_caption.backends.insert("vue".to_string(), BackendMapping {
             component: "TableCaption".to_string(),
-            import: Some("@/components/ui/table/TableCaption".to_string()),
+            import: Some("@/components/ui/table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2510,7 +2510,7 @@ impl WidgetRegistry {
         data_table.has_children = true;
         data_table.backends.insert("vue".to_string(), BackendMapping {
             component: "DataTable".to_string(),
-            import: Some("@/components/ui/data-table/DataTable".to_string()),
+            import: Some("@/components/ui/data-table".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2537,7 +2537,7 @@ impl WidgetRegistry {
         });
         calendar.backends.insert("vue".to_string(), BackendMapping {
             component: "Calendar".to_string(),
-            import: Some("@/components/ui/calendar/Calendar".to_string()),
+            import: Some("@/components/ui/calendar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2550,7 +2550,7 @@ impl WidgetRegistry {
         calendar_grid.has_children = true;
         calendar_grid.backends.insert("vue".to_string(), BackendMapping {
             component: "CalendarGrid".to_string(),
-            import: Some("@/components/ui/calendar/CalendarGrid".to_string()),
+            import: Some("@/components/ui/calendar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2563,7 +2563,7 @@ impl WidgetRegistry {
         calendar_header.has_children = true;
         calendar_header.backends.insert("vue".to_string(), BackendMapping {
             component: "CalendarHeader".to_string(),
-            import: Some("@/components/ui/calendar/CalendarHeader".to_string()),
+            import: Some("@/components/ui/calendar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2576,7 +2576,7 @@ impl WidgetRegistry {
         calendar_heading.has_children = true;
         calendar_heading.backends.insert("vue".to_string(), BackendMapping {
             component: "CalendarHeading".to_string(),
-            import: Some("@/components/ui/calendar/CalendarHeading".to_string()),
+            import: Some("@/components/ui/calendar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2589,7 +2589,7 @@ impl WidgetRegistry {
         calendar_cell.has_children = true;
         calendar_cell.backends.insert("vue".to_string(), BackendMapping {
             component: "CalendarCell".to_string(),
-            import: Some("@/components/ui/calendar/CalendarCell".to_string()),
+            import: Some("@/components/ui/calendar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
@@ -2601,7 +2601,7 @@ impl WidgetRegistry {
             .with_alias("calendar-day");
         calendar_day.backends.insert("vue".to_string(), BackendMapping {
             component: "CalendarDay".to_string(),
-            import: Some("@/components/ui/calendar/CalendarDay".to_string()),
+            import: Some("@/components/ui/calendar".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
