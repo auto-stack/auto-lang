@@ -11,13 +11,33 @@ pub fn generate_state_declarations(widget: &AuraWidget) -> String {
 
     for state_var in &widget.state_vars {
         let name = &state_var.name;
-        let arkts_type = auto_type_to_arkts(&state_var.type_info);
+        // Check if this prop is used with Image component - use ResourceStr for those
+        let arkts_type = if is_image_source_prop(name, &state_var.type_info) {
+            "ResourceStr".to_string()
+        } else {
+            auto_type_to_arkts(&state_var.type_info)
+        };
         let default_value = generate_default_value(&state_var.type_info);
 
-        lines.push(format!("  @State {}: {} = {}", name, arkts_type, default_value));
+        // Use @Prop for model properties (passed from parent), @State for internal state
+        let decorator = if widget.props.iter().any(|p| p.name.as_str() == name) {
+            "@Prop"
+        } else {
+            "@State"
+        };
+        lines.push(format!("  {} {}: {} = {}", decorator, name, arkts_type, default_value));
     }
 
     lines.join("\n")
+}
+
+/// Check if a property is likely an image source (used with Image component)
+fn is_image_source_prop(name: &str, ty: &Type) -> bool {
+    // Common naming patterns for image sources
+    let is_image_name = name.ends_with("Src") || name.ends_with("Image") || name == "imageSrc" || name == "src" || name == "image";
+    // Must be a string type (would be converted to ResourceStr)
+    let is_str_type = matches!(ty, Type::Str(_));
+    is_image_name && is_str_type
 }
 
 /// Generate dispatch function from widget messages and handlers
