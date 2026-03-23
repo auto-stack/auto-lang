@@ -470,6 +470,32 @@ impl ArkGenerator {
         format!("{}{}", first, rest)
     }
 
+    /// Generate props string for custom component constructor
+    fn generate_custom_component_props(&self, props: &HashMap<String, AuraPropValue>) -> String {
+        if props.is_empty() {
+            return String::new();
+        }
+
+        let mut prop_pairs: Vec<String> = Vec::new();
+        for (key, value) in props {
+            // Skip style and class as they're not model props
+            if key == "style" || key == "class" {
+                continue;
+            }
+            let value_str = match value {
+                AuraPropValue::Expr(expr) => self.expr_to_ark_string(expr),
+                AuraPropValue::StyleBinding(_) => continue,
+            };
+            prop_pairs.push(format!("{}: {}", key, value_str));
+        }
+
+        if prop_pairs.is_empty() {
+            String::new()
+        } else {
+            format!("{{ {} }}", prop_pairs.join(", "))
+        }
+    }
+
     /// Convert module name to component name
     /// This should match the actual widget name in the source file
     fn module_to_component(module: &str) -> String {
@@ -694,7 +720,10 @@ impl ArkGenerator {
         } else if self.custom_widgets.contains(tag) || self.is_capitalized_component(tag) {
             // Custom widget (from use statement) - call it directly as a component
             let component_name = Self::capitalize_module(tag);
-            lines.push(format!("{}()", component_name));
+
+            // Generate props as constructor arguments
+            let props_str = self.generate_custom_component_props(props);
+            lines.push(format!("{}({})", component_name, props_str));
 
             // Handle children if any
             if !children.is_empty() {
