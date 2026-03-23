@@ -578,6 +578,12 @@ fun {}Preview() {{
             _ => Err(GenError::UnsupportedExpr(format!("Unknown layout tag: {}", tag))),
         };
 
+        // Collect imports from LayoutGenerator (clone to avoid borrow issues)
+        let layout_imports: Vec<String> = self.layout_generator.get_imports().to_vec();
+        for import in layout_imports {
+            self.add_import(&import);
+        }
+
         // Prepend proper indentation
         result.map(|s| {
             let lines: Vec<&str> = s.lines().collect();

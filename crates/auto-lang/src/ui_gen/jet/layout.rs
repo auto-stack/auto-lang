@@ -11,6 +11,7 @@
 
 use crate::aura::{AuraExpr, AuraPropValue};
 use crate::ui_gen::jet::modifier::ModifierDsl;
+use crate::ui_gen::shared::ComputedStyle as Style;
 use crate::ui_gen::GenResult;
 use std::collections::HashMap;
 
@@ -64,6 +65,31 @@ impl LayoutGenerator {
     fn add_import(&mut self, import: &str) {
         if !self.imports.iter().any(|i| i == import) {
             self.imports.push(import.to_string());
+        }
+    }
+
+    /// Add imports based on ComputedStyle
+    fn add_style_imports(&mut self, style: &Style) {
+        // Background color requires Color import
+        if style.background_color.is_some() {
+            self.add_import("androidx.compose.ui.graphics.Color");
+            self.add_import("androidx.compose.foundation.background");
+        }
+
+        // Border radius requires clip and RoundedCornerShape
+        if style.border_radius.is_some() {
+            self.add_import("androidx.compose.foundation.shape.RoundedCornerShape");
+            self.add_import("androidx.compose.ui.draw.clip");
+        }
+
+        // Shadow requires shadow import
+        if style.shadow.is_some() {
+            self.add_import("androidx.compose.foundation.shadow");
+        }
+
+        // Border width/color requires border import
+        if style.border_width.is_some() || style.border_color.is_some() {
+            self.add_import("androidx.compose.foundation.border");
         }
     }
 
@@ -133,6 +159,9 @@ impl LayoutGenerator {
         // Also extract arrangement from class (gap)
         let class_arrangement = if let Some(class) = &layout_props.class {
             let result = self.class_to_modifier_result(class);
+
+            // Add required imports based on style
+            self.add_style_imports(&result.style);
 
             // Add modifiers (padding, margin, etc.)
             if !result.modifiers.is_empty() {
@@ -224,9 +253,10 @@ impl LayoutGenerator {
 
         // Add class-based modifiers (only if non-empty)
         if let Some(class) = &layout_props.class {
-            let class_mods = self.class_to_modifier(class);
-            if !class_mods.is_empty() {
-                modifier_parts.push(class_mods);
+            let result = self.class_to_modifier_result(class);
+            self.add_style_imports(&result.style);
+            if !result.modifiers.is_empty() {
+                modifier_parts.push(result.modifiers.join("."));
             }
         }
 
@@ -295,9 +325,10 @@ impl LayoutGenerator {
 
         // Add class-based modifiers (only if non-empty)
         if let Some(class) = &layout_props.class {
-            let class_mods = self.class_to_modifier(class);
-            if !class_mods.is_empty() {
-                modifier_parts.push(class_mods);
+            let result = self.class_to_modifier_result(class);
+            self.add_style_imports(&result.style);
+            if !result.modifiers.is_empty() {
+                modifier_parts.push(result.modifiers.join("."));
             }
         }
 
@@ -349,6 +380,7 @@ impl LayoutGenerator {
 
         if let Some(class_str) = class {
             let result = self.modifier_dsl.convert_class(&class_str);
+            self.add_style_imports(&result.style);
 
             for modifier in &result.modifiers {
                 // Padding should be inside the card, not on the card itself
@@ -399,9 +431,10 @@ impl LayoutGenerator {
         let mut modifier_parts = vec!["verticalScroll(rememberScrollState())".to_string()];
 
         if let Some(class_str) = class {
-            let class_mods = self.class_to_modifier(&class_str);
-            if !class_mods.is_empty() {
-                modifier_parts.push(class_mods);
+            let result = self.class_to_modifier_result(&class_str);
+            self.add_style_imports(&result.style);
+            if !result.modifiers.is_empty() {
+                modifier_parts.push(result.modifiers.join("."));
             }
         }
 

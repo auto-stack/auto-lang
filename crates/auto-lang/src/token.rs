@@ -373,6 +373,7 @@ impl Token {
             "routes" => Some(TokenKind::Routes), // Plan 105: router keywords
             "outlet" => Some(TokenKind::Outlet),
             "link" => Some(TokenKind::Link),
+            "Link" => Some(TokenKind::Link), // PascalCase alias
             "route" => Some(TokenKind::Route),
             "nav" => Some(TokenKind::Nav),
             // Plan 120: Option and Result type keywords (PascalCase like Rust)

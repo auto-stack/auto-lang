@@ -15,26 +15,32 @@ widget IndexPage {
             // Component grid
             Col (class: "gap-4") {
                 // Counter Demo Card
-                Card (class: "p-4 rounded-lg hover:shadow-lg", variant: "outlined") {
-                    Col (class: "gap-2") {
-                        H3 (text: "Counter Demo") {}
-                        Text (text: "State management with ELM architecture", style: "muted") {}
+                Link (to: "/counter") {
+                    Card (class: "p-4 rounded-lg hover:shadow-lg cursor-pointer", variant: "outlined") {
+                        Col (class: "gap-2") {
+                            H3 (text: "Counter Demo") {}
+                            Text (text: "State management with ELM architecture", style: "muted") {}
+                        }
                     }
                 }
 
                 // Column Demo Card
-                Card (class: "p-4 rounded-lg hover:shadow-lg", variant: "outlined") {
-                    Col (class: "gap-2") {
-                        H3 (text: "Column Demo") {}
-                        Text (text: "Vertical layout with Column component", style: "muted") {}
+                Link (to: "/column") {
+                    Card (class: "p-4 rounded-lg hover:shadow-lg cursor-pointer", variant: "outlined") {
+                        Col (class: "gap-2") {
+                            H3 (text: "Column Demo") {}
+                            Text (text: "Vertical layout with Column component", style: "muted") {}
+                        }
                     }
                 }
 
                 // Row Demo Card
-                Card (class: "p-4 rounded-lg hover:shadow-lg", variant: "outlined") {
-                    Col (class: "gap-2") {
-                        H3 (text: "Row Demo") {}
-                        Text (text: "Horizontal layout with Row component", style: "muted") {}
+                Link (to: "/row") {
+                    Card (class: "p-4 rounded-lg hover:shadow-lg cursor-pointer", variant: "outlined") {
+                        Col (class: "gap-2") {
+                            H3 (text: "Row Demo") {}
+                            Text (text: "Horizontal layout with Row component", style: "muted") {}
+                        }
                     }
                 }
             }
