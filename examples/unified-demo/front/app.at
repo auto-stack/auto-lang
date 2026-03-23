@@ -15,7 +15,7 @@ widget App {
 
     view {
         Col {
-            style: "h-full"
+            style: "w-full h-full"
             Col {
                 style: "p-4 bg-blue-500"
                 H1 "Auto UI Demo"

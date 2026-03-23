@@ -426,7 +426,9 @@ fun {}Preview() {{
             }
             AuraNode::Outlet => {
                 // outlet should render the NavHost with current navController
-                Ok(format!("{}AppNavHost(navController)\n", ind))
+                // Use weight(1f) to fill remaining space in Column
+                self.add_import("androidx.compose.foundation.layout.weight");
+                Ok(format!("{}AppNavHost(navController, modifier = Modifier.weight(1f))\n", ind))
             }
             AuraNode::Link { to, text, href, children } => {
                 self.link_to_compose(to, text, href, children, indent)

@@ -1,0 +1,62 @@
+{
+  "file_hashes": {
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\column.at": 7646468973673760606,
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\app.at": 14997282658876891996,
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\counter.at": 17563955707229143755,
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\index.at": 15739471882005302453,
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\row.at": 9678543331774620942
+  },
+  "artifacts": {
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\app.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\app.at",
+        "widget_name": "App",
+        "output_path": "src/App.vue",
+        "source_hash": 14997282658876891996,
+        "content_hash": 3792007008835228695,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\column.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\column.at",
+        "widget_name": "ColumnPage",
+        "output_path": "src/pages/column.vue",
+        "source_hash": 7646468973673760606,
+        "content_hash": 13512449702542976100,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\index.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\index.at",
+        "widget_name": "IndexPage",
+        "output_path": "src/pages/index.vue",
+        "source_hash": 15739471882005302453,
+        "content_hash": 7162347528563592013,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\row.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\row.at",
+        "widget_name": "RowPage",
+        "output_path": "src/pages/row.vue",
+        "source_hash": 9678543331774620942,
+        "content_hash": 8498698258708032602,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\counter.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\unified-demo\\front\\pages\\counter.at",
+        "widget_name": "CounterPage",
+        "output_path": "src/pages/counter.vue",
+        "source_hash": 17563955707229143755,
+        "content_hash": 9883281651839919026,
+        "backend": "vue"
+      }
+    ]
+  },
+  "version": 1
+}
