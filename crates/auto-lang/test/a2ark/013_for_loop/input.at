@@ -1,0 +1,33 @@
+// Test for loop with property access
+use TestItem
+
+widget TestForLoop {
+    model {
+        items List = []
+    }
+
+    view {
+        Column() {
+            for item in .items {
+                TestItem {
+                    title: item.title,
+                    brief: item.brief
+                }
+            }
+        }
+    }
+}
+
+widget TestItem {
+    model {
+        title str = ""
+        brief str = ""
+    }
+
+    view {
+        Row() {
+            Text .title {}
+            Text .brief {}
+        }
+    }
+}

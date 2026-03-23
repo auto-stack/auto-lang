@@ -1,4 +1,4 @@
-// EnablementView.at - Grid section
+// EnablementView.at - Grid section with horizontal scrolling cards
 
 use EnablementItem
 

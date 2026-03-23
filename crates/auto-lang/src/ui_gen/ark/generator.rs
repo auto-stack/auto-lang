@@ -77,6 +77,9 @@ pub struct ArkGenerator {
 
     /// Whether current widget has messages
     has_messages: bool,
+
+    /// Loop variables in scope (to avoid prefixing with `this.`)
+    loop_vars: HashSet<String>,
 }
 
 impl ArkGenerator {
@@ -91,6 +94,7 @@ impl ArkGenerator {
             current_handlers: HashMap::new(),
             has_messages: false,
             sanitized_name: None,
+            loop_vars: HashSet::new(),
         }
     }
 
@@ -917,7 +921,12 @@ impl ArkGenerator {
                 }
             }
             AuraExpr::StateRef(field) => {
-                format!("this.{}", field)
+                // Check if this is a loop variable (should not be prefixed with `this.`)
+                if self.loop_vars.contains(field.as_str()) {
+                    field.clone()
+                } else {
+                    format!("this.{}", field)
+                }
             }
             AuraExpr::FieldAccess { object, field } => {
                 let obj_str = self.expr_to_ark_string(object);
@@ -961,11 +970,20 @@ impl ArkGenerator {
         let index_name = index.unwrap_or("index");
         let index_param = index.map(|i| format!(", {}: number", i)).unwrap_or_default();
 
+        // Strip leading dot from iterable if present (e.g., ".items" -> "items")
+        let iterable_name = iterable.strip_prefix('.').unwrap_or(iterable);
+
+        // Add loop variable to loop_vars so expr_to_ark_string knows not to prefix with `this.`
+        self.loop_vars.insert(var.to_string());
+        if let Some(idx) = index {
+            self.loop_vars.insert(idx.to_string());
+        }
+
         // Generate ForEach with key function
         lines.push(format!(
             "{}ForEach(this.{}, ({}: any{}) => {{",
             self.indent(),
-            iterable,
+            iterable_name,
             var,
             index_param
         ));
@@ -989,6 +1007,12 @@ impl ArkGenerator {
             var,
             index_name
         ));
+
+        // Remove loop variable from loop_vars
+        self.loop_vars.remove(var);
+        if let Some(idx) = index {
+            self.loop_vars.remove(idx);
+        }
 
         Ok(lines.join("\n"))
     }
@@ -1724,5 +1748,10 @@ mod tests {
     #[test]
     fn test_012_dialog() {
         test_a2ark("012_dialog").unwrap();
+    }
+
+    #[test]
+    fn test_013_for_loop() {
+        test_a2ark("013_for_loop").unwrap();
     }
 }
