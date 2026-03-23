@@ -163,6 +163,19 @@ impl ArkGenerator {
         }
     }
 
+    /// Check if widget view tree contains Tabs component
+    fn widget_has_tabs(node: &AuraNode) -> bool {
+        match node {
+            AuraNode::Element { tag, children, .. } => {
+                if tag == "tabs" {
+                    return true;
+                }
+                children.iter().any(|c| Self::widget_has_tabs(c))
+            }
+            _ => false,
+        }
+    }
+
     /// Generate @Builder function for tab bar
     fn generate_tabs_builder(&self) -> String {
         let mut lines = Vec::new();
@@ -471,6 +484,14 @@ impl ArkGenerator {
                 lines.push(format!("{}{}", self.indent(), line));
             }
             lines.push("".to_string());
+        }
+
+        // Check if widget contains Tabs - add controller and index state
+        let has_tabs = Self::widget_has_tabs(&widget.view_tree);
+        if has_tabs {
+            lines.push(format!("{}@State currentIndex: number = 0", self.indent()));
+            lines.push(format!("{}private tabsController: TabsController = new TabsController()", self.indent()));
+            lines.push(String::new());
         }
 
         // Generate dispatch function if widget has messages and handlers
