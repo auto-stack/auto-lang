@@ -162,6 +162,39 @@ impl ArkGenerator {
             _ => false,
         }
     }
+
+    /// Generate @Builder function for tab bar
+    fn generate_tabs_builder(&self) -> String {
+        let mut lines = Vec::new();
+
+        lines.push("  @Builder".to_string());
+        lines.push("  tabBarBuilder(title: string, targetIndex: number, selectedIcon?: Resource, unselectIcon?: Resource) {".to_string());
+        lines.push("    Column() {".to_string());
+        lines.push("      if (selectedIcon && unselectIcon) {".to_string());
+        lines.push("        Image(this.currentIndex === targetIndex ? selectedIcon : unselectIcon)".to_string());
+        lines.push("          .width(24)".to_string());
+        lines.push("          .height(24)".to_string());
+        lines.push("      }".to_string());
+        lines.push("      Text(title)".to_string());
+        lines.push("        .fontFamily('HarmonyHeiTi-Medium')".to_string());
+        lines.push("        .fontSize(10)".to_string());
+        lines.push("        .fontColor(this.currentIndex === targetIndex ? '#0A59F7' : 'rgba(0,0,0,0.60)')".to_string());
+        lines.push("        .textAlign(TextAlign.Center)".to_string());
+        lines.push("        .lineHeight(14)".to_string());
+        lines.push("        .fontWeight(500)".to_string());
+        lines.push("    }".to_string());
+        lines.push("    .width('100%')".to_string());
+        lines.push("    .height('100%')".to_string());
+        lines.push("    .justifyContent(FlexAlign.Center)".to_string());
+        lines.push("    .alignItems(HorizontalAlign.Center)".to_string());
+        lines.push("    .onClick(() => {".to_string());
+        lines.push("      this.currentIndex = targetIndex".to_string());
+        lines.push("      this.tabsController.changeIndex(targetIndex)".to_string());
+        lines.push("    })".to_string());
+        lines.push("  }".to_string());
+
+        lines.join("\n")
+    }
 }
 
 /// Extracted tab item data for @Builder generation
