@@ -13,8 +13,6 @@ widget App {
         "/row" => use row
         "/button" => use button
         "/input" => use input
-        "/form" => use form
-        "/tabs" => use tabs
     }
 
     view {
