@@ -1,0 +1,8 @@
+name: "jet-gallery"
+version: "1.0.0"
+backend: "jet"
+
+app("jet-gallery") {
+    // Hand-written Jetpack Compose gallery app used as a2jet reference.
+}
+
