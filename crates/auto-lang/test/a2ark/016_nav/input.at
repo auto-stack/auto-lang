@@ -1,0 +1,17 @@
+// Test nav() function in onClick handler
+widget TutorialItem {
+    model {
+        items: [
+            { id: 1, title: "Hello" },
+            { id: 2, title: "World" }
+        ]
+    }
+
+    view {
+        Column {
+            for item in .items {
+                Text item.title
+            }
+        }
+    }
+}
