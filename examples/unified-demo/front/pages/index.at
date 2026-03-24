@@ -6,73 +6,83 @@
 widget IndexPage {
     view {
         Col {
-            style: "p-8 gap-8"
-            // Hero section
+            style: "w-full h-full"
+            // Header - fixed at top
             Col {
-                style: "items-center"
+                style: "p-4 bg-blue-500 items-center"
                 H1 "Component Gallery"
-                Text (variant: "muted") "Jetpack Compose Demo - Phase 1"
             }
-
-            // Component grid
-            Col {
-                style: "gap-4"
-                // Counter Demo Card
-                Link (to: "/counter") {
-                    Card (variant: "outlined") {
-                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
-                        Col {
-                            style: "gap-2"
-                            H3 "Counter Demo"
-                            Text (variant: "muted") "State management with ELM architecture"
-                        }
+            // Scrollable content area
+            Scroll {
+                Col {
+                    style: "p-8 gap-8"
+                    // Hero section
+                    Col {
+                        style: "items-center"
+                        Text (variant: "muted") "Jetpack Compose Demo - Phase 1"
                     }
-                }
 
-                // Column Demo Card
-                Link (to: "/column") {
-                    Card (variant: "outlined") {
-                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
-                        Col {
-                            style: "gap-2"
-                            H3 "Column Demo"
-                            Text (variant: "muted") "Vertical layout with Column component"
+                    // Component grid
+                    Col {
+                        style: "gap-4"
+                        // Counter Demo Card
+                        Link (to: "/counter") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Counter Demo"
+                                    Text (variant: "muted") "State management with ELM architecture"
+                                }
+                            }
                         }
-                    }
-                }
 
-                // Row Demo Card
-                Link (to: "/row") {
-                    Card (variant: "outlined") {
-                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
-                        Col {
-                            style: "gap-2"
-                            H3 "Row Demo"
-                            Text (variant: "muted") "Horizontal layout with Row component"
+                        // Column Demo Card
+                        Link (to: "/column") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Column Demo"
+                                    Text (variant: "muted") "Vertical layout with Column component"
+                                }
+                            }
                         }
-                    }
-                }
 
-                // Button Demo Card
-                Link (to: "/button") {
-                    Card (variant: "outlined") {
-                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
-                        Col {
-                            style: "gap-2"
-                            H3 "Button Demo"
-                            Text (variant: "muted") "Clickable buttons with variants and sizes"
+                        // Row Demo Card
+                        Link (to: "/row") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Row Demo"
+                                    Text (variant: "muted") "Horizontal layout with Row component"
+                                }
+                            }
                         }
-                    }
-                }
 
-                // Input Demo Card
-                Link (to: "/input") {
-                    Card (variant: "outlined") {
-                        style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
-                        Col {
-                            style: "gap-2"
-                            H3 "Input Demo"
-                            Text (variant: "muted") "Form input fields and configurations"
+                        // Button Demo Card
+                        Link (to: "/button") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Button Demo"
+                                    Text (variant: "muted") "Clickable buttons with variants and sizes"
+                                }
+                            }
+                        }
+
+                        // Input Demo Card
+                        Link (to: "/input") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Input Demo"
+                                    Text (variant: "muted") "Form input fields and configurations"
+                                }
+                            }
                         }
                     }
                 }
