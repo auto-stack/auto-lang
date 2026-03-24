@@ -27,6 +27,7 @@ use super::state::{
     generate_dispatch_function, generate_handler_body, generate_interface,
     generate_interfaces_with_prefix, generate_msg_enum, generate_state_declarations_with_prefix,
 };
+use crate::ast::Type;
 use crate::aura::{AuraExpr, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 use crate::ui_gen::widget::WidgetRegistry;
 use crate::ui_gen::{BackendGenerator, GenResult};
@@ -481,6 +482,15 @@ impl ArkGenerator {
         let state_decls = generate_state_declarations_with_prefix(widget, &sanitized_name);
         if !state_decls.is_empty() {
             for line in state_decls.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+            lines.push("".to_string());
+        }
+
+        // Generate aboutToAppear() for widgets with NavParam decorator
+        let about_to_appear = self.generate_about_to_appear(widget);
+        if !about_to_appear.is_empty() {
+            for line in about_to_appear.lines() {
                 lines.push(format!("{}{}", self.indent(), line));
             }
             lines.push("".to_string());
@@ -1193,6 +1203,63 @@ impl ArkGenerator {
         }
 
         format!("console.log({})", params.join(", "))
+    }
+
+    /// Generate aboutToAppear() lifecycle method for NavDestination pages
+    ///
+    /// Generates code to retrieve navigation params using getParamByName()
+    /// Example:
+    /// ```
+    /// aboutToAppear(): void {
+    ///   this.articleDetail = this.pathStack.getParamByName('articleDetail')[0] as ArticleClass;
+    /// }
+    /// ```
+    fn generate_about_to_appear(&self, widget: &AuraWidget) -> String {
+        let mut nav_params = Vec::new();
+
+        // Find state vars with NavParam decorator
+        for state_var in &widget.state_vars {
+            for decorator in &state_var.decorators {
+                if decorator.name == "NavParam" {
+                    // Get route name from decorator arg
+                    let route_name = decorator.args.first()
+                        .map(|s| s.as_str())
+                        .unwrap_or(&state_var.name);
+
+                    // Get type name for casting
+                    let type_name = Self::type_to_ark_string(&state_var.type_info);
+
+                    nav_params.push((state_var.name.clone(), route_name.to_string(), type_name));
+                }
+            }
+        }
+
+        if nav_params.is_empty() {
+            return String::new();
+        }
+
+        let mut lines = Vec::new();
+        lines.push("aboutToAppear(): void {".to_string());
+
+        for (var_name, route_name, type_name) in nav_params {
+            lines.push(format!("  this.{} = this.pathStack.getParamByName('{}')[0] as {}",
+                var_name, route_name, type_name));
+        }
+
+        lines.push("}".to_string());
+        lines.join("\n")
+    }
+
+    /// Convert Type to ArkTS type string
+    fn type_to_ark_string(ty: &Type) -> String {
+        match ty {
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
+            Type::Bool => "boolean".to_string(),
+            Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
+            Type::User(type_decl) => type_decl.name.to_string(),
+            Type::Option(inner) => format!("{} | null", Self::type_to_ark_string(inner)),
+            _ => ty.unique_name().to_string(), // Fallback
+        }
     }
 
     /// Generate handler code from handler string (e.g., ".Inc" -> "this.count += 1")

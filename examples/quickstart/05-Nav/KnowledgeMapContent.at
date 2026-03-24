@@ -1,40 +1,47 @@
 // KnowledgeMapContent.at - Knowledge map content detail page
 
+/// Section data for knowledge map
+type Section {
+    title str
+    brief str
+}
+
 /// Knowledge map content detail page
 widget KnowledgeMapContent {
     model {
         #[Consume("pathStack")] pathStack NavPathStack
-        sectionId str = ""
-        title str = ""
-        description str = ""
+        #[NavParam("KnowledgeMapContent")] section ?Section = null
     }
 
     view {
         NavDestination {
-            Col {
-                Row {
-                    Image "$r('app.media.ic_back')" {
-                        style: "w-10 h-10"
-                    }
-                    Text .title {
-                        style: "text-xl font-bold ml-2 flex-1"
-                    }
-                    style: "w-full h-14"
-                }
+            Scroll {
                 Col {
-                    Text .description {
-                        style: "text-base text-gray-700 mt-4"
+                    Text "知识地图详情" {
+                        style: "text-xl font-bold text-black"
+                    }
+                    Text "这里是知识地图的详细内容" {
+                        style: "text-xs text-gray-600 mt-3"
                     }
                     Text "学习内容" {
-                        style: "text-lg font-bold mt-6 mb-2"
+                        style: "text-lg font-bold mt-7 mb-2"
                     }
-                    Text "这里是该章节的详细学习内容..." {
-                        style: "text-sm text-gray-500"
+                    Col {
+                        Text "指南" {
+                            style: "text-base font-medium"
+                        }
+                        Text "准备" {
+                            style: "text-base font-medium mt-4"
+                        }
+                        Text "视频教程" {
+                            style: "text-base font-medium mt-4"
+                        }
+                        style: "w-full bg-white rounded-2xl p-3 mt-4"
                     }
-                    style: "flex-1 w-full"
+                    style: "w-full px-6 py-3"
                 }
-                style: "w-full h-full p-4"
             }
+            style: "flex-1"
         }
     }
 }

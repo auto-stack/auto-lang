@@ -8087,8 +8087,8 @@ impl<'a> Parser<'a> {
                 "primary" => {
                     is_primary = true;
                 }
-                "Consume" | "Provide" => {
-                    // Parse arguments: ("key")
+                "Consume" | "Provide" | "NavParam" => {
+                    // Parse arguments: ("key") or ("routeName")
                     let mut args = Vec::new();
                     if self.is_kind(TokenKind::LParen) {
                         self.next(); // skip (
@@ -8109,7 +8109,7 @@ impl<'a> Parser<'a> {
                 _ => {
                     return Err(SyntaxError::Generic {
                         message: format!(
-                            "Unknown model field annotation '{}'. Valid: #[primary], #[Consume(\"key\")], #[Provide(\"key\")]",
+                            "Unknown model field annotation '{}'. Valid: #[primary], #[Consume(\"key\")], #[Provide(\"key\")], #[NavParam(\"routeName\")]",
                             annot_name
                         ),
                         span: pos_to_span(self.cur.pos),

@@ -212,6 +212,9 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
                 // Check if it's a resource reference - don't quote it
                 if s.starts_with("$r(") {
                     s.clone()
+                } else if s == "null" {
+                    // null keyword - don't quote it
+                    "null".to_string()
                 } else {
                     format!("'{}'", s)
                 }

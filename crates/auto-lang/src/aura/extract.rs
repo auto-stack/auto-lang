@@ -268,7 +268,9 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
 
         // Nil/Null/None - no initial value (e.g., @Consume variables)
         // Return a special marker that generators can handle
-        Expr::Nil | Expr::Null | Expr::None => Ok(AuraExpr::Literal("".to_string())),
+        // Note: null keyword should be preserved for nullable types
+        Expr::Null => Ok(AuraExpr::Literal("null".to_string())),
+        Expr::Nil | Expr::None => Ok(AuraExpr::Literal("".to_string())),
 
         // Other expressions not yet supported in view
         _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),

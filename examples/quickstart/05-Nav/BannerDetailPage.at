@@ -1,12 +1,12 @@
-// BannerDetailPage.at - Banner detail page
+// BannerDetailPage.at - Banner detail page with WebView
 
-/// Banner detail page with image and description
+use BannerClass
+
+/// Banner detail page with WebView
 widget BannerDetailPage {
     model {
         #[Consume("pathStack")] pathStack NavPathStack
-        title str = ""
-        imageSrc str = ""
-        description str = ""
+        #[NavParam("bannerDetailPage")] banner ?BannerClass = null
     }
 
     view {
@@ -16,18 +16,18 @@ widget BannerDetailPage {
                     Image "$r('app.media.ic_back')" {
                         style: "w-10 h-10"
                     }
-                    Text .title {
+                    Text "Banner详情" {
                         style: "text-xl font-bold ml-2"
                     }
                     style: "w-full h-14"
                 }
-                Image .imageSrc {
-                    style: "w-full h-48 object-cover mt-4"
+                Col {
+                    Text "WebView Placeholder" {
+                        style: "text-gray-500 text-center"
+                    }
+                    style: "flex-1 justify-center items-center bg-gray-100"
                 }
-                Text .description {
-                    style: "text-sm text-gray-600 mt-4"
-                }
-                style: "w-full h-full p-4"
+                style: "w-full h-full px-4"
             }
         }
     }
