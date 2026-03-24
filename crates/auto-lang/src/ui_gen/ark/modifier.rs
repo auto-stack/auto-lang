@@ -57,8 +57,14 @@ impl ArkModifierDsl {
 
     /// Convert a Tailwind style string to ArkTS modifiers
     pub fn convert_style(&self, style_str: &str) -> Vec<String> {
+        self.convert_style_with_tag(style_str, None)
+    }
+
+    /// Convert a Tailwind style string to ArkTS modifiers with parent tag context
+    /// parent_tag should be the tag name of the parent element (e.g., "Row", "Column")
+    pub fn convert_style_with_tag(&self, style_str: &str, parent_tag: Option<&str>) -> Vec<String> {
         let style = self.parser.parse(style_str);
-        let mut modifiers = self.style_to_modifiers(&style);
+        let mut modifiers = self.style_to_modifiers(&style, parent_tag);
 
         // Handle component-specific styles that aren't Tailwind
         // Swiper modifiers
@@ -132,7 +138,7 @@ impl ArkModifierDsl {
     }
 
     /// Convert a ComputedStyle to ArkTS modifiers
-    fn style_to_modifiers(&self, style: &ComputedStyle) -> Vec<String> {
+    fn style_to_modifiers(&self, style: &ComputedStyle, parent_tag: Option<&str>) -> Vec<String> {
         let mut modifiers = Vec::new();
 
         // Padding
@@ -190,7 +196,7 @@ impl ArkModifierDsl {
 
         // Align items (for Column/Row containers)
         if let Some(align) = &style.align_items {
-            modifiers.push(self.align_items_to_modifier(align));
+            modifiers.push(self.align_items_to_modifier(align, parent_tag));
         }
 
         // Justify content (for Column/Row containers)
@@ -415,13 +421,18 @@ impl ArkModifierDsl {
     }
 
     /// Convert AlignItems to ArkTS alignItems modifier
-    fn align_items_to_modifier(&self, align: &AlignItems) -> String {
+    /// For Column: use HorizontalAlign (horizontal alignment of children)
+    /// For Row: use VerticalAlign (vertical alignment of children)
+    fn align_items_to_modifier(&self, align: &AlignItems, parent_tag: Option<&str>) -> String {
+        // Determine if parent is Row (uses VerticalAlign) or Column (uses HorizontalAlign)
+        let is_row = parent_tag.map(|t| t.to_lowercase() == "row").unwrap_or(false);
+
         let ark_align = match align {
-            AlignItems::Start => "HorizontalAlign.Start",
-            AlignItems::Center => "HorizontalAlign.Center",
-            AlignItems::End => "HorizontalAlign.End",
-            AlignItems::Stretch => "HorizontalAlign.Start", // No direct equivalent
-            AlignItems::Baseline => "HorizontalAlign.Start", // No direct equivalent
+            AlignItems::Start => if is_row { "VerticalAlign.Top" } else { "HorizontalAlign.Start" },
+            AlignItems::Center => if is_row { "VerticalAlign.Center" } else { "HorizontalAlign.Center" },
+            AlignItems::End => if is_row { "VerticalAlign.Bottom" } else { "HorizontalAlign.End" },
+            AlignItems::Stretch => if is_row { "VerticalAlign.Center" } else { "HorizontalAlign.Start" }, // No direct equivalent
+            AlignItems::Baseline => if is_row { "VerticalAlign.Center" } else { "HorizontalAlign.Start" }, // No direct equivalent
         };
         format!(".alignItems({})", ark_align)
     }

@@ -788,7 +788,7 @@ impl ArkGenerator {
         lines.last_mut().unwrap().push_str("\n    .mode(NavigationMode.Stack)");
 
         // Add modifiers
-        let modifiers = self.generate_modifiers(props, events, None);
+        let modifiers = self.generate_modifiers(props, events, None, Some("Navigation"));
         if !modifiers.is_empty() {
             lines.last_mut().unwrap().push_str(&modifiers);
         }
@@ -932,7 +932,7 @@ impl ArkGenerator {
                 };
 
                 // Generate modifiers (to be placed AFTER the component body)
-                let modifiers = self.generate_modifiers(&merged_props, events, widget.primary_prop.as_deref());
+                let modifiers = self.generate_modifiers(&merged_props, events, widget.primary_prop.as_deref(), Some(tag));
 
                 // Start component call
                 lines.push(component_call);
@@ -1027,6 +1027,7 @@ impl ArkGenerator {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, crate::aura::AuraEvent>,
         primary_prop: Option<&str>,
+        tag: Option<&str>,
     ) -> String {
         let mut modifiers = Vec::new();
         let dsl = ArkModifierDsl::new();
@@ -1042,7 +1043,7 @@ impl ArkGenerator {
             // Handle style prop using ArkModifierDsl
             if key == "style" || key == "class" {
                 if let Some(style_str) = self.extract_style_string(value) {
-                    let style_modifiers = dsl.convert_style(&style_str);
+                    let style_modifiers = dsl.convert_style_with_tag(&style_str, tag);
                     modifiers.extend(style_modifiers);
                 }
                 continue;
@@ -1054,9 +1055,17 @@ impl ArkGenerator {
 
         // Process events - generate onClick handlers
         for (event_name, event) in events {
-            if event_name == "click" || event_name == "onclick" {
-                // Use dispatch pattern if widget has messages, otherwise direct state update
-                let handler_code = if self.has_messages && event.handler.starts_with('.') {
+            let event_lower = event_name.to_lowercase();
+            if event_lower == "click" || event_lower == "onclick" {
+                // Check for nav() function call
+                let handler_code = if event.handler == "nav" {
+                    // Generate pathStack.pushPathByName() call
+                    // params[0] = route name, params[1] = optional data
+                    self.generate_nav_call(&event.params)
+                } else if event.handler == "console" {
+                    // Generate console.log() call
+                    self.generate_console_call(&event.params)
+                } else if self.has_messages && event.handler.starts_with('.') {
                     // Extract message name and generate dispatch call
                     let msg_name = &event.handler[1..];
                     format!("this.dispatch(Msg.{})", msg_name)
@@ -1076,7 +1085,7 @@ impl ArkGenerator {
             if let AuraPropValue::StyleBinding(bindings) = value {
                 for binding in bindings {
                     // Use ArkModifierDsl for style conversion
-                    let style_modifiers = dsl.convert_style(&binding.style_name);
+                    let style_modifiers = dsl.convert_style_with_tag(&binding.style_name, tag);
                     // For now, apply the style unconditionally
                     // TODO: Support conditional style application
                     modifiers.extend(style_modifiers);
@@ -1133,6 +1142,39 @@ impl ArkGenerator {
             }
             _ => None,
         }
+    }
+
+    /// Generate nav() call to pathStack.pushPathByName()
+    ///
+    /// Takes params like ["articleDetail", "this.item"] and generates:
+    /// `this.pathStack.pushPathByName('articleDetail', this.item)`
+    fn generate_nav_call(&self, params: &[String]) -> String {
+        if params.is_empty() {
+            return "// nav() requires route name".to_string();
+        }
+
+        let route_name = &params[0];
+        let nav_param = if params.len() > 1 {
+            // Join remaining params as the second argument
+            params[1..].join(", ")
+        } else {
+            // Empty string for no param
+            "''".to_string()
+        };
+
+        format!("this.pathStack.pushPathByName({}, {})", route_name, nav_param)
+    }
+
+    /// Generate console.log() call from params
+    ///
+    /// Takes params like ["'clicked'", "this.title"] and generates:
+    /// `console.log('clicked', this.title)`
+    fn generate_console_call(&self, params: &[String]) -> String {
+        if params.is_empty() {
+            return "console.log('click')".to_string();
+        }
+
+        format!("console.log({})", params.join(", "))
     }
 
     /// Generate handler code from handler string (e.g., ".Inc" -> "this.count += 1")
@@ -2028,5 +2070,10 @@ mod tests {
     #[test]
     fn test_015_tabs() {
         test_a2ark("015_tabs").unwrap();
+    }
+
+    #[test]
+    fn test_016_nav() {
+        test_a2ark("016_nav").unwrap();
     }
 }

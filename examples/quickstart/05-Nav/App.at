@@ -1,0 +1,34 @@
+// App.at - Main app entry point with bottom tab navigation
+
+use QuickStartPage
+use CourseLearning
+use KnowledgeMap
+
+/// Main app with bottom tab navigation
+widget App {
+    model {
+        activeTab str = "quickstart"
+    }
+
+    view {
+        Col {
+            Tabs {
+                TabsList {
+                    TabsTrigger "quickstart" (label: "快速入门", iconOn: "app.media.ic_01_on", iconOff: "app.media.ic_01_off") {}
+                    TabsTrigger "course" (label: "课程学习", iconOn: "app.media.ic_02_on", iconOff: "app.media.ic_02_off") {}
+                    TabsTrigger "knowledge" (label: "知识图谱", iconOn: "app.media.ic_03_on", iconOff: "app.media.ic_03_off") {}
+                }
+                TabsContent "quickstart" {
+                    QuickStartPage {}
+                }
+                TabsContent "course" {
+                    CourseLearning {}
+                }
+                TabsContent "knowledge" {
+                    KnowledgeMap {}
+                }
+            }
+            style: "w-full h-full"
+        }
+    }
+}

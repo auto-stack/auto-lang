@@ -1,0 +1,16 @@
+// KnowledgeMap.at - Knowledge Map tab content
+
+/// Knowledge map page with sidebar
+widget KnowledgeMap {
+    view {
+        Col {
+            Text "知识地图" {
+                style: "text-2xl font-bold mb-4"
+            }
+            Text "通过循序渐进的学习路径，无经验和有经验的开发者都可以轻松掌握ArkTS语言声明式开发范式" {
+                style: "text-sm text-gray-600 text-center"
+            }
+            style: "w-full h-full justify-center items-center bg-white p-4"
+        }
+    }
+}

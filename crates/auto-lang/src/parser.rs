@@ -8805,7 +8805,7 @@ impl<'a> Parser<'a> {
         Ok(parts.join(" "))
     }
 
-    /// Parse event handler with optional parameters: .Inc or .Delete(todo.id)
+    /// Parse event handler with optional parameters: .Inc or .Delete(todo.id) or nav("route", data)
     fn parse_event_handler(&mut self) -> AutoResult<(String, Vec<String>)> {
         // Handle dot-prefixed handlers like .Inc (meaning Msg::Inc in widget scope)
         if self.is_kind(TokenKind::Dot) {
@@ -8834,15 +8834,41 @@ impl<'a> Parser<'a> {
 
             Ok((format!(".{}", name), params))
         } else {
+            // Handle function calls like nav("route", data)
             let handler = self.cur.text.to_string();
             self.next();
-            Ok((handler, Vec::new()))
+
+            // Check for parameters: nav("route", data)
+            let params = if self.is_kind(TokenKind::LParen) {
+                self.next();
+                let mut args = Vec::new();
+                while !self.is_kind(TokenKind::RParen) {
+                    // Parse argument as string
+                    let arg = self.parse_event_arg()?;
+                    args.push(arg);
+                    // Support both comma and semicolon as separators
+                    if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Semi) {
+                        self.next();
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                args
+            } else {
+                Vec::new()
+            };
+
+            Ok((handler, params))
         }
     }
 
     /// Parse a single event argument
     fn parse_event_arg(&mut self) -> AutoResult<String> {
-        let mut parts = Vec::new();
+        // Handle object literals: { key: value, ... }
+        if self.is_kind(TokenKind::LBrace) {
+            return self.parse_event_arg_object();
+        }
+
+        let mut parts: Vec<String> = Vec::new();
 
         // Handle expressions like: todo.id, .count, 123, "string"
         loop {
@@ -8850,15 +8876,31 @@ impl<'a> Parser<'a> {
                 self.next();
                 let name = self.cur.text.to_string();
                 self.next();
-                if parts.is_empty() {
-                    parts.push(format!(".{}", name));
-                } else {
-                    parts.push(format!(".{}", name));
-                }
+                parts.push(format!(".{}", name));
             } else if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.to_string();
                 self.next();
                 parts.push(text);
+
+                // Check for function call: ident(args)
+                if self.is_kind(TokenKind::LParen) {
+                    self.next();
+                    parts.push("(".to_string());
+                    let mut first = true;
+                    while !self.is_kind(TokenKind::RParen) {
+                        if !first {
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next();
+                                parts.push(", ".to_string());
+                            }
+                        }
+                        first = false;
+                        let arg = self.parse_event_arg()?;
+                        parts.push(arg);
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    parts.push(")".to_string());
+                }
             } else if self.is_kind(TokenKind::Int) {
                 let num = self.cur.text.to_string();
                 self.next();
@@ -8871,6 +8913,52 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
+
+        Ok(parts.join(""))
+    }
+
+    /// Parse an object literal as event argument: { key: value, ... }
+    fn parse_event_arg_object(&mut self) -> AutoResult<String> {
+        self.expect(TokenKind::LBrace)?;
+        let mut parts = vec!["{ ".to_string()];
+        let mut first = true;
+
+        while !self.is_kind(TokenKind::RBrace) {
+            if !first {
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    parts.push(", ".to_string());
+                }
+            }
+            first = false;
+
+            // Parse key (identifier or string)
+            if self.is_kind(TokenKind::Ident) {
+                parts.push(self.cur.text.to_string());
+                self.next();
+            } else if self.is_kind(TokenKind::Str) {
+                parts.push(format!("\"{}\"", self.cur.text.as_str()));
+                self.next();
+            } else {
+                // Skip unknown tokens
+                break;
+            }
+
+            // Expect colon
+            if self.is_kind(TokenKind::Colon) {
+                self.next();
+                parts.push(": ".to_string());
+            } else {
+                break;
+            }
+
+            // Parse value (recursively)
+            let value = self.parse_event_arg()?;
+            parts.push(value);
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        parts.push(" }".to_string());
 
         Ok(parts.join(""))
     }

@@ -1,0 +1,26 @@
+// CourseLearning.at - Course Learning tab content
+// Note: WebView is not yet supported, using placeholder
+
+/// Course learning page with WebView placeholder
+widget CourseLearning {
+    model {
+    }
+
+    view {
+        Col {
+            Text "课程学习" {
+                style: "text-2xl font-bold mb-4"
+            }
+            Col {
+                Text "WebView Placeholder" {
+                    style: "text-gray-500"
+                }
+                Text "Course content will be displayed here via WebView" {
+                    style: "text-sm text-gray-400 mt-2"
+                }
+                style: "flex-1 justify-center items-center bg-gray-100 rounded-2xl"
+            }
+            style: "w-full h-full p-4 bg-white"
+        }
+    }
+}

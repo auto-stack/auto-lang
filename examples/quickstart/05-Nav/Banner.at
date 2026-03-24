@@ -1,0 +1,37 @@
+// widgets/Banner.at - Swiper banner
+
+/// Banner with auto-playing swiper
+widget Banner {
+    model {
+    }
+
+    view {
+        Swiper {
+            Image "$r('app.media.banner_pic0')" {
+                onClick: nav("bannerDetail", { imageSrc: "$r('app.media.banner_pic0')" })
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            Image "$r('app.media.banner_pic1')" {
+                onClick: nav("bannerDetail", { imageSrc: "$r('app.media.banner_pic1')" })
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            Image "$r('app.media.banner_pic2')" {
+                onClick: nav("bannerDetail", { imageSrc: "$r('app.media.banner_pic2')" })
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            Image "$r('app.media.banner_pic3')" {
+                onClick: nav("bannerDetail", { imageSrc: "$r('app.media.banner_pic3')" })
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            Image "$r('app.media.banner_pic4')" {
+                onClick: nav("bannerDetail", { imageSrc: "$r('app.media.banner_pic4')" })
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            Image "$r('app.media.banner_pic5')" {
+                onClick: nav("bannerDetail", { imageSrc: "$r('app.media.banner_pic5')" })
+                style: "w-full pt-3 px-4 rounded-2xl object-contain"
+            }
+            style: "auto-play loop indicator"
+        }
+    }
+}
