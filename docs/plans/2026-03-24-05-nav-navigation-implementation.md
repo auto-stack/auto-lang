@@ -8,6 +8,137 @@
 
 **Tech Stack:** AutoLang AURA widgets, ArkTS code generation, a2ark transpiler
 
+**Current Status:**
+| Task | Description | Status |
+|------|-------------|--------|
+| 0 | @Consume/@Provide decorators | 🔴 Not Started (Blocker) |
+| 1 | nav() function | ✅ Done (object params work) |
+| 2 | Navigation wrapper | ⏸️ Blocked by Task 0 |
+| 3-6 | Detail pages & navigation | ⏸️ Blocked by Task 0 |
+| 7 | KnowledgeMap | ⏸️ Blocked by Task 0 |
+| 8 | CourseLearning placeholder | ✅ Done |
+| 9 | Generate and test | ⏸️ Blocked |
+
+---
+
+## Task 0: Add @Consume and @Provide Decorator Support
+
+**Status:** 🔴 Not Started (Blocker for Tasks 2-7)
+
+**Files:**
+- Modify: `crates/auto-lang/src/parser.rs` (parse decorators in model fields)
+- Modify: `crates/auto-lang/src/ast.rs` (add decorator fields to ModelField)
+- Modify: `crates/auto-lang/src/aura/extract.rs` (extract decorators to AuraStateDef)
+- Modify: `crates/auto-lang/src/aura/types.rs` (add decorator to AuraStateDef)
+- Modify: `crates/auto-lang/src/ui_gen/ark/generator.rs` (generate ArkTS decorators)
+- Test: `crates/auto-lang/test/a2ark/017_decorators/` (new test case)
+
+**Background:**
+
+HarmonyOS ArkTS uses `@Provide` and `@Consume` decorators for hierarchical state sharing:
+- `@Provide("key")` in parent component provides a value to descendants
+- `@Consume("key")` in child component consumes the value from nearest ancestor
+
+**Step 1: Update AST to support decorators on model fields**
+
+Add decorator field to ModelField struct:
+
+```rust
+// In ast.rs
+pub struct ModelField {
+    pub name: AutoStr,
+    pub ty: Type,
+    pub init: Option<Expr>,
+    pub decorators: Vec<Decorator>,  // NEW
+}
+
+pub struct Decorator {
+    pub name: AutoStr,           // e.g., "Consume", "Provide"
+    pub args: Vec<Expr>,         // e.g., ["pathStack"]
+}
+```
+
+**Step 2: Update parser to parse decorators**
+
+Syntax: `#[DecoratorName("arg")] fieldName Type = value`
+
+```auto
+model {
+    #[Provide("pathStack")] pathStack NavPathStack = NavPathStack()
+    #[Consume("pathStack")] pathStack NavPathStack
+}
+```
+
+Parser changes needed in `parse_model_field`:
+- Check for `#[...]` before field name
+- Parse decorator name and arguments
+- Support multiple decorators: `#[Consume, Optional]`
+
+**Step 3: Update AURA extraction**
+
+Add decorator info to AuraStateDef:
+
+```rust
+// In aura/types.rs
+pub struct AuraStateDef {
+    pub name: String,
+    pub type_info: Type,
+    pub initial: AuraExpr,
+    pub decorators: Vec<AuraDecorator>,  // NEW
+}
+
+pub struct AuraDecorator {
+    pub name: String,      // "Consume" or "Provide"
+    pub args: Vec<String>, // ["pathStack"]
+}
+```
+
+**Step 4: Update ArkTS generator**
+
+Generate proper ArkTS decorators:
+
+```typescript
+// Input:
+// #[Provide("pathStack")] pathStack NavPathStack = NavPathStack()
+
+// Output:
+@Provide("pathStack") pathStack: NavPathStack = new NavPathStack()
+```
+
+```typescript
+// Input:
+// #[Consume("pathStack")] pathStack NavPathStack
+
+// Output:
+@Consume("pathStack") pathStack: NavPathStack
+```
+
+**Step 5: Create test case 017_decorators**
+
+Create test files:
+- `input.at` - Widget with @Provide and @Consume decorators
+- `input.expected.ets` - Expected ArkTS output with decorators
+
+**Step 6: Run tests to verify**
+
+Run: `cargo test -p auto-lang --lib -- generator::tests::test_017_decorators`
+Expected: PASS
+
+**Step 7: Commit**
+
+```bash
+git add crates/auto-lang/src/parser.rs crates/auto-lang/src/ast.rs \
+        crates/auto-lang/src/aura/extract.rs crates/auto-lang/src/aura/types.rs \
+        crates/auto-lang/src/ui_gen/ark/generator.rs \
+        crates/auto-lang/test/a2ark/017_decorators/
+git commit -m "feat(a2ark): add @Consume and @Provide decorator support"
+```
+
+**Notes:**
+- AutoLang uses `#[...]` syntax for annotations (Rust-style)
+- Only `@Consume` and `@Provide` are needed for navigation
+- Other decorators (`@State`, `@Prop`, `@Link`) can be added later
+
 ---
 
 ## Task 1: Add nav() Function to AURA Generator
@@ -466,9 +597,11 @@ git commit -m "feat(05-Nav): complete navigation implementation"
 3. **Manual Testing**: Run generated app in DevEco Studio
 
 ## Dependencies
-- Task 2 depends on Task 1 (nav() function needed)
-- Task 3-6 depend on Task 2 (Navigation wrapper needed)
-- Task 7 depends on Task 1 (nav() function needed)
+- Task 1 (nav() function) - ✅ DONE (partially - object params work)
+- Task 0 (@Consume/@Provide) - 🔴 BLOCKER for Tasks 2-6
+- Task 2 depends on Task 0 (@Provide needed for Navigation wrapper)
+- Task 3-6 depend on Task 0 (@Consume needed in child widgets)
+- Task 7 depends on Task 0 and Task 1
 - Task 9 depends on all previous tasks
 
 ## Risk Areas
