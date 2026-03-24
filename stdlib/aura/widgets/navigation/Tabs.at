@@ -102,6 +102,8 @@ widget TabsTrigger {
         active bool = false
         disabled bool = false
         badge str = ""
+        iconOn str = ""
+        iconOff str = ""
     }
 
     computed {
