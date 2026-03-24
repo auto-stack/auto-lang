@@ -451,6 +451,13 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
+        // Generate custom type definitions for user types used in state variables
+        let custom_types = self.collect_custom_types(widget);
+        for type_def in &custom_types {
+            lines.push(type_def.clone());
+            lines.push("".to_string());
+        }
+
         // @Entry for App widget (with or without routes)
         // @Preview for child pages (helpful for DevEco Studio preview)
         if is_app_widget {
@@ -1259,6 +1266,77 @@ impl ArkGenerator {
             Type::User(type_decl) => type_decl.name.to_string(),
             Type::Option(inner) => format!("{} | null", Self::type_to_ark_string(inner)),
             _ => ty.unique_name().to_string(), // Fallback
+        }
+    }
+
+    /// Collect and generate custom type definitions for user types used in state variables
+    fn collect_custom_types(&self, widget: &AuraWidget) -> Vec<String> {
+        let mut type_defs = Vec::new();
+        let mut seen_types = std::collections::HashSet::new();
+
+        for state_var in &widget.state_vars {
+            // Extract custom type from Option or direct type
+            let inner_type = match &state_var.type_info {
+                Type::Option(inner) => inner.as_ref(),
+                _ => &state_var.type_info,
+            };
+
+            if let Type::User(type_decl) = inner_type {
+                let type_name = type_decl.name.as_str().to_string();
+                if !seen_types.contains(&type_name) {
+                    seen_types.insert(type_name);
+                    if let Some(type_def) = self.generate_type_definition(type_decl) {
+                        type_defs.push(type_def);
+                    }
+                }
+            }
+        }
+
+        type_defs
+    }
+
+    /// Generate ArkTS interface definition from TypeDecl
+    fn generate_type_definition(&self, type_decl: &crate::ast::TypeDecl) -> Option<String> {
+        // Only generate for user types (not built-in types)
+        let name = type_decl.name.as_str();
+
+        // Skip if it looks like a built-in type
+        if matches!(name, "NavPathStack" | "string" | "number" | "boolean") {
+            return None;
+        }
+
+        let mut lines = Vec::new();
+
+        // Use interface with index signature for flexibility
+        // This allows objects with any string-keyed properties
+        lines.push(format!("export interface {} {{", name));
+
+        // Generate fields from type declaration members if available
+        if !type_decl.members.is_empty() {
+            for member in &type_decl.members {
+                let field_name = member.name.as_str();
+                let field_type = Self::type_to_arkts_simple(&member.ty);
+                // Interfaces don't have initial values
+                lines.push(format!("  {}?: {}", field_name, field_type));
+            }
+        } else {
+            // If no members (type reference), use index signature for flexibility
+            lines.push("  [key: string]: Object".to_string());
+        }
+
+        lines.push("}".to_string());
+        Some(lines.join("\n"))
+    }
+
+    /// Simple type to ArkTS string (for type definitions)
+    fn type_to_arkts_simple(ty: &Type) -> String {
+        match ty {
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
+            Type::Bool => "boolean".to_string(),
+            Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
+            Type::User(type_decl) => type_decl.name.to_string(),
+            Type::Option(inner) => format!("{} | null", Self::type_to_arkts_simple(inner)),
+            _ => "any".to_string(),
         }
     }
 
