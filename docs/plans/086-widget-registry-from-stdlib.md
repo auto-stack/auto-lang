@@ -1,4 +1,4 @@
-# Plan 119: Widget Registry from Stdlib
+# Plan 086: Widget Registry from Stdlib
 
 Date: 2026-03-22
 

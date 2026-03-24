@@ -1,4 +1,268 @@
-# 04-Tabs Implementation Plan
+# 04-Tabs Project
+
+## Design
+
+## Overview
+
+Create `04-Tabs` project to demonstrate bottom tab navigation with 3 tabs, using the existing stdlib Tabs pattern and translating to ArkTS `Tabs` component.
+
+## Project Structure
+
+```
+examples/quickstart/04-Tabs/
+├── pac.at                    # Project config
+├── app.at                    # Main app with Tabs
+├── Index.at                  # Entry point
+�?├── # Tab 1 - QuickStart
+├── QuickStartPage.at         # Simple wrapper
+├── Banner.at
+├── EnablementView.at
+├── EnablementItem.at
+├── TutorialView.at
+├── TutorialItem.at
+�?├── # Tab 2 - CourseLearning
+├── CourseLearning.at         # Placeholder
+�?├── # Tab 3 - KnowledgeMap
+├── KnowledgeMap.at           # Simplified static
+└── NavBarItem.at
+```
+
+## AutoLang Syntax (App.at)
+
+Using stdlib pattern with ID shorthand:
+
+```auto
+use Tabs, TabsList, TabsTrigger, TabsContent
+use QuickStartPage, CourseLearning, KnowledgeMap
+
+widget App {
+    model {
+        activeTab: str = "quickstart"
+    }
+
+    view {
+        Tabs (activeTab: .activeTab) {
+            TabsList {
+                TabsTrigger quickstart (label: "快速入�?, active: .activeTab == "quickstart") {}
+                TabsTrigger learning (label: "课程学习", active: .activeTab == "learning") {}
+                TabsTrigger map (label: "知识地图", active: .activeTab == "map") {}
+            }
+            TabsContent quickstart (active: .activeTab == "quickstart") {
+                QuickStartPage {}
+            }
+            TabsContent learning (active: .activeTab == "learning") {
+                CourseLearning {}
+            }
+            TabsContent map (active: .activeTab == "map") {
+                KnowledgeMap {}
+            }
+        }
+    }
+}
+```
+
+### ID Shorthand
+
+`TabsTrigger quickstart` and `TabsContent quickstart` imply `id: "quickstart"`.
+
+## Generated ArkTS Output
+
+```typescript
+@Component
+struct App {
+  @State activeTab: string = 'quickstart'
+  @State currentIndex: number = 0
+  private tabsController: TabsController = new TabsController()
+
+  @Builder
+  tabBarBuilder(title: string, targetIndex: number) {
+    Column() {
+      Text(title)
+        .fontFamily('HarmonyHeiTi-Medium')
+        .fontSize(10)
+        .fontColor(this.currentIndex === targetIndex ? '#0A59F7' : 'rgba(0,0,0,0.60)')
+        .fontWeight(500)
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .onClick(() => {
+      this.currentIndex = targetIndex
+      this.tabsController.changeIndex(targetIndex)
+    })
+  }
+
+  build() {
+    Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
+      TabContent() {
+        QuickStartPage()
+      }
+      .tabBar(this.tabBarBuilder('快速入�?, 0))
+
+      TabContent() {
+        CourseLearning()
+      }
+      .tabBar(this.tabBarBuilder('课程学习', 1))
+
+      TabContent() {
+        KnowledgeMap()
+      }
+      .tabBar(this.tabBarBuilder('知识地图', 2))
+    }
+    .vertical(false)
+    .scrollable(false)
+    .backgroundColor('#F1F3F5')
+  }
+}
+```
+
+## Key Transformations
+
+| AutoLang | ArkTS |
+|----------|-------|
+| `Tabs` | `Tabs({ barPosition: BarPosition.End, controller })` |
+| `TabsList` + `TabsTrigger` | `@Builder tabBarBuilder()` function |
+| `TabsContent` | `TabContent().tabBar(tabBarBuilder(...))` |
+| `activeTab: str` | `currentIndex: number` + `TabsController` |
+
+## Page Components
+
+### QuickStartPage.at
+
+Simple wrapper around 03-ItemList content (no Navigation for now):
+
+```auto
+use Banner, EnablementView, TutorialView
+
+widget QuickStartPage {
+    view {
+        Col {
+            Text "快速入�? {
+                style: "text-2xl font-bold w-full text-left pl-4"
+            }
+            Scroll {
+                Col {
+                    Banner {}
+                    EnablementView {}
+                    TutorialView {}
+                }
+                style: "flex-1"
+            }
+            style: "w-full h-full bg-gray-100"
+        }
+    }
+}
+```
+
+### CourseLearning.at (Placeholder)
+
+```auto
+widget CourseLearning {
+    view {
+        Col {
+            Text "课程学习" {
+                style: "text-xl text-center"
+            }
+            Text "Coming Soon" {
+                style: "text-gray-500"
+            }
+            style: "w-full h-full justify-center items-center"
+        }
+    }
+}
+```
+
+### KnowledgeMap.at (Simplified)
+
+```auto
+widget KnowledgeMap {
+    model {
+        navBarItems: List = [
+            { order: "01", title: "准备与学�? },
+            { order: "02", title: "构建应用" },
+            { order: "03", title: "应用测试" },
+            { order: "04", title: "上架" },
+            { order: "05", title: "运营增长" },
+            { order: "06", title: "商业变现" },
+            { order: "07", title: "更多" }
+        ]
+    }
+
+    view {
+        Scroll {
+            Col {
+                Text "知识地图" {
+                    style: "text-2xl font-bold w-full"
+                }
+                Image "$r('app.media.knowledge_map_banner')" {
+                    style: "w-full rounded-2xl mt-4 mb-2"
+                }
+                Text "通过循序渐进的学习路�?.." {
+                    style: "text-sm text-gray-600"
+                }
+                List {
+                    for item in .navBarItems {
+                        ListItem {
+                            NavBarItem { order: item.order, title: item.title }
+                        }
+                    }
+                    style: "w-full mt-6"
+                }
+            }
+            style: "p-3 bg-gray-100"
+        }
+    }
+}
+```
+
+## Generator Changes
+
+**File:** `crates/auto-lang/src/ui_gen/ark/generator.rs`
+
+### Changes
+
+1. **Detect Tabs pattern** - When `Tabs` contains `TabsList` + `TabsContent` children
+2. **Extract tab data** - Collect `TabsTrigger` (id, label, icon) from `TabsList`
+3. **Generate `@Builder tabBarBuilder`** - Create the tab bar builder function
+4. **Transform `TabsContent`** - Generate `TabContent().tabBar(tabBarBuilder(...))`
+5. **Add state management** - `currentIndex: number`, `TabsController`
+
+### Component Mappings
+
+```
+Tabs        �?Tabs (with controller)
+TabsList    �?(absorbed into @Builder)
+TabsTrigger �?(absorbed into @Builder)
+TabsContent �?TabContent
+```
+
+## Implementation Phases
+
+### Phase 1: Tabs Generator Support
+1. Add `Tabs`, `TabContent` component handling in generator.rs
+2. Implement `TabsList` + `TabsTrigger` �?`@Builder` transformation
+3. Map `TabsContent` �?`TabContent().tabBar()`
+4. Add `TabsController` and `currentIndex` state generation
+
+### Phase 2: Create 04-Tabs Project
+1. Copy 03-ItemList components
+2. Create `QuickStartPage.at`
+3. Create `CourseLearning.at` placeholder
+4. Create `KnowledgeMap.at` + `NavBarItem.at`
+5. Create `App.at` with Tabs structure
+6. Update `Index.at` to render App
+
+### Phase 3: Testing
+1. Add a2ark test case for Tabs pattern
+2. Generate and verify ArkTS output
+
+## Deferred Features
+
+- **Navigation/Stack routing** - Deferred to future project (05-Nav)
+- **WebView component** - CourseLearning uses placeholder
+- **KnowledgeMap nested navigation** - Simplified static content only
+
+## Implementation
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -478,11 +742,11 @@ git commit -m "feat(example): create 04-Tabs project structure"
 ## Task 9: Copy 03-ItemList Components
 
 **Files:**
-- Copy: `examples/quickstart/03-ItemList/Banner.at` → `examples/quickstart/04-Tabs/`
-- Copy: `examples/quickstart/03-ItemList/EnablementView.at` → `examples/quickstart/04-Tabs/`
-- Copy: `examples/quickstart/03-ItemList/EnablementItem.at` → `examples/quickstart/04-Tabs/`
-- Copy: `examples/quickstart/03-ItemList/TutorialView.at` → `examples/quickstart/04-Tabs/`
-- Copy: `examples/quickstart/03-ItemList/TutorialItem.at` → `examples/quickstart/04-Tabs/`
+- Copy: `examples/quickstart/03-ItemList/Banner.at` �?`examples/quickstart/04-Tabs/`
+- Copy: `examples/quickstart/03-ItemList/EnablementView.at` �?`examples/quickstart/04-Tabs/`
+- Copy: `examples/quickstart/03-ItemList/EnablementItem.at` �?`examples/quickstart/04-Tabs/`
+- Copy: `examples/quickstart/03-ItemList/TutorialView.at` �?`examples/quickstart/04-Tabs/`
+- Copy: `examples/quickstart/03-ItemList/TutorialItem.at` �?`examples/quickstart/04-Tabs/`
 
 **Step 1: Copy files**
 
@@ -521,7 +785,7 @@ use TutorialView
 widget QuickStartPage {
     view {
         Col {
-            Text "快速入门" {
+            Text "快速入�? {
                 style: "text-2xl font-bold w-full text-left pl-4"
             }
             Scroll {
@@ -638,7 +902,7 @@ use NavBarItem
 widget KnowledgeMap {
     model {
         navBarItems: List = [
-            { order: "01", title: "准备与学习" },
+            { order: "01", title: "准备与学�? },
             { order: "02", title: "构建应用" },
             { order: "03", title: "应用测试" },
             { order: "04", title: "上架" },
@@ -657,7 +921,7 @@ widget KnowledgeMap {
                 Image "$r('app.media.knowledge_map_banner')" {
                     style: "w-full rounded-2xl mt-4 mb-2"
                 }
-                Text "通过循序渐进的学习路径，无经验和有经验的开发者都可以轻松掌握ArkTS语言声明式开发范式，体验更简洁、更友好的HarmonyOS应用开发旅程。" {
+                Text "通过循序渐进的学习路径，无经验和有经验的开发者都可以轻松掌握ArkTS语言声明式开发范式，体验更简洁、更友好的HarmonyOS应用开发旅程�? {
                     style: "text-sm text-gray-600 w-full"
                 }
                 List {
@@ -706,7 +970,7 @@ widget App {
     view {
         Tabs (activeTab: .activeTab) {
             TabsList {
-                TabsTrigger quickstart (label: "快速入门", active: .activeTab == "quickstart") {}
+                TabsTrigger quickstart (label: "快速入�?, active: .activeTab == "quickstart") {}
                 TabsTrigger learning (label: "课程学习", active: .activeTab == "learning") {}
                 TabsTrigger map (label: "知识地图", active: .activeTab == "map") {}
             }
