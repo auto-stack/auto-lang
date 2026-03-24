@@ -427,6 +427,15 @@ impl ArkGenerator {
             lines.push(String::new());
         }
 
+        // Import model types from model directory
+        let model_imports = self.collect_model_imports(widget);
+        for model_type in &model_imports {
+            lines.push(format!("import {{ {} }} from '../model/{}';", model_type, model_type));
+        }
+        if !model_imports.is_empty() {
+            lines.push(String::new());
+        }
+
         // Generate Msg enum if widget has messages (before @Entry/@Component)
         let msg_enum = generate_msg_enum(widget);
         if !msg_enum.is_empty() {
@@ -1285,14 +1294,48 @@ impl ArkGenerator {
                 let type_name = type_decl.name.as_str().to_string();
                 if !seen_types.contains(&type_name) {
                     seen_types.insert(type_name);
-                    if let Some(type_def) = self.generate_type_definition(type_decl) {
-                        type_defs.push(type_def);
+                    // Only generate inline definition if the type has members
+                    if !type_decl.members.is_empty() {
+                        if let Some(type_def) = self.generate_type_definition(type_decl) {
+                            type_defs.push(type_def);
+                        }
                     }
+                    // If no members, the type will be imported from model file
                 }
             }
         }
 
         type_defs
+    }
+
+    /// Collect model imports for external types (types defined in separate model files)
+    fn collect_model_imports(&self, widget: &AuraWidget) -> Vec<String> {
+        let mut imports = Vec::new();
+        let mut seen_types = std::collections::HashSet::new();
+
+        for state_var in &widget.state_vars {
+            // Extract custom type from Option or direct type
+            let inner_type = match &state_var.type_info {
+                Type::Option(inner) => inner.as_ref(),
+                _ => &state_var.type_info,
+            };
+
+            if let Type::User(type_decl) = inner_type {
+                let type_name = type_decl.name.as_str().to_string();
+                // Skip built-in types
+                if matches!(type_name.as_str(), "NavPathStack" | "string" | "number" | "boolean" | "Object") {
+                    continue;
+                }
+                // Only import if the type has no members (external type reference)
+                // and we haven't seen it yet
+                if type_decl.members.is_empty() && !seen_types.contains(&type_name) {
+                    seen_types.insert(type_name.clone());
+                    imports.push(type_name);
+                }
+            }
+        }
+
+        imports
     }
 
     /// Generate ArkTS interface definition from TypeDecl
@@ -1305,27 +1348,22 @@ impl ArkGenerator {
             return None;
         }
 
-        let mut lines = Vec::new();
-
-        // Use interface with index signature for flexibility
-        // This allows objects with any string-keyed properties
-        lines.push(format!("export interface {} {{", name));
-
-        // Generate fields from type declaration members if available
+        // Generate class with explicit properties if members are available
         if !type_decl.members.is_empty() {
+            let mut lines = Vec::new();
+            lines.push(format!("export class {} {{", name));
             for member in &type_decl.members {
                 let field_name = member.name.as_str();
                 let field_type = Self::type_to_arkts_simple(&member.ty);
-                // Interfaces don't have initial values
-                lines.push(format!("  {}?: {}", field_name, field_type));
+                lines.push(format!("  {}: {} = ''", field_name, field_type));
             }
+            lines.push("}".to_string());
+            Some(lines.join("\n"))
         } else {
-            // If no members (type reference), use index signature for flexibility
-            lines.push("  [key: string]: Object".to_string());
+            // If no members (type reference from 'use'), don't generate inline
+            // The type will be imported from a model file or use Object
+            None
         }
-
-        lines.push("}".to_string());
-        Some(lines.join("\n"))
     }
 
     /// Simple type to ArkTS string (for type definitions)

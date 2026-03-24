@@ -264,6 +264,20 @@ impl ArkProject {
             format!("Parse error: {:?}", e)
         })?;
 
+        let mut files = Vec::new();
+        let mut names = Vec::new();
+
+        // First, generate model files for type definitions
+        for stmt in &ast.stmts {
+            if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
+                let model_code = Self::generate_model_file(type_decl);
+                if let Some((model_name, model_content)) = model_code {
+                    let relative_path = format!("entry/src/main/ets/model/{}.ets", model_name);
+                    files.push((relative_path, model_content));
+                }
+            }
+        }
+
         // Extract AURA widgets from AST
         let mut widgets = Vec::new();
         for stmt in &ast.stmts {
@@ -274,14 +288,12 @@ impl ArkProject {
             }
         }
 
-        if widgets.is_empty() {
+        if widgets.is_empty() && files.is_empty() {
             return Ok((Vec::new(), Vec::new()));
         }
 
         // Generate ArkTS code for each widget
         let mut generator = ArkGenerator::new();
-        let mut files = Vec::new();
-        let mut names = Vec::new();
 
         for widget in &widgets {
             let arkts_code = generator.generate(widget)
@@ -298,6 +310,47 @@ impl ArkProject {
         }
 
         Ok((files, names))
+    }
+
+    /// Generate model file for a type definition
+    fn generate_model_file(type_decl: &auto_lang::ast::TypeDecl) -> Option<(String, String)> {
+        let name = type_decl.name.as_str();
+
+        // Skip if it looks like a built-in type
+        if matches!(name, "NavPathStack" | "string" | "number" | "boolean" | "Object") {
+            return None;
+        }
+
+        // Skip if no members (just a type reference)
+        if type_decl.members.is_empty() {
+            return None;
+        }
+
+        let mut lines = Vec::new();
+
+        // Generate export class with properties
+        lines.push(format!("export class {} {{", name));
+        for member in &type_decl.members {
+            let field_name = member.name.as_str();
+            let field_type = Self::type_to_arkts(&member.ty);
+            lines.push(format!("  {}: {} = ''", field_name, field_type));
+        }
+        lines.push("}".to_string());
+
+        Some((name.to_string(), lines.join("\n")))
+    }
+
+    /// Convert Type to ArkTS type string
+    fn type_to_arkts(ty: &auto_lang::ast::Type) -> String {
+        use auto_lang::ast::Type;
+        match ty {
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
+            Type::Bool => "boolean".to_string(),
+            Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
+            Type::User(type_decl) => type_decl.name.to_string(),
+            Type::Option(inner) => format!("{} | null", Self::type_to_arkts(inner)),
+            _ => "Object".to_string(),
+        }
     }
 
     /// Check if the project structure already exists
