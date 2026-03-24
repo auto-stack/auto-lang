@@ -8925,7 +8925,8 @@ impl<'a> Parser<'a> {
                 self.next();
                 let name = self.cur.text.to_string();
                 self.next();
-                parts.push(format!(".{}", name));
+                // For ArkTS, convert .field to this.field
+                parts.push(format!("this.{}", name));
             } else if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.to_string();
                 self.next();

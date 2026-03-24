@@ -737,7 +737,7 @@ impl ArkGenerator {
                 children,
             } => {
                 // Special handling for root col when routes exist - wrap in Navigation
-                if tag == "col" && has_routes {
+                if tag.to_lowercase() == "col" && has_routes {
                     return self.generate_navigation_root(props, events, children, index_component);
                 }
                 self.generate_element(tag, props, events, children)
@@ -1156,7 +1156,25 @@ impl ArkGenerator {
         let route_name = &params[0];
         let nav_param = if params.len() > 1 {
             // Join remaining params as the second argument
-            params[1..].join(", ")
+            let param_str = params[1..].join(", ");
+            // If it's an object literal, add type annotation for ArkTS
+            // Use ES Object type wrapper to satisfy ArkTS type checking
+            if param_str.starts_with("{ ") && param_str.ends_with(" }") {
+                // Create an ES Object with the properties
+                let obj_content = &param_str[2..param_str.len()-2]; // Remove "{ " and " }"
+                let props: Vec<&str> = obj_content.split(", ").collect();
+                let mut obj_builder = String::from("Object({");
+                for (i, prop) in props.iter().enumerate() {
+                    if i > 0 {
+                        obj_builder.push_str(", ");
+                    }
+                    obj_builder.push_str(prop);
+                }
+                obj_builder.push_str("})");
+                obj_builder
+            } else {
+                param_str
+            }
         } else {
             // Empty string for no param
             "''".to_string()

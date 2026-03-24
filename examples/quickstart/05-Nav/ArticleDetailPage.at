@@ -1,0 +1,35 @@
+// ArticleDetailPage.at - Article detail page with WebView placeholder
+
+use ArticleClass
+
+/// Article detail page with back navigation
+widget ArticleDetailPage {
+    model {
+        #[Consume("pathStack")] pathStack NavPathStack
+        title str = ""
+        webUrl str = ""
+    }
+
+    view {
+        NavDestination {
+            Col {
+                Row {
+                    Image "$r('app.media.ic_back')" {
+                        style: "w-10 h-10"
+                    }
+                    Text .title {
+                        style: "text-xl font-bold ml-2 flex-1"
+                    }
+                    style: "w-4/5 h-14"
+                }
+                Col {
+                    Text .webUrl {
+                        style: "text-gray-500 text-center"
+                    }
+                    style: "flex-1 justify-center items-center"
+                }
+                style: "w-full h-full px-4"
+            }
+        }
+    }
+}

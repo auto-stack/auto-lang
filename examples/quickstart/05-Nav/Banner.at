@@ -3,27 +3,34 @@
 /// Banner with auto-playing swiper
 widget Banner {
     model {
+        #[Consume("pathStack")] pathStack NavPathStack
     }
 
     view {
         Swiper {
             Image "$r('app.media.banner_pic0')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
+                onclick: nav("bannerDetail", { title: "Banner 1", imageSrc: "$r('app.media.banner_pic0')", description: "Description 1" })
             }
             Image "$r('app.media.banner_pic1')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
+                onclick: nav("bannerDetail", { title: "Banner 2", imageSrc: "$r('app.media.banner_pic1')", description: "Description 2" })
             }
             Image "$r('app.media.banner_pic2')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
+                onclick: nav("bannerDetail", { title: "Banner 3", imageSrc: "$r('app.media.banner_pic2')", description: "Description 3" })
             }
             Image "$r('app.media.banner_pic3')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
+                onclick: nav("bannerDetail", { title: "Banner 4", imageSrc: "$r('app.media.banner_pic3')", description: "Description 4" })
             }
             Image "$r('app.media.banner_pic4')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
+                onclick: nav("bannerDetail", { title: "Banner 5", imageSrc: "$r('app.media.banner_pic4')", description: "Description 5" })
             }
             Image "$r('app.media.banner_pic5')" {
                 style: "w-full pt-3 px-4 rounded-2xl object-contain"
+                onclick: nav("bannerDetail", { title: "Banner 6", imageSrc: "$r('app.media.banner_pic5')", description: "Description 6" })
             }
             style: "auto-play loop indicator"
         }

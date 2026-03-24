@@ -26,7 +26,8 @@ widget EnablementView {
                         EnablementItem {
                             title: item.title,
                             brief: item.brief,
-                            imageSrc: item.imageSrc
+                            imageSrc: item.imageSrc,
+                            webUrl: "https://example.com/enablement"
                         }
                     }
                 }

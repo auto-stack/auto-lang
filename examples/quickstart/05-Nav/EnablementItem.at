@@ -3,9 +3,11 @@
 /// Enablement card component with vertical layout
 widget EnablementItem {
     model {
+        #[Consume("pathStack")] pathStack NavPathStack
         title str = ""
         brief str = ""
         imageSrc str = ""
+        webUrl str = ""
     }
 
     view {
@@ -20,6 +22,7 @@ widget EnablementItem {
                 style: "text-xs text-gray-600 w-full text-left px-3 mt-1"
             }
             style: "w-40 h-44 rounded-2xl bg-white"
+            onclick: nav("articleDetail", { title: .title, webUrl: .webUrl })
         }
     }
 }

@@ -1,0 +1,40 @@
+// KnowledgeMapContent.at - Knowledge map content detail page
+
+/// Knowledge map content detail page
+widget KnowledgeMapContent {
+    model {
+        #[Consume("pathStack")] pathStack NavPathStack
+        sectionId str = ""
+        title str = ""
+        description str = ""
+    }
+
+    view {
+        NavDestination {
+            Col {
+                Row {
+                    Image "$r('app.media.ic_back')" {
+                        style: "w-10 h-10"
+                    }
+                    Text .title {
+                        style: "text-xl font-bold ml-2 flex-1"
+                    }
+                    style: "w-full h-14"
+                }
+                Col {
+                    Text .description {
+                        style: "text-base text-gray-700 mt-4"
+                    }
+                    Text "学习内容" {
+                        style: "text-lg font-bold mt-6 mb-2"
+                    }
+                    Text "这里是该章节的详细学习内容..." {
+                        style: "text-sm text-gray-500"
+                    }
+                    style: "flex-1 w-full"
+                }
+                style: "w-full h-full p-4"
+            }
+        }
+    }
+}

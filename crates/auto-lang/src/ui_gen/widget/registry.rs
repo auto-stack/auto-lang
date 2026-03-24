@@ -1076,6 +1076,19 @@ impl WidgetRegistry {
         });
         self.register(tabs_content);
 
+        // NavDestination - for detail pages in navigation stack
+        let mut nav_destination = WidgetSpec::new("NavDestination", WidgetCategory::Navigation)
+            .with_alias("nav-destination");
+        nav_destination.has_children = true;
+        nav_destination.backends.insert("ark".to_string(), BackendMapping {
+            component: "NavDestination".to_string(),
+            import: None, // Built-in
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(nav_destination);
+
         // Breadcrumb
         let mut breadcrumb = WidgetSpec::new("Breadcrumb", WidgetCategory::Navigation)
             .with_alias("breadcrumb");

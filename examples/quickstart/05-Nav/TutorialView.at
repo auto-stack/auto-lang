@@ -25,7 +25,8 @@ widget TutorialView {
                         TutorialItem {
                             title: item.title,
                             brief: item.brief,
-                            imageSrc: item.imageSrc
+                            imageSrc: item.imageSrc,
+                            webUrl: "https://example.com/tutorial"
                         }
                     }
                 }

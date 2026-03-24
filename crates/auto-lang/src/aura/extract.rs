@@ -556,14 +556,44 @@ fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {
 }
 
 /// Convert expression to a simple string representation
+/// For ArkTS, converts self.xxx to this.xxx for state references
 fn expr_to_string(expr: &Expr) -> String {
     match expr {
-        Expr::Ident(name) => name.as_str().to_string(),
+        Expr::Ident(name) => {
+            let name_str = name.as_str();
+            // Convert .xxx to this.xxx for ArkTS (if somehow parsed as ident)
+            if name_str.starts_with('.') {
+                format!("this.{}", &name_str[1..])
+            } else if name_str == "self" {
+                // self -> this
+                "this".to_string()
+            } else {
+                name_str.to_string()
+            }
+        }
         Expr::Int(n) => n.to_string(),
         Expr::Str(s) => format!("\"{}\"", s.as_str()),
         Expr::Dot(obj, field) => {
+            // Check if this is self.field (parsed from .field syntax)
+            if let Expr::Ident(name) = obj.as_ref() {
+                let name_str = name.as_str();
+                if name_str == "self" {
+                    // self.field -> this.field
+                    return format!("this.{}", field.as_str());
+                }
+            }
             let obj_str = expr_to_string(obj);
             format!("{}.{}", obj_str, field.as_str())
+        }
+        Expr::Object(pairs) => {
+            let parts: Vec<String> = pairs.iter()
+                .map(|pair| {
+                    let key_str = key_to_string(&pair.key);
+                    let value_str = expr_to_string(&pair.value);
+                    format!("{}: {}", key_str, value_str)
+                })
+                .collect();
+            format!("{{ {} }}", parts.join(", "))
         }
         _ => format!("{:?}", expr),
     }

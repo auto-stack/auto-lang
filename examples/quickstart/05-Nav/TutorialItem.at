@@ -3,9 +3,11 @@
 /// Tutorial item component with horizontal layout
 widget TutorialItem {
     model {
+        #[Consume("pathStack")] pathStack NavPathStack
         title str = ""
         brief str = ""
         imageSrc str = ""
+        webUrl str = ""
     }
 
     view {
@@ -23,6 +25,7 @@ widget TutorialItem {
                 style: "h-16 w-28 rounded-2xl object-cover"
             }
             style: "w-full p-3 rounded-2xl bg-white"
+            onclick: nav("articleDetail", { title: .title, webUrl: .webUrl })
         }
     }
 }

@@ -3,6 +3,8 @@
 use Banner
 use EnablementView
 use TutorialView
+use ArticleDetailPage
+use BannerDetailPage
 
 /// Quick start page with Banner, Grid, and List
 widget QuickStartPage {
@@ -21,5 +23,10 @@ widget QuickStartPage {
             }
             style: "w-full h-full bg-gray-100"
         }
+    }
+
+    routes {
+        "articleDetail" => use ArticleDetailPage
+        "bannerDetail" => use BannerDetailPage
     }
 }

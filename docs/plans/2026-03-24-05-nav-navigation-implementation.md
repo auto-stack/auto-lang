@@ -11,19 +11,19 @@
 **Current Status:**
 | Task | Description | Status |
 |------|-------------|--------|
-| 0 | @Consume/@Provide decorators | 🔴 Not Started (Blocker) |
-| 1 | nav() function | ✅ Done (object params work) |
-| 2 | Navigation wrapper | ⏸️ Blocked by Task 0 |
-| 3-6 | Detail pages & navigation | ⏸️ Blocked by Task 0 |
-| 7 | KnowledgeMap | ⏸️ Blocked by Task 0 |
+| 0 | @Consume/@Provide decorators | ✅ Done |
+| 1 | nav() function | ✅ Done (Object wrapper for ArkTS) |
+| 2 | Navigation wrapper | ✅ Done |
+| 3-6 | Detail pages & navigation | ✅ Done |
+| 7 | KnowledgeMap | ✅ Done |
 | 8 | CourseLearning placeholder | ✅ Done |
-| 9 | Generate and test | ⏸️ Blocked |
+| 9 | Generate and test | ✅ Done - Nav working! |
 
 ---
 
 ## Task 0: Add @Consume and @Provide Decorator Support
 
-**Status:** 🔴 Not Started (Blocker for Tasks 2-7)
+**Status:** ✅ Done (2026-03-25)
 
 **Files:**
 - Modify: `crates/auto-lang/src/parser.rs` (parse decorators in model fields)

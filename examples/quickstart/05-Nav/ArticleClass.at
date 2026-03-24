@@ -1,0 +1,10 @@
+// ArticleClass.at - Article data model
+
+/// Article data class for tutorial and enablement items
+type ArticleClass {
+    id str
+    title str
+    brief str
+    imageSrc str
+    webUrl str
+}

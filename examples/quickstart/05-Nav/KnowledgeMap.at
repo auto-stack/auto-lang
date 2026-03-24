@@ -1,16 +1,79 @@
 // KnowledgeMap.at - Knowledge Map tab content
 
-/// Knowledge map page with sidebar
+use KnowledgeMapContent
+
+/// Knowledge map page with navigation to learning sections
 widget KnowledgeMap {
     view {
         Col {
             Text "知识地图" {
-                style: "text-2xl font-bold mb-4"
+                style: "text-2xl font-bold w-full text-left pl-4 pt-4"
             }
             Text "通过循序渐进的学习路径，无经验和有经验的开发者都可以轻松掌握ArkTS语言声明式开发范式" {
-                style: "text-sm text-gray-600 text-center"
+                style: "text-sm text-gray-600 text-center px-4 mt-2"
             }
-            style: "w-full h-full justify-center items-center bg-white p-4"
+            List {
+                ListItem {
+                    Row {
+                        Text "1" {
+                            style: "w-8 h-8 bg-blue-500 text-white rounded-full text-center"
+                        }
+                        Col {
+                            Text "ArkTS语言基础" {
+                                style: "text-base font-medium text-left"
+                            }
+                            Text "学习ArkTS语言的基础语法和特性" {
+                                style: "text-xs text-gray-600 text-left mt-1"
+                            }
+                            style: "flex-1 ml-3"
+                        }
+                        style: "w-full p-3 bg-white rounded-xl mb-2"
+                        onclick: nav("KnowledgeMapContent", { sectionId: "1", title: "ArkTS语言基础", description: "学习ArkTS语言的基础语法和特性" })
+                    }
+                }
+                ListItem {
+                    Row {
+                        Text "2" {
+                            style: "w-8 h-8 bg-blue-500 text-white rounded-full text-center"
+                        }
+                        Col {
+                            Text "声明式UI开发" {
+                                style: "text-base font-medium text-left"
+                            }
+                            Text "掌握声明式UI开发范式的核心概念" {
+                                style: "text-xs text-gray-600 text-left mt-1"
+                            }
+                            style: "flex-1 ml-3"
+                        }
+                        style: "w-full p-3 bg-white rounded-xl mb-2"
+                        onclick: nav("KnowledgeMapContent", { sectionId: "2", title: "声明式UI开发", description: "掌握声明式UI开发范式的核心概念" })
+                    }
+                }
+                ListItem {
+                    Row {
+                        Text "3" {
+                            style: "w-8 h-8 bg-blue-500 text-white rounded-full text-center"
+                        }
+                        Col {
+                            Text "组件与布局" {
+                                style: "text-base font-medium text-left"
+                            }
+                            Text "学习各类组件和布局容器的使用" {
+                                style: "text-xs text-gray-600 text-left mt-1"
+                            }
+                            style: "flex-1 ml-3"
+                        }
+                        style: "w-full p-3 bg-white rounded-xl mb-2"
+                        onclick: nav("KnowledgeMapContent", { sectionId: "3", title: "组件与布局", description: "学习各类组件和布局容器的使用" })
+                    }
+                }
+                style: "flex-1 px-4 mt-4"
+            }
+            style: "w-full h-full bg-gray-100"
         }
+    }
+
+    routes {
+        "KnowledgeMapContent" => use KnowledgeMapContent
     }
 }

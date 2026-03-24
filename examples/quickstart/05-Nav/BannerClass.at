@@ -1,0 +1,9 @@
+// BannerClass.at - Banner data model
+
+/// Banner data class for banner items
+type BannerClass {
+    id str
+    title str
+    imageSrc str
+    description str
+}
