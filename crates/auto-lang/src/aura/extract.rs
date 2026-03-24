@@ -161,16 +161,25 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
                     })
                 }
                 Expr::Ident(name) => {
-                    // Function call: name(args)
-                    // Treat as method call on implicit self
+                    let name_str = name.as_str();
                     let args: Vec<AuraExpr> = call.args.args.iter()
                         .map(|arg| extract_expr(&arg.get_expr()))
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(AuraExpr::MethodCall {
-                        object: Box::new(AuraExpr::StateRef("self".to_string())),
-                        method: name.as_str().to_string(),
-                        args,
-                    })
+
+                    // Check if this is a constructor call (starts with uppercase)
+                    if name_str.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                        Ok(AuraExpr::Constructor {
+                            type_name: name_str.to_string(),
+                            args,
+                        })
+                    } else {
+                        // Regular function call - treat as method call on implicit self
+                        Ok(AuraExpr::MethodCall {
+                            object: Box::new(AuraExpr::StateRef("self".to_string())),
+                            method: name_str.to_string(),
+                            args,
+                        })
+                    }
                 }
                 _ => Err(ExtractError::UnsupportedExpr(format!("Call with complex name: {:?}", call.name)))
             }
@@ -256,6 +265,10 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
             // The generator will handle the conversion to Kotlin
             Ok(AuraExpr::Literal(template))
         }
+
+        // Nil/Null/None - no initial value (e.g., @Consume variables)
+        // Return a special marker that generators can handle
+        Expr::Nil | Expr::Null | Expr::None => Ok(AuraExpr::Literal("".to_string())),
 
         // Other expressions not yet supported in view
         _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),
@@ -692,6 +705,12 @@ fn extract_model_fields(model: &ModelBlock) -> ExtractResult<Vec<AuraStateDef>> 
                 name: field.name.as_str().to_string(),
                 type_info: field.ty.clone(),
                 initial: extract_expr(&field.init)?,
+                decorators: field.decorators.iter()
+                    .map(|d| AuraDecorator {
+                        name: d.name.as_str().to_string(),
+                        args: d.args.clone(),
+                    })
+                    .collect(),
             })
         })
         .collect()

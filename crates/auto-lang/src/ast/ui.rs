@@ -80,6 +80,27 @@ pub struct MsgVariant {
 // Model Block
 // ============================================================================
 
+/// Decorator for model fields (Plan 05-Nav Task 0)
+///
+/// Supports HarmonyOS state management decorators:
+/// - `#[Consume("key")]` - Consume value from ancestor
+/// - `#[Provide("key")]` - Provide value to descendants
+///
+/// ```auto
+/// model {
+///     #[Provide("pathStack")] pathStack NavPathStack = NavPathStack()
+///     #[Consume("pathStack")] pathStack NavPathStack
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct Decorator {
+    /// Decorator name (e.g., "Consume", "Provide")
+    pub name: Name,
+
+    /// Decorator arguments (e.g., ["pathStack"])
+    pub args: Vec<String>,
+}
+
 /// Model block: defines state variables
 ///
 /// ```auto
@@ -114,6 +135,10 @@ pub struct ModelField {
     /// Whether this field is the primary property for shorthand syntax (Plan 119)
     /// When true, allows: `Text "Hello" {}` instead of `Text (text: "Hello") {}`
     pub is_primary: bool,
+
+    /// Decorators for state management (Plan 05-Nav Task 0)
+    /// E.g., `#[Consume("pathStack")]`, `#[Provide("pathStack")]`
+    pub decorators: Vec<Decorator>,
 }
 
 // ============================================================================

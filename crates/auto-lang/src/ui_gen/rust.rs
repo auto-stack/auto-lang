@@ -748,6 +748,12 @@ impl RustGenerator {
                     .collect();
                 format!("nav_to(\"{}\", {{ {} }})", path, params_str.join(", "))
             }
+            AuraExpr::Constructor { type_name, args } => {
+                let args_str: Vec<String> = args.iter()
+                    .map(|a| self.expr_to_rust(a))
+                    .collect();
+                format!("{}::new({})", type_name, args_str.join(", "))
+            }
         }
     }
 
@@ -828,6 +834,7 @@ mod tests {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
+                decorators: vec![],
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),

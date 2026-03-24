@@ -782,6 +782,26 @@ impl<'a> Parser<'a> {
             return shared(ty);
         }
 
+        // Plan 05-Nav: Preserve unknown type names for code generation
+        // Only preserve names that look like external types (not common collection names)
+        // Common collection names without parameters should return Unknown
+        let common_collection_types = ["List", "Map", "Set", "Array", "Vec", "HashMap", "HashSet", "Option", "Result"];
+        if !common_collection_types.contains(&name) {
+            // Return Type::User with just the name so generators can use it
+            return shared(Type::User(TypeDecl {
+                name: Name::from(name),
+                kind: TypeDeclKind::UserType,
+                parent: None,
+                has: Vec::new(),
+                specs: Vec::new(),
+                spec_impls: Vec::new(),
+                generic_params: Vec::new(),
+                members: Vec::new(),
+                delegations: Vec::new(),
+                methods: Vec::new(),
+            }));
+        }
+
         shared(Type::Unknown)
     }
 
@@ -8006,8 +8026,8 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // Plan 119: Parse #[primary] annotation for model fields
-            let is_primary = self.parse_model_field_primary()?;
+            // Plan 119 & 05-Nav: Parse annotations for model fields
+            let (is_primary, decorators) = self.parse_model_field_annotations()?;
 
             // Plan 130: Support `var` keyword for mutable model fields
             // Default is immutable (like `let`), use `var` to allow modification in `on` handlers
@@ -8027,7 +8047,7 @@ impl<'a> Parser<'a> {
             } else {
                 Expr::Nil
             };
-            fields.push(ModelField { name, ty, init, mutable, is_primary });
+            fields.push(ModelField { name, ty, init, mutable, is_primary, decorators });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
@@ -8035,34 +8055,63 @@ impl<'a> Parser<'a> {
         Ok(ModelBlock { fields })
     }
 
-    /// Parse `#[primary]` annotation for model fields (Plan 119)
-    /// Returns true if #[primary] is present, false otherwise
-    fn parse_model_field_primary(&mut self) -> AutoResult<bool> {
-        if !self.is_kind(TokenKind::Hash) {
-            return Ok(false);
-        }
-
-        self.next(); // skip #
-
-        if !self.is_kind(TokenKind::LSquare) {
-            // Not an annotation, put the # back (unexpected, but handle gracefully)
-            return Ok(false);
-        }
-
-        self.next(); // skip [
-
+    /// Parse annotations for model fields (Plan 119: #[primary], Plan 05-Nav: decorators)
+    /// Returns (is_primary, decorators) tuple
+    fn parse_model_field_annotations(&mut self) -> AutoResult<(bool, Vec<Decorator>)> {
         let mut is_primary = false;
+        let mut decorators = Vec::new();
 
-        if self.is_kind(TokenKind::Ident) {
-            let annot = self.cur.text.clone();
-            match annot.as_str() {
+        // Parse multiple annotations: #[primary] #[Consume("key")]
+        while self.is_kind(TokenKind::Hash) {
+            self.next(); // skip #
+
+            if !self.is_kind(TokenKind::LSquare) {
+                // Not an annotation, unexpected # - just return what we have
+                return Ok((is_primary, decorators));
+            }
+
+            self.next(); // skip [
+
+            if !self.is_kind(TokenKind::Ident) {
+                // Empty annotation, skip
+                if self.is_kind(TokenKind::RSquare) {
+                    self.next();
+                }
+                continue;
+            }
+
+            let annot_name = self.cur.text.clone();
+            self.next(); // skip annotation name
+
+            match annot_name.as_str() {
                 "primary" => {
                     is_primary = true;
-                    self.next(); // skip 'primary'
+                }
+                "Consume" | "Provide" => {
+                    // Parse arguments: ("key")
+                    let mut args = Vec::new();
+                    if self.is_kind(TokenKind::LParen) {
+                        self.next(); // skip (
+                        // Parse string argument
+                        if self.is_kind(TokenKind::Str) {
+                            args.push(self.cur.text.to_string());
+                            self.next();
+                        }
+                        if self.is_kind(TokenKind::RParen) {
+                            self.next(); // skip )
+                        }
+                    }
+                    decorators.push(Decorator {
+                        name: annot_name,
+                        args,
+                    });
                 }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Unknown model field annotation '{}'. Valid: #[primary]", annot),
+                        message: format!(
+                            "Unknown model field annotation '{}'. Valid: #[primary], #[Consume(\"key\")], #[Provide(\"key\")]",
+                            annot_name
+                        ),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -8073,7 +8122,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(is_primary)
+        Ok((is_primary, decorators))
     }
 
     /// Parse computed block, returning the ComputedBlock directly

@@ -1543,6 +1543,7 @@ mod tests {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
+                decorators: vec![],
             }],
             computed: vec![],
             messages: vec![AuraMessage {
@@ -2075,5 +2076,10 @@ mod tests {
     #[test]
     fn test_016_nav() {
         test_a2ark("016_nav").unwrap();
+    }
+
+    #[test]
+    fn test_017_decorators() {
+        test_a2ark("017_decorators").unwrap();
     }
 }

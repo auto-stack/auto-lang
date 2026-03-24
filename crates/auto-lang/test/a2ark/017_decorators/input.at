@@ -1,0 +1,32 @@
+// 017_decorators - @Consume and @Provide decorator support
+
+/// Parent widget that provides pathStack
+widget ParentWidget {
+    model {
+        #[Provide("pathStack")] pathStack NavPathStack = NavPathStack()
+    }
+
+    view {
+        Col {
+            ChildWidget {}
+            style: "w-full h-full"
+        }
+    }
+}
+
+/// Child widget that consumes pathStack
+widget ChildWidget {
+    model {
+        #[Consume("pathStack")] pathStack NavPathStack
+        count int = 0
+    }
+
+    view {
+        Col {
+            Text "Child" {
+                style: "text-xl"
+            }
+            style: "w-full h-full p-4"
+        }
+    }
+}

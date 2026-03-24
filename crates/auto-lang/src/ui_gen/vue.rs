@@ -2083,6 +2083,10 @@ impl VueGenerator {
                     .collect();
                 format!("Nav.to(\"{}\", {{ {} }})", path, params_str.join(", "))
             }
+            AuraExpr::Constructor { type_name, args } => {
+                let args_str: Vec<String> = args.iter().map(|a| self.expr_to_auto_string(a)).collect();
+                format!("{}({})", type_name, args_str.join(", "))
+            }
         }
     }
 
@@ -2643,6 +2647,13 @@ impl VueGenerator {
                     Ok(format!("router.push({{ path: '{}', query: {{ {} }} }})", path, params_js.join(", ")))
                 }
             }
+            AuraExpr::Constructor { type_name, args } => {
+                let args_js: Vec<String> = args.iter()
+                    .map(|a| self.expr_to_js(a))
+                    .collect::<Result<Vec<_>, _>>()?;
+                // In JavaScript, constructors use 'new' keyword
+                Ok(format!("new {}({})", type_name, args_js.join(", ")))
+            }
         }
     }
 
@@ -2811,6 +2822,11 @@ impl VueGenerator {
                     self.extract_api_calls_from_expr(v);
                 }
             }
+            AuraExpr::Constructor { args, .. } => {
+                for arg in args {
+                    self.extract_api_calls_from_expr(arg);
+                }
+            }
             // These don't contain nested expressions
             AuraExpr::Literal(_)
             | AuraExpr::Int(_)
@@ -2878,6 +2894,9 @@ impl VueGenerator {
             AuraExpr::Lambda { body, .. } => self.expr_has_api_calls(body),
             AuraExpr::NavCall { params, .. } => {
                 params.values().any(|v| self.expr_has_api_calls(v))
+            }
+            AuraExpr::Constructor { args, .. } => {
+                args.iter().any(|a| self.expr_has_api_calls(a))
             }
             AuraExpr::Literal(_)
             | AuraExpr::Int(_)
@@ -5888,6 +5907,7 @@ mod tests {
                 name: "count".to_string(),
                 type_info: crate::ast::Type::Int,
                 initial: AuraExpr::Int(0),
+                decorators: vec![],
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),

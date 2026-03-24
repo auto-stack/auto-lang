@@ -123,6 +123,16 @@ impl From<RoutesBlock> for AuraRoutes {
 // State Definition
 // ============================================================================
 
+/// Decorator for state management (Plan 05-Nav Task 0)
+#[derive(Debug, Clone)]
+pub struct AuraDecorator {
+    /// Decorator name (e.g., "Consume", "Provide")
+    pub name: String,
+
+    /// Decorator arguments (e.g., ["pathStack"])
+    pub args: Vec<String>,
+}
+
 /// State variable definition
 #[derive(Debug, Clone)]
 pub struct AuraStateDef {
@@ -134,6 +144,9 @@ pub struct AuraStateDef {
 
     /// Initial value expression
     pub initial: AuraExpr,
+
+    /// Decorators for state management (e.g., @Consume, @Provide)
+    pub decorators: Vec<AuraDecorator>,
 }
 
 /// Prop definition for reusable components
@@ -465,6 +478,16 @@ pub enum AuraExpr {
         /// Navigation parameters
         params: HashMap<String, AuraExpr>,
     },
+
+    /// Constructor call: TypeName(args)
+    /// For example: NavPathStack() -> new NavPathStack()
+    Constructor {
+        /// Type name
+        type_name: String,
+
+        /// Arguments
+        args: Vec<AuraExpr>,
+    },
 }
 
 /// Binary operators
@@ -646,6 +669,7 @@ mod tests {
             name: "count".to_string(),
             type_info: Type::Int,
             initial: AuraExpr::Int(0),
+            decorators: vec![],
         };
 
         assert_eq!(state.name, "count");
@@ -709,6 +733,7 @@ mod tests {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
+                decorators: vec![],
             }],
             computed: vec![],
             messages: vec![],

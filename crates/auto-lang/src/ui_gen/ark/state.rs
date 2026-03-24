@@ -156,11 +156,20 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
         let base_interface_name = to_pascal_case(name);
         let prefixed_interface_name = format!("{}{}", widget_name, base_interface_name);
 
+        // Check if we can get type from constructor when type is Unknown
+        let type_from_constructor = match &state_var.initial {
+            AuraExpr::Constructor { type_name, .. } => Some(type_name.clone()),
+            _ => None,
+        };
+
         let arkts_type = if is_image_source_prop(name, &state_var.type_info) {
             "ResourceStr".to_string()
         } else if interfaces.iter().any(|i| i.name == prefixed_interface_name) {
             // Use the prefixed interface type with array
             format!("{}[]", prefixed_interface_name)
+        } else if matches!(state_var.type_info, Type::Unknown) {
+            // If type is Unknown, try to use type from constructor
+            type_from_constructor.unwrap_or_else(|| "any".to_string())
         } else {
             auto_type_to_arkts(&state_var.type_info, &interfaces)
         };
@@ -210,16 +219,44 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
             AuraExpr::Int(n) => n.to_string(),
             AuraExpr::Float(f) => f.to_string(),
             AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::Constructor { type_name, args } => {
+                // Constructor call: TypeName(args) -> new TypeName(args)
+                let args_code: Vec<String> = args.iter().map(|a| expr_to_arkts(a)).collect();
+                format!("new {}({})", type_name, args_code.join(", "))
+            }
             _ => generate_default_value(&state_var.type_info),
         };
 
-        // Use @Prop for model properties (passed from parent), @State for internal state
-        let decorator = if widget.props.iter().any(|p| p.name.as_str() == name) {
-            "@Prop"
+        // Determine decorator based on AURA decorators, props, or default to @State
+        // Priority: @Consume > @Provide > @Prop > @State
+        let decorator = if let Some(consume_dec) = state_var.decorators.iter().find(|d| d.name == "Consume") {
+            // @Consume decorator - consumes value from ancestor
+            if let Some(key) = consume_dec.args.first() {
+                format!("@Consume(\"{}\")", key)
+            } else {
+                "@Consume".to_string()
+            }
+        } else if let Some(provide_dec) = state_var.decorators.iter().find(|d| d.name == "Provide") {
+            // @Provide decorator - provides value to descendants
+            if let Some(key) = provide_dec.args.first() {
+                format!("@Provide(\"{}\")", key)
+            } else {
+                "@Provide".to_string()
+            }
+        } else if widget.props.iter().any(|p| p.name.as_str() == name) {
+            // @Prop for model properties (passed from parent)
+            "@Prop".to_string()
         } else {
-            "@State"
+            // @State for internal state
+            "@State".to_string()
         };
-        lines.push(format!("  {} {}: {} = {}", decorator, name, arkts_type, default_value));
+
+        // For @Consume, don't include initial value (it's provided by ancestor)
+        if state_var.decorators.iter().any(|d| d.name == "Consume") {
+            lines.push(format!("  {} {}: {}", decorator, name, arkts_type));
+        } else {
+            lines.push(format!("  {} {}: {} = {}", decorator, name, arkts_type, default_value));
+        }
     }
 
     lines.join("\n")
@@ -304,7 +341,13 @@ fn auto_type_to_arkts(ty: &Type, interfaces: &[InterfaceDef]) -> String {
         Type::Array(arr) => format!("{}[]", auto_type_to_arkts(&arr.elem, interfaces)),
         Type::List(elem) => format!("{}[]", auto_type_to_arkts(elem, interfaces)),
         Type::User(decl) => decl.name.as_str().to_string(),
+        Type::Tag(tag) => tag.borrow().name.as_str().to_string(),
+        Type::Enum(enum_decl) => enum_decl.borrow().name.as_str().to_string(),
+        Type::Spec(spec_decl) => spec_decl.borrow().name.as_str().to_string(),
+        Type::GenericInstance(inst) => inst.base_name.as_str().to_string(),
         Type::Option(inner) => format!("{} | null", auto_type_to_arkts(inner, interfaces)),
+        Type::Void => "void".to_string(),
+        Type::Unknown => "any".to_string(),
         _ => "any".to_string(),
     }
 }
@@ -452,6 +495,10 @@ fn expr_to_arkts(expr: &AuraExpr) -> String {
                 .map(|(k, v)| format!("{}: {}", k, expr_to_arkts(v)))
                 .collect();
             format!("Nav.to(\"{}\", {{ {} }})", path, params_code.join(", "))
+        }
+        AuraExpr::Constructor { type_name, args } => {
+            let args_code: Vec<String> = args.iter().map(|a| expr_to_arkts(a)).collect();
+            format!("new {}({})", type_name, args_code.join(", "))
         }
     }
 }

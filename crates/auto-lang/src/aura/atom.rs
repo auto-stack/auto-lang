@@ -369,6 +369,14 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             }
             output.push_str("})");
         }
+        AuraExpr::Constructor { type_name, args } => {
+            output.push_str(&format!("Constructor(\"{}\", [", type_name));
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 { output.push_str(", "); }
+                serialize_expr(arg, output);
+            }
+            output.push_str("])");
+        }
     }
 }
 
@@ -432,6 +440,7 @@ mod tests {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
+                decorators: vec![],
             }],
             computed: vec![],
             messages: vec![],
