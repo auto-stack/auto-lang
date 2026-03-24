@@ -12,13 +12,13 @@ impl Wing {
     }
 }
 
-trait Wing {
+trait WingTrait {
     fn fly(&self);
 }
 
 struct Duck {}
 
-impl Wing for Duck {
+impl WingTrait for Duck {
     fn fly(&self) {
         // TODO: Implement fly method body from Wing
     }

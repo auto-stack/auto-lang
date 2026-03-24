@@ -1946,7 +1946,9 @@ impl RustTrans {
                 let is_trait_only = has_decl.members.is_empty() && has_decl.methods.is_empty();
 
                 // Generate trait definition
-                write!(sink.body, "trait {} {{\n", has_decl.name)?;
+                // Use {Name}Trait to avoid conflict with struct name
+                let trait_name = format!("{}Trait", has_decl.name);
+                write!(sink.body, "trait {} {{\n", trait_name)?;
                 self.indent();
 
                 for method in &has_decl.methods {
@@ -1982,10 +1984,11 @@ impl RustTrans {
 
                 // If this is a trait-only type (no struct definition), also generate a default impl
                 if is_trait_only && !has_decl.methods.is_empty() {
+                    let trait_name = format!("{}Trait", has_decl.name);
                     write!(
                         sink.body,
                         "impl {} for {} {{\n",
-                        has_decl.name, has_decl.name
+                        trait_name, has_decl.name
                     )?;
                     self.indent();
 
@@ -2136,7 +2139,9 @@ impl RustTrans {
         for has_type in &type_decl.has {
             if let Type::User(has_decl) = has_type {
                 // Build the impl signature with generic parameters
-                write!(sink.body, "\nimpl {}", has_decl.name)?;
+                // Use {Name}Trait to avoid conflict with struct name
+                let trait_name = format!("{}Trait", has_decl.name);
+                write!(sink.body, "\nimpl {}", trait_name)?;
 
                 // Add generic parameters from has_decl (trait)
                 if !has_decl.generic_params.is_empty() {
