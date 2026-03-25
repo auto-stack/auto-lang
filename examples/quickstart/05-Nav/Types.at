@@ -1,0 +1,26 @@
+// Types.at - Data types for Knowledge Map
+
+/// Knowledge base item (e.g., "指南 - DevEco Studio")
+type KnowledgeBaseItem {
+    type str
+    title str
+}
+
+/// Material section within a learning phase
+type Material {
+    subtitle str
+    knowledgeBase KnowledgeBaseItem[]
+}
+
+/// Learning section/phase in the knowledge map
+type Section {
+    title str
+    brief str
+    materials Material[]
+}
+
+/// Nav bar item for navigation list
+type NavBarItemType {
+    order str
+    title str
+}
