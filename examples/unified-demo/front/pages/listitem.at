@@ -39,7 +39,7 @@ widget ListItemPage {
                         Divider
                         ListItem (headline: "Messages", supporting: "Direct messages and chats", leading: "Mail")
                         Divider
-                        ListItem (headline: "Calendar", supporting: "Events and reminders", leading: "Calendar")
+                        ListItem (headline: "Calendar", supporting: "Events and reminders", leading: "DateRange")
                     }
                 }
 
