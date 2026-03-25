@@ -17,6 +17,7 @@ fn create_test_widget() -> AuraWidget {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
+                decorators: vec![],
             }
         ],
         computed: vec![],

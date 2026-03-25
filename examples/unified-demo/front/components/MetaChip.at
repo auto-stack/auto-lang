@@ -1,0 +1,23 @@
+// components/MetaChip.at - Small rounded chip for tags and labels
+
+/// Small rounded chip for tags, labels, and metadata display.
+///
+/// # Example
+/// ```auto
+/// Row {
+///     MetaChip (text: "New")
+///     MetaChip (text: "Stable")
+/// }
+/// ```
+
+widget MetaChip {
+    model {
+        text str = ""
+    }
+
+    view {
+        Text (text: .text) {
+            style: "px-3 py-1.5 rounded-full text-sm bg-gray-100"
+        }
+    }
+}

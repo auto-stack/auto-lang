@@ -1,0 +1,42 @@
+// components/WidgetListCard.at - Card for displaying widget info in a list
+
+/// Card for displaying widget information in a list format.
+///
+/// Used on index pages to show available widgets with their
+/// title, description, and support tier badge.
+///
+/// # Example
+/// ```auto
+/// WidgetListCard {
+///     title: "Button"
+///     description: "Clickable button with multiple variants"
+///     supportTier: "Stable"
+/// }
+/// ```
+
+widget WidgetListCard {
+    model {
+        title str = ""
+        description str = ""
+        supportTier str = ""
+    }
+
+    view {
+        Card (variant: "outlined") {
+            style: "w-full rounded-xl"
+            Col {
+                style: "w-full p-4 gap-2"
+                Row {
+                    style: "w-full justify-between items-center"
+                    H4 (text: .title) {
+                        style: "font-medium"
+                    }
+                    MetaChip (text: .supportTier, variant: "primary")
+                }
+                Text (text: .description) {
+                    style: "text-sm text-gray-600"
+                }
+            }
+        }
+    }
+}

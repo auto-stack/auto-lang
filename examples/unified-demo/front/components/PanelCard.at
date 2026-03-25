@@ -1,0 +1,36 @@
+// components/PanelCard.at - Panel card container for widget detail sections
+
+/// Panel card container for widget detail sections.
+///
+/// Uses ElevatedCard variant to create a prominent section container
+/// with a title header. Used in widget demo pages to organize content.
+///
+/// # Example
+/// ```auto
+/// PanelCard (title: "Variants") {
+///     Col {
+///         Card { Text "Default" }
+///         Card (variant: "elevated") { Text "Elevated" }
+///         Card (variant: "outlined") { Text "Outlined" }
+///     }
+/// }
+/// ```
+
+widget PanelCard {
+    model {
+        title str = ""
+    }
+
+    view {
+        Card (variant: "elevated") {
+            style: "rounded-3xl w-full"
+            Col {
+                style: "w-full p-5 gap-3"
+                H3 (text: .title) {
+                    style: "text-lg font-semibold mb-2"
+                }
+                // Slot for children content
+            }
+        }
+    }
+}

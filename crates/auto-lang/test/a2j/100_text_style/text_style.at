@@ -1,0 +1,9 @@
+// Test Text with style attribute
+widget TestTextStyle {
+    view {
+        Col {
+            Text (style: "flex-1") "Hello"
+            Text "World"
+        }
+    }
+}

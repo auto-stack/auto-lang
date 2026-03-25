@@ -256,6 +256,11 @@ impl ModifierDsl {
             modifiers.push(format!("alpha({:.2}f)", opacity));
         }
 
+        // Layout weight (flex-1 → weight(1f))
+        if let Some(weight) = style.layout_weight {
+            modifiers.push(format!("weight({}f)", weight));
+        }
+
         // Text color (goes into TextStyle, not Modifier)
         if let Some(color) = &style.text_color {
             text_style.push(format!("color = {}", Self::color_to_compose(color)));
@@ -468,5 +473,45 @@ mod tests {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("rounded-full");
         assert!(result.modifiers.iter().any(|m| m.contains("CircleShape")));
+    }
+
+    #[test]
+    fn test_layout_weight_conversion() {
+        let dsl = ModifierDsl::new();
+
+        // flex-1 → weight(1f)
+        let result = dsl.convert_class("flex-1");
+        println!("flex-1 modifiers: {:?}", result.modifiers);
+        assert!(result.modifiers.iter().any(|m| m.contains("weight(1f)")));
+
+        // flex-2 → weight(2f)
+        let result = dsl.convert_class("flex-2");
+        println!("flex-2 modifiers: {:?}", result.modifiers);
+        assert!(result.modifiers.iter().any(|m| m.contains("weight(2f)")));
+
+        // Test generate_modifier_chain
+        let chain = dsl.generate_modifier_chain("flex-1");
+        println!("flex-1 chain: {}", chain);
+        assert_eq!(chain, "Modifier.weight(1f)");
+
+        // Test with combined classes
+        let chain = dsl.generate_modifier_chain("flex-1 p-2");
+        println!("flex-1 p-2 chain: {}", chain);
+        assert!(chain.contains("weight(1f)"));
+    }
+
+    #[test]
+    fn test_table_cell_style() {
+        // Test the style pattern used in table.at
+        let dsl = ModifierDsl::new();
+
+        // Gap in Row parent
+        let result = dsl.convert_class("gap-4");
+        assert!(result.arrangement.is_some());
+        assert!(result.arrangement.unwrap().contains("spacedBy(16.dp)"));
+
+        // flex-1 in child Text
+        let result = dsl.convert_class("flex-1");
+        assert!(result.modifiers.iter().any(|m| m.contains("weight(1f)")));
     }
 }

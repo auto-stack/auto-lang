@@ -254,14 +254,24 @@ impl LayoutGenerator {
             modifier_parts.push(format!("padding({}.dp)", padding));
         }
 
-        // Add style-based modifiers (only if non-empty)
-        if let Some(style) = &layout_props.style {
+        // Add style-based modifiers (padding, margin, etc.)
+        // Also extract arrangement from style (gap)
+        let style_arrangement = if let Some(style) = &layout_props.style {
             let result = self.class_to_modifier_result(style);
+
+            // Add required imports based on style
             self.add_style_imports(&result.style);
+
+            // Add modifiers (padding, margin, etc.)
             if !result.modifiers.is_empty() {
                 modifier_parts.push(result.modifiers.join("."));
             }
-        }
+
+            // Return arrangement from style (gap)
+            result.arrangement
+        } else {
+            None
+        };
 
         // Build final modifier
         if modifier_parts.is_empty() {
@@ -271,15 +281,24 @@ impl LayoutGenerator {
         }
 
         // Horizontal arrangement (gap + justify)
+        // Priority: explicit gap prop > style-based gap > justify only
         let arrangement = if let Some(gap) = layout_props.gap {
+            // Explicit gap prop takes precedence
             let dp = gap * 4;
             match layout_props.horizontal_arrange.as_deref() {
-                Some("between") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceBetween)", dp),
-                Some("around") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceAround)", dp),
-                Some("evenly") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceEvenly)", dp),
+                Some("between") => format!("Arrangement.spacedBy({}.dp)", dp),
+                Some("around") => format!("Arrangement.spacedBy({}.dp)", dp),
+                Some("evenly") => format!("Arrangement.spacedBy({}.dp)", dp),
                 _ => format!("Arrangement.spacedBy({}.dp)", dp),
             }
+        } else if let Some(style_gap) = style_arrangement {
+            // Use gap from style (gap-4 → Arrangement.spacedBy(16.dp))
+            match layout_props.horizontal_arrange.as_deref() {
+                Some("between") => style_gap, // TODO: combine with SpaceBetween if needed
+                _ => style_gap,
+            }
         } else {
+            // No gap, only justify
             match layout_props.horizontal_arrange.as_deref() {
                 Some("between") => "Arrangement.SpaceBetween".to_string(),
                 Some("around") => "Arrangement.SpaceAround".to_string(),

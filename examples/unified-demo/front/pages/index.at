@@ -240,6 +240,30 @@ widget IndexPage {
                                 }
                             }
                         }
+
+                        // List Demo Card
+                        Link (to: "/list") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "List Demo"
+                                    Text (variant: "muted") "LazyColumn with various list item styles"
+                                }
+                            }
+                        }
+
+                        // Grid Demo Card
+                        Link (to: "/grid") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Grid Demo"
+                                    Text (variant: "muted") "LazyVerticalGrid with adaptive cells"
+                                }
+                            }
+                        }
                     }
                 }
             }

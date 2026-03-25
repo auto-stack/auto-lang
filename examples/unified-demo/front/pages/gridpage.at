@@ -1,0 +1,147 @@
+// pages/gridpage.at - Grid demo
+
+/// Grid demo page showing grid layouts.
+/// Demonstrates multi-column grid layouts with various cell types.
+
+widget GridPage {
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "Grid Demo"
+                    Text (variant: "muted") "Grid layouts with adaptive cells"
+                }
+
+                // Photo Grid - 2 columns
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Photo Grid"
+                        Text "2-column photo gallery"
+                        Row {
+                            style: "gap-2"
+                            Box {
+                                style: "flex-1 aspect-square rounded-lg bg-blue-100 items-center justify-center"
+                                Text "1"
+                            }
+                            Box {
+                                style: "flex-1 aspect-square rounded-lg bg-green-100 items-center justify-center"
+                                Text "2"
+                            }
+                        }
+                        Row {
+                            style: "gap-2"
+                            Box {
+                                style: "flex-1 aspect-square rounded-lg bg-yellow-100 items-center justify-center"
+                                Text "3"
+                            }
+                            Box {
+                                style: "flex-1 aspect-square rounded-lg bg-red-100 items-center justify-center"
+                                Text "4"
+                            }
+                        }
+                    }
+                }
+
+                // Product Grid - 3 columns
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Product Grid"
+                        Text "3-column product cards"
+                        Row {
+                            style: "gap-4"
+                            Col {
+                                style: "flex-1 p-4 rounded-lg bg-gray-50 gap-2"
+                                Box {
+                                    style: "w-full aspect-square bg-gray-200 rounded"
+                                }
+                                Text "Product 1" (style: "font-semibold")
+                                Text "$19.99" (variant: "muted")
+                            }
+                            Col {
+                                style: "flex-1 p-4 rounded-lg bg-gray-50 gap-2"
+                                Box {
+                                    style: "w-full aspect-square bg-gray-200 rounded"
+                                }
+                                Text "Product 2" (style: "font-semibold")
+                                Text "$29.99" (variant: "muted")
+                            }
+                            Col {
+                                style: "flex-1 p-4 rounded-lg bg-gray-50 gap-2"
+                                Box {
+                                    style: "w-full aspect-square bg-gray-200 rounded"
+                                }
+                                Text "Product 3" (style: "font-semibold")
+                                Text "$39.99" (variant: "muted")
+                            }
+                        }
+                    }
+                }
+
+                // App Grid - 4 columns (using rounded-lg instead of rounded-full)
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "App Grid"
+                        Text "4-column app icons"
+                        Row {
+                            style: "gap-4"
+                            Col {
+                                style: "flex-1 items-center gap-2"
+                                Box {
+                                    style: "w-12 h-12 rounded-lg bg-blue-500"
+                                }
+                                Text "Mail"
+                            }
+                            Col {
+                                style: "flex-1 items-center gap-2"
+                                Box {
+                                    style: "w-12 h-12 rounded-lg bg-green-500"
+                                }
+                                Text "Calendar"
+                            }
+                            Col {
+                                style: "flex-1 items-center gap-2"
+                                Box {
+                                    style: "w-12 h-12 rounded-lg bg-orange-500"
+                                }
+                                Text "Photos"
+                            }
+                            Col {
+                                style: "flex-1 items-center gap-2"
+                                Box {
+                                    style: "w-12 h-12 rounded-lg bg-purple-500"
+                                }
+                                Text "Music"
+                            }
+                        }
+                    }
+                }
+
+                // Common Use Cases
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Common Use Cases"
+                        Text "Grids are ideal for:"
+                        Col {
+                            style: "gap-2"
+                            Chip "Photo galleries" (variant: "filter")
+                            Chip "Product catalogs" (variant: "filter")
+                            Chip "App launchers" (variant: "filter")
+                            Chip "Dashboard widgets" (variant: "filter")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

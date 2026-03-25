@@ -12,7 +12,7 @@ widget TablePage {
                 Col {
                     style: "gap-2"
                     H1 "Table Demo"
-                    Text (variant: "muted") "Static data tables with Column + Row pattern"
+                    Text "Static data tables with Column + Row pattern" (variant: "muted")
                 }
 
                 // API Reference Table
@@ -25,8 +25,8 @@ widget TablePage {
                         // Table Header
                         Row {
                             style: "p-3 bg-gray-100 rounded-t-lg gap-4"
-                            Text (variant: "bold", style: "flex-1") "Widget"
-                            Text (variant: "bold", style: "flex-1") "Compose Target"
+                            Text "Widget" (variant: "bold", style: "flex-1")
+                            Text "Compose Target" (variant: "bold", style: "flex-1")
                         }
 
                         // Table Rows
@@ -34,36 +34,36 @@ widget TablePage {
                             Divider
                             Row {
                                 style: "p-3 gap-4"
-                                Text (style: "flex-1") "Button"
-                                Text (style: "flex-1") "Button / OutlinedButton"
+                                Text "Button" (style: "flex-1")
+                                Text "Button / OutlinedButton" (style: "flex-1")
                             }
 
                             Divider
                             Row {
                                 style: "p-3 gap-4"
-                                Text (style: "flex-1") "Input"
-                                Text (style: "flex-1") "OutlinedTextField"
+                                Text "Input" (style: "flex-1")
+                                Text "OutlinedTextField" (style: "flex-1")
                             }
 
                             Divider
                             Row {
                                 style: "p-3 gap-4"
-                                Text (style: "flex-1") "Tabs"
-                                Text (style: "flex-1") "TabRow + Tab"
+                                Text "Tabs" (style: "flex-1")
+                                Text "TabRow + Tab" (style: "flex-1")
                             }
 
                             Divider
                             Row {
                                 style: "p-3 gap-4"
-                                Text (style: "flex-1") "Accordion"
-                                Text (style: "flex-1") "AnimatedVisibility"
+                                Text "Accordion" (style: "flex-1")
+                                Text "AnimatedVisibility" (style: "flex-1")
                             }
 
                             Divider
                             Row {
                                 style: "p-3 gap-4"
-                                Text (style: "flex-1") "Table"
-                                Text (style: "flex-1") "Column + Row"
+                                Text "Table" (style: "flex-1")
+                                Text "Column + Row" (style: "flex-1")
                             }
                         }
                     }
@@ -78,37 +78,37 @@ widget TablePage {
 
                         Row {
                             style: "p-3 bg-blue-50 rounded-t-lg"
-                            Text (variant: "bold", style: "flex-1") "Component"
-                            Text (variant: "bold", style: "flex-1") "Status"
+                            Text "Component" (variant: "bold", style: "flex-1")
+                            Text "Status" (variant: "bold", style: "flex-1")
                         }
 
                         Col {
                             Divider
                             Row {
                                 style: "p-3"
-                                Text (style: "flex-1") "Progress"
+                                Text "Progress" (style: "flex-1")
                                 Badge "Done"
                             }
 
                             Divider
                             Row {
                                 style: "p-3"
-                                Text (style: "flex-1") "Image"
+                                Text "Image" (style: "flex-1")
                                 Badge "Done"
                             }
 
                             Divider
                             Row {
                                 style: "p-3"
-                                Text (style: "flex-1") "Dialog"
-                                Badge (variant: "outline") "Pending"
+                                Text "Dialog" (style: "flex-1")
+                                Badge "Pending" (variant: "outline")
                             }
 
                             Divider
                             Row {
                                 style: "p-3"
-                                Text (style: "flex-1") "DropdownMenu"
-                                Badge (variant: "outline") "Pending"
+                                Text "DropdownMenu" (style: "flex-1")
+                                Badge "Pending" (variant: "outline")
                             }
                         }
                     }
@@ -123,10 +123,10 @@ widget TablePage {
                         Text "Tables are ideal for:"
                         Col {
                             style: "gap-2"
-                            Chip (variant: "filter") "API documentation"
-                            Chip (variant: "filter") "Status tracking"
-                            Chip (variant: "filter") "Data comparison"
-                            Chip (variant: "filter") "Feature lists"
+                            Chip "API documentation" (variant: "filter")
+                            Chip "Status tracking" (variant: "filter")
+                            Chip "Data comparison" (variant: "filter")
+                            Chip "Feature lists" (variant: "filter")
                         }
                     }
                 }

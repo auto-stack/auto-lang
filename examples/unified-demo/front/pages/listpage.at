@@ -1,0 +1,75 @@
+// pages/listpage.at - List demo
+
+/// List demo page showing list item styles.
+/// Demonstrates various list item configurations.
+
+widget ListPage {
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "List Demo"
+                    Text (variant: "muted") "List items with various styles"
+                }
+
+                // Basic List Section
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Basic List Items"
+                        Col {
+                            style: "gap-2"
+                            Row {
+                                style: "p-4 bg-gray-50 rounded-lg items-center"
+                                Col {
+                                    style: "flex-1"
+                                    Text "Simple Item" (style: "font-semibold")
+                                    Text "Basic list item with headline" (variant: "muted")
+                                }
+                            }
+                            Row {
+                                style: "p-4 bg-gray-50 rounded-lg items-center"
+                                Col {
+                                    style: "flex-1"
+                                    Text "With Trailing" (style: "font-semibold")
+                                    Text "List item with trailing content" (variant: "muted")
+                                }
+                                Text "3:42" (variant: "muted")
+                            }
+                            Row {
+                                style: "p-4 bg-gray-50 rounded-lg items-center"
+                                Col {
+                                    style: "flex-1"
+                                    Text "Full Item" (style: "font-semibold")
+                                    Text "Complete list item with all slots" (variant: "muted")
+                                }
+                                Text "5" (variant: "muted")
+                            }
+                        }
+                    }
+                }
+
+                // Common Use Cases
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Common Use Cases"
+                        Text "Lists are ideal for:"
+                        Col {
+                            style: "gap-2"
+                            Chip "Settings menus" (variant: "filter")
+                            Chip "Navigation drawers" (variant: "filter")
+                            Chip "Data tables" (variant: "filter")
+                            Chip "Chat conversations" (variant: "filter")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
