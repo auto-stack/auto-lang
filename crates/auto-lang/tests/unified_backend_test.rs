@@ -49,6 +49,7 @@ fn create_test_widget() -> AuraWidget {
         handlers: HashMap::new(),
         props: vec![],
         routes: None,
+        lifecycle: vec![],
     }
 }
 
@@ -148,6 +149,7 @@ fn test_tailwind_classes_converted_for_each_backend() {
         handlers: HashMap::new(),
         props: vec![],
         routes: None,
+        lifecycle: vec![],
     };
 
     // Generate Vue code - should keep Tailwind classes as-is

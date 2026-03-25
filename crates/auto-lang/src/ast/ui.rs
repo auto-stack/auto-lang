@@ -46,6 +46,30 @@ pub struct WidgetDecl {
 
     /// Routes block for router widgets (Plan 105)
     pub routes: Option<RoutesBlock>,
+
+    /// Lifecycle methods (aboutToAppear, aboutToDisappear, etc.)
+    pub lifecycle: Vec<LifecycleMethod>,
+}
+
+// ============================================================================
+// Lifecycle Method
+// ============================================================================
+
+/// Lifecycle method declaration
+///
+/// ```auto
+/// lifecycle {
+///     aboutToAppear => { ... }
+///     aboutToDisappear => { ... }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct LifecycleMethod {
+    /// Method name (e.g., "aboutToAppear")
+    pub name: String,
+
+    /// Method body
+    pub body: Vec<super::Stmt>,
 }
 
 // ============================================================================

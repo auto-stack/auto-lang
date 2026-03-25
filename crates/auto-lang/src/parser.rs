@@ -7910,6 +7910,21 @@ impl<'a> Parser<'a> {
                 "on" => {
                     on = Some(self.parse_on_block()?);
                 }
+                "msg" => {
+                    messages.push(self.parse_msg_decl_inner()?);
+                }
+                "model" => {
+                    model = Some(self.parse_model_block_inner()?);
+                }
+                "computed" => {
+                    computed = Some(self.parse_computed_block_inner()?);
+                }
+                "view" => {
+                    view = Some(self.parse_view_block_inner()?);
+                }
+                "on" => {
+                    on = Some(self.parse_on_block()?);
+                }
                 "routes" => {
                     routes = Some(self.parse_routes_block_inner()?);
                 }
@@ -7924,7 +7939,6 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokenKind::RBrace)?;
-
         Ok(Stmt::WidgetDecl(WidgetDecl {
             name,
             messages,
@@ -7934,6 +7948,7 @@ impl<'a> Parser<'a> {
             on,
             props,
             routes,
+            lifecycle: vec![],
         }))
     }
 
