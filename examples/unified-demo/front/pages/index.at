@@ -144,6 +144,18 @@ widget IndexPage {
                                 }
                             }
                         }
+
+                        // Badge Demo Card
+                        Link (to: "/badge") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Badge Demo"
+                                    Text (variant: "muted") "Notification badges and indicators"
+                                }
+                            }
+                        }
                     }
                 }
             }

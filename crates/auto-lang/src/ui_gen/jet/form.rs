@@ -11,6 +11,7 @@
 //! - `chip` → `AssistChip`, `FilterChip`, `InputChip`, `SuggestionChip`
 //! - `progress` → `CircularProgressIndicator`, `LinearProgressIndicator`
 //! - `image` → `AsyncImage` (Coil)
+//! - `badge` → `Badge`
 
 use crate::aura::{AuraPropValue, AuraExpr};
 use crate::ui_gen::GenResult;
@@ -445,6 +446,54 @@ r#"Row(
         parts.push("modifier = Modifier".to_string());
 
         Ok(format!("AsyncImage(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Generate Badge component
+    ///
+    /// # Variants
+    /// - Default (with count): Shows a number badge
+    /// - `"dot"`: Shows a small dot indicator
+    ///
+    /// # Props
+    /// - `count`: Badge count number (optional, if absent shows dot)
+    /// - `variant`: "dot" for small dot indicator
+    ///
+    /// # Examples
+    /// ```auto
+    /// Badge (count: 5) {}
+    /// Badge (variant: "dot") {}
+    /// ```
+    ///
+    /// # Kotlin Output
+    /// ```kotlin
+    /// Badge { Text("5") }
+    /// Badge {}
+    /// ```
+    pub fn generate_badge(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.Badge");
+        self.add_import("androidx.compose.material3.Text");
+
+        // Extract variant
+        let variant = Self::extract_string(props, "variant")
+            .unwrap_or_default();
+
+        // Extract count (optional)
+        let count = Self::extract_int(props, "count");
+
+        match variant.as_str() {
+            "dot" => {
+                // Dot badge - no content
+                Ok("Badge { }".to_string())
+            }
+            _ => {
+                // Default: show count if provided
+                if let Some(c) = count {
+                    Ok(format!("Badge {{ Text(\"{}\") }}", c))
+                } else {
+                    Ok("Badge { }".to_string())
+                }
+            }
+        }
     }
 
     /// Generate Chip component

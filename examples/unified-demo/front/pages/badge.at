@@ -1,0 +1,68 @@
+// pages/badge.at - Badge component demo
+
+/// Badge demo page showing badge indicators.
+/// Demonstrates count badges and dot badges.
+
+widget BadgePage {
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "Badge Demo"
+                    Text (variant: "muted") "Badge indicators for notifications and status"
+                }
+
+                // Badge with Count
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Badge with Count"
+                        Text "Shows a number indicator"
+                        Row {
+                            style: "gap-4 items-center"
+                            Badge (count: 5) {}
+                            Badge (count: 99) {}
+                            Badge (count: 1) {}
+                        }
+                    }
+                }
+
+                // Dot Badge
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Dot Badge"
+                        Text "Shows a small indicator dot"
+                        Row {
+                            style: "gap-4 items-center"
+                            Badge (variant: "dot") {}
+                            Text "New notification"
+                        }
+                    }
+                }
+
+                // Usage
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Usage"
+                        Text "Badge component supports:"
+                        Col {
+                            style: "gap-2"
+                            Chip (variant: "filter") "Notification counts"
+                            Chip (variant: "filter") "Status indicators"
+                            Chip (variant: "filter") "Unread messages"
+                            Chip (variant: "filter") "Shopping cart items"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

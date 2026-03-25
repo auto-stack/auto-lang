@@ -514,6 +514,7 @@ fun {}Preview() {{
             "Switch" | "Toggle" => "switch",
             "Slider" => "slider",
             "Progress" => "progress",
+            "Badge" => "badge",
             "Chip" => "chip",
             "List" | "LazyColumn" => "list",
             "ListRow" | "LazyRow" => "list-row",
@@ -543,7 +544,7 @@ fun {}Preview() {{
     /// Check if tag is a form element
     fn is_form_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip" | "progress" | "image")
+        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip" | "progress" | "image" | "badge")
     }
 
     /// Check if tag is a list element
@@ -642,6 +643,8 @@ fun {}Preview() {{
             "progress" => self.form_generator.generate_progress(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "image" => self.form_generator.generate_image(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            "badge" => self.form_generator.generate_badge(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "chip" => self.form_generator.generate_chip(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
@@ -1391,7 +1394,7 @@ fun {}Preview() {{
             "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center" => {
                 return self.layout_element_to_compose(tag, props, events, children, indent);
             }
-            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "chip" | "progress" | "image" => {
+            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "chip" | "progress" | "image" | "badge" => {
                 return self.form_element_to_compose(tag, props, events, children, indent);
             }
             "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column" => {

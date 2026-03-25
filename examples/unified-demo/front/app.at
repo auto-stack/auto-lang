@@ -18,6 +18,7 @@ widget App {
         "/tabs" => use tabs
         "/progress" => use progress
         "/image" => use image
+        "/badge" => use badge
     }
 
     view {
