@@ -8,6 +8,10 @@
 /// - State management for activeTab
 
 widget TabsPage {
+    model {
+        activeTab int = 0
+    }
+
     view {
         Col {
             style: "p-8 gap-8"
@@ -19,16 +23,41 @@ widget TabsPage {
                 Text (variant: "muted") "Tabbed navigation for organizing content"
             }
 
-            // Basic Tabs description
+            // Basic Tabs Demo
             Card (variant: "elevated") {
                 style: "rounded-2xl w-full p-4"
                 Col {
-                    style: "gap-3"
-                    H3 "Tabs Components"
-                    Text (variant: "muted") "TabRow provides horizontal tab navigation"
-                    Text "Preview - View the component"
-                    Text "Code - See the implementation"
-                    Text "Notes - Read documentation"
+                    style: "gap-4"
+                    H3 "Basic Tabs"
+
+                    // Tab labels
+                    TabRow {
+                        Tab "Preview"
+                        Tab "Code"
+                        Tab "Notes"
+                    }
+
+                    // Tab content based on activeTab
+                    TabsContent {
+                        if .activeTab == 0 {
+                            Col {
+                                style: "p-4"
+                                Text "Preview content: View the component in action"
+                            }
+                        }
+                        if .activeTab == 1 {
+                            Col {
+                                style: "p-4"
+                                Text "Code content: See the implementation details"
+                            }
+                        }
+                        if .activeTab == 2 {
+                            Col {
+                                style: "p-4"
+                                Text "Notes content: Read documentation and usage tips"
+                            }
+                        }
+                    }
                 }
             }
 
@@ -41,9 +70,9 @@ widget TabsPage {
                     Text "Tabs are ideal for:"
                     Row {
                         style: "gap-2 flex-wrap"
-                        Text "Settings panels"
-                        Text "Content sections"
-                        Text "Documentation"
+                        Chip (variant: "filter") "Settings panels"
+                        Chip (variant: "filter") "Content sections"
+                        Chip (variant: "filter") "Documentation"
                     }
                 }
             }

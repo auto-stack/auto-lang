@@ -9089,7 +9089,7 @@ impl<'a> Parser<'a> {
         // These are typically components/containers that need identification
         match tag {
             "preview-card" | "PreviewCard" | "codeblock" | "Codeblock" |
-            "tab" | "Tab" | "tabs" | "Tabs" | "dialog" | "Dialog" |
+            "tabs" | "Tabs" | "dialog" | "Dialog" |
             "sheet" | "Sheet" | "popover" | "Popover" |
             "dropdown-menu" | "DropdownMenu" | "context-menu" | "ContextMenu" |
             "alert-dialog" | "AlertDialog" | "drawer" | "Drawer" |

@@ -488,6 +488,11 @@ fun {}Preview() {{
             return self.list_element_to_compose(tag, props, events, children, indent);
         }
 
+        // Check if it's a tabs element
+        if Self::is_tabs_tag(tag) {
+            return self.tabs_element_to_compose(tag, props, events, children, indent);
+        }
+
         // Default: map to Compose component
         self.generic_element_to_compose(tag, props, events, children, indent)
     }
@@ -514,6 +519,10 @@ fun {}Preview() {{
             "Grid" | "LazyGrid" => "grid",
             "FlowRow" => "flow-row",
             "FlowCol" | "FlowColumn" => "flow-col",
+            "Tabs" => "tabs",
+            "TabRow" => "tab-row",
+            "Tab" => "tab",
+            "TabsContent" => "tabs-content",
             "Text" | "Span" | "P" => "text",
             "H1" | "H2" | "H3" | "H4" | "H5" | "H6" => tag, // Keep original for typography
             "Image" | "Img" => "image",
@@ -540,6 +549,12 @@ fun {}Preview() {{
     fn is_list_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
         matches!(normalized, "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column")
+    }
+
+    /// Check if tag is a tabs element
+    fn is_tabs_tag(tag: &str) -> bool {
+        let normalized = Self::normalize_tag(tag);
+        matches!(normalized, "tabs" | "tab-row" | "tab" | "tabs-content")
     }
 
     /// Convert layout elements to Compose
@@ -1096,6 +1111,261 @@ fun {}Preview() {{
                 .join("\n")
                 + "\n"
         })
+    }
+
+    /// Convert tabs elements to Compose
+    fn tabs_element_to_compose(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "    ".repeat(indent);
+        let normalized = Self::normalize_tag(tag);
+
+        match normalized {
+            "tabs" => {
+                // Get selectedIndex from props
+                let selected_index = props.get("selectedIndex")
+                    .and_then(|p| self.extract_string_value(p))
+                    .unwrap_or_else(|| "activeTab".to_string());
+
+                // Collect tab labels and content from children
+                let mut tab_labels: Vec<String> = Vec::new();
+                let mut tab_contents: Vec<String> = Vec::new();
+
+                for child in children {
+                    if let AuraNode::Element { tag: child_tag, children: inner_children, .. } = child {
+                        let child_normalized = Self::normalize_tag(child_tag);
+                        if child_normalized == "tab-row" {
+                            // Extract tab labels from TabRow
+                            for tab in inner_children {
+                                if let AuraNode::Element { tag: tab_tag, props: tab_props, children: tab_children, .. } = tab {
+                                    if Self::normalize_tag(tab_tag) == "tab" {
+                                        // First try to get text from props
+                                        let label = tab_props.get("text")
+                                            .and_then(|p| self.extract_string_value(p))
+                                            .unwrap_or_else(|| {
+                                                // If no text prop, get from children (Tab "Preview" syntax)
+                                                tab_children.iter()
+                                                    .find_map(|c| {
+                                                        if let AuraNode::Text(content) = c {
+                                                            if let AuraTextContent::Literal(s) = content {
+                                                                return Some(s.clone());
+                                                            }
+                                                        }
+                                                        None
+                                                    })
+                                                    .unwrap_or_default()
+                                            });
+                                        tab_labels.push(label);
+                                    }
+                                }
+                            }
+                        } else if child_normalized == "tabs-content" {
+                            // Extract content from TabsContent (with when expression)
+                            for content_child in inner_children {
+                                // Handle "when" as an element (AURA parser doesn't have special when handling)
+                                if let AuraNode::Element { tag: when_tag, props: when_props, children: when_children, .. } = content_child {
+                                    if Self::normalize_tag(when_tag) == "when" {
+                                        // Get the condition from props (e.g., ".activeTab")
+                                        let condition = when_props.get("condition")
+                                            .and_then(|p| self.extract_string_value(p))
+                                            .unwrap_or_default();
+
+                                        // Parse each case in when body (e.g., "0: Col {...}")
+                                        for case_child in when_children {
+                                            if let AuraNode::Element { tag: case_tag, props: case_props, children: case_children, .. } = case_child {
+                                                // The tag might be the case index (e.g., "0", "1", "2")
+                                                let idx = if case_tag.chars().all(|c| c.is_numeric()) {
+                                                    case_tag.clone()
+                                                } else {
+                                                    // Try to get from props
+                                                    case_props.get("index")
+                                                        .and_then(|p| self.extract_string_value(p))
+                                                        .unwrap_or_else(|| case_tag.clone())
+                                                };
+
+                                                // Generate content for this case
+                                                let mut content_str = String::new();
+                                                for node in case_children {
+                                                    content_str.push_str(&self.node_to_compose(node, indent + 2)?);
+                                                }
+                                                tab_contents.push(format!("{} -> {{\n        {}\n    }}", idx, content_str.trim()));
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Also handle AuraNode::Conditional for if-style when expressions
+                                if let AuraNode::Conditional { condition, then_body, .. } = content_child {
+                                    // Parse condition like ".activeTab == 0" or just "0"
+                                    let cond = condition.trim();
+                                    let idx = if cond.starts_with('.') {
+                                        // State reference like ".activeTab == 0"
+                                        cond.split("==")
+                                            .nth(1)
+                                            .map(|s| s.trim().to_string())
+                                            .unwrap_or_default()
+                                    } else {
+                                        cond.to_string()
+                                    };
+
+                                    // Generate content for this case
+                                    let mut content_str = String::new();
+                                    for node in then_body {
+                                        content_str.push_str(&self.node_to_compose(node, indent + 2)?);
+                                    }
+                                    tab_contents.push(format!("{} -> {{\n        {}\n    }}", idx, content_str.trim()));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Generate tabs using NavigationGenerator
+                let tab_ids: Vec<&str> = tab_labels.iter().map(|s| s.as_str()).collect();
+                let tab_label_refs: Vec<&str> = tab_labels.iter().map(|s| s.as_str()).collect();
+                let content_refs: Vec<&str> = tab_contents.iter().map(|s| s.as_str()).collect();
+
+                // Generate TabRow with tabs
+                let _tabs_code = self.navigation_generator.generate_tabs(&tab_ids, &tab_label_refs, &content_refs)?;
+
+                // Collect imports from NavigationGenerator
+                for import in self.navigation_generator.get_imports().to_vec() {
+                    self.add_import(&import);
+                }
+
+                // Check if we need to manage state
+                let has_state = selected_index.starts_with('.') || selected_index == "activeTab";
+
+                if has_state {
+                    // State is managed externally (by widget model)
+                    // Generate TabRow that uses the external state
+                    let tab_items: Vec<String> = tab_labels.iter().enumerate()
+                        .map(|(i, label)| {
+                            format!(
+                                r#"{}Tab(
+{}    selected = activeTab == {},
+{}    onClick = {{ activeTab = {} }},
+{}    text = {{ Text("{}") }}
+{})"#,
+                                ind, ind, i, ind, i, ind, label, ind
+                            )
+                        })
+                        .collect();
+
+                    // Generate content switch
+                    let content_switch = tab_contents.join("\n        ");
+
+                    Ok(format!(
+                        r#"{}TabRow(selectedTabIndex = activeTab) {{
+{}
+{}    }}
+
+{}    when (activeTab) {{
+{}    }}
+"#,
+                        ind,
+                        tab_items.join("\n"),
+                        ind,
+                        ind,
+                        content_switch
+                    ))
+                } else {
+                    // Use the generated tabs code
+                    Ok(format!("{}{}", ind, _tabs_code))
+                }
+            }
+            "tab-row" => {
+                // Standalone TabRow - just generate the tabs
+                let mut tabs = Vec::new();
+                for child in children {
+                    if let AuraNode::Element { tag: tab_tag, props: tab_props, .. } = child {
+                        if Self::normalize_tag(tab_tag) == "tab" {
+                            let label = tab_props.get("text")
+                                .and_then(|p| self.extract_string_value(p))
+                                .unwrap_or_default();
+                            let idx = tabs.len();
+                            tabs.push(format!(
+                                r#"{}Tab(
+{}    selected = activeTab == {},
+{}    onClick = {{ activeTab = {} }},
+{}    text = {{ Text("{}") }}
+{})"#,
+                                ind, ind, idx, ind, idx, ind, label, ind
+                            ));
+                        }
+                    } else if let AuraNode::Text(content) = child {
+                        if let AuraTextContent::Literal(s) = content {
+                            let idx = tabs.len();
+                            tabs.push(format!(
+                                r#"{}Tab(
+{}    selected = activeTab == {},
+{}    onClick = {{ activeTab = {} }},
+{}    text = {{ Text("{}") }}
+{})"#,
+                                ind, ind, idx, ind, idx, ind, s, ind
+                            ));
+                        }
+                    }
+                }
+
+                self.add_import("androidx.compose.material3.TabRow");
+                self.add_import("androidx.compose.material3.Tab");
+                self.add_import("androidx.compose.material3.Text");
+
+                Ok(format!("{}TabRow(selectedTabIndex = activeTab) {{\n{}\n{}}}\n", ind, tabs.join("\n"), ind))
+            }
+            "tab" => {
+                // Single Tab component
+                let label = props.get("text")
+                    .and_then(|p| self.extract_string_value(p))
+                    .unwrap_or_default();
+
+                self.add_import("androidx.compose.material3.Tab");
+                self.add_import("androidx.compose.material3.Text");
+
+                Ok(format!(
+                    r#"{}Tab(
+{}    selected = activeTab == 0,
+{}    onClick = {{ activeTab = 0 }},
+{}    text = {{ Text("{}") }}
+{})
+"#,
+                    ind, ind, ind, ind, label, ind
+                ))
+            }
+            "tabs-content" => {
+                // TabsContent - generate when expression for content switching
+                let mut cases = Vec::new();
+
+                for child in children {
+                    if let AuraNode::Conditional { condition, then_body, .. } = child {
+                        let cond = condition.trim();
+                        let idx = if cond.starts_with('.') {
+                            cond.split("==")
+                                .nth(1)
+                                .map(|s| s.trim().to_string())
+                                .unwrap_or_default()
+                        } else {
+                            cond.to_string()
+                        };
+
+                        let mut content_str = String::new();
+                        for node in then_body {
+                            content_str.push_str(&self.node_to_compose(node, indent + 1)?);
+                        }
+                        cases.push(format!("{}{} -> {{\n{}\n{}}}", ind, idx, content_str, ind));
+                    }
+                }
+
+                Ok(format!("{}when (activeTab) {{\n{}\n{}}}\n", ind, cases.join("\n"), ind))
+            }
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown tabs tag: {}", tag))),
+        }
     }
 
     /// Convert generic element to Compose
