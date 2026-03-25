@@ -9,7 +9,7 @@ widget App {
     routes {
         "/" => use index
         "/radio" => use radio
-        "/listitem" => use listitem
+        "/list-item" => use listitem
         "/counter" => use counter
         "/column" => use column
         "/row" => use row

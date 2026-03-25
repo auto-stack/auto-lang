@@ -1538,7 +1538,7 @@ fun {}Preview() {{
             "img" | "image" => ("Image".to_string(), true),
             "icon" => ("Icon".to_string(), true),
             "spacer" => ("Spacer".to_string(), true),
-            "divider" => ("HorizontalDivider".to_string(), true),
+            "divider" => ("HorizontalDivider".to_string(), false),
             _ => {
                 // Check if it's a PascalCase version of a known tag
                 // e.g., "Text" -> "Text", "Col" -> "Column", "Row" -> "Row"
@@ -1552,7 +1552,7 @@ fun {}Preview() {{
                     "Image" | "Img" => ("Image".to_string(), true),
                     "Icon" => ("Icon".to_string(), true),
                     "Spacer" => ("Spacer".to_string(), true),
-                    "Divider" | "Separator" => ("HorizontalDivider".to_string(), true),
+                    "Divider" | "Separator" => ("HorizontalDivider".to_string(), false),
                     _ => {
                         // Unknown tag - treat as user-defined component
                         // Use the tag name directly (e.g., "Counter" -> "Counter()")

@@ -26,7 +26,7 @@ widget IndexPage {
                     Col {
                         style: "gap-4"
                         // ListItem Demo Card (new)
-                        Link (to: "/listitem") {
+                        Link (to: "/list-item") {
                             Card (variant: "outlined") {
                                 style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
                                 Col {

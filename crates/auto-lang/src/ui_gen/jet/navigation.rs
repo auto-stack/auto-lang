@@ -405,6 +405,7 @@ impl Default for NavigationGenerator {
 /// - `/about` -> `AboutPage`
 /// - `/user/:id` -> `UserPage`
 /// - `/admin/settings` -> `AdminSettingsPage`
+/// - `/list-item` -> `ListItemPage`
 fn path_to_screen_name(path: &str) -> String {
     let segments: Vec<&str> = path
         .split('/')
@@ -417,12 +418,20 @@ fn path_to_screen_name(path: &str) -> String {
 
     let name: String = segments
         .iter()
-        .map(|s| {
-            let mut chars = s.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            }
+        .map(|segment| {
+            // Split by hyphen and capitalize each part
+            segment
+                .split('-')
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => {
+                            first.to_uppercase().collect::<String>() + chars.as_str()
+                        }
+                    }
+                })
+                .collect::<String>()
         })
         .collect();
 
