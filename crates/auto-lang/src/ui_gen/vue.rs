@@ -3123,6 +3123,68 @@ impl VueGenerator {
                 }
             }
 
+            // === Layout Elements (Row, Col, Scroll, etc.) ===
+            // These need default flex classes + user style
+            "row" => {
+                // Default: flex flex-row + user style
+                let mut classes = vec!["flex".to_string(), "flex-row".to_string()];
+                if let Some(value) = self.get_style_class(props) {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        classes.push(user_class.to_string());
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
+            "col" | "column" => {
+                // Default: flex flex-col + user style
+                let mut classes = vec!["flex".to_string(), "flex-col".to_string()];
+                if let Some(value) = self.get_style_class(props) {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        classes.push(user_class.to_string());
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
+            "scroll" => {
+                // Default: overflow-auto + user style
+                let mut classes = vec!["overflow-auto".to_string()];
+                if let Some(value) = self.get_style_class(props) {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        classes.push(user_class.to_string());
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
+            "container" => {
+                // Default: max-w-7xl mx-auto + user style
+                let mut classes = vec!["max-w-7xl".to_string(), "mx-auto".to_string()];
+                if let Some(value) = self.get_style_class(props) {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        classes.push(user_class.to_string());
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
+            "center" => {
+                // Default: flex items-center justify-center + user style
+                let mut classes = vec!["flex".to_string(), "items-center".to_string(), "justify-center".to_string()];
+                if let Some(value) = self.get_style_class(props) {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        classes.push(user_class.to_string());
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
             // === Link (Navigation Link) ===
             "link" => {
                 // Text becomes slot content
@@ -3212,6 +3274,13 @@ impl VueGenerator {
 
             // === Text (Typography) ===
             "text" | "Text" | "span" | "Span" | "p" | "P" => {
+                // Extract class/style for Tailwind
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
                 // Text content becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
@@ -3220,6 +3289,13 @@ impl VueGenerator {
 
             // === Headings (Typography) ===
             "h1" | "H1" | "h2" | "H2" | "h3" | "H3" | "h4" | "H4" | "h5" | "H5" | "h6" | "H6" => {
+                // Extract class/style for Tailwind
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
                 // Text content becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
@@ -5564,7 +5640,13 @@ impl VueGenerator {
             }
 
             _ => {
-                // Default handling for other components
+                // Default handling for other components - extract class/style
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
             }
         }
 
