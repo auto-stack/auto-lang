@@ -24,9 +24,8 @@ widget TablePage {
 
                         // Table Header
                         Row {
-                            style: "p-3 bg-gray-100 rounded-t-lg"
+                            style: "p-3 bg-gray-100 rounded-t-lg gap-4"
                             Text (variant: "bold", style: "flex-1") "Widget"
-                            Text (variant: "bold", style: "flex-1") "Support Tier"
                             Text (variant: "bold", style: "flex-1") "Compose Target"
                         }
 
@@ -34,41 +33,36 @@ widget TablePage {
                         Col {
                             Divider
                             Row {
-                                style: "p-3"
+                                style: "p-3 gap-4"
                                 Text (style: "flex-1") "Button"
-                                Text (style: "flex-1") "Native"
                                 Text (style: "flex-1") "Button / OutlinedButton"
                             }
 
                             Divider
                             Row {
-                                style: "p-3"
+                                style: "p-3 gap-4"
                                 Text (style: "flex-1") "Input"
-                                Text (style: "flex-1") "Native"
                                 Text (style: "flex-1") "OutlinedTextField"
                             }
 
                             Divider
                             Row {
-                                style: "p-3"
+                                style: "p-3 gap-4"
                                 Text (style: "flex-1") "Tabs"
-                                Text (style: "flex-1") "Native"
                                 Text (style: "flex-1") "TabRow + Tab"
                             }
 
                             Divider
                             Row {
-                                style: "p-3"
+                                style: "p-3 gap-4"
                                 Text (style: "flex-1") "Accordion"
-                                Text (style: "flex-1") "Composite"
                                 Text (style: "flex-1") "AnimatedVisibility"
                             }
 
                             Divider
                             Row {
-                                style: "p-3"
+                                style: "p-3 gap-4"
                                 Text (style: "flex-1") "Table"
-                                Text (style: "flex-1") "Composite"
                                 Text (style: "flex-1") "Column + Row"
                             }
                         }
