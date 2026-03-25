@@ -1,0 +1,166 @@
+// MapData.at - Knowledge map data
+
+use Types
+
+let sections Section[] = [
+    {
+        title: "准备与学习",
+        brief: "加入HarmonyOS生态，注册成为开发者，通过HarmonyOS课程了解基本概念和基础知识，轻松开启HarmonyOS的开发旅程。",
+        materials: [
+            {
+                subtitle: "HarmonyOS简介",
+                knowledgeBase: [
+                    { type: "准备", title: "注册账号" },
+                    { type: "准备", title: "实名认证" },
+                    { type: "学习与获取证书", title: "HarmonyOS第一课" },
+                    { type: "学习与获取证书", title: "HarmonyOS应用开发认证" }
+                ]
+            },
+            {
+                subtitle: "赋能套件介绍",
+                knowledgeBase: [
+                    { type: "指南", title: "开发" },
+                    { type: "指南", title: "最佳实践" },
+                    { type: "指南", title: "API参考" },
+                    { type: "指南", title: "视频教程" },
+                    { type: "指南", title: "Codelabs" },
+                    { type: "指南", title: "FAQ" }
+                ]
+            }
+        ]
+    },
+    {
+        title: "构建应用",
+        brief: "为了帮助开发者更好的理解HarmonyOS提供的能力，我们对重点功能提供了开发指导，辅助开发者完成应用的开发。",
+        materials: [
+            {
+                subtitle: "开发工具",
+                knowledgeBase: [
+                    { type: "指南", title: "DevEco Studio" },
+                    { type: "指南", title: "低代码开发" },
+                    { type: "视频教程", title: "使用DevEco Studio高效开发" }
+                ]
+            },
+            {
+                subtitle: "开发语言",
+                knowledgeBase: [
+                    { type: "指南", title: "ArkTS" },
+                    { type: "视频教程", title: "ArkTS基础知识" },
+                    { type: "视频教程", title: "ArkTS开发实践" }
+                ]
+            },
+            {
+                subtitle: "开发框架",
+                knowledgeBase: [
+                    { type: "指南", title: "ArkUI" },
+                    { type: "视频教程", title: "ArkUI之属性动画" }
+                ]
+            },
+            {
+                subtitle: "HarmonyOS云开发",
+                knowledgeBase: [
+                    { type: "指南", title: "体验HarmonyOS云开发" },
+                    { type: "指南", title: "云开发" },
+                    { type: "视频教程", title: "HarmonyOS云开发" }
+                ]
+            },
+            {
+                subtitle: "集成开放能力",
+                knowledgeBase: [
+                    { type: "指南", title: "推送服务" },
+                    { type: "指南", title: "广告服务" },
+                    { type: "指南", title: "帐号服务" },
+                    { type: "指南", title: "分析服务" },
+                    { type: "指南", title: "应用内支付服务" },
+                    { type: "指南", title: "云函数" },
+                    { type: "指南", title: "云存储" },
+                    { type: "指南", title: "云数据库" }
+                ]
+            },
+            {
+                subtitle: "编译调试",
+                knowledgeBase: [
+                    { type: "指南", title: "编译构建" },
+                    { type: "指南", title: "应用签名" },
+                    { type: "指南", title: "云调试" },
+                    { type: "视频教程", title: "HarmonyOS应用调试前准备" },
+                    { type: "视频教程", title: "HarmonyOS应用调试" },
+                    { type: "视频教程", title: "HarmonyOS调试工具介绍" }
+                ]
+            }
+        ]
+    },
+    {
+        title: "应用测试",
+        brief: "HarmonyOS应用/服务开发完成后，在发布到应用/服务市场前，还需要对应用进行：漏洞、隐私、兼容性、稳定性、性能等测试，确保HarmonyOS应用/服务纯净、安全，给用户带来更好的使用体验。",
+        materials: [
+            {
+                subtitle: "",
+                knowledgeBase: [
+                    { type: "指南", title: "云测试" },
+                    { type: "指南", title: "开放式测试" }
+                ]
+            }
+        ]
+    },
+    {
+        title: "上架",
+        brief: "HarmonyOS应用/服务开发、测试完成后，将应用/服务发布至应用市场，用户可以通过应用市场、负一屏等渠道获取到对应的HarmonyOS应用/服务。",
+        materials: [
+            {
+                subtitle: "应用发布",
+                knowledgeBase: [
+                    { type: "指南", title: "发布HarmonyOS应用" },
+                    { type: "指南", title: "发布元服务" },
+                    { type: "指南", title: "分阶段发布" },
+                    { type: "视频教程", title: "发布HarmonyOS应用" },
+                    { type: "视频教程", title: "发布元服务" }
+                ]
+            }
+        ]
+    },
+    {
+        title: "运营增长",
+        brief: "HarmonyOS应用/服务发布以后，通过数据及时了解运营情况、质量表现，制定增长策略，借助App Linking、崩溃服务等能力，实现应用及服务的用户增长以及质量提升。",
+        materials: [
+            {
+                subtitle: "应用发布",
+                knowledgeBase: [
+                    { type: "指南", title: "应用分析" },
+                    { type: "指南", title: "App Linking" },
+                    { type: "指南", title: "崩溃服务" },
+                    { type: "视频教程", title: "远程配置" },
+                    { type: "视频教程", title: "发布元服务" }
+                ]
+            }
+        ]
+    },
+    {
+        title: "商业变现",
+        brief: "HarmonyOS应用/服务发布以后，通过数据及时了解运营情况、质量表现，制定增长策略，借助App Linking、崩溃服务等能力，实现应用及服务的用户增长以及质量提升。",
+        materials: [
+            {
+                subtitle: "",
+                knowledgeBase: [
+                    { type: "指南", title: "流量变现" },
+                    { type: "指南", title: "联运服务" },
+                    { type: "指南", title: "付费服务" },
+                    { type: "指南", title: "结算指南" }
+                ]
+            }
+        ]
+    },
+    {
+        title: "更多",
+        brief: "",
+        materials: [
+            {
+                subtitle: "",
+                knowledgeBase: [
+                    { type: "指南", title: "常见问题" },
+                    { type: "指南", title: "版本说明" }
+                ]
+            }
+        ]
+    }
+]
