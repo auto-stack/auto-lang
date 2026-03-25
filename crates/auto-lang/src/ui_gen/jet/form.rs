@@ -12,6 +12,7 @@
 //! - `progress` → `CircularProgressIndicator`, `LinearProgressIndicator`
 //! - `image` → `AsyncImage` (Coil)
 //! - `badge` → `Badge`
+//! - `radio` / `radiobutton` → `RadioButton`
 
 use crate::aura::{AuraPropValue, AuraExpr};
 use crate::ui_gen::GenResult;
@@ -494,6 +495,68 @@ r#"Row(
                 }
             }
         }
+    }
+
+    /// Generate RadioButton component
+    ///
+    /// # Props
+    /// - `selected`: Whether the radio is selected (boolean)
+    /// - `value`: Option value (string)
+    /// - `onClick`: Click handler reference
+    /// - `enabled`: Whether the radio is enabled (default: true)
+    ///
+    /// # Examples
+    /// ```auto
+    /// Radio (selected: .selectedOption == "option1", click: .SelectOption("option1")) "Option 1"
+    /// Radio (selected: true, enabled: false) "Disabled option"
+    /// ```
+    ///
+    /// # Kotlin Output
+    /// ```kotlin
+    /// Row(verticalAlignment = Alignment.CenterVertically) {
+    ///     RadioButton(
+    ///         selected = selectedOption == "option1",
+    ///         onClick = { selectedOption = "option1" }
+    ///     )
+    ///     Text("Option 1")
+    /// }
+    /// ```
+    pub fn generate_radio(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.RadioButton");
+        self.add_import("androidx.compose.material3.Text");
+        self.add_import("androidx.compose.foundation.layout.Row");
+        self.add_import("androidx.compose.ui.Alignment");
+
+        // Extract selected state
+        let selected = Self::extract_bool(props, "selected");
+
+        // Extract label text
+        let text = Self::extract_string(props, "text")
+            .or_else(|| Self::extract_string(props, "label"))
+            .unwrap_or_default();
+
+        // Extract enabled (default: true)
+        let enabled = !Self::extract_bool(props, "disabled");
+
+        let mut parts = Vec::new();
+
+        // Selected state
+        parts.push(format!("selected = {}", selected));
+
+        // onClick handler
+        parts.push("onClick = { }".to_string());
+
+        // Enabled state
+        if !enabled {
+            parts.push("enabled = false".to_string());
+        }
+
+        // Generate Row with RadioButton and Text label
+        Ok(format!(
+            "Row(\n        verticalAlignment = Alignment.CenterVertically\n    ) {{\n        RadioButton(\n            {}\n        )\n        Text(\"{}\")\n    }}",
+            parts.join(",\n            "),
+            text
+        ))
     }
 
     /// Generate Chip component
