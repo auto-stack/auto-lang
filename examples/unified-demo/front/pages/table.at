@@ -1,0 +1,142 @@
+// pages/table.at - Table demo
+
+/// Table demo page showing static data tables.
+/// Demonstrates Column + Row + Divider pattern for tables.
+
+widget TablePage {
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "Table Demo"
+                    Text (variant: "muted") "Static data tables with Column + Row pattern"
+                }
+
+                // API Reference Table
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "AURA Widget API"
+
+                        // Table Header
+                        Row {
+                            style: "p-3 bg-gray-100 rounded-t-lg"
+                            Text (variant: "bold", style: "flex-1") "Widget"
+                            Text (variant: "bold", style: "flex-1") "Support Tier"
+                            Text (variant: "bold", style: "flex-1") "Compose Target"
+                        }
+
+                        // Table Rows
+                        Col {
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Button"
+                                Text (style: "flex-1") "Native"
+                                Text (style: "flex-1") "Button / OutlinedButton"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Input"
+                                Text (style: "flex-1") "Native"
+                                Text (style: "flex-1") "OutlinedTextField"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Tabs"
+                                Text (style: "flex-1") "Native"
+                                Text (style: "flex-1") "TabRow + Tab"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Accordion"
+                                Text (style: "flex-1") "Composite"
+                                Text (style: "flex-1") "AnimatedVisibility"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Table"
+                                Text (style: "flex-1") "Composite"
+                                Text (style: "flex-1") "Column + Row"
+                            }
+                        }
+                    }
+                }
+
+                // Simple Status Table
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Implementation Status"
+
+                        Row {
+                            style: "p-3 bg-blue-50 rounded-t-lg"
+                            Text (variant: "bold", style: "flex-1") "Component"
+                            Text (variant: "bold", style: "flex-1") "Status"
+                        }
+
+                        Col {
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Progress"
+                                Badge "Done"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Image"
+                                Badge "Done"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "Dialog"
+                                Badge (variant: "outline") "Pending"
+                            }
+
+                            Divider
+                            Row {
+                                style: "p-3"
+                                Text (style: "flex-1") "DropdownMenu"
+                                Badge (variant: "outline") "Pending"
+                            }
+                        }
+                    }
+                }
+
+                // Usage
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Usage"
+                        Text "Tables are ideal for:"
+                        Col {
+                            style: "gap-2"
+                            Chip (variant: "filter") "API documentation"
+                            Chip (variant: "filter") "Status tracking"
+                            Chip (variant: "filter") "Data comparison"
+                            Chip (variant: "filter") "Feature lists"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

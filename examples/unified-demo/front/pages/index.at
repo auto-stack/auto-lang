@@ -25,7 +25,19 @@ widget IndexPage {
                     // Component grid
                     Col {
                         style: "gap-4"
-                        // Textarea Demo Card (new)
+                        // Table Demo Card (new)
+                        Link (to: "/table") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Table Demo"
+                                    Text (variant: "muted") "Static data tables with Column + Row"
+                                }
+                            }
+                        }
+
+                        // Textarea Demo Card
                         Link (to: "/textarea") {
                             Card (variant: "outlined") {
                                 style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
