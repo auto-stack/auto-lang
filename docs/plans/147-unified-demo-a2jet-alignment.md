@@ -14,14 +14,49 @@
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 基础组件扩展 (Card, Chip, FlowRow, Tabs) |
 | Phase 2 | ✅ 完成 | unified-demo 页面扩展 |
-| Phase 3 | 🔄 进行中 | 测试与验证 |
-| Phase 4 | 📋 计划中 | 更多 Widget Demos |
-| Phase 5 | 📋 计划中 | 高级组件与 Composite widgets |
+| Phase 3 | 📋 待做 | 测试与验证 |
+| Phase 4.1 | ✅ 完成 | 高优先级 Native Widgets (Progress, Image, Badge, Radio, ListItem) |
+| Phase 4.2 | 📋 下一步 | 更多 Native Widgets |
+| Phase 4.3 | 📋 计划中 | Overlay Widgets |
+| Phase 5 | 📋 计划中 | Composite Widgets |
 | Phase 6 | 📋 计划中 | 完整对齐 jet-gallery |
 
 ---
 
 ## 已完成内容
+
+### Phase 4.1: 高优先级 Native Widgets ✅ (2025-03)
+
+- [x] **Task 4.1.1: Progress 组件**
+  - `Progress` → `CircularProgressIndicator` / `LinearProgressIndicator`
+  - 支持 `type: "linear"`, `value`, `color` props
+  - Demo: `progress.at`
+
+- [x] **Task 4.1.2: Image 组件**
+  - `Image` → `AsyncImage` (Coil)
+  - 支持 `src`, `contentDescription` props
+  - 添加 INTERNET 权限和 Coil 依赖
+  - Demo: `image.at`
+
+- [x] **Task 4.1.3: Badge 组件**
+  - `Badge` → `Badge`
+  - 支持 `count`, `variant: "dot"` props
+  - Demo: `badge.at`
+
+- [x] **Task 4.1.5: Radio 组件** (跳过 RadioGroup，直接支持单个 RadioButton)
+  - `Radio` / `RadioButton` → `RadioButton`
+  - 支持 `selected`, `text`, `disabled` props
+  - Demo: `radio.at`
+
+- [x] **Task 4.1.6: ListItem 组件**
+  - `ListItem` → `ListItem`
+  - 支持 `headline`, `supporting`, `leading`, `trailing` props
+  - Demo: `listitem.at` (路由: `/list-item`)
+
+**Bug 修复：**
+- 修复 `HorizontalDivider` 不接受字符串参数
+- 修复 `path_to_screen_name` 处理连字符路径 (`list-item` → `ListItemPage`)
+- 使用 `DateRange` 图标替代 `Calendar`（不在默认图标集中）
 
 ### Phase 1: 基础组件扩展 ✅
 
@@ -103,7 +138,7 @@
 | Switch | 🟡 高 | Native | ✅ 完成 | Switch |
 | Select | 🔵 中 | Composite | ❌ 待做 | ExposedDropdownMenu |
 | Slider | 🟡 高 | Native | ✅ 完成 | Slider |
-| RadioGroup | 🔵 中 | Native | ❌ 待做 | RadioButton list |
+| RadioGroup | 🔵 中 | Native | ✅ 完成 | RadioButton (单个) |
 | Textarea | 🔵 中 | Native | ❌ 待做 | OutlinedTextField multi-line |
 | Form | ⚪ 低 | Composite | ❌ 待做 | 高级模式 |
 
@@ -112,8 +147,8 @@
 | Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
 |--------|--------|-------------|------------|------|
 | Text | ✅ 已有 | Native | ✅ 完成 | Text + typography |
-| Image | 🟡 高 | Native | ❌ 待做 | Image / AsyncImage |
-| Badge | 🟡 高 | Native | ❌ 待做 | Badge / BadgedBox |
+| Image | 🟡 高 | Native | ✅ 完成 | AsyncImage (Coil) |
+| Badge | 🟡 高 | Native | ✅ 完成 | Badge |
 | Avatar | 🔵 中 | Composite | ❌ 待做 | AsyncImage + CircleShape |
 | Separator | 🟡 高 | Native | ✅ 完成 | HorizontalDivider |
 | Skeleton | ⚪ 低 | Composite | ❌ 待做 | 加载占位符 |
@@ -151,7 +186,7 @@
 |--------|--------|-------------|------------|------|
 | Alert | 🔵 中 | Composite | ❌ 待做 | Card + icon |
 | Toast | 🔵 中 | Composite | ❌ 待做 | Android Toast |
-| Progress | 🟡 高 | Native | ❌ 待做 | LinearProgressIndicator |
+| Progress | 🟡 高 | Native | ✅ 完成 | CircularProgressIndicator / LinearProgressIndicator |
 | Sonner | ⚪ 低 | Composite | ❌ 待做 | Snackbar |
 
 ### 4.7 Data Section
@@ -164,96 +199,13 @@
 | Grid | 🟡 高 | Native | ✅ 完成 | LazyVerticalGrid |
 | GridItem | 🟡 高 | Native | ✅ 完成 | Grid cell |
 | List | ✅ 已有 | Native | ✅ 完成 | LazyColumn |
-| ListItem | 🔵 中 | Native | ❌ 待做 | Material ListItem |
+| ListItem | 🔵 中 | Native | ✅ 完成 | ListItem with headline/supporting/leading/trailing |
 
 ---
 
-## 下一步任务 (Phase 4.1): 高优先级 Native Widgets
+## 下一步任务 (Phase 4.2): 更多 Native Widgets
 
-### Task 4.1.1: Progress 组件
-
-**目标：** 添加进度指示器支持
-
-**AURA 定义：**
-```auto
-Progress {}                           // indeterminate circular
-Progress (type: "linear") {}          // indeterminate linear
-Progress (value: 0.7) {}              // determinate circular (70%)
-Progress (type: "linear", value: 0.5) {} // determinate linear
-```
-
-**Kotlin 输出：**
-```kotlin
-// Circular indeterminate
-CircularProgressIndicator()
-
-// Linear indeterminate
-LinearProgressIndicator()
-
-// Circular determinate
-CircularProgressIndicator(progress = 0.7f)
-
-// Linear determinate
-LinearProgressIndicator(progress = 0.5f)
-```
-
-**修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/form.rs` 或新建 `feedback.rs`
-
----
-
-### Task 4.1.2: Image 组件
-
-**目标：** 添加图片组件支持
-
-**AURA 定义：**
-```auto
-Image (src: "https://example.com/image.png")
-Image (src: .avatarUrl, contentDescription: "User avatar")
-```
-
-**Kotlin 输出：**
-```kotlin
-Image(
-    painter = rememberAsyncImagePainter(model = "https://example.com/image.png"),
-    contentDescription = "Image",
-    modifier = Modifier
-)
-```
-
-**修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/display.rs` (新建)
-- 添加 Coil `AsyncImage` 支持
-
----
-
-### Task 4.1.3: Badge 组件
-
-**目标：** 添加徽章组件支持
-
-**AURA 定义：**
-```auto
-Badge (count: 5) {}
-Badge (variant: "dot") {}  // 小圆点
-BadgedBox (badge: { Badge (count: 3) }) {
-    Icon "notifications"
-}
-```
-
-**Kotlin 输出：**
-```kotlin
-Badge { Text("5") }
-
-BadgedBox(
-    badge = { Badge { Text("3") } }
-) {
-    Icon(Icons.Default.Notifications, contentDescription = null)
-}
-```
-
----
-
-### Task 4.1.4: Dialog 组件
+### Task 4.2.1: Dialog/AlertDialog 组件 (推迟自 Phase 4.1)
 
 **目标：** 添加对话框支持
 
@@ -290,60 +242,103 @@ if (showDialog) {
 }
 ```
 
+**优先级：** 🟡 高 (用户推迟，复杂度高)
+
 ---
 
-### Task 4.1.5: RadioGroup 组件
+### Task 4.2.2: Textarea 组件
 
-**目标：** 添加单选按钮组支持
+**目标：** 多行文本输入
 
 **AURA 定义：**
 ```auto
-RadioGroup (selected: .selectedOption, onChange: .SelectOption) {
-    RadioButton (value: "option1") "Option 1"
-    RadioButton (value: "option2") "Option 2"
-    RadioButton (value: "option3") "Option 3"
-}
+Textarea (placeholder: "Enter description", rows: 4)
+Textarea (value: .content, onInput: .UpdateContent)
 ```
 
 **Kotlin 输出：**
 ```kotlin
-Column {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(
-            selected = selectedOption == "option1",
-            onClick = { selectedOption = "option1" }
-        )
-        Text("Option 1")
-    }
-    // ...
-}
-```
-
----
-
-### Task 4.1.6: ListItem 组件
-
-**目标：** 添加 Material3 ListItem 支持
-
-**AURA 定义：**
-```auto
-ListItem {
-    headline: "Primary text"
-    supporting: "Secondary text"
-    leading: Icon "person"
-    trailing: Icon "chevron_right"
-}
-```
-
-**Kotlin 输出：**
-```kotlin
-ListItem(
-    headlineContent = { Text("Primary text") },
-    supportingContent = { Text("Secondary text") },
-    leadingContent = { Icon(Icons.Default.Person, null) },
-    trailingContent = { Icon(Icons.Default.ChevronRight, null) }
+OutlinedTextField(
+    value = content,
+    onValueChange = { content = it },
+    modifier = Modifier.heightIn(min = 96.dp),
+    placeholder = { Text("Enter description") },
+    minLines = 4
 )
 ```
+
+**优先级：** 🔵 中
+
+---
+
+### Task 4.2.3: DropdownMenu 组件
+
+**目标：** 下拉菜单
+
+**AURA 定义：**
+```auto
+DropdownMenu (expanded: .showMenu, onDismiss: .CloseMenu) {
+    DropdownMenuItem (click: .Select("edit")) "Edit"
+    DropdownMenuItem (click: .Select("delete")) "Delete"
+}
+```
+
+**Kotlin 输出：**
+```kotlin
+DropdownMenu(
+    expanded = showMenu,
+    onDismissRequest = { showMenu = false }
+) {
+    DropdownMenuItem(
+        text = { Text("Edit") },
+        onClick = { /* select edit */ }
+    )
+    DropdownMenuItem(
+        text = { Text("Delete") },
+        onClick = { /* select delete */ }
+    )
+}
+```
+
+**优先级：** 🔵 中
+
+---
+
+### Task 4.2.4: AspectRatio 组件
+
+**目标：** 保持宽高比
+
+**AURA 定义：**
+```auto
+AspectRatio (ratio: 16/9) {
+    Image (src: "thumbnail.png")
+}
+```
+
+**Kotlin 输出：**
+```kotlin
+Box(modifier = Modifier.aspectRatio(16f / 9f)) {
+    Image(painter = ..., contentDescription = ...)
+}
+```
+
+**优先级：** 🔵 中
+
+---
+
+## Phase 4.3: Overlay Widgets (计划中)
+
+### Task 4.3.1: Sheet (ModalBottomSheet)
+
+**优先级：** 🔵 中
+
+### Task 4.3.2: Tooltip (TooltipBox)
+
+**优先级：** 🔵 中
+
+### Task 4.3.3: Drawer (NavigationDrawer)
+
+**优先级：** ⚪ 低
 
 ---
 
@@ -375,30 +370,35 @@ Composite widgets 需要更复杂的生成策略：
 
 ## 实现优先级总结
 
-### 立即执行 (Phase 4.1)
-1. **Progress** - Native, 高频使用
-2. **Image** - Native, 基础组件
-3. **Badge** - Native, 常用
-4. **Dialog/AlertDialog** - Native, 核心 UI
-5. **RadioGroup** - Native, 表单必需
-6. **ListItem** - Native, 列表基础
+### ✅ 已完成 (Phase 4.1)
+1. **Progress** - ✅ Native, circular/linear
+2. **Image** - ✅ Native, AsyncImage (Coil)
+3. **Badge** - ✅ Native, Badge
+4. **Radio/RadioButton** - ✅ Native, 单个 RadioButton
+5. **ListItem** - ✅ Native, headline/supporting/leading/trailing
 
-### 短期规划 (Phase 4.2-4.3)
-7. **Textarea** - 表单扩展
-8. **Select** - 表单扩展 (Composite)
-9. **DropdownMenu** - 导航扩展
-10. **Avatar** - 显示扩展 (Composite)
+### 📋 下一步 (Phase 4.2)
+6. **Dialog/AlertDialog** - 🟡 高优先级, 但复杂
+7. **Textarea** - 🔵 中优先级, multi-line OutlinedTextField
+8. **DropdownMenu** - 🔵 中优先级
+9. **AspectRatio** - 🔵 中优先级
 
-### 中期规划 (Phase 5)
-11. **Sheet/BottomSheet** - Overlay
-12. **Tooltip** - Overlay
-13. **Collapsible/Accordion** - Layout
-14. **Alert/Toast** - Feedback
+### 📋 短期规划 (Phase 4.3)
+10. **Sheet/BottomSheet** - Overlay
+11. **Tooltip** - Overlay
+12. **Select** - Composite (ExposedDropdownMenu)
+13. **Avatar** - Composite
 
-### 长期规划 (Phase 6)
-15. NavigationBar + Section 导航
-16. Master-Detail 布局
-17. 完整 51 widget 覆盖
+### 📋 中期规划 (Phase 5)
+14. **Collapsible/Accordion** - Layout
+15. **Alert/Toast** - Feedback
+16. **Skeleton** - Display
+17. **Swiper** - Display (HorizontalPager)
+
+### 📋 长期规划 (Phase 6)
+18. NavigationBar + Section 导航
+19. Master-Detail 布局
+20. 完整 51 widget 覆盖
 
 ---
 
@@ -411,17 +411,22 @@ Composite widgets 需要更复杂的生成策略：
 - [x] Tabs 正确管理状态和内容切换
 - [x] unified-demo 新增 3 个 demo 页面
 
-### Phase 3 (进行中)
-- [ ] 所有新组件有对应单元测试
-- [ ] 生成的 Kotlin 代码可编译运行
+### Phase 4.1 ✅
+- [x] Progress 组件支持 circular/linear, determinate/indeterminate
+- [x] Image 组件支持网络图片 (AsyncImage/Coil)
+- [x] Badge 组件支持数字
+- [x] RadioButton 组件
+- [x] ListItem 组件支持 headline/supporting/leading/trailing
 
-### Phase 4 (下一步)
-- [ ] Progress 组件支持 circular/linear, determinate/indeterminate
-- [ ] Image 组件支持本地和网络图片
-- [ ] Badge 组件支持数字和小圆点
+### Phase 3 (待做)
+- [ ] 所有新组件有对应单元测试
+- [ ] 生成的 Kotlin 代码可编译运行 (Android Studio)
+
+### Phase 4.2 (下一步)
 - [ ] Dialog/AlertDialog 组件
-- [ ] RadioGroup 组件
-- [ ] ListItem 组件
+- [ ] Textarea 组件 (multi-line)
+- [ ] DropdownMenu 组件
+- [ ] AspectRatio 组件
 
 ---
 
