@@ -1,0 +1,296 @@
+// stdlib/aura/Types.at
+// AURA Core Types - Data type definitions for UI intermediate representation
+
+// ============================================================================
+// Event and Handler Types
+// ============================================================================
+
+/// Event handler with optional parameters
+type AuraEvent {
+    handler str       // Handler pattern (e.g., "Msg::Inc")
+    params str[]      // Optional parameters (e.g., ["todo.id"])
+}
+
+// ============================================================================
+// Style Binding Types
+// ============================================================================
+
+/// Style binding entry for conditional class application
+type AuraStyleBinding {
+    style_name str    // Style name (e.g., "completed")
+    condition AuraExpr  // Condition expression
+}
+
+/// Property value - can be expression or style binding
+type AuraPropValue {
+    kind str          // "expr" or "style_binding"
+    expr AuraExpr     // Expression value (if kind == "expr")
+    bindings AuraStyleBinding[]  // Style bindings (if kind == "style_binding")
+}
+
+// ============================================================================
+// View Tree Types
+// ============================================================================
+
+/// Text content - literal or interpolated
+type AuraTextContent {
+    kind str          // "literal" or "interpolated"
+    text str          // Literal text or template
+    bindings str[]    // State references for interpolated text
+}
+
+/// View node - element, text, loop, conditional, or component
+type AuraNode {
+    kind str          // "element", "text", "for_loop", "conditional", "component", "outlet", "link"
+
+    // Element fields
+    tag str           // Tag name (e.g., "col", "button")
+    props AuraPropValue{}  // Properties map
+    events AuraEvent{}     // Event handlers map
+    children AuraNode[]    // Child nodes
+
+    // Text fields
+    content AuraTextContent  // Text content
+
+    // For loop fields
+    var str           // Loop variable name
+    index str         // Optional index variable
+    iterable str      // Iterable expression
+    body AuraNode[]   // Loop body nodes
+
+    // Conditional fields
+    condition str     // Condition expression
+    then_body AuraNode[]  // Body when true
+    else_body AuraNode[]  // Optional else body
+
+    // Component fields
+    name str          // Component name
+    comp_props AuraExpr{}  // Component properties
+
+    // Link fields (for router)
+    to str            // Target path
+    text str          // Link text
+    href str          // External href
+}
+
+// ============================================================================
+// Expression Types
+// ============================================================================
+
+/// Binary operators for expressions
+type AuraBinOp {
+    op str            // "add", "sub", "mul", "div", "mod", "eq", "ne", "lt", "le", "gt", "ge", "and", "or"
+}
+
+/// Unary operators for expressions
+type AuraUnaryOp {
+    op str            // "neg", "not"
+}
+
+/// AURA expression - simplified expression types for UI
+type AuraExpr {
+    kind str          // "literal", "int", "float", "bool", "state_ref", "msg_variant",
+                      // "binary", "unary", "method_call", "array", "object", "lambda",
+                      // "field_access", "nav_call", "constructor"
+
+    // Literal values
+    value str         // String literal value
+    int_val int       // Integer value
+    float_val float   // Float value
+    bool_val bool     // Boolean value
+
+    // State reference
+    ref_name str      // State variable name
+
+    // Message variant
+    msg_type str      // Message type name
+    variant str       // Variant name
+
+    // Binary/Unary operations
+    left AuraExpr     // Left operand
+    right AuraExpr    // Right operand
+    op str            // Operator
+
+    // Method call
+    object AuraExpr   // Object being called on
+    method str        // Method name
+    args AuraExpr[]   // Arguments
+
+    // Array literal
+    elements AuraExpr[]  // Array elements
+
+    // Object literal
+    fields AuraExpr{}  // Object fields
+
+    // Lambda
+    params str[]      // Parameter names
+    body AuraExpr     // Body expression
+
+    // Field access
+    field str         // Field name
+
+    // Navigation call
+    path str          // Target path
+    nav_params AuraExpr{}  // Navigation parameters
+
+    // Constructor
+    type_name str     // Type name
+    ctor_args AuraExpr[]  // Constructor arguments
+}
+
+// ============================================================================
+// Statement Types
+// ============================================================================
+
+/// Update operators for compound assignments
+type AuraUpdateOp {
+    op str            // "+=", "-=", "*=", "/="
+}
+
+/// AURA statement - simplified statement types for handlers
+type AuraStmt {
+    kind str          // "assign", "update", "method_call"
+
+    // Assignment
+    target str        // Target variable name
+    value AuraExpr    // Value expression
+
+    // Update (compound assignment)
+    update_op str     // Update operator
+
+    // Method call
+    object str        // Object name
+    method str        // Method name
+    args AuraExpr[]   // Arguments
+}
+
+// ============================================================================
+// Logic Payload Types
+// ============================================================================
+
+/// Logic payload - supports both AOT and dynamic execution
+type LogicPayload {
+    kind str          // "ast_block" or "bytecode"
+    stmts AuraStmt[]  // AST statements (for AOT transpilers)
+    bytecode int[]    // Bytecode bytes (for AutoVM execution)
+}
+
+// ============================================================================
+// State and Props Types
+// ============================================================================
+
+/// Decorator for state management
+type AuraDecorator {
+    name str          // Decorator name (e.g., "Consume", "Provide")
+    args str[]        // Decorator arguments
+}
+
+/// State variable definition
+type AuraStateDef {
+    name str          // Variable name
+    type_info str     // Type information (type name)
+    initial AuraExpr  // Initial value expression
+    decorators AuraDecorator[]  // Decorators for state management
+}
+
+/// Prop definition for reusable components
+type AuraProp {
+    name str          // Prop name
+    type_info str     // Type information
+    default AuraExpr  // Default value (optional)
+}
+
+// ============================================================================
+// Message Types
+// ============================================================================
+
+/// Message variant definition
+type AuraMsgVariant {
+    name str          // Variant name
+    payload str       // Optional payload type (empty string if none)
+}
+
+/// Message type definition for MVU pattern
+type AuraMessage {
+    name str          // Message type name
+    variants AuraMsgVariant[]  // Message variants
+}
+
+// ============================================================================
+// Computed Property Types
+// ============================================================================
+
+/// Computed property definition
+type AuraComputed {
+    name str          // Property name
+    expr AuraExpr     // Computation expression
+}
+
+// ============================================================================
+// Route Types
+// ============================================================================
+
+/// Route definition for router widgets
+type AuraRoute {
+    path str          // URL path pattern (e.g., "/user/:id")
+    module str        // Module name to render
+    params str[]      // Extracted parameters from path
+}
+
+/// Routes configuration
+type AuraRoutes {
+    routes AuraRoute[]  // Collection of route definitions
+}
+
+// ============================================================================
+// Lifecycle Types
+// ============================================================================
+
+/// Lifecycle method definition
+type AuraLifecycle {
+    name str          // Method name (e.g., "aboutToAppear")
+    body AuraStmt[]   // Method body statements
+}
+
+// ============================================================================
+// Widget Types
+// ============================================================================
+
+/// AURA Widget - core component definition
+type AuraWidget {
+    name str          // Widget name
+    state_vars AuraStateDef[]     // State variable definitions
+    computed AuraComputed[]       // Computed properties
+    messages AuraMessage[]        // Message type definitions
+    view_tree AuraNode            // View tree (pure layout, no logic)
+    handlers LogicPayload{}       // Event handlers (mapped by pattern)
+    props AuraProp[]              // Props for reusable components
+    routes AuraRoutes             // Routes configuration (optional)
+    lifecycle AuraLifecycle[]     // Lifecycle methods
+}
+
+// ============================================================================
+// Module Types
+// ============================================================================
+
+/// Window properties for app definition
+type AuraWindow {
+    title str         // Window title
+    width int         // Window width
+    height int        // Window height
+}
+
+/// App definition - entry point for UI applications
+type AuraApp {
+    name str          // App name
+    root str          // Root widget name
+    window AuraWindow // Window properties
+}
+
+/// AURA Module - contains multiple widgets and app definition
+type AuraModule {
+    name str          // Module name
+    widgets AuraWidget[]  // Widgets defined in module
+    messages AuraMessage[]  // Module-level messages
+    app AuraApp       // App definition (optional)
+}
