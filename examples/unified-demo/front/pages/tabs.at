@@ -1,0 +1,52 @@
+// pages/tabs.at - Tabs widget demo page
+
+/// Tabs demo page showcasing tabbed navigation.
+///
+/// Demonstrates:
+/// - TabRow with multiple tabs
+/// - Content switching based on active tab
+/// - State management for activeTab
+
+widget TabsPage {
+    view {
+        Col {
+            style: "p-8 gap-8"
+
+            // Header
+            Col {
+                style: "items-center gap-2"
+                H1 "Tabs Demo"
+                Text (variant: "muted") "Tabbed navigation for organizing content"
+            }
+
+            // Basic Tabs description
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-3"
+                    H3 "Tabs Components"
+                    Text (variant: "muted") "TabRow provides horizontal tab navigation"
+                    Text "Preview - View the component"
+                    Text "Code - See the implementation"
+                    Text "Notes - Read documentation"
+                }
+            }
+
+            // Usage section
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-2"
+                    H3 "Usage"
+                    Text "Tabs are ideal for:"
+                    Row {
+                        style: "gap-2 flex-wrap"
+                        Text "Settings panels"
+                        Text "Content sections"
+                        Text "Documentation"
+                    }
+                }
+            }
+        }
+    }
+}

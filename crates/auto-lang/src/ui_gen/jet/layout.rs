@@ -5,8 +5,9 @@
 //! ## Supported Components
 //! - `col` → `Column`
 //! - `row` → `Row`
+//! - `flow-row`/`flowrow` → `FlowRow` (requires ExperimentalLayoutApi)
 //! - `box`/`container` → `Box`
-//! - `card` → `Card`
+//! - `card` → `Card` (with variant: elevated/outlined/filled)
 //! - `scroll` → `Column + verticalScroll`
 
 use crate::aura::{AuraExpr, AuraPropValue};
@@ -306,6 +307,76 @@ impl LayoutGenerator {
         ))
     }
 
+    /// Generate FlowRow component (auto-wrapping row)
+    ///
+    /// Requires `@OptIn(ExperimentalLayoutApi::class)` annotation at call site.
+    ///
+    /// # Props
+    /// - `style`: Tailwind classes (gap-X, etc.)
+    /// - `gap`: Explicit gap value (overrides style)
+    pub fn generate_flow_row(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+        self.add_import("androidx.compose.foundation.layout.ExperimentalLayoutApi");
+        self.add_import("androidx.compose.foundation.layout.FlowRow");
+        self.add_import("androidx.compose.foundation.layout.Arrangement");
+        self.add_import("androidx.compose.foundation.layout.padding");
+        self.add_import("androidx.compose.ui.Modifier");
+
+        let layout_props = self.parse_layout_props(props);
+
+        let mut params = Vec::new();
+
+        // Build modifier chain
+        let mut modifier_parts = Vec::new();
+
+        // Add padding if specified (explicit prop)
+        if let Some(padding) = layout_props.padding {
+            modifier_parts.push(format!("padding({}.dp)", padding));
+        }
+
+        // Add style-based modifiers and extract gap from style
+        let style_gap_dp = if let Some(style) = &layout_props.style {
+            let result = self.class_to_modifier_result(style);
+            self.add_style_imports(&result.style);
+            if !result.modifiers.is_empty() {
+                modifier_parts.push(result.modifiers.join("."));
+            }
+            // Extract gap value from style (if arrangement contains spacedBy)
+            result.arrangement.as_ref().and_then(|arr| {
+                // Parse "Arrangement.spacedBy(8.dp)" to extract 8
+                let start = arr.find("spacedBy(")?;
+                let rest = &arr[start + 9..];
+                let end = rest.find(".dp)")?;
+                rest[..end].parse::<u32>().ok()
+            })
+        } else {
+            None
+        };
+
+        // Build final modifier
+        if modifier_parts.is_empty() {
+            params.push("modifier = Modifier".to_string());
+        } else {
+            params.push(format!("modifier = Modifier.{}", modifier_parts.join(".")));
+        }
+
+        // Determine gap: explicit gap prop > style-based gap > 0
+        let gap_dp = layout_props.gap.map(|g| g * 4)
+            .or(style_gap_dp)
+            .unwrap_or(0);
+
+        // Horizontal arrangement (spacing between items in a row)
+        params.push(format!("horizontalArrangement = Arrangement.spacedBy({}.dp)", gap_dp));
+
+        // Vertical arrangement (spacing between rows)
+        params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", gap_dp));
+
+        Ok(format!(
+            "FlowRow(\n        {}\n    ) {{\n        {}\n    }}",
+            params.join(",\n        "),
+            children
+        ))
+    }
+
     /// Generate Box component
     pub fn generate_box(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Box");
@@ -365,9 +436,30 @@ impl LayoutGenerator {
         ))
     }
 
-    /// Generate Card component
+    /// Generate Card component with variant support
+    ///
+    /// # Variants
+    /// - `"filled"` (default) → `Card`
+    /// - `"elevated"` → `ElevatedCard`
+    /// - `"outlined"` → `OutlinedCard`
     pub fn generate_card(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
-        self.add_import("androidx.compose.material3.Card");
+        // Extract variant prop (default: "filled")
+        let variant = Self::extract_string(props, "variant")
+            .unwrap_or_else(|| "filled".to_string());
+
+        // Add imports based on variant
+        match variant.as_str() {
+            "elevated" => {
+                self.add_import("androidx.compose.material3.ElevatedCard");
+            }
+            "outlined" => {
+                self.add_import("androidx.compose.material3.OutlinedCard");
+            }
+            _ => {
+                // "filled" or any other value defaults to Card
+                self.add_import("androidx.compose.material3.Card");
+            }
+        }
         self.add_import("androidx.compose.foundation.layout.Box");
         self.add_import("androidx.compose.ui.Modifier");
         self.add_import("androidx.compose.foundation.shape.RoundedCornerShape");
@@ -417,9 +509,16 @@ impl LayoutGenerator {
             format!("Box(modifier = {}) {{\n        {}\n    }}", internal_modifier, children)
         };
 
+        // Select component name based on variant
+        let component_name = match variant.as_str() {
+            "elevated" => "ElevatedCard",
+            "outlined" => "OutlinedCard",
+            _ => "Card",
+        };
+
         Ok(format!(
-            "Card(\n        modifier = {}\n    ) {{\n        {}\n    }}",
-            external_modifier, wrapped_children
+            "{}(\n        modifier = {}\n    ) {{\n        {}\n    }}",
+            component_name, external_modifier, wrapped_children
         ))
     }
 
@@ -671,5 +770,155 @@ mod tests {
 
         gen.clear_imports();
         assert!(gen.get_imports().is_empty());
+    }
+
+    // =========================================================================
+    // Card Variant Tests (Plan 147, Task 1.1)
+    // =========================================================================
+
+    #[test]
+    fn test_card_variant_elevated() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
+
+        let result = gen.generate_card(&props, "Text(\"Content\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("ElevatedCard"), "Should generate ElevatedCard for variant='elevated'");
+        assert!(!code.contains("OutlinedCard"));
+        assert!(!code.contains("\nCard("));
+    }
+
+    #[test]
+    fn test_card_variant_outlined() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outlined".to_string())));
+
+        let result = gen.generate_card(&props, "Text(\"Content\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("OutlinedCard"), "Should generate OutlinedCard for variant='outlined'");
+        assert!(!code.contains("ElevatedCard"));
+        assert!(!code.contains("\nCard("));
+    }
+
+    #[test]
+    fn test_card_variant_filled_default() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        // No variant prop - should default to Card
+        let result = gen.generate_card(&props, "Text(\"Content\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Card("), "Should generate Card for default/filled variant");
+        assert!(!code.contains("ElevatedCard"));
+        assert!(!code.contains("OutlinedCard"));
+    }
+
+    #[test]
+    fn test_card_variant_filled_explicit() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("filled".to_string())));
+
+        let result = gen.generate_card(&props, "Text(\"Content\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Card("), "Should generate Card for variant='filled'");
+        assert!(!code.contains("ElevatedCard"));
+        assert!(!code.contains("OutlinedCard"));
+    }
+
+    #[test]
+    fn test_card_variant_elevated_with_style() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
+        props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("rounded-2xl".to_string())));
+
+        let result = gen.generate_card(&props, "Text(\"Content\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("ElevatedCard"));
+        assert!(code.contains("RoundedCornerShape"));
+    }
+
+    // =========================================================================
+    // FlowRow Tests (Plan 147, Task 1.3)
+    // =========================================================================
+
+    #[test]
+    fn test_flow_row_basic() {
+        let mut gen = LayoutGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_flow_row(&props, "Chip(label = { Text(\"Tag\") })");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("FlowRow"), "Should generate FlowRow");
+        // ExperimentalLayoutApi is added to imports, not to generated code
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("ExperimentalLayoutApi")), "Should import ExperimentalLayoutApi");
+    }
+
+    #[test]
+    fn test_flow_row_with_gap() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("gap-2".to_string())));
+
+        let result = gen.generate_flow_row(&props, "Text(\"Item\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("FlowRow"));
+        assert!(code.contains("spacedBy(8.dp)"), "gap-2 should convert to 8.dp spacing");
+    }
+
+    #[test]
+    fn test_flow_row_arrangements() {
+        let mut gen = LayoutGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_flow_row(&props, "Text(\"Item\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        // Should have both horizontal and vertical arrangement
+        assert!(code.contains("horizontalArrangement = Arrangement.spacedBy"));
+        assert!(code.contains("verticalArrangement = Arrangement.spacedBy"));
+    }
+
+    #[test]
+    fn test_flow_row_imports() {
+        let mut gen = LayoutGenerator::new();
+        let props = HashMap::new();
+
+        let _ = gen.generate_flow_row(&props, "Text(\"Item\")");
+
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("ExperimentalLayoutApi")));
+        assert!(imports.iter().any(|i| i.contains("FlowRow")));
+        assert!(imports.iter().any(|i| i.contains("Arrangement")));
+    }
+
+    #[test]
+    fn test_flow_row_with_padding() {
+        let mut gen = LayoutGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 gap-2".to_string())));
+
+        let result = gen.generate_flow_row(&props, "Text(\"Item\")");
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("FlowRow"));
+        assert!(code.contains("padding"));
     }
 }

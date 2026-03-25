@@ -508,6 +508,7 @@ fun {}Preview() {{
             "Checkbox" => "checkbox",
             "Switch" | "Toggle" => "switch",
             "Slider" => "slider",
+            "Chip" => "chip",
             "List" | "LazyColumn" => "list",
             "ListRow" | "LazyRow" => "list-row",
             "Grid" | "LazyGrid" => "grid",
@@ -532,7 +533,7 @@ fun {}Preview() {{
     /// Check if tag is a form element
     fn is_form_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button")
+        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip")
     }
 
     /// Check if tag is a list element
@@ -621,6 +622,8 @@ fun {}Preview() {{
             "switch" | "toggle" => self.form_generator.generate_switch(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "slider" => self.form_generator.generate_slider(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            "chip" => self.form_generator.generate_chip(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             _ => Err(GenError::UnsupportedExpr(format!("Unknown form tag: {}", tag))),
         };
@@ -1061,8 +1064,26 @@ fun {}Preview() {{
                     self.list_generator.generate_lazy_grid(props, &item_content)
                 }
             }
-            "flow-row" => self.list_generator.generate_flow_row(props, &item_content),
-            "flow-col" | "flow-column" => self.list_generator.generate_flow_column(props, &item_content),
+            "flow-row" => {
+                // Check if FlowRow has a data source
+                let has_data_source = props.contains_key("items") || props.contains_key("data");
+                if has_data_source {
+                    self.list_generator.generate_flow_row(props, &item_content)
+                } else {
+                    // Static FlowRow - just render children directly
+                    self.list_generator.generate_static_grid(props, &item_content)
+                }
+            }
+            "flow-col" | "flow-column" => {
+                // Check if FlowColumn has a data source
+                let has_data_source = props.contains_key("items") || props.contains_key("data");
+                if has_data_source {
+                    self.list_generator.generate_flow_column(props, &item_content)
+                } else {
+                    // Static FlowColumn - just render children directly
+                    self.list_generator.generate_static_grid(props, &item_content)
+                }
+            }
             _ => Err(GenError::UnsupportedExpr(format!("Unknown list tag: {}", tag))),
         };
 
@@ -2395,24 +2416,282 @@ mod tests {
         assert!(color_content.contains("Color(0x"));
         assert!(color_content.contains("import androidx.compose.ui.graphics.Color"));
     }
-}
 
-#[test]
-fn test_pascal_case_col_tag() {
-    use super::*;
-    
-    let mut gen = JetGenerator::new();
-    
-    // Test that Col is recognized as layout tag
-    assert!(JetGenerator::is_layout_tag("Col"), "Col should be a layout tag");
-    assert!(JetGenerator::is_layout_tag("col"), "col should be a layout tag");
-    assert!(JetGenerator::is_layout_tag("Column"), "Column should be a layout tag");
-    
-    // Test normalize_tag
-    assert_eq!(JetGenerator::normalize_tag("Col"), "column");
-    assert_eq!(JetGenerator::normalize_tag("col"), "col");
-    assert_eq!(JetGenerator::normalize_tag("Column"), "column");
-    
-    // Test H1 is NOT a layout tag (it's a text tag)
-    assert!(!JetGenerator::is_layout_tag("H1"), "H1 should not be a layout tag");
+    #[test]
+    fn test_pascal_case_col_tag() {
+        let mut gen = JetGenerator::new();
+
+        // Test that Col is recognized as layout tag
+        assert!(JetGenerator::is_layout_tag("Col"), "Col should be a layout tag");
+        assert!(JetGenerator::is_layout_tag("col"), "col should be a layout tag");
+        assert!(JetGenerator::is_layout_tag("Column"), "Column should be a layout tag");
+
+        // Test normalize_tag
+        assert_eq!(JetGenerator::normalize_tag("Col"), "column");
+        assert_eq!(JetGenerator::normalize_tag("col"), "col");
+        assert_eq!(JetGenerator::normalize_tag("Column"), "column");
+
+        // Test H1 is NOT a layout tag (it's a text tag)
+        assert!(!JetGenerator::is_layout_tag("H1"), "H1 should not be a layout tag");
+    }
+
+    // =========================================================================
+    // Card Variant E2E Tests (Plan 147 Debug)
+    // =========================================================================
+
+    #[test]
+    fn test_card_variant_e2e_elevated() {
+        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+
+        // Create a widget with Card (variant: "elevated")
+        let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
+        card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
+        card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4".to_string())));
+
+        let card_node = AuraNode::Element {
+            tag: "Card".to_string(),
+            props: card_props,
+            events: HashMap::new(),
+            children: vec![AuraNode::Text(AuraTextContent::Literal("Elevated Card".to_string()))],
+        };
+
+        let widget = AuraWidget {
+            name: "TestCardVariant".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: card_node,
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Debug: print the generated code
+        eprintln!("Generated code:\n{}", code);
+
+        // Verify ElevatedCard is generated
+        assert!(code.contains("ElevatedCard"), "Should generate ElevatedCard for variant='elevated', but got:\n{}", code);
+    }
+
+    #[test]
+    fn test_card_variant_e2e_outlined() {
+        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+
+        // Create a widget with Card (variant: "outlined")
+        let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
+        card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outlined".to_string())));
+        card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4".to_string())));
+
+        let card_node = AuraNode::Element {
+            tag: "Card".to_string(),
+            props: card_props,
+            events: HashMap::new(),
+            children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
+        };
+
+        let widget = AuraWidget {
+            name: "TestCardOutlined".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: card_node,
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Verify OutlinedCard is generated
+        assert!(code.contains("OutlinedCard"), "Should generate OutlinedCard for variant='outlined', but got:\n{}", code);
+    }
+
+    #[test]
+    fn test_card_variant_e2e_default() {
+        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+
+        // Create a widget with Card (no variant - should default to Card)
+        let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
+        card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4".to_string())));
+
+        let card_node = AuraNode::Element {
+            tag: "Card".to_string(),
+            props: card_props,
+            events: HashMap::new(),
+            children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
+        };
+
+        let widget = AuraWidget {
+            name: "TestCardDefault".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: card_node,
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Verify Card is generated (not ElevatedCard or OutlinedCard)
+        assert!(code.contains("Card("), "Should generate Card for default variant, but got:\n{}", code);
+        assert!(!code.contains("ElevatedCard"), "Should NOT contain ElevatedCard");
+        assert!(!code.contains("OutlinedCard"), "Should NOT contain OutlinedCard");
+    }
+
+    // =========================================================================
+    // Full Parser → AURA → Jet E2E Tests
+    // =========================================================================
+
+    #[test]
+    fn test_card_variant_full_e2e_from_source() {
+        use crate::Parser;
+        use crate::session::CompilerSession;
+        use crate::aura::extract_widget_from_decl;
+
+        // AURA source code with Card variant
+        let source = r#"
+widget TestCardVariant {
+    view {
+        Col {
+            Card (variant: "elevated") {
+                style: "p-4"
+                Text "Elevated Card"
+            }
+            Card (variant: "outlined") {
+                style: "p-4"
+                Text "Outlined Card"
+            }
+            Card {
+                style: "p-4"
+                Text "Default Card"
+            }
+        }
+    }
+}
+"#;
+
+        // Parse with UI scenario
+        let session = CompilerSession::ui().with_backend("jet");
+        let mut parser = Parser::from(source);
+        parser = parser.with_session(session);
+        let ast = parser.parse().expect("Parse should succeed");
+
+        // Extract AURA widget
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                let aura_widget = extract_widget_from_decl(widget_decl).expect("Extract should succeed");
+                widgets.push(aura_widget);
+            }
+        }
+
+        assert_eq!(widgets.len(), 1, "Should have 1 widget");
+        let widget = &widgets[0];
+        assert_eq!(widget.name, "TestCardVariant");
+
+        // Debug: print the view tree
+        eprintln!("View tree: {:?}", widget.view_tree);
+
+        // Generate Kotlin code
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(widget).expect("Generate should succeed");
+
+        // Debug: print generated code
+        eprintln!("Generated Kotlin:\n{}", result);
+
+        // Verify variants
+        assert!(result.contains("ElevatedCard"), "Should contain ElevatedCard, got:\n{}", result);
+        assert!(result.contains("OutlinedCard"), "Should contain OutlinedCard, got:\n{}", result);
+        // Default Card is trickier - it's just "Card" but we want to make sure it's there too
+    }
+
+    #[test]
+    fn test_nested_card_variant_e2e() {
+        // Test nested Card with variant - matching the actual card.at structure
+        use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+
+        // Outer Card with elevated variant
+        let mut outer_card_props: HashMap<String, AuraPropValue> = HashMap::new();
+        outer_card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
+        outer_card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("rounded-2xl w-full p-5".to_string())));
+
+        // Inner Card (default)
+        let inner_card_props: HashMap<String, AuraPropValue> = {
+            let mut props = HashMap::new();
+            props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 rounded-lg".to_string())));
+            props
+        };
+
+        // Inner Card with outlined variant
+        let mut outlined_card_props: HashMap<String, AuraPropValue> = HashMap::new();
+        outlined_card_props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outlined".to_string())));
+        outlined_card_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("p-4 rounded-lg".to_string())));
+
+        // Build nested structure: Outer Card > Col > [Inner Cards]
+        let inner_card1 = AuraNode::Element {
+            tag: "Card".to_string(),
+            props: inner_card_props,
+            events: HashMap::new(),
+            children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
+        };
+
+        let inner_card2 = AuraNode::Element {
+            tag: "Card".to_string(),
+            props: outlined_card_props,
+            events: HashMap::new(),
+            children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
+        };
+
+        let col_node = AuraNode::Element {
+            tag: "Col".to_string(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: vec![inner_card1, inner_card2],
+        };
+
+        let outer_card = AuraNode::Element {
+            tag: "Card".to_string(),
+            props: outer_card_props,
+            events: HashMap::new(),
+            children: vec![col_node],
+        };
+
+        let widget = AuraWidget {
+            name: "TestNestedCard".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: outer_card,
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        eprintln!("Generated code:\n{}", code);
+
+        // Verify outer ElevatedCard
+        assert!(code.contains("ElevatedCard"), "Should contain ElevatedCard for outer card, got:\n{}", code);
+        // Verify OutlinedCard
+        assert!(code.contains("OutlinedCard"), "Should contain OutlinedCard, got:\n{}", code);
+        // Verify default Card
+        assert!(code.contains("Card("), "Should contain Card for default, got:\n{}", code);
+    }
 }

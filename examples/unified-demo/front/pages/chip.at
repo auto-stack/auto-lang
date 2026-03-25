@@ -1,0 +1,106 @@
+// pages/chip.at - Chip widget demo page
+
+/// Chip demo page showcasing different chip variants.
+///
+/// Demonstrates:
+/// - AssistChip (default)
+/// - FilterChip with selection state
+/// - InputChip for user input
+/// - SuggestionChip for suggestions
+/// - FlowRow for auto-wrapping chip layout
+
+widget ChipPage {
+    view {
+        Col {
+            style: "p-8 gap-8"
+
+            // Header
+            Col {
+                style: "items-center gap-2"
+                H1 "Chip Demo"
+                Text (variant: "muted") "Compact interactive elements for tags and filters"
+            }
+
+            // AssistChip section
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-3"
+                    H3 "AssistChip"
+                    Text (variant: "muted") "For helpful actions"
+                    Row {
+                        style: "gap-2"
+                        Chip "Add Item"
+                        Chip (variant: "assist") "Settings"
+                        Chip (variant: "assist") "Plain"
+                    }
+                }
+            }
+
+            // FilterChip section
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-3"
+                    H3 "FilterChip"
+                    Text (variant: "muted") "Toggle filters with selection"
+                    Row {
+                        style: "gap-2"
+                        Chip (variant: "filter") "All"
+                        Chip (variant: "filter") "Active"
+                        Chip (variant: "filter") "Completed"
+                    }
+                }
+            }
+
+            // InputChip section
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-3"
+                    H3 "InputChip"
+                    Text (variant: "muted") "For user input with dismiss"
+                    Row {
+                        style: "gap-2"
+                        Chip (variant: "input") "Email: user@example.com"
+                        Chip (variant: "input") "Tag: rust"
+                    }
+                }
+            }
+
+            // SuggestionChip section
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-3"
+                    H3 "SuggestionChip"
+                    Text (variant: "muted") "For autocomplete suggestions"
+                    Row {
+                        style: "gap-2"
+                        Chip (variant: "suggestion") "Jetpack Compose"
+                        Chip (variant: "suggestion") "Material Design"
+                    }
+                }
+            }
+
+            // FlowRow demo
+            Card (variant: "elevated") {
+                style: "rounded-2xl w-full p-4"
+                Col {
+                    style: "gap-3"
+                    H3 "FlowRow Layout"
+                    Text (variant: "muted") "Auto-wrapping layout for tags"
+                    FlowRow {
+                        style: "gap-2"
+                        Chip (variant: "filter") "Tag 1"
+                        Chip (variant: "filter") "Tag 2"
+                        Chip (variant: "filter") "Tag 3"
+                        Chip (variant: "filter") "Tag 4"
+                        Chip (variant: "filter") "Tag 5"
+                        Chip (variant: "filter") "Tag 6"
+                    }
+                }
+            }
+        }
+    }
+}

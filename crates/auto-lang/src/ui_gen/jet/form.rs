@@ -8,6 +8,7 @@
 //! - `checkbox` → `Checkbox`
 //! - `switch`/`toggle` → `Switch`
 //! - `slider` → `Slider`
+//! - `chip` → `AssistChip`, `FilterChip`, `InputChip`, `SuggestionChip`
 
 use crate::aura::{AuraPropValue, AuraExpr};
 use crate::ui_gen::GenResult;
@@ -289,6 +290,197 @@ r#"Row(
         parts.push("modifier = Modifier.fillMaxWidth()".to_string());
 
         Ok(format!("Slider(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Generate Chip component
+    ///
+    /// # Variants
+    /// - `"assist"` (default) → `AssistChip` - clickable action chip
+    /// - `"filter"` → `FilterChip` - toggleable filter chip
+    /// - `"input"` → `InputChip` - dismissible input chip
+    /// - `"suggestion"` → `SuggestionChip` - suggestion chip
+    ///
+    /// # Props
+    /// - `text` / primary prop: Chip label text
+    /// - `variant`: Chip type (assist, filter, input, suggestion)
+    /// - `selected`: For FilterChip, whether it's selected
+    /// - `icon`: Leading icon name
+    /// - `onClick`: Click handler reference
+    /// - `onDismiss`: For InputChip, dismiss handler
+    pub fn generate_chip(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        // Extract variant (default: "assist")
+        let variant = Self::extract_string(props, "variant")
+            .unwrap_or_else(|| "assist".to_string());
+
+        // Extract text (primary prop or "text" prop)
+        let text = Self::extract_string(props, "text")
+            .or_else(|| Self::extract_string(props, "label"))
+            .unwrap_or_default();
+
+        // Add imports based on variant
+        match variant.as_str() {
+            "filter" => {
+                self.add_import("androidx.compose.material3.FilterChip");
+            }
+            "input" => {
+                self.add_import("androidx.compose.material3.InputChip");
+            }
+            "suggestion" => {
+                self.add_import("androidx.compose.material3.SuggestionChip");
+            }
+            _ => {
+                // "assist" or any other value defaults to AssistChip
+                self.add_import("androidx.compose.material3.AssistChip");
+            }
+        }
+        self.add_import("androidx.compose.material3.Text");
+        self.add_import("androidx.compose.ui.Modifier");
+
+        // Build chip based on variant
+        match variant.as_str() {
+            "filter" => self.generate_filter_chip(props, &text),
+            "input" => self.generate_input_chip(props, &text),
+            "suggestion" => self.generate_suggestion_chip(props, &text),
+            _ => self.generate_assist_chip(props, &text),
+        }
+    }
+
+    /// Generate AssistChip
+    fn generate_assist_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+        let mut parts = Vec::new();
+
+        // onClick
+        parts.push("onClick = {}".to_string());
+
+        // Label
+        parts.push(format!("label = {{ Text(\"{}\") }}", text));
+
+        // Leading icon
+        if let Some(icon) = Self::extract_string(props, "icon") {
+            self.add_import("androidx.compose.material.icons.Icons");
+            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import("androidx.compose.material3.Icon");
+            parts.push(format!(
+                "leadingIcon = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
+                Self::capitalize_icon(&icon)
+            ));
+        }
+
+        // Enabled
+        if Self::extract_bool(props, "disabled") {
+            parts.push("enabled = false".to_string());
+        }
+
+        Ok(format!("AssistChip(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Generate FilterChip
+    fn generate_filter_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+        let mut parts = Vec::new();
+
+        // Selected state
+        let selected = Self::extract_bool(props, "selected");
+        parts.push(format!("selected = {}", selected));
+
+        // onClick
+        parts.push("onClick = {}".to_string());
+
+        // Label
+        parts.push(format!("label = {{ Text(\"{}\") }}", text));
+
+        // Leading icon (optional)
+        if let Some(icon) = Self::extract_string(props, "icon") {
+            self.add_import("androidx.compose.material.icons.Icons");
+            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import("androidx.compose.material3.Icon");
+            parts.push(format!(
+                "leadingIcon = if (selected) {{ {{ Icon(Icons.Default.{}, contentDescription = null) }} }} else null",
+                Self::capitalize_icon(&icon)
+            ));
+        }
+
+        // Enabled
+        if Self::extract_bool(props, "disabled") {
+            parts.push("enabled = false".to_string());
+        }
+
+        Ok(format!("FilterChip(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Generate InputChip
+    fn generate_input_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+        let mut parts = Vec::new();
+
+        // Selected state
+        let selected = Self::extract_bool(props, "selected");
+        parts.push(format!("selected = {}", selected));
+
+        // onClick
+        parts.push("onClick = {}".to_string());
+
+        // Label
+        parts.push(format!("label = {{ Text(\"{}\") }}", text));
+
+        // onDismiss (for dismissible chips)
+        if Self::extract_string(props, "onDismiss").is_some() {
+            parts.push("onDismissRequest = {}".to_string());
+        }
+
+        // Leading icon (optional)
+        if let Some(icon) = Self::extract_string(props, "icon") {
+            self.add_import("androidx.compose.material.icons.Icons");
+            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import("androidx.compose.material3.Icon");
+            parts.push(format!(
+                "avatar = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
+                Self::capitalize_icon(&icon)
+            ));
+        }
+
+        // Enabled
+        if Self::extract_bool(props, "disabled") {
+            parts.push("enabled = false".to_string());
+        }
+
+        Ok(format!("InputChip(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Generate SuggestionChip
+    fn generate_suggestion_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+        let mut parts = Vec::new();
+
+        // onClick
+        parts.push("onClick = {}".to_string());
+
+        // Label
+        parts.push(format!("label = {{ Text(\"{}\") }}", text));
+
+        // Icon (optional)
+        if let Some(icon) = Self::extract_string(props, "icon") {
+            self.add_import("androidx.compose.material.icons.Icons");
+            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import("androidx.compose.material3.Icon");
+            parts.push(format!(
+                "icon = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
+                Self::capitalize_icon(&icon)
+            ));
+        }
+
+        // Enabled
+        if Self::extract_bool(props, "disabled") {
+            parts.push("enabled = false".to_string());
+        }
+
+        Ok(format!("SuggestionChip(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Capitalize icon name (e.g., "add" -> "Add")
+    fn capitalize_icon(icon: &str) -> String {
+        let mut chars = icon.chars();
+        match chars.next() {
+            Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            None => icon.to_string(),
+        }
     }
 }
 
@@ -699,5 +891,158 @@ mod tests {
 
         gen.clear_imports();
         assert!(gen.get_imports().is_empty());
+    }
+
+    // ========================================
+    // Chip Tests
+    // ========================================
+
+    #[test]
+    fn test_chip_assist() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Add Item".to_string())));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("AssistChip"));
+        assert!(code.contains("label = { Text(\"Add Item\") }"));
+        assert!(code.contains("onClick = {}"));
+    }
+
+    #[test]
+    fn test_chip_assist_with_icon() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Add".to_string())));
+        props.insert("icon".to_string(), AuraPropValue::Expr(AuraExpr::Literal("add".to_string())));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("AssistChip"));
+        assert!(code.contains("leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }"));
+
+        // Verify icon imports
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("androidx.compose.material.icons.filled.Add")));
+    }
+
+    #[test]
+    fn test_chip_filter() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("filter".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Filter".to_string())));
+        props.insert("selected".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("FilterChip"));
+        assert!(code.contains("selected = true"));
+        assert!(code.contains("label = { Text(\"Filter\") }"));
+    }
+
+    #[test]
+    fn test_chip_filter_not_selected() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("filter".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Option".to_string())));
+        // No selected prop - defaults to false
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("selected = false"));
+    }
+
+    #[test]
+    fn test_chip_input() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("input".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Tag".to_string())));
+        props.insert("onDismiss".to_string(), AuraPropValue::Expr(AuraExpr::Literal("RemoveChip".to_string())));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("InputChip"));
+        assert!(code.contains("label = { Text(\"Tag\") }"));
+        assert!(code.contains("onDismissRequest = {}"));
+    }
+
+    #[test]
+    fn test_chip_suggestion() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("suggestion".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Suggestion".to_string())));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("SuggestionChip"));
+        assert!(code.contains("label = { Text(\"Suggestion\") }"));
+        assert!(code.contains("onClick = {}"));
+    }
+
+    #[test]
+    fn test_chip_default_is_assist() {
+        // Without variant prop, should default to AssistChip
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Default".to_string())));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("AssistChip"));
+    }
+
+    #[test]
+    fn test_chip_disabled() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Disabled".to_string())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("enabled = false"));
+    }
+
+    #[test]
+    fn test_chip_icon_capitalization() {
+        // Test that icon names are properly capitalized
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("assist".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Settings".to_string())));
+        props.insert("icon".to_string(), AuraPropValue::Expr(AuraExpr::Literal("settings".to_string())));
+
+        let result = gen.generate_chip(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Icons.Default.Settings"));
+
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("filled.Settings")));
     }
 }

@@ -13,6 +13,9 @@ widget App {
         "/row" => use row
         "/button" => use button
         "/input" => use input
+        "/card" => use card
+        "/chip" => use chip
+        "/tabs" => use tabs
     }
 
     view {

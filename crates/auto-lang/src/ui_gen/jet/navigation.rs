@@ -7,6 +7,15 @@
 //! - Navigation controller setup
 //! - Navigate actions
 //! - Support for merged routes (Plan 114: Hybrid Routing)
+//! - Tabs components (Plan 147, Task 1.4)
+//!
+//! ## Tabs Components
+//!
+//! The Tabs component family provides tabbed navigation:
+//! - `generate_tabs()` - Complete tabs with state management
+//! - `generate_tab_row()` - Just the TabRow (state managed externally)
+//! - `generate_tab()` - Single tab component
+//! - `generate_tabs_content()` - Content switcher
 //!
 //! ## Example
 //!
@@ -257,6 +266,126 @@ fun App() {{
 
         imports.join("\n")
     }
+
+    // =========================================================================
+    // Tabs Components (Plan 147, Task 1.4)
+    // =========================================================================
+
+    /// Generate a complete Tabs component with state management
+    ///
+    /// # Arguments
+    /// - `tab_ids`: List of tab identifiers (used for state and content matching)
+    /// - `tab_labels`: List of tab display labels
+    /// - `content_blocks`: List of content blocks for each tab
+    ///
+    /// # Returns
+    /// Complete Kotlin code for a Tabs component with TabRow and content switching
+    pub fn generate_tabs(&mut self, tab_ids: &[&str], tab_labels: &[&str], content_blocks: &[&str]) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.TabRow");
+        self.add_import("androidx.compose.material3.Tab");
+        self.add_import("androidx.compose.material3.Text");
+        self.add_import("androidx.compose.foundation.layout.Column");
+        self.add_import("androidx.compose.runtime.mutableStateOf");
+        self.add_import("androidx.compose.runtime.remember");
+        self.add_import("androidx.compose.runtime.getValue");
+        self.add_import("androidx.compose.runtime.setValue");
+
+        let tabs_list = tab_ids.iter().zip(tab_labels.iter()).enumerate()
+            .map(|(i, (_id, label))| {
+                format!(
+                    r#"Tab(
+            selected = activeTab == {},
+            onClick = {{ activeTab = {} }},
+            text = {{ Text("{}") }}
+        )"#,
+                    i, i, label
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n        ");
+
+        let content_switch = tab_ids.iter().enumerate()
+            .map(|(i, _)| {
+                let content = content_blocks.get(i).copied().unwrap_or("Text(\"Content\")");
+                format!("{} -> {{\n            {}\n        }}", i, content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n        ");
+
+        Ok(format!(
+            r#"var activeTab by remember {{ mutableStateOf(0) }}
+
+    Column {{
+        TabRow(selectedTabIndex = activeTab) {{
+            {}
+        }}
+
+        when (activeTab) {{
+            {}
+        }}
+    }}"#,
+            tabs_list, content_switch
+        ))
+    }
+
+    /// Generate just the TabRow component (without state management)
+    ///
+    /// Use this when you want to manage the activeTab state yourself.
+    pub fn generate_tab_row(&mut self, tab_labels: &[&str], active_index: usize) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.TabRow");
+        self.add_import("androidx.compose.material3.Tab");
+        self.add_import("androidx.compose.material3.Text");
+
+        let tabs = tab_labels.iter().enumerate()
+            .map(|(i, label)| {
+                format!(
+                    r#"Tab(
+            selected = activeTab == {},
+            onClick = {{ activeTab = {} }},
+            text = {{ Text("{}") }}
+        )"#,
+                    i, i, label
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n        ");
+
+        Ok(format!(
+            "TabRow(selectedTabIndex = {}) {{\n        {}\n    }}",
+            active_index, tabs
+        ))
+    }
+
+    /// Generate a single Tab component
+    pub fn generate_tab(&mut self, label: &str, index: usize) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.Tab");
+        self.add_import("androidx.compose.material3.Text");
+
+        Ok(format!(
+            r#"Tab(
+        selected = activeTab == {},
+        onClick = {{ activeTab = {} }},
+        text = {{ Text("{}") }}
+    )"#,
+            index, index, label
+        ))
+    }
+
+    /// Generate a TabsContent container with conditional rendering
+    ///
+    /// # Arguments
+    /// - `active_tab`: The currently active tab index
+    /// - `contents`: List of (tab_index, content) pairs
+    pub fn generate_tabs_content(&mut self, contents: &[(usize, &str)]) -> GenResult<String> {
+        let cases = contents.iter()
+            .map(|(idx, content)| {
+                format!("{} -> {{\n        {}\n    }}", idx, content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n    ");
+
+        Ok(format!("when (activeTab) {{\n    {}\n}}", cases))
+    }
 }
 
 impl Default for NavigationGenerator {
@@ -456,5 +585,133 @@ mod tests {
 
         gen.clear_imports();
         assert!(gen.get_imports().is_empty());
+    }
+
+    // =========================================================================
+    // Tabs Tests (Plan 147, Task 1.4)
+    // =========================================================================
+
+    #[test]
+    fn test_generate_tabs_basic() {
+        let mut gen = NavigationGenerator::new();
+
+        let tab_ids = vec!["preview", "code", "notes"];
+        let tab_labels = vec!["Preview", "Code", "Notes"];
+        let contents = vec!["Text(\"Preview content\")", "Text(\"Code content\")", "Text(\"Notes content\")"];
+
+        let result = gen.generate_tabs(&tab_ids, &tab_labels, &contents);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Check structure
+        assert!(code.contains("var activeTab by remember"));
+        assert!(code.contains("mutableStateOf(0)"));
+        assert!(code.contains("TabRow(selectedTabIndex = activeTab)"));
+        assert!(code.contains("when (activeTab)"));
+    }
+
+    #[test]
+    fn test_generate_tabs_with_labels() {
+        let mut gen = NavigationGenerator::new();
+
+        let tab_ids = vec!["tab1", "tab2"];
+        let tab_labels = vec!["First Tab", "Second Tab"];
+        let contents = vec!["Text(\"Content 1\")", "Text(\"Content 2\")"];
+
+        let result = gen.generate_tabs(&tab_ids, &tab_labels, &contents);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Check labels
+        assert!(code.contains("Text(\"First Tab\")"));
+        assert!(code.contains("Text(\"Second Tab\")"));
+    }
+
+    #[test]
+    fn test_generate_tabs_content_switching() {
+        let mut gen = NavigationGenerator::new();
+
+        let tab_ids = vec!["a", "b", "c"];
+        let tab_labels = vec!["A", "B", "C"];
+        let contents = vec!["Text(\"A content\")", "Text(\"B content\")", "Text(\"C content\")"];
+
+        let result = gen.generate_tabs(&tab_ids, &tab_labels, &contents);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Check content switching
+        assert!(code.contains("0 -> {"));
+        assert!(code.contains("1 -> {"));
+        assert!(code.contains("2 -> {"));
+        assert!(code.contains("A content"));
+        assert!(code.contains("B content"));
+        assert!(code.contains("C content"));
+    }
+
+    #[test]
+    fn test_generate_tabs_imports() {
+        let mut gen = NavigationGenerator::new();
+
+        let tab_ids = vec!["preview", "code"];
+        let tab_labels = vec!["Preview", "Code"];
+        let contents = vec!["Text(\"Preview\")", "Text(\"Code\")"];
+
+        let _ = gen.generate_tabs(&tab_ids, &tab_labels, &contents);
+
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("TabRow")));
+        assert!(imports.iter().any(|i| i.contains("Tab")));
+        assert!(imports.iter().any(|i| i.contains("mutableStateOf")));
+        assert!(imports.iter().any(|i| i.contains("remember")));
+    }
+
+    #[test]
+    fn test_generate_tab_row() {
+        let mut gen = NavigationGenerator::new();
+
+        let tab_labels = vec!["Home", "Settings", "Profile"];
+
+        let result = gen.generate_tab_row(&tab_labels, 0);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        assert!(code.contains("TabRow(selectedTabIndex = 0)"));
+        assert!(code.contains("Text(\"Home\")"));
+        assert!(code.contains("Text(\"Settings\")"));
+        assert!(code.contains("Text(\"Profile\")"));
+    }
+
+    #[test]
+    fn test_generate_single_tab() {
+        let mut gen = NavigationGenerator::new();
+
+        let result = gen.generate_tab("My Tab", 2);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        assert!(code.contains("selected = activeTab == 2"));
+        assert!(code.contains("onClick = { activeTab = 2 }"));
+        assert!(code.contains("Text(\"My Tab\")"));
+    }
+
+    #[test]
+    fn test_generate_tabs_content() {
+        let mut gen = NavigationGenerator::new();
+
+        let contents = vec![
+            (0, "PreviewScreen()"),
+            (1, "CodeScreen()"),
+            (2, "NotesScreen()"),
+        ];
+
+        let result = gen.generate_tabs_content(&contents);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        assert!(code.contains("when (activeTab)"));
+        assert!(code.contains("0 -> {"));
+        assert!(code.contains("PreviewScreen()"));
+        assert!(code.contains("CodeScreen()"));
+        assert!(code.contains("NotesScreen()"));
     }
 }
