@@ -84,6 +84,42 @@ widget IndexPage {
                                 }
                             }
                         }
+
+                        // Card Demo Card
+                        Link (to: "/card") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Card Demo"
+                                    Text (variant: "muted") "Card variants: elevated, outlined, filled"
+                                }
+                            }
+                        }
+
+                        // Chip Demo Card
+                        Link (to: "/chip") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Chip Demo"
+                                    Text (variant: "muted") "Compact elements: assist, filter, input, suggestion"
+                                }
+                            }
+                        }
+
+                        // Tabs Demo Card
+                        Link (to: "/tabs") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Tabs Demo"
+                                    Text (variant: "muted") "Tabbed navigation for organizing content"
+                                }
+                            }
+                        }
                     }
                 }
             }
