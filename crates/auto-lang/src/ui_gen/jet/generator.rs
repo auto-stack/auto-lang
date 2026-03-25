@@ -513,6 +513,7 @@ fun {}Preview() {{
             "Checkbox" => "checkbox",
             "Switch" | "Toggle" => "switch",
             "Slider" => "slider",
+            "Progress" => "progress",
             "Chip" => "chip",
             "List" | "LazyColumn" => "list",
             "ListRow" | "LazyRow" => "list-row",
@@ -542,7 +543,7 @@ fun {}Preview() {{
     /// Check if tag is a form element
     fn is_form_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip")
+        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip" | "progress" | "image")
     }
 
     /// Check if tag is a list element
@@ -637,6 +638,10 @@ fun {}Preview() {{
             "switch" | "toggle" => self.form_generator.generate_switch(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "slider" => self.form_generator.generate_slider(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            "progress" => self.form_generator.generate_progress(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim())),
+            "image" => self.form_generator.generate_image(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "chip" => self.form_generator.generate_chip(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
@@ -1386,7 +1391,7 @@ fun {}Preview() {{
             "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center" => {
                 return self.layout_element_to_compose(tag, props, events, children, indent);
             }
-            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" => {
+            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "chip" | "progress" | "image" => {
                 return self.form_element_to_compose(tag, props, events, children, indent);
             }
             "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column" => {
@@ -2964,4 +2969,17 @@ widget TestCardVariant {
         // Verify default Card
         assert!(code.contains("Card("), "Should contain Card for default, got:\n{}", code);
     }
+}
+
+#[test]
+fn test_image_tag_normalization() {
+    // Test that Image tag is correctly normalized
+    assert_eq!(JetGenerator::normalize_tag("Image"), "image");
+    assert_eq!(JetGenerator::normalize_tag("Img"), "image");
+    assert_eq!(JetGenerator::normalize_tag("image"), "image");
+    
+    // Test that is_form_tag returns true for Image
+    assert!(JetGenerator::is_form_tag("Image"));
+    assert!(JetGenerator::is_form_tag("Img"));
+    assert!(JetGenerator::is_form_tag("image"));
 }

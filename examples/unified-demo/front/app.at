@@ -16,6 +16,8 @@ widget App {
         "/card" => use card
         "/chip" => use chip
         "/tabs" => use tabs
+        "/progress" => use progress
+        "/image" => use image
     }
 
     view {

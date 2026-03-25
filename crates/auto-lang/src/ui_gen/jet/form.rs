@@ -9,6 +9,8 @@
 //! - `switch`/`toggle` → `Switch`
 //! - `slider` → `Slider`
 //! - `chip` → `AssistChip`, `FilterChip`, `InputChip`, `SuggestionChip`
+//! - `progress` → `CircularProgressIndicator`, `LinearProgressIndicator`
+//! - `image` → `AsyncImage` (Coil)
 
 use crate::aura::{AuraPropValue, AuraExpr};
 use crate::ui_gen::GenResult;
@@ -290,6 +292,159 @@ r#"Row(
         parts.push("modifier = Modifier.fillMaxWidth()".to_string());
 
         Ok(format!("Slider(\n        {}\n    )", parts.join(",\n        ")))
+    }
+
+    /// Generate Progress indicator component
+    ///
+    /// # Variants
+    /// - `"circular"` (default) → `CircularProgressIndicator`
+    /// - `"linear"` → `LinearProgressIndicator`
+    ///
+    /// # Modes
+    /// - **Indeterminate** (default): No `value` prop - shows continuous animation
+    /// - **Determinate**: With `value` prop (0.0-1.0) - shows specific progress
+    ///
+    /// # Props
+    /// - `type`: "circular" (default) or "linear"
+    /// - `value`: Progress value (0.0-1.0), optional. If absent, indeterminate mode
+    /// - `color`: Custom progress color (optional)
+    ///
+    /// # Examples
+    /// ```auto
+    /// Progress {}                           // Circular indeterminate
+    /// Progress (type: "linear") {}          // Linear indeterminate
+    /// Progress (value: 0.7) {}              // Circular determinate (70%)
+    /// Progress (type: "linear", value: 0.5) {} // Linear determinate (50%)
+    /// ```
+    pub fn generate_progress(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        // Extract type (default: circular)
+        let progress_type = Self::extract_string(props, "type")
+            .unwrap_or_else(|| "circular".to_string());
+
+        // Extract value (optional - if present, determinate mode)
+        let value = Self::extract_float(props, "value");
+
+        // Add imports based on type
+        match progress_type.as_str() {
+            "linear" => {
+                self.add_import("androidx.compose.material3.LinearProgressIndicator");
+            }
+            _ => {
+                self.add_import("androidx.compose.material3.CircularProgressIndicator");
+            }
+        }
+
+        // Build progress indicator
+        let mut parts = Vec::new();
+
+        // Determinate mode: add progress parameter
+        if let Some(v) = value {
+            parts.push(format!("progress = {}f", v));
+        }
+
+        // Custom color (optional)
+        if let Some(color) = Self::extract_string(props, "color") {
+            self.add_import("androidx.compose.ui.graphics.Color");
+            parts.push(format!("color = Color({})", Self::parse_color(&color)));
+        }
+
+        // Generate based on type
+        match progress_type.as_str() {
+            "linear" => {
+                if parts.is_empty() {
+                    Ok("LinearProgressIndicator()".to_string())
+                } else {
+                    Ok(format!("LinearProgressIndicator(\n        {}\n    )", parts.join(",\n        ")))
+                }
+            }
+            _ => {
+                if parts.is_empty() {
+                    Ok("CircularProgressIndicator()".to_string())
+                } else {
+                    Ok(format!("CircularProgressIndicator(\n        {}\n    )", parts.join(",\n        ")))
+                }
+            }
+        }
+    }
+
+    /// Extract float value from prop
+    fn extract_float(props: &HashMap<String, AuraPropValue>, key: &str) -> Option<f64> {
+        props.get(key).and_then(|p| match p {
+            AuraPropValue::Expr(AuraExpr::Float(n)) => Some(*n),
+            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as f64),
+            _ => None,
+        })
+    }
+
+    /// Parse color string to Compose Color format
+    /// Supports: hex (#RRGGBB, #AARRGGBB), named colors (blue, red, etc.)
+    fn parse_color(color: &str) -> String {
+        let color = color.trim();
+
+        // Handle hex colors
+        if color.starts_with('#') {
+            let hex = color.trim_start_matches('#');
+            match hex.len() {
+                6 => format!("0xFF{}", hex.to_uppercase()),
+                8 => format!("0x{}", hex.to_uppercase()),
+                _ => color.to_string(),
+            }
+        } else {
+            // Named colors
+            match color.to_lowercase().as_str() {
+                "blue" => "Color.Blue".to_string(),
+                "red" => "Color.Red".to_string(),
+                "green" => "Color.Green".to_string(),
+                "yellow" => "Color.Yellow".to_string(),
+                "black" => "Color.Black".to_string(),
+                "white" => "Color.White".to_string(),
+                "gray" | "grey" => "Color.Gray".to_string(),
+                _ => color.to_string(),
+            }
+        }
+    }
+
+    /// Generate Image component
+    ///
+    /// Uses Coil's AsyncImage for loading network images.
+    ///
+    /// # Props
+    /// - `src`: Image URL or resource path (required)
+    /// - `contentDescription`: Accessibility description (optional, defaults to "Image")
+    /// - `modifier`: Additional modifier (optional)
+    ///
+    /// # Examples
+    /// ```auto
+    /// Image (src: "https://example.com/image.png")
+    /// Image (src: .avatarUrl, contentDescription: "User avatar")
+    /// ```
+    pub fn generate_image(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        // Add Coil AsyncImage import
+        self.add_import("coil.compose.AsyncImage");
+        self.add_import("androidx.compose.ui.Modifier");
+
+        // Extract src (required)
+        let src = Self::extract_string(props, "src")
+            .or_else(|| Self::extract_state_ref(props, "src"))
+            .unwrap_or_else(|| "".to_string());
+
+        // Extract contentDescription (optional)
+        let content_description = Self::extract_string(props, "contentDescription")
+            .unwrap_or_else(|| "Image".to_string());
+
+        // Build AsyncImage call
+        let mut parts = Vec::new();
+
+        // Model (src)
+        parts.push(format!("model = \"{}\"", src));
+
+        // Content description
+        parts.push(format!("contentDescription = \"{}\"", content_description));
+
+        // Modifier placeholder
+        parts.push("modifier = Modifier".to_string());
+
+        Ok(format!("AsyncImage(\n        {}\n    )", parts.join(",\n        ")))
     }
 
     /// Generate Chip component
