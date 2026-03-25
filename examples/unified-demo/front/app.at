@@ -11,6 +11,9 @@ widget App {
         "/table" => use table
         "/textarea" => use textarea
         "/radio" => use radio
+        "/checkbox" => use checkbox
+        "/switch" => use switch
+        "/slider" => use slider
         "/list-item" => use listitem
         "/counter" => use counter
         "/column" => use column

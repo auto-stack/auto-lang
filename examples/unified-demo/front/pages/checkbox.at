@@ -1,0 +1,88 @@
+// pages/checkbox.at - Checkbox demo
+
+/// Checkbox demo page showing various checkbox configurations.
+/// Demonstrates Checkbox component with labels and states.
+
+widget CheckboxPage {
+    model {
+        var basicChecked bool = false
+        var agreeChecked bool = false
+        var notificationsEnabled bool = true
+        var disabledChecked bool = false
+    }
+
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "Checkbox Demo"
+                    Text "Selection controls with Checkbox component" (variant: "muted")
+                }
+
+                // Basic Checkbox
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Basic Checkbox"
+                        Checkbox (checked: .basicChecked)
+                        Text "Basic checkbox without label" (variant: "muted")
+                    }
+                }
+
+                // Checkbox with Label
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Checkbox with Label"
+                        Checkbox (checked: .agreeChecked, label: "I agree to the terms and conditions")
+                        Text "Checkbox with a text label" (variant: "muted")
+                    }
+                }
+
+                // Pre-checked
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Pre-checked"
+                        Checkbox (checked: .notificationsEnabled, label: "Enable notifications")
+                        Text "Checkbox starts in checked state" (variant: "muted")
+                    }
+                }
+
+                // Disabled
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Disabled State"
+                        Checkbox (checked: .disabledChecked, label: "Disabled checkbox", disabled: "true")
+                        Text "Checkbox in disabled state" (variant: "muted")
+                    }
+                }
+
+                // Usage
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Common Use Cases"
+                        Text "Checkboxes are ideal for:"
+                        Col {
+                            style: "gap-2"
+                            Chip "Terms acceptance" (variant: "filter")
+                            Chip "Multi-select options" (variant: "filter")
+                            Chip "Settings toggles" (variant: "filter")
+                            Chip "Form confirmations" (variant: "filter")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

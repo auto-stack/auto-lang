@@ -73,6 +73,42 @@ widget IndexPage {
                             }
                         }
 
+                        // Checkbox Demo Card
+                        Link (to: "/checkbox") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Checkbox Demo"
+                                    Text (variant: "muted") "Multi-select with checkboxes"
+                                }
+                            }
+                        }
+
+                        // Switch Demo Card
+                        Link (to: "/switch") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Switch Demo"
+                                    Text (variant: "muted") "Toggle controls for settings"
+                                }
+                            }
+                        }
+
+                        // Slider Demo Card
+                        Link (to: "/slider") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Slider Demo"
+                                    Text (variant: "muted") "Range selection with sliders"
+                                }
+                            }
+                        }
+
                         // Counter Demo Card
                         Link (to: "/counter") {
                             Card (variant: "outlined") {

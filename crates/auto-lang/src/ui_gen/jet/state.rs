@@ -58,7 +58,16 @@ impl StateConverter {
             "int" | "uint" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" => {
                 value.to_string()
             }
-            "float" | "double" | "f32" | "f64" => {
+            "float" | "f32" => {
+                // Kotlin Float requires 'f' suffix
+                if value.contains('.') {
+                    format!("{}f", value)
+                } else {
+                    format!("{}.0f", value)
+                }
+            }
+            "double" | "f64" => {
+                // Kotlin Double is the default for decimal numbers
                 if value.contains('.') {
                     value.to_string()
                 } else {
@@ -142,7 +151,7 @@ mod tests {
         let converter = StateConverter::new();
         let result = converter.convert_model("price", "float", "0.0");
         assert!(result.contains("var price by remember"));
-        assert!(result.contains("mutableStateOf(0.0)"));
+        assert!(result.contains("mutableStateOf(0.0f)"));  // Kotlin Float requires 'f' suffix
     }
 
     #[test]

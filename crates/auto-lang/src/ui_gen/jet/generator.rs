@@ -776,16 +776,69 @@ fun {}Preview() {{
     /// Convert Auto f-string template to Kotlin string interpolation
     /// ${.field} -> $field
     /// ${field} -> $field
+    /// ${.field.method} -> ${field.method()}
+    /// ${.field.method.nested} -> ${field.method().nested()}
     fn convert_to_kotlin_interpolation(&self, s: &str) -> String {
         let mut result = s.to_string();
-        // Convert ${.field} to $field (state reference)
+
+        // Pattern for ${.field.method.nested...} - state reference with method chain
+        // Must process this BEFORE simple patterns to avoid partial matches
+        result = regex::Regex::new(r"\$\{\.(\w+(?:\.\w+)+)\}")
+            .map(|re| {
+                re.replace_all(&result, |caps: &regex::Captures| {
+                    let chain = &caps[1];
+                    // Split by "." and add () to each non-first part (methods)
+                    let parts: Vec<&str> = chain.split('.').collect();
+                    let transformed = parts.iter().enumerate()
+                        .map(|(i, part)| {
+                            if i == 0 {
+                                // First part is the field name
+                                part.to_string()
+                            } else {
+                                // Subsequent parts are method calls - add ()
+                                format!("{}()", part)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    format!("${{{}}}", transformed)
+                })
+                .to_string()
+            })
+            .unwrap_or(result.clone());
+
+        // Pattern for ${field.method.nested...} - variable reference with method chain
+        result = regex::Regex::new(r"\$\{(\w+(?:\.\w+)+)\}")
+            .map(|re| {
+                re.replace_all(&result, |caps: &regex::Captures| {
+                    let chain = &caps[1];
+                    let parts: Vec<&str> = chain.split('.').collect();
+                    let transformed = parts.iter().enumerate()
+                        .map(|(i, part)| {
+                            if i == 0 {
+                                part.to_string()
+                            } else {
+                                format!("{}()", part)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    format!("${{{}}}", transformed)
+                })
+                .to_string()
+            })
+            .unwrap_or(result.clone());
+
+        // Convert ${.field} to $field (state reference) - simple case
         result = regex::Regex::new(r"\$\{\.(\w+)\}")
             .map(|re| re.replace_all(&result, "$$$1").to_string())
             .unwrap_or(result);
-        // Convert ${field} to $field (variable reference)
+
+        // Convert ${field} to $field (variable reference) - simple case
         result = regex::Regex::new(r"\$\{(\w+)\}")
             .map(|re| re.replace_all(&result, "$$$1").to_string())
             .unwrap_or(result);
+
         result
     }
 
@@ -1421,9 +1474,10 @@ fun {}Preview() {{
         let text_prop = props.get("text")
             .and_then(|p| self.extract_string_value(p));
 
-        // Get class prop for Tailwind styling
+        // Get class/style prop for Tailwind styling (support both "class" and "style")
         let class_prop = props.get("class")
-            .and_then(|p| self.extract_string_value(p));
+            .and_then(|p| self.extract_string_value(p))
+            .or_else(|| props.get("style").and_then(|p| self.extract_string_value(p)));
 
         // Add imports for TextStyle if we have class-based styling
         if class_prop.is_some() && is_text_like {
@@ -1433,10 +1487,26 @@ fun {}Preview() {{
         }
 
         // Add common imports for class-based modifiers
-        if class_prop.is_some() {
+        if let Some(class) = &class_prop {
             self.add_import("androidx.compose.foundation.shape.RoundedCornerShape");
             self.add_import("androidx.compose.ui.graphics.Color");
             self.add_import("androidx.compose.ui.draw.clip");
+
+            // Check ComputedStyle for additional imports
+            let result = self.modifier_dsl.convert_class(class);
+            let style = &result.style;
+
+            // Background color requires background import
+            if style.background_color.is_some() {
+                self.add_import("androidx.compose.foundation.background");
+            }
+
+            // CircleShape for rounded-full
+            if let Some(radius) = &style.border_radius {
+                if radius.to_dp() >= 9999.0 {
+                    self.add_import("androidx.compose.foundation.shape.CircleShape");
+                }
+            }
         }
 
         // Get typography style for heading tags (both lowercase and PascalCase)
@@ -2236,10 +2306,10 @@ mod tests {
         assert!(bool_state.contains("var enabled by remember"));
         assert!(bool_state.contains("mutableStateOf(true)"));
 
-        // Test float state
+        // Test float state - Kotlin Float requires 'f' suffix
         let float_state = gen.state_converter.convert_model("price", "float", "9.99");
         assert!(float_state.contains("var price by remember"));
-        assert!(float_state.contains("mutableStateOf(9.99)"));
+        assert!(float_state.contains("mutableStateOf(9.99f)"));
     }
 
     #[test]
@@ -2991,9 +3061,99 @@ fn test_image_tag_normalization() {
     assert_eq!(JetGenerator::normalize_tag("Image"), "image");
     assert_eq!(JetGenerator::normalize_tag("Img"), "image");
     assert_eq!(JetGenerator::normalize_tag("image"), "image");
-    
+
     // Test that is_form_tag returns true for Image
     assert!(JetGenerator::is_form_tag("Image"));
     assert!(JetGenerator::is_form_tag("Img"));
     assert!(JetGenerator::is_form_tag("image"));
+}
+
+#[test]
+fn test_text_with_flex_style() {
+    use crate::aura::{AuraWidget, AuraNode, AuraExpr, AuraPropValue, AuraTextContent};
+
+    // Create a widget with Text that has style: "flex-1"
+    let mut text_props: HashMap<String, AuraPropValue> = HashMap::new();
+    text_props.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("flex-1".to_string())));
+
+    let text_node = AuraNode::Element {
+        tag: "Text".to_string(),
+        props: text_props,
+        events: HashMap::new(),
+        children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
+    };
+
+    let widget = AuraWidget {
+        name: "TestTextStyle".to_string(),
+        state_vars: vec![],
+        computed: vec![],
+        messages: vec![],
+        view_tree: text_node,
+        handlers: HashMap::new(),
+        props: vec![],
+        routes: None,
+    };
+
+    let mut gen = JetGenerator::new();
+    let result = gen.generate(&widget);
+    assert!(result.is_ok());
+    let code = result.unwrap();
+
+    eprintln!("Generated code:\n{}", code);
+
+    // Verify Text has weight(1f) modifier
+    assert!(code.contains("weight(1f)"), "Should generate weight(1f) for flex-1 style, but got:\n{}", code);
+}
+
+#[test]
+fn test_text_with_flex_style_e2e() {
+    use crate::Parser;
+    use crate::session::CompilerSession;
+    use crate::aura::extract_widget_from_decl;
+
+    // Parse from source - correct syntax: Text "content" (style: "flex-1")
+    let source = r#"
+widget TestTextFlex {
+    view {
+        Row {
+            style: "gap-4"
+            Text "Button" (style: "flex-1")
+            Text "Target" (style: "flex-1")
+        }
+    }
+}
+"#;
+
+    // Parse with UI scenario
+    let session = CompilerSession::ui().with_backend("jet");
+    let mut parser = Parser::from(source);
+    parser = parser.with_session(session);
+    let ast = parser.parse().expect("Parse should succeed");
+
+    // Extract AURA widget
+    let mut widgets = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let aura_widget = extract_widget_from_decl(widget_decl).expect("Extract should succeed");
+            widgets.push(aura_widget);
+        }
+    }
+
+    assert_eq!(widgets.len(), 1, "Should have 1 widget");
+    let widget = &widgets[0];
+    assert_eq!(widget.name, "TestTextFlex");
+
+    // Debug: print the view tree
+    eprintln!("View tree: {:?}", widget.view_tree);
+
+    // Generate Kotlin code
+    let mut gen = JetGenerator::new();
+    let result = gen.generate(widget).expect("Generate should succeed");
+
+    eprintln!("Generated Kotlin:\n{}", result);
+
+    // Verify Text has weight(1f) modifier
+    assert!(result.contains("weight(1f)"), "Should generate weight(1f) for flex-1 style, but got:\n{}", result);
+    // Verify gap is converted to spacedBy
+    assert!(result.contains("spacedBy(16.dp)"), "Should generate spacedBy(16.dp) for gap-4, but got:\n{}", result);
 }

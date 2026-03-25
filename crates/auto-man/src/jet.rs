@@ -158,7 +158,7 @@ impl JetProject {
         // Process app.at if exists
         let app_at = front_dir.join("app.at");
         if app_at.exists() {
-            match Self::compile_at_file(&app_at, &name) {
+            match Self::compile_at_file(&app_at, &name, true) {
                 Ok((files, names)) => {
                     kotlin_files.extend(files);
                     widget_names.extend(names);
@@ -179,7 +179,7 @@ impl JetProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    match Self::compile_at_file(&path, &name) {
+                    match Self::compile_at_file(&path, &name, true) {
                         Ok((files, names)) => {
                             kotlin_files.extend(files);
                             widget_names.extend(names);
@@ -202,7 +202,7 @@ impl JetProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    match Self::compile_at_file(&path, &name) {
+                    match Self::compile_at_file(&path, &name, true) {
                         Ok((files, names)) => {
                             kotlin_files.extend(files);
                             widget_names.extend(names);
@@ -225,7 +225,7 @@ impl JetProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    match Self::compile_at_file(&path, &name) {
+                    match Self::compile_at_file(&path, &name, true) {
                         Ok((files, names)) => {
                             kotlin_files.extend(files);
                             widget_names.extend(names);
@@ -283,7 +283,7 @@ impl JetProject {
 
             if cache.is_dirty(&app_at, hash) {
                 println!("  {} (changed)", "app.at".bright_yellow());
-                match Self::compile_at_file(&app_at, &name) {
+                match Self::compile_at_file(&app_at, &name, true) {
                     Ok((files, names)) => {
                         // Create artifacts for tracking
                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((path, content), widget_name)| {
@@ -326,7 +326,7 @@ impl JetProject {
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
 
-                                match Self::compile_at_file(&path, &name) {
+                                match Self::compile_at_file(&path, &name, false) {
                                     Ok((files, names)) => {
                                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
                                             UIArtifact {
@@ -372,7 +372,7 @@ impl JetProject {
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
 
-                                match Self::compile_at_file(&path, &name) {
+                                match Self::compile_at_file(&path, &name, false) {
                                     Ok((files, names)) => {
                                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
                                             UIArtifact {
@@ -418,7 +418,7 @@ impl JetProject {
                             if cache.is_dirty(&path, hash) {
                                 println!("  {} (changed)", file_name.bright_yellow());
 
-                                match Self::compile_at_file(&path, &name) {
+                                match Self::compile_at_file(&path, &name, false) {
                                     Ok((files, names)) => {
                                         let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
                                             UIArtifact {
@@ -468,7 +468,15 @@ impl JetProject {
     /// # Arguments
     /// * `at_path` - Path to the .at file
     /// * `project_name` - Project name (used for package name)
-    fn compile_at_file(at_path: &Path, project_name: &str) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    /// * `verbose` - Print progress messages
+    fn compile_at_file(at_path: &Path, project_name: &str, verbose: bool) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+        if verbose {
+            let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
+            println!("  {} {}", "Parsing".bright_cyan(), file_name);
+            use std::io::Write;
+            std::io::stdout().flush().ok();
+        }
+
         let code = fs::read_to_string(at_path)
             .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 

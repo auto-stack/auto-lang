@@ -1,0 +1,100 @@
+// pages/slider.at - Slider demo
+
+/// Slider demo page showing various slider configurations.
+/// Demonstrates Slider component with range, steps, and values.
+
+widget SliderPage {
+    model {
+        var basicValue float = 50.0
+        var volumeValue float = 75.0
+        var brightnessValue float = 50.0
+        var ratingValue float = 3.0
+        var temperatureValue float = 22.0
+    }
+
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "Slider Demo"
+                    Text "Range selection with Slider component" (variant: "muted")
+                }
+
+                // Basic Slider
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Basic Slider"
+                        Slider (value: .basicValue)
+                        Text "Basic slider (0-100)" (variant: "muted")
+                    }
+                }
+
+                // Volume Control
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Volume Control"
+                        Slider (value: .volumeValue, min: 0, max: 100)
+                        Text "Volume: ${.volumeValue.toInt}%" (variant: "muted")
+                    }
+                }
+
+                // Brightness
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Brightness"
+                        Slider (value: .brightnessValue, min: 0, max: 100)
+                        Text "Screen brightness control" (variant: "muted")
+                    }
+                }
+
+                // Rating with Steps
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Rating (Discrete Steps)"
+                        Slider (value: .ratingValue, min: 1, max: 5, step: 1)
+                        Text "Rating: ${.ratingValue.toInt} stars" (variant: "muted")
+                    }
+                }
+
+                // Temperature Range
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Temperature Control"
+                        Slider (value: .temperatureValue, min: 16, max: 30, step: 1)
+                        Text "Temperature: ${.temperatureValue.toInt}°C" (variant: "muted")
+                    }
+                }
+
+                // Usage
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Common Use Cases"
+                        Text "Sliders are ideal for:"
+                        Col {
+                            style: "gap-2"
+                            Chip "Volume controls" (variant: "filter")
+                            Chip "Brightness adjustment" (variant: "filter")
+                            Chip "Range selection" (variant: "filter")
+                            Chip "Rating systems" (variant: "filter")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

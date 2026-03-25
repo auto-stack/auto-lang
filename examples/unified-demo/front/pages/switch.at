@@ -1,0 +1,90 @@
+// pages/switch.at - Switch demo
+
+/// Switch demo page showing various switch/toggle configurations.
+/// Demonstrates Switch component with labels and states.
+
+widget SwitchPage {
+    model {
+        var basicEnabled bool = false
+        var notificationsEnabled bool = true
+        var darkModeEnabled bool = false
+        var autoSyncEnabled bool = true
+        var disabledValue bool = false
+    }
+
+    view {
+        Scroll {
+            Col {
+                style: "p-8 gap-8"
+                // Header
+                Col {
+                    style: "gap-2"
+                    H1 "Switch Demo"
+                    Text "Toggle controls with Switch component" (variant: "muted")
+                }
+
+                // Basic Switch
+                Card (variant: "elevated") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Basic Switch"
+                        Switch (checked: .basicEnabled)
+                        Text "Basic switch without label" (variant: "muted")
+                    }
+                }
+
+                // Switch with Label
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Switch with Label"
+                        Switch (checked: .notificationsEnabled, label: "Enable notifications")
+                        Text "Switch with a text label" (variant: "muted")
+                    }
+                }
+
+                // Settings Examples
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Settings Examples"
+                        Switch (checked: .darkModeEnabled, label: "Dark mode")
+                        Switch (checked: .autoSyncEnabled, label: "Auto-sync data")
+                        Text "Common settings toggles" (variant: "muted")
+                    }
+                }
+
+                // Disabled
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-4"
+                        H3 "Disabled State"
+                        Switch (checked: .disabledValue, label: "Disabled switch", disabled: "true")
+                        Text "Switch in disabled state" (variant: "muted")
+                    }
+                }
+
+                // Usage
+                Card (variant: "outlined") {
+                    style: "p-4 rounded-xl w-full"
+                    Col {
+                        style: "gap-2"
+                        H3 "Common Use Cases"
+                        Text "Switches are ideal for:"
+                        Col {
+                            style: "gap-2"
+                            Chip "Feature toggles" (variant: "filter")
+                            Chip "Settings preferences" (variant: "filter")
+                            Chip "Enable/disable actions" (variant: "filter")
+                            Chip "On/off controls" (variant: "filter")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

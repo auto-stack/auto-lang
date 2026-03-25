@@ -132,7 +132,7 @@ impl ArkProject {
         // Process app.at if exists
         let app_at = front_dir.join("app.at");
         if app_at.exists() {
-            match Self::compile_at_file(&app_at, &name) {
+            match Self::compile_at_file(&app_at, &name, true) {
                 Ok((files, names)) => {
                     arkts_files.extend(files);
                     widget_names.extend(names);
@@ -153,7 +153,7 @@ impl ArkProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    match Self::compile_at_file(&path, &name) {
+                    match Self::compile_at_file(&path, &name, true) {
                         Ok((files, names)) => {
                             arkts_files.extend(files);
                             widget_names.extend(names);
@@ -176,7 +176,7 @@ impl ArkProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    match Self::compile_at_file(&path, &name) {
+                    match Self::compile_at_file(&path, &name, true) {
                         Ok((files, names)) => {
                             arkts_files.extend(files);
                             widget_names.extend(names);
@@ -199,7 +199,7 @@ impl ArkProject {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    match Self::compile_at_file(&path, &name) {
+                    match Self::compile_at_file(&path, &name, true) {
                         Ok((files, names)) => {
                             arkts_files.extend(files);
                             widget_names.extend(names);
@@ -227,7 +227,7 @@ impl ArkProject {
                     continue;
                 }
 
-                match Self::compile_at_file(&path, &name) {
+                match Self::compile_at_file(&path, &name, true) {
                     Ok((files, names)) => {
                         arkts_files.extend(files);
                         widget_names.extend(names);
@@ -251,7 +251,12 @@ impl ArkProject {
 
     /// Compile a single .at file to ArkTS code
     /// Returns (arkts_files, widget_names)
-    fn compile_at_file(at_path: &Path, _project_name: &str) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    fn compile_at_file(at_path: &Path, _project_name: &str, verbose: bool) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+        if verbose {
+            let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
+            println!("  Parsing {}", file_name);
+        }
+
         let code = fs::read_to_string(at_path)
             .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
