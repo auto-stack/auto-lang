@@ -25,6 +25,30 @@ widget IndexPage {
                     // Component grid
                     Col {
                         style: "gap-4"
+                        // ListItem Demo Card (new)
+                        Link (to: "/listitem") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "ListItem Demo"
+                                    Text (variant: "muted") "Structured list rows with slots"
+                                }
+                            }
+                        }
+
+                        // Radio Demo Card
+                        Link (to: "/radio") {
+                            Card (variant: "outlined") {
+                                style: "p-4 rounded-lg hover:shadow-lg cursor-pointer"
+                                Col {
+                                    style: "gap-2"
+                                    H3 "Radio Demo"
+                                    Text (variant: "muted") "Single selection with radio buttons"
+                                }
+                            }
+                        }
+
                         // Counter Demo Card
                         Link (to: "/counter") {
                             Card (variant: "outlined") {

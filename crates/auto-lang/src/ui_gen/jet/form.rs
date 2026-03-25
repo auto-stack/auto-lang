@@ -559,6 +559,91 @@ r#"Row(
         ))
     }
 
+    /// Generate ListItem component
+    ///
+    /// # Props
+    /// - `headline`: Headline text (required)
+    /// - `supporting`: Supporting text (secondary line)
+    /// - `leading`: Leading content (icon/avatar)
+    /// - `trailing`: Trailing content (action/icon)
+    /// - `overline`: Overline text above headline
+    ///
+    /// # Examples
+    /// ```auto
+    /// ListItem (headline: "Settings", supporting: "App preferences")
+    /// ListItem (headline: "Profile", leading: "person")
+    /// ```
+    ///
+    /// # Kotlin Output
+    /// ```kotlin
+    /// ListItem(
+    ///     headlineContent = { Text("Settings") },
+    ///     supportingContent = { Text("App preferences") }
+    /// )
+    /// ```
+    pub fn generate_list_item(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.ListItem");
+        self.add_import("androidx.compose.material3.Text");
+
+        // Extract headline (required)
+        let headline = Self::extract_string(props, "headline")
+            .or_else(|| Self::extract_string(props, "title"))
+            .or_else(|| Self::extract_string(props, "text"))
+            .unwrap_or_default();
+
+        // Extract supporting text
+        let supporting = Self::extract_string(props, "supporting")
+            .or_else(|| Self::extract_string(props, "subtitle"))
+            .or_else(|| Self::extract_string(props, "description"));
+
+        // Extract leading content
+        let leading = Self::extract_string(props, "leading")
+            .or_else(|| Self::extract_string(props, "icon"));
+
+        // Extract trailing content
+        let trailing = Self::extract_string(props, "trailing")
+            .or_else(|| Self::extract_string(props, "action"));
+
+        // Extract overline
+        let overline = Self::extract_string(props, "overline");
+
+        let mut parts = Vec::new();
+
+        // Overline
+        if let Some(overline_text) = overline {
+            parts.push(format!("overlineContent = {{ Text(\"{}\") }}", overline_text));
+        }
+
+        // Headline (required)
+        parts.push(format!("headlineContent = {{ Text(\"{}\") }}", headline));
+
+        // Supporting content
+        if let Some(supporting_text) = supporting {
+            parts.push(format!("supportingContent = {{ Text(\"{}\") }}", supporting_text));
+        }
+
+        // Leading content (icon)
+        if let Some(leading_icon) = leading {
+            self.add_import("androidx.compose.material3.Icon");
+            self.add_import("androidx.compose.material.icons.Icons");
+            self.add_import("androidx.compose.material.icons.filled.*");
+            parts.push(format!(
+                "leadingContent = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
+                leading_icon
+            ));
+        }
+
+        // Trailing content
+        if let Some(trailing_text) = trailing {
+            parts.push(format!("trailingContent = {{ Text(\"{}\") }}", trailing_text));
+        }
+
+        Ok(format!(
+            "ListItem(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
+    }
+
     /// Generate Chip component
     ///
     /// # Variants
