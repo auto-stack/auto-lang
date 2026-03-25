@@ -726,6 +726,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         handlers,
         props,
         routes,
+        lifecycle: vec![],  // TODO: Extract lifecycle methods from WidgetDecl
     })
 }
 

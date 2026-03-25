@@ -22,6 +22,7 @@ use crate::ast::{RouteDef, RoutesBlock};
 /// - View tree (pure layout, no logic)
 /// - Event handlers (logic payload)
 /// - Routes (for router widgets, Plan 105)
+/// - Lifecycle methods (Plan 05-Nav)
 #[derive(Debug, Clone)]
 pub struct AuraWidget {
     /// Widget name (e.g., "Counter")
@@ -47,6 +48,9 @@ pub struct AuraWidget {
 
     /// Routes configuration (for router widgets, Plan 105)
     pub routes: Option<AuraRoutes>,
+
+    /// Lifecycle methods (e.g., aboutToAppear) - Plan 05-Nav
+    pub lifecycle: Vec<AuraLifecycle>,
 }
 
 // ============================================================================
@@ -94,6 +98,33 @@ impl AuraRoutes {
 impl Default for AuraRoutes {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ============================================================================
+// Lifecycle Types (Plan 05-Nav)
+// ============================================================================
+
+/// Lifecycle method definition
+///
+/// Represents lifecycle methods like `aboutToAppear()` in AURA widgets.
+/// These are extracted from `lifecycle { ... }` blocks.
+#[derive(Debug, Clone)]
+pub struct AuraLifecycle {
+    /// Method name (e.g., "aboutToAppear")
+    pub name: String,
+
+    /// Method body statements
+    pub body: Vec<AuraStmt>,
+}
+
+impl AuraLifecycle {
+    /// Create a new lifecycle method
+    pub fn new(name: impl Into<String>, body: Vec<AuraStmt>) -> Self {
+        Self {
+            name: name.into(),
+            body,
+        }
     }
 }
 
@@ -741,6 +772,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         assert_eq!(widget.name, "Counter");
