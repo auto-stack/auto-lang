@@ -4,72 +4,106 @@ use KnowledgeMapContent
 
 /// Knowledge map page with navigation to learning sections
 widget KnowledgeMap {
+    model {
+        #[Provide("pathStack")] pathStack NavPathStack = NavPathStack()
+        sections List = [
+            {
+                title: "准备与学习",
+                brief: "加入HarmonyOS生态，注册成为开发者，通过HarmonyOS课程了解基本概念和基础知识，轻松开启HarmonyOS的开发旅程。",
+                items: [
+                    { id: "0-0", type: "准备", name: "注册账号" },
+                    { id: "0-1", type: "准备", name: "实名认证" },
+                    { id: "0-2", type: "学习", name: "HarmonyOS第一课" },
+                    { id: "0-3", type: "学习", name: "HarmonyOS应用开发认证" }
+                ]
+            },
+            {
+                title: "构建应用",
+                brief: "为了帮助开发者更好的理解HarmonyOS提供的能力，我们对重点功能提供了开发指导，辅助开发者完成应用的开发。",
+                items: [
+                    { id: "1-0", type: "指南", name: "DevEco Studio" },
+                    { id: "1-1", type: "指南", name: "ArkTS" },
+                    { id: "1-2", type: "指南", name: "ArkUI" },
+                    { id: "1-3", type: "视频", name: "ArkUI属性动画" }
+                ]
+            },
+            {
+                title: "应用测试",
+                brief: "HarmonyOS应用/服务开发完成后，在发布到应用/服务市场前，还需要对应用进行漏洞、隐私、兼容性、稳定性、性能等测试。",
+                items: [
+                    { id: "2-0", type: "指南", name: "云测试" },
+                    { id: "2-1", type: "指南", name: "开放式测试" }
+                ]
+            },
+            {
+                title: "上架",
+                brief: "HarmonyOS应用/服务开发、测试完成后，将应用/服务发布至应用市场，用户可以通过应用市场、负一屏等渠道获取到对应的HarmonyOS应用/服务。",
+                items: [
+                    { id: "3-0", type: "指南", name: "发布HarmonyOS应用" },
+                    { id: "3-1", type: "指南", name: "发布元服务" },
+                    { id: "3-2", type: "指南", name: "分阶段发布" }
+                ]
+            },
+            {
+                title: "运营增长",
+                brief: "HarmonyOS应用/服务发布以后，通过数据及时了解运营情况、质量表现，制定增长策略，借助App Linking、崩溃服务等能力，实现应用及服务的用户增长以及质量提升。",
+                items: [
+                    { id: "4-0", type: "指南", name: "应用分析" },
+                    { id: "4-1", type: "指南", name: "App Linking" },
+                    { id: "4-2", type: "指南", name: "崩溃服务" }
+                ]
+            },
+            {
+                title: "商业变现",
+                brief: "HarmonyOS应用/服务发布以后，通过数据及时了解运营情况、质量表现，制定增长策略，借助流量变现、联运服务等能力实现商业价值。",
+                items: [
+                    { id: "5-0", type: "指南", name: "流量变现" },
+                    { id: "5-1", type: "指南", name: "联运服务" },
+                    { id: "5-2", type: "指南", name: "付费服务" }
+                ]
+            },
+            {
+                title: "更多",
+                brief: "了解更多HarmonyOS相关信息，包括常见问题、版本说明等内容。",
+                items: [
+                    { id: "6-0", type: "指南", name: "常见问题" },
+                    { id: "6-1", type: "指南", name: "版本说明" }
+                ]
+            }
+        ]
+    }
+
     view {
-        Col {
-            Text "知识地图" {
-                style: "text-2xl font-bold w-full text-left pl-4 pt-4"
-            }
-            Text "通过循序渐进的学习路径，无经验和有经验的开发者都可以轻松掌握ArkTS语言声明式开发范式" {
-                style: "text-sm text-gray-600 text-center px-4 mt-2"
-            }
-            List {
-                ListItem {
-                    Row {
-                        Text "1" {
-                            style: "w-8 h-8 bg-blue-500 text-white rounded-full text-center"
-                        }
-                        Col {
-                            Text "ArkTS语言基础" {
-                                style: "text-base font-medium text-left"
-                            }
-                            Text "学习ArkTS语言的基础语法和特性" {
-                                style: "text-xs text-gray-600 text-left mt-1"
-                            }
-                            style: "flex-1 ml-3"
-                        }
-                        style: "w-full p-3 bg-white rounded-xl mb-2"
-                        onclick: nav("KnowledgeMapContent", { sectionId: "1", title: "ArkTS语言基础", description: "学习ArkTS语言的基础语法和特性" })
+        Navigation (hideTitleBar: true, mode: "stack") {
+            Scroll {
+                Col {
+                    Text "知识地图" {
+                        style: "text-2xl font-bold text-black w-full"
                     }
-                }
-                ListItem {
-                    Row {
-                        Text "2" {
-                            style: "w-8 h-8 bg-blue-500 text-white rounded-full text-center"
-                        }
-                        Col {
-                            Text "声明式UI开发" {
-                                style: "text-base font-medium text-left"
-                            }
-                            Text "掌握声明式UI开发范式的核心概念" {
-                                style: "text-xs text-gray-600 text-left mt-1"
-                            }
-                            style: "flex-1 ml-3"
-                        }
-                        style: "w-full p-3 bg-white rounded-xl mb-2"
-                        onclick: nav("KnowledgeMapContent", { sectionId: "2", title: "声明式UI开发", description: "掌握声明式UI开发范式的核心概念" })
+                    Text "通过循序渐进的学习路径，无经验和有经验的开发者都可以轻松掌握ArkTS语言声明式开发范式，体验更简洁、更友好的HarmonyOS应用开发旅程。" {
+                        style: "text-sm text-gray-600 mt-4 text-left"
                     }
-                }
-                ListItem {
-                    Row {
-                        Text "3" {
-                            style: "w-8 h-8 bg-blue-500 text-white rounded-full text-center"
-                        }
-                        Col {
-                            Text "组件与布局" {
-                                style: "text-base font-medium text-left"
+                    List (space: 12) {
+                        for item in .sections {
+                            ListItem {
+                                Row {
+                                    Text (text: item.title) {
+                                        style: "text-base font-medium text-gray-800"
+                                    }
+                                    Spacer {}
+                                    Text ">" {
+                                        style: "text-gray-400"
+                                    }
+                                    style: "w-full h-12 items-center px-3 rounded-2xl"
+                                    onclick: nav("KnowledgeMapContent", item)
+                                }
                             }
-                            Text "学习各类组件和布局容器的使用" {
-                                style: "text-xs text-gray-600 text-left mt-1"
-                            }
-                            style: "flex-1 ml-3"
                         }
-                        style: "w-full p-3 bg-white rounded-xl mb-2"
-                        onclick: nav("KnowledgeMapContent", { sectionId: "3", title: "组件与布局", description: "学习各类组件和布局容器的使用" })
+                        style: "w-full mt-6"
                     }
+                    style: "w-full px-4 py-3"
                 }
-                style: "flex-1 px-4 mt-4"
             }
-            style: "w-full h-full bg-gray-100"
         }
     }
 

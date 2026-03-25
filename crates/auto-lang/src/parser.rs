@@ -1469,7 +1469,17 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.clone();
         self.next(); // skip name
                      // Use Expr::Dot for semantic clarity (.field is shorthand for self.field)
-        Ok(Expr::Dot(Box::new(Expr::Ident("self".into())), name))
+        let mut lhs = Expr::Dot(Box::new(Expr::Ident("self".into())), name);
+
+        // Handle chained property access like .section.title
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip dot
+            let field_name = self.cur.text.clone();
+            self.next(); // skip field name
+            lhs = Expr::Dot(Box::new(lhs), field_name);
+        }
+
+        Ok(lhs)
     }
 
     fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
@@ -8351,8 +8361,21 @@ impl<'a> Parser<'a> {
         // tag f"count: ${.n}" → tag (primary_prop: f"count: ${.n})
         // The primary prop depends on the element type (from get_primary_prop)
         // Also handle .field as primary prop: Text .title → Text (text: .title)
+        // Also handle ident.field as primary prop: Text item.order → Text (text: item.order)
         let has_primary_prop_value = self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart);
         let has_dot_primary = self.is_kind(TokenKind::Dot);
+        // Check if identifier is followed by dot (like item.order)
+        let has_ident_field_primary = self.is_kind(TokenKind::Ident) && {
+            // Peek ahead to see if identifier is followed by dot
+            if let Ok(next_token) = self.lexer.next() {
+                let is_dot = next_token.kind == TokenKind::Dot;
+                self.lexer.push_token(next_token);
+                is_dot
+            } else {
+                false
+            }
+        };
+
         if has_primary_prop_value {
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
                 let is_fstr = self.is_kind(TokenKind::FStrStart);
@@ -8382,6 +8405,15 @@ impl<'a> Parser<'a> {
                 props.push(ViewProp {
                     name: primary_prop.to_string(),
                     value: ViewPropValue::Expr(dot_expr),
+                });
+            }
+        } else if has_ident_field_primary {
+            // Handle ident.field as primary prop (e.g., Text item.order)
+            if let Some(primary_prop) = Self::get_primary_prop(&tag) {
+                let expr = self.parse_expr()?;
+                props.push(ViewProp {
+                    name: primary_prop.to_string(),
+                    value: ViewPropValue::Expr(expr),
                 });
             }
         }
@@ -8644,12 +8676,21 @@ impl<'a> Parser<'a> {
         // Expect "in" keyword
         self.expect_ident("in")?;
 
-        // Parse iterable (e.g., .todos)
+        // Parse iterable (e.g., .todos or .section.items)
         let iterable = if self.is_kind(TokenKind::Dot) {
             self.next();
-            let name = self.cur.text.to_string();
+            let first_name = self.cur.text.to_string();
             self.next();
-            format!(".{}", name)
+            let mut result = format!(".{}", first_name);
+
+            // Handle chained property access like .section.items
+            while self.is_kind(TokenKind::Dot) {
+                self.next(); // skip dot
+                let name = self.cur.text.to_string();
+                self.next();
+                result.push_str(&format!(".{}", name));
+            }
+            result
         } else {
             let name = self.cur.text.to_string();
             self.next();
@@ -8935,17 +8976,27 @@ impl<'a> Parser<'a> {
         let mut parts: Vec<String> = Vec::new();
 
         // Handle expressions like: todo.id, .count, 123, "string"
+        // Track if previous token was an identifier (for proper dot handling)
+        let mut prev_was_ident = false;
         loop {
             if self.is_kind(TokenKind::Dot) {
                 self.next();
                 let name = self.cur.text.to_string();
                 self.next();
-                // For ArkTS, convert .field to this.field
-                parts.push(format!("this.{}", name));
+                // If previous was an identifier (like 'item'), use property access syntax
+                // Otherwise, this is .field shorthand -> convert to this.field
+                if prev_was_ident {
+                    parts.push(format!(".{}", name));
+                } else {
+                    // Standalone .field -> this.field
+                    parts.push(format!("this.{}", name));
+                }
+                prev_was_ident = false;
             } else if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.to_string();
                 self.next();
                 parts.push(text);
+                prev_was_ident = true;
 
                 // Check for function call: ident(args)
                 if self.is_kind(TokenKind::LParen) {

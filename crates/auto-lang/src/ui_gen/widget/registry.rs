@@ -176,6 +176,33 @@ impl WidgetRegistry {
         });
         self.register(scroll);
 
+        // Spacer - fills available space in Row/Column (maps to Blank in ArkTS, Spacer in Compose)
+        let mut spacer = WidgetSpec::new("Spacer", WidgetCategory::Layout)
+            .with_alias("spacer");
+        spacer.has_children = false;
+        spacer.backends.insert("ark".to_string(), BackendMapping {
+            component: "Blank".to_string(),
+            import: None, // Built-in
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        spacer.backends.insert("jet".to_string(), BackendMapping {
+            component: "Spacer".to_string(),
+            import: Some("androidx.compose.foundation.layout.Spacer".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        spacer.backends.insert("vue".to_string(), BackendMapping {
+            component: "div".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(spacer);
+
         // Card
         let mut card = WidgetSpec::new("Card", WidgetCategory::Layout)
             .with_alias("card");
@@ -1075,6 +1102,20 @@ impl WidgetRegistry {
             extra_components: Vec::new(),
         });
         self.register(tabs_content);
+
+        // Navigation - root navigation container for HarmonyOS
+        let mut navigation = WidgetSpec::new("Navigation", WidgetCategory::Navigation)
+            .with_alias("navigation");
+        navigation.has_children = true;
+        navigation.primary_prop = Some("pathStack".to_string());
+        navigation.backends.insert("ark".to_string(), BackendMapping {
+            component: "Navigation".to_string(),
+            import: None, // Built-in
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(navigation);
 
         // NavDestination - for detail pages in navigation stack
         let mut nav_destination = WidgetSpec::new("NavDestination", WidgetCategory::Navigation)

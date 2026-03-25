@@ -338,7 +338,13 @@ impl ArkProject {
         for member in &type_decl.members {
             let field_name = member.name.as_str();
             let field_type = Self::type_to_arkts(&member.ty);
-            lines.push(format!("  {}: {} = ''", field_name, field_type));
+            // Use appropriate default value based on type
+            let default_value = if field_type.ends_with("[]") {
+                "[]".to_string()
+            } else {
+                "''".to_string()
+            };
+            lines.push(format!("  {}: {} = {}", field_name, field_type, default_value));
         }
         lines.push("}".to_string());
 
@@ -352,8 +358,42 @@ impl ArkProject {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
             Type::Bool => "boolean".to_string(),
             Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
-            Type::User(type_decl) => type_decl.name.to_string(),
+            Type::User(type_decl) => {
+                let type_name = type_decl.name.as_str();
+                // Special handling for List type - treat as Object[]
+                if type_name == "List" {
+                    "Object[]".to_string()
+                } else {
+                    type_decl.name.to_string()
+                }
+            },
             Type::Option(inner) => format!("{} | null", Self::type_to_arkts(inner)),
+            Type::List(inner) => {
+                let elem_type = Self::type_to_arkts(inner);
+                if elem_type == "Object" {
+                    "Object[]".to_string()
+                } else {
+                    format!("{}[]", elem_type)
+                }
+            }
+            Type::Slice(slice) => {
+                let elem_type = Self::type_to_arkts(&slice.elem);
+                if elem_type == "Object" {
+                    "Object[]".to_string()
+                } else {
+                    format!("{}[]", elem_type)
+                }
+            }
+            Type::Array(arr) => {
+                let elem_type = Self::type_to_arkts(&arr.elem);
+                if elem_type == "Object" {
+                    "Object[]".to_string()
+                } else {
+                    format!("{}[]", elem_type)
+                }
+            }
+            // Unknown type (e.g., unresolved List) - treat as Object[] for collection-like fields
+            Type::Unknown => "Object[]".to_string(),
             _ => "Object".to_string(),
         }
     }

@@ -42,6 +42,56 @@ pub fn extract_interface_from_array(name: &str, expr: &AuraExpr) -> Option<Inter
     None
 }
 
+/// Extract all interfaces from an array expression, including nested arrays
+/// Returns a vector of (interface_name, InterfaceDef) pairs
+pub fn extract_all_interfaces_from_array(parent_name: &str, name: &str, expr: &AuraExpr) -> Vec<InterfaceDef> {
+    let mut interfaces = Vec::new();
+
+    if let AuraExpr::Array(elems) = expr {
+        // Find first object element to extract structure
+        for elem in elems {
+            if let AuraExpr::Object(fields) = elem {
+                let interface_name = format!("{}{}", parent_name, to_pascal_case(name));
+                let mut interface_fields = HashMap::new();
+
+                // Add id field for ForEach key function
+                interface_fields.insert("id".to_string(), "string".to_string());
+
+                for (key, value) in fields {
+                    // Check if this field is an array of objects (nested)
+                    if let AuraExpr::Array(nested_elems) = value {
+                        // Check if array contains objects
+                        let has_objects = nested_elems.iter().any(|e| matches!(e, AuraExpr::Object(_)));
+                        if has_objects {
+                            // Generate nested interface name
+                            let nested_interface_name = format!("{}Item", interface_name);
+                            interface_fields.insert(key.clone(), format!("{}[]", nested_interface_name));
+
+                            // Recursively extract nested interface
+                            let nested_interfaces = extract_all_interfaces_from_array(&interface_name, key, value);
+                            interfaces.extend(nested_interfaces);
+                        } else {
+                            let field_type = infer_arkts_type_from_expr(value);
+                            interface_fields.insert(key.clone(), field_type);
+                        }
+                    } else {
+                        let field_type = infer_arkts_type_from_expr(value);
+                        interface_fields.insert(key.clone(), field_type);
+                    }
+                }
+
+                interfaces.push(InterfaceDef {
+                    name: interface_name,
+                    fields: interface_fields,
+                });
+                break; // Only need to process first object
+            }
+        }
+    }
+
+    interfaces
+}
+
 /// Convert snake_case or camelCase to PascalCase for interface names
 pub fn to_pascal_case(name: &str) -> String {
     // Handle common naming patterns
@@ -82,9 +132,9 @@ fn infer_arkts_type_from_expr(expr: &AuraExpr) -> String {
         AuraExpr::Int(_) => "number".to_string(),
         AuraExpr::Float(_) => "number".to_string(),
         AuraExpr::Bool(_) => "boolean".to_string(),
-        AuraExpr::Array(_) => "any[]".to_string(),
-        AuraExpr::Object(_) => "object".to_string(),
-        _ => "any".to_string(),
+        AuraExpr::Array(_) => "Object[]".to_string(),
+        AuraExpr::Object(_) => "Object".to_string(),
+        _ => "Object".to_string(),
     }
 }
 
@@ -121,16 +171,14 @@ pub fn generate_interfaces(widget: &AuraWidget) -> Vec<InterfaceDef> {
 ///
 /// This generates interface names like "EnablementViewItem" instead of just "Item"
 /// to avoid naming conflicts when multiple widgets have similar state variable names.
+/// Also generates nested interfaces for arrays within objects.
 pub fn generate_interfaces_with_prefix(widget: &AuraWidget, widget_name: &str) -> Vec<InterfaceDef> {
     let mut interfaces = Vec::new();
 
     for state_var in &widget.state_vars {
-        if let Some(mut interface) = extract_interface_from_array(&state_var.name, &state_var.initial) {
-            // Prefix the interface name with the widget name
-            // e.g., "Item" -> "EnablementViewItem"
-            interface.name = format!("{}{}", widget_name, interface.name);
-            interfaces.push(interface);
-        }
+        // Use the new function that extracts all interfaces including nested ones
+        let all_interfaces = extract_all_interfaces_from_array(widget_name, &state_var.name, &state_var.initial);
+        interfaces.extend(all_interfaces);
     }
 
     interfaces
@@ -169,7 +217,7 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
             format!("{}[]", prefixed_interface_name)
         } else if matches!(state_var.type_info, Type::Unknown) {
             // If type is Unknown, try to use type from constructor
-            type_from_constructor.unwrap_or_else(|| "any".to_string())
+            type_from_constructor.unwrap_or_else(|| "Object".to_string())
         } else {
             auto_type_to_arkts(&state_var.type_info, &interfaces)
         };
@@ -350,8 +398,8 @@ fn auto_type_to_arkts(ty: &Type, interfaces: &[InterfaceDef]) -> String {
         Type::GenericInstance(inst) => inst.base_name.as_str().to_string(),
         Type::Option(inner) => format!("{} | null", auto_type_to_arkts(inner, interfaces)),
         Type::Void => "void".to_string(),
-        Type::Unknown => "any".to_string(),
-        _ => "any".to_string(),
+        Type::Unknown => "Object".to_string(),
+        _ => "Object".to_string(),
     }
 }
 

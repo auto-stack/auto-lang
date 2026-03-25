@@ -42,6 +42,17 @@ cargo run --release          # Run REPL (using cargo)
 cargo test                   # Run all tests
 ```
 
+## Build & Test Workflow
+
+- Always run `cargo test` after modifying VM-related code
+- Always run `cargo build` after modifying codegen or parser code
+- Run relevant tests before committing changes to core systems
+
+## Context Management
+
+- When approaching context limits, summarize progress and create a continuation plan before the session ends
+- Use concise responses during long debugging sessions to preserve context
+
 ### Self-Hosted Implementation (auto/)
 
 ```bash
@@ -1575,6 +1586,14 @@ AuraWidget → ArkGenerator → ArkTS Code
                 ├── ArkModifierDsl (Tailwind → ArkTS modifiers)
                 └── Test Framework (a2ark tests)
 ```
+
+### ArkTS Code Generation Rules
+
+- Generated ArkTS must use TypeScript syntax, not Kotlin (no sealed classes, use proper TypeScript types)
+- Array literals need explicit type annotations in ArkTS (use `Object[]` or specific interface types)
+- Component syntax follows `@Component` decorator patterns
+- Use `Object` instead of `any` for dynamic types (ArkTS forbids `any`/`unknown`)
+- Object literals must correspond to explicitly declared interfaces
 
 ### Component Mappings
 

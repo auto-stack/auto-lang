@@ -1,9 +1,17 @@
 // KnowledgeMapContent.at - Knowledge map content detail page
 
+/// Item in a section
+type SectionItem {
+    id str
+    type str
+    name str
+}
+
 /// Section data for knowledge map
 type Section {
     title str
     brief str
+    items []SectionItem
 }
 
 /// Knowledge map content detail page
@@ -17,24 +25,26 @@ widget KnowledgeMapContent {
         NavDestination {
             Scroll {
                 Col {
-                    Text "知识地图详情" {
+                    Text .section.title {
                         style: "text-xl font-bold text-black"
                     }
-                    Text "这里是知识地图的详细内容" {
+                    Text .section.brief {
                         style: "text-xs text-gray-600 mt-3"
                     }
                     Text "学习内容" {
                         style: "text-lg font-bold mt-7 mb-2"
                     }
                     Col {
-                        Text "指南" {
-                            style: "text-base font-medium"
-                        }
-                        Text "准备" {
-                            style: "text-base font-medium mt-4"
-                        }
-                        Text "视频教程" {
-                            style: "text-base font-medium mt-4"
+                        for item in .section.items {
+                            Row {
+                                Text item.type {
+                                    style: "text-xs text-blue-500 bg-blue-50 px-2 py-1 rounded"
+                                }
+                                Text item.name {
+                                    style: "text-base font-medium ml-2"
+                                }
+                                style: "w-full py-2"
+                            }
                         }
                         style: "w-full bg-white rounded-2xl p-3 mt-4"
                     }

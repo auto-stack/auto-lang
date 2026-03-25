@@ -88,6 +88,13 @@ pub struct ArkGenerator {
     /// State variable interface types (state var name -> interface type name)
     /// E.g., "items" -> "EnablementViewItem"
     state_interfaces: HashMap<String, String>,
+
+    /// Nullable state variables (for optional chaining)
+    nullable_state_vars: HashSet<String>,
+
+    /// Property element types for nested access (type name -> property name -> element type)
+    /// E.g., {"Section": {"items": "SectionItem"}}
+    property_element_types: HashMap<String, HashMap<String, String>>,
 }
 
 impl ArkGenerator {
@@ -104,6 +111,8 @@ impl ArkGenerator {
             sanitized_name: None,
             loop_vars: HashSet::new(),
             state_interfaces: HashMap::new(),
+            nullable_state_vars: HashSet::new(),
+            property_element_types: HashMap::new(),
         }
     }
 
@@ -330,14 +339,71 @@ impl ArkGenerator {
         }
     }
 
-    /// Get the interface type for a state variable (for ForEach item type)
+    /// Track property element types from state variables' user types
+    fn track_property_element_types(&mut self, widget: &AuraWidget) {
+        for state_var in &widget.state_vars {
+            // Get the inner type (unwrap Option if needed)
+            let inner_type = match &state_var.type_info {
+                Type::Option(inner) => inner.as_ref(),
+                _ => &state_var.type_info,
+            };
+
+            // If it's a user type, extract property element types
+            if let Type::User(type_decl) = inner_type {
+                let type_name = type_decl.name.as_str().to_string();
+                let mut props = HashMap::new();
+
+                for member in &type_decl.members {
+                    // Check if member is an array/slice/list type
+                    let elem_type = match &member.ty {
+                        Type::Slice(slice) => Some(Self::type_to_arkts_simple(&slice.elem)),
+                        Type::List(inner) => Some(Self::type_to_arkts_simple(inner)),
+                        Type::Array(arr) => Some(Self::type_to_arkts_simple(&arr.elem)),
+                        _ => None,
+                    };
+
+                    if let Some(elem) = elem_type {
+                        // Only track if element type is not Object (i.e., it's a custom type)
+                        if elem != "Object" && elem != "Object[]" && !elem.starts_with("number") && !elem.starts_with("string") && !elem.starts_with("boolean") {
+                            props.insert(member.name.as_str().to_string(), elem);
+                        }
+                    }
+                }
+
+                if !props.is_empty() {
+                    self.property_element_types.insert(type_name, props);
+                }
+            }
+        }
+    }
+
+    /// Get the interface type for a state variable or nested property (for ForEach item type)
     fn get_interface_type(&self, state_var_name: &str) -> String {
+        // Handle nested property access (e.g., "section.items")
+        if state_var_name.contains('.') {
+            let parts: Vec<&str> = state_var_name.split('.').collect();
+            if parts.len() == 2 {
+                let base_var = parts[0];
+                let property_name = parts[1];
+
+                // First, get the type of the base variable
+                if let Some(base_type) = self.state_interfaces.get(base_var) {
+                    // Look up the property element type
+                    if let Some(props) = self.property_element_types.get(base_type) {
+                        if let Some(elem_type) = props.get(property_name) {
+                            return elem_type.clone();
+                        }
+                    }
+                }
+            }
+        }
+
         // Look up the interface type from state_interfaces map
         if let Some(interface_name) = self.state_interfaces.get(state_var_name) {
             return interface_name.clone();
         }
-        // No interface defined - use `any` as fallback
-        "any".to_string()
+        // No interface defined - use `Object` as fallback (ArkTS doesn't allow `any`)
+        "Object".to_string()
     }
 
     /// Generate full project
@@ -374,6 +440,14 @@ impl ArkGenerator {
         // Sanitize widget name to avoid conflicts with built-in components
         let sanitized_name = Self::sanitize_widget_name(&widget.name);
         self.sanitized_name = Some(sanitized_name.clone());
+
+        // Track nullable state variables for optional chaining
+        self.nullable_state_vars.clear();
+        for state_var in &widget.state_vars {
+            if matches!(state_var.type_info, Type::Option(_)) {
+                self.nullable_state_vars.insert(state_var.name.clone());
+            }
+        }
 
         // Scan view tree for custom components (capitalized tags not in registry)
         let mut detected_components = HashSet::new();
@@ -453,7 +527,23 @@ impl ArkGenerator {
             if interfaces.iter().any(|i| i.name == prefixed_interface_name) {
                 self.state_interfaces.insert(state_var.name.clone(), prefixed_interface_name);
             }
+
+            // Also track user types (e.g., Section) for nested property access
+            let inner_type = match &state_var.type_info {
+                Type::Option(inner) => inner.as_ref(),
+                _ => &state_var.type_info,
+            };
+            if let Type::User(type_decl) = inner_type {
+                let type_name = type_decl.name.as_str().to_string();
+                // Only add if not already present (don't override interface types)
+                if !self.state_interfaces.contains_key(&state_var.name) {
+                    self.state_interfaces.insert(state_var.name.clone(), type_name);
+                }
+            }
         }
+
+        // Track property element types for nested access (e.g., section.items -> SectionItem)
+        self.track_property_element_types(widget);
 
         for interface in &interfaces {
             lines.push(generate_interface(interface));
@@ -482,14 +572,24 @@ impl ArkGenerator {
 
         self.indent_level = 1;
 
+        // Check if pathStack is already declared in state_vars with @Provide or @Consume
+        let has_pathstack_provide = widget.state_vars.iter().any(|v| {
+            v.name == "pathStack" && v.decorators.iter().any(|d| d.name == "Provide")
+        });
+        let has_pathstack_consume = widget.state_vars.iter().any(|v| {
+            v.name == "pathStack" && v.decorators.iter().any(|d| d.name == "Consume")
+        });
+
         // Add NavPathStack with @Provide decorator if widget has routes (App widget)
-        if has_routes {
+        // Only add if not already declared in state_vars
+        if has_routes && !has_pathstack_provide {
             lines.push(format!("{}@Provide('pathStack') pathStack: NavPathStack = new NavPathStack()", self.indent()));
             lines.push(String::new());
         }
 
         // Add @Consume decorator if widget uses navigation but doesn't have routes (child page with links)
-        if uses_navigation && !has_routes {
+        // Only add if not already declared in state_vars
+        if uses_navigation && !has_routes && !has_pathstack_consume {
             lines.push(format!("{}@Consume('pathStack') pathStack: NavPathStack", self.indent()));
             lines.push(String::new());
         }
@@ -542,7 +642,7 @@ impl ArkGenerator {
 
             // Generate buildNavDestination builder for navDestination
             lines.push(format!("{}@Builder", self.indent()));
-            lines.push(format!("{}buildNavDestination(name: string) {{", self.indent()));
+            lines.push(format!("{}buildNavDestination(name: string, param: Object) {{", self.indent()));
             let mut first = true;
             for route in &routes.routes {
                 let component_name = Self::module_to_component(&route.module);
@@ -828,7 +928,7 @@ impl ArkGenerator {
         let mut lines = Vec::new();
 
         lines.push("@Builder".to_string());
-        lines.push("buildNavDestination(name: string) {".to_string());
+        lines.push("buildNavDestination(name: string, param: Object) {".to_string());
 
         for (i, route) in routes.routes.iter().enumerate() {
             let component_name = Self::module_to_component(&route.module);
@@ -845,6 +945,46 @@ impl ArkGenerator {
 
         lines.push("}".to_string());
         lines.join("\n")
+    }
+
+    /// Generate Navigation element with pathStack and navDestination
+    fn generate_navigation_element(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        children: &[AuraNode],
+    ) -> GenResult<String> {
+        let mut lines = Vec::new();
+
+        // Navigation needs pathStack as constructor argument
+        lines.push("Navigation(this.pathStack) {".to_string());
+        self.indent_level += 1;
+
+        // Generate children
+        for child in children {
+            let child_code = self.generate_node(child)?;
+            for line in child_code.lines() {
+                lines.push(format!("{}{}", self.indent(), line));
+            }
+        }
+
+        self.indent_level -= 1;
+        lines.push(format!("{}}}", self.indent()));
+
+        // Add navDestination modifier for route handling
+        lines.push(format!("{}.navDestination(this.buildNavDestination)", self.indent()));
+
+        // Add common Navigation modifiers
+        lines.last_mut().unwrap().push_str("\n    .hideTitleBar(true)");
+        lines.last_mut().unwrap().push_str("\n    .mode(NavigationMode.Stack)");
+
+        // Add modifiers from props/events
+        let modifiers = self.generate_modifiers(props, events, None, Some("Navigation"));
+        if !modifiers.is_empty() {
+            lines.last_mut().unwrap().push_str(&modifiers);
+        }
+
+        Ok(lines.join("\n"))
     }
 
     /// Generate ArkTS code for a single node
@@ -890,6 +1030,11 @@ impl ArkGenerator {
         children: &[AuraNode],
     ) -> GenResult<String> {
         let mut lines = Vec::new();
+
+        // Special handling for Navigation component - needs pathStack and navDestination
+        if tag == "Navigation" || tag == "navigation" {
+            return self.generate_navigation_element(props, events, children);
+        }
 
         // Check for Tabs pattern before regular element handling
         // Tags may be lowercase or PascalCase (e.g., "tabslist" or "TabsList")
@@ -1332,10 +1477,43 @@ impl ArkGenerator {
                     seen_types.insert(type_name.clone());
                     imports.push(type_name);
                 }
+
+                // Also collect element types from array/slice/list members
+                for member in &type_decl.members {
+                    let elem_type_name = match &member.ty {
+                        Type::Slice(slice) => Self::get_user_type_name(&slice.elem),
+                        Type::List(inner) => Self::get_user_type_name(inner),
+                        Type::Array(arr) => Self::get_user_type_name(&arr.elem),
+                        _ => None,
+                    };
+
+                    if let Some(elem_name) = elem_type_name {
+                        if !seen_types.contains(&elem_name) {
+                            seen_types.insert(elem_name.clone());
+                            imports.push(elem_name);
+                        }
+                    }
+                }
             }
         }
 
         imports
+    }
+
+    /// Get the user type name from a Type if it's a user-defined type
+    fn get_user_type_name(ty: &Type) -> Option<String> {
+        match ty {
+            Type::User(type_decl) => {
+                let name = type_decl.name.as_str().to_string();
+                // Skip built-in types
+                if matches!(name.as_str(), "NavPathStack" | "string" | "number" | "boolean" | "Object") {
+                    None
+                } else {
+                    Some(name)
+                }
+            }
+            _ => None,
+        }
     }
 
     /// Generate ArkTS interface definition from TypeDecl
@@ -1355,7 +1533,13 @@ impl ArkGenerator {
             for member in &type_decl.members {
                 let field_name = member.name.as_str();
                 let field_type = Self::type_to_arkts_simple(&member.ty);
-                lines.push(format!("  {}: {} = ''", field_name, field_type));
+                // Use appropriate default value based on type
+                let default_value = if field_type.ends_with("[]") {
+                    "[]".to_string()
+                } else {
+                    "''".to_string()
+                };
+                lines.push(format!("  {}: {} = {}", field_name, field_type, default_value));
             }
             lines.push("}".to_string());
             Some(lines.join("\n"))
@@ -1372,9 +1556,42 @@ impl ArkGenerator {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
             Type::Bool => "boolean".to_string(),
             Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
-            Type::User(type_decl) => type_decl.name.to_string(),
+            Type::User(type_decl) => {
+                // Special handling for List type - treat as Object[]
+                if type_decl.name.as_str() == "List" {
+                    "Object[]".to_string()
+                } else {
+                    type_decl.name.to_string()
+                }
+            },
             Type::Option(inner) => format!("{} | null", Self::type_to_arkts_simple(inner)),
-            _ => "any".to_string(),
+            Type::List(inner) => {
+                let elem_type = Self::type_to_arkts_simple(inner);
+                // For Unknown inner type (e.g., plain List without type param), use Object
+                if elem_type == "any" || elem_type == "Object" {
+                    "Object[]".to_string()
+                } else {
+                    format!("{}[]", elem_type)
+                }
+            }
+            Type::Slice(slice) => {
+                let elem_type = Self::type_to_arkts_simple(&slice.elem);
+                if elem_type == "any" || elem_type == "Object" {
+                    "Object[]".to_string()
+                } else {
+                    format!("{}[]", elem_type)
+                }
+            }
+            Type::Array(arr) => {
+                let elem_type = Self::type_to_arkts_simple(&arr.elem);
+                if elem_type == "any" || elem_type == "Object" {
+                    "Object[]".to_string()
+                } else {
+                    format!("{}[]", elem_type)
+                }
+            }
+            Type::Unknown => "Object[]".to_string(),  // Unknown types (e.g., unresolved List) treated as array
+            _ => "Object[]".to_string(),  // Use Object[] instead of any for ArkTS compatibility
         }
     }
 
@@ -1419,8 +1636,19 @@ impl ArkGenerator {
                 }
             }
             AuraExpr::FieldAccess { object, field } => {
+                // Check if object is a nullable state variable - use optional chaining
+                let is_nullable = if let AuraExpr::StateRef(obj_name) = object.as_ref() {
+                    self.nullable_state_vars.contains(obj_name)
+                } else {
+                    false
+                };
+
                 let obj_str = self.expr_to_ark_string(object);
-                format!("{}.{}", obj_str, field)
+                if is_nullable {
+                    format!("{}?.{}", obj_str, field)
+                } else {
+                    format!("{}.{}", obj_str, field)
+                }
             }
             AuraExpr::Int(n) => n.to_string(),
             AuraExpr::Float(f) => f.to_string(),
@@ -1476,7 +1704,7 @@ impl ArkGenerator {
         let index_param = index.map(|i| format!(", {}: number", i)).unwrap_or_default();
 
         // Strip leading dot from iterable if present (e.g., ".items" -> "items")
-        let iterable_name = iterable.strip_prefix('.').unwrap_or(iterable);
+        let iterable_path = iterable.strip_prefix('.').unwrap_or(iterable);
 
         // Add loop variable to loop_vars so expr_to_ark_string knows not to prefix with `this.`
         self.loop_vars.insert(var.to_string());
@@ -1484,14 +1712,34 @@ impl ArkGenerator {
             self.loop_vars.insert(idx.to_string());
         }
 
+        // Handle nested property access (e.g., "section.items" vs "sections")
+        let (iterable_expr, iterable_path_for_type) = if iterable_path.contains('.') {
+            // Nested path like "section.items"
+            let parts: Vec<&str> = iterable_path.split('.').collect();
+            let base_name = parts[0];
+            let rest = &iterable_path[base_name.len() + 1..]; // Everything after "section."
+
+            // Check if base is nullable (for optional chaining)
+            let access = if self.nullable_state_vars.contains(base_name) {
+                format!("this.{}?.{}", base_name, rest)
+            } else {
+                format!("this.{}", iterable_path)
+            };
+            // Pass the full path for type lookup (e.g., "section.items")
+            (access, iterable_path.to_string())
+        } else {
+            // Simple path like "sections"
+            (format!("this.{}", iterable_path), iterable_path.to_string())
+        };
+
         // Get what interface type to use for loop variable
-        let item_type = self.get_interface_type(iterable_name);
+        let item_type = self.get_interface_type(&iterable_path_for_type);
 
         // Generate ForEach with item type and key function
         lines.push(format!(
-            "{}ForEach(this.{}, ({}: {}) => {{",
+            "{}ForEach({}, ({}: {}) => {{",
             self.indent(),
-            iterable_name,
+            iterable_expr,
             var,
             item_type
         ));
