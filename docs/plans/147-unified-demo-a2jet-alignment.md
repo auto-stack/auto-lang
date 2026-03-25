@@ -8,509 +8,420 @@
 
 ---
 
-## 背景分析
+## 进度总览
 
-### jet-gallery 参考项目
-
-jet-gallery 是一个完整的 Jetpack Compose 项目，包含：
-
-- **51 个 widget demos**，分为 7 个类别
-- **详情页 UI 组件**：
-  - `PanelCard` - 带标题的卡片容器（基于 ElevatedCard）
-  - `MetaChip` - 圆角标签（基于 Surface）
-  - `FlowTagRow` - 自动换行的标签行（基于 FlowRow）
-  - `WidgetListCard` - 列表项卡片（基于 OutlinedCard）
-- **自适应布局**：手机（底部导航 + 列表详情切换）、平板（侧边 Rail + 主从布局）
-- **Tabs 导航**：详情页内的 Tab 切换
-
-### unified-demo 当前状态
-
-- 仅 5 个基础页面：index, counter, column, row, button, input
-- 简单的 AURA widget 定义
-- 缺少详情页所需的通用组件
-
-### a2jet generator 当前状态
-
-**已支持：**
-- Layout: Col → Column, Row → Row, Box → Box, Card → Card, Scroll → Column + verticalScroll
-- Form: Button, Input (OutlinedTextField), Checkbox, Switch, Slider
-- Text: Text, H1-H6
-- List: LazyColumn, LazyRow, LazyVerticalGrid
-
-**缺失（详情页必需）：**
-- Card 变体：ElevatedCard, OutlinedCard
-- Chip 组件：AssistChip, FilterChip 等
-- FlowRow 布局
-- Tabs 组件族：TabRow, Tab, TabsContent
+| Phase | 状态 | 描述 |
+|-------|------|------|
+| Phase 1 | ✅ 完成 | 基础组件扩展 (Card, Chip, FlowRow, Tabs) |
+| Phase 2 | ✅ 完成 | unified-demo 页面扩展 |
+| Phase 3 | 🔄 进行中 | 测试与验证 |
+| Phase 4 | 📋 计划中 | 更多 Widget Demos |
+| Phase 5 | 📋 计划中 | 高级组件与 Composite widgets |
+| Phase 6 | 📋 计划中 | 完整对齐 jet-gallery |
 
 ---
 
-## Phase 1: 基础组件扩展
+## 已完成内容
 
-### Task 1.1: Card Variant 支持
+### Phase 1: 基础组件扩展 ✅
 
-**目标：** 支持 `variant` prop 生成不同类型的 Card
+- [x] **Task 1.1: Card Variant 支持**
+  - `variant: "elevated"` → `ElevatedCard`
+  - `variant: "outlined"` → `OutlinedCard`
+  - `variant: "filled"` (default) → `Card`
 
-**AURA 定义：**
-```auto
-Card (variant: "elevated") { ... }   // → ElevatedCard
-Card (variant: "outlined") { ... }   // → OutlinedCard
-Card (variant: "filled") { ... }     // → Card (default)
-```
+- [x] **Task 1.2: Chip 组件**
+  - `Chip` / `variant: "assist"` → `AssistChip`
+  - `variant: "filter"` → `FilterChip`
+  - `variant: "input"` → `InputChip`
+  - `variant: "suggestion"` → `SuggestionChip`
 
-**Kotlin 输出：**
-```kotlin
-// variant: "elevated"
-ElevatedCard(modifier = ...) { ... }
+- [x] **Task 1.3: FlowRow 支持**
+  - `FlowRow` → `FlowRow` with `ExperimentalLayoutApi`
+  - 支持静态子元素和动态 `items` 数据源
 
-// variant: "outlined"
-OutlinedCard(modifier = ...) { ... }
+- [x] **Task 1.4: Tabs 组件族**
+  - `Tabs`, `TabRow`, `Tab`, `TabsContent`
+  - 状态管理：`activeTab` with `mutableStateOf`
+  - `when` 表达式生成内容切换
 
-// variant: "filled" (default)
-Card(modifier = ...) { ... }
-```
+### Phase 2: unified-demo 页面扩展 ✅
 
-**修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/layout.rs`
-  - 修改 `generate_card()` 函数
-  - 添加 variant prop 解析
-  - 根据 variant 选择不同的 Compose 组件
+- [x] **Task 2.1: 创建详情页通用组件**
+  - `PanelCard.at` - 带标题的卡片容器
+  - `MetaChip.at` - 圆角标签
+  - `WidgetListCard.at` - 列表项卡片
 
-**测试：**
-- 添加 `test_card_variants()` 测试用例
+- [x] **Task 2.2: 添加 Widget Demo Pages**
+  - `card.at` - Card 变体演示
+  - `tabs.at` - Tabs 组件演示
+  - `chip.at` - Chip 变体演示
 
----
-
-### Task 1.2: Chip 组件
-
-**目标：** 添加 Chip 组件支持（区别于 Badge）
-
-**背景：** jet-gallery 的 `MetaChip` 使用 Surface + 圆角实现，但 Material3 有专门的 Chip 组件。
-
-**AURA 定义：**
-```auto
-Chip "Filter" {}
-Chip (variant: "assist", icon: "add") "Add Item" {}
-Chip (variant: "filter", selected: .active == "filter") "Filter" {}
-Chip (variant: "input", onDismiss: .RemoveChip) "Tag" {}
-```
-
-**Kotlin 输出：**
-```kotlin
-// variant: "assist" (default)
-AssistChip(onClick = {}, label = { Text("Add Item") }, leadingIcon = { Icon(...) })
-
-// variant: "filter"
-FilterChip(selected = active == "filter", onClick = { ... }, label = { Text("Filter") })
-
-// variant: "input"
-InputChip(selected = false, onDismissRequest = { ... }, label = { Text("Tag") })
-
-// variant: "suggestion"
-SuggestionChip(onClick = {}, label = { Text("Suggestion") })
-```
-
-**新建/修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/form.rs` 或新建 `display.rs`
-  - 添加 `generate_chip()` 函数
-  - 支持 4 种 Chip 变体
-- `crates/auto-lang/src/ui_gen/jet/generator.rs`
-  - 添加 `is_display_tag("chip")` 检查
-  - 添加 `display_element_to_compose()` 分发
-
-**测试：**
-- 添加 `test_chip_assist()`, `test_chip_filter()`, `test_chip_input()` 测试用例
+- [x] **Task 2.3: 更新 App 路由**
+  - 添加 `/card`, `/tabs`, `/chip` 路由
+  - 更新首页导航链接
 
 ---
 
-### Task 1.3: FlowRow 支持
-
-**目标：** 支持 FlowRow 布局（自动换行的 Row）
-
-**AURA 定义：**
-```auto
-FlowRow {
-    style: "gap-2 flex-wrap"
-    Chip "Tag 1" {}
-    Chip "Tag 2" {}
-    Chip "Tag 3" {}
-    // ... 自动换行
-}
-```
-
-**Kotlin 输出：**
-```kotlin
-@OptIn(ExperimentalLayoutApi::class)
-FlowRow(
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-    verticalArrangement = Arrangement.spacedBy(8.dp),
-) {
-    Chip(...)
-    Chip(...)
-    Chip(...)
-}
-```
-
-**修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/layout.rs`
-  - 添加 `generate_flow_row()` 函数
-  - 添加 `ExperimentalLayoutApi` opt-in 注解
-- `crates/auto-lang/src/ui_gen/jet/generator.rs`
-  - 添加 `is_layout_tag("flow-row" | "flowrow")` 检查
-
-**测试：**
-- 添加 `test_flow_row_basic()`, `test_flow_row_with_gap()` 测试用例
-
----
-
-### Task 1.4: Tabs 组件族
-
-**目标：** 添加完整的 Tabs 组件支持
-
-**AURA 定义：**
-```auto
-Tabs (activeTab: .activeTab) {
-    TabsList {
-        TabsTrigger preview (label: "Preview", active: .activeTab == "preview") {}
-        TabsTrigger code (label: "Code", active: .activeTab == "code") {}
-        TabsTrigger notes (label: "Notes", active: .activeTab == "notes") {}
-    }
-    TabsContent preview (active: .activeTab == "preview") {
-        Text "Preview content"
-    }
-    TabsContent code (active: .activeTab == "code") {
-        Text "Code content"
-    }
-    TabsContent notes (active: .activeTab == "notes") {
-        Text "Notes content"
-    }
-}
-```
-
-**Kotlin 输出：**
-```kotlin
-var activeTab by remember { mutableStateOf(0) }
-val tabs = listOf("Preview", "Code", "Notes")
-
-Column {
-    TabRow(selectedTabIndex = activeTab) {
-        tabs.forEachIndexed { index, title ->
-            Tab(
-                selected = activeTab == index,
-                onClick = { activeTab = index },
-                text = { Text(title) }
-            )
-        }
-    }
-    when (activeTab) {
-        0 -> { /* Preview content */ }
-        1 -> { /* Code content */ }
-        2 -> { /* Notes content */ }
-    }
-}
-```
-
-**新建/修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/navigation.rs`
-  - 添加 `generate_tabs()` 函数
-  - 添加 `generate_tab_row()` 函数
-  - 添加 `generate_tab_content()` 函数
-  - 处理状态管理和条件渲染
-- `crates/auto-lang/src/ui_gen/jet/generator.rs`
-  - 添加 `is_navigation_tag("tabs" | "tabrow")` 检查
-
-**状态管理策略：**
-- `activeTab` 使用 `mutableStateOf<Int>` (索引) 或 `mutableStateOf<String>` (ID)
-- `TabsTrigger` 的 `onClick` 更新 `activeTab`
-- `TabsContent` 根据 `active` 条件渲染
-
-**测试：**
-- 添加 `test_tabs_basic()`, `test_tabs_with_state()` 测试用例
-
----
-
-## Phase 2: unified-demo 页面扩展
-
-### Task 2.1: 创建详情页通用组件
-
-**目标：** 创建可复用的详情页 UI 组件
-
-**新建文件：**
-- `examples/unified-demo/front/components/PanelCard.at`
-- `examples/unified-demo/front/components/MetaChip.at`
-- `examples/unified-demo/front/components/WidgetListCard.at`
-
-**PanelCard.at：**
-```auto
-/// Panel card container for widget detail sections.
-widget PanelCard {
-    model {
-        title str = ""
-    }
-
-    view {
-        Card (variant: "elevated", style: "rounded-3xl") {
-            Col (style: "w-full p-5 gap-3") {
-                H3 .title
-                // children via slot
-            }
-        }
-    }
-}
-```
-
-**MetaChip.at：**
-```auto
-/// Small rounded chip for tags and labels.
-widget MetaChip {
-    model {
-        #[primary]
-        text str = ""
-        variant str = "default"  // default, primary, secondary
-    }
-
-    computed {
-        chipStyle => f"px-3 py-1.5 rounded-full text-sm ${.variantStyle}"
-    }
-
-    view {
-        Surface (style: .chipStyle) {
-            Text .text
-        }
-    }
-}
-```
-
-**WidgetListCard.at：**
-```auto
-/// Card for displaying widget info in a list.
-widget WidgetListCard {
-    model {
-        title str = ""
-        description str = ""
-        supportTier str = ""
-        selected bool = false
-    }
-
-    view {
-        Card (variant: "outlined", style: .cardStyle) {
-            Col (style: "w-full p-4 gap-2") {
-                Row (style: "w-full justify-between items-center") {
-                    H4 .title
-                    MetaChip .supportTier
-                }
-                Text (variant: "muted") .description
-            }
-        }
-    }
-}
-```
-
----
-
-### Task 2.2: 添加第一批 Widget Demo Pages
-
-**目标：** 添加 Card, Tabs, Chip 的 demo 页面
-
-**新建文件：**
-- `examples/unified-demo/front/pages/card.at`
-- `examples/unified-demo/front/pages/tabs.at`
-- `examples/unified-demo/front/pages/chip.at`
-
-**更新文件：**
-- `examples/unified-demo/front/app.at` - 添加新路由
-
-**card.at 示例：**
-```auto
-widget CardPage {
-    view {
-        Col (style: "p-8 gap-8") {
-            // Header
-            Col (style: "items-center") {
-                H1 "Card Demo"
-                Text (variant: "muted") "Container with multiple variants"
-            }
-
-            // Variants
-            PanelCard (title: "Variants") {
-                Col (style: "gap-4") {
-                    Card (variant: "filled") { Text "Filled Card" }
-                    Card (variant: "elevated") { Text "Elevated Card" }
-                    Card (variant: "outlined") { Text "Outlined Card" }
-                }
-            }
-
-            // Usage
-            PanelCard (title: "Usage in Details") {
-                Text "PanelCard uses ElevatedCard variant for sections"
-            }
-        }
-    }
-}
-```
-
----
-
-### Task 2.3: 更新 App 路由
-
-**更新 `app.at`：**
-```auto
-widget App {
-    routes {
-        "/" => use index
-        "/counter" => use counter
-        "/column" => use column
-        "/row" => use row
-        "/button" => use button
-        "/input" => use input
-        "/card" => use card       // 新增
-        "/tabs" => use tabs       // 新增
-        "/chip" => use chip       // 新增
-    }
-
-    view {
-        Col {
-            style: "w-full h-full"
-            Col (style: "p-4 bg-blue-500") {
-                H1 "Auto UI Demo"
-            }
-            outlet
-        }
-    }
-}
-```
-
----
-
-## Phase 3: 测试与验证
+## Phase 3: 测试与验证 🔄
 
 ### Task 3.1: a2jet 单元测试
 
 **目标：** 为新组件添加测试用例
 
 **修改文件：**
-- `crates/auto-lang/src/ui_gen/jet/layout.rs` - 添加 Card variant 测试
-- `crates/auto-lang/src/ui_gen/jet/form.rs` - 添加 Chip 测试
-- `crates/auto-lang/src/ui_gen/jet/navigation.rs` - 添加 Tabs 测试
+- `crates/auto-lang/src/ui_gen/jet/layout.rs` - Card variant 测试
+- `crates/auto-lang/src/ui_gen/jet/form.rs` - Chip 测试
+- `crates/auto-lang/src/ui_gen/jet/navigation.rs` - Tabs 测试
 
-**测试用例：**
-```rust
-#[test]
-fn test_card_variant_elevated() {
-    let mut gen = LayoutGenerator::new();
-    let mut props = HashMap::new();
-    props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("elevated".to_string())));
+---
 
-    let result = gen.generate_card(&props, "Text(\"Content\")");
-    assert!(result.unwrap().contains("ElevatedCard"));
+## Phase 4: 更多 Widget Demos 📋
+
+基于 jet-gallery 的 51 个 widgets，按优先级规划：
+
+### 4.1 Foundation Section (Layout 类别)
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Col | ✅ 已有 | Native | ✅ 完成 | Column |
+| Row | ✅ 已有 | Native | ✅ 完成 | Row |
+| Center | 🟡 高 | Native | ✅ 完成 | Box + Center |
+| Card | ✅ 已有 | Native | ✅ 完成 | 支持变体 |
+| ScrollArea | 🟡 高 | Native | ✅ 完成 | verticalScroll |
+| AspectRatio | 🔵 中 | Native | ❌ 待做 | Modifier.aspectRatio() |
+| Collapsible | 🔵 中 | Composite | ❌ 待做 | AnimatedVisibility |
+| Accordion | ⚪ 低 | Composite | ❌ 待做 | 多个 Collapsible |
+
+### 4.2 Input Section (Form 类别)
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Button | ✅ 已有 | Native | ✅ 完成 | Button variants |
+| Input | ✅ 已有 | Native | ✅ 完成 | OutlinedTextField |
+| Checkbox | 🟡 高 | Native | ✅ 完成 | Checkbox |
+| Switch | 🟡 高 | Native | ✅ 完成 | Switch |
+| Select | 🔵 中 | Composite | ❌ 待做 | ExposedDropdownMenu |
+| Slider | 🟡 高 | Native | ✅ 完成 | Slider |
+| RadioGroup | 🔵 中 | Native | ❌ 待做 | RadioButton list |
+| Textarea | 🔵 中 | Native | ❌ 待做 | OutlinedTextField multi-line |
+| Form | ⚪ 低 | Composite | ❌ 待做 | 高级模式 |
+
+### 4.3 Display Section
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Text | ✅ 已有 | Native | ✅ 完成 | Text + typography |
+| Image | 🟡 高 | Native | ❌ 待做 | Image / AsyncImage |
+| Badge | 🟡 高 | Native | ❌ 待做 | Badge / BadgedBox |
+| Avatar | 🔵 中 | Composite | ❌ 待做 | AsyncImage + CircleShape |
+| Separator | 🟡 高 | Native | ✅ 完成 | HorizontalDivider |
+| Skeleton | ⚪ 低 | Composite | ❌ 待做 | 加载占位符 |
+| Swiper | ⚪ 低 | Composite | ❌ 待做 | HorizontalPager |
+
+### 4.4 Navigation Section
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Tabs | ✅ 已有 | Native | ✅ 完成 | TabRow + Tab |
+| Breadcrumb | ⚪ 低 | Composite | ❌ 待做 | 路径导航 |
+| NavigationMenu | ⚪ 低 | Composite | ❌ 待做 | 导航模式 |
+| Pagination | ⚪ 低 | Composite | ❌ 待做 | 分页控件 |
+| Sidebar | ⚪ 低 | Composite | ❌ 待做 | NavigationRail |
+| MenuBar | ⚪ 低 | Composite | ❌ 待做 | 桌面菜单栏 |
+| DropdownMenu | 🔵 中 | Native | ❌ 待做 | DropdownMenu |
+| NavLink | 🟡 高 | Composite | ✅ 部分完成 | Link 组件 |
+
+### 4.5 Overlay Section
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Dialog | 🟡 高 | Native | ❌ 待做 | AlertDialog / Dialog |
+| AlertDialog | 🟡 高 | Native | ❌ 待做 | AlertDialog |
+| Sheet | 🔵 中 | Composite | ❌ 待做 | ModalBottomSheet |
+| Drawer | ⚪ 低 | Composite | ❌ 待做 | NavigationDrawer |
+| Popover | ⚪ 低 | Composite | ❌ 待做 | Popup |
+| Tooltip | 🔵 中 | Composite | ❌ 待做 | TooltipBox |
+| HoverCard | ⚪ 低 | Composite | ❌ 待做 | 预览卡片 |
+| ContextMenu | ⚪ 低 | Composite | ❌ 待做 | 右键菜单 |
+
+### 4.6 Feedback Section
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Alert | 🔵 中 | Composite | ❌ 待做 | Card + icon |
+| Toast | 🔵 中 | Composite | ❌ 待做 | Android Toast |
+| Progress | 🟡 高 | Native | ❌ 待做 | LinearProgressIndicator |
+| Sonner | ⚪ 低 | Composite | ❌ 待做 | Snackbar |
+
+### 4.7 Data Section
+
+| Widget | 优先级 | SupportTier | a2jet 状态 | 备注 |
+|--------|--------|-------------|------------|------|
+| Table | ⚪ 低 | Composite | ❌ 待做 | 自定义表格 |
+| DataTable | ⚪ 低 | Composite | ❌ 待做 | 高级表格 |
+| Calendar | ⚪ 低 | Composite | ❌ 待做 | DatePicker |
+| Grid | 🟡 高 | Native | ✅ 完成 | LazyVerticalGrid |
+| GridItem | 🟡 高 | Native | ✅ 完成 | Grid cell |
+| List | ✅ 已有 | Native | ✅ 完成 | LazyColumn |
+| ListItem | 🔵 中 | Native | ❌ 待做 | Material ListItem |
+
+---
+
+## 下一步任务 (Phase 4.1): 高优先级 Native Widgets
+
+### Task 4.1.1: Progress 组件
+
+**目标：** 添加进度指示器支持
+
+**AURA 定义：**
+```auto
+Progress {}                           // indeterminate circular
+Progress (type: "linear") {}          // indeterminate linear
+Progress (value: 0.7) {}              // determinate circular (70%)
+Progress (type: "linear", value: 0.5) {} // determinate linear
+```
+
+**Kotlin 输出：**
+```kotlin
+// Circular indeterminate
+CircularProgressIndicator()
+
+// Linear indeterminate
+LinearProgressIndicator()
+
+// Circular determinate
+CircularProgressIndicator(progress = 0.7f)
+
+// Linear determinate
+LinearProgressIndicator(progress = 0.5f)
+```
+
+**修改文件：**
+- `crates/auto-lang/src/ui_gen/jet/form.rs` 或新建 `feedback.rs`
+
+---
+
+### Task 4.1.2: Image 组件
+
+**目标：** 添加图片组件支持
+
+**AURA 定义：**
+```auto
+Image (src: "https://example.com/image.png")
+Image (src: .avatarUrl, contentDescription: "User avatar")
+```
+
+**Kotlin 输出：**
+```kotlin
+Image(
+    painter = rememberAsyncImagePainter(model = "https://example.com/image.png"),
+    contentDescription = "Image",
+    modifier = Modifier
+)
+```
+
+**修改文件：**
+- `crates/auto-lang/src/ui_gen/jet/display.rs` (新建)
+- 添加 Coil `AsyncImage` 支持
+
+---
+
+### Task 4.1.3: Badge 组件
+
+**目标：** 添加徽章组件支持
+
+**AURA 定义：**
+```auto
+Badge (count: 5) {}
+Badge (variant: "dot") {}  // 小圆点
+BadgedBox (badge: { Badge (count: 3) }) {
+    Icon "notifications"
 }
+```
 
-#[test]
-fn test_card_variant_outlined() {
-    // ...
+**Kotlin 输出：**
+```kotlin
+Badge { Text("5") }
+
+BadgedBox(
+    badge = { Badge { Text("3") } }
+) {
+    Icon(Icons.Default.Notifications, contentDescription = null)
 }
+```
 
-#[test]
-fn test_chip_assist() {
-    // ...
+---
+
+### Task 4.1.4: Dialog 组件
+
+**目标：** 添加对话框支持
+
+**AURA 定义：**
+```auto
+Dialog (open: .showDialog, onDismiss: .CloseDialog) {
+    Card {
+        Col {
+            H2 "Confirm Action"
+            Text "Are you sure?"
+            Row {
+                Button (variant: "text", click: .CloseDialog) "Cancel"
+                Button (click: .Confirm) "Confirm"
+            }
+        }
+    }
 }
+```
 
-#[test]
-fn test_flow_row() {
-    // ...
+**Kotlin 输出：**
+```kotlin
+if (showDialog) {
+    AlertDialog(
+        onDismissRequest = { showDialog = false },
+        confirmButton = {
+            Button(onClick = { /* confirm */ }) { Text("Confirm") }
+        },
+        dismissButton = {
+            TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+        },
+        title = { Text("Confirm Action") },
+        text = { Text("Are you sure?") }
+    )
 }
+```
 
-#[test]
-fn test_tabs_generation() {
+---
+
+### Task 4.1.5: RadioGroup 组件
+
+**目标：** 添加单选按钮组支持
+
+**AURA 定义：**
+```auto
+RadioGroup (selected: .selectedOption, onChange: .SelectOption) {
+    RadioButton (value: "option1") "Option 1"
+    RadioButton (value: "option2") "Option 2"
+    RadioButton (value: "option3") "Option 3"
+}
+```
+
+**Kotlin 输出：**
+```kotlin
+Column {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(
+            selected = selectedOption == "option1",
+            onClick = { selectedOption = "option1" }
+        )
+        Text("Option 1")
+    }
     // ...
 }
 ```
 
 ---
 
-### Task 3.2: 端到端验证
+### Task 4.1.6: ListItem 组件
 
-**目标：** 验证生成的代码与 jet-gallery 对比
+**目标：** 添加 Material3 ListItem 支持
 
-**步骤：**
-1. 运行 `auto build` 生成 unified-demo 的 Jet 代码
-2. 检查生成的 `card.kt`, `tabs.kt`, `chip.kt`
-3. 与 jet-gallery 中对应组件对比
-4. 确保样式、状态管理、交互行为一致
+**AURA 定义：**
+```auto
+ListItem {
+    headline: "Primary text"
+    supporting: "Secondary text"
+    leading: Icon "person"
+    trailing: Icon "chevron_right"
+}
+```
 
-**验收标准：**
-- [ ] Card 支持 3 种变体（filled, elevated, outlined）
-- [ ] Chip 支持 4 种变体（assist, filter, input, suggestion）
-- [ ] FlowRow 正确处理自动换行
-- [ ] Tabs 正确管理状态和内容切换
-- [ ] unified-demo 新增 3 个 demo 页面可正常编译运行
+**Kotlin 输出：**
+```kotlin
+ListItem(
+    headlineContent = { Text("Primary text") },
+    supportingContent = { Text("Secondary text") },
+    leadingContent = { Icon(Icons.Default.Person, null) },
+    trailingContent = { Icon(Icons.Default.ChevronRight, null) }
+)
+```
 
 ---
 
-## 关键设计决策
+## Phase 5: Composite Widgets 📋
 
-### 1. Card 变体映射
+Composite widgets 需要更复杂的生成策略：
 
-| AURA variant | Compose Component | 特点 |
-|--------------|-------------------|------|
-| `"filled"` (default) | `Card` | 平面卡片 |
-| `"elevated"` | `ElevatedCard` | 带阴影 |
-| `"outlined"` | `OutlinedCard` | 边框无阴影 |
+### 高优先级 Composite
+- **Avatar** - AsyncImage + CircleShape + fallback
+- **Sheet** - ModalBottomSheet
+- **Tooltip** - TooltipBox
 
-### 2. Chip vs Badge 区分
-
-| 组件 | 用途 | Compose 对应 |
-|------|------|-------------|
-| **Badge** | 通知数字、状态点 | `Badge`, `BadgedBox` |
-| **Chip** | 可交互标签、筛选器 | `AssistChip`, `FilterChip`, `InputChip`, `SuggestionChip` |
-
-jet-gallery 的 `MetaChip` 本质是简化版 Chip，使用 `Surface` + 圆角实现。
-
-### 3. Tabs 状态管理
-
-两种策略：
-1. **索引模式**：`activeTab: Int` - 简单，适合静态 tabs
-2. **ID 模式**：`activeTab: String` - 灵活，适合动态 tabs
-
-推荐使用 **索引模式**，与 Compose `TabRow` API 一致。
-
-### 4. FlowRow Opt-in
-
-FlowRow 需要 `@OptIn(ExperimentalLayoutApi::class)` 注解。
-生成器应在文件顶部添加，或在使用处添加。
+### 中优先级 Composite
+- **Select** - ExposedDropdownMenu
+- **Alert** - Card + icon + text pattern
+- **Collapsible** - AnimatedVisibility
 
 ---
 
-## 实现顺序
+## Phase 6: 完整对齐 jet-gallery 📋
 
-```
-Phase 1: 基础组件
-├── 1.1 Card variants     (修改 layout.rs)
-├── 1.2 Chip 组件         (修改 form.rs)
-├── 1.3 FlowRow           (修改 layout.rs)
-└── 1.4 Tabs 组件族       (修改 navigation.rs)
+最终目标：
+- 51 个 widget demos 全部覆盖
+- 自适应布局 (手机/平板)
+- NavigationBar 底部导航
+- Master-Detail 布局
 
-Phase 2: 页面扩展
-├── 2.1 通用组件          (PanelCard, MetaChip, WidgetListCard)
-├── 2.2 Demo 页面         (card.at, tabs.at, chip.at)
-└── 2.3 路由更新          (app.at)
+---
 
-Phase 3: 测试验证
-├── 3.1 单元测试          (layout, form, navigation tests)
-└── 3.2 端到端验证        (auto build → 对比 jet-gallery)
-```
+## 实现优先级总结
+
+### 立即执行 (Phase 4.1)
+1. **Progress** - Native, 高频使用
+2. **Image** - Native, 基础组件
+3. **Badge** - Native, 常用
+4. **Dialog/AlertDialog** - Native, 核心 UI
+5. **RadioGroup** - Native, 表单必需
+6. **ListItem** - Native, 列表基础
+
+### 短期规划 (Phase 4.2-4.3)
+7. **Textarea** - 表单扩展
+8. **Select** - 表单扩展 (Composite)
+9. **DropdownMenu** - 导航扩展
+10. **Avatar** - 显示扩展 (Composite)
+
+### 中期规划 (Phase 5)
+11. **Sheet/BottomSheet** - Overlay
+12. **Tooltip** - Overlay
+13. **Collapsible/Accordion** - Layout
+14. **Alert/Toast** - Feedback
+
+### 长期规划 (Phase 6)
+15. NavigationBar + Section 导航
+16. Master-Detail 布局
+17. 完整 51 widget 覆盖
 
 ---
 
 ## Success Criteria
 
-1. **Card 变体**：`variant: "elevated" | "outlined" | "filled"` 正确生成对应组件
-2. **Chip 组件**：支持 4 种 Material3 Chip 变体
-3. **FlowRow**：支持 `flex-wrap` 样式自动换行
-4. **Tabs**：支持 `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` 完整组件族
-5. **unified-demo**：新增 3+ demo 页面，与 jet-gallery 功能对齐
-6. **测试覆盖**：所有新组件有对应单元测试
-7. **编译通过**：`auto build` 生成的 Kotlin 代码可编译运行
+### Phase 1-2 ✅
+- [x] Card 支持 3 种变体
+- [x] Chip 支持 4 种变体
+- [x] FlowRow 正确处理自动换行
+- [x] Tabs 正确管理状态和内容切换
+- [x] unified-demo 新增 3 个 demo 页面
+
+### Phase 3 (进行中)
+- [ ] 所有新组件有对应单元测试
+- [ ] 生成的 Kotlin 代码可编译运行
+
+### Phase 4 (下一步)
+- [ ] Progress 组件支持 circular/linear, determinate/indeterminate
+- [ ] Image 组件支持本地和网络图片
+- [ ] Badge 组件支持数字和小圆点
+- [ ] Dialog/AlertDialog 组件
+- [ ] RadioGroup 组件
+- [ ] ListItem 组件
 
 ---
 
