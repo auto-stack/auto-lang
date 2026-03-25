@@ -1139,8 +1139,8 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
 
-    // Step 1: Generate project structure if not exists
-    let total_steps = if project.exists() { 4 } else { 5 };
+    // Step 1: Generate project structure if not exists, or regenerate source files if exists
+    let total_steps = if project.exists() { 5 } else { 6 };
     let mut current_step = 0;
 
     if !project.exists() {
@@ -1148,6 +1148,12 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         println!();
         println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
         project.generate()?;
+    } else {
+        // Regenerate source files even if project exists
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Regenerating source files...", current_step, total_steps);
+        project.regenerate_source_files()?;
     }
 
     // Step 2: Generate API client code (if api.at exists)

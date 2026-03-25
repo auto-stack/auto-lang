@@ -5,39 +5,41 @@ widget App {
     msg Msg { Click, Load }
 
     model {
-        var count int = 0
         var users []User = []
         var loading bool = false
     }
 
     view {
-        col {
-            h1 (text: "API Demo") {}
+        Col (style: "min-h-screen bg-gray-50 items-center justify-center p-8") {
+            H1 (text: "API Demo", style: "text-3xl font-bold mb-6") {}
 
-            row {
-                text `Count: ${.count}`
-            }
+            // Row (style: "gap-4 mb-4") {
+            //     Text (text: "Count: ${.users.length}", style: "text-gray-600") {}
+            // }
 
-            button (text: "Load Users", onclick: .Load) {}
+            Button (text: "Load Users", onclick: .Load, style: "px-4 py-2 bg-blue-500 text-white rounded") {}
 
             // Loading indicator
             if .loading {
-                text "Loading..."
+                Text "Loading...", style: "text-gray-500 py-4"
             }
 
-            // Display users
+            // Display users as cards
             for user in .users {
-                row {
-                    text `${user.id}: ${user.name} - ${user.email}`
+                Col (style: "p-4 bg-white rounded-lg shadow border gap-2 mb-3") {
+                    Row (style: "items-center justify-between") {
+                        Col (style: "gap-1 flex-1") {
+                            Text (text: f"${user.name}", style: "font-semibold text-gray-900") {}
+                            Text (text: f"${user.email}", style: "text-sm text-gray-500") {}
+                        }
+                        Text (text: f"ID: ${user.id}", style: "bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs") {}
+                    }
                 }
             }
         }
     }
 
     on {
-        .Click => {
-            .count = .count + 1
-        }
         .Load => {
             .loading = true
             .users = listusers()

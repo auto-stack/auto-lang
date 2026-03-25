@@ -822,6 +822,9 @@ pub struct VueGenerator {
 
     /// API functions used in handlers (Plan 132)
     api_functions_used: HashSet<String>,
+
+    /// Handler names actually referenced in the template
+    used_handlers: HashSet<String>,
 }
 
 /// Data for generating interactive preview cards
@@ -870,6 +873,7 @@ impl VueGenerator {
             codeblock_data: Vec::new(),
             needs_router: false,
             api_functions_used: HashSet::new(),
+            used_handlers: HashSet::new(),
         }
     }
 
@@ -921,6 +925,7 @@ impl VueGenerator {
         self.codeblock_data.clear();
         self.needs_router = false;
         self.api_functions_used.clear();
+        self.used_handlers.clear();
     }
 
     /// Generate complete Vue3 SFC
@@ -1082,7 +1087,12 @@ impl VueGenerator {
         // Output handler functions
         // Plan 100: Add return type annotation for TypeScript
         // Plan 132: Add async keyword for handlers with API calls
+        // Only output handlers that are actually used in the template
         for (handler_name, handler_body, is_async) in &self.handlers {
+            // Skip unused handlers to avoid TypeScript warnings
+            if !self.used_handlers.contains(handler_name) {
+                continue;
+            }
             let async_kw = if *is_async { "async " } else { "" };
             let return_type = if self.use_typescript {
                 if *is_async { ": Promise<void>" } else { ": void" }
@@ -1406,6 +1416,9 @@ impl VueGenerator {
                     for (event, aura_event) in events {
                         let vue_event = self.auto_event_to_vue(event);
                         let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        // Track used handler (without params for matching)
+                        let handler_name = self.handler_to_function_call(&aura_event.handler);
+                        self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
 
@@ -1539,6 +1552,9 @@ impl VueGenerator {
                 for (event, aura_event) in events {
                     let vue_event = self.auto_event_to_vue(event);
                     let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                    // Track used handler (without params for matching)
+                    let handler_name = self.handler_to_function_call(&aura_event.handler);
+                    self.used_handlers.insert(handler_name);
                     attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                 }
 
@@ -2911,13 +2927,7 @@ impl VueGenerator {
     fn prop_to_attr_value(&self, value: &AuraPropValue) -> GenResult<String> {
         match value {
             AuraPropValue::Expr(expr) => {
-                match expr {
-                    AuraExpr::Literal(s) => Ok(format!("\"{}\"", s)),
-                    AuraExpr::Int(n) => Ok(format!("\"{}\"", n)),
-                    AuraExpr::Bool(b) => Ok(format!("\"{}\"", b)),
-                    AuraExpr::StateRef(name) => Ok(format!("\"{{{{ {} }}}}\"", name)),
-                    _ => Ok(format!("\"{{{{ {} }}}}\"", "value")),
-                }
+                Ok(format!("\"{}\"", self.expr_to_vue_text(expr)?))
             }
             AuraPropValue::StyleBinding(_) => {
                 // Class bindings are handled separately in extract_classes
@@ -2930,18 +2940,143 @@ impl VueGenerator {
     fn prop_to_text_content(&self, value: &AuraPropValue) -> GenResult<String> {
         match value {
             AuraPropValue::Expr(expr) => {
-                match expr {
-                    AuraExpr::Literal(s) => Ok(s.clone()),
-                    AuraExpr::Int(n) => Ok(n.to_string()),
-                    AuraExpr::Bool(b) => Ok(b.to_string()),
-                    AuraExpr::StateRef(name) => Ok(format!("{{{{ {} }}}}", name)),
-                    _ => Ok("value".to_string()),
-                }
+                self.expr_to_vue_text(expr)
             }
             AuraPropValue::StyleBinding(_) => {
                 Ok("".to_string())
             }
         }
+    }
+
+    /// Convert AuraExpr to Vue template text (handles interpolation)
+    fn expr_to_vue_text(&self, expr: &AuraExpr) -> GenResult<String> {
+        match expr {
+            AuraExpr::Literal(s) => {
+                // Check if this is a template string with ${...} placeholders
+                // Convert them to Vue {{ ... }} interpolation
+                Ok(self.convert_template_to_vue(s))
+            }
+            AuraExpr::Int(n) => Ok(n.to_string()),
+            AuraExpr::Float(f) => Ok(f.to_string()),
+            AuraExpr::Bool(b) => Ok(b.to_string()),
+            AuraExpr::StateRef(name) => Ok(format!("{{{{ {} }}}}", name)),
+            AuraExpr::FieldAccess { object, field } => {
+                // Handle user.name -> {{ user.name }}
+                let object_str = self.expr_to_vue_text(object)?;
+                Ok(format!("{{{{ {}.{} }}}}", object_str.trim_matches(|c| c == '{' || c == '}'), field))
+            }
+            AuraExpr::Binary { left, op: _, right } => {
+                // Handle expressions like "ID: " + user.id
+                let left_str = self.expr_to_vue_text(left)?;
+                let right_str = self.expr_to_vue_text(right)?;
+                Ok(format!("{}{}", left_str, right_str))
+            }
+            _ => Ok("value".to_string()),
+        }
+    }
+
+    /// Convert template string with ${...} placeholders to Vue {{ ... }} interpolation
+    fn convert_template_to_vue(&self, template: &str) -> String {
+        let mut result = String::new();
+        let chars: Vec<char> = template.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            // Look for ${ pattern
+            if i + 1 < chars.len() && chars[i] == '$' && chars[i + 1] == '{' {
+                // Find the closing }
+                let start = i + 2;
+                let mut depth = 1;
+                let mut end = start;
+
+                while end < chars.len() && depth > 0 {
+                    if chars[end] == '{' {
+                        depth += 1;
+                    } else if chars[end] == '}' {
+                        depth -= 1;
+                    }
+                    if depth > 0 {
+                        end += 1;
+                    }
+                }
+
+                if depth == 0 {
+                    // Extract the expression inside ${...}
+                    let expr: String = chars[start..end].iter().collect();
+                    // Convert to Vue interpolation
+                    let vue_expr = self.convert_template_expr_to_vue(&expr);
+                    result.push_str(&format!("{{{{ {} }}}}", vue_expr));
+                    i = end + 1;
+                    continue;
+                }
+            }
+
+            result.push(chars[i]);
+            i += 1;
+        }
+
+        result
+    }
+
+    /// Convert a template expression (inside ${...}) to Vue expression
+    fn convert_template_expr_to_vue(&self, expr: &str) -> String {
+        let expr = expr.trim();
+
+        // Handle state reference: .field -> field
+        if expr.starts_with('.') {
+            return expr[1..].to_string();
+        }
+
+        // Handle nested field access patterns like (dot (name user).name)
+        // These come from the f-string parser's debug format
+        if expr.starts_with('(') {
+            return self.parse_s_expr_to_vue(expr);
+        }
+
+        // Handle simple field access: user.name
+        if expr.contains('.') && !expr.starts_with('.') {
+            return expr.to_string();
+        }
+
+        expr.to_string()
+    }
+
+    /// Parse S-expression format from f-string parser to Vue expression
+    fn parse_s_expr_to_vue(&self, expr: &str) -> String {
+        // Handle (dot (name user).field) -> user.field
+        // Handle (dot (name user).id) -> user.id
+        if let Some(inner) = expr.strip_prefix("(dot ") {
+            // Find the object expression and the field
+            // Format: (dot <object>.<field>)
+            // Example: (dot (name user).id) means user.id
+
+            // Find where the object ends and field begins
+            // Look for the pattern: ).<field>)
+            if let Some(dot_pos) = inner.rfind('.') {
+                // Everything before the dot is the object expression
+                let obj_expr = &inner[..dot_pos];
+                // Everything after the dot (and before the final ')') is the field
+                let field = inner[dot_pos + 1..].trim_end_matches(')').trim();
+
+                // Parse the object expression
+                let obj_name = if obj_expr.starts_with("(name ") {
+                    // (name user) -> user
+                    obj_expr[6..].trim().trim_end_matches(')').to_string()
+                } else {
+                    self.parse_s_expr_to_vue(obj_expr)
+                };
+
+                return format!("{}.{}", obj_name, field);
+            }
+        }
+
+        // Handle (name user) -> user
+        if let Some(inner) = expr.strip_prefix("(name ") {
+            return inner.trim_end_matches(')').trim().to_string();
+        }
+
+        // Fallback: return as-is
+        expr.to_string()
     }
 
     // ========================================================================
@@ -3075,6 +3210,22 @@ impl VueGenerator {
                 }
             }
 
+            // === Text (Typography) ===
+            "text" | "Text" | "span" | "Span" | "p" | "P" => {
+                // Text content becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Headings (Typography) ===
+            "h1" | "H1" | "h2" | "H2" | "h3" | "H3" | "h4" | "H4" | "h5" | "H5" | "h6" | "H6" => {
+                // Text content becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
             // === Textarea ===
             "textarea" => {
                 // v-model for value
@@ -3186,7 +3337,7 @@ impl VueGenerator {
             // === SelectTrigger ===
             "selecttrigger" | "select-trigger" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3275,7 +3426,7 @@ impl VueGenerator {
             // === ScrollArea ===
             "scroll" => {
                 // viewport class for styling
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3370,7 +3521,7 @@ impl VueGenerator {
             }
             "alertdialogcontent" | "alert-dialog-content" => {
                 // class for styling
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3529,7 +3680,7 @@ impl VueGenerator {
             // === Spinner/Skeleton ===
             "spinner" => {
                 // Skeleton uses class for sizing
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3554,7 +3705,7 @@ impl VueGenerator {
             // === Table ===
             "table" => {
                 // Table wrapper class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3562,7 +3713,7 @@ impl VueGenerator {
 
             "thead" | "tbody" | "tr" => {
                 // Table structure elements - minimal props
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3570,7 +3721,7 @@ impl VueGenerator {
 
             "th" | "td" => {
                 // Table cells
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3595,7 +3746,7 @@ impl VueGenerator {
             // === shadcn-vue Table components ===
             "table_caption" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3607,7 +3758,7 @@ impl VueGenerator {
 
             "table_header" | "table_body" | "table_row" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3615,7 +3766,7 @@ impl VueGenerator {
 
             "table_head" | "table_cell" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3628,7 +3779,7 @@ impl VueGenerator {
             // === Tree ===
             "tree" => {
                 // Tree container
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3838,7 +3989,7 @@ impl VueGenerator {
                     attrs.push(format!("align=\"{}\"", align));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3870,7 +4021,7 @@ impl VueGenerator {
                     attrs.push(format!("side=\"{}\"", side));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3878,7 +4029,7 @@ impl VueGenerator {
 
             "sheet_header" | "sheet_footer" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3894,7 +4045,7 @@ impl VueGenerator {
             // === Breadcrumb ===
             "breadcrumb" | "breadcrumb_list" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3902,7 +4053,7 @@ impl VueGenerator {
 
             "breadcrumb_item" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -3976,7 +4127,7 @@ impl VueGenerator {
 
             "accordion_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4003,7 +4154,7 @@ impl VueGenerator {
 
             "alert_dialog_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4011,7 +4162,7 @@ impl VueGenerator {
 
             "alert_dialog_header" | "alert_dialog_footer" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4067,7 +4218,7 @@ impl VueGenerator {
 
             "command_list" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4123,7 +4274,7 @@ impl VueGenerator {
                     attrs.push(format!("id=\"{}\"", id));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4149,7 +4300,7 @@ impl VueGenerator {
 
             "form_item" | "form_control" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4186,7 +4337,7 @@ impl VueGenerator {
                     attrs.push(format!("orientation=\"{}\"", orientation));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4194,7 +4345,7 @@ impl VueGenerator {
 
             "nav_menu_list" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4233,7 +4384,7 @@ impl VueGenerator {
 
             "nav_menu_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4264,7 +4415,7 @@ impl VueGenerator {
 
             "sidebar_header" | "sidebar_footer" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4272,7 +4423,7 @@ impl VueGenerator {
 
             "sidebar_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4280,7 +4431,7 @@ impl VueGenerator {
 
             "sidebar_group" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4295,7 +4446,7 @@ impl VueGenerator {
 
             "sidebar_group_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4303,7 +4454,7 @@ impl VueGenerator {
 
             "sidebar_menu" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4311,7 +4462,7 @@ impl VueGenerator {
 
             "sidebar_menu_item" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4341,7 +4492,7 @@ impl VueGenerator {
 
             "sidebar_trigger" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4349,7 +4500,7 @@ impl VueGenerator {
 
             "sidebar_provider" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4394,7 +4545,7 @@ impl VueGenerator {
 
             "stepper_indicator" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4441,7 +4592,7 @@ impl VueGenerator {
                     attrs.push(format!("weekday-format=\"{}\"", weekday));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4478,7 +4629,7 @@ impl VueGenerator {
                 }
 
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4486,7 +4637,7 @@ impl VueGenerator {
 
             "carousel_content" | "carousel_item" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4494,7 +4645,7 @@ impl VueGenerator {
 
             "carousel_prev" | "carousel_previous" | "carousel_next" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4568,7 +4719,7 @@ impl VueGenerator {
 
             "context_menu_trigger" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4582,7 +4733,7 @@ impl VueGenerator {
 
             "context_menu_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4609,7 +4760,7 @@ impl VueGenerator {
                     }
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4706,7 +4857,7 @@ impl VueGenerator {
 
             "context_menu_sub_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4738,7 +4889,7 @@ impl VueGenerator {
 
             "drawer_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4746,7 +4897,7 @@ impl VueGenerator {
 
             "drawer_header" | "drawer_footer" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4815,7 +4966,7 @@ impl VueGenerator {
                     attrs.push(format!("side=\"{}\"", side));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4863,7 +5014,7 @@ impl VueGenerator {
 
             "number_field_increment" | "number_field_decrement" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -4899,7 +5050,7 @@ impl VueGenerator {
 
             "pagination_list" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5072,7 +5223,7 @@ impl VueGenerator {
                     }
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5105,7 +5256,7 @@ impl VueGenerator {
                     attrs.push(format!(":config=\"{}\"", config));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5129,7 +5280,7 @@ impl VueGenerator {
 
             "collapsible_trigger" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5143,7 +5294,7 @@ impl VueGenerator {
 
             "collapsible_content" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5152,7 +5303,7 @@ impl VueGenerator {
             // === Input Group ===
             "input_group" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5186,7 +5337,7 @@ impl VueGenerator {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5195,7 +5346,7 @@ impl VueGenerator {
             // === Menubar ===
             "menubar" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5223,7 +5374,7 @@ impl VueGenerator {
                     attrs.push(format!("align=\"{}\"", align));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5277,7 +5428,7 @@ impl VueGenerator {
                     }
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5297,7 +5448,7 @@ impl VueGenerator {
                     attrs.push(format!("placeholder=\"{}\"", placeholder));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5311,7 +5462,7 @@ impl VueGenerator {
                     attrs.push(format!("direction=\"{}\"", direction));
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5337,7 +5488,7 @@ impl VueGenerator {
                     }
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5351,7 +5502,7 @@ impl VueGenerator {
                     }
                 }
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5399,7 +5550,7 @@ impl VueGenerator {
 
             "autocomplete_list" => {
                 // class
-                if let Some(value) = props.get("class") {
+                if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
                 }
@@ -5421,6 +5572,9 @@ impl VueGenerator {
         for (event, aura_event) in events {
             let vue_event = self.shadcn_event_to_vue(tag, event);
             let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            // Track used handler (without params for matching)
+            let handler_name = self.handler_to_function_call(&aura_event.handler);
+            self.used_handlers.insert(handler_name);
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
         }
 
@@ -5480,6 +5634,12 @@ impl VueGenerator {
             AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(name.clone()),
             _ => None,
         }
+    }
+
+    /// Get style or class prop value (style takes priority over class)
+    /// This supports the transition from 'class' to 'style' prop naming
+    fn get_style_class<'a>(&self, props: &'a HashMap<String, AuraPropValue>) -> Option<&'a AuraPropValue> {
+        props.get("style").or_else(|| props.get("class"))
     }
 
     /// Convert AutoUI event name to Vue event
