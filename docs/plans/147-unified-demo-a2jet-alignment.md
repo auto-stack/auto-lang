@@ -205,102 +205,19 @@
 
 ## 下一步任务 (Phase 4.2): 更多 Native Widgets
 
-### Task 4.2.1: Dialog/AlertDialog 组件 (推迟自 Phase 4.1)
+### Task 4.2.1: Dialog/AlertDialog 组件 (推迟)
 
-**目标：** 添加对话框支持
-
-**AURA 定义：**
-```auto
-Dialog (open: .showDialog, onDismiss: .CloseDialog) {
-    Card {
-        Col {
-            H2 "Confirm Action"
-            Text "Are you sure?"
-            Row {
-                Button (variant: "text", click: .CloseDialog) "Cancel"
-                Button (click: .Confirm) "Confirm"
-            }
-        }
-    }
-}
-```
-
-**Kotlin 输出：**
-```kotlin
-if (showDialog) {
-    AlertDialog(
-        onDismissRequest = { showDialog = false },
-        confirmButton = {
-            Button(onClick = { /* confirm */ }) { Text("Confirm") }
-        },
-        dismissButton = {
-            TextButton(onClick = { showDialog = false }) { Text("Cancel") }
-        },
-        title = { Text("Confirm Action") },
-        text = { Text("Are you sure?") }
-    )
-}
-```
-
-**优先级：** 🟡 高 (用户推迟，复杂度高)
+**优先级：** 🔴 复杂 (延后到最后)
 
 ---
 
-### Task 4.2.2: Textarea 组件
-
-**目标：** 多行文本输入
-
-**AURA 定义：**
-```auto
-Textarea (placeholder: "Enter description", rows: 4)
-Textarea (value: .content, onInput: .UpdateContent)
-```
-
-**Kotlin 输出：**
-```kotlin
-OutlinedTextField(
-    value = content,
-    onValueChange = { content = it },
-    modifier = Modifier.heightIn(min = 96.dp),
-    placeholder = { Text("Enter description") },
-    minLines = 4
-)
-```
-
-**优先级：** 🔵 中
+### Task 4.2.2: Textarea 组件 ✅ 已完成
 
 ---
 
-### Task 4.2.3: DropdownMenu 组件
+### Task 4.2.3: DropdownMenu 组件 (推迟)
 
-**目标：** 下拉菜单
-
-**AURA 定义：**
-```auto
-DropdownMenu (expanded: .showMenu, onDismiss: .CloseMenu) {
-    DropdownMenuItem (click: .Select("edit")) "Edit"
-    DropdownMenuItem (click: .Select("delete")) "Delete"
-}
-```
-
-**Kotlin 输出：**
-```kotlin
-DropdownMenu(
-    expanded = showMenu,
-    onDismissRequest = { showMenu = false }
-) {
-    DropdownMenuItem(
-        text = { Text("Edit") },
-        onClick = { /* select edit */ }
-    )
-    DropdownMenuItem(
-        text = { Text("Delete") },
-        onClick = { /* select delete */ }
-    )
-}
-```
-
-**优先级：** 🔵 中
+**优先级：** 🔴 复杂 (延后到最后)
 
 ---
 
@@ -322,39 +239,35 @@ Box(modifier = Modifier.aspectRatio(16f / 9f)) {
 }
 ```
 
-**优先级：** 🔵 中
+**优先级：** 🟢 简单
 
 ---
 
-## Phase 4.3: Overlay Widgets (计划中)
+## Phase 4.3: Overlay Widgets (推迟)
 
-### Task 4.3.1: Sheet (ModalBottomSheet)
-
-**优先级：** 🔵 中
-
-### Task 4.3.2: Tooltip (TooltipBox)
-
-**优先级：** 🔵 中
-
-### Task 4.3.3: Drawer (NavigationDrawer)
-
-**优先级：** ⚪ 低
+- Sheet (ModalBottomSheet) - 🔴 复杂
+- Tooltip (TooltipBox) - 🔴 复杂
+- Drawer (NavigationDrawer) - 🔴 复杂
+- Dialog/AlertDialog - 🔴 复杂
+- DropdownMenu - 🔴 复杂
 
 ---
 
 ## Phase 5: Composite Widgets 📋
 
-Composite widgets 需要更复杂的生成策略：
+Composite widgets 需要更复杂的生成策略，但部分静态组件相对简单：
 
-### 高优先级 Composite
+### 🟢 简单 Composite (静态，无复杂状态)
+- **Table** - Column + Row + Divider 组合 (静态表格很简单！)
+- **Alert** - Card + icon + text pattern
 - **Avatar** - AsyncImage + CircleShape + fallback
+
+### 🔴 复杂 Composite (需要状态管理)
+- **Select** - ExposedDropdownMenu
+- **Collapsible** - AnimatedVisibility
+- **Accordion** - 多个 Collapsible
 - **Sheet** - ModalBottomSheet
 - **Tooltip** - TooltipBox
-
-### 中优先级 Composite
-- **Select** - ExposedDropdownMenu
-- **Alert** - Card + icon + text pattern
-- **Collapsible** - AnimatedVisibility
 
 ---
 
@@ -368,6 +281,59 @@ Composite widgets 需要更复杂的生成策略：
 
 ---
 
+## Widget Demo 页面完整分析
+
+### 已有 Demo 页面 (17个)
+`badge`, `button`, `card`, `chip`, `column`, `counter`, `image`, `index`, `input`, `listitem`, `progress`, `radio`, `row`, `tabs`, `textarea`
+
+### 缺失 Demo 页面分组
+
+#### 🟢 第一组：简单 Native (已有 a2jet 支持，只需 demo)
+
+| Widget | Compose 组件 | 说明 |
+|--------|-------------|------|
+| **center** | Box(contentAlignment) | 居中容器 |
+| **separator** | HorizontalDivider | 分隔线 ✅ 已支持 |
+| **checkbox** | Checkbox | 复选框 ✅ 已支持 |
+| **switch** | Switch | 开关 ✅ 已支持 |
+| **slider** | Slider | 滑块 ✅ 已支持 |
+| **grid** | LazyVerticalGrid | 网格 ✅ 已支持 |
+| **list** | LazyColumn | 列表 ✅ 已支持 |
+| **text** | Text | 文本样式 |
+
+**预计工作量：** 每个 15-30 分钟，总共 ~2 小时
+
+#### 🟡 第二组：中等难度 (简单 Composite 或需少量状态)
+
+| Widget | Compose 组件 | 说明 |
+|--------|-------------|------|
+| **Table** | Column + Row | **静态表格很简单！可优先做** |
+| **avatar** | AsyncImage + CircleShape | 头像 |
+| **aspectratio** | Modifier.aspectRatio | 宽高比 |
+| **scrollarea** | verticalScroll | 滚动区域 |
+| **alert** | Card + icon | 警告卡片 |
+
+**预计工作量：** 每个 30-60 分钟，总共 ~3 小时
+
+#### 🔴 第三组：复杂 (需要复杂状态管理，延后)
+
+| Widget | 说明 |
+|--------|------|
+| **dropdownmenu** | 需要 expanded 状态 |
+| **dialog/alertdialog** | 需要 open 状态 + 确认/取消逻辑 |
+| **radiogroup** | 需要选中状态管理 |
+| **sheet** | ModalBottomSheet 状态 |
+| **tooltip** | TooltipBox 状态 |
+| **drawer** | NavigationDrawer 状态 |
+| **collapsible** | AnimatedVisibility 状态 |
+| **accordion** | 多个 collapsible 状态 |
+| **select** | ExposedDropdownMenu 状态 |
+| **swiper** | HorizontalPager 状态 |
+
+**预计工作量：** 每个 1-2 小时，延后处理
+
+---
+
 ## 实现优先级总结
 
 ### ✅ 已完成 (Phase 4.1)
@@ -377,28 +343,55 @@ Composite widgets 需要更复杂的生成策略：
 4. **Radio/RadioButton** - ✅ Native, 单个 RadioButton
 5. **ListItem** - ✅ Native, headline/supporting/leading/trailing
 
-### 📋 下一步 (Phase 4.2)
-6. **Dialog/AlertDialog** - 🟡 高优先级, 但复杂
-7. **Textarea** - 🔵 中优先级, multi-line OutlinedTextField
-8. **DropdownMenu** - 🔵 中优先级
-9. **AspectRatio** - 🔵 中优先级
+### ✅ 已完成 (Phase 4.2)
+6. **Textarea** - ✅ Native, multi-line OutlinedTextField
 
-### 📋 短期规划 (Phase 4.3)
-10. **Sheet/BottomSheet** - Overlay
-11. **Tooltip** - Overlay
-12. **Select** - Composite (ExposedDropdownMenu)
-13. **Avatar** - Composite
+### 📋 下一步建议顺序
 
-### 📋 中期规划 (Phase 5)
-14. **Collapsible/Accordion** - Layout
-15. **Alert/Toast** - Feedback
-16. **Skeleton** - Display
-17. **Swiper** - Display (HorizontalPager)
+**第一批 (🟢 简单，快速完成):**
+1. **Table** - 静态表格，可用于展示 API 列表 ⭐ 优先
+2. **checkbox** - Demo page
+3. **switch** - Demo page
+4. **slider** - Demo page
+5. **separator** - Demo page
+6. **center** - Demo page
+7. **grid** - Demo page
+8. **list** - Demo page
 
-### 📋 长期规划 (Phase 6)
-18. NavigationBar + Section 导航
-19. Master-Detail 布局
-20. 完整 51 widget 覆盖
+**第二批 (🟡 中等):**
+9. **avatar** - 头像组件
+10. **aspectratio** - 宽高比
+11. **alert** - 警告卡片
+
+**第三批 (🔴 复杂，延后):**
+12. dropdownmenu
+13. dialog/alertdialog
+14. 其他需要状态管理的组件
+
+### ✅ 已完成 (Phase 4.2)
+6. **Textarea** - ✅ Native, multi-line OutlinedTextField
+
+### 📋 下一步建议顺序
+
+**第一批 (🟢 简单，快速完成):**
+1. **Table** - 静态表格，可用于展示 API 列表 ⭐ 优先
+2. **checkbox** - Demo page
+3. **switch** - Demo page
+4. **slider** - Demo page
+5. **separator** - Demo page
+6. **center** - Demo page
+7. **grid** - Demo page
+8. **list** - Demo page
+
+**第二批 (🟡 中等):**
+9. **avatar** - 头像组件
+10. **aspectratio** - 宽高比
+11. **alert** - 警告卡片
+
+**第三批 (🔴 复杂，延后):**
+12. dropdownmenu
+13. dialog/alertdialog
+14. 其他需要状态管理的组件
 
 ---
 
@@ -418,15 +411,18 @@ Composite widgets 需要更复杂的生成策略：
 - [x] RadioButton 组件
 - [x] ListItem 组件支持 headline/supporting/leading/trailing
 
+### Phase 4.2 ✅
+- [x] Textarea 组件 (multi-line)
+
+### Phase 4.3 (下一步)
+- [ ] Table 静态表格组件 ⭐ 优先
+- [ ] checkbox/switch/slider demo pages
+- [ ] separator/center demo pages
+- [ ] grid/list demo pages
+
 ### Phase 3 (待做)
 - [ ] 所有新组件有对应单元测试
 - [ ] 生成的 Kotlin 代码可编译运行 (Android Studio)
-
-### Phase 4.2 (下一步)
-- [ ] Dialog/AlertDialog 组件
-- [ ] Textarea 组件 (multi-line)
-- [ ] DropdownMenu 组件
-- [ ] AspectRatio 组件
 
 ---
 
