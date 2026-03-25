@@ -636,6 +636,11 @@ fun {}Preview() {{
                 self.form_generator.generate_input(props)
                     .map(|s| format!("{}{}\n", ind, s.trim()))
             }
+            "textarea" => {
+                // Generate textarea (multi-line input)
+                self.form_generator.generate_textarea(props)
+                    .map(|s| format!("{}{}\n", ind, s.trim()))
+            }
             "checkbox" => self.form_generator.generate_checkbox(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "switch" | "toggle" => self.form_generator.generate_switch(props)
