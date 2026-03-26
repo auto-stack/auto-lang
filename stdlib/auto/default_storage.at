@@ -91,3 +91,9 @@
 ///
 /// - `auto.storage` - Storage strategy implementations
 /// - `auto.list` - List<T, S> type definition and methods
+
+
+fn main() {
+    // 开发者无需提供Storage策略，使用系统默认策略
+    let xs = List.new([1, 2, 3, 4])
+}

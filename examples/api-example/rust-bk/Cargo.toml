@@ -1,0 +1,24 @@
+[package]
+name = "api-example-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Generated backend for api-example (Tauri IPC mode)"
+
+[lib]
+name = "api_example_backend"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+once_cell = "1.19"
+
+# Tauri support (optional - only needed when used with Tauri)
+tauri = { version = "2", optional = true }
+
+[features]
+default = []
+tauri = ["dep:tauri"]
+
+# Exclude from parent workspace
+[workspace]

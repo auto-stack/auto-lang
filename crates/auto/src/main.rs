@@ -72,6 +72,23 @@ fn format_error_json(err: &AutoError) -> String {
     error_obj.to_string()
 }
 
+/// Format success result as JSON for AI consumption
+fn format_success_json<T: serde::Serialize>(result: T) -> String {
+    json!({
+        "status": "success",
+        "result": result
+    }).to_string()
+}
+
+/// Output success result in appropriate format based on AI mode
+fn output_success(ai_mode: bool, result: &str) {
+    if ai_mode {
+        println!("{}", format_success_json(result));
+    } else {
+        println!("{}", result);
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "auto",
@@ -87,6 +104,11 @@ struct Cli {
     /// Output format for errors and diagnostics
     #[arg(long, global = true, value_name = "FORMAT")]
     format: Option<OutputFormat>,
+
+    /// AI-friendly output mode: JSON structured output, suppress human-readable info
+    /// Equivalent to --format json with additional output suppression
+    #[arg(long = "ai", global = true)]
+    ai: bool,
 
     /// Enable VM debug logging (shows task spawning, message handling, replies)
     #[arg(short = 'D', long = "debug", global = true)]
@@ -288,8 +310,8 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Set up miette handler based on format preference
-    let format = cli.format.clone().unwrap_or(OutputFormat::Text);
+    // Determine AI mode: -ai flag or --format json
+    let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
 
     miette::set_hook(Box::new(move |_| {
         Box::new(MietteHandlerOpts::new().terminal_links(true).build())
@@ -308,20 +330,20 @@ fn main() -> Result<()> {
 
     // Execution: Run an Auto script directly via AutoVM
     if let Some(path) = cli.file {
-        if matches!(format, OutputFormat::Text) {
+        if !ai_mode {
             println!("----------------------");
             println!("Running Auto {} ", path);
             println!("----------------------");
         }
         let result = auto_lang::run_file(&path).map_err(|e| {
-            if matches!(format, OutputFormat::Json) {
+            if ai_mode {
                 eprintln!("{}", format_error_json(&e));
                 std::process::exit(1);
             }
             to_miette_err(e)
         })?;
-        println!("{}", result);
-        if matches!(format, OutputFormat::Text) {
+        output_success(ai_mode, &result);
+        if !ai_mode {
             println!();
         }
         return Ok(());
@@ -330,152 +352,460 @@ fn main() -> Result<()> {
     match cli.command {
         // ========== Project Creation ==========
         Some(Commands::New { name, template }) => {
-            init_logger();
-            println_logo();
-            info!("Creating new project: {}", name);
+            if !ai_mode {
+                init_logger();
+                println_logo();
+                info!("Creating new project: {}", name);
+            }
             if let Some(t) = template {
-                auto_man::Automan::create_by_template(&name, &t).map_err(|e| miette::miette!("{}", e))?;
+                auto_man::Automan::create_by_template(&name, &t).map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
             } else {
-                auto_man::Automan::create_app(&name).map_err(|e| miette::miette!("{}", e))?;
+                auto_man::Automan::create_app(&name).map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
+            }
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Project created", "path": name})));
             }
         }
         Some(Commands::Init { template }) => {
-            init_logger();
-            println_logo();
-            info!("Initializing Auto project in current directory");
+            if !ai_mode {
+                init_logger();
+                println_logo();
+                info!("Initializing Auto project in current directory");
+            }
             if let Some(t) = template {
-                auto_man::Automan::create_by_template(".", &t).map_err(|e| miette::miette!("{}", e))?;
+                auto_man::Automan::create_by_template(".", &t).map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
             } else {
-                auto_man::Automan::create_app(".").map_err(|e| miette::miette!("{}", e))?;
+                auto_man::Automan::create_app(".").map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
+            }
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Project initialized"})));
             }
         }
 
         // ========== Build & Run ==========
         Some(Commands::Build { dir, port }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| miette::miette!("{}", e))?;
+            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
             if let Some(p) = port {
-                am.set_port(p.into()).map_err(|e| miette::miette!("{}", e))?;
+                am.set_port(p.into()).map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
             }
-            am.scan().map_err(|e| miette::miette!("{}", e))?;
-            am.build().map_err(|e| miette::miette!("{}", e))?;
+            am.scan().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.build().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Build completed"})));
+            }
         }
         Some(Commands::Run { port, args }) => {
-            init_logger();
-            println_logo();
-            let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-            if let Some(p) = port {
-                am.set_port(p.into()).map_err(|e| miette::miette!("{}", e))?;
+            if !ai_mode {
+                init_logger();
+                println_logo();
             }
-            info!("Running project ...");
-            println!();
-            println!("------------ output ------------");
-            am.run(args).map_err(|e| miette::miette!("{}", e))?;
-            println!("------------- end --------------");
+            let config = load_am_config().unwrap_or_default();
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if let Some(p) = port {
+                am.set_port(p.into()).map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
+            }
+            if !ai_mode {
+                info!("Running project ...");
+                println!();
+                println!("------------ output ------------");
+            }
+            am.run(args).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if !ai_mode {
+                println!("------------- end --------------");
+            }
         }
         Some(Commands::Clean { dir }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| miette::miette!("{}", e))?;
-            am.clean().map_err(|e| miette::miette!("{}", e))?;
+            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.clean().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Clean completed"})));
+            }
         }
 
         // ========== Dependencies ==========
         Some(Commands::Add { package }) => {
-            init_logger();
-            println_logo();
-            info!("Adding dependency: {}", package);
+            if !ai_mode {
+                init_logger();
+                println_logo();
+                info!("Adding dependency: {}", package);
+            }
             // TODO: Implement Automan::add_dependency
+            if ai_mode {
+                eprintln!("{}", format_error_json(&AutoError::Msg("'add' command is not yet implemented".to_string())));
+                std::process::exit(1);
+            }
             miette::bail!("'add' command is not yet implemented in the library");
         }
         Some(Commands::Fetch) => {
-            init_logger();
-            println_logo();
-            info!("Fetching dependencies...");
+            if !ai_mode {
+                init_logger();
+                println_logo();
+                info!("Fetching dependencies...");
+            }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-            am.pull().map_err(|e| miette::miette!("{}", e))?;
-            am.scan().map_err(|e| miette::miette!("{}", e))?;
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.pull().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.scan().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Dependencies fetched"})));
+            }
         }
         Some(Commands::Deps) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let config = load_am_config().unwrap_or_default();
-            auto_man::Automan::list_deps(&config).map_err(|e| miette::miette!("{}", e))?;
+            auto_man::Automan::list_deps(&config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
         }
 
         // ========== Hardware & Embedded ==========
         Some(Commands::Device { action }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let config = load_am_config().unwrap_or_default();
             match action {
                 DeviceAction::List => {
-                    auto_man::Automan::list_devices(&config).map_err(|e| miette::miette!("{}", e))?;
+                    auto_man::Automan::list_devices(&config).map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{}", e)
+                    })?;
                 }
                 DeviceAction::Select { port } => {
-                    let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-                    am.set_port(port.into()).map_err(|e| miette::miette!("{}", e))?;
-                    info!("Port updated successfully");
+                    let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{}", e)
+                    })?;
+                    am.set_port(port.clone().into()).map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{}", e)
+                    })?;
+                    if !ai_mode {
+                        info!("Port updated successfully");
+                    }
+                    if ai_mode {
+                        println!("{}", format_success_json(json!({"message": "Port selected", "port": port})));
+                    }
                 }
             }
         }
         Some(Commands::Export { port, format }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-            am.export(port, format).map_err(|e| miette::miette!("{}", e))?;
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.export(port.clone(), format.clone()).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Export completed", "port": port, "format": format})));
+            }
         }
 
         // ========== Project Utils ==========
         Some(Commands::Info { target }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let config = load_am_config().unwrap_or_default();
-            let am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-            am.info(target).map_err(|e| miette::miette!("{}", e))?;
+            let am = auto_man::Automan::new(".", config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.info(target).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
         }
         Some(Commands::Open) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-            am.open_ide().map_err(|e| miette::miette!("{}", e))?;
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.open_ide().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "IDE opened"})));
+            }
         }
 
         // ========== Environment ==========
         Some(Commands::Upgrade) => {
-            init_logger();
-            println_logo();
-            auto_man::upgrade().map_err(|e| miette::miette!("{}", e))?;
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
+            auto_man::upgrade().map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Upgrade completed"})));
+            }
         }
         Some(Commands::Env { action }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             match action {
                 EnvAction::Reset => {
-                    auto_man::Automan::reset_index().map_err(|e| miette::miette!("{}", e))?;
+                    auto_man::Automan::reset_index().map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{}", e)
+                    })?;
+                    if ai_mode {
+                        println!("{}", format_success_json(json!({"message": "Index reset"})));
+                    }
                 }
                 EnvAction::Install { file } => {
-                    auto_man::Automan::install_config(&file).map_err(|e| miette::miette!("{}", e))?;
+                    auto_man::Automan::install_config(&file).map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{}", e)
+                    })?;
+                    if ai_mode {
+                        println!("{}", format_success_json(json!({"message": "Config installed", "file": file})));
+                    }
                 }
                 EnvAction::Cache { command } => {
                     let config = load_am_config().unwrap_or_default();
-                    let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+                    let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{}", e)
+                    })?;
                     match command {
-                        CacheCommands::Stats => am.cache_stats().map_err(|e| miette::miette!("{}", e))?,
-                        CacheCommands::List { type_, limit } => am.cache_list(type_, limit).map_err(|e| miette::miette!("{}", e))?,
-                        CacheCommands::Prune => am.cache_prune().map_err(|e| miette::miette!("{}", e))?,
-                        CacheCommands::Clear => am.cache_clear().map_err(|e| miette::miette!("{}", e))?,
-                        CacheCommands::Inspect { name } => am.cache_inspect(&name).map_err(|e| miette::miette!("{}", e))?,
-                        CacheCommands::Verify => am.cache_verify().map_err(|e| miette::miette!("{}", e))?,
+                        CacheCommands::Stats => {
+                            am.cache_stats().map_err(|e| {
+                                if ai_mode {
+                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    std::process::exit(1);
+                                }
+                                miette::miette!("{}", e)
+                            })?;
+                        }
+                        CacheCommands::List { type_, limit } => {
+                            am.cache_list(type_, limit).map_err(|e| {
+                                if ai_mode {
+                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    std::process::exit(1);
+                                }
+                                miette::miette!("{}", e)
+                            })?;
+                        }
+                        CacheCommands::Prune => {
+                            am.cache_prune().map_err(|e| {
+                                if ai_mode {
+                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    std::process::exit(1);
+                                }
+                                miette::miette!("{}", e)
+                            })?;
+                            if ai_mode {
+                                println!("{}", format_success_json(json!({"message": "Cache pruned"})));
+                            }
+                        }
+                        CacheCommands::Clear => {
+                            am.cache_clear().map_err(|e| {
+                                if ai_mode {
+                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    std::process::exit(1);
+                                }
+                                miette::miette!("{}", e)
+                            })?;
+                            if ai_mode {
+                                println!("{}", format_success_json(json!({"message": "Cache cleared"})));
+                            }
+                        }
+                        CacheCommands::Inspect { name } => {
+                            am.cache_inspect(&name).map_err(|e| {
+                                if ai_mode {
+                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    std::process::exit(1);
+                                }
+                                miette::miette!("{}", e)
+                            })?;
+                        }
+                        CacheCommands::Verify => {
+                            am.cache_verify().map_err(|e| {
+                                if ai_mode {
+                                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                                    std::process::exit(1);
+                                }
+                                miette::miette!("{}", e)
+                            })?;
+                            if ai_mode {
+                                println!("{}", format_success_json(json!({"message": "Cache verified"})));
+                            }
+                        }
                     }
                 }
             }
@@ -483,95 +813,122 @@ fn main() -> Result<()> {
 
         // ========== Code Generation ==========
         Some(Commands::Gen { output, project }) => {
-            init_logger();
-            println_logo();
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
             let config = load_am_config().unwrap_or_default();
-            let am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
-            am.gen(output, project).map_err(|e| miette::miette!("{}", e))?;
+            let am = auto_man::Automan::new(".", config).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            am.gen(output, project).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    std::process::exit(1);
+                }
+                miette::miette!("{}", e)
+            })?;
+            if ai_mode {
+                println!("{}", format_success_json(json!({"message": "Code generated"})));
+            }
         }
 
         // ========== Legacy / Dev Tools ==========
         Some(Commands::Parse { code }) => {
-            if matches!(format, OutputFormat::Text) {
+            if !ai_mode {
                 println!("Parsing Auto {} to JSON", code);
             }
             let json = auto_lang::run(&code).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", json);
+            output_success(ai_mode, &json);
         }
         Some(Commands::Eval { code }) => {
             let result = auto_lang::run(&code).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", result);
+            output_success(ai_mode, &result);
         }
         Some(Commands::OldRepl) => {
             auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
         Some(Commands::Config { path }) => {
             let code = std::fs::read_to_string(path.as_str())
-                .map_err(|e| miette::miette!("Failed to read file: {}", e))?;
+                .map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Io(format!("Failed to read file: {}", e))));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("Failed to read file: {}", e)
+                })?;
             let args = auto_val::Obj::new();
             let c = auto_lang::eval_config_with_vm(code.as_str(), &args).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", c.repr());
+            output_success(ai_mode, &c.repr());
         }
         Some(Commands::C { path, target }) => {
             if let Some(target_val) = target {
-                std::env::set_var("AUTO_TARGET", target_val);
+                // SAFETY: set_var is safe in single-threaded context during CLI startup
+                #[allow(deprecated)]
+                unsafe {
+                    std::env::set_var("AUTO_TARGET", target_val);
+                }
             }
             let c = auto_lang::trans_c(path.as_str()).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", c);
+            output_success(ai_mode, &c);
         }
         Some(Commands::Rust { path }) => {
             let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", r);
+            output_success(ai_mode, &r);
         }
         Some(Commands::Python { path }) => {
             let py = auto_lang::trans_python(path.as_str()).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", py);
+            output_success(ai_mode, &py);
         }
         Some(Commands::JavaScript { path }) => {
             let js = auto_lang::trans_javascript(path.as_str()).map_err(|e| {
-                if matches!(format, OutputFormat::Json) {
+                if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", js);
+            output_success(ai_mode, &js);
         }
         Some(Commands::A2cStdlib) => {
             cmd_a2c_stdlib::run()?;

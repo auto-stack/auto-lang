@@ -27,10 +27,6 @@ use auto.io: say
 // data structures used in most programs. These types provide dynamic collection
 // functionality backed by efficient Rust implementations (Vec, HashMap, HashSet,
 // VecDeque, BTreeMap).
-const a = b
-
-const DefaultStorage = HeapStorage
-
 use auto.list: List
 use auto.hashmap: HashMap
 use auto.hashset: HashSet

@@ -3,7 +3,7 @@ spec Calculator {
     fn multiply(a int, b int) int
 }
 
-type MathEngine {
+type MathEngine as Calculator {
     fn add(a int, b int) int {
         a + b
     }
@@ -19,6 +19,7 @@ type Computer {
 
 fn main() {
     let comp = Computer()
+    // Now use comp as a Calculator 
     let result1 = comp.add(5, 3)
     let result2 = comp.multiply(4, 7)
     print(result1)

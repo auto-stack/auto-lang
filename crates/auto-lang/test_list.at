@@ -22,4 +22,76 @@ fn main() {
     let last = list.pop()
     say("Popped: " + last)
     say("New length: " + list.len())
+
+    // 抢最快
+    let fast = [cdn_a(), cdn_b()].first_resp().?
+    
+    // 要一个成功的
+    let data = [server_a(), server_b()].first_ok().?
+    
+    // 等待所有的结果都返回，100ms超时，可能有失败结果
+    let users = [
+        create_user("alice"),
+        create_user("bob"),
+        create_user("charlie"),
+    ].all_resp(timeout: 100)
+
+    // 等待所有的结果都成功，最大重试次数为3，结果都为成功
+    let users = [
+        create_user("alice"),
+        create_user("bob"),
+        create_user("charlie"),
+    ].all_ok(retry: 3)
+
+
+    // 假设这个函数的返回是~User，它就是一个异步函数
+    fn fetch_user(id int) ~User {
+        // ...
+    }
+
+    // 单个Future，等待结果，此时user1的类型是User
+    let user1 = fetch_user(1).await
+
+    // 单个Future，不等待结果，此时`.go`返回的仍然是个Future
+    let future2 = fetch_user(2).go
+
+    // 此时可以去做其他的事情
+    let user3 = fetch_user(3).await
+
+    // 最后，等待future2结束
+    let user2 = future2.await
+
 }
+
+// 编译期计算斐波那契数列的第 20 项
+fn fib(n int) int {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+// 编译期执行代码块，结果嵌入到运行时代码中
+const FIB_20 int = #{ fib(20) }
+    
+
+
+// 根据编译期条件生成不同代码
+#is get_target_os() {
+    "windows" => {
+        fn get_path_sep() str {
+            return "\\"
+        }
+    }
+    "linux" => {
+        fn get_path_sep() str {
+            return "/"
+        }
+    }
+    else => {
+        fn get_path_sep() str {
+            return "/"
+        }
+    }
+}
+

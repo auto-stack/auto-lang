@@ -1,30 +1,46 @@
-# KnowledgeMap Data Loading Design
+# 149 - KnowledgeMap Data Loading Design and Implementation
 
-**Goal:** Replace static placeholder content in KnowledgeMap with real data loaded from JSON, matching the reference implementation.
+Date: 2026-03-25
+Status: Planned
 
-**Approach:** Define data in AutoLang .at files, transpile to JSON, load at runtime.
+## Objective
+
+Replace static placeholder content in KnowledgeMap with real data loaded from JSON at runtime, matching the reference implementation.
+
+## Approach
+
+Define data in AutoLang .at files, transpile to JSON, load at runtime using `Json.load()` function.
+
+## Reference
+
+- Reference implementation: `D:\gitee\QuickStart\09_SettingUpComponentNavigation\09_Complete\features\map\`
+- MapData.json: `features\map\src\main\resources\rawfile\MapData.json`
 
 ## Data Types
 
 ```auto
 // Types.at - Data types for Knowledge Map
 
+/// Knowledge base item (e.g., "指南 - DevEco Studio")
 type KnowledgeBaseItem {
     type str      // "指南", "准备", "视频教程", "学习与获取证书"
     title str     // "注册账号", "DevEco Studio", etc.
 }
 
+/// Material section within a learning phase
 type Material {
     subtitle str
     knowledgeBase KnowledgeBaseItem[]
 }
 
+/// Learning section/phase in the knowledge map
 type Section {
     title str
     brief str
     materials Material[]
 }
 
+/// Nav bar item for navigation list
 type NavBarItemType {
     order str     // "01", "02", etc.
     title str
@@ -37,16 +53,6 @@ type NavBarItemType {
 // MapData.at - Knowledge map data
 
 use Types
-
-let navBarList NavBarItemType[] = [
-    { order: "01", title: "准备与学习" },
-    { order: "02", title: "构建应用" },
-    { order: "03", title: "应用测试" },
-    { order: "04", title: "上架" },
-    { order: "05", title: "运营增长" },
-    { order: "06", title: "商业变现" },
-    { order: "07", title: "更多" }
-]
 
 let sections Section[] = [
     {
@@ -79,27 +85,28 @@ let sections Section[] = [
 ]
 ```
 
-## NavBarItem Widget
+## Widgets
+
+### NavBarItem Widget
 
 ```auto
 // NavBarItem.at - Navigation bar item component
 
-use Types
-
 widget NavBarItem {
     model {
-        #[Consume("pathStack")] pathStack NavPathStack
-        item NavBarItemType
+        @Consume("pathStack") pathStack NavPathStack
+        order str
+        title str
         currentIndex int
         index int
     }
 
     view {
         Row {
-            Text item.order {
+            Text order {
                 style: "text-xl font-bold text-gray-800 mr-1.5"
             }
-            Text item.title {
+            Text title {
                 style: "text-base font-medium text-gray-800"
             }
             Image "$r('app.media.ic_arrow')" {
@@ -113,7 +120,7 @@ widget NavBarItem {
 }
 ```
 
-## KnowledgeMap Widget
+### KnowledgeMap Widget
 
 ```auto
 // KnowledgeMap.at - Knowledge Map tab content
@@ -124,19 +131,14 @@ use Types
 
 widget KnowledgeMap {
     model {
-        #[Provide("pathStack")] pathStack NavPathStack = NavPathStack()
+        @Provide("pathStack") pathStack NavPathStack = NavPathStack()
         currentIndex int = -1
-        navBarList NavBarItemType[] = []
         sections Section[] = []
     }
 
     lifecycle {
         aboutToAppear() {
-            let data = Json.load("MapData.json")
-            this.sections = data
-            for i, section in this.sections {
-                this.navBarList.push({ order: format("{:02d}", i + 1), title: section.title })
-            }
+            this.sections = Json.load("MapData.json")
         }
     }
 
@@ -154,9 +156,14 @@ widget KnowledgeMap {
                         style: "text-sm text-gray-600 text-justify"
                     }
                     List {
-                        for i, item in navBarList {
+                        for i, section in sections {
                             ListItem {
-                                NavBarItem(item: item, currentIndex: currentIndex, index: i)
+                                NavBarItem(
+                                    order: format("{:02d}", i + 1),
+                                    title: section.title,
+                                    currentIndex: currentIndex,
+                                    index: i
+                                )
                             }
                         }
                         style: "w-full mt-6"
@@ -176,7 +183,7 @@ widget KnowledgeMap {
 }
 ```
 
-## KnowledgeMapContent Widget
+### KnowledgeMapContent Widget
 
 ```auto
 // KnowledgeMapContent.at - Knowledge map content detail page
@@ -186,8 +193,8 @@ use MapData
 
 widget KnowledgeMapContent {
     model {
-        #[Consume("pathStack")] pathStack NavPathStack
-        #[NavParam("KnowledgeMapContent")] sectionIndex int = 0
+        @Consume("pathStack") pathStack NavPathStack
+        @NavParam("KnowledgeMapContent") sectionIndex int = 0
         section Section = sections[sectionIndex]
     }
 
@@ -203,13 +210,15 @@ widget KnowledgeMapContent {
                     }
                     for material in section.materials {
                         Col {
-                            Text material.subtitle {
-                                style: "text-sm font-medium mt-7 mb-2"
+                            if material.subtitle != "" {
+                                Text material.subtitle {
+                                    style: "text-sm font-medium mt-7 mb-2"
+                                }
                             }
                             Col {
                                 for item in material.knowledgeBase {
                                     Row {
-                                        Image "$r(TypeMapIcon[item.type])" {
+                                        Image "$r('app.media.ic_guide')" {
                                             style: "w-5 h-5"
                                         }
                                         Col {
@@ -258,6 +267,10 @@ getUIContext().getHostContext()?.resourceManager.getRawFileContent("MapData.json
     });
 ```
 
+**Required imports:**
+- `import { BusinessError } from '@kit.BasicServicesKit';`
+- `import { util } from '@kit.ArkTS';`
+
 ### 2. lifecycle Block Support
 
 Parse and generate `aboutToAppear()` lifecycle method:
@@ -281,7 +294,6 @@ aboutToAppear(): void {
 ### 3. Data File to JSON
 
 Transpile `MapData.at` data definitions to `MapData.json`:
-
 - Copy generated JSON to `entry/src/main/resources/rawfile/MapData.json`
 
 ### 4. for i, item in list Syntax
@@ -300,6 +312,23 @@ ForEach(this.navBarList, (item: NavBarItemType, i: number) => {
 }, (item: NavBarItemType, i: number) => i.toString())
 ```
 
+## Implementation Tasks
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 0 | Create Types.at with data type definitions | Pending |
+| 1 | Create MapData.at with full data (7 sections) | Pending |
+| 2 | Add lifecycle block parsing in parser | Pending |
+| 3 | Add for-index loop parsing | Pending |
+| 4 | Generate for-index to ForEach with index | Pending |
+| 5 | Add Json.load() function support | Pending |
+| 6 | Generate aboutToAppear lifecycle method | Pending |
+| 7 | Rewrite KnowledgeMap with JSON loading | Pending |
+| 8 | Create NavBarItem widget | Pending |
+| 9 | Rewrite KnowledgeMapContent with materials | Pending |
+| 10 | Generate MapData.json to rawfile | Pending |
+| 11 | Generate and test | Pending |
+
 ## Files to Create/Modify
 
 | File | Action |
@@ -310,8 +339,39 @@ ForEach(this.navBarList, (item: NavBarItemType, i: number) => {
 | `examples/quickstart/05-Nav/KnowledgeMap.at` | Rewrite - with JSON loading |
 | `examples/quickstart/05-Nav/KnowledgeMapContent.at` | Rewrite - with materials display |
 | `crates/auto-lang/src/ui_gen/ark/generator.rs` | Modify - Json.load, lifecycle, for-index |
+| `crates/auto-lang/src/parser.rs` | Modify - lifecycle block, for-index |
+| `crates/auto-lang/src/aura/types.rs` | Modify - AuraLifecycle struct |
+| `crates/auto-lang/src/ast.rs` | Modify - ForIn index field |
 
-## Reference
+## Dependencies
 
-- Reference implementation: `D:\gitee\QuickStart\09_SettingUpComponentNavigation\09_Complete\features\map\`
-- MapData.json: `features\map\src\main\resources\rawfile\MapData.json`
+- Task 2-3 (parser) can run in parallel
+- Task 4-6 (generator) depend on Task 2-3
+- Task 7-9 (widgets) depend on Task 4-6
+- Task 10-11 (integration) depend on all previous
+
+## Risk Areas
+
+1. **Json.load async**: ArkTS resourceManager is async, need callback handling
+2. **Type mapping**: Complex nested types need correct interface generation
+3. **Index binding**: ForEach key function needs proper index handling
+
+## Testing Strategy
+
+1. **Unit Tests**: Add a2ark test for for-index and Json.load
+2. **Integration Tests**: Generate ArkTS and compare with reference patterns
+3. **Manual Testing**: Run in DevEco Studio, verify navigation and data display
+
+## Success Criteria
+
+- KnowledgeMap loads data from JSON at runtime
+- All 7 sections display correctly
+- NavBarItem list shows with correct order numbers
+- Navigation to detail page works
+- Detail page shows materials with subtitles
+
+## Files Merged
+
+This document merges:
+- `2026-03-25-knowledgemap-data-loading-design.md` (Design)
+- `2026-03-25-knowledgemap-data-loading-plan.md` (Implementation Plan)
