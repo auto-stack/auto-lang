@@ -134,6 +134,31 @@ impl ArkModifierDsl {
             }
         }
 
+        // Card default styling (ArkUI has no built-in Card, so we add card-like styling to Column)
+        // Only apply if parent_tag is "card" or "Card"
+        if parent_tag.map_or(false, |t| t.to_lowercase() == "card") {
+            // Default borderRadius (only if not specified)
+            let has_border_radius = style_str.contains("rounded") || style.border_radius.is_some();
+            if !has_border_radius {
+                modifiers.push(".borderRadius(12)".to_string());
+            }
+            // Default backgroundColor (only if not specified)
+            let has_bg = style_str.contains("bg-") || style.background_color.is_some();
+            if !has_bg {
+                modifiers.push(".backgroundColor(Color.White)".to_string());
+            }
+            // Default shadow (always add for card appearance)
+            if !style_str.contains("shadow-") && style.shadow.is_none() {
+                modifiers.push(".shadow({ radius: 12, color: '#00000020', offsetX: 2, offsetY: 4 })".to_string());
+            }
+            // Default padding (only if not specified)
+            let has_padding = style_str.contains("p-") || style_str.contains("px-") || style_str.contains("py-")
+                || style.padding.all.is_some() || style.padding.x.is_some() || style.padding.y.is_some();
+            if !has_padding {
+                modifiers.push(".padding(16)".to_string());
+            }
+        }
+
         modifiers
     }
 
@@ -194,14 +219,34 @@ impl ArkModifierDsl {
             modifiers.push(self.dimension_to_border_radius(radius));
         }
 
-        // Align items (for Column/Row containers)
-        if let Some(align) = &style.align_items {
-            modifiers.push(self.align_items_to_modifier(align, parent_tag));
-        }
+        // Align items and justify content
+        // For Stack (box): use .align(Alignment) instead of alignItems/justifyContent
+        // For Column/Row: use .alignItems() and .justifyContent()
+        let is_stack = parent_tag.map(|t| t.to_lowercase() == "box" || t == "Stack").unwrap_or(false);
 
-        // Justify content (for Column/Row containers)
-        if let Some(justify) = &style.justify_content {
-            modifiers.push(self.justify_content_to_modifier(justify));
+        if is_stack {
+            // Stack uses .align() for content alignment
+            // Map alignItems + justifyContent to Alignment
+            if let Some(align) = &style.align_items {
+                let alignment = match align {
+                    AlignItems::Start => "Alignment.TopStart",
+                    AlignItems::Center => "Alignment.Center",
+                    AlignItems::End => "Alignment.BottomEnd",
+                    AlignItems::Stretch => "Alignment.Center", // No direct equivalent
+                    AlignItems::Baseline => "Alignment.Center", // No direct equivalent
+                };
+                modifiers.push(format!(".align({})", alignment));
+            }
+            // Stack doesn't support justifyContent - skip it
+        } else {
+            // Column/Row use alignItems and justifyContent
+            if let Some(align) = &style.align_items {
+                modifiers.push(self.align_items_to_modifier(align, parent_tag));
+            }
+
+            if let Some(justify) = &style.justify_content {
+                modifiers.push(self.justify_content_to_modifier(justify));
+            }
         }
 
         // Font family

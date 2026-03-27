@@ -526,6 +526,7 @@ mod tests {
             props: vec![],
             computed: None,
             routes: None,
+            lifecycle: vec![],
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

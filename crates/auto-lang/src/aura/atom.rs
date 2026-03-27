@@ -471,6 +471,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let atom = to_atom(&widget);
@@ -507,6 +508,7 @@ mod tests {
                 handlers: HashMap::new(),
                 props: vec![],
                 routes: None,
+                lifecycle: vec![],
             }],
             messages: vec![],
             app: Some(AuraApp {

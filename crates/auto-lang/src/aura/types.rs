@@ -70,6 +70,10 @@ pub struct AuraRoute {
     /// Maps to `@/pages/{module}.vue` in Vue generator
     pub module: String,
 
+    /// Actual widget name from the source file (e.g., "ListPage" from listpage.at)
+    /// This is used for imports and component references
+    pub widget_name: String,
+
     /// Extracted parameters from path (e.g., ["id"] from "/user/:id")
     pub params: Vec<String>,
 }
@@ -134,12 +138,57 @@ impl AuraLifecycle {
 
 impl From<RouteDef> for AuraRoute {
     fn from(route: RouteDef) -> Self {
+        // Derive widget_name from module name
+        // Use smart capitalization that handles common patterns
+        let widget_name = capitalize_module(&route.module);
         AuraRoute {
             path: route.path,
             module: route.module,
+            widget_name,
             params: route.params,
         }
     }
+}
+
+/// Capitalize module name to widget name using smart word detection
+///
+/// Handles common patterns:
+/// - "listpage" -> "ListPage"
+/// - "gridpage" -> "GridPage"
+/// - "listitem" -> "ListItem"
+/// - "button" -> "Button"
+fn capitalize_module(module: &str) -> String {
+    // Common word boundaries to detect
+    const WORD_BOUNDARIES: &[&str] = &[
+        "page", "item", "card", "list", "grid", "box", "text", "input",
+        "button", "switch", "slider", "checkbox", "radio", "toggle",
+        "image", "icon", "badge", "chip", "tab", "table", "progress",
+        "header", "footer", "nav", "menu", "sidebar", "panel", "modal",
+        "dialog", "form", "field", "area", "view", "screen", "widget"
+    ];
+
+    let lower = module.to_lowercase();
+
+    // Try to find word boundaries
+    for word in WORD_BOUNDARIES {
+        if lower.ends_with(word) && lower.len() > word.len() {
+            let prefix = &lower[..lower.len() - word.len()];
+            let capitalized_prefix = capitalize_first(prefix);
+            let capitalized_word = capitalize_first(word);
+            return format!("{}{}", capitalized_prefix, capitalized_word);
+        }
+    }
+
+    // Fallback: simple capitalization
+    capitalize_first(module)
+}
+
+/// Capitalize the first letter of a string
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+    let rest: String = chars.collect();
+    format!("{}{}", first, rest)
 }
 
 impl From<RoutesBlock> for AuraRoutes {
@@ -793,6 +842,7 @@ mod tests {
         let route = AuraRoute {
             path: "/user/:id".to_string(),
             module: "user".to_string(),
+            widget_name: "User".to_string(),
             params: vec!["id".to_string()],
         };
 
@@ -807,11 +857,13 @@ mod tests {
             AuraRoute {
                 path: "/".to_string(),
                 module: "index".to_string(),
+                widget_name: "Index".to_string(),
                 params: vec![],
             },
             AuraRoute {
                 path: "/user/:id".to_string(),
                 module: "user".to_string(),
+                widget_name: "User".to_string(),
                 params: vec!["id".to_string()],
             },
         ]);

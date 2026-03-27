@@ -603,6 +603,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let result = generate_msg_enum(&widget);

@@ -6164,6 +6164,7 @@ mod tests {
             props: vec![],
             computed: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = VueGenerator::new();
@@ -6699,16 +6700,19 @@ mod tests {
             AuraRoute {
                 path: "/".to_string(),
                 module: "index".to_string(),
+                widget_name: "Index".to_string(),
                 params: vec![],
             },
             AuraRoute {
                 path: "/about".to_string(),
                 module: "about".to_string(),
+                widget_name: "About".to_string(),
                 params: vec![],
             },
             AuraRoute {
                 path: "/user/:id".to_string(),
                 module: "user".to_string(),
+                widget_name: "User".to_string(),
                 params: vec!["id".to_string()],
             },
         ];

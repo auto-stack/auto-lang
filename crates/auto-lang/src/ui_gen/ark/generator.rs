@@ -161,6 +161,31 @@ impl ArkGenerator {
         BUILTIN_COMPONENTS.contains(&name)
     }
 
+    /// Check if a built-in component cannot have children
+    /// Some ArkUI components like Radio, Slider, Progress, Image cannot have child components
+    fn component_cannot_have_children(name: &str) -> bool {
+        const NO_CHILDREN_COMPONENTS: &[&str] = &[
+            "Radio", "Slider", "Progress", "Image", "Rating", "Checkbox", "Toggle",
+            "Switch", "Badge", "Blank", "Divider", "Span", "TextArea", "TextInput",
+        ];
+        NO_CHILDREN_COMPONENTS.contains(&name)
+    }
+
+    /// Check if a component supports trailing lambda (can have children in ArkTS)
+    /// Only built-in container components and custom components with @BuilderParam support this
+    fn component_supports_trailing_lambda(name: &str) -> bool {
+        // Built-in container components that support trailing lambda
+        const CONTAINER_COMPONENTS: &[&str] = &[
+            "Column", "Row", "Stack", "Flex", "Scroll", "List", "Grid", "Swiper",
+            "Tabs", "TabContent", "Navigation", "NavDestination", "NavRouter",
+            "Button", "Card", "Panel", "SideBarContainer", "Refresh", "ColumnSplit",
+            "RowSplit", "RelativeContainer", "GridRow", "GridCol", "WaterFlow",
+            "RelativeContainer", "Form", "AlphabetIndexer",
+        ];
+        // Check if it's a known container component
+        CONTAINER_COMPONENTS.contains(&name)
+    }
+
     /// Check if element is a Tabs container with TabsList + TabsContent children
     fn is_tabs_pattern(node: &AuraNode) -> bool {
         match node {
@@ -465,7 +490,7 @@ impl ArkGenerator {
 
         // Find the index/default route component (first route or route with path "/")
         let index_component = if let Some(ref routes) = widget.routes {
-            routes.routes.first().map(|r| Self::module_to_component(&r.module))
+            routes.routes.first().map(|r| r.widget_name.clone())
         } else {
             None
         };
@@ -477,8 +502,8 @@ impl ArkGenerator {
         // For App widget with routes, import child pages
         if let Some(ref routes) = widget.routes {
             for route in &routes.routes {
-                // Import uses actual widget name (e.g., Index from ./Index)
-                let component_name = Self::capitalize_module(&route.module);
+                // Import uses actual widget name (e.g., ListPage from ./ListPage)
+                let component_name = &route.widget_name;
                 lines.push(format!("import {{ {} }} from './{}';", component_name, component_name));
             }
             if !routes.routes.is_empty() {
@@ -491,6 +516,10 @@ impl ArkGenerator {
             .filter(|w| {
                 // Only import if it's used in the view tree
                 Self::widget_uses_custom_component(&widget.view_tree, w)
+            })
+            .filter(|w| {
+                // Don't import built-in components
+                !Self::is_builtin_component(w)
             })
             .collect();
 
@@ -633,9 +662,17 @@ impl ArkGenerator {
         if let Some(ref routes) = widget.routes {
             for route in &routes.routes {
                 let builder_name = Self::page_to_builder_name(&route.module);
+                let component_name = &route.widget_name;
                 lines.push(format!("{}@Builder", self.indent()));
                 lines.push(format!("{}{}() {{", self.indent(), builder_name));
-                lines.push(format!("{}  {}()", self.indent(), Self::module_to_component(&route.module)));
+                // Check if this component can have children or supports trailing lambda
+                // Custom components (capitalized, not built-in) need @BuilderParam for trailing lambda
+                // So we only add { } for built-in containers that support it
+                if Self::component_cannot_have_children(component_name) || !Self::component_supports_trailing_lambda(component_name) {
+                    lines.push(format!("{}  {}()", self.indent(), component_name));
+                } else {
+                    lines.push(format!("{}  {}() {{ }}", self.indent(), component_name));
+                }
                 lines.push(format!("{}}}", self.indent()));
                 lines.push(String::new());
             }
@@ -645,14 +682,21 @@ impl ArkGenerator {
             lines.push(format!("{}buildNavDestination(name: string, param: Object) {{", self.indent()));
             let mut first = true;
             for route in &routes.routes {
-                let component_name = Self::module_to_component(&route.module);
+                let component_name = &route.widget_name;
                 if first {
                     lines.push(format!("{}  if (name === '{}') {{", self.indent(), route.module));
                     first = false;
                 } else {
                     lines.push(format!("{}  else if (name === '{}') {{", self.indent(), route.module));
                 }
-                lines.push(format!("{}    {}()", self.indent(), component_name));
+                // Check if this component can have children or supports trailing lambda
+                // Custom components (capitalized, not built-in) need @BuilderParam for trailing lambda
+                // So we only add { } for built-in containers that support it
+                if Self::component_cannot_have_children(component_name) || !Self::component_supports_trailing_lambda(component_name) {
+                    lines.push(format!("{}    {}()", self.indent(), component_name));
+                } else {
+                    lines.push(format!("{}    {}() {{ }}", self.indent(), component_name));
+                }
                 lines.push(format!("{}  }}", self.indent()));
             }
             lines.push(format!("{}}}", self.indent()));
@@ -870,8 +914,14 @@ impl ArkGenerator {
             }
             AuraNode::Outlet => {
                 // Outlet in navigation context - render index page directly
+                // Custom components don't support trailing lambda, so just call them
                 if let Some(index) = index_component {
-                    Ok(format!("{}()", index))
+                    // Check if this is a built-in container that supports trailing lambda
+                    if Self::component_supports_trailing_lambda(index) {
+                        Ok(format!("{}() {{ }}", index))
+                    } else {
+                        Ok(format!("{}()", index))
+                    }
                 } else {
                     Ok("// Outlet - no default route".to_string())
                 }
@@ -895,11 +945,13 @@ impl ArkGenerator {
         self.indent_level += 1;
 
         // Generate children (header, outlet, etc.)
+        // Pass has_routes=false for children so they don't get wrapped in Navigation again
         for child in children {
             // Pass index_component to handle Outlet replacement
-            let child_code = self.generate_node_with_routes(child, true, index_component)?;
+            let child_code = self.generate_node_with_routes(child, false, index_component)?;
+            // Push child's code as-is - it already has correct indentation
             for line in child_code.lines() {
-                lines.push(format!("{}{}", self.indent(), line));
+                lines.push(line.to_string());
             }
         }
 
@@ -934,11 +986,11 @@ impl ArkGenerator {
             let component_name = Self::module_to_component(&route.module);
             if route.module == "index" || i == 0 {
                 lines.push(format!("  if (name === '{}') {{", route.module));
-                lines.push(format!("    {}()", component_name));
+                lines.push(format!("    {}() {{ }}", component_name));
                 lines.push("  }".to_string());
             } else {
                 lines.push(format!("  else if (name === '{}') {{", route.module));
-                lines.push(format!("    {}()", component_name));
+                lines.push(format!("    {}() {{ }}", component_name));
                 lines.push("  }".to_string());
             }
         }
@@ -963,8 +1015,9 @@ impl ArkGenerator {
         // Generate children
         for child in children {
             let child_code = self.generate_node(child)?;
+            // Push child's code as-is - it already has correct indentation
             for line in child_code.lines() {
-                lines.push(format!("{}{}", self.indent(), line));
+                lines.push(line.to_string());
             }
         }
 
@@ -1105,34 +1158,67 @@ impl ArkGenerator {
                 // Generate modifiers (to be placed AFTER the component body)
                 let modifiers = self.generate_modifiers(&merged_props, events, widget.primary_prop.as_deref(), Some(tag));
 
-                // Start component call
-                lines.push(component_call);
+                // Start component call with current indentation
+                lines.push(format!("{}{}", self.indent(), component_call));
+
+                // Check if this component can have children
+                // Special case: Button with label argument cannot have children
+                let can_have_children = if component_name == "Button" && !content_arg.is_empty() {
+                    false
+                } else {
+                    widget.has_children
+                };
 
                 // Children - body comes BEFORE modifiers
                 // Use has_children from widget spec
-                if widget.has_children && !children.is_empty() {
+                if can_have_children && !children.is_empty() {
                     lines.last_mut().unwrap().push_str(" {");
                     self.indent_level += 1;
 
                     for child in children {
                         let child_code = self.generate_node(child)?;
+                        // Push child's code as-is - it already has correct indentation
+                        // because indent_level was incremented before generating it
                         for line in child_code.lines() {
-                            lines.push(format!("{}{}", self.indent(), line));
+                            lines.push(line.to_string());
                         }
                     }
 
                     self.indent_level -= 1;
-                    // Close body, then add modifiers on same line
+                    // Close body FIRST
                     let closing = format!("{}}}", self.indent());
-                    if modifiers.is_empty() {
-                        lines.push(closing);
-                    } else {
-                        lines.push(format!("{}{}", closing, modifiers));
+                    lines.push(closing);
+
+                    // Then add modifiers on separate lines (after the closing brace)
+                    if !modifiers.is_empty() {
+                        // Modifiers already have correct indentation from generate_modifiers
+                        for modifier_line in modifiers.lines() {
+                            if modifier_line.is_empty() {
+                                continue;
+                            }
+                            lines.push(modifier_line.to_string());
+                        }
                     }
                 } else {
-                    // No children - add modifiers directly
-                    if !modifiers.is_empty() {
-                        lines.last_mut().unwrap().push_str(&modifiers);
+                    // No children - if there are modifiers and component can have children, add empty body first
+                    if !modifiers.is_empty() && can_have_children {
+                        // Add empty body so modifiers can chain properly
+                        lines.last_mut().unwrap().push_str(" { }");
+                        // Add modifiers after the empty body
+                        for modifier_line in modifiers.lines() {
+                            if modifier_line.is_empty() {
+                                continue;
+                            }
+                            lines.push(modifier_line.to_string());
+                        }
+                    } else if !modifiers.is_empty() {
+                        // Component can't have children, just add modifiers directly
+                        for modifier_line in modifiers.lines() {
+                            if modifier_line.is_empty() {
+                                continue;
+                            }
+                            lines.push(modifier_line.to_string());
+                        }
                     }
                 }
             } else {
@@ -1145,23 +1231,12 @@ impl ArkGenerator {
 
             // Generate props as constructor arguments
             let props_str = self.generate_custom_component_props(props);
-            lines.push(format!("{}({})", component_name, props_str));
+            lines.push(format!("{}{}({})", self.indent(), component_name, props_str));
 
-            // Handle children if any
-            if !children.is_empty() {
-                lines.last_mut().unwrap().push_str(" {");
-                self.indent_level += 1;
+            // Custom components should NOT have trailing lambda
+            // Only built-in containers support @BuilderParam
+            // The component call is complete - no body or extra parens needed
 
-                for child in children {
-                    let child_code = self.generate_node(child)?;
-                    for line in child_code.lines() {
-                        lines.push(format!("{}{}", self.indent(), line));
-                    }
-                }
-
-                self.indent_level -= 1;
-                lines.push(format!("{}}}", self.indent()));
-            }
         } else {
             // Unknown component - emit as comment
             lines.push(format!("/* Unknown component: {} */", tag));
@@ -1204,6 +1279,7 @@ impl ArkGenerator {
         let dsl = ArkModifierDsl::new();
 
         // Process props - extract string/number values from AuraExpr
+        let mut has_style_prop = false;
         for (key, value) in props {
             // Skip props that are handled as constructor arguments (primary_prop)
             if let Some(primary) = primary_prop {
@@ -1213,6 +1289,7 @@ impl ArkGenerator {
             }
             // Handle style prop using ArkModifierDsl
             if key == "style" || key == "class" {
+                has_style_prop = true;
                 if let Some(style_str) = self.extract_style_string(value) {
                     let style_modifiers = dsl.convert_style_with_tag(&style_str, tag);
                     modifiers.extend(style_modifiers);
@@ -1222,6 +1299,13 @@ impl ArkGenerator {
             if let Some(modifier) = self.prop_to_modifier(key, value) {
                 modifiers.push(modifier);
             }
+        }
+
+        // Apply component-specific defaults (e.g., card styling)
+        // This is called even when there's no style prop to add default styling
+        if !has_style_prop {
+            let default_modifiers = dsl.convert_style_with_tag("", tag);
+            modifiers.extend(default_modifiers);
         }
 
         // Process events - generate onClick handlers
@@ -1747,8 +1831,9 @@ impl ArkGenerator {
 
         for child in body {
             let child_code = self.generate_node(child)?;
+            // Push child's code as-is - it already has correct indentation
             for line in child_code.lines() {
-                lines.push(format!("{}{}", self.indent(), line));
+                lines.push(line.to_string());
             }
         }
 
@@ -1856,8 +1941,9 @@ impl ArkGenerator {
 
             for child in children {
                 let child_code = self.generate_node(child)?;
+                // Push child's code as-is - it already has correct indentation
                 for line in child_code.lines() {
-                    lines.push(format!("{}{}", self.indent(), line));
+                    lines.push(line.to_string());
                 }
             }
 
@@ -1886,8 +1972,9 @@ impl ArkGenerator {
 
         for child in then_body {
             let child_code = self.generate_node(child)?;
+            // Push child's code as-is - it already has correct indentation
             for line in child_code.lines() {
-                lines.push(format!("{}{}", self.indent(), line));
+                lines.push(line.to_string());
             }
         }
 
@@ -1899,8 +1986,9 @@ impl ArkGenerator {
 
             for child in else_nodes {
                 let child_code = self.generate_node(child)?;
+                // Push child's code as-is - it already has correct indentation
                 for line in child_code.lines() {
-                    lines.push(format!("{}{}", self.indent(), line));
+                    lines.push(line.to_string());
                 }
             }
 
@@ -2017,6 +2105,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2054,6 +2143,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2097,6 +2187,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2137,9 +2228,11 @@ mod tests {
                 routes: vec![AuraRoute {
                     path: "/".to_string(),
                     module: "index".to_string(),
+                    widget_name: "Index".to_string(),
                     params: vec![],
                 }],
             }),
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2193,6 +2286,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None, // No routes - simple entry page
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2246,6 +2340,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None, // No routes - this is a child page
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2302,6 +2397,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2342,6 +2438,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = ArkGenerator::new();
@@ -2530,5 +2627,10 @@ mod tests {
     #[test]
     fn test_017_decorators() {
         test_a2ark("017_decorators").unwrap();
+    }
+
+    #[test]
+    fn test_018_card() {
+        test_a2ark("018_card").unwrap();
     }
 }

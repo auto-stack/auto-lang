@@ -1,0 +1,11 @@
+// Test: Card component
+// Card maps to Column with default card-like styling
+
+widget CardTest {
+    view {
+        card {
+            text "Card Title" {}
+            text "Card content goes here" {}
+        }
+    }
+}

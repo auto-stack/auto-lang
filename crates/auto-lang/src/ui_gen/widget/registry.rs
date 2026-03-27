@@ -203,12 +203,12 @@ impl WidgetRegistry {
         });
         self.register(spacer);
 
-        // Card
+        // Card - maps to Column with card-like styling (ArkUI has no built-in Card)
         let mut card = WidgetSpec::new("Card", WidgetCategory::Layout)
             .with_alias("card");
         card.has_children = true;
         card.backends.insert("ark".to_string(), BackendMapping {
-            component: "Card".to_string(),
+            component: "Column".to_string(), // Use Column instead of Card
             import: None,
             props: HashMap::new(),
             events: HashMap::new(),

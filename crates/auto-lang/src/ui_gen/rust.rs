@@ -849,6 +849,7 @@ mod tests {
             props: vec![],
             computed: vec![],
             routes: None,
+            lifecycle: vec![],
         };
 
         let mut gen = RustGenerator::new();
