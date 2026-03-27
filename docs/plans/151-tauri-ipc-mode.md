@@ -124,14 +124,26 @@ Expr::Ident(name) => {
 }
 ```
 
-#### 1.3 Method Call Translations
+#### 1.3 Method Call Translations ✅
+
+Implemented in `crates/auto-lang/src/trans/rust.rs` (Plan 151 Phase 1.3).
 
 | Auto Method | Rust Translation |
 |-------------|------------------|
 | `.to_lower()` | `.to_lowercase()` |
 | `.to_upper()` | `.to_uppercase()` |
 | `.length()` | `.len()` |
-| `.contains(s)` | `.contains(&s)` |
+| `.is_empty()` | `.is_empty()` |
+| `.trim()` | `.trim()` |
+| `.starts_with()` | `.starts_with()` |
+| `.ends_with()` | `.ends_with()` |
+| `.push()` | `.push()` |
+| `.pop()` | `.pop()` |
+| `.clear()` | `.clear()` |
+| `.to_array()` | `.clone()` |
+| `.contains(s)` | `.contains(&s)` (auto-borrow) |
+| `.retain()` | `.retain()` |
+| `.to_string()` | `.to_string()` |
 
 #### 1.4 Closure with Block Body
 

@@ -937,6 +937,38 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Block expression: { stmt1; stmt2; expr }
+            Expr::Block(body) => {
+                write!(out, "{{ ")?;
+                for stmt in &body.stmts {
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::Store(store) => {
+                            self.store(store, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::Return(ret_expr) => {
+                            write!(out, "return ")?;
+                            self.expr(ret_expr, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::EmptyLine(n) => {
+                            for _ in 0..*n {
+                                write!(out, "\n")?;
+                            }
+                        }
+                        _ => {
+                            write!(out, "/* unsupported stmt in block */ ")?;
+                        }
+                    }
+                }
+                write!(out, "}}")?;
+                Ok(())
+            }
+
             // Closure (Plan 060): (params) => body or param => body
             Expr::Closure(closure) => {
                 write!(out, "|")?;
@@ -1132,6 +1164,59 @@ impl RustTrans {
                             self.arg(arg, out)?;
                             if i < call.args.args.len() - 1 {
                                 write!(out, ", ")?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // Plan 151 Phase 1.3: Method call translations
+        // Translate Auto method names to Rust equivalents
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                if let Expr::Ident(method_name) = rhs.as_ref() {
+                    let rust_method = match method_name.as_str() {
+                        // String methods
+                        "to_lower" => Some("to_lowercase"),
+                        "to_upper" => Some("to_uppercase"),
+                        "length" => Some("len"),
+                        "is_empty" => Some("is_empty"),
+                        "trim" => Some("trim"),
+                        "starts_with" => Some("starts_with"),
+                        "ends_with" => Some("ends_with"),
+                        // Collection methods
+                        "push" => Some("push"),
+                        "pop" => Some("pop"),
+                        "clear" => Some("clear"),
+                        "to_array" => Some("clone"),
+                        "contains" => Some("contains"),
+                        "retain" => Some("retain"),
+                        // Type conversion
+                        "to_string" => Some("to_string"),
+                        _ => None,
+                    };
+
+                    if let Some(rust_name) = rust_method {
+                        self.expr(lhs, out)?;
+                        write!(out, ".{}(", rust_name)?;
+                        // Special handling for .contains() - auto-borrow string args
+                        if method_name.as_str() == "contains" {
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                write!(out, "&")?;
+                                self.arg(arg, out)?;
+                                if i < call.args.args.len() - 1 {
+                                    write!(out, ", ")?;
+                                }
+                            }
+                        } else {
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                self.arg(arg, out)?;
+                                if i < call.args.args.len() - 1 {
+                                    write!(out, ", ")?;
+                                }
                             }
                         }
                         write!(out, ")")?;
