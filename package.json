@@ -2,5 +2,8 @@
   "dependencies": {
     "embla-carousel-vue": "^8.6.0",
     "vue-router": "^5.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
   }
 }

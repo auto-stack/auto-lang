@@ -115,12 +115,50 @@ impl RouteDef {
 
     /// Convert to AuraRoute for compatibility
     pub fn to_aura_route(&self) -> AuraRoute {
+        // Derive widget_name from module name using smart capitalization
+        let widget_name = capitalize_module(&self.module);
         AuraRoute {
             path: self.path.clone(),
             module: self.module.clone(),
+            widget_name,
             params: self.params.clone(),
         }
     }
+}
+
+/// Capitalize module name to widget name using smart word detection
+fn capitalize_module(module: &str) -> String {
+    // Common word boundaries to detect
+    const WORD_BOUNDARIES: &[&str] = &[
+        "page", "item", "card", "list", "grid", "box", "text", "input",
+        "button", "switch", "slider", "checkbox", "radio", "toggle",
+        "image", "icon", "badge", "chip", "tab", "table", "progress",
+        "header", "footer", "nav", "menu", "sidebar", "panel", "modal",
+        "dialog", "form", "field", "area", "view", "screen", "widget"
+    ];
+
+    let lower = module.to_lowercase();
+
+    // Try to find word boundaries
+    for word in WORD_BOUNDARIES {
+        if lower.ends_with(word) && lower.len() > word.len() {
+            let prefix = &lower[..lower.len() - word.len()];
+            let capitalized_prefix = capitalize_first(prefix);
+            let capitalized_word = capitalize_first(word);
+            return format!("{}{}", capitalized_prefix, capitalized_word);
+        }
+    }
+
+    // Fallback: simple capitalization
+    capitalize_first(module)
+}
+
+/// Capitalize the first letter of a string
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+    let rest: String = chars.collect();
+    format!("{}{}", first, rest)
 }
 
 impl From<AuraRoute> for RouteDef {
