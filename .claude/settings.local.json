@@ -122,7 +122,12 @@
       "Read(//d/gitee/QuickStart/09_SettingUpComponentNavigation/09_Complete/**)",
       "Bash(../../target/release/auto.exe gen:*)",
       "Bash(d:/autostack/auto-lang/target/release/auto.exe gen:*)",
-      "Bash(../../../target/release/auto.exe gen:*)"
+      "Bash(../../../target/release/auto.exe gen:*)",
+      "Bash(cd \"D:/autostack/auto-lang/examples/unified-demo/ark\"entry/src/main/ets/pages \")",
+      "Bash(hvigorw assemble:*)",
+      "Read(//d/gitcode/harmony/Login/**)",
+      "mcp__web-search-prime__web_search_prime",
+      "Bash(D:/autostack/auto-lang/target/release/auto.exe build:*)"
     ],
     "additionalDirectories": [
       "d:\\autostack\\auto-lang\\docs\\plans"

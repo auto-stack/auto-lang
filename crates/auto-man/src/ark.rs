@@ -129,10 +129,19 @@ impl ArkProject {
         let mut arkts_files: Vec<(String, String)> = Vec::new();
         let mut widget_names: Vec<String> = Vec::new();
 
-        // Process app.at if exists
+        // Process app.at if exists (check both front_dir and root_dir)
         let app_at = front_dir.join("app.at");
-        if app_at.exists() {
-            match Self::compile_at_file(&app_at, &name, true) {
+        let root_app_at = root_dir.join("app.at");
+        let app_at_to_use = if app_at.exists() {
+            app_at
+        } else if root_app_at.exists() {
+            root_app_at
+        } else {
+            app_at // default to front_dir join for error messages
+        };
+
+        if app_at_to_use.exists() {
+            match Self::compile_at_file(&app_at_to_use, &name, true) {
                 Ok((files, names)) => {
                     arkts_files.extend(files);
                     widget_names.extend(names);

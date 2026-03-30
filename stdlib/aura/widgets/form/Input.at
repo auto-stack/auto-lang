@@ -37,8 +37,12 @@ widget Input {
         inputType str = "text"    // text, password, email, number, search
         disabled bool = false
         focused bool = false
+        maxLength int = 0  // 0 means no limit
     }
 
+}
+
+widget Input {
     computed {
         inputClass => if .focused { "input focused" } else { "input" }
     }

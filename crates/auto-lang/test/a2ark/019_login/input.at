@@ -1,0 +1,11 @@
+widget TestGridRow {
+    view {
+        Grid (columns: { sm: 4, md: 8, lg: 12 }, gutter: { x: 12 }) {
+            GridItem (span: { sm: 4, md: 6, lg: 8 }, offset: { md: 1, lg: 2 }) {
+                Col (class: "w-full") {
+                    Text "Hello"
+                }
+            }
+        }
+    }
+}

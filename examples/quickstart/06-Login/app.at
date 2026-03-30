@@ -1,0 +1,8 @@
+// App.at - Main app entry point for Login demo
+
+/// Login page with responsive grid layout
+widget App {
+    view {
+        LoginPage {}
+    }
+}

@@ -35,20 +35,20 @@ export struct TestTabs {
     }
 
   build() {
-    Column() {
-              Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-                TabContent() {
+        Column() {
+        Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
+          TabContent() {
                   Text('Content 1')
-                }
-                .tabBar(this.tabBarBuilder('Tab 1', 0))
-                TabContent() {
+          }
+          .tabBar(this.tabBarBuilder('Tab 1', 0))
+          TabContent() {
                   Text('Content 2')
-                }
-                .tabBar(this.tabBarBuilder('Tab 2', 1))
-              }
-              .vertical(false)
-              .scrollable(false)
-              .backgroundColor('#F1F3F5')
+          }
+          .tabBar(this.tabBarBuilder('Tab 2', 1))
+        }
+        .vertical(false)
+        .scrollable(false)
+        .backgroundColor('#F1F3F5')
         }
   }
 }

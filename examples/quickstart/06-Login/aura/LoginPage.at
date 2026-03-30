@@ -1,0 +1,98 @@
+// LoginPage.at - Login page widget
+//
+/// AURA implementation of HarmonyOS Login example
+/// Reproduces the responsive grid layout from ArkTS
+
+/// Login page with responsive grid layout
+widget LoginPage {
+    model {
+        account str = ""
+        password str = ""
+    }
+
+    view {
+        Grid (columns: { sm: 4, md: 8, lg: 12 }, gutter: { x: 12 }) {
+            GridItem (span: { sm: 4, md: 6, lg: 8 }, offset: { md: 1, lg: 2 }) {
+                Col {
+                    style: "w-full"
+                    // Title component
+                    LoginTitle {}
+                    // Bottom component
+                    LoginBottom {}
+                }
+            }
+        }
+    }
+}
+
+/// Title component - logo and welcome text
+widget LoginTitle {
+    view {
+        Col {
+            style: "w-full h-[40%] justify-center items-center bg-gray-50"
+            Image (src: "app.media.icon") {
+                style: "w-16 h-16 mb-12"
+            }
+            Text "Login" {
+                style: "text-xl font-medium text-gray-800"
+            }
+            Text "More options" {
+                style: "text-sm text-gray-400 mt-2 mb-4"
+            }
+        }
+    }
+}
+
+/// Bottom component - login form
+widget LoginBottom {
+    model {
+        account str = ""
+        password str = ""
+    }
+
+    msg Msg {
+        UpdateAccount(str)
+        UpdatePassword(str)
+        Login
+        ShowToast
+    }
+
+    view {
+        Col {
+            style: "h-[60%] p-4 bg-gray-50"
+            // Input container
+            Col {
+                style: "w-full bg-white rounded-lg"
+                Input (value: .account, placeholder: "Account", maxLength: 11, inputType: "number", onchange: UpdateAccount) {}
+                Separator {
+                    style: "w-full h-[1px] mx-2 bg-gray-200"
+                }
+                Input (value: .password, placeholder: "Password", maxLength: 8, inputType: "password", onchange: UpdatePassword) {}
+            }
+            // Links row
+            Row {
+                style: "w-full justify-between mt-4 px-2"
+                Text "Message Login" (onclick: ShowToast) {
+                    style: "text-sm text-blue-500"
+                }
+                Text "Forgot Password" (onclick: ShowToast) {
+                    style: "text-sm text-blue-500"
+                }
+            }
+            // Login button
+            Button "Login" (onclick: Login) {
+                style: "w-full h-12 mt-6 bg-blue-500 text-white"
+            }
+            // Register link
+            Text "Register Account" (onclick: ShowToast) {
+                style: "text-sm text-blue-500 font-medium"
+            }
+        }
+    }
+    on {
+        UpdateAccount => { }
+        UpdatePassword => { }
+        Login => { }
+        ShowToast => { }
+    }
+}

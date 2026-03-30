@@ -8001,9 +8001,16 @@ impl<'a> Parser<'a> {
         self.next();
 
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();  // Skip empty lines after opening brace
+
         let mut variants = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();  // Skip empty lines before each variant
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
             let variant_name = self.cur.text.clone();
             self.next();
 
@@ -8025,6 +8032,7 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::Comma) {
                 self.next();
             }
+            self.skip_empty_lines();  // Skip empty lines after comma
         }
         self.expect(TokenKind::RBrace)?;
 

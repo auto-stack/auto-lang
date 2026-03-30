@@ -729,8 +729,11 @@ impl ArkGenerator {
         }
 
         // Check if root is a custom component (for App widget, needs container wrapper)
-        let root_is_custom_component = is_app_widget && !has_routes && self.is_custom_component_node(&widget.view_tree);
-        if root_is_custom_component {
+        // For @Entry components, ArkTS requires a container as the root.
+        // If the App widget doesn't have routes (which provide NavHostContainer),
+        // we need to wrap custom components in a Column.
+        let root_needs_container = is_app_widget && !has_routes && self.is_custom_component_node(&widget.view_tree);
+        if root_needs_container {
             // Wrap custom component in Column for @Entry requirement
             lines.push(format!("{}Column() {{", self.indent()));
             self.indent_level += 1;
@@ -743,7 +746,7 @@ impl ArkGenerator {
         }
 
         // Close Column wrapper for custom component
-        if root_is_custom_component {
+        if root_needs_container {
             self.indent_level -= 1;
             lines.push(format!("{}}}", self.indent()));
         }
@@ -1294,6 +1297,11 @@ impl ArkGenerator {
                     let style_modifiers = dsl.convert_style_with_tag(&style_str, tag);
                     modifiers.extend(style_modifiers);
                 }
+                continue;
+            }
+            // Skip "value" prop for TextInput - ArkTS doesn't have .value() method
+            // Value binding is handled through .onChange() callback instead
+            if key == "value" && tag.map_or(false, |t| t.to_lowercase() == "input") {
                 continue;
             }
             if let Some(modifier) = self.prop_to_modifier(key, value) {
@@ -2632,5 +2640,15 @@ mod tests {
     #[test]
     fn test_018_card() {
         test_a2ark("018_card").unwrap();
+    }
+
+    #[test]
+    fn test_019_login() {
+        test_a2ark("019_login").unwrap();
+    }
+
+    #[test]
+    fn test_020_msg_enum() {
+        test_a2ark("020_msg_enum").unwrap();
     }
 }

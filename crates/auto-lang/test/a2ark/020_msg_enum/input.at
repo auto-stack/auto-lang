@@ -1,0 +1,26 @@
+widget TestMsg {
+    model {
+        count int = 0
+    }
+
+    msg Msg {
+        Increment
+        Decrement
+        Reset
+    }
+
+    view {
+        Col {
+            Text "Count: {count}"
+            Button "Increment" (onclick: Increment) {}
+            Button "Decrement" (onclick: Decrement) {}
+            Button "Reset" (onclick: Reset) {}
+        }
+    }
+
+    on {
+        Increment => { }
+        Decrement => { }
+        Reset => { }
+    }
+}

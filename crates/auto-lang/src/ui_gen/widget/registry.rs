@@ -2664,12 +2664,12 @@ impl WidgetRegistry {
         });
         self.register(calendar_day);
 
-        // Grid
+        // Grid (maps to GridRow for responsive layout in ArkTS)
         let mut grid = WidgetSpec::new("Grid", WidgetCategory::Data)
             .with_alias("grid");
         grid.has_children = true;
         grid.backends.insert("ark".to_string(), BackendMapping {
-            component: "Grid".to_string(),
+            component: "GridRow".to_string(),
             import: None,
             props: HashMap::new(),
             events: HashMap::new(),
@@ -2691,12 +2691,12 @@ impl WidgetRegistry {
         });
         self.register(grid);
 
-        // GridItem
+        // GridItem (maps to GridCol for responsive layout in ArkTS)
         let mut grid_item = WidgetSpec::new("GridItem", WidgetCategory::Data)
             .with_alias("grid-item");
         grid_item.has_children = true;
         grid_item.backends.insert("ark".to_string(), BackendMapping {
-            component: "GridItem".to_string(),
+            component: "GridCol".to_string(),
             import: None,
             props: HashMap::new(),
             events: HashMap::new(),
