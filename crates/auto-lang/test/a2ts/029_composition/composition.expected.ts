@@ -14,8 +14,23 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 }
 
 
+class Wing {
+
+    fly(): void {
+    console.log("flying");
+}
+}
+
+class Duck {
+
+    fly(): void {
+    console.log("flying");
+}
+}
+
 function main(): void {
-    console.log("hello!");
+    const d = Duck();
+    d.fly();
 }
 
 main();

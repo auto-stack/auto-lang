@@ -15,7 +15,14 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    let x: number = 0;
+    while (true) {
+        x = x + 1;
+        if (x > 5) {
+        break;
+    }
+    }
+    console.log(x);
 }
 
 main();

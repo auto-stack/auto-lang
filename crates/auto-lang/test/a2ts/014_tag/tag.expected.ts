@@ -15,7 +15,20 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    const atom = Atom.Int(11);
+    
+
+    switch (atom) {
+        case Atom.Int(i):
+            console.log("Got Int:", i);
+            break;
+        case Atom.Char(c):
+            console.log("Got Char:", c);
+            break;
+        case Atom.Float(f):
+            console.log("Got Float:", f);
+            break;
+    }
 }
 
 main();

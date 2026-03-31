@@ -15,7 +15,15 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    
+
+    const obj = { x: 1, y: 2 };
+    console.log("obj");
+    
+
+
+    const pair = x: 10;
+    console.log("pair");
 }
 
 main();

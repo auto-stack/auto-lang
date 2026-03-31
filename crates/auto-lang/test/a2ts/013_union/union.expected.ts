@@ -15,7 +15,8 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    const my_union = MyUnion(i: 42);
+    console.log("int value:", my_union.i);
 }
 
 main();

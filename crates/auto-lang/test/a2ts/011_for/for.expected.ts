@@ -15,7 +15,15 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    for (let j = 0; j < 10; j++) {
+        console.log(j);
+    }
+    
+
+    const arr: number[] = [1, 2, 3];
+    for (const n of arr) {
+        console.log(n);
+    }
 }
 
 main();

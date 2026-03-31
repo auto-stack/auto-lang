@@ -15,7 +15,9 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    const add: (number, number) => any = (a: number, b: number) => a + b;
+    const result = add(5, 3);
+    console.log(result);
 }
 
 main();

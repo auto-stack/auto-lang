@@ -1,0 +1,6 @@
+type Name = str;
+
+fn main() {
+    let name = "Alice"
+    print(name)
+}

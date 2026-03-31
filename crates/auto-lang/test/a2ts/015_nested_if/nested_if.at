@@ -1,0 +1,12 @@
+fn main() {
+    let x = 10
+    if x > 5 {
+        if x > 8 {
+            print("large")
+        } else {
+            print("medium")
+        }
+    } else {
+        print("small")
+    }
+}

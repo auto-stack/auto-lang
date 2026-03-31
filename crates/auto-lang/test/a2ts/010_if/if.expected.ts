@@ -15,7 +15,14 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    const x: number = 2;
+    
+
+    if (x > 1) {
+        console.log("Great!");
+    } else {
+        console.log("Small!");
+    }
 }
 
 main();

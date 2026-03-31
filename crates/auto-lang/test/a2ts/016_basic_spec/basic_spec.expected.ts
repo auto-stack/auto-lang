@@ -14,8 +14,16 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 }
 
 
+class Pigeon implements Flyer {
+
+    fly(): void {
+    console.log("Flap");
+}
+}
+
 function main(): void {
-    console.log("hello!");
+    const p = Pigeon();
+    p.fly();
 }
 
 main();

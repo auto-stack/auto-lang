@@ -1,0 +1,13 @@
+type Wing {
+    fn fly() {
+        print("flying")
+    }
+}
+
+type Duck has Wing {
+}
+
+fn main() {
+    let d = Duck()
+    d.fly()
+}

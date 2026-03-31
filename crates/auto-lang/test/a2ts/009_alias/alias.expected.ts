@@ -15,7 +15,8 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 
 
 function main(): void {
-    console.log("hello!");
+    const name: string = "Alice";
+    console.log(name);
 }
 
 main();

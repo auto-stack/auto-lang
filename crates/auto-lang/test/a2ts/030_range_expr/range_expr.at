@@ -1,0 +1,11 @@
+fn main() {
+    let r = 0..5
+    for i in r {
+        print(i)
+    }
+
+    let r_eq = 0..=5
+    for j in r_eq {
+        print(j)
+    }
+}
