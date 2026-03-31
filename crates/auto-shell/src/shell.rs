@@ -44,6 +44,10 @@ impl Shell {
             reg.register(Box::new(commands::grep::GrepCommand));
             reg.register(Box::new(commands::ps::PsCommand));
             reg.register(Box::new(commands::sys::SysCommand));
+            reg.register(Box::new(commands::cp::CpCommand));
+            reg.register(Box::new(commands::mv::MvCommand));
+            reg.register(Box::new(commands::rm::RmCommand));
+            reg.register(Box::new(commands::mkdir::MkdirCommand));
             reg
         };
 

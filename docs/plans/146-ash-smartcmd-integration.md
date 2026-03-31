@@ -1036,16 +1036,21 @@ rtk git commit -m "docs: update SmartCmd design with implementation status"
 - ✅ ps 命令使用 sysinfo
 - ✅ sys 命令（disks/cpu/mem）
 
-**Phase 3: 操作命令** (待后续实现)
-- ⏸️ 集成 uutils cp
-- ⏸️ 集成 uutils mv
-- ⏸️ 集成 uutils rm
-- ⏸️ 集成 uutils mkdir
+**Phase 3: 操作命令** ✅
+- ✅ 集成 cp 命令（递归复制、权限保留、进度报告）
+- ✅ 集成 mv 命令（文件移动/重命名）
+- ✅ 集成 rm 命令（递归删除、强制模式）
+- ✅ 集成 mkdir 命令（递归创建目录）
 
 **Phase 4: 自然语言接口** (后续)
 - ⏸️ SmartCmd trait 设计
 - ⏸️ 自然语言解析
 
-**测试覆盖**: 4 个集成测试通过
+**测试覆盖**: 9 个集成测试通过
+- ✅ ls, ps, sys disks, sys mem (4 个结构化输出测试)
+- ✅ mkdir, cp, mv, rm, rm -r (5 个文件操作测试)
 
-**代码变更统计**: 11 files changed, 606 insertions(+), 80 deletions(-)
+**代码变更统计**:
+- 新增文件: 4 个命令文件 (cp.rs, mv.rs, rm.rs, mkdir.rs)
+- 修改文件: mod.rs, shell.rs, tests/structured_commands.rs
+- 总计: ~700 行新代码

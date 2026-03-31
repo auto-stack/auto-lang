@@ -1,12 +1,16 @@
 pub mod build;
 pub mod cd;
+pub mod cp;
 pub mod echo;
 pub mod get;
 pub mod grep;
 pub mod help;
 pub mod ls;
+pub mod mkdir;
+pub mod mv;
 pub mod ps;
 pub mod pwd;
+pub mod rm;
 pub mod run;
 pub mod r#where;
 pub mod select;

@@ -77,17 +77,17 @@ fn sys_mem() -> Result<PipelineData> {
     let mut sys = System::new();
     sys.refresh_memory();
 
-    let total = sys.total_memory() as i32;
-    let free = sys.free_memory() as i32;
-    let available = sys.available_memory() as i32;
-    let used = total - available;
+    let total = sys.total_memory() as i64;
+    let free = sys.free_memory() as i64;
+    let available = sys.available_memory() as i64;
+    let used = total.saturating_sub(available);
     let usage_percent = if total > 0 { (used as f64 / total as f64) * 100.0 } else { 0.0 };
 
     let mut obj = Obj::new();
-    obj.set("total", Value::Int(total));
-    obj.set("free", Value::Int(free));
-    obj.set("available", Value::Int(available));
-    obj.set("used", Value::Int(used));
+    obj.set("total", Value::I64(total));
+    obj.set("free", Value::I64(free));
+    obj.set("available", Value::I64(available));
+    obj.set("used", Value::I64(used));
     obj.set("usage_percent", Value::Float(usage_percent));
 
     Ok(PipelineData::from_value(Value::Obj(obj)))
