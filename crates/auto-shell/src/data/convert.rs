@@ -102,6 +102,41 @@ fn get_owner(_metadata: &Metadata) -> Option<String> {
     None
 }
 
+use auto_val::{Value, Obj, Array};
+
+/// 将 AshFileEntry 转换为 auto_val::Value::Obj
+pub fn file_entry_to_value(entry: &AshFileEntry) -> Value {
+    let mut obj = Obj::new();
+
+    obj.set("name", Value::str(&entry.name));
+    obj.set("type", Value::str(entry.file_type.as_str()));
+    obj.set("size", Value::Int(entry.size as i32));
+
+    if let Some(modified) = &entry.modified {
+        obj.set("modified", Value::str(&modified.format("%Y-%m-%d %H:%M:%S").to_string()));
+    }
+
+    if let Some(permissions) = &entry.permissions {
+        obj.set("permissions", Value::str(permissions));
+    }
+
+    if let Some(owner) = &entry.owner {
+        obj.set("owner", Value::str(owner));
+    }
+
+    if let Some(target) = &entry.target {
+        obj.set("target", Value::str(target));
+    }
+
+    Value::Obj(obj)
+}
+
+/// 将 AshFileEntry 列表转换为 Value::Array
+pub fn file_entries_to_value(entries: &[AshFileEntry]) -> Value {
+    let values: Vec<Value> = entries.iter().map(file_entry_to_value).collect();
+    Value::Array(Array { values })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
