@@ -52,6 +52,9 @@ pub mod ark;
 // Phase 9: API code generation (Plan 130)
 pub mod api_gen;
 
+// Phase 10: Tauri backend generator (Plan 151)
+pub mod tauri_backend;
+
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)

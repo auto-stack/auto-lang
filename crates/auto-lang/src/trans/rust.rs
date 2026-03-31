@@ -79,6 +79,10 @@ pub struct RustTrans {
 
     // Cache for tag type names (for tag construction detection)
     tag_types: HashSet<AutoStr>,
+
+    // Plan 151: Global variables (top-level var declarations)
+    // Tracks global variables that need Lazy<Mutex<T>> wrapper
+    global_vars: HashSet<AutoStr>,
 }
 
 impl RustTrans {
@@ -92,6 +96,7 @@ impl RustTrans {
             _current_scope: None,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
+            global_vars: HashSet::new(),
         }
     }
 
@@ -106,6 +111,7 @@ impl RustTrans {
             _current_scope: None,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
+            global_vars: HashSet::new(),
         }
     }
 
@@ -121,6 +127,25 @@ impl RustTrans {
     /// Get Database reference (Phase 066)
     pub fn db(&self) -> Option<&Arc<RwLock<Database>>> {
         self.db.as_ref()
+    }
+
+    // =========================================================================
+    // Plan 151: Tauri IPC Mode - Global Variable Support
+    // =========================================================================
+
+    /// Register a global variable (top-level var declaration)
+    pub fn register_global_var(&mut self, name: AutoStr) {
+        self.global_vars.insert(name);
+    }
+
+    /// Check if a variable is a global variable
+    pub fn is_global_var(&self, name: &AutoStr) -> bool {
+        self.global_vars.contains(name)
+    }
+
+    /// Get the uppercase name for a global variable static
+    pub fn global_var_static_name(&self, name: &AutoStr) -> String {
+        name.to_uppercase().to_string()
     }
 
     // =========================================================================
@@ -314,7 +339,15 @@ impl RustTrans {
             .map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", s).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
-            Expr::Ident(name) => write!(out, "{}", name).map_err(Into::into),
+            Expr::Ident(name) => {
+                // Plan 151: Global variable access - add .lock().unwrap() pattern
+                if self.is_global_var(name) {
+                    let static_name = self.global_var_static_name(name);
+                    write!(out, "{}.lock().unwrap()", static_name)
+                } else {
+                    write!(out, "{}", name)
+                }
+            }.map_err(Into::into),
             Expr::GenName(name) => write!(out, "{}", name).map_err(Into::into),
             Expr::Nil => write!(out, "None").map_err(Into::into),
             Expr::Null => write!(out, "None").map_err(Into::into),
@@ -417,6 +450,42 @@ impl RustTrans {
                         // Inclusive range: start..=end
                         self.expr(lhs, out)?;
                         write!(out, "..=")?;
+                        self.expr(rhs, out)?;
+                    }
+                    Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
+                        // Plan 151: Handle global variable assignment
+                        // Check if lhs is a global variable identifier
+                        if let Expr::Ident(name) = lhs.as_ref() {
+                            if self.is_global_var(name) {
+                                // Global variable assignment: needs *VAR.lock().unwrap() OP= rhs
+                                let static_name = self.global_var_static_name(name);
+                                write!(out, "*{}.lock().unwrap()", static_name)?;
+
+                                // Write the operator (without = for compound ops)
+                                let op_str = match op {
+                                    Op::Asn => "=",
+                                    Op::AddEq => "+=",
+                                    Op::SubEq => "-=",
+                                    Op::MulEq => "*=",
+                                    Op::DivEq => "/=",
+                                    Op::ModEq => "%=",
+                                    _ => op.op(),
+                                };
+                                write!(out, " {} ", op_str)?;
+                                self.expr(rhs, out)?;
+                                return Ok(());
+                            }
+                        }
+
+                        // Normal assignment: lhs OP rhs
+                        self.expr(lhs, out)?;
+                        let op_str = match op {
+                            Op::And => "&&",
+                            Op::Or => "||",
+                            Op::QuestionQuestion => "??",
+                            _ => op.op(),
+                        };
+                        write!(out, " {} ", op_str)?;
                         self.expr(rhs, out)?;
                     }
                     _ => {
@@ -914,6 +983,7 @@ impl RustTrans {
                     }
                 } else {
                     // Multiple statements - use block
+                    // Plan 151 Phase 1.4: Support return statements in closures
                     write!(out, "{{ ")?;
                     for (i, stmt) in lambda.body.stmts.iter().enumerate() {
                         match stmt {
@@ -925,6 +995,12 @@ impl RustTrans {
                             }
                             Stmt::Store(store) => {
                                 self.store(store, out)?;
+                                write!(out, "; ")?;
+                            }
+                            Stmt::Return(ret_expr) => {
+                                // Return statement in closure
+                                write!(out, "return ")?;
+                                self.expr(ret_expr, out)?;
                                 write!(out, "; ")?;
                             }
                             _ => {
@@ -1572,6 +1648,19 @@ impl RustTrans {
                 return Ok(());
             }
             _ => {}
+        }
+
+        // Plan 151: Generate static Lazy<Mutex<T>> for global variables
+        if self.is_global_var(&store.name) {
+            let static_name = self.global_var_static_name(&store.name);
+            let ty = self.rust_type_name(&store.ty);
+
+            // Generate: static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...));
+            write!(out, "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
+                   static_name, ty)?;
+            self.expr(&store.expr, out)?;
+            write!(out, "));")?;
+            return Ok(());
         }
 
         // Type inference for Unknown types
@@ -2990,6 +3079,12 @@ impl Trans for RustTrans {
 
         for stmt in ast.stmts.into_iter() {
             if stmt.is_decl() {
+                // Plan 151: Register global variables (top-level var declarations)
+                if let Stmt::Store(store) = &stmt {
+                    if matches!(store.kind, StoreKind::Var) {
+                        self.register_global_var(store.name.clone());
+                    }
+                }
                 decls.push(stmt);
             } else {
                 match stmt {
@@ -3005,6 +3100,12 @@ impl Trans for RustTrans {
                     _ => {}
                 }
             }
+        }
+
+        // Plan 151: Add once_cell imports if we have global variables
+        if !self.global_vars.is_empty() {
+            sink.body.write(b"use once_cell::sync::Lazy;\n")?;
+            sink.body.write(b"use std::sync::Mutex;\n\n")?;
         }
 
         // Phase 3: Generate declarations

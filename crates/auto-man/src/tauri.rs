@@ -6,6 +6,9 @@
 //! 3. npm install
 //! 4. Install shadcn-vue components
 //! 5. Run tauri dev (which runs both Vue dev server and Tauri backend)
+//!
+//! Plan 151: Tauri IPC Mode - When backend: { front: "tauri", back: "rust" },
+//! generates a complete Rust backend crate from AutoLang source files.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -19,10 +22,11 @@ use crate::AutoResult;
 /// Steps:
 /// 1. Generate Vue project structure if not exists
 /// 2. Generate API client code (if api.at exists)
-/// 3. npm install
-/// 4. Install shadcn-vue components
-/// 5. Initialize Tauri if not exists
-/// 6. npm run tauri dev (no build needed for dev mode)
+/// 3. Generate Rust backend crate (Plan 151: if backend: { front: "tauri", back: "rust" })
+/// 4. npm install
+/// 5. Install shadcn-vue components
+/// 6. Initialize Tauri if not exists
+/// 7. npm run tauri dev (no build needed for dev mode)
 pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Tauri dev server (backend: tauri)".bright_cyan());
 
@@ -58,6 +62,24 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         println!("  ⚠ API generation skipped: {}", e);
     }
 
+    // Plan 151: Step 2.5 - Generate Rust backend crate (if backend: { front: "tauri", back: "rust" })
+    let rust_dir = root_dir.join("rust");
+    if rust_dir.exists() {
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Generating Rust backend crate (Plan 151)...", current_step, total_steps);
+        if let Err(e) = crate::tauri_backend::generate_tauri_backend(root_dir) {
+            println!("  ⚠ Rust backend generation skipped: {}", e);
+        } else {
+            // Update src-tauri/Cargo.toml to depend on ../../rust
+            if tauri_dir.exists() {
+                update_tauri_cargo_toml(&tauri_dir)?;
+            }
+        }
+    } else {
+        // No rust/ directory, skip backend generation
+    }
+
     // Step 3: npm install
     current_step += 1;
     println!();
@@ -76,6 +98,12 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         println!();
         println!("▶ Step {}/{}: Initializing Tauri...", current_step, total_steps);
         init_tauri(&vue_dir)?;
+
+        // Plan 151: Update src-tauri/Cargo.toml to depend on ../../rust
+        let rust_dir = root_dir.join("rust");
+        if rust_dir.exists() {
+            update_tauri_cargo_toml(&tauri_dir)?;
+        }
     }
 
     // Step 6: Run Tauri dev (no build needed - tauri dev handles it)
@@ -84,6 +112,42 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     println!("▶ Step {}/{}: Starting Tauri dev server...", current_step, total_steps);
     run_tauri_dev(root_dir)?;
 
+    Ok(())
+}
+
+/// Plan 151: Update src-tauri/Cargo.toml to depend on ../../rust
+///
+/// This modifies the Tauri project's Cargo.toml to include the generated
+/// Rust backend crate as a dependency.
+fn update_tauri_cargo_toml(tauri_dir: &Path) -> AutoResult<()> {
+    let cargo_toml_path = tauri_dir.join("Cargo.toml");
+    if !cargo_toml_path.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&cargo_toml_path)
+        .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
+
+    // Check if already has the dependency
+    if content.contains("../../rust") {
+        return Ok(());
+    }
+
+    // Add the dependency to [dependencies] section
+    let updated = if content.contains("[dependencies]") {
+        content.replace(
+            "[dependencies]",
+            "[dependencies]\napi-example-backend = { path = \"../../rust\" }"
+        )
+    } else {
+        format!(r#"[dependencies]
+api-example-backend = {{ path = "../../rust" }}"#)
+    };
+
+    std::fs::write(&cargo_toml_path, updated)
+        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
+
+    println!("  ✓ Updated src-tauri/Cargo.toml to depend on ../../rust");
     Ok(())
 }
 

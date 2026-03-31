@@ -1,0 +1,18 @@
+{
+  "file_hashes": {
+    "D:\\autostack\\auto-lang\\examples\\api-example\\front\\app.at": 9083358924280199352
+  },
+  "artifacts": {
+    "D:\\autostack\\auto-lang\\examples\\api-example\\front\\app.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\api-example\\front\\app.at",
+        "widget_name": "App",
+        "output_path": "src/App.vue",
+        "source_hash": 9083358924280199352,
+        "content_hash": 4216241907995943638,
+        "backend": "vue"
+      }
+    ]
+  },
+  "version": 1
+}
