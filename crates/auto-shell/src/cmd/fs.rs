@@ -7,7 +7,7 @@ use miette::{IntoDiagnostic, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::data::{Table, Column, Align, FileEntry};
+use crate::data::{Table, Column, Align, FileEntry, AshFileEntry, FileType, metadata_to_entry, file_entry_to_value, file_entries_to_value};
 
 /// List directory contents with table formatting
 pub fn ls_command(
@@ -186,7 +186,7 @@ pub fn ls_command_value(
     path: &Path,
     current_dir: &Path,
     all: bool,
-    long: bool,
+    _long: bool,
     time_sort: bool,
     reverse: bool,
     recursive: bool,
@@ -203,7 +203,7 @@ pub fn ls_command_value(
 
     // Handle recursive listing
     if recursive {
-        return list_recursive_value(&target, current_dir, all, long, time_sort, reverse);
+        return list_recursive_value(&target, current_dir, all, time_sort, reverse);
     }
 
     // If it's a file, return single-element array with file info
@@ -214,19 +214,17 @@ pub fn ls_command_value(
             .unwrap_or("?")
             .to_string();
 
-        let obj = build_file_entry_obj(&name, false, &metadata, long);
-        let mut arr = Array::new();
-        arr.push(Value::Obj(obj));
-        return Ok(Value::Array(arr));
+        let entry = metadata_to_entry(&target, &name, &metadata);
+        return Ok(Value::Array(auto_val::Array { values: vec![file_entry_to_value(&entry)] }));
     }
 
     // List directory contents
     let entries = fs::read_dir(&target).into_diagnostic()?;
 
-    let mut files = Vec::new();
-    for entry in entries {
-        let entry = entry.into_diagnostic()?;
-        let metadata = entry.metadata().into_diagnostic()?;
+    let mut files: Vec<(String, AshFileEntry)> = Vec::new();
+    for entry_result in entries {
+        let entry = entry_result.into_diagnostic()?;
+        let path = entry.path();
 
         let name = entry.file_name()
             .into_string()
@@ -237,20 +235,25 @@ pub fn ls_command_value(
             continue;
         }
 
-        let is_dir = entry.path().is_dir();
+        // Get metadata
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue, // Skip files we can't read
+        };
 
-        // Build file entry object
-        let obj = build_file_entry_obj(&name, is_dir, &metadata, long);
-        files.push((name.clone(), is_dir, metadata.modified().ok(), obj));
+        let ash_entry = metadata_to_entry(&path, &name, &metadata);
+        files.push((name, ash_entry));
     }
 
     // Sort files
     files.sort_by(|a, b| {
         let cmp = if time_sort {
             // Sort by modification time (newest first)
-            match (&a.2, &b.2) {
+            match (&a.1.modified, &b.1.modified) {
                 (Some(a_time), Some(b_time)) => b_time.cmp(a_time),
-                _ => a.0.cmp(&b.0),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a.0.cmp(&b.0),
             }
         } else {
             // Sort alphabetically
@@ -258,8 +261,10 @@ pub fn ls_command_value(
         };
 
         // Directories first
-        if a.1 != b.1 {
-            b.1.cmp(&a.1)
+        if a.1.file_type != b.1.file_type {
+            let a_is_dir = a.1.file_type == FileType::Dir;
+            let b_is_dir = b.1.file_type == FileType::Dir;
+            b_is_dir.cmp(&a_is_dir)
         } else {
             cmp
         }
@@ -270,12 +275,8 @@ pub fn ls_command_value(
     }
 
     // Build array
-    let mut arr = Array::new();
-    for (_, _, _, obj) in files {
-        arr.push(Value::Obj(obj));
-    }
-
-    Ok(Value::Array(arr))
+    let entries: Vec<AshFileEntry> = files.into_iter().map(|(_, e)| e).collect();
+    Ok(file_entries_to_value(&entries))
 }
 
 /// Build a file entry object from metadata
@@ -311,14 +312,13 @@ fn list_recursive_value(
     path: &Path,
     current_dir: &Path,
     all: bool,
-    long: bool,
     time_sort: bool,
     reverse: bool,
 ) -> Result<Value> {
-    let mut all_entries = Array::new();
+    let mut all_entries = Vec::new();
 
     // List current directory
-    if let Value::Array(entries) = ls_command_value(path, current_dir, all, long, time_sort, reverse, false)? {
+    if let Value::Array(entries) = ls_command_value(path, current_dir, all, false, time_sort, reverse, false)? {
         for entry in entries.iter() {
             all_entries.push(entry.clone());
         }
@@ -340,7 +340,7 @@ fn list_recursive_value(
             }
 
             // Recurse
-            if let Value::Array(sub_entries) = list_recursive_value(&entry.path(), current_dir, all, long, time_sort, reverse)? {
+            if let Value::Array(sub_entries) = list_recursive_value(&entry.path(), current_dir, all, time_sort, reverse)? {
                 for sub_entry in sub_entries.iter() {
                     all_entries.push(sub_entry.clone());
                 }
@@ -348,7 +348,7 @@ fn list_recursive_value(
         }
     }
 
-    Ok(Value::Array(all_entries))
+    Ok(Value::Array(auto_val::Array { values: all_entries }))
 }
 
 /// Format system time as "YYYY-MM-DD HH:MM" string

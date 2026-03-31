@@ -13,3 +13,4 @@ pub use types::{
     AshFileEntry, AshProcessEntry, AshDiskEntry,
     AshCpuInfo, AshMemoryInfo, FileType,
 };
+pub use convert::{metadata_to_entry, file_entry_to_value, file_entries_to_value};
