@@ -44,7 +44,7 @@ impl Kids {
 
     /// Add a child node with the given key
     pub fn add_node(&mut self, key: impl Into<ValueKey>, node: Node) {
-        self.map.insert(key.into(), Kid::Node(node));
+        self.map.insert(key.into(), Kid::Node(Box::new(node)));
     }
 
     /// Add a lazy child reference with the given key
@@ -87,7 +87,7 @@ impl Default for Kids {
 /// A child can be either an eager Node or a lazy MetaID reference
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kid {
-    Node(Node),
+    Node(Box<Node>),
     Lazy(MetaID),
 }
 

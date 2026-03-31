@@ -26,6 +26,7 @@ impl CStr {
     ///
     /// # Returns
     /// New CStr with null terminator
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         let mut data = s.as_bytes().to_vec();
         data.push(0); // Null terminator

@@ -33,7 +33,7 @@ impl Serialize for Fn {
     where
         S: serde::Serializer,
     {
-        return serializer.serialize_str("fn");
+        serializer.serialize_str("fn")
     }
 }
 
@@ -127,8 +127,9 @@ impl Fn {
 /// | mut    | obj.mut    | fn foo(x mut T)    | O(1)  |
 /// | move   | obj.move   | fn foo(x move T)   | O(1)  |
 /// | clone  | obj.clone()| N/A                | O(N)  |
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ParamMode {
+    #[default]
     View, // Immutable reference (DEFAULT) - O(1)
     Mut,  // Mutable reference - O(1)
     Move, // Ownership transfer (renamed from Take) - O(1)
@@ -137,11 +138,6 @@ pub enum ParamMode {
     Take, // DEPRECATED - Alias for Move (backward compatibility)
 }
 
-impl Default for ParamMode {
-    fn default() -> Self {
-        Self::View // Default is View per Plan 088 ABO-01 and Plan 122
-    }
-}
 
 #[allow(deprecated)]
 impl fmt::Display for ParamMode {
@@ -166,9 +162,10 @@ impl fmt::Display for ParamMode {
 /// | Mut   | `obj.mut`   | Mutable borrow (&mut T)| O(1)  |
 /// | Move  | `obj.move`  | Ownership transfer     | O(1)  |
 /// | Clone | `obj.clone()`| Deep copy             | O(N)  |
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AccessMode {
     /// Immutable borrow (&T) - O(1)
+    #[default]
     View,
     /// Mutable borrow (&mut T) - O(1)
     Mut,
@@ -178,11 +175,6 @@ pub enum AccessMode {
     Clone,
 }
 
-impl Default for AccessMode {
-    fn default() -> Self {
-        Self::View // Default is View (implicit borrow)
-    }
-}
 
 impl fmt::Display for AccessMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

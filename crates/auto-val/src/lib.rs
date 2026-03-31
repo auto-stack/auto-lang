@@ -90,7 +90,7 @@ impl IOError {
         IOError::DualError {
             src: src.into(),
             dst: dst.into(),
-            err: err,
+            err,
         }
     }
 }

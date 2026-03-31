@@ -274,6 +274,7 @@ impl CrateRegistry {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_metadata(
         &self,
         name: String,

@@ -11,7 +11,7 @@
 // This module provides the integration layer between AutoCache
 // and the AutoMan build system (and transpilers).
 
-use crate::{AutoCache, ArtifactMetadata, ArtifactType, CompilationTarget, AieBridge, IntegrityReport};
+use crate::{AutoCache, ArtifactMetadata, ArtifactType, CompilationTarget, AieBridge, IntegrityReport, HashUtils};
 use std::path::{Path, PathBuf};
 
 /// AutoMan cache manager
@@ -111,16 +111,14 @@ impl AutoManCache {
 
         // Get file size
         let file_size = std::fs::metadata(artifact_path)
-            .map_err(|e| CacheError::Io(e))?
+            .map_err(CacheError::Io)?
             .len();
 
         // Get current timestamp
         let now = chrono::Utc::now().timestamp() as u64;
 
         // Encode interface hash as hex string for source_hash
-        let source_hash = interface_hash.iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>();
+        let source_hash = HashUtils::array_to_hex(&interface_hash);
 
         // Create metadata
         let metadata = ArtifactMetadata {

@@ -50,6 +50,12 @@ pub struct TypeInfoStore {
     any: TypeInfo,
 }
 
+impl Default for TypeInfoStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeInfoStore {
     pub fn new() -> Self {
         let mut types = HashMap::new();
@@ -86,15 +92,10 @@ impl TypeInfoStore {
 
     pub fn lookup_method(&self, typ: Type, name: AutoStr) -> Option<ValueMethod> {
         let info = self.type_info(typ);
-        if info.methods.contains_key(name.as_str()) {
-            info.methods.get(name.as_str()).cloned()
-        } else {
+        info.methods.get(name.as_str()).cloned().or_else(|| {
             // try in any
-            match self.type_info(Type::Any).methods.get(name.as_str()) {
-                Some(method) => Some(method.clone()),
-                None => None,
-            }
-        }
+            self.type_info(Type::Any).methods.get(name.as_str()).cloned()
+        })
     }
 
     pub fn type_info(&self, typ: Type) -> &TypeInfo {

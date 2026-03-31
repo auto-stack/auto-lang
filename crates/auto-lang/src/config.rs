@@ -93,7 +93,7 @@ impl AutoConfig {
             Ok(Self {
                 code: code.clone(),
                 args: args.clone(),
-                root: root,
+                root,
             })
         } else {
             // For empty config files (Nil result), return an empty root Node instead of error

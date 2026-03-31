@@ -794,6 +794,7 @@ pub struct VueGenerator {
     mode: VueMode,
 
     /// Unified widget registry (replaces ShadcnRegistry)
+    #[allow(dead_code)]
     widget_registry: WidgetRegistry,
 
     /// Track which shadcn-vue components are used (for import collection)
@@ -3161,15 +3162,23 @@ impl VueGenerator {
             }
 
             "scroll" => {
-                // Default: overflow-auto + user style
-                let mut classes = vec!["overflow-auto".to_string()];
+                // ScrollArea support (Plan 105)
+                // viewport class for styling
                 if let Some(value) = self.get_style_class(props) {
-                    let user_class = self.extract_string_value(value).unwrap_or("");
-                    if !user_class.is_empty() {
-                        classes.push(user_class.to_string());
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // orientation (vertical, horizontal, both)
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("vertical");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+                // scroll hide delay
+                if let Some(value) = props.get("hide_delay") {
+                    if let Some(delay) = self.extract_int_value(value) {
+                        attrs.push(format!(":scroll-hide-delay=\"{}\"", delay));
                     }
                 }
-                attrs.push(format!("class=\"{}\"", classes.join(" ")));
             }
 
             "container" => {
@@ -3510,25 +3519,6 @@ impl VueGenerator {
                 }
             }
 
-            // === ScrollArea ===
-            "scroll" => {
-                // viewport class for styling
-                if let Some(value) = self.get_style_class(props) {
-                    let class = self.extract_string_value(value).unwrap_or("");
-                    attrs.push(format!("class=\"{}\"", class));
-                }
-                // orientation (vertical, horizontal, both)
-                if let Some(value) = props.get("orientation") {
-                    let orientation = self.extract_string_value(value).unwrap_or("vertical");
-                    attrs.push(format!("orientation=\"{}\"", orientation));
-                }
-                // scroll hide delay
-                if let Some(value) = props.get("hide_delay") {
-                    if let Some(delay) = self.extract_int_value(value) {
-                        attrs.push(format!(":scroll-hide-delay=\"{}\"", delay));
-                    }
-                }
-            }
 
             // === Tabs ===
             "tabs" => {

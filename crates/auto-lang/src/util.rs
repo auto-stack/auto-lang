@@ -148,10 +148,10 @@ impl PathExt for Path {
 #[macro_export]
 macro_rules! error_pos {
     ($msg: literal) => {
-        Err(format!("{} at {}:{}", $msg, crate::util::file_name(file!()), line!()).into())
+        Err(format!("{} at {}:{}", $msg, $crate::util::file_name(file!()), line!()).into())
     };
     ($msg: literal, $($args:tt)*) => {
-        Err(format!("{} at {}:{}", format!($msg, $($args)*), crate::util::file_name(file!()), line!()).into())
+        Err(format!("{} at {}:{}", format!($msg, $($args)*), $crate::util::file_name(file!()), line!()).into())
     };
 }
 

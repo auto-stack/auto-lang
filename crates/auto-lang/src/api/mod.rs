@@ -144,7 +144,7 @@ impl ApiExtractor {
             let api_param = ApiParam {
                 name: param.name.to_string(),
                 ty: type_to_string(&param.ty),
-                default: param.default.as_ref().map(|e| expr_to_string(e)),
+                default: param.default.as_ref().map(expr_to_string),
                 optional: is_optional_type(&param.ty),
             };
             endpoint.params.push(api_param);
@@ -167,7 +167,7 @@ impl ApiExtractor {
             name: m.name.to_string(),
             ty: type_to_string(&m.ty),
             optional: matches!(&m.ty, Type::Option(_)),
-            default: m.value.as_ref().map(|e| expr_to_string(e)),
+            default: m.value.as_ref().map(expr_to_string),
         }).collect();
 
         Some(ApiType {
@@ -223,7 +223,7 @@ fn type_to_string(ty: &Type) -> String {
                 inst.base_name.to_string()
             } else {
                 let args: Vec<String> = inst.args.iter()
-                    .map(|t| type_to_string(t))
+                    .map(type_to_string)
                     .collect();
                 format!("{}<{}>", inst.base_name, args.join(", "))
             }
@@ -233,7 +233,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Variadic => "...".to_string(),
         Type::Fn(params, ret) => {
             let param_str: Vec<String> = params.iter()
-                .map(|t| type_to_string(t))
+                .map(type_to_string)
                 .collect();
             format!("fn({}) {}", param_str.join(", "), type_to_string(ret))
         }

@@ -13,23 +13,31 @@ pub struct TypeScriptGenerator {
 
 impl TypeScriptGenerator {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for TypeScriptGenerator {
+    fn default() -> Self {
         Self {
             indent: "    ".to_string(),
         }
     }
+}
+
+impl TypeScriptGenerator {
 
     /// Convert Auto type to TypeScript type
     fn to_ts_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
 
         // Handle optional types (ending with ?)
-        if trimmed.ends_with('?') {
-            return format!("{} | null", self.to_ts_type(&trimmed[..trimmed.len()-1]));
+        if let Some(inner) = trimmed.strip_suffix('?') {
+            return format!("{} | null", self.to_ts_type(inner));
         }
 
         // Handle slice types []T
-        if trimmed.starts_with("[]") {
-            let inner = &trimmed[2..];
+        if let Some(inner) = trimmed.strip_prefix("[]") {
             if inner.is_empty() {
                 return "any[]".to_string();
             }
@@ -123,7 +131,7 @@ impl TypeScriptGenerator {
             "export const tauriApi: IApi = {".to_string(),
         ];
 
-        for (_i, endpoint) in endpoints.iter().enumerate() {
+        for endpoint in endpoints.iter() {
             let name = endpoint.frontend_name();
             let cmd_name = endpoint.fn_name.clone();
 

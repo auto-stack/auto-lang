@@ -187,6 +187,7 @@ impl ArkGenerator {
     }
 
     /// Check if element is a Tabs container with TabsList + TabsContent children
+    #[allow(dead_code)]
     fn is_tabs_pattern(node: &AuraNode) -> bool {
         match node {
             AuraNode::Element { tag, children, .. } => {
@@ -1792,8 +1793,6 @@ impl ArkGenerator {
     ) -> GenResult<String> {
         let mut lines = Vec::new();
 
-        let index_name = index.unwrap_or("index");
-        let index_param = index.map(|i| format!(", {}: number", i)).unwrap_or_default();
 
         // Strip leading dot from iterable if present (e.g., ".items" -> "items")
         let iterable_path = iterable.strip_prefix('.').unwrap_or(iterable);

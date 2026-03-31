@@ -20,7 +20,6 @@
 /// let len = str_slice_len(slice)  // 5
 /// // s is still valid here (immutable borrow)
 /// ```
-
 use crate::AutoStr;
 use std::fmt;
 

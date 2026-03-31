@@ -35,6 +35,12 @@ pub struct Args {
     pub args: Vec<Arg>,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Arg {
     Pos(Expr),
@@ -149,9 +155,7 @@ impl Args {
     }
 
     pub fn first_arg(&self) -> Option<Expr> {
-        let Some(arg) = self.args.first() else {
-            return None;
-        };
+        let arg = self.args.first()?;
         match arg {
             Arg::Pos(expr) => Some(expr.clone()),
             Arg::Name(n) => Some(Expr::Ident(n.clone())),

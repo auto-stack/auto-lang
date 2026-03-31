@@ -98,7 +98,7 @@ impl Fingerprint {
         hasher.update(target.triple.as_bytes());
 
         // Hash optimization level
-        hasher.update(&[target.opt_level as u8]);
+        hasher.update(&[target.opt_level]);
 
         // Hash compiler flags (sorted for determinism)
         let mut flags: Vec<&String> = target.flags.iter().collect();

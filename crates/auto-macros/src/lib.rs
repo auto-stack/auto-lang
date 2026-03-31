@@ -510,10 +510,10 @@ fn tokens_to_string_helper(tokens: Vec<TokenTree>, brace_depth: usize) -> String
 #[allow(dead_code)]
 fn convert_commas_in_braces(s: &str) -> String {
     let mut result = String::new();
-    let mut chars = s.chars().peekable();
+    let chars = s.chars().peekable();
     let mut brace_depth = 0;
 
-    while let Some(ch) = chars.next() {
+    for ch in chars {
         if ch == '{' {
             brace_depth += 1;
             result.push(ch);

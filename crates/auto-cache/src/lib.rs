@@ -28,7 +28,7 @@ pub use registry::{CrateRegistry, RegistryError};
 
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 /// AutoCache: Global build cache for AutoLang
@@ -36,7 +36,7 @@ use thiserror::Error;
 /// Provides content-addressable storage for compiled artifacts across projects.
 /// Uses SQLite for metadata and filesystem for binary blobs.
 pub struct AutoCache {
-    db: Arc<Connection>,
+    db: Arc<Mutex<Connection>>,
     blobs: BlobStore,
     _gc: GarbageCollector,  // Stored for future use
     max_size_gb: u64,
@@ -153,7 +153,7 @@ impl AutoCache {
         let gc = GarbageCollector::new(10);
 
         Ok(Self {
-            db: Arc::new(db),
+            db: Arc::new(Mutex::new(db)),
             blobs,
             _gc: gc,
             max_size_gb: 10,
@@ -202,7 +202,7 @@ impl AutoCache {
         let blob_path = self.blobs.put(hash_key, source_path)?;
 
         // Store metadata in SQLite
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO artifacts (
                 hash_key, blob_path, artifact_type, file_size,
@@ -231,7 +231,7 @@ impl AutoCache {
 
     /// Check if artifact exists in cache
     pub fn contains(&self, hash_key: &str) -> bool {
-        self.blobs.get(hash_key).map_or(false, |p| p.exists())
+        self.blobs.get(hash_key).is_some_and(|p| p.exists())
     }
 
     /// Remove artifact from cache
@@ -240,7 +240,7 @@ impl AutoCache {
         self.blobs.remove(hash_key)?;
 
         // Remove metadata
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
         conn.execute("DELETE FROM artifacts WHERE hash_key = ?1", rusqlite::params![hash_key])?;
 
         log::info!("Removed cached artifact: {}", hash_key);
@@ -251,7 +251,7 @@ impl AutoCache {
     fn update_access(&self, hash_key: &str) -> Result<()> {
         let now = chrono::Utc::now().timestamp() as u64;
 
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
         conn.execute(
             "UPDATE artifacts SET last_used_at = ?1, access_count = access_count + 1 WHERE hash_key = ?2",
             rusqlite::params![now, hash_key],
@@ -262,7 +262,7 @@ impl AutoCache {
 
     /// Get current cache size in bytes
     pub fn current_size(&self) -> u64 {
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         conn.query_row(
             "SELECT COALESCE(SUM(file_size), 0) FROM artifacts",
@@ -278,7 +278,7 @@ impl AutoCache {
 
     /// Get statistics about the cache
     pub fn get_statistics(&self) -> CacheStatistics {
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         let count: u64 = conn.query_row(
             "SELECT COUNT(*) FROM artifacts",
@@ -302,7 +302,7 @@ impl AutoCache {
     fn calculate_hit_rate(&self) -> f64 {
         // Calculate hit rate from access_count and total accesses
         // This is an approximation based on access patterns
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         // Get total accesses (sum of all access_count)
         let total_accesses: u64 = conn.query_row(
@@ -344,7 +344,7 @@ impl AutoCache {
         let target_bytes = (self.current_size() as f64 * 0.8) as u64; // Target 80% of max
         let mut freed = 0;
 
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         // Query oldest artifacts by last_used_at (LRU)
         let mut stmt = conn.prepare(
@@ -391,7 +391,7 @@ impl AutoCache {
 
     /// Clear all cached artifacts
     pub fn clear_all(&self) -> Result<()> {
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         // Get all artifacts
         let mut stmt = conn.prepare("SELECT hash_key FROM artifacts")?;
@@ -418,7 +418,7 @@ impl AutoCache {
 
     /// List all artifacts with optional filtering
     pub fn list_artifacts(&self, type_filter: Option<ArtifactType>, limit: usize) -> Result<Vec<ArtifactMetadata>> {
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         let query = if type_filter.is_some() {
             "SELECT * FROM artifacts WHERE artifact_type = ?1 ORDER BY last_used_at DESC LIMIT ?2"
@@ -446,7 +446,7 @@ impl AutoCache {
 
     /// Get artifact metadata by hash key
     pub fn get_metadata(&self, hash_key: &str) -> Option<ArtifactMetadata> {
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         let mut stmt = conn.prepare("SELECT * FROM artifacts WHERE hash_key = ?1").ok()?;
 
@@ -459,7 +459,7 @@ impl AutoCache {
 
     /// Verify cache integrity
     pub fn verify_integrity(&self) -> Result<IntegrityReport> {
-        let conn = self.db.as_ref();
+        let conn = self.db.lock().unwrap();
 
         // Count metadata entries
         let metadata_count: u64 = conn.query_row(
@@ -530,7 +530,7 @@ impl AutoCache {
 
         // Enable WAL mode for better concurrency
         // Note: PRAGMA journal_mode returns a value, so we use query_row
-        let _ = conn.query_row(
+        conn.query_row(
             "PRAGMA journal_mode=WAL",
             [],
             |_| Ok(())

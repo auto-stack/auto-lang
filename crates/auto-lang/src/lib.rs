@@ -467,15 +467,6 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
 /// **Deprecated**: This function is deprecated. Use CompileSession instead (see Plan 064).
 ///
 /// **Plan 091**: Simplified to use AutoVM internally
-#[deprecated(
-    since = "0.9.0",
-    note = "Use run_with_session() with CompileSession instead (Plan 064 + Plan 091)"
-)]
-// Plan 091 DEPRECATED: Universe removed
-// pub fn run_with_scope(code: &str, _scope: Universe) -> AutoResult<String> {
-//     run(code)
-// }
-
 /// Run code with incremental compilation support
 ///
 /// **Phase 2**: Execute code with persistent CompileSession

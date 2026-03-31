@@ -14,15 +14,14 @@
 //!
 //! ## Context
 //!
-/// Type Registry for REPL
-///
-/// This module provides a simple type registry that persists type definitions
-/// across REPL inputs. It allows node instance syntax like `Point{x:1, y:2}`
-/// to work in the REPL by remembering previously defined types.
-///
-/// **Plan 087**: This is a temporary solution for REPL type persistence.
-/// Long-term, this should be integrated with Plan 064's Database.
-
+//! Type Registry for REPL
+//!
+//! This module provides a simple type registry that persists type definitions
+//! across REPL inputs. It allows node instance syntax like `Point{x:1, y:2}`
+//! to work in the REPL by remembering previously defined types.
+//!
+//! **Plan 087**: This is a temporary solution for REPL type persistence.
+//! Long-term, this should be integrated with Plan 064's Database.
 use crate::ast::Type;
 use std::collections::HashMap;
 use std::rc::Rc;

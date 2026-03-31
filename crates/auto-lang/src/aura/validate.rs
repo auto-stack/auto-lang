@@ -237,7 +237,7 @@ impl WidgetValidator {
                     if !self.is_widget_available(tag) {
                         // Not auto-imported and not explicitly imported
                         // Provide suggestion for similar known elements
-                        let suggestion = self.schema.suggest_similar(tag);
+                        let _suggestion = self.schema.suggest_similar(tag);
                         errors.push(ValidationError::MissingImport {
                             widget: tag.clone(),
                             span: SourceSpan::from(0..0),

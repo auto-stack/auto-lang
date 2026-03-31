@@ -486,6 +486,7 @@ impl ListGenerator {
 
     /// Convert Tailwind class string to Modifier chain
     /// Returns empty string if no modifiers are generated
+    #[allow(dead_code)]
     fn class_to_modifier(&self, class: &str) -> String {
         let mut modifiers = Vec::new();
 
@@ -539,6 +540,7 @@ impl ListGenerator {
     }
 
     /// Convert Tailwind color name to hex
+    #[allow(dead_code)]
     fn tailwind_color_to_hex(&self, name: &str) -> Option<String> {
         let colors = [
             ("white", "0xFFFFFFFF"),

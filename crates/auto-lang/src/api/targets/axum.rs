@@ -13,28 +13,36 @@ pub struct AxumGenerator {
 
 impl AxumGenerator {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for AxumGenerator {
+    fn default() -> Self {
         Self {
             indent: "    ".to_string(),
         }
     }
+}
+
+impl AxumGenerator {
 
     /// Convert Auto type to Rust type
     fn to_rust_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
 
         // Handle optional types (ending with ?)
-        let is_optional = trimmed.ends_with('?');
-        let base_type = if is_optional {
-            &trimmed[..trimmed.len()-1]
+        let (base_type, is_optional) = if let Some(inner) = trimmed.strip_suffix('?') {
+            (inner, true)
         } else {
-            trimmed
+            (trimmed, false)
         };
 
         // Handle array types
         let rust_type = if base_type.starts_with('[') && base_type.ends_with(']') {
             let inner = &base_type[1..base_type.len()-1];
-            if inner.starts_with(']') {
-                let inner_type = self.to_rust_type(&inner[1..]);
+            if let Some(rest) = inner.strip_prefix(']') {
+                let inner_type = self.to_rust_type(rest);
                 format!("Vec<{}>", inner_type)
             } else {
                 let parts: Vec<&str> = inner.splitn(2, ']').collect();
@@ -73,8 +81,8 @@ impl AxumGenerator {
     fn extract_path_params(&self, path: &str) -> Vec<String> {
         let mut params = Vec::new();
         for segment in path.split('/') {
-            if segment.starts_with(':') {
-                params.push(segment[1..].to_string());
+            if let Some(param) = segment.strip_prefix(':') {
+                params.push(param.to_string());
             }
         }
         params
@@ -101,7 +109,7 @@ impl AxumGenerator {
         if !path_params.is_empty() {
             extractor_imports.push("Path".to_string());
             let path_struct = format!("{}Path", endpoint.fn_name.to_pascal_case());
-            lines.push(format!("#[derive(serde::Deserialize)]"));
+            lines.push("#[derive(serde::Deserialize)]".to_string());
             lines.push(format!("struct {} {{", path_struct));
             for param in &path_params {
                 let rust_type = endpoint.params
@@ -126,7 +134,7 @@ impl AxumGenerator {
         if !query_params.is_empty() {
             extractor_imports.push("Query".to_string());
             let query_struct = format!("{}Query", endpoint.fn_name.to_pascal_case());
-            lines.push(format!("#[derive(serde::Deserialize)]"));
+            lines.push("#[derive(serde::Deserialize)]".to_string());
             lines.push(format!("struct {} {{", query_struct));
             for param in &query_params {
                 let rust_type = self.to_rust_type(&param.ty);
@@ -156,7 +164,7 @@ impl AxumGenerator {
             } else {
                 // Multiple parameters - create request struct
                 let req_struct = format!("{}Request", endpoint.fn_name.to_pascal_case());
-                lines.push(format!("#[derive(serde::Deserialize)]"));
+                lines.push("#[derive(serde::Deserialize)]".to_string());
                 lines.push(format!("struct {} {{", req_struct));
                 for param in &body_params {
                     let rust_type = self.to_rust_type(&param.ty);
@@ -302,7 +310,6 @@ impl ToPascalCase for str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::ApiAttrs;
 
     #[test]
     fn test_extract_path_params() {

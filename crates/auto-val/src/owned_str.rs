@@ -35,7 +35,7 @@ impl Str {
         let bytes = utf8.as_ref();
 
         // Validate UTF-8
-        if !std::str::from_utf8(bytes).is_ok() {
+        if std::str::from_utf8(bytes).is_err() {
             return None;
         }
 
@@ -50,6 +50,7 @@ impl Str {
     }
 
     /// Create a new string from a Rust string slice
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         let bytes = s.as_bytes();
         let len = bytes.len();

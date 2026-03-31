@@ -15,13 +15,13 @@ pub trait PathBufExt {
 
 impl PathBufExt for PathBuf {
     fn unified(&self) -> AutoStr {
-        let res = self
+        let res: AutoStr = self
             .as_path()
             .normalize()
             .to_string_lossy()
             .replace("\\", "/")
             .into();
-        if res == "" {
+        if res.is_empty() {
             ".".into()
         } else {
             res
@@ -64,13 +64,10 @@ impl AutoPath {
     }
 
     pub fn filename(&self) -> AutoStr {
-        let n = self.path.file_name();
-        if let Some(n) = n {
-            if let Some(n) = n.to_str() {
-                return n.into();
-            }
-        }
-        AutoStr::default()
+        self.path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.into())
+            .unwrap_or_default()
     }
 
     pub fn join(&self, path: impl Into<AutoStr>) -> Self {
@@ -193,13 +190,12 @@ impl AutoPath {
 
     pub fn abs(&self) -> AutoStr {
         if self.path.is_absolute() {
-            return self.unified();
+            self.unified()
         } else {
-            let abs_path = std::path::absolute(&self.path);
-            if abs_path.is_err() {
-                return self.unified();
+            match std::path::absolute(&self.path) {
+                Ok(abs_path) => Self::from(abs_path).to_astr(),
+                Err(_) => self.unified(),
             }
-            Self::from(abs_path.unwrap()).to_astr()
         }
     }
 }

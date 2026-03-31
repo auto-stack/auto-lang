@@ -16,9 +16,7 @@ impl StrExt for AutoStr {
         let mut capitalize_next = true;
 
         for c in self.chars() {
-            if c.is_whitespace() {
-                capitalize_next = true;
-            } else if c == '_' {
+            if c.is_whitespace() || c == '_' {
                 capitalize_next = true;
             } else if capitalize_next {
                 camel.push(c.to_ascii_uppercase());

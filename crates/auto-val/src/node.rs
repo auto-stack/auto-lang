@@ -35,7 +35,7 @@ use std::fmt;
 ///     println!("{:?}", key);
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeBody {
     pub map: IndexMap<ValueKey, NodeItem>,
 }
@@ -54,9 +54,7 @@ impl NodeItem {
 
 impl NodeBody {
     pub fn new() -> Self {
-        Self {
-            map: IndexMap::new(),
-        }
+        Self::default()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -76,11 +74,8 @@ impl NodeBody {
     pub fn get_prop_of(&self, key: impl Into<ValueKey>) -> Value {
         let key = key.into();
         match self.map.get(&key) {
-            Some(v) => match v {
-                NodeItem::Prop(p) => p.value.clone(),
-                _ => Value::Nil,
-            },
-            None => Value::Nil,
+            Some(NodeItem::Prop(p)) => p.value.clone(),
+            _ => Value::Nil,
         }
     }
 
@@ -94,11 +89,7 @@ impl NodeBody {
         for item in self.map.values() {
             if let NodeItem::Node(node) = item {
                 let name = node.name.clone();
-                if !kids.contains_key(&name) {
-                    kids.insert(name, vec![node]);
-                } else {
-                    kids.get_mut(&name).unwrap().push(node);
-                }
+                kids.entry(name).or_insert_with(Vec::new).push(node);
             }
         }
         kids
@@ -145,7 +136,7 @@ impl Node {
         if self.args.is_empty() {
             self.name.clone()
         } else {
-            format!("{}({})", self.name, self.args.args[0].to_string()).into()
+            format!("{}({})", self.name, self.args.args[0]).into()
         }
     }
 
@@ -203,7 +194,7 @@ impl Node {
             return a.get_val();
         }
         // find from props
-        self.props.get(key).map(|v| v.clone()).unwrap_or(Value::Nil)
+        self.props.get(key).unwrap_or(Value::Nil)
     }
 
     pub fn get_prop_of(&self, key: &str) -> Value {
@@ -226,7 +217,7 @@ impl Node {
             })
             .map(|(_, kid)| {
                 if let Kid::Node(node) = kid {
-                    node.clone()
+                    (**node).clone()
                 } else {
                     unreachable!()
                 }
@@ -259,7 +250,7 @@ impl Node {
             })
             .map(|(_, kid)| {
                 if let Kid::Node(node) = kid {
-                    node.clone()
+                    (**node).clone()
                 } else {
                     unreachable!()
                 }
@@ -429,7 +420,7 @@ impl Node {
             })
             .map(|(_, kid)| {
                 if let Kid::Node(node) = kid {
-                    node
+                    node.as_ref()
                 } else {
                     unreachable!()
                 }
@@ -447,11 +438,7 @@ impl Node {
         for (_, kid) in self.kids.iter() {
             if let Kid::Node(node) = kid {
                 let name = node.name.clone();
-                if !kids.contains_key(&name) {
-                    kids.insert(name, vec![node]);
-                } else {
-                    kids.get_mut(&name).unwrap().push(node);
-                }
+                kids.entry(name).or_insert_with(Vec::new).push(node.as_ref());
             }
         }
         kids

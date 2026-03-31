@@ -66,6 +66,10 @@ impl Array {
         self.values.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
     pub fn get(&self, index: usize) -> Option<&Value> {
         self.values.get(index)
     }

@@ -632,7 +632,7 @@ impl Value {
             Value::Int(value) => *value > 0,
             Value::Uint(value) => *value > 0,
             Value::Float(value) => *value > 0.0,
-            Value::Str(value) => value.len() > 0,
+            Value::Str(value) => !value.is_empty(),
             Value::Byte(value) => *value > 0,
             _ => false,
         }
@@ -646,13 +646,13 @@ impl Value {
 static NODE_NIL: std::sync::OnceLock<Node> = std::sync::OnceLock::new();
 
 fn node_nil() -> &'static Node {
-    NODE_NIL.get_or_init(|| Node::empty())
+    NODE_NIL.get_or_init(Node::empty)
 }
 
 static OBJ_EMPTY: std::sync::OnceLock<Obj> = std::sync::OnceLock::new();
 
 fn obj_empty() -> &'static Obj {
-    OBJ_EMPTY.get_or_init(|| Obj::new())
+    OBJ_EMPTY.get_or_init(Obj::new)
 }
 
 // Quick Readers
@@ -765,18 +765,13 @@ impl Value {
     }
 
     pub fn update_node(&mut self, f: impl FnOnce(&mut Node)) {
-        match self {
-            Value::Node(value) => f(value),
-            _ => {}
+        if let Value::Node(value) = self {
+            f(value);
         }
     }
 
     pub fn pretty(&self, max_indent: usize) -> AutoStr {
         pretty(format!("{}", self).as_str(), max_indent)
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("{}", self)
     }
 
     pub fn to_astr(&self) -> AutoStr {
@@ -808,10 +803,10 @@ impl Value {
 
     pub fn name(&self) -> AutoStr {
         match self {
-            Value::Node(node) => node.name.clone().into(),
-            Value::Str(s) => s.clone().into(),
+            Value::Node(node) => node.name.clone(),
+            Value::Str(s) => s.clone(),
             Value::OwnedStr(s) => s.as_str().into(),
-            Value::Fn(f) => f.sig.name.clone().into(),
+            Value::Fn(f) => f.sig.name.clone(),
             _ => self.to_astr(),
         }
     }
@@ -914,8 +909,8 @@ fn try_promote(a: Value, b: Value) -> (Value, Value) {
         (Value::Int(a), Value::Float(_)) => (Value::Float(*a as f64), b),
         (Value::Float(_), Value::Int(b)) => (a, Value::Float(*b as f64)),
         // byte => uint
-        (Value::Byte(a), Value::Uint(b)) => (Value::Uint(*a as u32), Value::Uint(*b as u32)),
-        (Value::Uint(a), Value::Byte(b)) => (Value::Uint(*a as u32), Value::Uint(*b as u32)),
+        (Value::Byte(a), Value::Uint(b)) => (Value::Uint(*a as u32), Value::Uint(*b)),
+        (Value::Uint(a), Value::Byte(b)) => (Value::Uint(*a), Value::Uint(*b as u32)),
         _ => (a, b),
     }
 }
@@ -1016,6 +1011,12 @@ pub struct Model {
     pub values: Vec<(ValueKey, Value)>,
 }
 
+impl Default for Model {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Model {
     pub fn new() -> Self {
         Self { values: vec![] }
@@ -1025,6 +1026,12 @@ impl Model {
 #[derive(Debug, Clone, PartialEq)]
 pub struct View {
     pub nodes: Vec<Node>,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl View {
@@ -1104,19 +1111,10 @@ impl Method {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Grid {
     pub head: Vec<(ValueKey, Value)>,
     pub data: Vec<Vec<Value>>,
-}
-
-impl Default for Grid {
-    fn default() -> Self {
-        Self {
-            head: vec![],
-            data: vec![],
-        }
-    }
 }
 
 impl Grid {

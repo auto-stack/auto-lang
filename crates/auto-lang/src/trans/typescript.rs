@@ -47,11 +47,7 @@ impl Trans for TypeScriptTrans {
 
         // Find main function
         let main_func = ast.stmts.iter().find(|s| {
-            if let Stmt::Fn(func) = s {
-                func.name == "main"
-            } else {
-                false
-            }
+            matches!(s, Stmt::Fn(func) if func.name == "main")
         }).cloned();
 
         // Split into declarations and main statements
@@ -60,10 +56,8 @@ impl Trans for TypeScriptTrans {
 
         for stmt in ast.stmts.into_iter() {
             // Skip main function declaration - we'll handle it specially
-            if let Stmt::Fn(func) = &stmt {
-                if func.name == "main" {
-                    continue;
-                }
+            if matches!(&stmt, Stmt::Fn(func) if func.name == "main") {
+                continue;
             }
 
             // Check if this is a declaration (type, enum, or function)

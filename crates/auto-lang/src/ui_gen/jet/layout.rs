@@ -571,6 +571,7 @@ impl LayoutGenerator {
 
     /// Convert Tailwind class string to Modifier chain using ModifierDsl
     /// Returns empty string if no modifiers are generated
+    #[allow(dead_code)]
     fn class_to_modifier(&self, class: &str) -> String {
         // Use the full ModifierDsl converter for comprehensive Tailwind support
         let result = self.modifier_dsl.convert_class(class);
@@ -588,6 +589,7 @@ impl LayoutGenerator {
     }
 
     /// Convert Tailwind color name to hex (kept for backward compatibility)
+    #[allow(dead_code)]
     fn tailwind_color_to_hex(&self, name: &str) -> Option<String> {
         let colors = [
             ("white", "0xFFFFFFFF"),

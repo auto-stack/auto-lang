@@ -92,7 +92,7 @@ impl TypeScriptTrans {
                         match arg {
                             Arg::Pos(expr) => self.expr(expr, out)?,
                             Arg::Name(name) => out.write_all(name.as_bytes())?,
-                            Arg::Pair(key, expr) => self.expr(expr, out)?, // TypeScript constructors don't have named args like this, pass as positional
+                            Arg::Pair(_key, expr) => self.expr(expr, out)?, // TypeScript constructors don't have named args like this, pass as positional
                         }
                     }
                     out.write(b")")?;
@@ -134,13 +134,6 @@ impl TypeScriptTrans {
                 Ok(())
             }
 
-            // Dot field access
-            Expr::Dot(object, field) => {
-                self.expr(object, out)?;
-                out.write(b".")?;
-                out.write_all(field.as_bytes())?;
-                Ok(())
-            }
 
             // Lambda expression
             Expr::Lambda(lambda) => {

@@ -82,6 +82,7 @@ pub struct JetGenerator {
     imports: HashSet<String>,
 
     /// Unified widget registry (replaces Material3Registry)
+    #[allow(dead_code)]
     widget_registry: WidgetRegistry,
 
     /// Shared component registry (AURA → Vue/Jet mappings)
@@ -1243,7 +1244,8 @@ fun {}Preview() {{
                                 if let AuraNode::Element { tag: when_tag, props: when_props, children: when_children, .. } = content_child {
                                     if Self::normalize_tag(when_tag) == "when" {
                                         // Get the condition from props (e.g., ".activeTab")
-                                        let condition = when_props.get("condition")
+                                        #[allow(dead_code)]
+                                        let _condition = when_props.get("condition")
                                             .and_then(|p| self.extract_string_value(p))
                                             .unwrap_or_default();
 

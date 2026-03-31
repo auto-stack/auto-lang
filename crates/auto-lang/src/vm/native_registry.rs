@@ -1,25 +1,24 @@
-/// AutoVM Native Function Registry
-///
-/// Runtime registry for mapping function names (like "List.new", "List.len")
-/// to native function IDs used by CALL_NAT opcode.
-///
-/// This is the AutoVM equivalent of the linker's symbol table:
-/// - Function names are "symbols" (like "printf" in C)
-/// - Native IDs are "addresses" (like 0x12345678 in machine code)
-///
-/// # Example
-///
-/// ```rust
-/// // Register native functions during compilation
-/// let id = BIGVM_NATIVES.lock().unwrap().register("List.new");
-/// assert!(id >= 100); // IDs start at 100
-///
-/// // Look up native ID during codegen
-/// if let Some(native_id) = BIGVM_NATIVES.lock().unwrap().get_id("List.new") {
-///     // Emit CALL_NAT with native_id
-/// }
-/// ```
-
+//! AutoVM Native Function Registry
+//!
+//! Runtime registry for mapping function names (like "List.new", "List.len")
+//! to native function IDs used by CALL_NAT opcode.
+//!
+//! This is the AutoVM equivalent of the linker's symbol table:
+//! - Function names are "symbols" (like "printf" in C)
+//! - Native IDs are "addresses" (like 0x12345678 in machine code)
+//!
+//! # Example
+//!
+//! ```rust
+//! // Register native functions during compilation
+//! let id = BIGVM_NATIVES.lock().unwrap().register("List.new");
+//! assert!(id >= 100); // IDs start at 100
+//!
+//! // Look up native ID during codegen
+//! if let Some(native_id) = BIGVM_NATIVES.lock().unwrap().get_id("List.new") {
+//!     // Emit CALL_NAT with native_id
+//! }
+//! ```
 use std::collections::HashMap;
 use std::sync::Mutex;
 

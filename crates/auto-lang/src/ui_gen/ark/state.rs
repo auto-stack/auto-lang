@@ -16,6 +16,7 @@ pub struct InterfaceDef {
 }
 
 /// Analyze an array expression and extract interface definition if it contains objects
+#[allow(dead_code)]
 pub fn extract_interface_from_array(name: &str, expr: &AuraExpr) -> Option<InterfaceDef> {
     if let AuraExpr::Array(elems) = expr {
         // Find first object element to extract structure
@@ -155,6 +156,7 @@ pub fn generate_interface(interface: &InterfaceDef) -> String {
 }
 
 /// Generate all interfaces needed for a widget's state
+#[allow(dead_code)]
 pub fn generate_interfaces(widget: &AuraWidget) -> Vec<InterfaceDef> {
     let mut interfaces = Vec::new();
 
@@ -185,6 +187,7 @@ pub fn generate_interfaces_with_prefix(widget: &AuraWidget, widget_name: &str) -
 }
 
 /// Generate @State declarations from widget state_vars
+#[allow(dead_code)]
 pub fn generate_state_declarations(widget: &AuraWidget) -> String {
     generate_state_declarations_with_prefix(widget, &widget.name)
 }

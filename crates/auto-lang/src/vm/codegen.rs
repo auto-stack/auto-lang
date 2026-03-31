@@ -2304,7 +2304,7 @@ impl Codegen {
                             type_name
                         );
                         // Fallback to CREATE_OBJ (regular object)
-                        let member_names = vec!["count".to_string()]; // Fallback
+                        let member_names = ["count".to_string()]; // Fallback
 
                         // Compile args
                         let arg_count = node.num_args as u8;

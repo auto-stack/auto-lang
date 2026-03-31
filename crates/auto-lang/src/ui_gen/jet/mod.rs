@@ -123,6 +123,7 @@ mod theme;
 
 // Re-export main types
 pub use generator::JetGenerator;
+#[allow(deprecated)]
 pub use components::Material3Registry;
 pub use form::FormGenerator;
 pub use layout::LayoutGenerator;

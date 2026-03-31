@@ -341,7 +341,7 @@ impl Sandbox {
             let name_str = name_str
                 .rsplit_once('.')
                 .map(|(n, _)| n)
-                .unwrap_or(&name_str);
+                .unwrap_or(name_str);
 
             // Split into name and version (last segment is version)
             if let Some((name, version)) = name_str.rsplit_once('-') {

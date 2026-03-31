@@ -13,26 +13,33 @@ pub struct TauriGenerator {
 
 impl TauriGenerator {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for TauriGenerator {
+    fn default() -> Self {
         Self {
             indent: "    ".to_string(),
         }
     }
+}
+
+impl TauriGenerator {
 
     /// Convert Auto type to Rust type
     fn to_rust_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
 
         // Handle optional types (ending with ?)
-        let is_optional = trimmed.ends_with('?');
-        let base_type = if is_optional {
-            &trimmed[..trimmed.len()-1]
+        let (base_type, is_optional) = if let Some(inner) = trimmed.strip_suffix('?') {
+            (inner, true)
         } else {
-            trimmed
+            (trimmed, false)
         };
 
         // Handle slice types []T
-        let rust_type = if base_type.starts_with("[]") {
-            let inner = &base_type[2..];
+        let rust_type = if let Some(inner) = base_type.strip_prefix("[]") {
             if inner.is_empty() {
                 "Vec<()>".to_string()
             } else {

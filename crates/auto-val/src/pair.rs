@@ -27,33 +27,33 @@ impl Display for ValueKey {
     }
 }
 
-impl Into<ValueKey> for i32 {
-    fn into(self) -> ValueKey {
-        ValueKey::Int(self)
+impl From<i32> for ValueKey {
+    fn from(val: i32) -> Self {
+        ValueKey::Int(val)
     }
 }
 
-impl Into<ValueKey> for bool {
-    fn into(self) -> ValueKey {
-        ValueKey::Bool(self)
+impl From<bool> for ValueKey {
+    fn from(val: bool) -> Self {
+        ValueKey::Bool(val)
     }
 }
 
-impl Into<ValueKey> for i64 {
-    fn into(self) -> ValueKey {
-        ValueKey::Int(self as i32)
+impl From<i64> for ValueKey {
+    fn from(val: i64) -> Self {
+        ValueKey::Int(val as i32)
     }
 }
 
-impl Into<ValueKey> for String {
-    fn into(self) -> ValueKey {
-        ValueKey::Str(self.into())
+impl From<String> for ValueKey {
+    fn from(val: String) -> Self {
+        ValueKey::Str(val.into())
     }
 }
 
-impl Into<ValueKey> for &str {
-    fn into(self) -> ValueKey {
-        ValueKey::Str(self.into())
+impl From<&str> for ValueKey {
+    fn from(val: &str) -> Self {
+        ValueKey::Str(val.into())
     }
 }
 

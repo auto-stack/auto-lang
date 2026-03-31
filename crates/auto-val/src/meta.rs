@@ -42,12 +42,18 @@ pub struct Args {
     pub args: Vec<Arg>,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Args {
     pub const fn new() -> Self {
         Self { args: Vec::new() }
     }
 
-    pub const EMPTY: Self = Self { args: vec![] };
+    pub const EMPTY: Self = Self { args: Vec::new() };
 
     pub fn get_arg(&self, key: &AutoStr) -> Option<&Arg> {
         self.args.iter().find(|arg| match arg {
@@ -87,8 +93,7 @@ impl Args {
     }
 }
 
-/// Print related
-
+/// Print related implementation
 impl fmt::Display for Args {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.args.is_empty() {

@@ -1,4 +1,3 @@
-use crate::ast::*;
 use crate::AutoResult;
 use std::io::Write;
 use super::TypeScriptTrans;
