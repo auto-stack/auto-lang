@@ -42,6 +42,8 @@ impl Shell {
             reg.register(Box::new(commands::select::SelectCommand));
             reg.register(Box::new(commands::wc::WcCommand));
             reg.register(Box::new(commands::grep::GrepCommand));
+            reg.register(Box::new(commands::ps::PsCommand));
+            reg.register(Box::new(commands::sys::SysCommand));
             reg
         };
 
