@@ -210,3 +210,27 @@ nu-glob = { git = "https://github.com/nushell/nushell" }
 2. **最高质量**：nu-system 和 sysinfo 经过大规模测试
 3. **最易维护**：依赖活跃维护的上游项目
 4. **最快实现**：预计 1 周内可完成核心命令
+
+---
+
+## 实现状态
+
+### Phase 1: 基础设施 ✅
+- [x] 添加 Cargo 依赖
+- [x] 定义 ASH 内部类型
+- [x] 实现转换层
+
+### Phase 2: 结构化命令 ✅
+- [x] ls 命令使用 AshFileEntry
+- [x] ps 命令使用 sysinfo
+- [x] sys 命令（disks/cpu/mem）
+
+### Phase 3: 操作命令（待实现）
+- [ ] 集成 uutils cp
+- [ ] 集成 uutils mv
+- [ ] 集成 uutils rm
+- [ ] 集成 uutils mkdir
+
+### Phase 4: 自然语言接口（后续）
+- [ ] SmartCmd trait 设计
+- [ ] 自然语言解析
