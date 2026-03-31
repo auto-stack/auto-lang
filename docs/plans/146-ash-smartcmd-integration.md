@@ -1016,6 +1016,36 @@ rtk git commit -m "docs: update SmartCmd design with implementation status"
 | 5 | 重构 ls 命令 | cmd/fs.rs |
 | 6 | 实现 ps 命令 | cmd/commands/ps.rs |
 | 7 | 实现 sys 命令 | cmd/commands/sys.rs |
-| 8 | 注册新命令 | cmd/registry.rs |
+| 8 | 注册新命令 | shell.rs |
 | 9 | 添加集成测试 | tests/structured_commands.rs |
 | 10 | 更新文档 | docs/design/ash-smartcmd-design.md |
+
+---
+
+## 实现完成状态 ✅
+
+**完成日期**: 2026-03-31
+
+**Phase 1: 基础设施** ✅
+- ✅ 添加 Cargo 依赖 (sysinfo 0.30 → 0.33)
+- ✅ 定义 ASH 内部类型
+- ✅ 实现转换层
+
+**Phase 2: 结构化命令** ✅
+- ✅ ls 命令使用 AshFileEntry
+- ✅ ps 命令使用 sysinfo
+- ✅ sys 命令（disks/cpu/mem）
+
+**Phase 3: 操作命令** (待后续实现)
+- ⏸️ 集成 uutils cp
+- ⏸️ 集成 uutils mv
+- ⏸️ 集成 uutils rm
+- ⏸️ 集成 uutils mkdir
+
+**Phase 4: 自然语言接口** (后续)
+- ⏸️ SmartCmd trait 设计
+- ⏸️ 自然语言解析
+
+**测试覆盖**: 4 个集成测试通过
+
+**代码变更统计**: 11 files changed, 606 insertions(+), 80 deletions(-)
