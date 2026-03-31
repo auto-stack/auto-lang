@@ -5,6 +5,7 @@ pub mod get;
 pub mod grep;
 pub mod help;
 pub mod ls;
+pub mod ps;
 pub mod pwd;
 pub mod run;
 pub mod r#where;
