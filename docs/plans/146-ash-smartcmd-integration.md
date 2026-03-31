@@ -1042,9 +1042,15 @@ rtk git commit -m "docs: update SmartCmd design with implementation status"
 - ✅ 集成 rm 命令（递归删除、强制模式）
 - ✅ 集成 mkdir 命令（递归创建目录）
 
-**Phase 4: 自然语言接口** (后续)
+**Phase 4: 自然语言接口** (待 Agent 功能实现后启动)
+- ⏸️ **依赖**: 等待 AutoLang Agent 功能实现
 - ⏸️ SmartCmd trait 设计
-- ⏸️ 自然语言解析
+- ⏸️ 自然语言解析（将自然语言命令转换为结构化命令）
+
+> **说明**: Phase 4 需要 AutoLang 实现 Agent 功能后才能继续，因为自然语言接口需要：
+> 1. Agent 框架支持自然语言理解
+> 2. 命令意图识别和参数提取
+> 3. 与现有结构化命令的集成层
 
 **测试覆盖**: 9 个集成测试通过
 - ✅ ls, ps, sys disks, sys mem (4 个结构化输出测试)
@@ -1052,5 +1058,10 @@ rtk git commit -m "docs: update SmartCmd design with implementation status"
 
 **代码变更统计**:
 - 新增文件: 4 个命令文件 (cp.rs, mv.rs, rm.rs, mkdir.rs)
-- 修改文件: mod.rs, shell.rs, tests/structured_commands.rs
+- 修改文件: mod.rs, shell.rs, tests/structured_commands.rs, sys.rs
 - 总计: ~700 行新代码
+
+**下一步**: 
+- 等待 Agent 功能实现
+- 实现 SmartCmd trait 将自然语言映射到结构化命令
+- 示例: "复制所有txt文件到备份目录" → `cp *.txt ./backup/`
