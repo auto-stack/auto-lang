@@ -21,7 +21,8 @@ indexmap = "2.0"
 
 # Platform support
 dirs = "5.0"
-sysinfo = "0.30"
+# 系统信息（来自 nushell）
+sysinfo = "0.33"
 
 # File system utilities
 uucore = "0.0.27"
