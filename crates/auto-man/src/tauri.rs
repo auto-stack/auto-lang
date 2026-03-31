@@ -133,21 +133,40 @@ fn update_tauri_cargo_toml(tauri_dir: &Path) -> AutoResult<()> {
         return Ok(());
     }
 
+    // Read the rust/Cargo.toml to get the actual package name
+    let rust_cargo_path = tauri_dir.join("../../rust/Cargo.toml");
+    let package_name = if rust_cargo_path.exists() {
+        let rust_content = std::fs::read_to_string(&rust_cargo_path)
+            .map_err(|e| format!("Failed to read rust/Cargo.toml: {}", e))?;
+        // Extract package name from Cargo.toml
+        rust_content
+            .lines()
+            .find(|line| line.trim().starts_with("name = "))
+            .and_then(|line| {
+                line.split('=')
+                    .nth(1)
+                    .map(|s| s.trim().trim_matches('"').to_string())
+            })
+            .unwrap_or_else(|| "api-server".to_string())
+    } else {
+        "api-server".to_string()
+    };
+
     // Add the dependency to [dependencies] section
     let updated = if content.contains("[dependencies]") {
         content.replace(
             "[dependencies]",
-            "[dependencies]\napi-example-backend = { path = \"../../rust\" }"
+            &format!("[dependencies]\n{} = {{ path = \"../../rust\" }}", package_name)
         )
     } else {
         format!(r#"[dependencies]
-api-example-backend = {{ path = "../../rust" }}"#)
+{} = {{ path = "../../rust" }}"#, package_name)
     };
 
     std::fs::write(&cargo_toml_path, updated)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
-    println!("  ✓ Updated src-tauri/Cargo.toml to depend on ../../rust");
+    println!("  ✓ Updated src-tauri/Cargo.toml to depend on ../../rust (package: {})", package_name);
     Ok(())
 }
 
@@ -207,10 +226,12 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
     // Step 5: Initialize Tauri using npx (directly runs the CLI)
     // Note: Vite dev server runs on port 3000 (configured in vue.rs)
     // Use --ci flag for non-interactive mode
+    // Use --force to overwrite existing configuration
     // Use npm run dev:tauri which sets TAURI_ENV=1 to prevent browser auto-open
     let init_args = vec![
         "tauri", "init",
         "--ci",
+        "--force",
         "--app-name", "App",
         "--window-title", "App",
         "--dev-url", "http://localhost:3000",
@@ -222,7 +243,19 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
 
     run_command_live("npx", &init_args, vue_dir)?;
 
-    // Step 4: Add empty [workspace] to src-tauri/Cargo.toml to exclude from root workspace
+    // Step 4.5: Update tauri.conf.json to use port 3000 (tauri init defaults to 5173)
+    let tauri_conf = vue_dir.join("src-tauri").join("tauri.conf.json");
+    if tauri_conf.exists() {
+        let content = std::fs::read_to_string(&tauri_conf)
+            .map_err(|e| format!("Failed to read tauri.conf.json: {}", e))?;
+        // Replace default port 5173 with 3000
+        let updated = content.replace("\"http://localhost:5173\"", "\"http://localhost:3000\"");
+        std::fs::write(&tauri_conf, updated)
+            .map_err(|e| format!("Failed to write tauri.conf.json: {}", e))?;
+        println!("  ✓ Updated tauri.conf.json to use port 3000");
+    }
+
+    // Step 5: Add empty [workspace] to src-tauri/Cargo.toml to exclude from root workspace
     let tauri_cargo_toml = vue_dir.join("src-tauri").join("Cargo.toml");
     if tauri_cargo_toml.exists() {
         let content = std::fs::read_to_string(&tauri_cargo_toml)

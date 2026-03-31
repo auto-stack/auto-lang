@@ -1352,7 +1352,11 @@ impl VueGenerator {
                 let html_tag = self.map_tag(tag, children.is_empty());
 
                 // Check if this is a shadcn-vue component
-                let is_shadcn_component = self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
+                // Note: We need to check both the original tag and lowercase version because registry uses lowercase keys
+                let tag_lower = tag.to_lowercase();
+                let is_shadcn_component = self.is_shadcn() &&
+                    (self.widget_registry.is_backend_supported("vue", tag) ||
+                     self.widget_registry.is_backend_supported("vue", &tag_lower));
 
                 // Build attributes
                 let (attrs, text_content, generated_children) = if is_shadcn_component {
@@ -3095,8 +3099,8 @@ impl VueGenerator {
         let mut slot_content: Option<String> = None;
         let mut slot_children: Option<String> = None;
 
-        // Normalize tag for matching (kebab-case -> snake_case)
-        let normalized_tag = tag.replace('-', "_");
+        // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
+        let normalized_tag = tag.replace('-', "_").to_lowercase();
 
         match normalized_tag.as_str() {
             // === Button ===
@@ -3115,6 +3119,13 @@ impl VueGenerator {
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
+                    }
+                }
+                // Handle style/class prop
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
                     }
                 }
                 // Text becomes slot content
@@ -6745,5 +6756,46 @@ mod tests {
         assert!(output.contains("import { createRouter, createWebHistory }"));
         assert!(output.contains("const routes: RouteRecordRaw[] = ["));
         assert!(output.contains("export default router"));
+    }
+
+    #[test]
+    fn test_button_with_text_full_widget() {
+        use crate::aura::AuraWidget;
+        use crate::aura::AuraNode;
+        use crate::aura::AuraExpr;
+        use std::collections::HashMap;
+
+        // Create a simple Button element node
+        let button_node = AuraNode::Element {
+            tag: "Button".to_string(),
+            props: {
+                let mut map = HashMap::new();
+                map.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Click Me".to_string())));
+                map.insert("style".to_string(), AuraPropValue::Expr(AuraExpr::Literal("px-4 py-2 bg-blue-500".to_string())));
+                map
+            },
+            events: HashMap::new(),
+            children: vec![],
+        };
+
+        let widget = AuraWidget {
+            name: "Test".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: button_node,
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+        };
+
+        let mut gen = VueGenerator::new_shadcn();
+        let vue_code = gen.generate(&widget).unwrap();
+
+        // Check that the button is NOT self-closing and has text content
+        assert!(vue_code.contains("<Button") && vue_code.contains("Click Me"));
+        // Should NOT be self-closing (should have >Click Me< pattern)
+        assert!(vue_code.contains(">Click Me</Button>"));
     }
 }
