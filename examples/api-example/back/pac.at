@@ -22,7 +22,8 @@ version: "1.0.0"
 scene: "default"
 
 // Backend target: generates Rust code
-backend: "rust"
+backend: "rust-tauri"
+// backend: "rust"
 
 // Entry point for API definitions
 entry: "api.at"

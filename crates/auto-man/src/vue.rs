@@ -1447,7 +1447,8 @@ fn compile_at_to_vue(_at_path: &Path, content: &str) -> Result<(String, Vec<Stri
         return Err("No widgets found".to_string());
     }
 
-    let mut generator = VueGenerator::new();
+    // Use shadcn mode for proper component generation
+    let mut generator = VueGenerator::new().with_mode(auto_lang::ui_gen::VueMode::Shadcn);
     let vue_code = generator.generate(&widgets[0])
         .map_err(|e| e.to_string())?;
 

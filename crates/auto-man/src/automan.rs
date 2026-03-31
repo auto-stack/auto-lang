@@ -927,8 +927,112 @@ impl Automan {
     /// For vue backend: generates Vue components
     /// For tauri backend: generates Tauri desktop app
     /// Supports multiple backends: generates for all configured frontends
+    ///
+    /// Plan 130: In workspace mode, generates for all workspace members
     pub fn gen(&self, output: Option<String>, project: bool) -> AutoResult<()> {
-        // Get all frontend types (supports multi-backend configuration)
+        // Plan 130: Handle workspace mode - generate for each member
+        if self.pac.is_workspace() {
+            let root_dir = std::env::current_dir()
+                .map_err(|e| format!("Failed to get current directory: {}", e))?;
+            let members = self.pac.workspace_members();
+
+            if members.is_empty() {
+                return Err("Workspace has no members defined".into());
+            }
+
+            println!("{} {}", "Generating for workspace members:".bright_cyan(), members.len());
+
+            for member_path in members {
+                let member_dir = root_dir.join(member_path.as_str());
+                let member_pac_path = member_dir.join("pac.at");
+
+                if !member_pac_path.exists() {
+                    println!("{} Skipping {} - pac.at not found",
+                        "Warning:".bright_yellow(), member_path);
+                    continue;
+                }
+
+                println!();
+                println!("{} {}/", "→ Member:".bright_green(), member_path);
+
+                // Load member's pac.at to determine backend type
+                let config = auto_lang::config::AutoConfig::read(&member_pac_path)
+                    .map_err(|e| format!("Failed to read {}: {}", member_pac_path.display(), e))?;
+                let member_pac = Pac::new(config);
+
+                // Get frontend types from member's pac.at
+                let frontends = if member_pac.has_backend_config() {
+                    member_pac.frontend_types()
+                } else {
+                    // Legacy: parse single backend string
+                    member_pac.backend.as_str().split(',')
+                        .filter_map(|s| BackendType::from_str(s.trim()))
+                        .collect()
+                };
+
+                if frontends.is_empty() {
+                    println!("  No frontend configured, skipping");
+                    continue;
+                }
+
+                // Generate for each configured frontend
+                for backend in &frontends {
+                    match backend {
+                        BackendType::Vue => {
+                            println!("  Generating Vue (backend: vue)");
+                            let project_ctx = crate::vue::VueProject::from_workspace(&member_dir)?;
+                            if project || !project_ctx.exists() {
+                                project_ctx.generate()?;
+                            } else {
+                                project_ctx.generate()?;
+                            }
+                        }
+                        BackendType::Tauri => {
+                            println!("  Generating Tauri (backend: tauri)");
+                            let project_ctx = crate::vue::VueProject::from_workspace(&member_dir)?;
+                            project_ctx.generate()?;
+                        }
+                        BackendType::Jet => {
+                            println!("  Generating Kotlin (backend: jet)");
+                            let output_path = if frontends.len() > 1 {
+                                output.as_ref().map(|o| {
+                                    std::path::PathBuf::from(o).join("jet")
+                                }).or_else(|| Some(member_dir.join("jet")))
+                            } else {
+                                output.as_ref().map(|o| std::path::PathBuf::from(o))
+                            };
+                            if let Some(ref out) = output_path {
+                                crate::jet::generate_jet_project(&member_dir, Some(out.as_path()), project)?;
+                            } else {
+                                crate::jet::generate_jet_project(&member_dir, None, project)?;
+                            }
+                        }
+                        BackendType::Arkts => {
+                            println!("  Generating ArkTS (backend: ark)");
+                            let output_path = if frontends.len() > 1 {
+                                output.as_ref().map(|o| {
+                                    std::path::PathBuf::from(o).join("ark")
+                                }).or_else(|| Some(member_dir.join("ark")))
+                            } else {
+                                output.as_ref().map(|o| std::path::PathBuf::from(o))
+                            };
+                            if let Some(ref out) = output_path {
+                                crate::ark::generate_ark_project(&member_dir, Some(out.as_path()), project)?;
+                            } else {
+                                crate::ark::generate_ark_project(&member_dir, None, project)?;
+                            }
+                        }
+                        _ => {
+                            println!("  Skipping unsupported backend: {:?}", backend);
+                        }
+                    }
+                }
+            }
+
+            return Ok(());
+        }
+
+        // Non-workspace mode: get frontend types from current project
         let frontends = if self.pac.has_backend_config() {
             self.pac.frontend_types()
         } else {

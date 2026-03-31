@@ -17,7 +17,8 @@ scene: "ui"
 // Multiple backend support:
 // - "vue"  -> Vue SPA with HTTP backend
 // - "tauri" -> Tauri desktop app with IPC backend
-backend: ["vue", "tauri"]
+// backend: ["vue", "tauri"]
+backend: "tauri"
 
 // API types import (generates TypeScript client)
 api: "../back/api.at"
