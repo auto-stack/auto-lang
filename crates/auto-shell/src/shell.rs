@@ -736,9 +736,10 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some("3".to_string()));
 
-        // Note: Array literal formatting is a known issue with format_last_result
-        // The heap object may be cleaned up before formatting, so we skip this test
-        // TODO: Fix heap object lifecycle to enable proper array formatting
+        // Test array literals - format_last_result now handles arrays
+        let result = shell.execute("[1, 2, 3]");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some("[1, 2, 3]".to_string()));
 
         // Test object literals
         let result = shell.execute("{key: \"value\"}");

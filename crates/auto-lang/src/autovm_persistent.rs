@@ -732,9 +732,27 @@ impl AutovmReplSession {
     /// evaluate an expression that returns 1, it will be formatted as a list).
     pub fn format_last_result(&self) -> Option<String> {
         self.last_result.map(|value| {
-            // Check if this is a heap object ID (positive values >= 1)
-            // AND the object actually exists in the heap
-            if value >= 1 {
+            // Check if this is an array ID (arrays use IDs starting from 2000000)
+            if value >= 2000000 {
+                let array_id = value as u64;
+                if let Some(arc) = self.vm.arrays.get(&array_id) {
+                    let guard = arc.read().unwrap();
+                    let elems: Vec<String> = guard.iter()
+                        .map(|v| match v {
+                            auto_val::Value::Int(n) => n.to_string(),
+                            auto_val::Value::Float(f) => f.to_string(),
+                            auto_val::Value::Bool(b) => b.to_string(),
+                            auto_val::Value::Str(s) => format!("\"{}\"", s.as_str()),
+                            auto_val::Value::Nil => "nil".to_string(),
+                            _ => "?".to_string(),
+                        })
+                        .collect();
+                    return format!("[{}]", elems.join(", "));
+                }
+            }
+
+            // Check if this is a heap object ID (heap objects use IDs starting from 4000000)
+            if value >= 4000000 {
                 let list_id = value as u64;
                 if let Some(obj) = self.vm.get_heap_object(list_id) {
                     let guard = obj.read().unwrap();
@@ -760,6 +778,15 @@ impl AutovmReplSession {
                     return format!("<heap object {}>", list_id);
                 }
             }
+
+            // Check if this is a node ID (nodes use IDs starting from 3000000)
+            if value >= 3000000 && value < 4000000 {
+                let node_id = value as u64;
+                if self.vm.nodes.contains_key(&node_id) {
+                    return format!("<node>");
+                }
+            }
+
             // Regular integer value
             value.to_string()
         })
