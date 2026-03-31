@@ -1,66 +1,124 @@
-//! Conversion between AutoLang Value and Shell Value
+//! 数据转换工具
 //!
-//! Provides bidirectional conversion between AutoLang's Value type and Shell's ShellValue type.
+//! 提供从外部库类型到 ASH 内部类型的转换。
 
-use auto_val::Value;
+use super::types::{AshFileEntry, FileType};
+use chrono::DateTime;
+use std::fs::Metadata;
+use std::path::Path;
+use std::time::UNIX_EPOCH;
 
-use super::value::ShellValue;
+/// 从文件元数据创建 AshFileEntry
+pub fn metadata_to_entry(
+    path: &Path,
+    name: &str,
+    metadata: &Metadata,
+) -> AshFileEntry {
+    let file_type = if metadata.is_dir() {
+        FileType::Dir
+    } else if metadata.is_symlink() {
+        FileType::Symlink
+    } else {
+        FileType::File
+    };
 
-/// Convert AutoLang Value to Shell Value
-pub fn auto_to_shell(value: &Value) -> ShellValue {
-    // TODO: Implement conversion in Phase 2
-    match value {
-        Value::Int(n) => ShellValue::Int(*n as i64),
-        Value::Float(n) => ShellValue::Float(*n),
-        Value::Str(s) => ShellValue::String(s.to_string()),
-        Value::Nil => ShellValue::Null,
-        Value::Bool(b) => ShellValue::Bool(*b),
-        _ => ShellValue::Null,
+    let size = if file_type == FileType::Dir {
+        0
+    } else {
+        metadata.len() as i64
+    };
+
+    let modified = metadata.modified()
+        .ok()
+        .and_then(|t| {
+            let secs = t.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+            DateTime::from_timestamp(secs, 0)
+        });
+
+    let permissions = Some(get_permissions_string(metadata));
+    let owner = get_owner(metadata);
+
+    let target = if file_type == FileType::Symlink {
+        path.read_link()
+            .map(|p| p.to_string_lossy().to_string())
+            .ok()
+    } else {
+        None
+    };
+
+    AshFileEntry {
+        name: name.to_string(),
+        file_type,
+        size,
+        modified,
+        permissions,
+        owner,
+        target,
     }
 }
 
-/// Convert Shell Value to AutoLang Value
-pub fn shell_to_auto(value: &ShellValue) -> Value {
-    match value {
-        ShellValue::Int(n) => Value::Int(*n as i32),
-        ShellValue::Float(n) => Value::Float(*n),
-        ShellValue::String(s) => Value::str(s.as_str()),
-        ShellValue::Bool(b) => Value::Bool(*b),
-        ShellValue::Null => Value::Nil,
-        _ => Value::Nil, // TODO: Handle arrays, objects
+/// 获取权限字符串（Unix 风格）
+#[cfg(unix)]
+fn get_permissions_string(metadata: &Metadata) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = metadata.permissions().mode();
+    let file_type = if metadata.is_dir() { 'd' } else { '-' };
+
+    let user = format_perm_bits(mode >> 6);
+    let group = format_perm_bits(mode >> 3);
+    let other = format_perm_bits(mode);
+
+    format!("{}{}{}{}", file_type, user, group, other)
+}
+
+#[cfg(unix)]
+fn format_perm_bits(bits: u32) -> String {
+    let r = if bits & 0b100 != 0 { 'r' } else { '-' };
+    let w = if bits & 0b010 != 0 { 'w' } else { '-' };
+    let x = if bits & 0b001 != 0 { 'x' } else { '-' };
+    format!("{}{}{}", r, w, x)
+}
+
+/// 获取权限字符串（Windows 简化版）
+#[cfg(windows)]
+fn get_permissions_string(metadata: &Metadata) -> String {
+    if metadata.permissions().readonly() {
+        "-r--r--r--".to_string()
+    } else {
+        "-rw-rw-rw-".to_string()
     }
+}
+
+/// 获取所有者
+#[cfg(unix)]
+fn get_owner(metadata: &Metadata) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    Some(metadata.uid().to_string())
+}
+
+/// 获取所有者（Windows 暂不支持）
+#[cfg(windows)]
+fn get_owner(_metadata: &Metadata) -> Option<String> {
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
-    fn test_auto_to_shell_int() {
-        let auto = Value::Int(42);
-        let shell = auto_to_shell(&auto);
-        assert_eq!(shell, ShellValue::Int(42));
-    }
+    fn test_metadata_to_entry() {
+        // 使用当前目录测试
+        let path = std::env::current_dir().unwrap();
+        let metadata = fs::metadata(&path).unwrap();
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
 
-    #[test]
-    fn test_shell_to_auto_int() {
-        let shell = ShellValue::int(42);
-        let auto = shell_to_auto(&shell);
-        assert_eq!(auto, Value::Int(42));
-    }
+        let entry = metadata_to_entry(&path, name, &metadata);
 
-    #[test]
-    fn test_auto_to_shell_string() {
-        let auto = Value::str("hello");
-        let shell = auto_to_shell(&auto);
-        assert_eq!(shell, ShellValue::String("hello".to_string()));
-    }
-
-    #[test]
-    fn test_roundtrip_int() {
-        let original = Value::Int(42);
-        let shell = auto_to_shell(&original);
-        let converted = shell_to_auto(&shell);
-        assert_eq!(original, converted);
+        assert_eq!(entry.file_type, FileType::Dir);
+        assert!(entry.name.len() > 0);
     }
 }
