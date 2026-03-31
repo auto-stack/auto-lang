@@ -86,29 +86,103 @@ impl Command for GrepCommand {
                     Ok(PipelineData::from_value(Value::Array(Array::from(results))))
                 }
                 PipelineData::Value(Value::Array(arr)) => {
-                    // Search through array elements
-                    let mut results = Vec::new();
-                    for (index, item) in arr.iter().enumerate() {
-                        if let Value::Str(text) = item {
-                            let item_results = search_text(
-                                text.as_ref(),
-                                &re,
-                                invert_match,
-                                count_only,
-                                show_line_number,
-                                &format!("<stream[{}]>", index)
-                            )?;
-                            results.extend(item_results);
+                    // Check if this is an array of objects (structured data like ls output)
+                    if let Some(first_item) = arr.values.first() {
+                        if matches!(first_item, Value::Obj(_)) {
+                            // Handle array of objects - search in all string fields
+                            let results = search_object_array(&arr, &re, invert_match)?;
+                            Ok(PipelineData::from_value(Value::Array(Array::from(results))))
+                        } else {
+                            // Handle array of strings
+                            let mut results = Vec::new();
+                            for (index, item) in arr.iter().enumerate() {
+                                if let Value::Str(text) = item {
+                                    let item_results = search_text(
+                                        text.as_str(),
+                                        &re,
+                                        invert_match,
+                                        count_only,
+                                        show_line_number,
+                                        &format!("<stream[{}]>", index)
+                                    )?;
+                                    results.extend(item_results);
+                                }
+                            }
+                            Ok(PipelineData::from_value(Value::Array(Array::from(results))))
                         }
+                    } else {
+                        // Empty array
+                        Ok(PipelineData::from_value(Value::Array(Array { values: vec![] })))
                     }
-                    Ok(PipelineData::from_value(Value::Array(Array::from(results))))
                 }
                 _ => {
-                    miette::bail!("grep: input must be text or array of texts");
+                    miette::bail!("grep: input must be text or array of texts/objects");
                 }
             }
         }
     }
+}
+
+/// Search in array of objects (e.g., ls output)
+///
+/// Each object represents a row/item, and we search through all its string fields
+fn search_object_array(
+    arr: &Array,
+    re: &Regex,
+    invert_match: bool,
+) -> Result<Vec<Value>> {
+    let mut results = Vec::new();
+
+    for item in arr.iter() {
+        if let Value::Obj(obj) = item {
+            // Collect all string values from the object
+            let mut all_text = String::new();
+
+            for (_key, value) in obj.iter() {
+                match value {
+                    Value::Str(s) => {
+                        all_text.push_str(s.as_str());
+                        all_text.push(' ');
+                    }
+                    Value::OwnedStr(s) => {
+                        all_text.push_str(s.as_str());
+                        all_text.push(' ');
+                    }
+                    Value::Int(i) => {
+                        all_text.push_str(&i.to_string());
+                        all_text.push(' ');
+                    }
+                    Value::I64(i) => {
+                        all_text.push_str(&i.to_string());
+                        all_text.push(' ');
+                    }
+                    Value::Uint(u) => {
+                        all_text.push_str(&u.to_string());
+                        all_text.push(' ');
+                    }
+                    Value::Float(f) => {
+                        all_text.push_str(&f.to_string());
+                        all_text.push(' ');
+                    }
+                    Value::Bool(b) => {
+                        all_text.push_str(if *b { "true" } else { "false" });
+                        all_text.push(' ');
+                    }
+                    _ => {}
+                }
+            }
+
+            // Check if any field matches the pattern
+            let is_match = re.is_match(&all_text);
+            let should_include = if invert_match { !is_match } else { is_match };
+
+            if should_include {
+                results.push(item.clone());
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 /// Search in text string
@@ -261,6 +335,7 @@ fn search_directory_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::Array;
 
     #[test]
     fn test_search_text_basic() {
@@ -310,6 +385,69 @@ mod tests {
 
         if let Value::Obj(obj) = &results[0] {
             assert_eq!(obj.get("line_number"), Some(&Value::Int(2)).cloned());
+        }
+    }
+
+    #[test]
+    fn test_search_object_array() {
+        let re = Regex::new("test").unwrap();
+
+        // Create an array similar to ls output
+        let mut obj1 = Obj::new();
+        obj1.set("name", Value::str("test_file.txt"));
+        obj1.set("type", Value::str("file"));
+        obj1.set("size", Value::I64(1024));
+
+        let mut obj2 = Obj::new();
+        obj2.set("name", Value::str("other_file.txt"));
+        obj2.set("type", Value::str("file"));
+        obj2.set("size", Value::I64(2048));
+
+        let mut obj3 = Obj::new();
+        obj3.set("name", Value::str("my_test.log"));
+        obj3.set("type", Value::str("file"));
+        obj3.set("size", Value::I64(512));
+
+        let arr = Array { values: vec![
+            Value::Obj(obj1),
+            Value::Obj(obj2),
+            Value::Obj(obj3),
+        ]};
+
+        let results = search_object_array(&arr, &re, false).unwrap();
+        // Should match obj1 and obj3 (both contain "test")
+        assert_eq!(results.len(), 2);
+
+        if let Value::Obj(obj) = &results[0] {
+            assert_eq!(obj.get("name"), Some(&Value::str("test_file.txt")).cloned());
+        }
+        if let Value::Obj(obj) = &results[1] {
+            assert_eq!(obj.get("name"), Some(&Value::str("my_test.log")).cloned());
+        }
+    }
+
+    #[test]
+    fn test_search_object_array_invert() {
+        let re = Regex::new("test").unwrap();
+
+        // Create an array similar to ls output
+        let mut obj1 = Obj::new();
+        obj1.set("name", Value::str("test_file.txt"));
+
+        let mut obj2 = Obj::new();
+        obj2.set("name", Value::str("other_file.txt"));
+
+        let arr = Array { values: vec![
+            Value::Obj(obj1),
+            Value::Obj(obj2),
+        ]};
+
+        let results = search_object_array(&arr, &re, true).unwrap();
+        // Should only match obj2 (does NOT contain "test")
+        assert_eq!(results.len(), 1);
+
+        if let Value::Obj(obj) = &results[0] {
+            assert_eq!(obj.get("name"), Some(&Value::str("other_file.txt")).cloned());
         }
     }
 }
