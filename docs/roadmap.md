@@ -1,3 +1,194 @@
+# RoadMap to v0.2
+
+v0.2 是 AutoLang 的重要基础版本，包含 **479 个 commit**（2024年9月 - 2025年1月），奠定了编译器和生态系统的核心基础。
+
+## 核心语言特性
+
+### 基础语法
+- **表达式和语句**
+  - 算术运算符 (优先级解析)
+  - 一元和前缀运算符
+  - if/else 条件语句
+  - for 循环 (带初始化器、带索引)
+  - when 语句模式匹配
+
+### 类型系统
+- **基础类型**
+  - `int`, `uint`, `float`, `bool`
+  - `byte`, `i8`, `u8`
+  - `str`, `cstr`
+  - 数组类型 `[]T` 和指针类型 `*T`
+
+- **变量声明**
+  - `var` - 动态类型
+  - `let` - 不可变绑定
+  - `mut` - 可变绑定
+
+- **类型组合**
+  - 类型实例化
+  - 简单的类型组合
+
+### OOP 系统
+- **单继承** (Plan 021)
+  - `is` 关键字实现单继承
+  - Rust transpiler 继承支持
+
+- **Spec 多态** (Plan 019)
+  - Spec trait 系统实现
+  - 成员级委托语法
+  - 基于多态的方法调用
+
+- **方法系统**
+  - 用户类型方法
+  - 方法调用类型推断
+
+### 函数式特性
+- **Lambda 匿名函数**
+  - 匿名函数语法
+  - 自动命名 fn 转换
+
+## 编译器架构
+
+### Transpilers
+- **C Transpiler (a2c)**
+  - 完整的 C 代码生成
+  - stdio.h 实现 (Phase 1-2, 4)
+  - 布尔类型支持
+  - 结构体初始化类型检查
+  - void 参数和类型推断
+
+- **Rust Transpiler (a2r)**
+  - Rust 代码生成
+  - CLI 集成
+  - 结构体、枚举支持
+  - F-字符串 (FStr) 支持
+
+- **Python Transpiler (a2p)** (Plan 022)
+  - Python 代码生成
+  - Phases 1-8 实现
+  - 结构体、枚举、方法支持
+
+- **JavaScript Transpiler (a2j)** (Plan 023)
+  - JavaScript 代码生成
+  - CLI 集成 (Phase 10)
+  - Phase 1 核心基础设施
+  - 9 个测试用例
+
+### AST 和代码生成
+- **Atom 宏系统**
+  - `value!`, `atom!` 宏
+  - Builder Pattern 实现
+  - AST 到 Atom 转换
+  - Atom/Node/Array/Obj 构造 DSL
+
+### 错误系统 (Plan 008)
+- **miette 集成**
+  - 源码片段显示
+  - 位置信息附加
+  - 结构化错误类型
+  - IDE 友好的诊断输出
+  - 逐步替换 panic! 调用
+
+### 类型推断
+- **基础类型推断** (Plan 010)
+  - 表达式类型推断
+  - 方法调用类型推断
+  - 枚举类型推断
+
+## 值系统
+
+### auto-val 独立化
+- **Value 类型系统**
+  - 独立的 `auto-val` crate
+  - `AutoStr` 替代 `String`
+  - `Array` 类型 (`Vec<Value>`)
+  - `Obj` 对象类型
+
+- **值操作**
+  - 算术运算符
+  - 对象和数组方法
+  - 类型转换器
+
+## 工具链
+
+### AutoGen
+- **代码生成器**
+  - 新的 auto-gen CLI
+  - AST 代码生成
+  - 测试用例支持
+
+### AutoShell
+- **交互式 Shell**
+  - AutoLang REPL 集成
+  - 历史记录
+  - Tab 补全 (reedline 集成)
+  - miette 错误格式化
+
+### 标准库组织
+- **模块化**
+  - `io.at` - IO 函数
+  - `sys.at` - 系统函数
+  - 文件组织重构
+
+## Widget/AURA 基础
+
+### 早期探索
+- **Widget 语法**
+  - widget/model/view 解析
+  - 动态视图 (dyna view)
+  - 事件处理器 (on 语句)
+
+### 数据绑定
+- **Model 和 View**
+  - 状态变量
+  - 事件绑定
+  - Widget 评估
+
+## 测试
+
+### 测试基础设施
+- **AtomWriter 测试**
+  - AST 输出格式化
+  - 测试用例覆盖
+
+### Transpiler 测试
+- **a2c 测试** (100+ 测试用例)
+- **a2r 测试** (002-012)
+- **a2p 测试**
+- **a2j 测试** (9 个测试)
+
+## 项目结构
+
+### Crate 组织
+- **auto-val** - 值系统独立化
+- **auto-lang** - 核心编译器
+- **auto-gen** - 代码生成器
+- **auto-man** - 项目管理
+
+## 从 v0.1 的主要变化
+
+### 新增功能
+1. **多 transpiler 支持** - C, Rust, Python, JavaScript
+2. **Spec 多态系统** - trait 和委托
+3. **错误报告系统** - miette 集成
+4. **AutoShell** - 交互式 REPL
+5. **Widget/AURA** - 早期 UI 框架探索
+
+### 重大改进
+1. **类型推断** - 基础类型推断子系统
+2. **Atom 宏系统** - AST 构造 DSL
+3. **标准库组织** - 模块化 stdlib
+4. **测试覆盖** - 完善的测试用例
+
+## 下一步 (v0.3)
+
+- [ ] 泛型编程系统
+- [ ] 多后端 UI 生成
+- [ ] 增量编译 (AIE)
+- [ ] BigVM 迁移
+- [ ] 异步任务系统
+
+
 # RoadMap to v0.3
 
 v0.3 是 AutoLang 的重要里程碑版本，包含 **1172 个 commit**，跨越以下主要领域：
