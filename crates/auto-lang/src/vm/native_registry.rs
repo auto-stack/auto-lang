@@ -284,6 +284,14 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.task.handle_type", 2303);
     registry.register_with_id("auto.task.handle_id", 2304);
 
+    // HTTP Stream functions (Plan 152) - 2240-2250
+    registry.register_with_id("auto.http_stream.get_stream", 2240);
+    registry.register_with_id("auto.http_stream.post_stream", 2241);
+    registry.register_with_id("auto.http_stream.stream_next", 2242);
+    registry.register_with_id("auto.http_stream.stream_is_done", 2243);
+    registry.register_with_id("auto.http_stream.stream_close", 2244);
+    registry.register_with_id("parse_sse", 2250);
+
     // TaskSystem functions (Plan 127) - 2305-2307
     registry.register_with_id("auto.task_system.start", 2305);
     registry.register_with_id("auto.task_system.run", 2306);

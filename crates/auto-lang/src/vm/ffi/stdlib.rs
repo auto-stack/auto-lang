@@ -1043,22 +1043,34 @@ struct HttpResponseData {
     body: Vec<u8>,
 }
 
-/// Plan 152: HTTP 流数据
-#[derive(Debug)]
+/// Plan 154: HTTP 流数据（真正的流式实现）
+/// 使用 reqwest::blocking::Response 逐 chunk 读取
 struct HttpStreamData {
     url: String,
-    buffer: Vec<u8>,
+    response: Option<reqwest::blocking::Response>,
     done: bool,
-    // Simplified: don't store actual reqwest::Response to avoid tokio linking issues
-    // response: Option<reqwest::Response>,
+    status_code: u16,
+}
+
+impl std::fmt::Debug for HttpStreamData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpStreamData")
+            .field("url", &self.url)
+            .field("done", &self.done)
+            .field("status_code", &self.status_code)
+            .field("has_response", &self.response.is_some())
+            .finish()
+    }
 }
 
 impl HttpStreamData {
-    fn new(url: String) -> Self {
+    fn new(url: String, response: reqwest::blocking::Response) -> Self {
+        let status = response.status().as_u16();
         Self {
             url,
-            buffer: Vec::new(),
+            response: Some(response),
             done: false,
+            status_code: status,
         }
     }
 }
@@ -1373,21 +1385,22 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 }
 
 // ============================================================================
-// Plan 152: 流式 HTTP 函数
+// Plan 154: 真正的流式 HTTP 函数（使用 reqwest::blocking）
 // ============================================================================
 
-/// 创建流式 HTTP GET 请求（简化版：使用现有 HTTP 客户端）
+/// 创建流式 HTTP GET 请求
+/// 使用 reqwest::blocking 发起请求，将 Response 存入流式句柄
 pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    // 简化版：直接使用现有的 simple_http_request
-    // 在完整版本中，这里会创建真正的流式连接
-    let _response_handle = simple_http_request("GET", &url, None);
+    let response = reqwest::blocking::Client::new()
+        .get(&url)
+        .send()
+        .map_err(|e| VMError::RuntimeError(format!("HTTP GET stream failed: {}", e)))?;
 
-    // 创建流句柄并标记为已完成（简化版）
     let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let stream_data = HttpStreamData::new(url);
+    let stream_data = HttpStreamData::new(url, response);
     HTTP_STREAMS.with(|streams| {
         streams.borrow_mut().insert(stream_handle, stream_data);
     });
@@ -1396,19 +1409,22 @@ pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
     Ok(())
 }
 
-/// 创建流式 HTTP POST 请求（简化版）
+/// 创建流式 HTTP POST 请求
 pub fn shim_http_post_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    // 简化版：直接使用现有的 simple_http_request
-    let _response_handle = simple_http_request("POST", &url, Some(&body));
+    let response = reqwest::blocking::Client::new()
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .map_err(|e| VMError::RuntimeError(format!("HTTP POST stream failed: {}", e)))?;
 
-    // 创建流句柄并标记为已完成（简化版）
     let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let stream_data = HttpStreamData::new(url);
+    let stream_data = HttpStreamData::new(url, response);
     HTTP_STREAMS.with(|streams| {
         streams.borrow_mut().insert(stream_handle, stream_data);
     });
@@ -1417,7 +1433,8 @@ pub fn shim_http_post_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
     Ok(())
 }
 
-/// 从流中读取下一个数据块（简化版：返回 [DONE]）
+/// 从流中读取下一个数据块
+/// 使用 reqwest::blocking::Response 的 std::io::Read trait 逐块读取
 pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle: i64 = task.ram.pop_i64();
 
@@ -1426,13 +1443,39 @@ pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
         let stream = streams.get_mut(&(handle as u64))
             .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
 
-        // 简化版：直接返回完成标记
-        stream.done = true;
+        if stream.done {
+            "[DONE]".to_string().push_to_stack(task, _vm)
+                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+            return Ok(());
+        }
 
-        // 推送字符串到栈
-        let done_str = "[DONE]".to_string();
-        done_str.push_to_stack(task, _vm)
-            .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+        if let Some(ref mut response) = stream.response {
+            // Read a chunk (up to 8KB) from the response
+            use std::io::Read;
+            let mut buf = vec![0u8; 8192];
+            match response.read(&mut buf) {
+                Ok(0) => {
+                    // EOF - stream complete
+                    stream.done = true;
+                    stream.response = None;
+                    "[DONE]".to_string().push_to_stack(task, _vm)
+                        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+                }
+                Ok(n) => {
+                    let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                    text.push_to_stack(task, _vm)
+                        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+                }
+                Err(e) => {
+                    stream.done = true;
+                    stream.response = None;
+                    return Err(VMError::RuntimeError(format!("Stream read error: {}", e)));
+                }
+            }
+        } else {
+            "[DONE]".to_string().push_to_stack(task, _vm)
+                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+        }
 
         Ok(())
     });
