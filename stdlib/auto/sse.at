@@ -1,0 +1,7 @@
+/// Plan 152: Server-Sent Events (SSE) Parser
+
+/// Parse SSE text chunk
+/// Returns array of JSON strings, each representing an SSE event
+#[vm]
+#[pub]
+fn parse_sse(chunk str) []str

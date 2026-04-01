@@ -7,6 +7,7 @@
 
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
+use crate::vm::ffi::convert::VMConvertible;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
@@ -146,6 +147,21 @@ pub const NATIVE_HTTP_GET: u16 = 2230;
 pub const NATIVE_HTTP_POST: u16 = 2231;
 pub const NATIVE_HTTP_PUT: u16 = 2232;
 pub const NATIVE_HTTP_DELETE: u16 = 2233;
+
+// Plan 152: 流式 HTTP (2240-2249)
+pub const NATIVE_HTTP_GET_STREAM: u16 = 2240;
+pub const NATIVE_HTTP_POST_STREAM: u16 = 2241;
+pub const NATIVE_HTTP_STREAM_NEXT: u16 = 2242;
+pub const NATIVE_HTTP_STREAM_IS_DONE: u16 = 2243;
+pub const NATIVE_HTTP_STREAM_CLOSE: u16 = 2244;
+
+// Plan 152: SSE Parser (2245-2249)
+pub const NATIVE_SSE_EVENT_NEW: u16 = 2245;
+pub const NATIVE_SSE_EVENT_DATA: u16 = 2246;
+pub const NATIVE_SSE_EVENT_EVENT: u16 = 2247;
+pub const NATIVE_SSE_EVENT_ID: u16 = 2248;
+pub const NATIVE_SSE_EVENT_IS_DONE: u16 = 2249;
+pub const NATIVE_SSE_PARSE: u16 = 2250;
 
 // Task/Msg functions (Plan 121): 2300-2399
 pub const NATIVE_TASK_SPAWN: u16 = 2300;
@@ -1013,12 +1029,38 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+/// Plan 152: HTTP 流数据存储
+thread_local! {
+    static HTTP_STREAMS: std::cell::RefCell<std::collections::HashMap<u64, HttpStreamData>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 /// HTTP Response data
 #[derive(Debug, Clone, Default)]
 struct HttpResponseData {
     status: u16,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
+}
+
+/// Plan 152: HTTP 流数据
+#[derive(Debug)]
+struct HttpStreamData {
+    url: String,
+    buffer: Vec<u8>,
+    done: bool,
+    // Simplified: don't store actual reqwest::Response to avoid tokio linking issues
+    // response: Option<reqwest::Response>,
+}
+
+impl HttpStreamData {
+    fn new(url: String) -> Self {
+        Self {
+            url,
+            buffer: Vec::new(),
+            done: false,
+        }
+    }
 }
 
 /// Create a new HTTP server (placeholder - returns handle)
@@ -1328,6 +1370,180 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
     task.ram.push_i64(response_handle);
     Ok(())
+}
+
+// ============================================================================
+// Plan 152: 流式 HTTP 函数
+// ============================================================================
+
+/// 创建流式 HTTP GET 请求（简化版：使用现有 HTTP 客户端）
+pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    // 简化版：直接使用现有的 simple_http_request
+    // 在完整版本中，这里会创建真正的流式连接
+    let _response_handle = simple_http_request("GET", &url, None);
+
+    // 创建流句柄并标记为已完成（简化版）
+    let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let stream_data = HttpStreamData::new(url);
+    HTTP_STREAMS.with(|streams| {
+        streams.borrow_mut().insert(stream_handle, stream_data);
+    });
+
+    task.ram.push_i64(stream_handle as i64);
+    Ok(())
+}
+
+/// 创建流式 HTTP POST 请求（简化版）
+pub fn shim_http_post_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    // 简化版：直接使用现有的 simple_http_request
+    let _response_handle = simple_http_request("POST", &url, Some(&body));
+
+    // 创建流句柄并标记为已完成（简化版）
+    let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let stream_data = HttpStreamData::new(url);
+    HTTP_STREAMS.with(|streams| {
+        streams.borrow_mut().insert(stream_handle, stream_data);
+    });
+
+    task.ram.push_i64(stream_handle as i64);
+    Ok(())
+}
+
+/// 从流中读取下一个数据块（简化版：返回 [DONE]）
+pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i64 = task.ram.pop_i64();
+
+    let result = HTTP_STREAMS.try_with(|streams| -> Result<(), VMError> {
+        let mut streams = streams.borrow_mut();
+        let stream = streams.get_mut(&(handle as u64))
+            .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
+
+        // 简化版：直接返回完成标记
+        stream.done = true;
+
+        // 推送字符串到栈
+        let done_str = "[DONE]".to_string();
+        done_str.push_to_stack(task, _vm)
+            .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+        Ok(())
+    });
+
+    result.map_err(|e| VMError::RuntimeError(e.to_string()))??;
+    Ok(())
+}
+
+/// 检查流是否完成
+pub fn shim_http_stream_is_done(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i64 = task.ram.pop_i64();
+
+    let result = HTTP_STREAMS.try_with(|streams| -> Result<(), VMError> {
+        let streams = streams.borrow();
+        let stream = streams.get(&(handle as u64))
+            .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
+
+        task.ram.push_i32(if stream.done { 1 } else { 0 });
+        Ok(())
+    });
+
+    result.map_err(|e| VMError::RuntimeError(e.to_string()))??;
+    Ok(())
+}
+
+/// 关闭流
+pub fn shim_http_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i64 = task.ram.pop_i64();
+
+    HTTP_STREAMS.with(|streams| {
+        streams.borrow_mut().remove(&(handle as u64));
+    });
+
+    Ok(())
+}
+
+// ============================================================================
+// Plan 152: SSE Parser Functions
+// ============================================================================
+
+/// Parse SSE text chunk
+/// Returns: Array of SSE event objects (JSON strings)
+#[auto_macros::rust_fn("parse_sse")]
+pub fn shim_sse_parse(chunk: String) -> Vec<String> {
+    // Simple SSE parser implementation
+    let mut events = Vec::new();
+    let mut current_data = String::new();
+    let mut current_event = String::new();
+    let mut current_id = String::new();
+
+    for line in chunk.lines() {
+        // Skip comment lines
+        if line.starts_with(':') {
+            continue;
+        }
+
+        if line.is_empty() {
+            // Empty line means event end
+            if !current_data.is_empty() {
+                let mut json = String::from("{\"data\":\"");
+                json.push_str(&current_data.replace('"', "\\\""));
+                json.push_str("\"");
+                if !current_event.is_empty() {
+                    json.push_str(",\"event\":\"");
+                    json.push_str(&current_event);
+                    json.push_str("\"");
+                }
+                if !current_id.is_empty() {
+                    json.push_str(",\"id\":\"");
+                    json.push_str(&current_id);
+                    json.push_str("\"");
+                }
+                json.push_str("}");
+                events.push(json);
+            }
+            current_data.clear();
+            current_event.clear();
+            current_id.clear();
+        } else if line.starts_with("data:") {
+            let data = &line[5..].trim_start();
+            if !current_data.is_empty() {
+                current_data.push('\n');
+            }
+            current_data.push_str(data);
+        } else if line.starts_with("event:") {
+            current_event = line[6..].trim().to_string();
+        } else if line.starts_with("id:") {
+            current_id = line[3..].trim().to_string();
+        }
+    }
+
+    // Don't forget the last event if no trailing newline
+    if !current_data.is_empty() {
+        let mut json = String::from("{\"data\":\"");
+        json.push_str(&current_data.replace('"', "\\\""));
+        json.push_str("\"");
+        if !current_event.is_empty() {
+            json.push_str(",\"event\":\"");
+            json.push_str(&current_event);
+            json.push_str("\"");
+        }
+        if !current_id.is_empty() {
+            json.push_str(",\"id\":\"");
+            json.push_str(&current_id);
+            json.push_str("\"");
+        }
+        json.push_str("}");
+        events.push(json);
+    }
+
+    events
 }
 
 /// Simple HTTP request implementation
@@ -1987,6 +2203,16 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_HTTP_POST, shim_http_post);
     natives.register_static(NATIVE_HTTP_PUT, shim_http_put);
     natives.register_static(NATIVE_HTTP_DELETE, shim_http_delete);
+
+    // Plan 152: 流式 HTTP
+    natives.register_static(NATIVE_HTTP_GET_STREAM, shim_http_get_stream);
+    natives.register_static(NATIVE_HTTP_POST_STREAM, shim_http_post_stream);
+    natives.register_static(NATIVE_HTTP_STREAM_NEXT, shim_http_stream_next);
+    natives.register_static(NATIVE_HTTP_STREAM_IS_DONE, shim_http_stream_is_done);
+    natives.register_static(NATIVE_HTTP_STREAM_CLOSE, shim_http_stream_close);
+
+    // SSE Parser functions (Plan 152)
+    natives.register_static(NATIVE_SSE_PARSE, __shim_parse_sse);
 
     // Task/Msg functions (Plan 121)
     natives.register_static(NATIVE_TASK_SPAWN, __shim_Task_spawn);

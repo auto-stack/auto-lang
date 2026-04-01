@@ -1,3 +1,20 @@
+// Global tokio runtime for VM execution
+// Using OnceLock to ensure thread-safe lazy initialization
+use std::sync::OnceLock;
+use std::mem::ManuallyDrop;
+static GLOBAL_RT: OnceLock<ManuallyDrop<tokio::runtime::Runtime>> = OnceLock::new();
+
+fn get_global_runtime() -> &'static ManuallyDrop<tokio::runtime::Runtime> {
+    GLOBAL_RT.get_or_init(|| {
+        ManuallyDrop::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create tokio runtime")
+        )
+    })
+}
+
 pub mod api;
 pub mod ast;
 pub mod atom;
@@ -28,6 +45,8 @@ pub mod session;
 pub mod aura;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
 pub mod ui_gen;
+// Plan 152: Server-Sent Events (SSE) 解析
+pub mod sse;
 // Plan 114: Hybrid Routing (Convention + Config)
 pub mod route;
 // Plan 081 Phase 2: Execution mode selection (autovm, evaluator, c, rust)
@@ -178,8 +197,8 @@ pub fn run(code: &str) -> AutoResult<String> {
 /// let result = run_autovm("1 + 2").unwrap();  // Returns "3"
 /// ```
 pub fn run_autovm(code: &str) -> AutoResult<String> {
-    // Create tokio runtime for async execution
-    let rt = tokio::runtime::Runtime::new()?;
+    // Use global tokio runtime for async execution
+    let rt = get_global_runtime();
     rt.block_on(async { execute_autovm(code).await })
 }
 
@@ -749,7 +768,7 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
     let object_keys = configgen.base().object_keys.clone();
     let object_types = configgen.base().object_types.clone();
 
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = get_global_runtime();
     rt.block_on(async {
         let flash = VirtualFlash::new_with_code_and_keys(bytecode, object_keys, object_types);
         let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config

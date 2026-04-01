@@ -19,6 +19,8 @@ with-file-history = []
 use-bigvm = []
 # Fallback to TreeWalker evaluator (for debugging/comparison)
 use-evaluator = []
+# Plan 152: Streaming HTTP and SSE support
+streaming-http = ["tokio-util", "futures", "reqwest"]
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []
@@ -53,6 +55,11 @@ libloading = "0.8"
 log = { workspace = true }
 # URL encoding (Plan 102)
 urlencoding = { workspace = true }
+
+# Plan 152: 流式 HTTP 与 SSE 解析
+tokio-util = { version = "0.7", features = ["io"], optional = true }
+futures = { version = "0.3", optional = true }
+reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
 
 # Plan 015: UI Backend dependencies (optional)
 gpui-lib = { version = "0.2.2", package = "gpui", optional = true }

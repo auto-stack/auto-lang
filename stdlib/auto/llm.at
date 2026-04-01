@@ -1,0 +1,221 @@
+/// Plan 152 + 153: LLM API 基础支持
+///
+/// 提供与大语言模型（LLM）API 集成的基础功能
+/// 当前版本为基础实现，为完整的 AI Agent 系统奠定基础
+///
+/// ## 设计说明
+///
+/// 当前实现为简化版本，为 Plan 153（AutoShell AI Agent）提供基础支持：
+/// - 定义 LLM 相关类型
+/// - 提供消息格式化工具
+/// - 为未来的流式 API 预留接口
+///
+/// ## 未来扩展
+///
+/// 完整实现将包括：
+/// - Anthropic Claude API
+/// - OpenAI GPT API
+/// - 本地模型支持（Ollama）
+/// - 流式响应处理
+/// - 工具调用支持
+///
+
+// ═══════════════════════════════════════════════════════════════════════
+// LLM 消息类型
+// ═══════════════════════════════════════════════════════════════════════
+
+/// LLM 消息角色
+///
+/// 表示消息的发送者角色
+type MessageRole
+
+/// 用户角色
+#[pub]
+const ROLE_USER MessageRole
+
+/// 助手角色
+#[pub]
+const ROLE_ASSISTANT MessageRole
+
+/// 系统角色
+#[pub]
+const ROLE_SYSTEM MessageRole
+
+// ═══════════════════════════════════════════════════════════════════════
+// LLM 消息类型
+// ═══════════════════════════════════════════════════════════════════════
+
+/// LLM 消息类型
+///
+/// 表示发送给 LLM 的单条消息
+type Message
+
+/// 创建用户消息
+///
+/// # 参数
+/// - `content`: 消息内容
+///
+/// # 返回
+/// 新的 Message 实例
+#[pub]
+fn user_message(content str) Message
+
+/// 创建系统消息
+///
+/// # 参数
+/// - `content`: 消息内容
+///
+/// # 返回
+/// 新的 Message 实例
+#[pub]
+fn system_message(content str) Message
+
+/// 创建助手消息
+///
+/// # 参数
+/// - `content`: 消息内容
+///
+/// # 返回
+/// 新的 Message 实例
+#[pub]
+fn assistant_message(content str) Message
+
+// ═══════════════════════════════════════════════════════════════════════
+// LLM Provider 类型
+// ═══════════════════════════════════════════════════════════════════════
+
+/// LLM Provider 类型
+///
+/// 表示不同的 LLM 服务提供商
+type LLMProvider
+
+/// Anthropic Claude Provider
+#[pub]
+const PROVIDER_ANTHROPIC LLMProvider
+
+/// OpenAI GPT Provider
+#[pub]
+const PROVIDER_OPENAI LLMProvider
+
+/// 本地模型 Provider
+#[pub]
+const PROVIDER_LOCAL LLMProvider
+
+// ═══════════════════════════════════════════════════════════════════════
+// LLM 响应类型
+// ═══════════════════════════════════════════════════════════════════════
+
+/// LLM 响应类型
+///
+/// 表示 LLM 返回的响应
+type LLMResponse
+
+/// 获取响应内容
+///
+/// 返回响应的文本内容
+#[pub]
+fn LLMResponse.content(self LLMResponse) str
+
+/// 获取使用量信息
+///
+/// 返回 token 使用情况（简化版：返回 0）
+#[pub]
+fn LLMResponse.usage(self LLMResponse) int
+
+// ═══════════════════════════════════════════════════════════════════════
+// 消息构建工具
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 创建消息列表
+///
+/// 构建用于 LLM 请求的消息列表
+///
+/// # 示例
+/// ```auto
+/// use llm: { user_message, system_message, messages }
+///
+/// fn main() ! {
+///     let msgs = messages()
+///     msgs.push(system_message("You are a helpful assistant."))
+///     msgs.push(user_message("Hello!"))
+///
+///     // msgs 现在包含两条消息
+/// }
+/// ```
+#[pub]
+fn messages() []Message
+
+/// 将消息转换为 JSON 格式
+///
+/// 为 HTTP 请求准备 JSON 格式的消息数据
+///
+/// # 参数
+/// - `msg`: Message 实例
+///
+/// # 返回
+/// JSON 字符串
+///
+/// # 示例
+/// ```auto
+/// use llm: { user_message, message_to_json }
+///
+/// fn main() ! {
+///     let msg = user_message("Hello")
+///     let json = message_to_json(msg)
+///     // json: {"role": "user", "content": "Hello"}
+/// }
+/// ```
+#[pub]
+fn message_to_json(msg Message) str
+
+// ═══════════════════════════════════════════════════════════════════════
+// 使用示例
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 基础 LLM 请求示例（伪代码）
+///
+/// 注意：当前版本为基础类型定义，实际的 LLM 调用需要 Plan 153 的完整实现
+///
+/// ```auto
+/// use llm: { user_message, system_message, messages }
+/// use http_stream: { http_post_stream, http_stream_next, http_stream_is_done }
+/// use json: { encode }
+///
+/// fn call_claude(api_key str, prompt str) ! {
+///     // 构建消息列表
+///     let msgs = messages()
+///     msgs.push(system_message("You are a helpful assistant."))
+///     msgs.push(user_message(prompt))
+///
+///     // 构建 JSON 请求体
+///     let body = "{
+///         \"model\": \"claude-3-5-sonnet-20241022\",
+///         \"max_tokens\": 1024,
+///         \"messages\": " + encode(msgs) + "
+///     }"
+///
+///     // 发起流式请求（未来完整实现）
+///     let url = "https://api.anthropic.com/v1/messages"
+///     let stream = http_post_stream(url, body)
+///
+///     // 读取响应
+///     while http_stream_is_done(stream) == 0 {
+///         let chunk = http_stream_next(stream)
+///         say(chunk)
+///     }
+/// }
+/// ```
+///
+/// ## API 密钥管理
+///
+/// 在实际使用中，建议通过环境变量管理 API 密钥：
+/// ```bash
+/// export ANTHROPIC_API_KEY=sk-ant-xxx
+/// export OPENAI_API_KEY=sk-xxx
+/// ```
+///
+/// 然后在 Auto 代码中通过 `Env.get()` 读取：
+/// ```auto
+/// use env: { get }
+/// let api_key = get("ANTHROPIC_API_KEY")
+/// ```
