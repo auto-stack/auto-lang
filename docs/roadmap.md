@@ -13,9 +13,11 @@ v0.3 是 AutoLang 的重要里程碑版本，包含 **1172 个 commit**，跨越
   - Rust transpiler 泛型支持
   - BigVM 泛型类型擦除和特化
 
-- **Optional/Result 类型** (Plan 027, 049)
-  - 统一的 `May<T>` 类型
-  - `?T` 语法糖
+- **Optional/Result 类型** (Plan 027, 049, 120)
+  - 早期: 统一的 `May<T>` 类型 (包含 Option 和 Result，用 `?T` 表示)
+  - 后期: 拆分为 Rust 风格的 `Option<T>` 和 `Result<T>`
+  - `?T` → `Option<T>` (值可能不存在)
+  - `!T` → `Result<T, E>` (操作可能失败)
   - `??` 和 `?.` 操作符
 
 - **借用检查系统** (Plan 024, 026, 034, 038)
