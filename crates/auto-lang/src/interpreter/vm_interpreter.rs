@@ -10,9 +10,6 @@ use std::collections::HashMap as StdHashMap;
 
 /// VM-based interpreter that wraps AutoVM
 pub struct VmInterpreter {
-    /// Tokio runtime for async VM execution
-    rt: tokio::runtime::Runtime,
-
     /// Function exports (name -> address)
     exports: StdHashMap<String, u32>,
 }
@@ -20,7 +17,6 @@ pub struct VmInterpreter {
 impl VmInterpreter {
     pub fn new() -> Self {
         Self {
-            rt: tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"),
             exports: StdHashMap::new(),
         }
     }
@@ -96,11 +92,13 @@ impl VmInterpreter {
             codegen.object_types,
         );
 
-        // 6. Run in tokio
+        // 6. Run in tokio using global runtime
         let strings = codegen.strings;
         let exports = codegen.exports;
 
-        let final_result = self.rt.block_on(async move {
+        // Use global runtime to avoid creating/dropping runtimes in async context
+        let rt = crate::get_global_runtime();
+        let final_result = rt.block_on(async move {
             let mut vm = AutoVM::new(flash, 4096);
             vm.load_strings(strings);
 

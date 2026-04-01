@@ -1,18 +1,18 @@
 // Global tokio runtime for VM execution
 // Using OnceLock to ensure thread-safe lazy initialization
 use std::sync::OnceLock;
-use std::mem::ManuallyDrop;
-static GLOBAL_RT: OnceLock<ManuallyDrop<tokio::runtime::Runtime>> = OnceLock::new();
+use std::sync::Arc;
+static GLOBAL_RT: OnceLock<Arc<tokio::runtime::Runtime>> = OnceLock::new();
 
-fn get_global_runtime() -> &'static ManuallyDrop<tokio::runtime::Runtime> {
+pub(crate) fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     GLOBAL_RT.get_or_init(|| {
-        ManuallyDrop::new(
+        Arc::new(
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("Failed to create tokio runtime")
         )
-    })
+    }).clone()
 }
 
 pub mod api;
