@@ -788,36 +788,13 @@ cargo build -p auto-lang
 - ⏸️ 完整的 LLM Provider 实现（Plan 153 Phase 1）
 - ⏸️ 工具调用系统（Plan 153 Phase 3）
 
-### ⚠️ 已知问题
+### 问题修复
 
-**Tokio Runtime Panic**（影响整个 AutoVM，非 Plan 152 特有问题）
+**Tokio Runtime Panic** (已修复 ✅)
 
-```
-thread 'main' panicked at tokio-1.49.0/src/runtime/blocking/shutdown.rs:51:21:
-Cannot drop a runtime in a context where blocking is not allowed.
-```
+在实施过程中发现的 tokio 1.49 nested runtime panic 已在同一次提交中修复：
 
-**原因**：`reqwest` 的 `blocking` feature 引入了 tokio 1.49，与当前 runtime 管理方式不兼容。
-
-**影响范围**：
-- ✅ SSE parser 本身完全正常（10/10 测试通过）
-- ❌ `auto run` 命令受影响
-- ✅ `cargo test -p auto-lang --lib sse::` 正常运行
-
-**临时解决方案**：
-```bash
-# 直接运行 SSE 测试（正常工作）
-cargo test -p auto-lang --lib sse::
-
-# 避免使用 `auto run` 命令，直到问题修复
-```
-
-**需要修复**：
-- 降级 tokio 版本或修改 reqwest feature 配置
-- 或重构 runtime 管理方式以支持 tokio 1.49
-
-**相关文件**：
-- `crates/auto-lang/src/lib.rs` - runtime 管理
-- `Cargo.toml` - reqwest 依赖配置
-- `crates/auto-man/Cargo.toml` - auto-man 的 reqwest 依赖
+- **问题**：`VmInterpreter` 包含自己的 tokio runtime，导致嵌套 runtime
+- **修复**：移除 VmInterpreter 中的 runtime，改用全局 runtime
+- **提交**：`fix(runtime): resolve tokio 1.49 nested runtime panic`
 
