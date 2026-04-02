@@ -2699,60 +2699,101 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
+    fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
+        let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
+            name: item.name.clone().into(),
+            ty: item.payload_type.clone().unwrap_or(Type::Void),
+        }).collect();
+        let (generic_params, methods) = match &enum_decl.kind {
+            EnumKind::Heterogeneous { generic_params, methods } => (generic_params.clone(), methods.clone()),
+            _ => (vec![], vec![]),
+        };
+        Tag {
+            name: enum_decl.name.clone().into(),
+            generic_params,
+            fields,
+            methods,
+        }
+    }
+
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
-        // Generate enum definition
-        sink.body.write(b"enum ")?;
-        sink.body.write(enum_decl.name.as_bytes())?;
-        sink.body.write(b" {\n")?;
-        self.indent();
+        match &enum_decl.kind {
+            EnumKind::Scalar { .. } => {
+                // C-style scalar enum: emit Rust enum with values + Display impl
+                sink.body.write(b"enum ")?;
+                sink.body.write(enum_decl.name.as_bytes())?;
+                sink.body.write(b" {\n")?;
+                self.indent();
 
-        for (_i, item) in enum_decl.items.iter().enumerate() {
-            self.print_indent(&mut sink.body)?;
-            sink.body
-                .write(format!("{} = {},", item.name, item.value).as_bytes())?;
-            sink.body.write(b"\n")?;
+                for (_i, item) in enum_decl.items.iter().enumerate() {
+                    self.print_indent(&mut sink.body)?;
+                    sink.body
+                        .write(format!("{} = {},", item.name, item.value()).as_bytes())?;
+                    sink.body.write(b"\n")?;
+                }
+
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}\n")?;
+
+                // Generate Display trait implementation
+                sink.body.write(b"\n")?;
+                writeln!(
+                    sink.body,
+                    "impl std::fmt::Display for {} {{",
+                    enum_decl.name
+                )?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(
+                    sink.body,
+                    "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
+                )?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "match self {{")?;
+                self.indent();
+
+                for item in &enum_decl.items {
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(
+                        sink.body,
+                        "{}::{} => write!(f, \"{}\"),",
+                        enum_decl.name, item.name, item.name
+                    )?;
+                }
+
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "}}")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "}}")?;
+                self.dedent();
+                writeln!(sink.body, "}}")?;
+            }
+            EnumKind::Homogeneous { payload_type } => {
+                // Generate Rust enum where all variants wrap the same type
+                write!(sink.body, "enum {}", enum_decl.name)?;
+                writeln!(sink.body, " {{")?;
+                self.indent();
+                for item in &enum_decl.items {
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload_type))?;
+                }
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "}}")?;
+                sink.body.write(b"\n")?;
+            }
+            EnumKind::Heterogeneous { .. } => {
+                // Reuse tag code generation: convert EnumDecl to Tag
+                let tag = Self::enum_decl_to_tag(enum_decl);
+                self.tag_decl(&tag, sink)?;
+            }
         }
-
-        self.dedent();
-        self.print_indent(&mut sink.body)?;
-        sink.body.write(b"}\n")?;
-
-        // Generate Display trait implementation
-        sink.body.write(b"\n")?;
-        writeln!(
-            sink.body,
-            "impl std::fmt::Display for {} {{",
-            enum_decl.name
-        )?;
-        self.indent();
-        self.print_indent(&mut sink.body)?;
-        writeln!(
-            sink.body,
-            "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
-        )?;
-        self.indent();
-        self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "match self {{")?;
-        self.indent();
-
-        for item in &enum_decl.items {
-            self.print_indent(&mut sink.body)?;
-            writeln!(
-                sink.body,
-                "{}::{} => write!(f, \"{}\"),",
-                enum_decl.name, item.name, item.name
-            )?;
-        }
-
-        self.dedent();
-        self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "}}")?;
-        self.dedent();
-        self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "}}")?;
-        self.dedent();
-        writeln!(sink.body, "}}")?;
 
         Ok(())
     }

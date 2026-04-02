@@ -3,7 +3,7 @@ import { Button } from '@kit.ArkUI';
 @Preview
 @Component
 export struct TestTabs {
-    @State activeTab: string = 'tab1'
+    @State activeTab: Object = 'tab1'
 
   @State currentIndex: number = 0
   private tabsController: TabsController = new TabsController()

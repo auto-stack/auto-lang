@@ -250,7 +250,7 @@ impl TypeStore {
         self.enum_decls.get(&AutoStr::from(enum_name))
             .and_then(|decl| decl.items.iter()
                 .find(|item| item.name.as_ref() == variant_name)
-                .map(|item| item.value))
+                .map(|item| item.value()))
     }
 
     /// Plan 127: 查找枚举变体的值（通过变体名称）
@@ -260,7 +260,7 @@ impl TypeStore {
     pub fn find_enum_variant_by_name(&self, variant_name: &str) -> Option<(AutoStr, i32)> {
         for (enum_name, decl) in &self.enum_decls {
             if let Some(item) = decl.items.iter().find(|item| item.name.as_ref() == variant_name) {
-                return Some((enum_name.clone(), item.value));
+                return Some((enum_name.clone(), item.value()));
             }
         }
         None

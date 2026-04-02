@@ -1,4 +1,4 @@
-tag Atom {
+enum Atom {
     Int int
     Char char
     Float float
@@ -11,6 +11,5 @@ fn main() {
         Atom.Int(i) => print("Got Int:", i)
         Atom.Char(c) => print("Got Char:", c)
         Atom.Float(f) => print("Got Float:", f)
-        else => // Compile ERROR!
     }
 }

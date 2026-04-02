@@ -115,8 +115,8 @@ fn test_013_union() {
 }
 
 #[test]
-fn test_014_tag() {
-    test_a2ts("014_tag").unwrap();
+fn test_014_hetero_enum() {
+    test_a2ts("014_hetero_enum").unwrap();
 }
 
 #[test]

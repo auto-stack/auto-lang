@@ -1,4 +1,4 @@
-tag May<T> {
+enum May<T> {
     nil Nil
     val T
 }

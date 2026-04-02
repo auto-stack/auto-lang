@@ -1,4 +1,4 @@
-tag Atom {
+enum Atom {
     Int int
     Float float
 

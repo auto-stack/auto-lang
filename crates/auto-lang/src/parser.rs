@@ -776,6 +776,10 @@ impl<'a> Parser<'a> {
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
                 return shared(Type::User(type_decl.as_ref().clone()));
             }
+            // Also check enum declarations (for heterogeneous enum pattern matching)
+            if let Some(enum_decl) = store.lookup_enum_decl_str(name) {
+                return shared(Type::Enum(shared(enum_decl.as_ref().clone())));
+            }
         }
 
         // 从 InferenceContext 查找
@@ -2669,7 +2673,7 @@ impl<'a> Parser<'a> {
         // format is: TagName.Tag(elem)
         let typ = self.lookup_type(&name);
         match *typ.borrow() {
-            Type::Tag(ref _t) => return self.tag_cover(&name),
+            Type::Tag(_) | Type::Enum(_) => return self.tag_cover(&name),
             _ => {
                 return Ok(Expr::Ident(name));
             }
@@ -2932,7 +2936,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::Union => self.union_stmt()?,
-            TokenKind::Tag => self.tag_stmt()?,
+            TokenKind::Tag => self.enum_stmt()?,  // DEPRECATED: tag redirects to enum
             TokenKind::Spec => self.spec_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
             // Node Instance or UI contextual keywords
@@ -3199,66 +3203,309 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Ext(ext))
     }
 
-    /// Format: enum { item1, item2, item3 }
+    /// Parse enum declarations supporting 3 forms:
+    ///
+    /// - **Scalar**: `enum Color { Red, Green }` or `enum HttpCode u16 { OK = 200 }`
+    /// - **Homogeneous**: `enum Vertex Point { LeftTop, RightTop }`
+    /// - **Heterogeneous**: `enum Msg { Quit, Move Point, Write string }`
+    ///
+    /// Also handles `tag` keyword (deprecated) by redirecting here.
     fn enum_stmt(&mut self) -> AutoResult<Stmt> {
-        self.next(); // skip enum
-        let name = self.cur.text.clone().into();
+        // Support both 'enum' and 'tag' keywords (tag is deprecated)
+        if self.is_kind(TokenKind::Tag) || self.is_kind(TokenKind::Enum) {
+            self.next(); // skip 'enum' or 'tag'
+        }
+        let name: AutoStr = self.cur.text.clone().into();
         self.next();
-        let mut items = Vec::new();
+
+        // === Parse optional generic params: enum Name<T> { ... } ===
+        let mut generic_params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next();
+            generic_params.push(self.parse_generic_param()?);
+            while self.cur.kind == TokenKind::Comma {
+                self.next();
+                generic_params.push(self.parse_generic_param()?);
+            }
+            self.expect(TokenKind::Gt)?;
+        }
+
+        let kind;
+        let items;
+
+        if self.is_kind(TokenKind::LBrace) {
+            // enum Name { ... } — examine body to determine Scalar vs Heterogeneous
+            let parsed = self.parse_enum_body(&name, &generic_params)?;
+            kind = parsed.0;
+            items = parsed.1;
+        } else if self.is_kind(TokenKind::Ident) {
+            let next_text = self.cur.text.to_string();
+            if Self::is_integer_type_name(&next_text) {
+                // enum Name u16 { ... } → Scalar with repr_type
+                let repr_type = self.parse_type()?;
+                let scalar_items = self.parse_scalar_enum_items()?;
+                kind = EnumKind::Scalar { repr_type: Some(repr_type) };
+                items = scalar_items;
+            } else {
+                // Check if it's a known type (for Homogeneous)
+                let type_lookup = self.lookup_type(&next_text);
+                let borrowed = type_lookup.borrow();
+                match *borrowed {
+                    Type::User(_) | Type::Tag(_) | Type::Enum(_) => {
+                        let payload_type = borrowed.clone();
+                        drop(borrowed);
+                        self.next(); // skip type name
+                        let homo_items = self.parse_homo_enum_items()?;
+                        kind = EnumKind::Homogeneous { payload_type };
+                        items = homo_items;
+                    }
+                    _ => {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "expected '{{' or known type after '{}', got '{}'",
+                                name, next_text
+                            ),
+                            span,
+                        }
+                        .into());
+                    }
+                }
+            }
+        } else {
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic {
+                message: format!("expected '{{' or type after '{}'", name),
+                span,
+            }
+            .into());
+        }
+
+        let enum_decl = EnumDecl {
+            name: name.clone(),
+            items,
+            kind,
+        };
+        self.register_enum_decl(&enum_decl, &generic_params);
+        Ok(Stmt::EnumDecl(enum_decl))
+    }
+
+    /// Helper: check if a string is a known integer type name.
+    fn is_integer_type_name(s: &str) -> bool {
+        matches!(
+            s,
+            "int"
+                | "uint"
+                | "u8"
+                | "u16"
+                | "u32"
+                | "u64"
+                | "usize"
+                | "i8"
+                | "i16"
+                | "i32"
+                | "i64"
+                | "byte"
+        )
+    }
+
+    /// Parse the body of `enum Name { ... }`, determining Scalar vs Heterogeneous
+    /// by checking if any items have payload types.
+    fn parse_enum_body(
+        &mut self,
+        name: &AutoStr,
+        generic_params: &[crate::ast::GenericParam],
+    ) -> AutoResult<(EnumKind, Vec<EnumItem>)> {
+        // Set current type params for generic parsing
+        let prev_type_params = std::mem::replace(
+            &mut self.current_type_params,
+            generic_params
+                .iter()
+                .map(|gp| match gp {
+                    crate::ast::GenericParam::Type(tp) => tp.name.clone(),
+                    crate::ast::GenericParam::Const(cp) => cp.name.clone(),
+                })
+                .collect(),
+        );
+
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
-        let mut last_val = 0;
-        // parse items
-        while !self.is_kind(TokenKind::RBrace) {
+
+        let mut items = Vec::new();
+        let mut methods = Vec::new();
+        let mut has_any_payload = false;
+        let mut last_val = 0i32;
+
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            // Check for methods inside enum body
+            if self.is_kind(TokenKind::Fn) {
+                let fn_stmt = self.fn_decl_stmt(&Name::from(name.as_str()))?;
+                if let Stmt::Fn(fn_expr) = fn_stmt {
+                    methods.push(fn_expr);
+                }
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
+                continue;
+            }
+
+            // Parse variant
+            let item_name: AutoStr = self.cur.text.clone().into();
+            self.next();
+
+            let mut scalar_value = None;
+            let mut payload_type = None;
+
+            if self.is_kind(TokenKind::Asn) {
+                // Variant = value (Scalar form)
+                self.next();
+                let value = self.parse_ints()?;
+                let value = self.get_int_expr(&value);
+                scalar_value = Some(value as i32);
+                last_val = value as i32 + 1;
+            } else if self.is_kind(TokenKind::Ident)
+                || self.is_kind(TokenKind::LParen)
+                || self.is_kind(TokenKind::LBrace)
+            {
+                // Variant followed by a type (Heterogeneous form)
+                payload_type = Some(self.parse_type()?);
+                has_any_payload = true;
+            } else {
+                // No value, no type — plain variant, auto-increment for scalar
+                scalar_value = if last_val != 0 { Some(last_val) } else { None };
+                last_val += 1;
+            }
+
+            items.push(EnumItem {
+                name: item_name,
+                scalar_value,
+                payload_type,
+            });
+            self.expect_eos(false)?;
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Restore type params
+        self.current_type_params = prev_type_params;
+
+        let kind = if has_any_payload || !methods.is_empty() || !generic_params.is_empty() {
+            EnumKind::Heterogeneous {
+                generic_params: generic_params.to_vec(),
+                methods,
+            }
+        } else {
+            EnumKind::Scalar { repr_type: None }
+        };
+
+        Ok((kind, items))
+    }
+
+    /// Parse scalar enum items for `enum Name u16 { A, B = 2, C }`.
+    /// Items only have `= value` or auto-increment, no payload types.
+    fn parse_scalar_enum_items(&mut self) -> AutoResult<Vec<EnumItem>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut items = Vec::new();
+        let mut last_val = 0i32;
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
             let mut item = EnumItem {
                 name: self.cur.text.clone().into(),
-                value: 0,
+                scalar_value: None,
+                payload_type: None,
             };
             self.next();
             if self.is_kind(TokenKind::Asn) {
                 self.next(); // skip =
                 let value = self.parse_ints()?;
                 let value = self.get_int_expr(&value);
-                item.value = value as i32;
-                last_val = item.value;
+                item.scalar_value = Some(value as i32);
+                last_val = value as i32 + 1;
             } else {
-                item.value = last_val;
+                item.scalar_value = if last_val != 0 { Some(last_val) } else { None };
                 last_val += 1;
             }
+            // Handle separator
             if self.is_kind(TokenKind::Comma) {
-                self.next(); // skip ,
+                self.next();
             } else if self.is_kind(TokenKind::Newline) {
-                self.next(); // skip newline
-            } else if self.is_kind(TokenKind::RBrace) {
-                // do nothing
-            } else {
-                let message = format!("expected ',' or newline, got {}", self.cur.text);
-                let span = pos_to_span(self.cur.pos);
-                return Err(SyntaxError::Generic { message, span }.into());
+                self.next();
+            } else if !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
             }
             self.skip_empty_lines();
             items.push(item);
         }
         self.expect(TokenKind::RBrace)?;
-        // make enum ast node
-        let enum_decl = EnumDecl { name, items };
-        self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
-        // Register enum in type_store for type lookup
-        self.type_store.write().unwrap().register_enum_decl(enum_decl.clone());
+        Ok(items)
+    }
 
-        // Register enum variants as constants (Plan 127: for task message enums)
-        // Each variant becomes accessible as a standalone variable with its integer value
-        for item in &enum_decl.items {
-            let store = Store {
-                kind: StoreKind::Let,
-                name: item.name.clone(),
-                ty: Type::Int,
-                expr: Expr::Int(item.value),
-            };
-            self.define(item.name.as_str(), Meta::Store(store));
+    /// Parse homogeneous enum items for `enum Vertex Point { LeftTop, RightTop }`.
+    /// Just variant names, no types or values.
+    fn parse_homo_enum_items(&mut self) -> AutoResult<Vec<EnumItem>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut items = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            let item_name: AutoStr = self.cur.text.clone().into();
+            self.next();
+            items.push(EnumItem {
+                name: item_name,
+                scalar_value: None,
+                payload_type: None,
+            });
+            self.expect_eos(false)?;
+            self.skip_empty_lines();
         }
+        self.expect(TokenKind::RBrace)?;
+        Ok(items)
+    }
 
-        Ok(Stmt::EnumDecl(enum_decl))
+    /// Register an enum declaration in the parser's scope and type store.
+    fn register_enum_decl(&mut self, enum_decl: &EnumDecl, generic_params: &[crate::ast::GenericParam]) {
+        match &enum_decl.kind {
+            EnumKind::Scalar { .. } => {
+                self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
+                self.type_store
+                    .write()
+                    .unwrap()
+                    .register_enum_decl(enum_decl.clone());
+                // Register variants as constants (Plan 127: for task message enums)
+                for item in &enum_decl.items {
+                    let store = Store {
+                        kind: StoreKind::Let,
+                        name: item.name.clone(),
+                        ty: Type::Int,
+                        expr: Expr::Int(item.value()),
+                    };
+                    self.define(item.name.as_str(), Meta::Store(store));
+                }
+            }
+            EnumKind::Heterogeneous { .. } => {
+                self.define(
+                    enum_decl.name.as_str(),
+                    Meta::Type(Type::Enum(shared(enum_decl.clone()))),
+                );
+                self.type_store
+                    .write()
+                    .unwrap()
+                    .register_enum_decl(enum_decl.clone());
+                // Register variants as constructors (Tag-style)
+                // Nil variants without payload are accessible as EnumName.VariantName
+            }
+            EnumKind::Homogeneous { .. } => {
+                self.define(
+                    enum_decl.name.as_str(),
+                    Meta::Type(Type::Enum(shared(enum_decl.clone()))),
+                );
+                self.type_store
+                    .write()
+                    .unwrap()
+                    .register_enum_decl(enum_decl.clone());
+            }
+        }
+        // Suppress unused variable warning
+        let _ = generic_params;
     }
 
     // ========================================================================
@@ -4413,6 +4660,26 @@ impl<'a> Parser<'a> {
                     let tag_typ = self.lookup_type(&cover.kind);
                     let tag_field_type = match *tag_typ.borrow() {
                         Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                        Type::Enum(ref en) => {
+                            // Heterogeneous enum pattern: Atom.Int(i) => ...
+                            let en_ref = en.borrow();
+                            match &en_ref.kind {
+                                EnumKind::Heterogeneous { .. } => {
+                                    // Find the variant's payload type
+                                    en_ref.items.iter()
+                                        .find(|item| item.name == cover.tag.as_str())
+                                        .and_then(|item| item.payload_type.clone())
+                                        .unwrap_or(Type::Unknown)
+                                }
+                                _ => {
+                                    return Err(SyntaxError::Generic {
+                                        message: format!("Invalid enum type for tag pattern: {}", cover.kind),
+                                        span: pos_to_span(self.cur.pos),
+                                    }
+                                    .into());
+                                }
+                            }
+                        }
                         _ => {
                             return Err(SyntaxError::Generic {
                                 message: format!("Invalid tag type: {}", cover.kind),
@@ -7074,7 +7341,7 @@ impl<'a> Parser<'a> {
                         // Check if it's a type name (for static method calls like HashMap.new())
                         let is_type = self.lookup_type(name);
                         let is_type_valid = match *is_type.borrow() {
-                            Type::User(_) | Type::Tag(_) => true,
+                            Type::User(_) | Type::Tag(_) | Type::Enum(_) => true,
                             _ => false,
                         };
 

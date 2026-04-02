@@ -1,4 +1,4 @@
-tag Option {
+enum Option {
     Some int
     None int
 }

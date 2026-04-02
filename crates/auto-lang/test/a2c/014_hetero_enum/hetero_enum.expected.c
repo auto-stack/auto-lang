@@ -1,4 +1,4 @@
-#include "tag.h"
+#include "hetero_enum.h"
 
 
 int main(void) {
@@ -6,7 +6,6 @@ int main(void) {
 
     switch (atom.tag) {
     case ATOM_INT:
-        {
             printf("%s %d\n", "Got Int:", atom.as.Int);
         }
         break;
@@ -15,11 +14,19 @@ int main(void) {
             printf("%s %c\n", "Got Char:", atom.as.Char);
         }
         break;
-    case ATOM_FLOAT:
+    case ATOMFloat:
         {
-            printf("%s %f\n", "Got Float:", atom.as.Float);
+            printf("%s %f\n" "Got Float:", atom.as.Float);
         }
         break;
     }
     return 0;
 }
+````
+        break;
+    }
+
+    }
+    return 0;
+}
+

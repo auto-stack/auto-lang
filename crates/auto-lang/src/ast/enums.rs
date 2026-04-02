@@ -1,6 +1,6 @@
 use std::{fmt, io as stdio};
 
-use super::{Fn, Name, Type};
+use super::{Fn, Type};
 use crate::ast::{AtomWriter, GenericParam, ToAtomStr};
 use auto_val::AutoStr;
 
@@ -14,7 +14,7 @@ use auto_val::AutoStr;
 ///
 /// - **Heterogeneous**: Each variant may have a different payload type (algebraic data type).
 ///   Example: `enum Msg { Quit, Move Point, Write string }`
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum EnumKind {
     /// C-style scalar enumeration with optional explicit representation type.
     /// `enum Color { Red, Green }` or `enum HttpCode u16 { OK = 200 }`
@@ -40,14 +40,14 @@ pub enum EnumKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct EnumDecl {
     pub name: AutoStr,
     pub items: Vec<EnumItem>,
     pub kind: EnumKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct EnumItem {
     pub name: AutoStr,
     /// Scalar form: optional explicit integer value (e.g., `OK = 200`).

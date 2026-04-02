@@ -272,8 +272,8 @@ fn test_013_union() {
 }
 
 #[test]
-fn test_014_tag() {
-    test_a2c("014_tag").unwrap();
+fn test_014_hetero_enum() {
+    test_a2c("014_hetero_enum").unwrap();
 }
 
 #[test]
@@ -399,11 +399,11 @@ fn test_027_unified_functions() {
     test_a2c("027_unified_section").unwrap();
 }
 
-// ===================== Tag Type and May<T> tests =======================
+// ===================== Hetero Enum Type and May<T> tests =======================
 
 #[test]
-fn test_032_tag_types() {
-    test_a2c("032_tag_types").unwrap();
+fn test_032_hetero_enum_types() {
+    test_a2c("032_hetero_enum_types").unwrap();
 }
 
 #[test]
@@ -715,9 +715,9 @@ fn test_151_std_file_read() {
 // ===================== Generic Type Tests =====================
 
 #[test]
-#[ignore = "Generic tag transpilation not yet implemented"]
-fn test_109_generic_tag() {
-    match test_a2c("109_generic_tag") {
+#[ignore = "Generic hetero enum transpilation not yet implemented"]
+fn test_109_generic_hetero_enum() {
+    match test_a2c("109_generic_hetero_enum") {
         Ok(_) => {}
         Err(e) => {
             // Check if this is MultipleErrors and print each one

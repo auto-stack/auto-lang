@@ -515,28 +515,70 @@ impl TypeScriptTrans {
         Ok(())
     }
 
+    /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
+    fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
+        let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
+            name: item.name.clone().into(),
+            ty: item.payload_type.clone().unwrap_or(Type::Void),
+        }).collect();
+        let (generic_params, methods) = match &enum_decl.kind {
+            EnumKind::Heterogeneous { generic_params, methods } => (generic_params.clone(), methods.clone()),
+            _ => (vec![], vec![]),
+        };
+        Tag {
+            name: enum_decl.name.clone().into(),
+            generic_params,
+            fields,
+            methods,
+        }
+    }
+
     pub fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
-        // Generate TypeScript enum (const enum for better performance)
-        out.write(b"const enum ")?;
-        out.write_all(enum_decl.name.as_bytes())?;
-        out.write(b" {")?;
+        match &enum_decl.kind {
+            EnumKind::Scalar { .. } => {
+                // C-style scalar enum: emit TypeScript const enum
+                out.write(b"const enum ")?;
+                out.write_all(enum_decl.name.as_bytes())?;
+                out.write(b" {")?;
 
-        for (i, item) in enum_decl.items.iter().enumerate() {
-            if i > 0 {
-                out.write(b",")?;
+                for (i, item) in enum_decl.items.iter().enumerate() {
+                    if i > 0 {
+                        out.write(b",")?;
+                    }
+                    out.write(b"\n    ")?;
+                    out.write_all(item.name.as_bytes())?;
+
+                    // If there's an explicit non-zero value, use it
+                    if item.value() != 0 {
+                        out.write(b" = ")?;
+                        write!(out, "{}", item.value())?;
+                    }
+                }
+
+                out.write(b"\n}")?;
             }
-            out.write(b"\n    ")?;
-            out.write_all(item.name.as_bytes())?;
+            EnumKind::Homogeneous { payload_type } => {
+                // Generate TS discriminated union: type Name = { _tag: "V1", value: T } | ...
+                out.write(b"type ")?;
+                out.write_all(enum_decl.name.as_bytes())?;
+                out.write(b" =\n")?;
 
-            // If there's an explicit non-zero value, use it
-            // Note: TypeScript enums auto-increment from 0, so we only need explicit values for non-defaults
-            if item.value != 0 {
-                out.write(b" = ")?;
-                write!(out, "{}", item.value)?;
+                for (i, item) in enum_decl.items.iter().enumerate() {
+                    if i > 0 { out.write(b"\n    | ")?; } else { out.write(b"    ")?; }
+                    out.write(b"{ _tag: \"")?;
+                    out.write_all(item.name.as_bytes())?;
+                    out.write(b"\", value: ")?;
+                    out.write_all(Self::type_to_ts(payload_type).as_bytes())?;
+                    out.write(b" }")?;
+                }
+                out.write(b";\n")?;
+            }
+            EnumKind::Heterogeneous { .. } => {
+                // Reuse tag code generation: convert EnumDecl to Tag
+                let tag = Self::enum_decl_to_tag(enum_decl);
+                self.tag_decl(&tag, out)?;
             }
         }
-
-        out.write(b"\n}")?;
         Ok(())
     }
 

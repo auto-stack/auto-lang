@@ -1,4 +1,4 @@
-tag MayBool {
+enum MayBool {
     Nil int
     Val bool
     Err int

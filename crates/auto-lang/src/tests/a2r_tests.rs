@@ -223,8 +223,8 @@ fn test_110_const_generics() {
 }
 
 #[test]
-fn test_109_generic_tag() {
-    test_a2r("109_generic_tag").unwrap();
+fn test_109_generic_hetero_enum() {
+    test_a2r("109_generic_hetero_enum").unwrap();
 }
 
 #[test]
@@ -238,8 +238,8 @@ fn test_055_union() {
 }
 
 #[test]
-fn test_014_tag() {
-    test_a2r("014_tag").unwrap();
+fn test_014_hetero_enum() {
+    test_a2r("014_hetero_enum").unwrap();
 }
 
 #[test]

@@ -627,24 +627,86 @@ impl CTrans {
         Ok(())
     }
 
-    fn enum_decl(&mut self, enum_decl: &EnumDecl, _sink: &mut Sink) -> AutoResult<()> {
-        let mut out = std::mem::take(&mut self.header);
-        out.write(b"enum ")?;
-        out.write(enum_decl.name.as_bytes())?;
-        out.write(b" {\n")?;
-        for item in enum_decl.items.iter() {
-            println!("Enum Item: {}", item.name);
-            out.write(b"    ")?;
-            out.write(format!("{}_", enum_decl.name.to_uppercase()).as_bytes())?;
-            out.write(format!("{}", item.name).as_bytes())?;
-            out.write(b" = ")?;
-            out.write(format!("{}", item.value).as_bytes())?;
-            out.write(b",\n")?;
+    /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
+    fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
+        let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
+            name: item.name.clone().into(),
+            ty: item.payload_type.clone().unwrap_or(Type::Void),
+        }).collect();
+        let (generic_params, methods) = match &enum_decl.kind {
+            EnumKind::Heterogeneous { generic_params, methods } => (generic_params.clone(), methods.clone()),
+            _ => (vec![], vec![]),
+        };
+        Tag {
+            name: enum_decl.name.clone().into(),
+            generic_params,
+            fields,
+            methods,
         }
-        out.write(b"};\n")?;
-        self.header = out;
+    }
 
-        self.last_out = OutKind::Header;
+    /// Extract a Tag from a Type, supporting both Type::Tag and Type::Enum (Heterogeneous).
+    /// Returns None if the type is not tag-like.
+    fn type_as_tag(typ: &Type) -> Option<Tag> {
+        match typ {
+            Type::Tag(t) => Some(t.borrow().clone()),
+            Type::Enum(en) => {
+                let en = en.borrow();
+                match &en.kind {
+                    EnumKind::Heterogeneous { .. } => Some(Self::enum_decl_to_tag(&en)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        match &enum_decl.kind {
+            EnumKind::Scalar { .. } => {
+                // C-style scalar enum: emit enum with values in header
+                let mut out = std::mem::take(&mut self.header);
+                out.write(b"enum ")?;
+                out.write(enum_decl.name.as_bytes())?;
+                out.write(b" {\n")?;
+                for item in enum_decl.items.iter() {
+                    out.write(b"    ")?;
+                    out.write(format!("{}_", enum_decl.name.to_uppercase()).as_bytes())?;
+                    out.write(format!("{}", item.name).as_bytes())?;
+                    out.write(b" = ")?;
+                    out.write(format!("{}", item.value()).as_bytes())?;
+                    out.write(b",\n")?;
+                }
+                out.write(b"};\n")?;
+                self.header = out;
+                self.last_out = OutKind::Header;
+            }
+            EnumKind::Homogeneous { payload_type } => {
+                // Generate: enum NameKind { NAME_VARIANT1, NAME_VARIANT2, ... }
+                // Generate: struct Name { enum NameKind tag; PayloadType payload; };
+                let name = &enum_decl.name;
+                let kind_enum = format!("{}Kind", name);
+
+                // Emit kind enum in header
+                let mut hdr = std::mem::take(&mut self.header);
+                writeln!(hdr, "enum {} {{", kind_enum)?;
+                for item in &enum_decl.items {
+                    writeln!(hdr, "    {}_{},", name.to_uppercase(), item.name)?;
+                }
+                writeln!(hdr, "}};")?;
+                writeln!(hdr, "struct {} {{", name)?;
+                writeln!(hdr, "    enum {} tag;", kind_enum)?;
+                writeln!(hdr, "    {} payload;", self.c_type_name(payload_type))?;
+                writeln!(hdr, "}};")?;
+                self.header = hdr;
+                self.last_out = OutKind::Header;
+            }
+            EnumKind::Heterogeneous { .. } => {
+                // Reuse tag code generation: convert EnumDecl to Tag
+                let tag = Self::enum_decl_to_tag(enum_decl);
+                self.tag(&tag, sink)?;
+            }
+        }
         Ok(())
     }
 
@@ -1531,11 +1593,12 @@ impl CTrans {
     fn cover(&mut self, cover: &Cover, out: &mut impl Write) -> AutoResult<()> {
         let Cover::Tag(c) = cover;
         let typ = self.lookup_type(&c.kind);
-        let Type::Tag(t) = typ else {
+        if let Some(tag) = Self::type_as_tag(&typ) {
+            let enum_name = tag.enum_name(&c.tag);
+            out.write(enum_name.as_bytes())?;
+        } else {
             return Err(format!("C Transpiler: unsupported cover type: {}", typ).into());
-        };
-        let enum_name = t.borrow().enum_name(&c.tag);
-        out.write(enum_name.as_bytes())?;
+        }
         Ok(())
     }
 
@@ -2110,7 +2173,11 @@ impl CTrans {
                 format!("{}*", self.c_type_name(&ptr.of.borrow()))
             }
             Type::Enum(en) => {
-                format!("enum {}", en.borrow().name)
+                let en_borrowed = en.borrow();
+                match &en_borrowed.kind {
+                    EnumKind::Heterogeneous { .. } => format!("struct {}", en_borrowed.name),
+                    _ => format!("enum {}", en_borrowed.name),
+                }
             }
             Type::Union(u) => {
                 format!("union {}", u.name)
@@ -2495,13 +2562,12 @@ impl CTrans {
                     return Err(format!("is-stmt target not found {}", name).into());
                 };
                 match meta.as_ref() {
-                    Meta::Store(store) => match &store.ty {
-                        Type::Tag(_) => {
+                    Meta::Store(store) => {
+                        if Self::type_as_tag(&store.ty).is_some() {
                             sink.body.write(format!("{}.tag", name).as_bytes())?;
                             return Ok(());
                         }
-                        _ => {}
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -2635,6 +2701,15 @@ impl CTrans {
                                     // Return the tag type (clone the Shared<Tag>)
                                     return Some(Type::Tag(tag.clone()));
                                 }
+                                Meta::Type(Type::Enum(en)) => {
+                                    // Heterogeneous enum construction: Enum.Variant(args)
+                                    let en_ref = en.borrow();
+                                    if matches!(&en_ref.kind, EnumKind::Heterogeneous { .. }) {
+                                        // Return as Tag type for compatibility
+                                        let tag = Self::enum_decl_to_tag(&en_ref);
+                                        return Some(Type::Tag(shared(tag)));
+                                    }
+                                }
                                 Meta::Store(store) => {
                                     // This is a regular method call on an instance
                                     if let Type::User(decl) = &store.ty {
@@ -2645,11 +2720,10 @@ impl CTrans {
                                             }
                                         }
                                     }
-                                    // Also check if it's a tag type
-                                    if let Type::Tag(tag) = &store.ty {
+                                    // Also check if it's a tag type (or heterogeneous enum)
+                                    if let Some(tag) = Self::type_as_tag(&store.ty) {
                                         // Find the method in the tag
-                                        let tag_ref = tag.borrow();
-                                        for method in &tag_ref.methods {
+                                        for method in &tag.methods {
                                             if method.name == *method_name {
                                                 return Some(method.ret.clone());
                                             }
@@ -3414,16 +3488,17 @@ impl CTrans {
             return Ok(false);
         };
         match meta.as_ref() {
-            // Tag.Class(data)
-            Meta::Type(typ) => match typ {
-                Type::Tag(tag) => {
+            // Tag.Class(data) or Heterogeneous Enum construction
+            Meta::Type(typ) => {
+                if let Some(tag) = Self::type_as_tag(typ) {
                     let Expr::Ident(rname) = rhs.as_ref() else {
                         return Ok(false);
                     };
-                    Ok(self.handle_tag_method(&*tag.borrow(), lname, rname, call, out)?)
+                    Ok(self.handle_tag_method(&tag, lname, rname, call, out)?)
+                } else {
+                    Ok(false)
                 }
-                _ => Ok(false),
-            },
+            }
             // instance.method_name(&s, args...)
             Meta::Store(store) => {
                 // check rhs is a method call
@@ -3431,14 +3506,13 @@ impl CTrans {
                     return Ok(false);
                 };
 
-                // Handle tag type methods
-                if let Type::Tag(tag) = &store.ty {
-                    let tag_ref = tag.borrow();
+                // Handle tag type methods (also supports Heterogeneous Enum types)
+                if let Some(tag) = Self::type_as_tag(&store.ty) {
                     // Check if this is a tag method (not a variant constructor)
-                    for method in &tag_ref.methods {
+                    for method in &tag.methods {
                         if method.name == *method_name {
                             // Generate: Tag_Method(&instance, args...)
-                            self.method_name(&tag_ref.name, method_name, out)?;
+                            self.method_name(&tag.name, method_name, out)?;
                             out.write(b"(")?;
                             out.write(b"&")?;
                             out.write(lname.as_bytes())?;

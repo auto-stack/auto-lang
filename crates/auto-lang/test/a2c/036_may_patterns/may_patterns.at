@@ -1,4 +1,4 @@
-tag Result {
+enum Result {
     Ok int
     Err int
 }
