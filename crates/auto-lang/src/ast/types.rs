@@ -305,6 +305,11 @@ impl Type {
             Type::Handle { .. } => true,
         }
     }
+
+    /// Check if this type is any kind of string (literal, slice, or owned)
+    pub fn is_any_string(&self) -> bool {
+        matches!(self, Type::Str(_) | Type::StrSlice | Type::String)
+    }
 }
 
 /// Generic parameter - can be either a type parameter or const parameter (Plan 052)
