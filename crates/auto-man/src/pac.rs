@@ -148,7 +148,7 @@ impl Pac {
                         }
                     }
 
-                    let mut target = Target::from(n, pac_name.clone());
+                    let mut target = Target::from((*n).clone(), pac_name.clone());
                     target.set_defines(defines.clone());
                     targets.push(target);
                 }
@@ -733,7 +733,7 @@ impl Pac {
         // targets
         for (_, kid) in port_node.kids_iter() {
             if let Kid::Node(n) = kid {
-                let target = Target::from(n.clone(), self.name.clone());
+                let target = Target::from((**n).clone(), self.name.clone());
                 self.targets.push(target);
             }
         }
