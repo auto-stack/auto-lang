@@ -198,7 +198,7 @@ fn test_parse_type_binding_pattern() {
     let code = r#"
         task TestTask {
             on {
-                msg string => { }
+                msg str => { }
             }
         }
     "#;
@@ -214,7 +214,7 @@ fn test_parse_type_binding_pattern() {
         TaskMsgPattern::TypeBinding { name, type_expr } => {
             assert_eq!(name.as_str(), "msg");
             // Check that it's a string type
-            assert!(matches!(type_expr.as_ref(), Type::Str(_)), "Expected Str type, got: {:?}", type_expr);
+            assert!(matches!(type_expr.as_ref(), Type::StrSlice), "Expected StrSlice type, got: {:?}", type_expr);
         }
         _ => panic!("Expected TypeBinding pattern, got: {:?}", pattern),
     }

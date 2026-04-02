@@ -207,6 +207,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("str_append", 173); // NATIVE_STR_APPEND - Plan 118 Phase 4
     registry.register_with_id("int.str", 174);    // NATIVE_INT_STR - Plan 118 Phase 4
     registry.register_with_id("str.upper", 175);  // NATIVE_STR_UPPER - Plan 118 Phase 4
+    registry.register_with_id("String.from", 176);  // NATIVE_STRING_FROM - Plan 155
 
     // =========================================================================
     // FFI Shim Registrations (Plan 094)

@@ -219,6 +219,12 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
         (Type::Str(_), Type::String) | (Type::String, Type::Str(_)) => Ok(ty1.clone()),
         (Type::String, Type::String) => Ok(ty1.clone()),
         (Type::CStr, Type::CStr) => Ok(ty1.clone()),
+        // Str literal → StrSlice 隐式转换
+        (Type::Str(_), Type::StrSlice) => Ok(Type::StrSlice),
+        (Type::StrSlice, Type::Str(_)) => Ok(Type::StrSlice),
+        (Type::StrSlice, Type::StrSlice) => Ok(Type::StrSlice),
+        // String ↔ StrSlice 隐式转换
+        (Type::String, Type::StrSlice) | (Type::StrSlice, Type::String) => Ok(Type::StrSlice),
 
         // 4. Void 类型
         (Type::Void, Type::Void) => Ok(Type::Void),

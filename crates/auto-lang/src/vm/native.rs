@@ -223,6 +223,7 @@ impl NativeInterface {
         self.register(NATIVE_STR_APPEND, shim_str_append);
         self.register(NATIVE_INT_STR, shim_int_str);
         self.register(NATIVE_STR_UPPER, shim_str_upper);
+        self.register(NATIVE_STRING_FROM, shim_string_from);
     }
 }
 
@@ -317,6 +318,7 @@ pub const NATIVE_STR_NEW: u16 = 172;      // Plan 118: String creation with capa
 pub const NATIVE_STR_APPEND: u16 = 173;   // Plan 118: String append
 pub const NATIVE_INT_STR: u16 = 174;      // Plan 118 Phase 4: int to string
 pub const NATIVE_STR_UPPER: u16 = 175;    // Plan 118 Phase 4: string to uppercase
+pub const NATIVE_STRING_FROM: u16 = 176;  // Plan 155: String.from(str) -> String
 
 // === Standard Shims ===
 
@@ -2123,5 +2125,16 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Return tagged string index
     let tagged = encode_str_idx(new_idx as i32);
     task.ram.push_i32(tagged);
+    Ok(())
+}
+
+/// Plan 155: String.from(str) -> String
+/// Creates an owned String from a string value.
+/// In the VM, strings are stored in the constant pool as tagged indices,
+/// so this is essentially an identity operation at the VM level.
+/// Stack: str_idx (tagged) -> str_idx (tagged)
+pub fn shim_string_from(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let str_bits = task.ram.pop_i32();
+    task.ram.push_i32(str_bits);
     Ok(())
 }

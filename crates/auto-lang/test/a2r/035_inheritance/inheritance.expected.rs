@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 struct Animal {
-    name: String,
+    name: &str,
 }
 
 impl Animal {
@@ -15,8 +15,8 @@ impl Animal {
 }
 
 struct Dog {
-    name: String,
-    breed: String,
+    name: &str,
+    breed: &str,
 }
 
 impl Dog {

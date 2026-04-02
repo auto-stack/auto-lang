@@ -1776,7 +1776,7 @@ impl CTrans {
             "double" => Type::Double,
             "bool" => Type::Bool,
             "char" => Type::Char,
-            "str" => Type::Str(0), // Size unknown at compile time
+            "str" => Type::StrSlice, // Borrowed string slice
             "cstr" => Type::CStr,
             // For user-defined types, we'd need to lookup TypeDecl
             // For now, use Unknown as fallback

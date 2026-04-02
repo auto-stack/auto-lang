@@ -64,7 +64,7 @@ impl Type {
             Type::Char => "char".into(),
             Type::Str(_) => "str".into(),
             Type::CStr => "cstr".into(),
-            Type::StrSlice => "str_slice".into(),
+            Type::StrSlice => "str".into(),
             Type::String => "String".into(),
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
@@ -478,7 +478,7 @@ impl fmt::Display for Type {
             Type::Char => write!(f, "char"),
             Type::Str(_) => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
-            Type::StrSlice => write!(f, "str_slice"),
+            Type::StrSlice => write!(f, "str"),
             Type::String => write!(f, "String"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::RuntimeArray(rta) => write!(f, "{}", rta),
@@ -816,7 +816,7 @@ impl AtomWriter for Type {
             Type::Char => write!(f, "char")?,
             Type::Str(_) => write!(f, "str")?,
             Type::CStr => write!(f, "cstr")?,
-            Type::StrSlice => write!(f, "str_slice")?,
+            Type::StrSlice => write!(f, "str")?,
             Type::String => write!(f, "String")?,
             Type::Array(array_type) => {
                 write!(

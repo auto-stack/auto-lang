@@ -396,6 +396,12 @@ impl InferenceContext {
                     Ok(Type::Str(0)) // 未知长度
                 }
             }
+            // Str literal → StrSlice 隐式转换
+            (Type::Str(_), Type::StrSlice) => Ok(Type::StrSlice),
+            (Type::StrSlice, Type::Str(_)) => Ok(Type::StrSlice),
+            (Type::StrSlice, Type::StrSlice) => Ok(Type::StrSlice),
+            // String ↔ StrSlice 隐式转换
+            (Type::String, Type::StrSlice) | (Type::StrSlice, Type::String) => Ok(Type::StrSlice),
             (Type::Str(_) | Type::String, Type::String) | (Type::String, Type::Str(_)) => {
                 Ok(Type::String)
             }

@@ -755,7 +755,7 @@ impl<'a> Parser<'a> {
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
         // Plan 125: Check for built-in type aliases first
         match name {
-            "string" | "str" => return shared(Type::Str(0)),
+            "str" => return shared(Type::StrSlice),
             "String" => return shared(Type::String),
             "int" => return shared(Type::Int),
             "uint" => return shared(Type::Uint),
@@ -6647,7 +6647,7 @@ impl<'a> Parser<'a> {
                     "float" => return Ok(Type::Float),
                     "double" | "f64" => return Ok(Type::Double),
                     "bool" => return Ok(Type::Bool),
-                    "str" => return Ok(Type::Str(0)),
+                    "str" => return Ok(Type::StrSlice),
                     "String" => return Ok(Type::String),
                     "cstr" => return Ok(Type::CStr),
                     "byte" | "u8" => return Ok(Type::Byte),
