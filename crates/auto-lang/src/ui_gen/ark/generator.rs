@@ -1509,7 +1509,7 @@ impl ArkGenerator {
         match ty {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
             Type::Bool => "boolean".to_string(),
-            Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
+            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => "string".to_string(),
             Type::User(type_decl) => type_decl.name.to_string(),
             Type::Option(inner) => format!("{} | null", Self::type_to_ark_string(inner)),
             _ => ty.unique_name().to_string(), // Fallback
@@ -1648,7 +1648,7 @@ impl ArkGenerator {
         match ty {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
             Type::Bool => "boolean".to_string(),
-            Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
+            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => "string".to_string(),
             Type::User(type_decl) => {
                 // Special handling for List type - treat as Object[]
                 if type_decl.name.as_str() == "List" {

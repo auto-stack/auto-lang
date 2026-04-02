@@ -589,7 +589,7 @@ impl PythonTrans {
             Type::Float => "float".into(),
             Type::Double => "float".into(),
             Type::Bool => "bool".into(),
-            Type::Str(_) => "str".into(),
+            Type::Str(_) | Type::String => "str".into(),
             Type::CStr => "str".into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),

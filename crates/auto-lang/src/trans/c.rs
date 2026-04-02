@@ -1463,7 +1463,7 @@ impl CTrans {
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
-            Type::Str(_) => "const char*".to_string(),
+            Type::Str(_) | Type::String => "const char*".to_string(),
             Type::CStr => "const char*".to_string(),
             Type::StrSlice => "const char*".to_string(),
             Type::Char => "char".to_string(),
@@ -2068,7 +2068,7 @@ impl CTrans {
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
-            Type::Str(_) => "char*".to_string(),
+            Type::Str(_) | Type::String => "char*".to_string(),
             Type::CStr => "char*".to_string(),
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
@@ -2979,7 +2979,7 @@ impl CTrans {
                 self.print_indent(out)?;
                 out.write(b"printf(\"\\n\")")?;
             }
-            Type::Str(_size) => {
+            Type::Str(_) | Type::String => {
                 out.write(b"for (")?;
                 self.range("i", &r.start, &r.end, out)?;
                 out.write(b") {\n")?;
@@ -3005,7 +3005,7 @@ impl CTrans {
         if let Some(meta) = meta {
             if let Meta::Store(st) = meta.as_ref() {
                 return match &st.ty {
-                    Type::Str(_) | Type::CStr => "%s",
+                    Type::Str(_) | Type::String | Type::CStr => "%s",
                     Type::Float => "%f",
                     Type::Char => "%c",
                     Type::Ptr(ptr) => {
@@ -3040,7 +3040,7 @@ impl CTrans {
         if let Expr::Ident(n) = arr {
             if let Some(m) = self.lookup_meta(&n) {
                 if let Meta::Store(s) = m.as_ref() {
-                    if matches!(s.ty, Type::Str(_)) {
+                    if matches!(s.ty, Type::Str(_) | Type::String) {
                         return Some("%c");
                     }
                 }
@@ -3298,6 +3298,7 @@ impl CTrans {
                 | Type::Bool
                 | Type::Char
                 | Type::Str(_)
+                | Type::String
                 | Type::CStr => {
                     // Built-in type: ext method, pass by value
                     let type_name = self.type_to_name(&lhs_type);
@@ -3539,7 +3540,7 @@ impl CTrans {
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Char => "char".to_string(),
-            Type::Str(_) => "str".to_string(),
+            Type::Str(_) | Type::String => "str".to_string(),
             Type::CStr => "cstr".to_string(),
             Type::User(decl) => decl.name.to_string(),
             _ => "unknown".to_string(),
@@ -3614,7 +3615,10 @@ impl CTrans {
             // Exact match
             (a, e) if std::mem::discriminant(a) == std::mem::discriminant(e) => true,
             // String types are compatible
-            (Type::Str(_), Type::Str(_)) => true,
+            (Type::Str(_), Type::Str(_))
+            | (Type::Str(_), Type::String)
+            | (Type::String, Type::Str(_))
+            | (Type::String, Type::String) => true,
             // Numeric types: allow some conversions
             (Type::Int, Type::Uint) | (Type::Uint, Type::Int) => true,
             (Type::Float, Type::Double) | (Type::Double, Type::Float) => true,

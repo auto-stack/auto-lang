@@ -23,12 +23,12 @@ pub fn str_new(args: &Args) -> Value {
 
     let text_str = match text_arg {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_new expects a string argument".into()),
     };
 
-    // Create OwnedStr from the string
-    Value::OwnedStr(auto_val::Str::from_str(text_str))
+    // Create String from the string
+    Value::String(auto_val::Str::from_str(text_str))
 }
 
 /// Get the length of a string
@@ -47,7 +47,7 @@ pub fn str_len(args: &Args) -> Value {
 
     match &args.args[0] {
         Arg::Pos(Value::Str(s)) => Value::Int(s.len() as i32),
-        Arg::Pos(Value::OwnedStr(s)) => Value::Int(s.len() as i32),
+        Arg::Pos(Value::String(s)) => Value::Int(s.len() as i32),
         _ => Value::Error("str_len expects a string argument".into()),
     }
 }
@@ -72,18 +72,18 @@ pub fn str_append(args: &Args) -> Value {
 
     let base_str = match base_arg {
         Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_string(),
         _ => return Value::Error("str_append expects string arguments".into()),
     };
 
     let other_str = match other_arg {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_append expects string arguments".into()),
     };
 
     let combined = format!("{}{}", base_str, other_str);
-    Value::OwnedStr(auto_val::Str::from_str(combined.as_str()))
+    Value::String(auto_val::Str::from_str(combined.as_str()))
 }
 
 /// Convert string to uppercase
@@ -101,8 +101,8 @@ pub fn str_upper(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().to_uppercase().as_str())),
-        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().to_uppercase().as_str())),
+        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_uppercase().as_str())),
+        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_uppercase().as_str())),
         _ => Value::Error("str_upper expects a string argument".into()),
     }
 }
@@ -122,8 +122,8 @@ pub fn str_lower(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().to_lowercase().as_str())),
-        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().to_lowercase().as_str())),
+        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_lowercase().as_str())),
+        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_lowercase().as_str())),
         _ => Value::Error("str_lower expects a string argument".into()),
     }
 }
@@ -144,7 +144,7 @@ pub fn str_sub(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_string(),
         _ => return Value::Error("str_sub expects a string as first argument".into()),
     };
 
@@ -163,7 +163,7 @@ pub fn str_sub(args: &Args) -> Value {
     }
 
     let substring = &s[start..end];
-    Value::OwnedStr(auto_val::Str::from_str(substring))
+    Value::String(auto_val::Str::from_str(substring))
 }
 
 /// Create a string slice from a string (Phase 3 - EXPERIMENTAL)
@@ -197,9 +197,9 @@ pub fn str_slice(args: &Args) -> Value {
             // Create a borrowed slice - UNSAFE without borrow checker!
             Value::StrSlice(StrSlice::from_auto_str(s))
         },
-        Arg::Pos(Value::OwnedStr(s)) => unsafe {
+        Arg::Pos(Value::String(s)) => unsafe {
             // Create a borrowed slice from owned string - UNSAFE!
-            // The slice must not outlive the OwnedStr
+            // The slice must not outlive the String
             Value::StrSlice(StrSlice::from_str(s.as_str()))
         },
         _ => Value::Error("str_slice expects a string argument".into()),
@@ -226,7 +226,7 @@ pub fn str_slice_len(args: &Args) -> Value {
         Arg::Pos(Value::StrSlice(slice)) => Value::Int(slice.len() as i32),
         // Also support regular strings for convenience
         Arg::Pos(Value::Str(s)) => Value::Int(s.len() as i32),
-        Arg::Pos(Value::OwnedStr(s)) => Value::Int(s.len() as i32),
+        Arg::Pos(Value::String(s)) => Value::Int(s.len() as i32),
         _ => Value::Error("str_slice_len expects a str_slice or string argument".into()),
     }
 }
@@ -253,7 +253,7 @@ pub fn str_slice_get(args: &Args) -> Value {
             // Support regular strings by creating temporary slice
             &StrSlice::from_auto_str(s)
         },
-        Arg::Pos(Value::OwnedStr(s)) => unsafe {
+        Arg::Pos(Value::String(s)) => unsafe {
             &StrSlice::from_str(s.as_str())
         },
         _ => return Value::Error("str_slice_get expects a str_slice or string as first argument".into()),
@@ -281,8 +281,8 @@ mod tests {
         };
         let result = str_new(&args);
         match result {
-            Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello"),
-            _ => panic!("Expected OwnedStr"),
+            Value::String(s) => assert_eq!(s.as_str(), "hello"),
+            _ => panic!("Expected String"),
         }
     }
 
@@ -305,8 +305,8 @@ mod tests {
         };
         let result = str_append(&args);
         match result {
-            Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello world"),
-            _ => panic!("Expected OwnedStr"),
+            Value::String(s) => assert_eq!(s.as_str(), "hello world"),
+            _ => panic!("Expected String"),
         }
     }
 
@@ -317,8 +317,8 @@ mod tests {
         };
         let result = str_upper(&args);
         match result {
-            Value::OwnedStr(s) => assert_eq!(s.as_str(), "HELLO"),
-            _ => panic!("Expected OwnedStr"),
+            Value::String(s) => assert_eq!(s.as_str(), "HELLO"),
+            _ => panic!("Expected String"),
         }
     }
 
@@ -329,8 +329,8 @@ mod tests {
         };
         let result = str_lower(&args);
         match result {
-            Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello"),
-            _ => panic!("Expected OwnedStr"),
+            Value::String(s) => assert_eq!(s.as_str(), "hello"),
+            _ => panic!("Expected String"),
         }
     }
 
@@ -345,8 +345,8 @@ mod tests {
         };
         let result = str_sub(&args);
         match result {
-            Value::OwnedStr(s) => assert_eq!(s.as_str(), "ell"),
-            _ => panic!("Expected OwnedStr"),
+            Value::String(s) => assert_eq!(s.as_str(), "ell"),
+            _ => panic!("Expected String"),
         }
     }
 
@@ -416,13 +416,13 @@ pub fn str_contains(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_contains expects string as first argument".into()),
     };
 
     let pattern = match &args.args[1] {
         Arg::Pos(Value::Str(p)) => p.as_str(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        Arg::Pos(Value::String(p)) => p.as_str(),
         _ => return Value::Error("str_contains expects string as second argument".into()),
     };
 
@@ -445,13 +445,13 @@ pub fn str_starts_with(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_starts_with expects string as first argument".into()),
     };
 
     let prefix = match &args.args[1] {
         Arg::Pos(Value::Str(p)) => p.as_str(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        Arg::Pos(Value::String(p)) => p.as_str(),
         _ => return Value::Error("str_starts_with expects string as second argument".into()),
     };
 
@@ -474,13 +474,13 @@ pub fn str_ends_with(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_ends_with expects string as first argument".into()),
     };
 
     let suffix = match &args.args[1] {
         Arg::Pos(Value::Str(p)) => p.as_str(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        Arg::Pos(Value::String(p)) => p.as_str(),
         _ => return Value::Error("str_ends_with expects string as second argument".into()),
     };
 
@@ -504,13 +504,13 @@ pub fn str_find(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_find expects string as first argument".into()),
     };
 
     let pattern = match &args.args[1] {
         Arg::Pos(Value::Str(p)) => p.as_str(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        Arg::Pos(Value::String(p)) => p.as_str(),
         _ => return Value::Error("str_find expects string as second argument".into()),
     };
 
@@ -535,8 +535,8 @@ pub fn str_trim(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim())),
-        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim())),
+        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim())),
+        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim())),
         _ => Value::Error("str_trim expects a string argument".into()),
     }
 }
@@ -556,8 +556,8 @@ pub fn str_trim_left(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_start())),
-        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_start())),
+        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim_start())),
+        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim_start())),
         _ => Value::Error("str_trim_left expects a string argument".into()),
     }
 }
@@ -577,8 +577,8 @@ pub fn str_trim_right(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_end())),
-        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_end())),
+        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim_end())),
+        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim_end())),
         _ => Value::Error("str_trim_right expects a string argument".into()),
     }
 }
@@ -599,24 +599,24 @@ pub fn str_replace(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_string(),
         _ => return Value::Error("str_replace expects string as first argument".into()),
     };
 
     let from = match &args.args[1] {
         Arg::Pos(Value::Str(p)) => p.as_str(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        Arg::Pos(Value::String(p)) => p.as_str(),
         _ => return Value::Error("str_replace expects string as second argument".into()),
     };
 
     let to = match &args.args[2] {
         Arg::Pos(Value::Str(p)) => p.as_str(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        Arg::Pos(Value::String(p)) => p.as_str(),
         _ => return Value::Error("str_replace expects string as third argument".into()),
     };
 
     let result = s.replace(from, to);
-    Value::OwnedStr(auto_val::Str::from_str(result.as_str()))
+    Value::String(auto_val::Str::from_str(result.as_str()))
 }
 
 /// Split a string by a delimiter
@@ -635,13 +635,13 @@ pub fn str_split(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_string(),
         _ => return Value::Error("str_split expects string as first argument".into()),
     };
 
     let delimiter = match &args.args[1] {
         Arg::Pos(Value::Str(p)) => p.as_str().to_string(),
-        Arg::Pos(Value::OwnedStr(p)) => p.as_str().to_string(),
+        Arg::Pos(Value::String(p)) => p.as_str().to_string(),
         _ => return Value::Error("str_split expects string as second argument".into()),
     };
 
@@ -650,7 +650,7 @@ pub fn str_split(args: &Args) -> Value {
         s.chars().map(|c| Value::Str(c.to_string().into())).collect()
     } else {
         s.split(&delimiter)
-            .map(|part| Value::OwnedStr(auto_val::Str::from_str(part)))
+            .map(|part| Value::String(auto_val::Str::from_str(part)))
             .collect()
     };
 
@@ -674,13 +674,13 @@ pub fn str_lines(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_lines expects a string argument".into()),
     };
 
     let parts: Vec<Value> = s
         .split('\n')
-        .map(|part| Value::OwnedStr(auto_val::Str::from_str(part)))
+        .map(|part| Value::String(auto_val::Str::from_str(part)))
         .collect();
 
     Value::Array(parts.into())
@@ -703,13 +703,13 @@ pub fn str_words(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_words expects a string argument".into()),
     };
 
     let parts: Vec<Value> = s
         .split_whitespace()
-        .map(|part| Value::OwnedStr(auto_val::Str::from_str(part)))
+        .map(|part| Value::String(auto_val::Str::from_str(part)))
         .collect();
 
     Value::Array(parts.into())
@@ -737,7 +737,7 @@ pub fn str_join(args: &Args) -> Value {
 
     let delimiter = match &args.args[1] {
         Arg::Pos(Value::Str(d)) => d.as_str(),
-        Arg::Pos(Value::OwnedStr(d)) => d.as_str(),
+        Arg::Pos(Value::String(d)) => d.as_str(),
         _ => return Value::Error("str_join expects string as second argument".into()),
     };
 
@@ -745,7 +745,7 @@ pub fn str_join(args: &Args) -> Value {
         .iter()
         .map(|v| match v {
             Value::Str(s) => Ok(s.as_str().to_string()),
-            Value::OwnedStr(s) => Ok(s.as_str().to_string()),
+            Value::String(s) => Ok(s.as_str().to_string()),
             _ => Err("str_join: array must contain only strings".to_string()),
         })
         .collect();
@@ -753,7 +753,7 @@ pub fn str_join(args: &Args) -> Value {
     match strings {
         Ok(strs) => {
             let result = strs.join(delimiter);
-            Value::OwnedStr(auto_val::Str::from_str(result.as_str()))
+            Value::String(auto_val::Str::from_str(result.as_str()))
         }
         Err(e) => Value::Error(e.into()),
     }
@@ -776,13 +776,13 @@ pub fn str_compare(args: &Args) -> Value {
 
     let s1 = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_compare expects string as first argument".into()),
     };
 
     let s2 = match &args.args[1] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_compare expects string as second argument".into()),
     };
 
@@ -809,13 +809,13 @@ pub fn str_eq_ignore_case(args: &Args) -> Value {
 
     let s1 = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str().to_lowercase(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_lowercase(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_lowercase(),
         _ => return Value::Error("str_eq_ignore_case expects string as first argument".into()),
     };
 
     let s2 = match &args.args[1] {
         Arg::Pos(Value::Str(s)) => s.as_str().to_lowercase(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_lowercase(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_lowercase(),
         _ => return Value::Error("str_eq_ignore_case expects string as second argument".into()),
     };
 
@@ -838,7 +838,7 @@ pub fn str_repeat(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::String(s)) => s.as_str().to_string(),
         _ => return Value::Error("str_repeat expects string as first argument".into()),
     };
 
@@ -852,7 +852,7 @@ pub fn str_repeat(args: &Args) -> Value {
     }
 
     let result = s.repeat(n as usize);
-    Value::OwnedStr(auto_val::Str::from_str(result.as_str()))
+    Value::String(auto_val::Str::from_str(result.as_str()))
 }
 
 /// Get the character at a specific index
@@ -871,7 +871,7 @@ pub fn str_char_at(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         _ => return Value::Error("str_char_at expects string as first argument".into()),
     };
 
@@ -914,7 +914,7 @@ pub fn cstr_new(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         Arg::Pos(Value::StrSlice(s)) => unsafe { s.as_str() },
         _ => return Value::Error("cstr_new expects a string".into()),
     };
@@ -1022,7 +1022,7 @@ pub fn to_cstr(args: &Args) -> Value {
 
     let s = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.as_str(),
-        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::String(s)) => s.as_str(),
         Arg::Pos(Value::StrSlice(s)) => unsafe { s.as_str() },
         _ => return Value::Error("to_cstr expects a string".into()),
     };

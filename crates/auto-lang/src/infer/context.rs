@@ -396,6 +396,9 @@ impl InferenceContext {
                     Ok(Type::Str(0)) // 未知长度
                 }
             }
+            (Type::Str(_) | Type::String, Type::String) | (Type::String, Type::Str(_)) => {
+                Ok(Type::String)
+            }
             (Type::CStr, Type::CStr) => Ok(Type::CStr),
 
             // 数组类型：统一元素类型和长度

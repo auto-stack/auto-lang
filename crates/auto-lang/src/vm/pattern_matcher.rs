@@ -104,6 +104,7 @@ impl PatternMatcher {
         let type_matches = match (type_expr, message) {
             // String types
             (Type::Str(_), Value::Str(_)) => true,
+            (Type::String, Value::Str(_)) => true,
             (Type::StrSlice, Value::Str(_)) => true,
             (Type::CStr, Value::Str(_)) => true,
 
@@ -166,7 +167,7 @@ impl PatternMatcher {
         use crate::ast::Type;
 
         match (type_expr, message) {
-            (Type::Str(_), Value::Str(_)) => true,
+            (Type::Str(_) | Type::String, Value::Str(_)) => true,
             (Type::Int, Value::Int(_) | Value::I64(_)) => true,
             (Type::Uint, Value::Uint(_)) => true,
             (Type::Bool, Value::Bool(_)) => true,

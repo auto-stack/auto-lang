@@ -32,8 +32,8 @@ fn test_str_new_with_value() {
     };
     let result = str_new(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -41,7 +41,7 @@ fn test_str_new_with_value() {
 fn test_str_len() {
     let s = auto_val::Str::from_str("hello");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_len(&args);
     match result {
@@ -54,12 +54,12 @@ fn test_str_len() {
 fn test_str_upper() {
     let s = auto_val::Str::from_str("hello");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_upper(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "HELLO"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "HELLO"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -67,12 +67,12 @@ fn test_str_upper() {
 fn test_str_lower() {
     let s = auto_val::Str::from_str("HELLO");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_lower(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -81,15 +81,15 @@ fn test_str_sub() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Int(0)),
             auto_val::Arg::Pos(Value::Int(5)),
         ],
     };
     let result = str_sub(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -100,7 +100,7 @@ fn test_str_contains_found() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("world".into())),
         ],
     };
@@ -116,7 +116,7 @@ fn test_str_contains_not_found() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("goodbye".into())),
         ],
     };
@@ -132,7 +132,7 @@ fn test_str_starts_with_true() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("hello".into())),
         ],
     };
@@ -148,7 +148,7 @@ fn test_str_starts_with_false() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("world".into())),
         ],
     };
@@ -164,7 +164,7 @@ fn test_str_ends_with_true() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("world".into())),
         ],
     };
@@ -180,7 +180,7 @@ fn test_str_ends_with_false() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("hello".into())),
         ],
     };
@@ -196,7 +196,7 @@ fn test_str_find_found() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("world".into())),
         ],
     };
@@ -212,7 +212,7 @@ fn test_str_find_not_found() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("goodbye".into())),
         ],
     };
@@ -229,12 +229,12 @@ fn test_str_find_not_found() {
 fn test_str_trim() {
     let s = auto_val::Str::from_str("  hello world  ");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_trim(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello world"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello world"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -242,12 +242,12 @@ fn test_str_trim() {
 fn test_str_trim_left() {
     let s = auto_val::Str::from_str("  hello world");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_trim_left(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello world"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello world"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -255,12 +255,12 @@ fn test_str_trim_left() {
 fn test_str_trim_right() {
     let s = auto_val::Str::from_str("hello world  ");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_trim_right(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello world"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello world"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -269,15 +269,15 @@ fn test_str_replace() {
     let s = auto_val::Str::from_str("hello world");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("world".into())),
             auto_val::Arg::Pos(Value::Str("AutoLang".into())),
         ],
     };
     let result = str_replace(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello AutoLang"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello AutoLang"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -286,15 +286,15 @@ fn test_str_replace_multiple() {
     let s = auto_val::Str::from_str("hello world hello");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str("hello".into())),
             auto_val::Arg::Pos(Value::Str("hi".into())),
         ],
     };
     let result = str_replace(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hi world hi"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hi world hi"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -305,7 +305,7 @@ fn test_str_split() {
     let s = auto_val::Str::from_str("hello,world,auto");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Str(",".into())),
         ],
     };
@@ -335,8 +335,8 @@ fn test_str_join() {
     };
     let result = str_join(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hello,world,auto"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hello,world,auto"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -424,14 +424,14 @@ fn test_str_repeat() {
     let s = auto_val::Str::from_str("ha");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Int(3)),
         ],
     };
     let result = str_repeat(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), "hahaha"),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), "hahaha"),
+        _ => panic!("Expected String"),
     }
 }
 
@@ -440,7 +440,7 @@ fn test_str_char_at() {
     let s = auto_val::Str::from_str("hello");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Int(1)),
         ],
     };
@@ -456,7 +456,7 @@ fn test_str_char_at_out_of_bounds() {
     let s = auto_val::Str::from_str("hello");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Int(10)),
         ],
     };
@@ -514,7 +514,7 @@ fn test_cstr_to_str() {
 fn test_to_cstr() {
     let s = auto_val::Str::from_str("hello");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = to_cstr(&args);
     match result {
@@ -548,7 +548,7 @@ fn test_cstr_null_terminated() {
 fn test_empty_string() {
     let s = auto_val::Str::from_str("");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_len(&args);
     match result {
@@ -561,7 +561,7 @@ fn test_empty_string() {
 fn test_unicode() {
     let s = auto_val::Str::from_str("你好世界");
     let args = Args {
-        args: vec![auto_val::Arg::Pos(Value::OwnedStr(s))],
+        args: vec![auto_val::Arg::Pos(Value::String(s))],
     };
     let result = str_len(&args);
     match result {
@@ -575,13 +575,13 @@ fn test_str_repeat_zero() {
     let s = auto_val::Str::from_str("ha");
     let args = Args {
         args: vec![
-            auto_val::Arg::Pos(Value::OwnedStr(s)),
+            auto_val::Arg::Pos(Value::String(s)),
             auto_val::Arg::Pos(Value::Int(0)),
         ],
     };
     let result = str_repeat(&args);
     match result {
-        Value::OwnedStr(s) => assert_eq!(s.as_str(), ""),
-        _ => panic!("Expected OwnedStr"),
+        Value::String(s) => assert_eq!(s.as_str(), ""),
+        _ => panic!("Expected String"),
     }
 }

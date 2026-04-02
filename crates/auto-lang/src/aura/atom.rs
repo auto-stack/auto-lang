@@ -405,7 +405,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Double => "double".to_string(),
         Type::Bool => "bool".to_string(),
         Type::Char => "char".to_string(),
-        Type::Str(_) => "str".to_string(),
+        Type::Str(_) | Type::String => "str".to_string(),
         Type::CStr => "cstr".to_string(),
         Type::StrSlice => "str_slice".to_string(),
         Type::Void => "void".to_string(),

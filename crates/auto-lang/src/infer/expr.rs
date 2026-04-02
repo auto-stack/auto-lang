@@ -738,7 +738,7 @@ fn get_type_decl_from_type(
         Type::Float => Ok(TypeDecl::builtin("float")),
         Type::Double => Ok(TypeDecl::builtin("double")),
         Type::Bool => Ok(TypeDecl::builtin("bool")),
-        Type::Str(_) => Ok(TypeDecl::builtin("str")),
+        Type::Str(_) | Type::String => Ok(TypeDecl::builtin("str")),
         Type::CStr => Ok(TypeDecl::builtin("cstr")),
         Type::Char => Ok(TypeDecl::builtin("char")),
         Type::Void => Ok(TypeDecl::builtin("void")),
@@ -775,7 +775,7 @@ fn infer_index_type(ctx: &mut InferenceContext, array_expr: &Expr, index_expr: &
     match container_ty {
         Type::Array(arr) => *arr.elem,
         Type::RuntimeArray(rta) => *rta.elem, // Plan 052
-        Type::Str(_) | Type::CStr => Type::Char,
+        Type::Str(_) | Type::String | Type::CStr => Type::Char,
         Type::Ptr(ptr) => {
             let inner_ty = ptr.of.borrow();
             inner_ty.clone()

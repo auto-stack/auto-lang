@@ -30,7 +30,7 @@ pub fn open(ctx: &mut VmContext, path: Value) -> Value {
                 Err(e) => Value::Error(format!("File {} not found: {}", p, e).into()),
             }
         }
-        Value::OwnedStr(p) => {
+        Value::String(p) => {
             let f = File::open(p.as_str());
             match f {
                 Ok(file) => {
@@ -209,7 +209,7 @@ pub fn write_line_method(ctx: &mut VmContext, instance: &mut Value, args: Vec<Va
     let line = if let Some(val) = args.get(0) {
         match val {
             Value::Str(s) => s.as_str(),
-            Value::OwnedStr(s) => s.as_str(),
+            Value::String(s) => s.as_str(),
             _ => return Value::Error("Argument must be a string".into()),
         }
     } else {

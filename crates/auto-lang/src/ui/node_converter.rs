@@ -442,7 +442,7 @@ fn extract_main_arg_str(node: &Node) -> Option<String> {
     let arg = node.main_arg();
     match arg {
         Value::Str(s) => Some(s.to_string()),
-        Value::OwnedStr(s) => Some(s.as_str().to_string()),
+        Value::String(s) => Some(s.as_str().to_string()),
         _ => None,
     }
 }
@@ -452,7 +452,7 @@ fn extract_prop_str(node: &Node, key: &str) -> Option<String> {
     let value = node.get_prop(key);
     match value {
         Value::Str(s) => Some(s.to_string()),
-        Value::OwnedStr(s) => Some(s.as_str().to_string()),
+        Value::String(s) => Some(s.as_str().to_string()),
         _ => None,
     }
 }
@@ -538,7 +538,7 @@ fn extract_children_strings(node: &Node) -> ConversionResult<Vec<String>> {
             let main_arg = child_node.main_arg();
             match main_arg {
                 Value::Str(s) => strings.push(s.to_string()),
-                Value::OwnedStr(s) => strings.push(s.as_str().to_string()),
+                Value::String(s) => strings.push(s.as_str().to_string()),
                 Value::Int(i) => strings.push(i.to_string()),
                 Value::Uint(u) => strings.push(u.to_string()),
                 Value::Bool(b) => strings.push(b.to_string()),
@@ -560,7 +560,7 @@ fn extract_prop_str_array(node: &Node, key: &str) -> Option<Vec<String>> {
         Value::Array(arr) => {
             let strs: Vec<_> = arr.iter().filter_map(|v| match v {
                 Value::Str(s) => Some(s.to_string()),
-                Value::OwnedStr(s) => Some(s.as_str().to_string()),
+                Value::String(s) => Some(s.as_str().to_string()),
                 _ => None,
             }).collect();
             if strs.is_empty() { None } else { Some(strs) }

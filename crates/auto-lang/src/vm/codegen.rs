@@ -2626,7 +2626,7 @@ impl Codegen {
                                     if let Some(field_type) = class_type.field_type(&field_str) {
                                         self.last_expr_type = match field_type {
                                             Type::User(_) | Type::GenericInstance(_) => ObjectType::NestedObject,
-                                            Type::Str(_) | Type::CStr | Type::StrSlice => ObjectType::String,
+                                            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
                                             Type::Char => ObjectType::Char,
                                             Type::Int | Type::I64 => ObjectType::Int,
                                             Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
@@ -2704,7 +2704,7 @@ impl Codegen {
                                 if let Some(field_type) = class_type.field_type(&field_str) {
                                     self.last_expr_type = match field_type {
                                         Type::User(_) | Type::GenericInstance(_) => ObjectType::NestedObject,
-                                        Type::Str(_) | Type::CStr | Type::StrSlice => ObjectType::String,
+                                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
                                         Type::Char => ObjectType::Char,
                                         Type::Int | Type::I64 => ObjectType::Int,
                                         Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
@@ -4395,7 +4395,7 @@ impl Codegen {
             Expr::Ident(name) => {
                 // Check inferred type for the variable
                 let ty = self.infer_ctx.type_env.get(name);
-                matches!(ty, Some(Type::Str(_)))
+                matches!(ty, Some(Type::Str(_)) | Some(Type::String))
             }
             _ => false,
         }
@@ -4421,7 +4421,7 @@ impl Codegen {
                 let name_str = name.to_string();
                 if let Some(var_type) = self.var_types.get(&name_str) {
                     match var_type {
-                        Type::Str(_) | Type::CStr | Type::StrSlice => ObjectType::String,
+                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
                         Type::Char => ObjectType::Char,
                         Type::Int | Type::I64 => ObjectType::Int,
                         Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,

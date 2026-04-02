@@ -131,7 +131,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         Type::Void => false,
 
         // 字符串类型
-        Type::Str(_) | Type::CStr | Type::StrSlice => false,
+        Type::Str(_) | Type::CStr | Type::StrSlice | Type::String => false,
 
         // Unknown 类型
         Type::Unknown => false,
@@ -216,6 +216,8 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
 
         // 3. 字符串类型
         (Type::Str(_), Type::Str(_)) => Ok(ty1.clone()),
+        (Type::Str(_), Type::String) | (Type::String, Type::Str(_)) => Ok(ty1.clone()),
+        (Type::String, Type::String) => Ok(ty1.clone()),
         (Type::CStr, Type::CStr) => Ok(ty1.clone()),
 
         // 4. Void 类型

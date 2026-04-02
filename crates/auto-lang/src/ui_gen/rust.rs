@@ -786,7 +786,7 @@ impl RustGenerator {
             crate::ast::Type::Float => "f32".to_string(),
             crate::ast::Type::Double => "f64".to_string(),
             crate::ast::Type::Bool => "bool".to_string(),
-            crate::ast::Type::Str(_) => "String".to_string(),
+            crate::ast::Type::Str(_) | crate::ast::Type::String => "String".to_string(),
             crate::ast::Type::Void => "()".to_string(),
             _ => "i32".to_string(), // Default fallback
         }

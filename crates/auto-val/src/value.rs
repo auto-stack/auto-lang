@@ -95,7 +95,7 @@ pub enum ValueData {
     Char(char),
     Nil,
     Str(AutoStr),
-    OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
+    String(Str), // NEW: Owned string with move semantics (Phase 2)
     StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
     CStr(CStr), // NEW: C-compatible null-terminated string (Plan 025)
 
@@ -157,7 +157,7 @@ pub enum Value {
     Bool(bool),
     Char(char),
     Str(AutoStr),
-    OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
+    String(Str), // NEW: Owned string with move semantics (Phase 2)
     StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
     CStr(CStr), // NEW: C-compatible null-terminated string (Plan 025)
     Array(Array),
@@ -217,12 +217,12 @@ impl Value {
 
     /// Create an owned string value (with move semantics)
     pub fn owned_str(text: &str) -> Self {
-        Value::OwnedStr(Str::from_str(text))
+        Value::String(Str::from_str(text))
     }
 
     /// Create an empty owned string value
     pub fn empty_owned_str() -> Self {
-        Value::OwnedStr(Str::from_str(""))
+        Value::String(Str::from_str(""))
     }
 
     /// Create a StrSlice from a string slice
@@ -324,7 +324,7 @@ impl Value {
             Value::Char(v) => ValueData::Char(v),
             Value::Nil => ValueData::Nil,
             Value::Str(v) => ValueData::Str(v),
-            Value::OwnedStr(v) => ValueData::OwnedStr(v),
+            Value::String(v) => ValueData::String(v),
             Value::Array(v) => {
                 // Convert Array values to ValueIDs (simplified - allocates each)
                 // TODO: This is inefficient - needs batch allocation
@@ -367,7 +367,7 @@ impl Value {
             ValueData::Char(v) => Value::Char(v),
             ValueData::Nil => Value::Nil,
             ValueData::Str(v) => Value::Str(v),
-            ValueData::OwnedStr(v) => Value::OwnedStr(v),
+            ValueData::String(v) => Value::String(v),
             ValueData::StrSlice(v) => Value::StrSlice(v),
             ValueData::CStr(v) => Value::CStr(v),
             ValueData::Array(vids) => {
@@ -406,7 +406,7 @@ impl Value {
 
     pub fn get_type(&self) -> Type {
         match self {
-            Value::Str(_) | Value::OwnedStr(_) => Type::Str,
+            Value::Str(_) | Value::String(_) => Type::Str,
             Value::Int(_) => Type::Int,
             Value::Uint(_) => Type::Int,
             Value::Float(_) => Type::Float,
@@ -448,7 +448,7 @@ impl Display for Value {
         match self {
             Value::Char(value) => write!(f, "'{}'", value),
             Value::Str(value) => write!(f, "\"{}\"", value),
-            Value::OwnedStr(value) => write!(f, "\"{}\"", value.as_str()),
+            Value::String(value) => write!(f, "\"{}\"", value.as_str()),
             Value::StrSlice(value) => write!(f, "\"{}\"", value),
             Value::CStr(value) => write!(f, "\"{}\"", value.as_str()),
             Value::Int(value) => write!(f, "{}", value),
@@ -664,7 +664,7 @@ impl Value {
     pub fn v_upper(&self) -> Value {
         match self {
             Value::Str(s) => Value::Str(s.to_uppercase()),
-            Value::OwnedStr(s) => Value::OwnedStr(Str::from_str(s.as_str().to_uppercase().as_str())),
+            Value::String(s) => Value::String(Str::from_str(s.as_str().to_uppercase().as_str())),
             _ => Value::Nil,
         }
     }
@@ -672,7 +672,7 @@ impl Value {
     pub fn v_lower(&self) -> Value {
         match self {
             Value::Str(s) => Value::Str(s.to_lowercase()),
-            Value::OwnedStr(s) => Value::OwnedStr(Str::from_str(s.as_str().to_lowercase().as_str())),
+            Value::String(s) => Value::String(Str::from_str(s.as_str().to_lowercase().as_str())),
             _ => Value::Nil,
         }
     }
@@ -680,7 +680,7 @@ impl Value {
     pub fn v_len(&self) -> Value {
         match self {
             Value::Str(s) => Value::Int(s.len() as i32),
-            Value::OwnedStr(s) => Value::Int(s.len() as i32),
+            Value::String(s) => Value::Int(s.len() as i32),
             _ => Value::Nil,
         }
     }
@@ -777,7 +777,7 @@ impl Value {
     pub fn to_astr(&self) -> AutoStr {
         match self {
             Value::Str(s) => s.clone(),
-            Value::OwnedStr(s) => s.as_str().into(),
+            Value::String(s) => s.as_str().into(),
             Value::Nil => "".into(),
             Value::Void => "".into(),
             _ => self.to_string().into(),
@@ -787,7 +787,7 @@ impl Value {
     pub fn to_astr_or(&self, default: &str) -> AutoStr {
         match self {
             Value::Str(s) => s.clone(),
-            Value::OwnedStr(s) => s.as_str().into(),
+            Value::String(s) => s.as_str().into(),
             Value::Nil => default.into(),
             _ => self.to_string().into(),
         }
@@ -805,7 +805,7 @@ impl Value {
         match self {
             Value::Node(node) => node.name.clone(),
             Value::Str(s) => s.clone(),
-            Value::OwnedStr(s) => s.as_str().into(),
+            Value::String(s) => s.as_str().into(),
             Value::Fn(f) => f.sig.name.clone(),
             _ => self.to_astr(),
         }

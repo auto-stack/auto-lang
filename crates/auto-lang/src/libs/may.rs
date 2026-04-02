@@ -60,7 +60,7 @@ pub fn may_error(args: &Args) -> Value {
 
     let error = match &args.args[0] {
         Arg::Pos(Value::Str(s)) => s.clone(),
-        Arg::Pos(Value::OwnedStr(s)) => AutoStr::from(s.as_str()),
+        Arg::Pos(Value::String(s)) => AutoStr::from(s.as_str()),
         Arg::Pos(Value::Error(s)) => s.clone(),
         Arg::Name(name) => name.clone(),
         _ => AutoStr::from("unknown error"),
@@ -265,7 +265,7 @@ pub fn may_unwrap_error_or(args: &Args) -> Value {
     let default_error = if args.args.len() >= 2 {
         match &args.args[1] {
             Arg::Pos(Value::Str(s)) => s.clone(),
-            Arg::Pos(Value::OwnedStr(s)) => AutoStr::from(s.as_str()),
+            Arg::Pos(Value::String(s)) => AutoStr::from(s.as_str()),
             Arg::Name(name) => name.clone(),
             _ => AutoStr::from("no error"),
         }

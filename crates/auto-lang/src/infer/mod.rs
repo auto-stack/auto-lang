@@ -81,7 +81,10 @@ fn types_are_compatible(expected: &Type, found: &Type) -> bool {
         (Type::Uint, Type::Uint) => true,
         (Type::Float, Type::Float) | (Type::Float, Type::Double) => true,
         (Type::Double, Type::Double) => true,
-        (Type::Str(_), Type::Str(_)) => true,
+        (Type::Str(_), Type::Str(_))
+        | (Type::Str(_), Type::String)
+        | (Type::String, Type::Str(_))
+        | (Type::String, Type::String) => true,
         (Type::Bool, Type::Bool) => true,
         (Type::Char, Type::Char) => true,
         (Type::Array(a), Type::Array(b)) => {

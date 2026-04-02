@@ -267,7 +267,7 @@ fun {}Preview() {{
             Type::Uint => "uint".to_string(),
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
-            Type::Str(_) => "str".to_string(),
+            Type::Str(_) | Type::String => "str".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Char => "char".to_string(),
             Type::Byte => "byte".to_string(),
@@ -328,7 +328,7 @@ fun {}Preview() {{
                         crate::ast::Type::Float => "Float".to_string(),
                         crate::ast::Type::Double => "Double".to_string(),
                         crate::ast::Type::Bool => "Boolean".to_string(),
-                        crate::ast::Type::Str(_) => "String".to_string(),
+                        crate::ast::Type::Str(_) | crate::ast::Type::String => "String".to_string(),
                         crate::ast::Type::User(decl) => decl.name.as_str().to_string(),
                         _ => "Any".to_string(),
                     };

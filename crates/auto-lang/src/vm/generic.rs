@@ -46,7 +46,7 @@ impl GenericInstance {
             Type::Bool => "bool".to_string(),
             Type::Byte => "byte".to_string(),
             Type::Char => "char".to_string(),
-            Type::Str(_) => "str".to_string(),
+            Type::Str(_) | Type::String => "str".to_string(),
             Type::CStr => "cstr".to_string(),
             Type::List(inner) => format!("List_{}", Self::type_to_simple_name(inner)),
             Type::User(type_decl) => type_decl.name.to_string(),

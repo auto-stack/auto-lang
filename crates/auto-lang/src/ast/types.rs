@@ -19,6 +19,7 @@ pub enum Type {
     Str(usize),
     CStr,
     StrSlice,  // Borrowed string slice (Phase 3)
+    String,    // Owned, growable dynamic string (Plan 155)
     Array(ArrayType),         // [N]T - static array (compile-time size)
     RuntimeArray(RuntimeArrayType),  // [expr]T - runtime-sized array (Plan 052)
     List(Box<Type>),          // List<T> - dynamic list
@@ -64,6 +65,7 @@ impl Type {
             Type::Str(_) => "str".into(),
             Type::CStr => "cstr".into(),
             Type::StrSlice => "str_slice".into(),
+            Type::String => "String".into(),
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
@@ -123,6 +125,7 @@ impl Type {
             Type::Str(_) => "\"\"".into(),
             Type::CStr => "\"\"".into(),
             Type::StrSlice => "\"\"".into(),  // Default empty slice
+            Type::String => "String.new()".into(),  // Owned dynamic string
             Type::Array(_) => "[]".into(),
             Type::RuntimeArray(_) => "[runtime]".into(),  // Runtime array placeholder
             Type::List(_) => "List.new()".into(),  // Empty list constructor
@@ -166,7 +169,7 @@ impl Type {
             // Basic types: return directly (no substitution needed)
             Type::Byte | Type::Int | Type::Uint | Type::USize | Type::Float | Type::Double |
             Type::Bool | Type::Char | Type::Void | Type::CStr | Type::StrSlice |
-            Type::Unknown | Type::Variadic => self.clone(),
+            Type::Unknown | Type::Variadic | Type::String => self.clone(),
 
             Type::Fn(params, ret) => {
                 // Function types don't support type parameter substitution
@@ -281,7 +284,7 @@ impl Type {
             Type::Float | Type::Double => true,
 
             // Large types - use reference passing (heap-allocated or expensive to copy)
-            Type::Str(_) | Type::CStr | Type::StrSlice => false,
+            Type::Str(_) | Type::CStr | Type::StrSlice | Type::String => false,
             Type::Array(_) | Type::RuntimeArray(_) | Type::List(_) => false,
             Type::Slice(_) | Type::Ptr(_) | Type::Reference(_) => false,
 
@@ -471,6 +474,7 @@ impl fmt::Display for Type {
             Type::Str(_) => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str_slice"),
+            Type::String => write!(f, "String"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::RuntimeArray(rta) => write!(f, "{}", rta),
             Type::List(elem) => write!(f, "List<{}>", elem),
@@ -521,6 +525,7 @@ impl From<Type> for auto_val::Type {
             Type::Str(_) => auto_val::Type::Str,
             Type::CStr => auto_val::Type::CStr,
             Type::StrSlice => auto_val::Type::StrSlice,
+            Type::String => auto_val::Type::String,
             Type::Array(_) => auto_val::Type::Array,
             Type::RuntimeArray(_) => auto_val::Type::Array,  // Runtime arrays transpile to Array type
             Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
@@ -807,6 +812,7 @@ impl AtomWriter for Type {
             Type::Str(_) => write!(f, "str")?,
             Type::CStr => write!(f, "cstr")?,
             Type::StrSlice => write!(f, "str_slice")?,
+            Type::String => write!(f, "String")?,
             Type::Array(array_type) => {
                 write!(
                     f,

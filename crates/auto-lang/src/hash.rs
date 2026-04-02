@@ -145,6 +145,7 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::Bool => hasher.update(b"Bool"),
         Type::Char => hasher.update(b"Char"),
         Type::Str(_) => hasher.update(b"Str"),
+        Type::String => hasher.update(b"String"),
         Type::CStr => hasher.update(b"CStr"),
         Type::StrSlice => hasher.update(b"StrSlice"),
         Type::Array(_) => hasher.update(b"Array"),

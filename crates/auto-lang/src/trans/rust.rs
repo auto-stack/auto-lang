@@ -231,6 +231,7 @@ impl RustTrans {
             Type::Str(_) => "String".to_string(),
             Type::CStr => "&str".to_string(),
             Type::StrSlice => "&str".to_string(), // Borrowed string slice (Phase 3)
+            Type::String => "String".to_string(), // Owned dynamic string (Plan 155)
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }

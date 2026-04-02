@@ -155,7 +155,7 @@ fn type_expr_to_tag(ty: &crate::ast::Type) -> u8 {
         Type::Double => 0x06,
         Type::Bool => 0x07,
         Type::Char => 0x08,
-        Type::Str(_) => 0x09,
+        Type::Str(_) | Type::String => 0x09,
         Type::StrSlice => 0x0A,
         Type::CStr => 0x0B,
         Type::Void => 0x0C,

@@ -144,7 +144,7 @@ fn search_object_array(
                         all_text.push_str(s.as_str());
                         all_text.push(' ');
                     }
-                    Value::OwnedStr(s) => {
+                    Value::String(s) => {
                         all_text.push_str(s.as_str());
                         all_text.push(' ');
                     }

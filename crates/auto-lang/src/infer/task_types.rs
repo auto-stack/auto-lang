@@ -174,7 +174,10 @@ impl TaskTypeChecker {
             (Type::Uint, Type::Uint) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Char, Type::Char) => true,
-            (Type::Str(_), Type::Str(_)) => true,
+            (Type::Str(_), Type::Str(_))
+            | (Type::Str(_), Type::String)
+            | (Type::String, Type::Str(_))
+            | (Type::String, Type::String) => true,
             (Type::Void, Type::Void) => true,
 
             // Numeric compatibility

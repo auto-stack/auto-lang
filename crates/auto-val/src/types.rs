@@ -18,6 +18,7 @@ pub enum Type {
     Str,
     CStr,
     StrSlice,  // Borrowed string slice (Phase 3)
+    String,    // Owned, growable dynamic string (Plan 155)
     Array,
     Ptr,
     User(AutoStr),
@@ -68,6 +69,7 @@ impl TypeInfoStore {
         types.insert("bool".into(), type_info_bool());
         types.insert("str".into(), type_info_str());
         types.insert("str_slice".into(), type_info_str_slice());
+        types.insert("String".into(), type_info_string());
         types.insert("char".into(), type_info_char());
         Self {
             types,
@@ -85,7 +87,8 @@ impl TypeInfoStore {
             Value::Float(_) => self.lookup_method(Type::Float, name),
             Value::Bool(_) => self.lookup_method(Type::Bool, name),
             Value::Str(_) => self.lookup_method(Type::Str, name),
-            Value::OwnedStr(_) => self.lookup_method(Type::Str, name),
+            Value::String(_) => self.lookup_method(Type::String, name),
+            Value::StrSlice(_) => self.lookup_method(Type::StrSlice, name),
             _ => self.lookup_method(Type::Any, name),
         }
     }
@@ -111,6 +114,7 @@ impl TypeInfoStore {
             Type::Str => self.types.get("str").unwrap(),
             Type::CStr => self.types.get("cstr").unwrap(),
             Type::StrSlice => self.types.get("str_slice").unwrap(),
+            Type::String => self.types.get("String").unwrap(),
             Type::Char => self.types.get("char").unwrap(),
             Type::Array => self.types.get("array").unwrap(),
             Type::Ptr => self.types.get("ptr").unwrap(),
@@ -212,6 +216,17 @@ fn type_info_str_slice() -> TypeInfo {
     }
 }
 
+fn type_info_string() -> TypeInfo {
+    let mut methods: HashMap<AutoStr, ValueMethod> = HashMap::new();
+    methods.insert("upper".into(), Value::v_upper);
+    methods.insert("lower".into(), Value::v_lower);
+    methods.insert("len".into(), Value::v_len);
+    TypeInfo {
+        name: "String".into(),
+        methods,
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -226,6 +241,7 @@ impl fmt::Display for Type {
             Type::Str => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str_slice"),
+            Type::String => write!(f, "String"),
             Type::Char => write!(f, "char"),
             Type::Array => write!(f, "array"),
             Type::Ptr => write!(f, "ptr"),

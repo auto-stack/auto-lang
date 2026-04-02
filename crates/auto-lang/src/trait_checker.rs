@@ -67,6 +67,9 @@ impl TraitChecker {
                             | (Type::Double, Type::Double)
                             | (Type::Bool, Type::Bool)
                             | (Type::Str(_), Type::Str(_))
+                            | (Type::Str(_), Type::String)
+                            | (Type::String, Type::Str(_))
+                            | (Type::String, Type::String)
                             | (Type::Unknown, Type::Void)  // Unknown is compatible with Void
                             | (Type::Void, Type::Unknown)  // Void is compatible with Unknown
                             // Plan 057: Unknown is compatible with any concrete type (generic params)
@@ -76,6 +79,7 @@ impl TraitChecker {
                             | (Type::Double, Type::Unknown)
                             | (Type::Bool, Type::Unknown)
                             | (Type::Str(_), Type::Unknown)
+                            | (Type::String, Type::Unknown)
                     );
 
                     if !is_compatible {

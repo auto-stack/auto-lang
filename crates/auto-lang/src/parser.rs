@@ -756,6 +756,7 @@ impl<'a> Parser<'a> {
         // Plan 125: Check for built-in type aliases first
         match name {
             "string" | "str" => return shared(Type::Str(0)),
+            "String" => return shared(Type::String),
             "int" => return shared(Type::Int),
             "uint" => return shared(Type::Uint),
             "i64" => return shared(Type::I64),
@@ -6647,6 +6648,7 @@ impl<'a> Parser<'a> {
                     "double" | "f64" => return Ok(Type::Double),
                     "bool" => return Ok(Type::Bool),
                     "str" => return Ok(Type::Str(0)),
+                    "String" => return Ok(Type::String),
                     "cstr" => return Ok(Type::CStr),
                     "byte" | "u8" => return Ok(Type::Byte),
                     "char" | "i8" => return Ok(Type::Char),

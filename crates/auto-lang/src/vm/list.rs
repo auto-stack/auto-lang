@@ -550,8 +550,8 @@ pub fn map_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
                                         }
                                     }
 
-                                    // Handle both Str and OwnedStr
-                                    if matches!(elem, Value::Str(_) | Value::OwnedStr(_)) {
+                                    // Handle both Str and String
+                                    if matches!(elem, Value::Str(_) | Value::String(_)) {
                                         if meta_str.contains("get_length") {
                                             return Value::Int(5);
                                         }

@@ -199,6 +199,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Str(len) => format!("str[{}]", len),
         Type::CStr => "cstr".to_string(),
         Type::StrSlice => "str_slice".to_string(),
+        Type::String => "String".to_string(),
         Type::Char => "char".to_string(),
         Type::Void => "void".to_string(),
         Type::Unknown => "unknown".to_string(),

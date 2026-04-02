@@ -55,6 +55,7 @@ impl VmContext {
             "byte" => Type::Byte,
             "char" => Type::Char,
             "str" => Type::Str,
+            "string" => Type::String,
             "cstr" => Type::CStr,
             "void" => Type::Void,
             _ => Type::User(name.into()),

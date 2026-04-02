@@ -84,7 +84,7 @@ impl Monomorphizer {
                     // List<int> operations
                     bytecode.push(OpCode::CREATE_LIST_INT as u8);
                 }
-                Type::Str(_) => {
+                Type::Str(_) | Type::String => {
                     // List<string> operations
                     bytecode.push(OpCode::CREATE_LIST_STR as u8);
                 }
@@ -104,7 +104,7 @@ impl Monomorphizer {
     pub fn get_list_create_opcode(elem_type: &Type) -> Option<OpCode> {
         match elem_type {
             Type::Int => Some(OpCode::CREATE_LIST_INT),
-            Type::Str(_) => Some(OpCode::CREATE_LIST_STR),
+            Type::Str(_) | Type::String => Some(OpCode::CREATE_LIST_STR),
             Type::Bool => Some(OpCode::CREATE_LIST_BOOL),
             _ => None,
         }

@@ -292,7 +292,7 @@ fn type_to_rust_type(ty: &Type) -> String {
         Type::Bool => "bool".to_string(),
         Type::Byte => "u8".to_string(),
         Type::Char => "char".to_string(),
-        Type::Str(_) | Type::StrSlice => "String".to_string(),
+        Type::Str(_) | Type::String | Type::StrSlice => "String".to_string(),
         Type::CStr => "std::ffi::CString".to_string(),
         Type::Void => "()".to_string(),
         Type::USize => "usize".to_string(),
@@ -328,7 +328,7 @@ fn type_to_c_type(ty: &Type) -> String {
         Type::Bool => "bool".to_string(),
         Type::Byte => "uint8_t".to_string(),
         Type::Char => "char".to_string(),
-        Type::Str(_) | Type::StrSlice => "char*".to_string(),
+        Type::Str(_) | Type::String | Type::StrSlice => "char*".to_string(),
         Type::Void => "void".to_string(),
         Type::USize => "size_t".to_string(),
         Type::Array(arr) => {
