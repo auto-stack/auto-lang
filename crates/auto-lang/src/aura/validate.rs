@@ -23,6 +23,7 @@ use std::collections::HashSet;
 use thiserror::Error;
 
 /// Validation error types
+#[allow(dead_code, unused)]
 #[derive(Debug, Clone, Error, Diagnostic)]
 pub enum ValidationError {
     /// E0981: Widget missing required block

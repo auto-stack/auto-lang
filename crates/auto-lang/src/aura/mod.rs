@@ -58,6 +58,7 @@ mod extract;
 mod atom;
 pub mod schema;
 pub mod schema_loader;
+#[allow(unused)]
 pub mod validate;
 
 pub use types::*;

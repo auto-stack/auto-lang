@@ -89,6 +89,7 @@ struct ProcessInfo {
     status: String,
     cpu_usage: f64,
     mem_usage: i64,
+    #[allow(dead_code)]
     start_time: Option<chrono::DateTime<chrono::Utc>>,
     command: Option<String>,
 }

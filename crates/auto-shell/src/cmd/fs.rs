@@ -2,7 +2,7 @@
 //!
 //! Implements core file system operations: ls, cd, mkdir, rm, mv, cp
 
-use auto_val::{Value, Obj, Array};
+use auto_val::{Value, Obj};
 use miette::{IntoDiagnostic, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -280,6 +280,7 @@ pub fn ls_command_value(
 }
 
 /// Build a file entry object from metadata
+#[allow(dead_code)]
 fn build_file_entry_obj(name: &str, is_dir: bool, metadata: &fs::Metadata, long: bool) -> Obj {
     let mut obj = Obj::new();
     obj.set("name", Value::str(name));
@@ -352,6 +353,7 @@ fn list_recursive_value(
 }
 
 /// Format system time as "YYYY-MM-DD HH:MM" string
+#[allow(dead_code)]
 fn format_modified_time(modified: &std::time::SystemTime) -> Option<String> {
     use std::time::UNIX_EPOCH;
     let secs = modified.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
@@ -361,6 +363,7 @@ fn format_modified_time(modified: &std::time::SystemTime) -> Option<String> {
 
 /// Format file permissions (Unix-style rwxrwxrwx)
 #[cfg(unix)]
+#[allow(dead_code)]
 fn format_permissions(metadata: &fs::Metadata, is_dir: bool) -> String {
     use std::os::unix::fs::PermissionsExt;
     let mode = metadata.permissions().mode();
@@ -379,6 +382,7 @@ fn format_permissions(metadata: &fs::Metadata, is_dir: bool) -> String {
 
 /// Format permission bits (e.g., "rwx")
 #[cfg(unix)]
+#[allow(dead_code)]
 fn format_mode_bits(bits: u32) -> String {
     format!(
         "{}{}{}",
@@ -390,6 +394,7 @@ fn format_mode_bits(bits: u32) -> String {
 
 /// Get owner name from metadata
 #[cfg(unix)]
+#[allow(dead_code)]
 fn get_owner(metadata: &fs::Metadata) -> String {
     use std::os::unix::fs::MetadataExt;
     metadata.uid().to_string()
@@ -397,6 +402,7 @@ fn get_owner(metadata: &fs::Metadata) -> String {
 
 /// Format file permissions (Windows - simplified)
 #[cfg(windows)]
+#[allow(dead_code)]
 fn format_permissions(_metadata: &fs::Metadata, is_dir: bool) -> String {
     if is_dir {
         "drwxr-xr-x".to_string()
@@ -407,6 +413,7 @@ fn format_permissions(_metadata: &fs::Metadata, is_dir: bool) -> String {
 
 /// Get owner name (Windows - no owner info)
 #[cfg(windows)]
+#[allow(dead_code)]
 fn get_owner(_metadata: &fs::Metadata) -> String {
     "-".to_string()
 }
