@@ -1,0 +1,343 @@
+var general = ctr CanTrcvGeneral {
+    /// This container holds parameters related to each CanTrcv Driver.
+
+    v CanTrcvDevErrorDetect {
+        /// Switches the development error detection and notification on or off.
+        kind: bool
+    }
+
+    v CanIfCallbackEnable bool {
+        /// Indicates whether a module using canif callback function.
+        origin: "GAC"
+        default: true
+    }
+
+    v CanTrcvWaitTime float {
+        /// Wait time for transceiver state changes in seconds.
+        optional: false
+    }
+
+    v CanTrcvIndex {
+        /// Specifies the InstanceId of this module instance.
+        kind: int
+        range: [0, 255]
+    }
+
+    v CanTrcvWakeUpSupport {
+        /// Informs whether wake up is supported by polling or not supported. In case no
+        /// wake up is supported by the hardware, setting has to be NOT_SUPPORTED. Only in
+        /// the case of wake up supported by polling, function CanTrcv_MainFunction has to be
+        /// present and to be invoked by the scheduler.
+        kind: select
+        options: [
+            "CANTRCV_WAKEUP_BY_POLLING"
+            "CANTRCV_WAKEUP_NOT_SUPPORTED"
+        ]
+        default: "CANTRCV_WAKEUP_NOT_SUPPORTED"
+    }
+}
+
+var publish_info = ctr CommonPublishedInformation {
+    /// Common container, aggregated by all modules.
+    /// It contains published information about vendor and versions.
+
+    v ArReleaseMajorVersion int {
+        /// Major version number of AUTOSAR specification on which the appropriate implementation is based on.
+        default: 4
+        range: 4
+    }
+    v ArReleaseMinorVersion int {
+        /// Minor version number of AUTOSAR specification on which the appropriate implementation is based on.
+        default: 4
+        range: 4
+    }
+    v ArReleaseRevisionVersion int {
+        /// Revision version number of AUTOSAR specification on which the appropriate implementation is based on.
+        range: 0
+    }
+    v ModuleId int {
+        /// Module ID of this module from Module List.
+        /// Note: Implementation Specific Parameter
+        default: 255
+        range: 255
+    }
+    v SwMajorVersion int {
+        /// Major version number of the vendor specific implementation of the module. The numbering is vendor specific.
+        /// Note: Implementation Specific Parameter
+        default: 1
+        range: 1
+    }
+    v SwMinorVersion int {
+        /// Minor version number of the vendor specific implementation of the module. The numbering is vendor specific.
+        /// Note: Implementation Specific Parameter
+        range: 0
+    }
+    v SwPatchVersion int {
+        /// Patch level version number of the vendor specific implementation of the module. The numbering is vendor specific.
+        /// Note: Implementation Specific Parameter
+        range: 0
+    }
+}
+
+var dem_refs = ctr CanTrcvDemEventParameterRefs {
+    /// Container for the references to DemEventParameter elements which shall
+    /// be invoked using the API Dem_SetEventStatus in case the corresponding
+    /// error occurs. The EventId is taken from the referenced DemEventParameter's
+    /// DemEventId symbolic value. The standardized errors are provided in
+    /// this container and can be extended by vendor-specific error references.
+    optional: true
+    enable: true
+
+    ref CANTRCV_E_BUS_ERROR {
+        /// Reference to the DemEventParameter which shall be issued when bus
+        /// error has occurred.
+        ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/Dem/DemConfigSet/DemEventParameter"
+        enable: false
+    }
+
+    ctr CanTrcvPartialNetwork {
+        /// Container gives CAN transceiver driver information about the configuration of Partial Networking functionality.
+        optional: true
+        enable: true
+
+        v CanTrcvBaudRate int {
+            /// Indicates the data transfer rate in kbps.
+            enable: false
+            range: [0, 12_000]
+        }
+
+        v CanTrcvBusErrFlag bool {
+            /// Indicates if the Bus Error (BUSERR) flag is managed by the BSW. This
+            /// flag is set if a bus failure is detected by the transceiver.
+            /// TRUE = Supported by transceiver and managed by BSW.
+            /// FALSE = Not managed by BSW.
+            enable: false
+        }
+
+        v CanTrcvPnCanIdIsExtended bool {
+            /// Indicates whether extended or standard ID is used.
+            /// TRUE = Extended Can identifier is used.
+            /// FALSE = Standard Can identifier is used.
+            enable: false
+        }
+        v CanTrcvPnEnabled bool {
+            /// Indicates whether the selective wake-up function is enabled or disabled in HW.
+            /// TRUE = Selective wakeup feature is enabled in the transceiver hardware
+            /// FALSE = Selective wakeup feature is disabled in the transceiver hardware.
+            enable: false
+        }
+
+        v CanTrcvPnFrameCanId int {
+            /// CAN ID of the Wake-up Frame (WUF).
+            enable: false
+            range: [0, 4294967295] // TODO: HEX or MAX INT
+        }
+        v CanTrcvPnFrameCanIdMask int {
+            /// ID Mask for the selective activation of the transceiver. It is used to enable
+            /// Frame Wake-up (WUF) on a group of IDs.
+            enable: false
+            range: [0, 0xFFFFFFFF]
+
+        }
+        v CanTrcvPnFrameDlctr int {
+            /// Data Length of the Wake-up Frame (WUF).
+            enable: false
+            range: [0, 8]
+        }
+        v CanTrcvPowerOnFlag bool {
+            /// Description: Indicates if the Power On Reset (POR) flag is available and is
+            /// managed by the transceiver.
+            /// TRUE = Supported by Hardware.
+            /// FALSE = Not supported by Hardware.
+            enable: false
+        }
+    }
+}
+
+var pn_spec = lst CanTrcvPnFrameDataMaskSpec {
+    min: 0
+
+    ctr CanTrcvPnFrameDataMaskSpec {
+        /// Defines data payload mask to be used on the received payload in order to
+        /// determine if the transceiver must be woken up by the received Wake-up
+        /// Frame (WUF).
+        v CanTrcvPnFrameDataMask int {
+            /// Defines the n byte (Byte0 = LSB) of the data payload mask to be used on
+            /// the received payload in order to determine if the transceiver must be wok-
+            /// en up by the received Wake-up Frame (WUF).
+            range: [0, 255]
+        }
+        v CanTrcvPnFrameDataMaskIndex int {
+            /// holds the position n in frame of the mask-part
+            range: [0, 7]
+        }
+    }
+}
+
+var access = chc CanTrcvAccess {
+    /// Gives CanTrcv Driver information about access to a single CAN transceiver.
+    ctr CanTrcvDioAccess {
+        /// Gives CAN transceiver driver information about accessing ports and port pins.
+
+        ctr CanTrcvDioChannelAccess {
+            /// Defines DIO channel access by single Can transceiver channel.
+            v CanTrcvDioSTBRef str {
+                /// Reference to DIO Channel. Please fill in the actual DioChannel name.
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/Dio/DioConfig/DioPort/DioChannel"
+                default: "PL_4_TBOX_CAN_STB"
+                // TODO: check empty
+                required: true
+                error: "Empty value is not allowed."
+            }
+            v CanTrcvDioRXDRef str {
+                /// Reference to DIO Channel. Please fill in the actual DioChannel name.
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/Dio/DioConfig/DioPort/DioChannel"
+                default: "PC_11_TBOX_CAN_RX"
+                required: true
+                error: "Empty value is not allowed."
+            }
+        }
+    }
+}
+
+var config_set = ctr CanTrcvConfigSet {
+    /// This is the multiple configuration set container for CanTrcv Driver.
+
+    v CanTrcvSPICommRetries int {
+        /// Indicates the maximum number of communication retries in case of a failed SPI communication (applies both to timed out communication and to errors/NACK in the response data). If configured value is '0', no retry is allowed (communication is expected to succeed at first try).
+        range: [0, 255]
+    }
+    v CanTrcvSPICommTimeout int {
+        /// Indicates the maximum time allowed to the CanTrcv for replying (either positively or negatively) to a SPI command. Timeout is configured in milliseconds. Timeout value of '0' means that no specific timeout is to be used by CanTrcv and the communication is executed at the best of the SPI HW capacity.
+        range: [0, 100]
+    }
+
+    lst CanTrcvChannel {
+        invalid: [
+            test_true: {
+                expr: "num:i(count(node:current()/*)) > ecu:get('CanTrcv.NumberTrcvSupport')"
+                msg: "Maximum channels available for the selected derivative was exceeded."
+            }
+        ]
+        ctr CanTrcvChannel {
+            /// Defines a structure to initialize the selected CAN transceiver (channel).
+            v CanTrcvInitState select {
+                /// State of CAN transceiver after call to CanTrcv_Init.
+                /// - Normal mode after Init
+                /// - Sleep mode after Init
+                /// - Standby mode after Init (Default)
+                options: [
+                    "CANTRCV_OP_MODE_NORMAL",
+                    "CANTRCV_OP_MODE_SLEEP",
+                    "CANTRCV_OP_MODE_STANDBY",
+                ]
+                default: "CANTRCV_OP_MODE_STANDBY"
+                invalid: [
+                    test_true: {
+                        expr: ". = 'CANTRCV_OP_MODE_SLEEP'",
+                        msg: "Tja1462 does not support sleep mode."
+                    }
+                ]
+            }
+
+            v CanTrcvChannelId int {
+                /// Unique identifier of the CAN Transceiver Channel.
+                range: [0, 255]
+                default: 0 // TODO: node:fallback(node:current()/../@index, num:i(1))
+                editable: "ecu:get('CanTrcv.NumberTrcvSupport') > 1"
+            }
+            v CanTrcvMaxBaudrate int {
+                /// Indicates the data transfer rate in kbps. Maximum data transfer rate in kbps for transceiver hardware type. Only used for validation purposes. This value can be used by configuration tools.
+                range: [0, 2_0000]
+            }
+            v CanTrcvChannelUsed bool {
+                /// Shall the related CAN transceiver be used?
+                default: true
+                readonly: true
+            }
+            v CanTrcvControlsPowerSupply bool {
+                /// Is ECU power supply controlled by this transceiver? TRUE = Controlled by transceiver. FALSE = Not controlled by transceiver.
+                enable: false
+            }
+            v CanTrcvHwPnSupport bool {
+                /// Indicates whether the HW supports the selective wake-up function TRUE = Selective wakeup feature is supported by the transceiver FALSE = Selective wakeup functionality is not available in transceiver
+                editable: false
+            }
+            v CanTrcvWakeupByBusUsed bool {
+                /// Is wake up by bus supported? If CAN transceiver hardware does not support
+                /// wake up by bus value is always FALSE. If CAN transceiver hardware supports
+                /// wake up by bus value is TRUE or FALSE depending whether it is used or not.
+                /// TRUE = Is used. FALSE = Is not used.
+                optional: false
+                enable: true
+            }
+            v CanTrcvIcuChannelRef str {
+                /// Reference to Icu Channel. Please enter the name of the IcuChannel actually used.
+                optional: true
+                editable: true
+                enable: false
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/Icu/IcuConfigSet/IcuChannel"
+            }
+            ref CanTrcvChannelEcucPartitionRef {
+                /// Reference to EcucPartition.
+                enable: false
+                optional: false
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/EcuC/EcucPartitionCollection/EcucPartition"
+            }
+            ref CanTrcvPorWakeupSourceRef {
+                /// Reference to EcuM Wakeup Source.
+                enable: false
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/EcuM/EcuMConfiguration/EcuMCommonConfiguration/EcuMWakeupSource"
+                ebale: false // TODO: ecu:get('CanTrcv.PORFlagSupport') = 'STD_ON'
+            }
+            ref CanTrcvSyserrWakeupSourceRef {
+                /// Reference to EcuM Wakeup Source.
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/EcuM/EcuMConfiguration/EcuMCommonConfiguration/EcuMWakeupSource"
+                enable: "ecu:get('CanTrcv.SYSERRFlagSupport') = 'STD_ON'"
+            }
+            v CanTrcvWakeupSourceRef int {
+                /// Reference to EcuM Wakeup Source. Please fill in the EcuMWakeupSourceId value.
+                ref: "ASPathDataOfSchema:/AUTOSAR/EcucDefs/EcuM/EcuMConfiguration/EcuMCommonConfiguration/EcuMWakeupSource"
+                enable: "../CanTrcvWakeupByBusUsed"
+            }
+
+            // use node access
+            access
+
+            // use node dem_refs
+            dem_refs
+
+            // use node pn_spec
+            pn_spec
+        }
+    }
+}
+
+module XdmDemoModule {
+    moddef XdmDemoDef {
+        desc: "This container holds the configuration of a single CanTrcv Driver."
+
+        v POST_BUILD_VARIANT_USED bool {
+            /// Indicates whether a module implementation has or plans to have (i.e., introduced at link or post-build time) new post-build variation points.
+        }
+
+        v IMPLEMENTATION_CONFIG_VARIANT select {
+            options: [
+                // "VariantLinkTime"
+                "VariantPostBuild"
+                "VariantPreCompile"
+            ]
+            default: "VariantPostBuild"
+        }
+
+        // use node general
+        general
+
+        //use node config_set
+        config_set
+
+        // use publish_info node
+        publish_info
+
+    }
+}

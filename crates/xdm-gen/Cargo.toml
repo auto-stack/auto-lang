@@ -1,0 +1,11 @@
+[package]
+name = "xdm-gen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+auto-lang = { path = "../auto-lang" }
+auto-val = { path = "../auto-val" }
+clap = { workspace = true }
+uuid = { version = "1.18.1", features = ["v4"] }
+chrono = { workspace = true }
