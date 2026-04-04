@@ -11,6 +11,14 @@ use crate::ast::Name;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
+fn multiple_errors_display(errors: &[AutoError], count: &usize, plural: &str) -> String {
+    let mut msg = format!("aborting due to {} previous error{}", count, plural);
+    for (i, err) in errors.iter().enumerate() {
+        msg.push_str(&format!("\n  error[{}]: {}", i + 1, err));
+    }
+    msg
+}
+
 // Re-export commonly used types
 pub use miette::{MietteError, Result};
 
@@ -244,7 +252,7 @@ pub enum AutoError {
     Comptime(#[from] ComptimeError),
 
     /// Multiple errors collected during parsing with error recovery
-    #[error("aborting due to {count} previous error{plural}")]
+    #[error("{}", multiple_errors_display(errors, count, plural))]
     MultipleErrors {
         count: usize,
         plural: String,

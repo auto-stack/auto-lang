@@ -877,8 +877,34 @@ impl<'a> Parser<'a> {
     /// - Keywords that start statements (fn, let, var, mut, for, while, if, return, etc.)
     /// - End of file
     fn synchronize(&mut self) {
-        // Skip tokens until we reach a statement boundary
+        // Skip tokens until we reach a statement boundary.
+        // Tracks brace depth so we skip past entire block bodies (nodes, if, for, etc.)
+        // instead of getting stuck inside them.
+        let mut brace_depth: u32 = 0;
+
         while !self.is_at_end() {
+            // Track brace nesting: skip entire blocks
+            if self.is_kind(TokenKind::LBrace) {
+                brace_depth += 1;
+                self.next();
+                continue;
+            }
+            if self.is_kind(TokenKind::RBrace) {
+                if brace_depth > 0 {
+                    brace_depth -= 1;
+                    self.next();
+                    continue;
+                }
+                // Closing brace at depth 0 — this is a block boundary, stop here
+                return;
+            }
+
+            // Inside a block, keep skipping
+            if brace_depth > 0 {
+                self.next();
+                continue;
+            }
+
             // Semicolon is a statement boundary
             if self.is_kind(TokenKind::Semi) {
                 self.next();
@@ -2367,6 +2393,7 @@ impl<'a> Parser<'a> {
                 )?));
             }
 
+
             // Not a special type expression, just a regular identifier
             return Ok(Expr::Ident(name));
         }
@@ -2543,7 +2570,49 @@ impl<'a> Parser<'a> {
 
     // An Expression that can be assigned to a variable, e.g. right-hand side of an assignment
     pub fn rhs_expr(&mut self) -> AutoResult<Expr> {
-        // Use parse_expr() for all cases - it handles if expressions, identifiers, calls, etc.
+        // Support node instance syntax with primary prop in rhs position:
+        // e.g., var x = ctr CanTrcvGeneral { ... }
+        // e.g., var x = v CanTrcvBaudRate int { ... }  (with secondaryProp)
+        // Pattern: Ident Ident { or Ident Ident ( or Ident Ident Ident {
+        // Only delegate to node_or_call_expr when we see these patterns,
+        // to avoid changing semantics of function calls like Point(x: 1, y: 2)
+        if self.is_kind(TokenKind::Ident) {
+            let saved_cur = self.cur.clone();
+            self.next(); // consume first identifier
+            if self.is_kind(TokenKind::Ident) {
+                // "name ident" pattern — lookahead to confirm it's a node
+                let next_ident = self.cur.clone();
+                let after = self.lexer.next()?;
+                let is_node = match after.kind {
+                    TokenKind::LBrace | TokenKind::LParen => true,
+                    TokenKind::Ident => {
+                        // Three-ident pattern: "name ident ident" — look one more ahead
+                        // e.g., v CanTrcvBaudRate int { ... }
+                        let third_ident = after.clone();
+                        let after2 = self.lexer.next()?;
+                        let found = matches!(after2.kind, TokenKind::LBrace | TokenKind::LParen);
+                        self.lexer.push_token(after2);
+                        self.lexer.push_token(third_ident);
+                        found
+                    }
+                    _ => false,
+                };
+                self.lexer.push_token(after);
+                if is_node {
+                    // Confirmed node pattern — delegate to node_or_call_expr
+                    self.lexer.push_token(next_ident);
+                    self.cur = saved_cur;
+                    return self.node_or_call_expr();
+                }
+                // Not a node pattern, restore and fall through
+                self.lexer.push_token(next_ident);
+                self.cur = saved_cur;
+            } else {
+                // "name" without another ident following — restore and fall through
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+            }
+        }
         self.parse_expr()
     }
 
@@ -4788,12 +4857,8 @@ impl<'a> Parser<'a> {
 
         // type (optional)
         let mut ty = Type::Unknown;
-        eprintln!("[DEBUG-STORE-PARSE] name={}, cur_token={:?} kind={:?}", name, self.cur.text, self.cur.kind);
         if self.is_type_name() {
             ty = self.parse_type()?;
-            eprintln!("[DEBUG-STORE-PARSE] parsed type: {:?}", ty);
-        } else {
-            eprintln!("[DEBUG-STORE-PARSE] is_type_name() returned false");
         }
 
         // `=`, a store stmt must have an assignment unless:
@@ -7756,12 +7821,32 @@ impl<'a> Parser<'a> {
             has_paren = true;
         }
 
+        // Parse secondary prop (kind): after primaryProp and args, before {
+        // e.g., v CanTrcvBaudRate int { ... }
+        //           ^primaryProp    ^secondaryProp
+        let mut secondary_prop: AutoStr = AutoStr::new();
+        if primary_prop.is_some() && !has_paren && self.is_kind(TokenKind::Ident) {
+            let next_text = self.cur.text.clone();
+            // Don't consume if it's actually the opening brace content
+            // (Ident followed by { is not a secondaryProp, it's a new statement in body)
+            // secondaryProp is a simple type-like identifier
+            secondary_prop = next_text;
+            self.next();
+        }
+
         // If has brace, must be a node instance
         // NOTE: If ident is a Dot expression (e.g., TypeName.method), treat as call even if is_constructor=true
+        // IMPORTANT: When is_constructor=true but no brace/primary_prop/paren, and next token is Colon,
+        // this is a Pair expression (key: value), NOT a node instance.
         let is_dot_call = matches!(ident, Expr::Dot(_, _));
-        if self.is_kind(TokenKind::LBrace)
+        let is_colon_pair = is_constructor && !is_dot_call
+            && primary_prop.is_none()
+            && !self.is_kind(TokenKind::LBrace)
+            && self.is_kind(TokenKind::Colon);
+        if (self.is_kind(TokenKind::LBrace)
             || primary_prop.is_some()
-            || (is_constructor && !is_dot_call)
+            || (is_constructor && !is_dot_call))
+            && !is_colon_pair
         {
             // node instance
             // with node instance, pair args also defines as properties
@@ -7782,7 +7867,7 @@ impl<'a> Parser<'a> {
                         &name,
                         primary_prop,
                         args,
-                        &AutoStr::new(),
+                        &secondary_prop,
                     )?));
                 }
                 _ => {

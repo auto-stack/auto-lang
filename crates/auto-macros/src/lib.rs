@@ -119,7 +119,7 @@ pub fn value(input: TokenStream) -> TokenStream {
 
                 if kids.len() == 1 && !has_props {
                     match &kids[0] {
-                        (_, Kid::Node(first_kid)) => Atom::Node(first_kid.clone()),
+                        (_, Kid::Node(first_kid)) => Atom::Node((**first_kid).clone()),
                         _ => Atom::Node(root_node),
                     }
                 } else if kids.is_empty() && has_props && root_node.name == "root" {
@@ -187,7 +187,7 @@ pub fn atom(input: TokenStream) -> TokenStream {
                 if kids.len() == 1 && !has_props {
                     // 只有一个子节点且无属性 -> 返回该子节点
                     match &kids[0] {
-                        (_, Kid::Node(first_kid)) => Atom::Node(first_kid.clone()),
+                        (_, Kid::Node(first_kid)) => Atom::Node((**first_kid).clone()),
                         _ => Atom::Node(root_node),
                     }
                 } else if kids.is_empty() && has_props && root_node.name == "root" {
@@ -240,7 +240,7 @@ pub fn node(input: TokenStream) -> TokenStream {
                 // 尝试获取第一个子节点
                 let first_kid = root_node.kids_iter().next();
                 if let Some((_, Kid::Node(kid_node))) = first_kid {
-                    kid_node.clone()
+                    (**kid_node).clone()
                 } else {
                     // 如果没有子节点，返回 root 节点本身
                     root_node
