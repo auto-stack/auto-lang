@@ -4788,8 +4788,12 @@ impl<'a> Parser<'a> {
 
         // type (optional)
         let mut ty = Type::Unknown;
+        eprintln!("[DEBUG-STORE-PARSE] name={}, cur_token={:?} kind={:?}", name, self.cur.text, self.cur.kind);
         if self.is_type_name() {
             ty = self.parse_type()?;
+            eprintln!("[DEBUG-STORE-PARSE] parsed type: {:?}", ty);
+        } else {
+            eprintln!("[DEBUG-STORE-PARSE] is_type_name() returned false");
         }
 
         // `=`, a store stmt must have an assignment unless:
@@ -6440,85 +6444,6 @@ impl<'a> Parser<'a> {
         Ok(UnionField { name, ty })
     }
 
-    pub fn tag_stmt(&mut self) -> AutoResult<Stmt> {
-        self.expect(TokenKind::Tag)?;
-        let name = self.parse_name()?;
-
-        // Parse generic parameters (optional) - e.g., tag May<T> { ... }, tag Inline<T, const N u32> { ... }
-        let mut generic_params = Vec::new();
-        if self.cur.kind == TokenKind::Lt {
-            self.next(); // Consume '<'
-
-            generic_params.push(self.parse_generic_param()?);
-
-            while self.cur.kind == TokenKind::Comma {
-                self.next(); // Consume ','
-                generic_params.push(self.parse_generic_param()?);
-            }
-
-            self.expect(TokenKind::Gt)?; // Consume '>'
-        }
-
-        // Set current type parameters for field parsing (extract names from generic_params)
-        let prev_type_params = std::mem::replace(
-            &mut self.current_type_params,
-            generic_params
-                .iter()
-                .map(|gp| match gp {
-                    crate::ast::GenericParam::Type(tp) => tp.name.clone(),
-                    crate::ast::GenericParam::Const(cp) => cp.name.clone(),
-                })
-                .collect(),
-        );
-
-        self.expect(TokenKind::LBrace)?;
-        self.skip_empty_lines();
-
-        let mut fields = Vec::new();
-        let mut methods = Vec::new();
-
-        // Parse fields and methods (EXACTLY like type_decl_stmt)
-        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            if self.is_kind(TokenKind::Fn) {
-                let fn_stmt = self.fn_decl_stmt(&name)?;
-                if let Stmt::Fn(fn_expr) = fn_stmt {
-                    methods.push(fn_expr);
-                }
-            } else {
-                let field = self.tag_field()?;
-                fields.push(field);
-            }
-            self.expect_eos(false)?; // Single EOS call after both branches
-        }
-        self.expect(TokenKind::RBrace)?;
-
-        // Restore previous type parameters
-        self.current_type_params = prev_type_params;
-
-        // Register tag type with fields and methods
-        self.define(
-            name.as_str(),
-            Meta::Type(Type::Tag(shared(Tag {
-                name: name.clone(),
-                generic_params: generic_params.clone(),
-                fields: fields.clone(),
-                methods: methods.clone(),
-            }))),
-        );
-
-        Ok(Stmt::Tag(Tag {
-            name,
-            generic_params,
-            fields,
-            methods,
-        }))
-    }
-
-    pub fn tag_field(&mut self) -> AutoResult<TagField> {
-        let name = self.parse_name()?;
-        let ty = self.parse_type()?;
-        Ok(TagField { name, ty })
-    }
 
     fn get_int_expr(&mut self, num: &Expr) -> i64 {
         match num {

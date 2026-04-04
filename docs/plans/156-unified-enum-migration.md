@@ -35,9 +35,9 @@
 
 ---
 
-## Phase 1: AST 重构（核心数据结构）
+## Phase 1: AST 重构（核心数据结构） ✅ COMPLETE
 
-### Task 1: 新增 EnumKind 和扩展 EnumDecl
+### Task 1: 新增 EnumKind 和扩展 EnumDecl ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/ast/enums.rs`
@@ -150,7 +150,7 @@ git commit -m "feat(ast): extend EnumDecl with EnumKind for unified enum (Phase 
 
 ---
 
-### Task 2: 添加向后兼容桥接，修复所有 EnumDecl 引用
+### Task 2: 添加向后兼容桥接，修复所有 EnumDecl 引用 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/ast/enums.rs` — 保留旧的 `EnumItem` 兼容性
@@ -200,9 +200,9 @@ git commit -m "feat(ast): migrate EnumDecl references to new EnumKind (Phase 1, 
 
 ---
 
-## Phase 2: Parser — 统一枚举解析
+## Phase 2: Parser — 统一枚举解析 ✅ COMPLETE
 
-### Task 3: 重写 enum_stmt() 解析器支持三种形态
+### Task 3: 重写 enum_stmt() 解析器支持三种形态 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/parser.rs:3203-3262`
@@ -513,7 +513,7 @@ git commit -m "feat(parser): unified enum parsing for 3 forms (Phase 2, Task 3)"
 
 ---
 
-### Task 4: 废弃 tag_stmt()，将 tag 关键字重定向到 enum_stmt()
+### Task 4: 废弃 tag_stmt()，将 tag 关键字重定向到 enum_stmt() ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/parser.rs` — tag 入口重定向
@@ -551,7 +551,7 @@ git commit -m "feat(parser): deprecate tag keyword, redirect to enum (Phase 2, T
 
 ---
 
-### Task 5: 支持异构枚举的方法和泛型参数
+### Task 5: 支持异构枚举的方法和泛型参数 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/parser.rs` — 扩展 parse_enum_body
@@ -617,9 +617,9 @@ git commit -m "feat(parser): enum with generics and methods (Phase 2, Task 5)"
 
 ---
 
-## Phase 3: 转译器适配
+## Phase 3: 转译器适配 ✅ COMPLETE
 
-### Task 6: C 转译器适配
+### Task 6: C 转译器适配 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/trans/c.rs`
@@ -679,7 +679,7 @@ git commit -m "feat(trans-c): unified enum code generation (Phase 3, Task 6)"
 
 ---
 
-### Task 7: Rust 转译器适配
+### Task 7: Rust 转译器适配 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/trans/rust.rs`
@@ -717,7 +717,7 @@ git commit -m "feat(trans-rust): unified enum code generation (Phase 3, Task 7)"
 
 ---
 
-### Task 8: TypeScript 转译器适配
+### Task 8: TypeScript 转译器适配 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/trans/ts_stmt.rs`
@@ -745,9 +745,9 @@ git commit -m "feat(trans-ts): unified enum code generation (Phase 3, Task 8)"
 
 ---
 
-## Phase 4: 模式匹配适配
+## Phase 4: 模式匹配适配 ✅ COMPLETE
 
-### Task 9: 更新 Cover/Uncover 模式匹配支持 enum
+### Task 9: 更新 Cover/Uncover 模式匹配支持 enum ✅
 
 **Files:**
 - Modify: `crates/auto-lang/src/ast/cover.rs` — 扩展 TagCover → EnumCover
@@ -781,9 +781,9 @@ git commit -m "feat(parser): enum pattern matching with Cover::Enum (Phase 4, Ta
 
 ---
 
-## Phase 5: 测试与清理
+## Phase 5: 测试与清理 ✅ COMPLETE
 
-### Task 10: 迁移现有 tag 测试为 enum 语法
+### Task 10: 迁移现有 tag 测试为 enum 语法 ✅
 
 **Files:**
 - Modify: `crates/auto-lang/test/a2c/014_tag/tag.at` — 改为 enum 语法
@@ -810,7 +810,9 @@ git commit -m "test: migrate tag tests to unified enum syntax (Phase 5, Task 10)
 
 ---
 
-### Task 11: 清理旧 Tag AST（可选，非阻塞）
+### Task 11: 清理旧 Tag AST ✅
+
+> **实际执行内容**：删除了 `parser.rs` 中未使用的 `tag_stmt()` 和 `tag_field()` 函数（79行死代码）。保留了 `Tag` struct、`Type::Tag`、`TagCover` 等仍被转译器内部使用的类型。
 
 **Files:**
 - Modify: `crates/auto-lang/src/ast/tag.rs` — 标记 deprecated
@@ -839,7 +841,7 @@ git commit -m "chore: mark Tag AST as deprecated (Phase 5, Task 11)"
 
 ---
 
-## 成功标准
+## 成功标准 ✅ ALL MET
 
 1. **语法统一**：`tag` 关键字废弃（重定向到 `enum`），所有枚举用 `enum` 声明
 2. **三种形态**：

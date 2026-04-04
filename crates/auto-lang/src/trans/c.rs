@@ -11,6 +11,7 @@ use auto_val::Op;
 use auto_val::StrExt;
 use auto_val::shared;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
 use std::rc::Rc;
@@ -43,6 +44,13 @@ pub struct CTrans {
     // Plan 060: Closure support
     closure_counter: usize,
     closures: Vec<ClosureInfo>,
+    // Local variable type map for transpiler (since scope/db may be unavailable)
+    local_var_types: HashMap<AutoStr, Type>,
+    // Declared type map (enum, tag, struct names → their Type)
+    declared_types: HashMap<AutoStr, Type>,
+    // Uncover bindings: maps variable name → (src_name, tag_name)
+    // e.g., i -> (atom, Int) means `i` is bound to `atom.as.Int`
+    local_var_uncovers: HashMap<AutoStr, (AutoStr, AutoStr)>,
 }
 
 /// Information about a closure for code generation
@@ -68,6 +76,9 @@ impl CTrans {
             style: CStyle::Modern,
             closure_counter: 0,
             closures: Vec::new(),
+            local_var_types: HashMap::new(),
+            declared_types: HashMap::new(),
+            local_var_uncovers: HashMap::new(),
         }
     }
 
@@ -84,6 +95,9 @@ impl CTrans {
             style: CStyle::Modern,
             closure_counter: 0,
             closures: Vec::new(),
+            local_var_types: HashMap::new(),
+            declared_types: HashMap::new(),
+            local_var_uncovers: HashMap::new(),
         }
     }
 
@@ -100,8 +114,28 @@ impl CTrans {
     // Phase 066: Unified Helper Methods (Database/Universe abstraction)
     // =========================================================================
 
-    /// Look up metadata by name (works with Universe or Database)
+    /// Look up metadata by name (works with Universe or Database or local var map)
     fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
+        eprintln!("[DEBUG-LOOKUP-ENTRY] looking up '{}', local_var_types keys={:?}, declared_types keys={:?}",
+            name, self.local_var_types.keys().collect::<Vec<_>>(), self.declared_types.keys().collect::<Vec<_>>());
+        // First try local variable type map (works even without Database)
+        if let Some(ty) = self.local_var_types.get(name) {
+            let store = Store {
+                kind: StoreKind::Var,
+                name: name.into(),
+                ty: ty.clone(),
+                expr: Expr::Nil,
+            };
+            return Some(Rc::new(Meta::Store(store)));
+        }
+        // Then try declared types (enum, tag, struct names)
+        if let Some(ty) = self.declared_types.get(name) {
+            eprintln!("[DEBUG-LOOKUP] found '{}' in declared_types: {:?}", name, std::mem::discriminant(ty));
+            return Some(Rc::new(Meta::Type(ty.clone())));
+        } else {
+            eprintln!("[DEBUG-LOOKUP] '{}' NOT in declared_types (keys: {:?})", name, self.declared_types.keys().collect::<Vec<_>>());
+        }
+        // Then try Database
         if let Some(db) = &self.db {
             // New path: Database
             if let Ok(db) = db.try_read() {
@@ -110,20 +144,23 @@ impl CTrans {
                         return Some(meta.clone());
                     }
                 }
-                None
-            } else {
-                None
             }
-        } else {
-            None
         }
+        None
     }
 
-    /// Look up type by name (works with Universe or Database)
-    fn lookup_type(&self, _type_name: &str) -> Type {
-        // Plan 091: Use Database only
+    /// Look up type by name (works with Universe or Database or local maps)
+    fn lookup_type(&self, type_name: &str) -> Type {
+        // First try declared types (enum, tag, struct names)
+        if let Some(ty) = self.declared_types.get(type_name) {
+            return ty.clone();
+        }
+        // Then try local variable types
+        if let Some(ty) = self.local_var_types.get(type_name) {
+            return ty.clone();
+        }
+        // Then try Database
         if let Some(_db) = &self.db {
-            // New path: Database
             // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
             // Return Type::Unknown for now (conservative approach)
             Type::Unknown
@@ -132,16 +169,21 @@ impl CTrans {
         }
     }
 
-    /// Look up identifier type (works with Universe or Database)
-    fn lookup_ident_type(&self, _name: &AutoStr) -> Option<Type> {
-        // Plan 091: Use Database only
-        if let Some(_db) = &self.db {
-            // New path: Database
-            // TODO: Implement type lookup from Database symbol tables
-            None
-        } else {
-            None
+    /// Look up identifier type (works with Universe or Database or local maps)
+    fn lookup_ident_type(&self, name: &AutoStr) -> Option<Type> {
+        // First try local variable type map
+        if let Some(ty) = self.local_var_types.get(name) {
+            return Some(ty.clone());
         }
+        // Then try declared types (enum, tag, struct names)
+        if let Some(ty) = self.declared_types.get(name) {
+            return Some(ty.clone());
+        }
+        // Then try Database
+        if let Some(_db) = &self.db {
+            // TODO: Implement type lookup from Database symbol tables
+        }
+        None
     }
 
     /// Incremental transpilation (Phase 066)
@@ -284,12 +326,18 @@ impl CTrans {
     }
 
     fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
+        eprintln!("[DEBUG-STMT] processing stmt: {:?}", std::mem::discriminant(stmt));
         let out = &mut sink.body;
         match stmt {
             Stmt::TypeDecl(type_decl) => {
                 if matches!(type_decl.kind, TypeDeclKind::CType) {
                     return Ok(false);
                 }
+                // Register struct type for later type inference
+                self.declared_types.insert(
+                    type_decl.name.clone(),
+                    Type::User(type_decl.clone()),
+                );
                 self.type_decl(type_decl, sink)?;
             }
             Stmt::Expr(expr) => {
@@ -297,8 +345,22 @@ impl CTrans {
                 self.eos(out)?;
             }
             Stmt::Store(store) => {
+                eprintln!("[DEBUG-STORE] name={}, kind={:?}, ty={:?}", store.name, store.kind, store.ty);
                 if matches!(store.kind, StoreKind::CVar) {
                     return Ok(false);
+                }
+                // Register variable type for later lookup (e.g., is-stmt target)
+                if !matches!(store.ty, Type::Unknown) {
+                    eprintln!("[DEBUG] Registering var '{}' with type {:?}", store.name, store.ty);
+                    self.local_var_types.insert(store.name.clone(), store.ty.clone());
+                } else {
+                    eprintln!("[DEBUG] Trying to infer type for var '{}' from expr {:?}", store.name, store.expr);
+                    if let Some(inferred) = self.infer_expr_type(&store.expr) {
+                        eprintln!("[DEBUG] Registering var '{}' with inferred type {:?}", store.name, inferred);
+                        self.local_var_types.insert(store.name.clone(), inferred);
+                    } else {
+                        eprintln!("[DEBUG] Could not infer type for var '{}'", store.name);
+                    }
                 }
                 self.store(store, out)?;
                 self.eos(out)?;
@@ -323,6 +385,11 @@ impl CTrans {
                 self.use_stmt(use_stmt, out)?;
             }
             Stmt::EnumDecl(enum_decl) => {
+                // Register enum type for later type inference (e.g., Atom.Int(11))
+                self.declared_types.insert(
+                    enum_decl.name.clone(),
+                    Type::Enum(shared(enum_decl.clone())),
+                );
                 self.enum_decl(enum_decl, sink)?;
             }
             Stmt::Alias(alias) => {
@@ -338,6 +405,11 @@ impl CTrans {
                 self.union(union, sink)?;
             }
             Stmt::Tag(tag) => {
+                // Register tag type for later type inference
+                self.declared_types.insert(
+                    tag.name.clone(),
+                    Type::Tag(shared(tag.clone())),
+                );
                 self.tag(tag, sink)?;
             }
             Stmt::SpecDecl(spec_decl) => {
@@ -1568,10 +1640,14 @@ impl CTrans {
     }
 
     fn ident(&mut self, name: &AutoStr, out: &mut impl Write) -> AutoResult<()> {
-        // if ident is Uncover
+        // Check if this ident is an uncover binding from is statement
+        if let Some((src, tag)) = self.local_var_uncovers.get(name) {
+            out.write(format!("{}.as.{}", src, tag).as_bytes())?;
+            return Ok(());
+        }
+        // Check meta for other cases (regular variable with Uncover expr)
         let meta = self.lookup_meta(name);
         let Some(meta) = meta else {
-            // TODO: check all names, include B in A.B
             out.write(name.as_bytes())?;
             return Ok(());
         };
@@ -2590,15 +2666,81 @@ impl CTrans {
             self.print_indent(&mut sink.body)?;
             match case {
                 IsBranch::EqBranch(expr, body) => {
-                    sink.body.write(b"case ")?;
-                    self.expr(expr, &mut sink.body)?;
-                    sink.body.write(b":\n")?;
-                    self.indent();
-                    self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &return_type, "", "")?;
-                    sink.body.write(b"\n")?;
-                    self.print_with_indent(&mut sink.body, "break;\n")?;
-                    self.dedent();
+                    // Check if this is a tag/enum cover pattern like Atom.Int(i)
+                    if let Expr::Cover(Cover::Tag(tag_cover)) = expr {
+                        // Generate: case ENUM_VARIANT:
+                        let enum_const = format!("{}_{}",
+                            tag_cover.kind.to_uppercase(),
+                            tag_cover.tag.to_uppercase());
+                        sink.body.write(b"case ")?;
+                        sink.body.write(enum_const.as_bytes())?;
+                        sink.body.write(b":\n")?;
+                        self.indent();
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"{\n")?;
+                        self.indent();
+
+                        // Register the binding variable in local_var_types
+                        // The binding variable (elem) should access: target.as.Tag
+                        let target_name = match &is_stmt.target {
+                            Expr::Ident(name) => name.clone(),
+                            _ => AutoStr::from("target"),
+                        };
+                        // Look up the tag type to get field type for the binding
+                        let binding_type = {
+                            let typ = self.lookup_type(&tag_cover.kind);
+                            if let Some(tag) = Self::type_as_tag(&typ) {
+                                tag.get_field_type(&tag_cover.tag).clone()
+                            } else {
+                                Type::Unknown
+                            }
+                        };
+                        self.local_var_types.insert(
+                            tag_cover.elem.clone(),
+                            binding_type.clone(),
+                        );
+                        // Also register uncover mapping for ident() to use
+                        self.local_var_uncovers.insert(
+                            tag_cover.elem.clone(),
+                            (target_name.clone(), tag_cover.tag.clone()),
+                        );
+
+                        // Generate binding: <c_type> <elem> = <target>.as.<Tag>;
+                        if !matches!(binding_type, Type::Unknown) {
+                            let c_type = self.c_type_name(&binding_type);
+                            self.print_indent(&mut sink.body)?;
+                            write!(sink.body, "{} {} = {}.as.{};\n",
+                                c_type, tag_cover.elem, target_name, tag_cover.tag)?;
+                        } else {
+                            // Unknown type - still generate binding with int as fallback
+                            self.print_indent(&mut sink.body)?;
+                            write!(sink.body, "int {} = {}.as.{};\n",
+                                tag_cover.elem, target_name, tag_cover.tag)?;
+                        }
+
+                        self.print_indent(&mut sink.body)?;
+                        self.body(body, sink, &return_type, "", "")?;
+                        sink.body.write(b"\n")?;
+                        self.print_with_indent(&mut sink.body, "break;\n")?;
+                        self.dedent();
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"}\n")?;
+                        self.dedent();
+
+                        // Remove binding from local_var_types after branch scope
+                        self.local_var_types.remove(&tag_cover.elem);
+                    } else {
+                        // Regular EqBranch - non-cover pattern
+                        sink.body.write(b"case ")?;
+                        self.expr(expr, &mut sink.body)?;
+                        sink.body.write(b":\n")?;
+                        self.indent();
+                        self.print_indent(&mut sink.body)?;
+                        self.body(body, sink, &return_type, "", "")?;
+                        sink.body.write(b"\n")?;
+                        self.print_with_indent(&mut sink.body, "break;\n")?;
+                        self.dedent();
+                    }
                 }
                 IsBranch::IfBranch(expr, body) => {
                     sink.body.write(b"case ")?;
@@ -2672,9 +2814,11 @@ impl CTrans {
 
     /// Infer the return type of an expression if possible
     fn infer_expr_type(&mut self, expr: &Expr) -> Option<Type> {
+        eprintln!("[DEBUG-INFER-ENTRY] expr discriminant = {:?}", std::mem::discriminant(expr));
         match expr {
             // For method calls like file.read_text()
             Expr::Call(call) => {
+                eprintln!("[DEBUG-INFER-CALL] call.name discriminant = {:?}", std::mem::discriminant(call.name.as_ref()));
                 // First check if it's a direct function call
                 if let Expr::Ident(fn_name) = &call.name.as_ref() {
                     if let Some(meta) = self.lookup_meta(fn_name) {
@@ -2691,8 +2835,11 @@ impl CTrans {
                 }
 
                 // Then check if it's a method call (obj.method())
+                eprintln!("[DEBUG-INFER] call.name discriminant = {:?}", std::mem::discriminant(call.name.as_ref()));
                 if let Expr::Dot(object, method_name) = call.name.as_ref() {
+                    eprintln!("[DEBUG-INFER] matched Dot, method_name={}", method_name);
                     if let Expr::Ident(obj_name) = object.as_ref() {
+                        eprintln!("[DEBUG-INFER] obj_name={}", obj_name);
                         // Check if this is a tag type method call (tag construction)
                         if let Some(meta) = self.lookup_meta(obj_name) {
                             match meta.as_ref() {
@@ -3965,6 +4112,10 @@ impl CTrans {
 
 impl Trans for CTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
+        eprintln!("[DEBUG-TRANS-ENTRY] ast.stmts.len() = {}", ast.stmts.len());
+        for (i, s) in ast.stmts.iter().enumerate() {
+            eprintln!("[DEBUG-TRANS-ENTRY] stmt[{}] discriminant = {:?}", i, std::mem::discriminant(s));
+        }
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();
@@ -3972,6 +4123,7 @@ impl Trans for CTrans {
 
         // preprocess
         for stmt in ast.stmts.into_iter() {
+            eprintln!("[DEBUG-TRANS] stmt discriminant = {:?}", std::mem::discriminant(&stmt));
             if stmt.is_decl() {
                 // Check if this is a Store statement with a non-constant initializer
                 // If so, it should go to main() instead of global scope
@@ -3985,6 +4137,10 @@ impl Trans for CTrans {
                 decls.push(stmt);
             } else {
                 match stmt {
+                    Stmt::EnumDecl(_) | Stmt::Tag(_) | Stmt::Union(_) | Stmt::TypeDecl(_) => {
+                        // These are declarations that need to be processed
+                        decls.push(stmt);
+                    }
                     Stmt::For(_) => main.push(stmt),
                     Stmt::If(_) => main.push(stmt),
                     Stmt::Expr(ref expr) => {

@@ -14,6 +14,18 @@ function range(start: number, end: number, eq: boolean = false): number[] {
 }
 
 
+type Atom =
+    { _tag: "Int", value: number }
+    | { _tag: "Char", value: number }
+    | { _tag: "Float", value: number };
+
+const Atom = {
+    Int: (value: number) => ({ _tag: "Int", value }),
+    Char: (value: number) => ({ _tag: "Char", value }),
+    Float: (value: number) => ({ _tag: "Float", value })
+};
+
+
 function main(): void {
     const atom = Atom.Int(11);
     
