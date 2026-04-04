@@ -24,6 +24,7 @@ history.txt
 *.wrong.c
 *.wrong.h
 *.wrong.rs
+*.wrong.ts
 
 .am/
 build/
@@ -57,3 +58,5 @@ examples/**/ark/
 
 # npm
 node_modules/
+# Local-only, not committed
+crates/xdm-gen/
