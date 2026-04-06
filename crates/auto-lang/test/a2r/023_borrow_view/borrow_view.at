@@ -1,7 +1,7 @@
 // Test view (immutable borrow) expression
 fn main() {
-    let s = "hello"
+    let s String = String.from("hello")
     let slice = s.view
-    print(str_len(slice))
-    print(s)  // s is still valid after view
+    print(slice.len)  // slice has a `len` property
+    print(s)  // s is still valid after use of slice
 }
