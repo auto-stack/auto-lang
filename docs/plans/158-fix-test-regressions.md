@@ -295,11 +295,86 @@ String 的元素是 `char` 类型（UTF-32 codepoint），不是字节。
 
 **文件**: `crates/auto-lang/src/infer/`
 
-#### 2c. A2R Transpiler (21 failures)
+#### 2c. A2R Transpiler (19 failures) — 详细分类
 
-**原因**：与 C transpiler 类似的类型推断问题。Rust transpiler 可能也有 `infer_expr_type()` 的缺失 case。
+**总览**: 50 个 a2r 测试中 31 通过、19 失败。
 
-**修复方向**：应用与 C transpiler 相同的修复策略。
+##### A. 字符串类型映射错误 (5 failures)
+
+Rust transpiler 将 AutoLang 的字符串类型映射到 Rust 类型时出错。
+
+| 测试 | 差异 | 根因 |
+|---|---|---|
+| `024_fstring` | `let name: String = "AutoLang"` → 应为 `let name: &str = "AutoLang"` | `str` 类型映射为 `String` 而非 `&str` |
+| `025_fstring_edge` | `let name: String = "World"` → 应为 `let name: &str = "World"` | 同上 |
+| `023_borrow_view` | `let s: String = "hello"` / `let slice: String = &s` → 应为 `let s: String = "hello".to_string()` / `let slice: &str = &s` | 字符串字面量 + borrow 语义映射错误 |
+| `026_borrow_conflicts` | `let s: String = "hello"` / `let v1: String = &s` → 应为 `&str` | 同上 |
+| `024_borrow_mut` | `let s = str_new(...)` → 应为 `let mut s = str_new(...)` | 可变借用缺少 `mut` |
+
+**修复方向**: 修正 Rust transpiler 中 `str`/`String`/borrow 的类型映射逻辑
+- `str` (AutoLang) → `&str` (Rust) 用于不可变借用/切片
+- `String` (AutoLang) → `String` (Rust) 用于 owned 字符串
+- 字符串字面量赋值给 `String` 变量时生成 `.to_string()`
+- 可变借用参数生成 `mut`
+
+##### B. Unsafe 包装缺失 (2 failures)
+
+| 测试 | 差异 | 根因 |
+|---|---|---|
+| `005_pointer` | `*a += 1` → 应为 `unsafe { *a += 1; }`; `let mut y = x as *mut _` → 应为 `let y: *mut i32 = &mut x as *mut _` | 指针解引用未包 `unsafe {}`; `&mut` 借用生成错误 |
+| `055_union` | `println!(..., my_union.i)` → 应为 `unsafe { println!(..., my_union.i) }` | union 字段访问未包 `unsafe {}` |
+
+**修复方向**: 指针解引用和 union 字段访问时自动生成 `unsafe {}` 包装
+
+##### C. 类型推断 — `/* unknown */` 类型 (2 failures)
+
+| 测试 | 差异 | 根因 |
+|---|---|---|
+| `017_spec` | `let arr: &[/* unknown */] = ...` → 应为 `let arr: &[Flyer] = ...` | spec 接口类型在数组类型推断中失败 |
+| `031_spec` | 同上 | 同上 |
+
+**修复方向**: 改善 Rust transpiler 中对 spec/trait 类型的推断（在数组元素类型上下文中）
+
+##### D. Enum / 泛型类型 (2 failures)
+
+| 测试 | 差异 | 根因 |
+|---|---|---|
+| `109_generic_hetero_enum` | `Val(T)` 大写 vs `val(T)` 小写; `May::Val(42)` vs `May.val(42)` | enum variant 大小写和构造语法不匹配 Rust 惯例 |
+| `111_generic_alias` | `type List<T> = List<T>` 简单别名 → 生成了复杂的注释和不同语法 | type alias 生成逻辑不正确 |
+
+**修复方向**:
+- enum variant 输出首字母大写，构造使用 `Enum::Variant(...)` 语法
+- type alias 简单透传
+
+##### E. Main 函数生成问题 (3 failures)
+
+| 测试 | 差异 | 根因 |
+|---|---|---|
+| `110_const_generics` | `let _ = test_fn_with_const_param(10)` → 应为 `return 0` 或裸表达式 | 有返回值的函数在 main 中被 `let _ =` 包装 |
+| `117_list_storage` | 整体生成不正确（复杂的 PhantomData 等） | 泛型+storage 策略代码生成不成熟 |
+| `034_delegation_params` | 多了一个空行 | 格式差异 |
+
+**修复方向**:
+- `110`: 有返回值的 main 中最后一个表达式应作为返回值
+- `117`: 需要大幅改善泛型+storage 的 Rust 代码生成（可能先 skip 或 accept 当前输出）
+- `034`: 修复空行格式
+
+##### F. 格式 / 小差异 (5 failures)
+
+| 测试 | 差异 | 根因 |
+|---|---|---|
+| `004_cstr` | `printf(...)` → 应为 `println!(...)` | C 风格函数未转换为 Rust 惯用法 |
+| `013_while` | `break;` / `}` → `break };` / `};` | if-in-while 的 block 结束符格式不同 |
+| `020_comprehensive` | `println!("Array: {:?}", arr)` → 应为 `println!("Array: {}", arr)` | Debug 格式 vs Display 格式 |
+| `030_field_composition` | struct 名 `EngineStruct` vs `Engine`; main 函数内容不完整 | struct 名生成逻辑 + main 缺少初始化代码 |
+| `127_generic_ptr_field` | `let _x` → 应为 `let x` | unused variable 前缀不应在 Rust 输出中出现 |
+
+**修复方向**:
+- `004`: 改善 C 函数到 Rust 的映射
+- `013`: 修复 if-in-loop 的 block 结束符生成
+- `020`: 数组格式化用 `{}` 而非 `{:?}`
+- `030`: struct 名保持原名，main 生成完整
+- `127`: 不要给变量加 `_` 前缀
 
 **文件**: `crates/auto-lang/src/trans/rust.rs`
 

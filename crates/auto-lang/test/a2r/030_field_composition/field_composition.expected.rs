@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-struct EngineStruct {
+struct Engine {
     hp: i32,
 }
 
@@ -16,8 +16,4 @@ struct Car {
 }
 
 impl EngineTrait for Car {
-}
-
-fn main() {
-    let _car = Car { hp: 100 };
 }

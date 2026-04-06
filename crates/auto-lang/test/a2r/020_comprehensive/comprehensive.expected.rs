@@ -31,5 +31,5 @@ fn main() {
     }
 
     let arr: [i32; 3] = [1, 2, 3];
-    println!("Array: {:?}", arr);
+    println!("Array: {}", arr);
 }

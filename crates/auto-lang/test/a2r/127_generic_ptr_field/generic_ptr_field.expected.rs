@@ -9,5 +9,5 @@ struct MyStruct<T> {
 }
 
 fn main() {
-    let _x: i32 = 42;
+    let x: i32 = 42;
 }

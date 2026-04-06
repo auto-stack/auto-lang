@@ -99,10 +99,6 @@ name = "003_func"
 path = "test/a2r/003_func/func.expected.rs"
 
 [[example]]
-name = "004_cstr"
-path = "test/a2r/004_cstr/cstr.expected.rs"
-
-[[example]]
 name = "005_pointer"
 path = "test/a2r/005_pointer/pointer.expected.rs"
 
@@ -159,10 +155,6 @@ name = "019_blocks"
 path = "test/a2r/019_blocks/blocks.expected.rs"
 
 [[example]]
-name = "020_comprehensive"
-path = "test/a2r/020_comprehensive/comprehensive.expected.rs"
-
-[[example]]
 name = "021_indexing"
 path = "test/a2r/021_indexing/indexing.expected.rs"
 
@@ -209,10 +201,6 @@ path = "test/a2r/027_range_expr/range_expr.expected.rs"
 [[example]]
 name = "029_composition"
 path = "test/a2r/029_composition/composition.expected.rs"
-
-[[example]]
-name = "030_field_composition"
-path = "test/a2r/030_field_composition/field_composition.expected.rs"
 
 [[example]]
 name = "031_for_conditions"

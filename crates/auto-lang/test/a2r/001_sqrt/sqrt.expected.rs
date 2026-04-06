@@ -9,5 +9,5 @@ fn square(x: f64) -> f64 {
 }
 
 fn main() {
-    let _ = square(2.0);
+    square(2.0);
 }

@@ -325,8 +325,25 @@ impl RustTrans {
             Expr::I64(i) => write!(out, "{}", i).map_err(Into::into),
             Expr::U64(u) => write!(out, "{}", u).map_err(Into::into),
             Expr::Byte(b) => write!(out, "{}", b).map_err(Into::into),
-            Expr::Float(f, _) => write!(out, "{}", f).map_err(Into::into),
-            Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
+            Expr::Float(f, _) => {
+                let s = format!("{}", f);
+                // Ensure float literal has decimal point (e.g. 2 -> 2.0)
+                if s.contains('.') || s.contains('e') || s.contains('E') {
+                    write!(out, "{}", s)
+                } else {
+                    write!(out, "{}.0", s)
+                }
+                .map_err(Into::into)
+            }
+            Expr::Double(d, _) => {
+                let s = format!("{}", d);
+                if s.contains('.') || s.contains('e') || s.contains('E') {
+                    write!(out, "{}", s)
+                } else {
+                    write!(out, "{}.0", s)
+                }
+                .map_err(Into::into)
+            }
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Char(c) => if *c == '\n' {
                 write!(out, "'\\n'")
@@ -682,16 +699,33 @@ impl RustTrans {
                                                     match stmt {
                                                         Stmt::Expr(expr) => {
                                                             self.expr(expr, out)?;
+                                                            write!(out, "; ")?;
                                                         }
                                                         Stmt::Break => {
-                                                            write!(out, "break")?;
+                                                            write!(out, "break; ")?;
                                                         }
                                                         _ => {}
                                                     }
                                                 }
-                                                write!(out, " }}; ")?;
+                                                write!(out, "}}")?;
                                             }
-                                            write!(out, "}};\n")?;
+                                            if let Some(else_) = &if_.else_ {
+                                                write!(out, " else {{ ")?;
+                                                if let Some(stmt) = else_.stmts.first() {
+                                                    match stmt {
+                                                        Stmt::Expr(expr) => {
+                                                            self.expr(expr, out)?;
+                                                            write!(out, "; ")?;
+                                                        }
+                                                        Stmt::Break => {
+                                                            write!(out, "break; ")?;
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+                                                write!(out, "}}")?;
+                                            }
+                                            write!(out, "\n")?;
                                         }
                                         _ => {}
                                     }
@@ -1210,6 +1244,18 @@ impl RustTrans {
             if name == "print" {
                 return self.print_call(call, out);
             }
+            // Convert printf(fmt, args...) -> print!(fmt, args...)
+            if name == "printf" {
+                write!(out, "print!(")?;
+                for (i, arg) in call.args.args.iter().enumerate() {
+                    self.arg(arg, out)?;
+                    if i < call.args.args.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, ")")?;
+                return Ok(());
+            }
         }
 
         // Plan 124 Phase 2.2: Handle TaskHandle.send_await(msg) -> tx.send(msg).await
@@ -1490,10 +1536,9 @@ impl RustTrans {
             if let Expr::Str(s) | Expr::CStr(s) = first_arg {
                 // First arg is a string - use it as format prefix
                 let mut format_string = s.replace("\"", r##"\""##);
-                let arg_count = call.args.args.len() - 1;
 
                 // Add placeholders for remaining args
-                for _ in 0..arg_count {
+                for _ in call.args.args.iter().skip(1) {
                     format_string.push_str(" {}");
                 }
 
@@ -1633,7 +1678,10 @@ impl RustTrans {
             Stmt::Node(node) => {
                 // Handle loop and other control flow nodes
                 self.expr(&Expr::Node(node.clone()), &mut sink.body)?;
-                sink.body.write(b";")?;
+                // Don't add semicolon after block-like nodes (loop)
+                if node.name != "loop" {
+                    sink.body.write(b";")?;
+                }
                 Ok(true)
             }
 
@@ -3175,42 +3223,24 @@ impl Trans for RustTrans {
                 }
             }
 
-            // Check if main should return a value
-            let has_return = main.iter().any(|s| self.is_returnable(s));
-
-            sink.body.write(b"fn main()")?;
-            if has_return {
-                sink.body.write(b" -> i32")?;
-            }
-            sink.body.write(b" {\n")?;
+            sink.body.write(b"fn main() {\n")?;
             self.indent();
 
-            for (i, stmt) in main.iter().enumerate() {
+            for stmt in main.iter() {
                 self.print_indent(&mut sink.body)?;
 
-                let is_last = i == main.len() - 1;
-                if is_last && has_return && self.is_returnable(stmt) {
-                    // Last expression: no semicolon (expression position)
-                    match stmt {
-                        Stmt::Expr(expr) => {
-                            self.expr(expr, &mut sink.body)?;
-                            sink.body.write(b"\n")?;
-                        }
-                        _ => {
-                            self.stmt(stmt, sink)?;
-                            sink.body.write(b"\n")?;
-                        }
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        self.expr(expr, &mut sink.body)?;
+                        sink.body.write(b";\n")?;
                     }
-                } else {
-                    self.stmt(stmt, sink)?;
-                    // Only add semicolon for simple statements (expr, store)
-                    // Compound statements (if, for, etc.) handle their own formatting
-                    match stmt {
-                        Stmt::Expr(_) | Stmt::Store(_) => {
-                            sink.body.write(b";\n")?;
-                        }
-                        _ => {
-                            // Compound statements already have proper formatting
+                    _ => {
+                        self.stmt(stmt, sink)?;
+                        match stmt {
+                            Stmt::Store(_) => {
+                                sink.body.write(b";\n")?;
+                            }
+                            _ => {}
                         }
                     }
                 }
