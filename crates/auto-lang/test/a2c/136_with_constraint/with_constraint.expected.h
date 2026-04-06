@@ -1,5 +1,5 @@
 #pragma once
 
-void identity(unknown x);
-void duplicate(unknown x);
-void compare(unknown a, unknown b);
+void* identity(void* x);
+void* duplicate(void* x);
+void* compare(void* a, void* b);

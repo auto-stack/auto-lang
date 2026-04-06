@@ -13,8 +13,8 @@ struct MayBool test_question_bool(void) {
 }
 
 int main(void) {
-    struct MayInt x = test_question_int();
-    struct MayStr y = test_question_str();
-    struct MayBool z = test_question_bool();
+    unknown x = test_question_int();
+    unknown y = test_question_str();
+    unknown z = test_question_bool();
     return 0;
 }

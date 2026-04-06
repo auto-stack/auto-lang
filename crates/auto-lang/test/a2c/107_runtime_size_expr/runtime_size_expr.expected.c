@@ -10,7 +10,7 @@ int main(void) {
     arr[2] = 3;
 
     unknown len = arr.len();
-    unknown elem = arr[0];
+    int elem = arr[0];
 
     printf("%s %d\n", "Length:", len);
     printf("%s %d\n", "First element:", elem);

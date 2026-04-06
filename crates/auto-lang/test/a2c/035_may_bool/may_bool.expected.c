@@ -5,19 +5,28 @@ bool is_nil(struct MayBool m) {
     switch (m.tag) {
     case MAYBOOL_NIL:
         {
-            return true;
+            int x = m.as.Nil;
+            {
+                return true;
+            }
+            break;
         }
-        break;
     case MAYBOOL_VAL:
         {
-            return false;
+            bool x = m.as.Val;
+            {
+                return false;
+            }
+            break;
         }
-        break;
     case MAYBOOL_ERR:
         {
-            return false;
+            int x = m.as.Err;
+            {
+                return false;
+            }
+            break;
         }
-        break;
     }
     return false;
 }
@@ -26,19 +35,28 @@ bool is_some(struct MayBool m) {
     switch (m.tag) {
     case MAYBOOL_NIL:
         {
-            return false;
+            int x = m.as.Nil;
+            {
+                return false;
+            }
+            break;
         }
-        break;
     case MAYBOOL_VAL:
         {
-            return true;
+            bool x = m.as.Val;
+            {
+                return true;
+            }
+            break;
         }
-        break;
     case MAYBOOL_ERR:
         {
-            return false;
+            int x = m.as.Err;
+            {
+                return false;
+            }
+            break;
         }
-        break;
     }
     return false;
 }
@@ -47,31 +65,40 @@ bool unwrap_or(struct MayBool m, bool default) {
     switch (m.tag) {
     case MAYBOOL_NIL:
         {
-            return default;
+            int x = m.as.Nil;
+            {
+                return default;
+            }
+            break;
         }
-        break;
     case MAYBOOL_VAL:
         {
-            return m.as.Val;
+            bool v = m.as.Val;
+            {
+                return m.as.Val;
+            }
+            break;
         }
-        break;
     case MAYBOOL_ERR:
         {
-            return default;
+            int x = m.as.Err;
+            {
+                return default;
+            }
+            break;
         }
-        break;
     }
     return false;
 }
 
 int main(void) {
     struct MayBool x = {.tag = MAYBOOL_VAL, .as.Val = true};
-    bool check1 = is_some(x);
-    bool val1 = unwrap_or(x, false);
+    unknown check1 = is_some(m.as.Err);
+    unknown val1 = unwrap_or(m.as.Err, false);
 
     struct MayBool y = {.tag = MAYBOOL_NIL, .as.Nil = 0};
-    bool check2 = is_nil(y);
-    bool val2 = unwrap_or(y, true);
+    unknown check2 = is_nil(y);
+    unknown val2 = unwrap_or(y, true);
 
     return val1;
 }

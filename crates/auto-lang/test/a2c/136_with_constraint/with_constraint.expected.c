@@ -1,15 +1,15 @@
 #include "with_constraint.h"
 
-void identity(unknown x) {
-    x;
+void* identity(void* x) {
+    return x;
 }
 
-void duplicate(unknown x) {
-    x;
+void* duplicate(void* x) {
+    return x;
 }
 
-void compare(unknown a, unknown b) {
-    a;
+void* compare(void* a, void* b) {
+    return a;
 }
 
 int main(void) {

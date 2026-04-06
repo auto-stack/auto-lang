@@ -5,6 +5,6 @@ struct MayBool test_comparison(void) {
 }
 
 int main(void) {
-    struct MayBool result = test_comparison();
+    unknown result = test_comparison();
     return 0;
 }

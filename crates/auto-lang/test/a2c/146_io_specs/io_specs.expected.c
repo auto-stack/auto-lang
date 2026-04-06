@@ -4,19 +4,14 @@
 char* MyReader_Read(struct MyReader *self) {
     return self->data;
 }
-Reader_vtable MyReader_Reader_vtable = {
-    .read = MyReader_Read
-};
-
 
 int main(void) {
-    struct MyReader reader = {.data = "Hello, spec!"};
+    unknown reader = MyReader("Hello, spec!");
 
 
-    void* readers[1] = {&reader};
-    for (int i = 0; i < 1; i++) {
-        void* r = readers[i];
-        unknown text = int_read(r);
+    void* readers[1] = {reader};
+    for () {
+        unknown text = r.read();
         printf("%d\n", text);
     }
 

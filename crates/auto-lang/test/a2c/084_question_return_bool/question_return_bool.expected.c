@@ -5,6 +5,6 @@ struct MayBool test_question_return_bool(void) {
 }
 
 int main(void) {
-    struct MayBool result = test_question_return_bool();
+    unknown result = test_question_return_bool();
     return 0;
 }

@@ -5,6 +5,6 @@ struct MayDouble test_question_double(void) {
 }
 
 int main(void) {
-    struct MayDouble result = test_question_double();
+    unknown result = test_question_double();
     return 0;
 }

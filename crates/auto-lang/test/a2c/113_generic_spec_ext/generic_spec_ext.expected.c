@@ -14,6 +14,6 @@ Storage_int_vtable Heap_Storage_int_vtable = {
 
 int main(void) {
     struct Heap h = {};
-    unknown p = Heap_Get(&h);
+    int* p = Heap_Get(&h);
     return 0;
 }

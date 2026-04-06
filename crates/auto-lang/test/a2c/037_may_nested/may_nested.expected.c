@@ -5,14 +5,20 @@ int double_or_default(struct Option opt, int default) {
     switch (opt.tag) {
     case OPTION_SOME:
         {
-            return opt.as.Some * 2;
+            int v = opt.as.Some;
+            {
+                return opt.as.Some * 2;
+            }
+            break;
         }
-        break;
     case OPTION_NONE:
         {
-            return default;
+            int x = opt.as.None;
+            {
+                return default;
+            }
+            break;
         }
-        break;
     }
     return 0;
 }
@@ -21,14 +27,20 @@ int get_value(struct Option opt) {
     switch (opt.tag) {
     case OPTION_SOME:
         {
-            return opt.as.Some;
+            int x = opt.as.Some;
+            {
+                return opt.as.Some;
+            }
+            break;
         }
-        break;
     case OPTION_NONE:
         {
-            return 0;
+            int x = opt.as.None;
+            {
+                return 0;
+            }
+            break;
         }
-        break;
     }
     return 0;
 }
@@ -37,11 +49,11 @@ int main(void) {
     struct Option a = {.tag = OPTION_SOME, .as.Some = 10};
     struct Option b = {.tag = OPTION_NONE, .as.None = 0};
 
-    int result1 = double_or_default(a, 0);
-    int result2 = double_or_default(b, 100);
-    int v1 = get_value(a);
-    int v2 = get_value(b);
-    int result3 = v1 + v2;
+    unknown result1 = double_or_default(a, 0);
+    unknown result2 = double_or_default(b, 100);
+    unknown v1 = get_value(a);
+    unknown v2 = get_value(b);
+    unknown result3 = v1 + v2;
 
     return result3;
 }

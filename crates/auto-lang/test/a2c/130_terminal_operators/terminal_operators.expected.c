@@ -10,17 +10,17 @@ void print_item(int x) {
 
 int main(void) {
 
-    struct List list = List_New();
-    List_Push(&list, 1);
-    List_Push(&list, 2);
-    List_Push(&list, 3);
+    unknown list = List.new();
+    list.push(1);
+    list.push(2);
+    list.push(3);
 
-    unknown sum = List_Iter(&list).reduce(0, add);
+    unknown sum = list.iter().reduce(0, add);
     say(sum);
 
-    unknown count = List_Iter(&list).count();
+    unknown count = list.iter().count();
     say(count);
 
-    List_Iter(&list).for_each(print_item);
+    list.iter().for_each(print_item);
     return 0;
 }

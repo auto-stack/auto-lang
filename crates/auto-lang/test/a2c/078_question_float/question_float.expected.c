@@ -5,6 +5,6 @@ struct MayFloat test_question_float(void) {
 }
 
 int main(void) {
-    struct MayFloat result = test_question_float();
+    unknown result = test_question_float();
     return 0;
 }

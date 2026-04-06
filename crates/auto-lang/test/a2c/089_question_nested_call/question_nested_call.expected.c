@@ -9,6 +9,6 @@ struct MayInt test_nested_call(void) {
 }
 
 int main(void) {
-    struct MayInt result = test_nested_call();
+    unknown result = test_nested_call();
     return 0;
 }

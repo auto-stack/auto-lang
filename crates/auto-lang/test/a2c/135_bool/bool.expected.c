@@ -5,6 +5,6 @@ bool test_bool_return(void) {
 }
 
 int main(void) {
-    bool result = test_bool_return();
+    unknown result = test_bool_return();
     return 0;
 }

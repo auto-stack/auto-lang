@@ -5,6 +5,6 @@ struct MayChar test_question_return_char(void) {
 }
 
 int main(void) {
-    struct MayChar result = test_question_return_char();
+    unknown result = test_question_return_char();
     return 0;
 }

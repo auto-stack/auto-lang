@@ -7,8 +7,7 @@ int* get_numbers(int* out_size) {
 }
 
 int main(void) {
-    int _size_nums;
-    int* nums = get_numbers(&_size_nums);
+    unknown nums = get_numbers();
     printf("%d\n", nums[0]);
     return 0;
 }

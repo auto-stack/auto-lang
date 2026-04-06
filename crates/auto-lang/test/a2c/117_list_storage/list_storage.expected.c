@@ -5,9 +5,9 @@ struct Heap Heap_New(struct Heap *self) {
 }
 void* Heap_Data(struct Heap *self) {
 }
-void Heap_Capacity(struct Heap *self) {
+unsigned int Heap_Capacity(struct Heap *self) {
 }
-bool Heap_TryGrow(struct Heap *self, unknown) {
+bool Heap_TryGrow(struct Heap *self, unsigned int) {
 }
 Storage_vtable Heap_Storage_vtable = {
     .data = Heap_Data
@@ -26,9 +26,9 @@ struct InlineInt64 InlineInt64_New(struct InlineInt64 *self) {
 }
 int* InlineInt64_Data(struct InlineInt64 *self) {
 }
-void InlineInt64_Capacity(struct InlineInt64 *self) {
+unsigned int InlineInt64_Capacity(struct InlineInt64 *self) {
 }
-bool InlineInt64_TryGrow(struct InlineInt64 *self, unknown) {
+bool InlineInt64_TryGrow(struct InlineInt64 *self, unsigned int) {
 }
 Storage_vtable InlineInt64_Storage_vtable = {
     .data = InlineInt64_Data
@@ -45,21 +45,21 @@ Storage_int_vtable InlineInt64_Storage_int_vtable = {
 
 struct List List_New(struct List *self) {
 }
-void List_Len(struct List *self) {
+unsigned int List_Len(struct List *self) {
 }
-void List_Capacity(struct List *self) {
+unsigned int List_Capacity(struct List *self) {
 }
 
 int main(void) {
 
     struct List heap_list = List_New(List<int, Heap>);
-    unknown heap_len = List_Len(&heap_list);
-    unknown heap_cap = List_Capacity(&heap_list);
+    unsigned int heap_len = List_Len(&heap_list);
+    unsigned int heap_cap = List_Capacity(&heap_list);
 
 
     struct List inline_list = List_New(List<int, InlineInt64>);
-    unknown inline_len = List_Len(&inline_list);
-    unknown inline_cap = List_Capacity(&inline_list);
+    unsigned int inline_len = List_Len(&inline_list);
+    unsigned int inline_cap = List_Capacity(&inline_list);
 
     return 0;
 }

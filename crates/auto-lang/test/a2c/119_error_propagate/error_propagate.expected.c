@@ -7,6 +7,6 @@ int test_propagate(void) {
 }
 
 int main(void) {
-    int result = test_propagate();
+    unknown result = test_propagate();
     return 0;
 }

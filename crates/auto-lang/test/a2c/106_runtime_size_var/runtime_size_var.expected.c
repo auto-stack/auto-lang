@@ -7,8 +7,8 @@ int main(void) {
     arr[0] = 42;
     arr[1] = 100;
 
-    unknown first = arr[0];
-    unknown second = arr[1];
+    int first = arr[0];
+    int second = arr[1];
 
     printf("%s %d\n", "First:", first);
     printf("%s %d\n", "Second:", second);

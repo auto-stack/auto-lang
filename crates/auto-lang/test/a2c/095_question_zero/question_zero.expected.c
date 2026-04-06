@@ -5,6 +5,6 @@ struct MayInt test_question_zero(void) {
 }
 
 int main(void) {
-    struct MayInt result = test_question_zero();
+    unknown result = test_question_zero();
     return 0;
 }
