@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let name: &str = "AutoLang";
+    let name: String = "AutoLang".to_string();
     let age: i32 = 1;
 
 

@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let s: &str = "hello";
+    let s: String = "hello".to_string();
 
 
     let v1: &str = &s;

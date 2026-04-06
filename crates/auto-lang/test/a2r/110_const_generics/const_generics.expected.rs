@@ -4,10 +4,10 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-fn test_fn_with_const_param(_capacity: u32) -> i32 {
+fn test_fn_with_const_param(capacity: u32) -> i32 {
     return 0;
 }
 
 fn main() {
-    let _ = test_fn_with_const_param(10);
+    return 0;
 }

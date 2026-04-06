@@ -1,7 +1,7 @@
 // Test mut (mutable borrow) expression
 fn main() {
-    let s = str_new("hello", 10)
+    var s = String.from("hello")
     let mut_ref = s.mut
-    str_append(mut_ref, " world")
+    mut_ref.append(" world")
     print(s)  // s is modified in place
 }

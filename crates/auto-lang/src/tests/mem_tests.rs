@@ -17,7 +17,7 @@ fn get_size() int {
 }
 
 fn main() int {
-    mut arr [get_size()]int
+    var arr [get_size()]int
     arr[0] = 42
     arr[0]
 }
@@ -32,7 +32,7 @@ main()
 fn test_runtime_array_multiple_elements() {
     let code = r#"
 fn main() int {
-    mut arr [5]int
+    var arr [5]int
     arr[0] = 10
     arr[1] = 20
     arr[2] = 30
@@ -50,7 +50,7 @@ fn test_runtime_array_with_variable_size() {
     let code = r#"
 fn main() int {
     let size = 3
-    mut arr [size]int
+    var arr [size]int
     arr[0] = 100
     arr[0]
 }
@@ -65,7 +65,7 @@ main()
 fn test_runtime_array_sum() {
     let code = r#"
 fn main() int {
-    mut arr [3]int
+    var arr [3]int
     arr[0] = 1
     arr[1] = 2
     arr[2] = 3
@@ -83,8 +83,8 @@ main()
 fn test_runtime_array_mixed_types() {
     let code = r#"
 fn main() int {
-    mut arr [2]int
-    mut brr [2]int
+    var arr [2]int
+    var brr [2]int
     arr[0] = 10
     brr[0] = 20
     arr[0] + brr[0]
@@ -104,7 +104,7 @@ fn test_runtime_array_nested_expressions() {
     let code = r#"
 fn main() int {
     let size = 4
-    mut arr [size]int
+    var arr [size]int
     arr[0] = 5
     arr[0]
 }
@@ -119,7 +119,7 @@ main()
 fn test_runtime_array_large_size() {
     let code = r#"
 fn main() int {
-    mut arr [100]int
+    var arr [100]int
     arr[0] = 999
     arr[99] = 111
     arr[0] + arr[99]
@@ -135,7 +135,7 @@ main()
 fn test_runtime_array_update_element() {
     let code = r#"
 fn main() int {
-    mut arr [3]int
+    var arr [3]int
     arr[0] = 10
     arr[0] = 20
     arr[0]
@@ -155,7 +155,7 @@ fn get_index() int {
 }
 
 fn main() int {
-    mut arr [3]int
+    var arr [3]int
     arr[0] = 42
     arr[get_index()]
 }

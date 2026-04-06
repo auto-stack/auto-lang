@@ -48,6 +48,8 @@ pub struct CTrans {
     local_var_types: HashMap<AutoStr, Type>,
     // Declared type map (enum, tag, struct names → their Type)
     declared_types: HashMap<AutoStr, Type>,
+    // Declared spec map (spec names → SpecDecl) for vtable generation
+    declared_specs: HashMap<AutoStr, SpecDecl>,
     // Uncover bindings: maps variable name → (src_name, tag_name)
     // e.g., i -> (atom, Int) means `i` is bound to `atom.as.Int`
     local_var_uncovers: HashMap<AutoStr, (AutoStr, AutoStr)>,
@@ -78,6 +80,7 @@ impl CTrans {
             closures: Vec::new(),
             local_var_types: HashMap::new(),
             declared_types: HashMap::new(),
+            declared_specs: HashMap::new(),
             local_var_uncovers: HashMap::new(),
         }
     }
@@ -97,6 +100,7 @@ impl CTrans {
             closures: Vec::new(),
             local_var_types: HashMap::new(),
             declared_types: HashMap::new(),
+            declared_specs: HashMap::new(),
             local_var_uncovers: HashMap::new(),
         }
     }
@@ -129,6 +133,10 @@ impl CTrans {
         // Then try declared types (enum, tag, struct names)
         if let Some(ty) = self.declared_types.get(name) {
             return Some(Rc::new(Meta::Type(ty.clone())));
+        }
+        // Then try declared specs (for vtable generation, delegation wrappers)
+        if let Some(spec) = self.declared_specs.get(name) {
+            return Some(Rc::new(Meta::Spec(spec.clone())));
         }
         // Then try Database
         if let Some(db) = &self.db {
@@ -1036,6 +1044,9 @@ impl CTrans {
     }
 
     fn spec_decl(&mut self, spec_decl: &SpecDecl, _sink: &mut Sink) -> AutoResult<()> {
+        // Store spec for later lookup (vtable generation, delegation wrappers)
+        self.declared_specs.insert(spec_decl.name.clone(), spec_decl.clone());
+
         // Generate vtable struct for the spec
         let mut header = std::mem::take(&mut self.header);
 
@@ -1943,9 +1954,10 @@ impl CTrans {
             }
             _ => {
                 out.write(b" ").to()?;
-                if false {  // Plan 091: scope removed
-            let _ = self;
-                    // scope.enter_fn(fn_decl.name.clone());
+                // Register function parameters in local_var_types so that
+                // is_stmt_target can find their types for .tag access
+                for p in &fn_decl.params {
+                    self.local_var_types.insert(p.name.clone(), p.ty.clone());
                 }
                 if fn_decl.name == "main" {
                     self.body(&fn_decl.body, sink, &Type::Int, "", &fn_decl.name)?;
@@ -2630,20 +2642,36 @@ impl CTrans {
     fn is_stmt_target(&mut self, target: &Expr, sink: &mut Sink) -> AutoResult<()> {
         match target {
             Expr::Ident(name) => {
-                // lookup name's meta
+                // Check if we know the variable's type from meta
                 let meta = self.lookup_meta(name);
-                let Some(meta) = meta else {
-                    return Err(format!("is-stmt target not found {}", name).into());
-                };
-                match meta.as_ref() {
-                    Meta::Store(store) => {
-                        if Self::type_as_tag(&store.ty).is_some() {
-                            sink.body.write(format!("{}.tag", name).as_bytes())?;
-                            return Ok(());
+                if let Some(meta) = meta {
+                    match meta.as_ref() {
+                        Meta::Store(store) => {
+                            if Self::type_as_tag(&store.ty).is_some() {
+                                sink.body.write(format!("{}.tag", name).as_bytes())?;
+                                return Ok(());
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
+                // If meta not found, check local_var_types (set by function body)
+                if let Some(ty) = self.local_var_types.get(name.as_str()) {
+                    if Self::type_as_tag(ty).is_some() {
+                        sink.body.write(format!("{}.tag", name).as_bytes())?;
+                        return Ok(());
+                    }
+                }
+                // Fallback: check if name is registered in the type store as an enum parameter
+                // Function params of enum types should use .tag accessor
+                let typ = self.lookup_type(name);
+                if Self::type_as_tag(&typ).is_some() {
+                    sink.body.write(format!("{}.tag", name).as_bytes())?;
+                    return Ok(());
+                }
+                // Default: just emit the identifier name
+                sink.body.write(name.as_str().as_bytes())?;
+                return Ok(());
             }
             _ => {}
         }

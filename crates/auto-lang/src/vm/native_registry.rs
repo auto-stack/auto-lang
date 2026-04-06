@@ -132,6 +132,34 @@ pub fn register_builtin_natives() {
     registry.register("List.remove");
     registry.register("List.drop");
     registry.register("List.reserve");
+    registry.register_with_id("List.capacity", 205);
+
+    // Memory allocation functions (Plan 052 Phase 2)
+    registry.register_with_id("alloc_array", 190);
+    registry.register_with_id("realloc_array", 191);
+    registry.register_with_id("free_array", 192);
+
+    // Heap storage functions (Plan 052)
+    registry.register_with_id("Heap.new", 195);
+    registry.register_with_id("Heap.capacity", 196);
+    registry.register_with_id("Heap.try_grow", 197);
+    registry.register_with_id("Heap.drop", 198);
+
+    // InlineInt64 storage functions
+    registry.register_with_id("InlineInt64.new", 199);
+    registry.register_with_id("InlineInt64.capacity", 200);
+    registry.register_with_id("InlineInt64.try_grow", 201);
+    registry.register_with_id("InlineInt64.drop", 202);
+
+    // Instance method aliases (lowercase receiver names used by codegen)
+    registry.register_with_id("heap.new", 195);
+    registry.register_with_id("heap.capacity", 196);
+    registry.register_with_id("heap.try_grow", 197);
+    registry.register_with_id("heap.drop", 198);
+    registry.register_with_id("InlineInt64.new", 199);
+    registry.register_with_id("InlineInt64.capacity", 200);
+    registry.register_with_id("InlineInt64.try_grow", 201);
+    registry.register_with_id("InlineInt64.drop", 202);
 
     // Iterator functions
     registry.register("List.iter");

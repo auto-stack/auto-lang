@@ -83,6 +83,9 @@ pub struct RustTrans {
     // Plan 151: Global variables (top-level var declarations)
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
+
+    // Tracks variables that are mutably borrowed (&mut), need `let mut` declaration
+    mut_borrowed: HashSet<AutoStr>,
 }
 
 impl RustTrans {
@@ -97,6 +100,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
             global_vars: HashSet::new(),
+            mut_borrowed: HashSet::new(),
         }
     }
 
@@ -112,6 +116,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
             global_vars: HashSet::new(),
+            mut_borrowed: HashSet::new(),
         }
     }
 
@@ -1142,24 +1147,32 @@ impl RustTrans {
                     _ => {}
                 }
 
-                // Check if this is an enum access: Enum.Value -> Enum::Value (Rust syntax)
-                // Use heuristic: if object is an identifier and field starts with uppercase, treat as enum
+                // Check if this is an enum access or static method: Enum.Value -> Enum::Value
+                // Use heuristic: if object is an identifier starting with uppercase
                 if let Expr::Ident(type_name) = object.as_ref() {
-                    let is_enum_variant = field
+                    let is_type_name = type_name
                         .chars()
                         .next()
                         .map(|c| c.is_uppercase())
                         .unwrap_or(false);
-                    if is_enum_variant {
-                        // Generate Rust enum syntax: Color::BLUE instead of Color.BLUE
+                    if is_type_name {
+                        // Type::Variant (enum) or Type::method (static method)
                         write!(out, "{}::{}", type_name, field)?;
                         return Ok(());
                     }
                 }
 
                 // Regular field access: object.field
+                // Some AutoLang properties map to Rust method calls
+                let is_rust_method = matches!(
+                    field.as_str(),
+                    "len" | "is_empty" | "capacity" | "count" | "push" | "pop"
+                );
                 self.expr(object, out)?;
                 write!(out, ".{}", field)?;
+                if is_rust_method {
+                    write!(out, "()")?;
+                }
                 Ok(())
             }
 
@@ -1310,6 +1323,7 @@ impl RustTrans {
                         "trim" => Some("trim"),
                         "starts_with" => Some("starts_with"),
                         "ends_with" => Some("ends_with"),
+                        "append" => Some("push_str"),
                         // Collection methods
                         "push" => Some("push"),
                         "pop" => Some("pop"),
@@ -1347,6 +1361,88 @@ impl RustTrans {
                     }
                 }
             }
+        }
+
+        // Also handle Expr::Dot method calls (parser emits Dot for method calls)
+        if let Expr::Dot(object, method_name) = call.name.as_ref() {
+            let rust_method = match method_name.as_str() {
+                // String methods
+                "to_lower" => Some("to_lowercase"),
+                "to_upper" => Some("to_uppercase"),
+                "length" => Some("len"),
+                "is_empty" => Some("is_empty"),
+                "trim" => Some("trim"),
+                "starts_with" => Some("starts_with"),
+                "ends_with" => Some("ends_with"),
+                "append" => Some("push_str"),
+                // Collection methods
+                "push" => Some("push"),
+                "pop" => Some("pop"),
+                "clear" => Some("clear"),
+                "to_array" => Some("clone"),
+                "contains" => Some("contains"),
+                "retain" => Some("retain"),
+                // Type conversion
+                "to_string" => Some("to_string"),
+                _ => None,
+            };
+
+            if let Some(rust_name) = rust_method {
+                self.expr(object, out)?;
+                write!(out, ".{}(", rust_name)?;
+                for (i, arg) in call.args.args.iter().enumerate() {
+                    self.arg(arg, out)?;
+                    if i < call.args.args.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, ")")?;
+                return Ok(());
+            }
+
+            // Check for type name static method: Type.method(args) -> Type::method(args)
+            if let Expr::Ident(type_name) = object.as_ref() {
+                let is_type = type_name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
+                if is_type {
+                    // Check for tag construction: Type.Variant(args)
+                    if self.tag_types.contains(type_name) {
+                        write!(out, "{}::{}", type_name, method_name)?;
+                        write!(out, "(")?;
+                        if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                            self.expr(expr, out)?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Static method: Type::method(args)
+                    write!(out, "{}::{}", type_name, method_name)?;
+                    write!(out, "(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+            }
+
+            // Regular method call: object.method(args)
+            self.expr(object, out)?;
+            write!(out, ".{}(", method_name)?;
+            for (i, arg) in call.args.args.iter().enumerate() {
+                self.arg(arg, out)?;
+                if i < call.args.args.len() - 1 {
+                    write!(out, ", ")?;
+                }
+            }
+            write!(out, ")")?;
+            return Ok(());
         }
 
         // **Phase 1.3: Tag Types**
@@ -1730,6 +1826,19 @@ impl RustTrans {
             // because Rust infers closure types automatically
             let is_closure = matches!(store.expr, Expr::Closure(_));
 
+            // Check if expression is a borrow (&x or &mut x) - type should be a reference
+            let is_borrow = matches!(&store.expr, Expr::View(_))
+                || matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "view");
+            let is_mut_borrow = matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "mut");
+
+            let ty_name = if is_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
+                "&str".to_string()
+            } else if is_mut_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
+                "&mut str".to_string()
+            } else {
+                self.rust_type_name(&store.ty)
+            };
+
             if is_closure {
                 // For closures, don't add type annotation - let Rust infer it
                 match store.kind {
@@ -1747,29 +1856,28 @@ impl RustTrans {
                 // Explicit type annotation for non-closure expressions
                 match store.kind {
                     StoreKind::Let => {
-                        write!(
-                            out,
-                            "let {}: {} = ",
-                            store.name,
-                            self.rust_type_name(&store.ty)
-                        )?;
+                        write!(out, "let {}: {} = ", store.name, ty_name)?;
                     }
                     StoreKind::Var => {
-                        write!(
-                            out,
-                            "let mut {}: {} = ",
-                            store.name,
-                            self.rust_type_name(&store.ty)
-                        )?;
+                        write!(out, "let mut {}: {} = ", store.name, ty_name)?;
                     }
                     _ => {
-                        write!(out, "let {}: {} = ", store.name, &store.ty)?;
+                        write!(out, "let {}: {} = ", store.name, ty_name)?;
                     }
                 }
             }
         }
 
         self.expr(&store.expr, out)?;
+
+        // When assigning a string literal to a String/Str type, add .to_string()
+        // because Rust string literals are &str, but String type needs conversion
+        if matches!(store.ty, Type::String | Type::Str(_)) {
+            if let Expr::Str(_) = &store.expr {
+                write!(out, ".to_string()")?;
+            }
+        }
+
         Ok(())
     }
 

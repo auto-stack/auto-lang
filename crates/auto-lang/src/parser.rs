@@ -1598,6 +1598,7 @@ impl<'a> Parser<'a> {
 
             // Special case: .! is the bang operator for eager collection
             // When we see Op::Dot, check if the next token is ! and treat it as postfix Op::Not
+            eprintln!("[DEBUG-PEEK-DOT] op={:?}, cur.kind={:?}, cur.text={}", op, self.cur.kind, self.cur.text);
             if matches!(op, Op::Dot) {
                 // Try to peek at next token - if it's Not, convert this to a postfix Not operation
                 // We need to be very careful here to not corrupt the token stream
@@ -1687,7 +1688,13 @@ impl<'a> Parser<'a> {
             if power.l < min_power {
                 break;
             }
+            if matches!(op, Op::Dot) || matches!(self.cur.kind, TokenKind::ErrKW) {
+                eprintln!("[DEBUG-OP] op={:?}, cur_before_next.kind={:?}, cur_before_next.text={}", op, self.cur.kind, self.cur.text);
+            }
             self.next(); // skip binary op
+            if matches!(op, Op::Dot) || matches!(self.cur.kind, TokenKind::ErrKW) {
+                eprintln!("[DEBUG-OP-AFTER] op={:?}, cur.kind={:?}, cur.text={}", op, self.cur.kind, self.cur.text);
+            }
                          // Check for whether assignment is allowed
             match op {
                 Op::Asn => {
@@ -1732,6 +1739,9 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     // Regular infix operators need rhs
+                    if matches!(op, Op::Dot) {
+                        eprintln!("[DEBUG-DOT-ENTRY] op=Dot, cur.kind={:?}, cur.text={}", self.cur.kind, self.cur.text);
+                    }
                     // Plan 124: Special case for Dot operator - check for .await before parsing rhs
                     if matches!(op, Op::Dot) && self.is_kind(TokenKind::Await) {
                         // .await suffix - consume the 'await' token
@@ -1744,6 +1754,43 @@ impl<'a> Parser<'a> {
                         // .go suffix - consume the 'go' token
                         self.next();
                         lhs = Expr::Go { expr: Box::new(lhs) };
+                        continue;
+                    }
+                    // Handle enum variant constructors after dot: MayInt.Err(1), MayInt.Ok(val), etc.
+                    // These keywords (Err, Ok, Some, None) should be treated as identifiers in this context
+                    if matches!(op, Op::Dot)
+                        && matches!(
+                            self.cur.kind,
+                            TokenKind::ErrKW | TokenKind::OkKW | TokenKind::SomeKW | TokenKind::NoneKW
+                        )
+                    {
+                        eprintln!("[DEBUG-DOT-KW] TRIGGERED! cur.kind={:?}, cur.text={}", self.cur.kind, self.cur.text);
+                        let variant_name: AutoStr = self.cur.text.clone().into();
+                        self.next(); // consume the keyword token
+                        // Check if followed by parentheses (constructor call)
+                        if self.is_kind(TokenKind::LParen) {
+                            self.next(); // consume '('
+                            let mut args = crate::ast::Args::new();
+                            if !self.is_kind(TokenKind::RParen) {
+                                args.args.push(crate::ast::Arg::Pos(self.parse_expr()?));
+                                while self.is_kind(TokenKind::Comma) {
+                                    self.next();
+                                    args.args.push(crate::ast::Arg::Pos(self.parse_expr()?));
+                                }
+                            }
+                            self.expect(TokenKind::RParen)?;
+                            // Build: lhs.variant_name(args) as a method call
+                            let method = Expr::Dot(Box::new(lhs), variant_name);
+                            lhs = Expr::Call(crate::ast::Call {
+                                name: Box::new(method),
+                                args,
+                                ret: Type::Unknown,
+                                type_args: Vec::new(),
+                            });
+                        } else {
+                            // Just field access: MayInt.Err (no args)
+                            lhs = Expr::Dot(Box::new(lhs), variant_name);
+                        }
                         continue;
                     }
                     let rhs = self.expr_pratt(power.r)?;
@@ -2738,8 +2785,18 @@ impl<'a> Parser<'a> {
         }
         let name = self.parse_name()?;
 
-        // if expr is A Tag, could be a Tag Creation Expr,
-        // format is: TagName.Tag(elem)
+        // Check if it's a variable/parameter FIRST — before checking type names.
+        // A function param named `m` of type `Binary` should be treated as an
+        // identifier, not as the enum type `Binary`.
+        if let Some(meta) = self.lookup_meta(&name) {
+            match meta.as_ref() {
+                Meta::Store(_) | Meta::Ref(_) => return Ok(Expr::Ident(name)),
+                _ => {}
+            }
+        }
+
+        // if expr is A Tag/Enum, could be a Tag Creation Expr,
+        // format is: EnumName.Variant(elem)
         let typ = self.lookup_type(&name);
         match *typ.borrow() {
             Type::Tag(_) | Type::Enum(_) => return self.tag_cover(&name),

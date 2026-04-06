@@ -32,7 +32,7 @@ fn main() {
 
 
 
-    let arr: &[/* unknown */] = [b1, b2];
+    let arr: &[Flyer] = [b1, b2];
     for b in arr {
         b.fly();
     }

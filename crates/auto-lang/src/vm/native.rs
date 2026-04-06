@@ -236,6 +236,24 @@ impl NativeInterface {
         self.register(NATIVE_STRING_CLEAR, shim_string_clear);
         self.register(NATIVE_STRING_IS_EMPTY, shim_string_is_empty);
         self.register(NATIVE_STRING_RESERVE, shim_string_reserve);
+
+        // Memory allocation functions
+        self.register(NATIVE_ALLOC_ARRAY, shim_alloc_array);
+        self.register(NATIVE_REALLOC_ARRAY, shim_realloc_array);
+        self.register(NATIVE_FREE_ARRAY, shim_free_array);
+
+        // Storage functions
+        self.register(NATIVE_HEAP_NEW, shim_heap_new);
+        self.register(NATIVE_HEAP_CAPACITY, shim_heap_capacity);
+        self.register(NATIVE_HEAP_TRY_GROW, shim_heap_try_grow);
+        self.register(NATIVE_HEAP_DROP, shim_heap_drop);
+        self.register(NATIVE_INLINE_INT64_NEW, shim_inline_int64_new);
+        self.register(NATIVE_INLINE_INT64_CAPACITY, shim_inline_int64_capacity);
+        self.register(NATIVE_INLINE_INT64_TRY_GROW, shim_inline_int64_try_grow);
+        self.register(NATIVE_INLINE_INT64_DROP, shim_inline_int64_drop);
+
+        // List extra functions
+        self.register(NATIVE_LIST_CAPACITY, shim_list_capacity);
     }
 }
 
@@ -341,6 +359,24 @@ pub const NATIVE_STRING_REMOVE: u16 = 183;    // s.remove(index) -> char_codepoi
 pub const NATIVE_STRING_CLEAR: u16 = 184;     // s.clear() -> 0
 pub const NATIVE_STRING_IS_EMPTY: u16 = 185;  // s.is_empty() -> bool (1/0)
 pub const NATIVE_STRING_RESERVE: u16 = 186;   // s.reserve(n) -> 0
+
+// === Memory Allocation Native IDs (190+) ===
+pub const NATIVE_ALLOC_ARRAY: u16 = 190;
+pub const NATIVE_REALLOC_ARRAY: u16 = 191;
+pub const NATIVE_FREE_ARRAY: u16 = 192;
+
+// === Storage Native IDs (195+) ===
+pub const NATIVE_HEAP_NEW: u16 = 195;
+pub const NATIVE_HEAP_CAPACITY: u16 = 196;
+pub const NATIVE_HEAP_TRY_GROW: u16 = 197;
+pub const NATIVE_HEAP_DROP: u16 = 198;
+pub const NATIVE_INLINE_INT64_NEW: u16 = 199;
+pub const NATIVE_INLINE_INT64_CAPACITY: u16 = 200;
+pub const NATIVE_INLINE_INT64_TRY_GROW: u16 = 201;
+pub const NATIVE_INLINE_INT64_DROP: u16 = 202;
+
+// === List Extra Native IDs (205+) ===
+pub const NATIVE_LIST_CAPACITY: u16 = 205;
 
 // === Standard Shims ===
 
@@ -2428,6 +2464,201 @@ pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         }
     }
 
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// Memory Allocation Shims
+// ============================================================================
+
+/// alloc_array(size) -> list_id
+/// Allocate a new list of the given size initialized to 0.
+/// Stack: [size] -> list_id
+pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let size = task.ram.pop_i32() as usize;
+    let mut list: ListData<i32> = ListData::new();
+    for _ in 0..size {
+        list.push(0);
+    }
+    let id = vm.insert_heap_object(list);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// realloc_array([array_id, new_size]) -> array_id
+/// Reallocate list to new size, preserving data.
+/// Stack: [new_size, array_id] -> array_id
+pub fn shim_realloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let new_size = task.ram.pop_i32() as usize;
+    let arr_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(arr_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.elems.resize(new_size, 0);
+            drop(guard);
+            task.ram.push_i32(arr_id as i32);
+            return Ok(());
+        }
+    }
+    // Fallback: create new list
+    let mut list: ListData<i32> = ListData::new();
+    for _ in 0..new_size {
+        list.push(0);
+    }
+    let id = vm.insert_heap_object(list);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// free_array(array_id) -> nil
+/// Free an array (no-op in GC-managed VM).
+/// Stack: [array_id] -> nil (-2147483647)
+pub fn shim_free_array(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _arr_id = task.ram.pop_i32();
+    task.ram.push_i32(-2147483647); // nil marker
+    Ok(())
+}
+
+// ============================================================================
+// Storage Shims (Heap, InlineInt64)
+// ============================================================================
+
+/// Heap.new() -> instance_id
+/// Create a new Heap storage instance using a ListData<i32> internally.
+pub fn shim_heap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // Create an empty list to represent the Heap storage
+    let list: ListData<i32> = ListData::new();
+    let id = vm.insert_heap_object(list);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// heap.capacity() -> capacity
+/// Get Heap storage capacity.
+/// Stack: [instance_id] -> capacity
+pub fn shim_heap_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let inst_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(inst_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.elems.capacity() as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// heap.try_grow(min_cap) -> bool
+/// Try to grow Heap storage to at least min_cap elements.
+/// Stack: [min_cap, instance_id] -> bool (1/0)
+pub fn shim_heap_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let min_cap = task.ram.pop_i32() as usize;
+    let inst_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(inst_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            let cap = list.elems.capacity();
+            let new_cap = if cap == 0 {
+                std::cmp::max(8, min_cap)
+            } else {
+                std::cmp::max(cap * 2, min_cap)
+            };
+            list.elems.resize(new_cap, 0);
+            drop(guard);
+            task.ram.push_i32(1); // success
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// heap.drop() -> nil
+/// Free Heap storage.
+/// Stack: [instance_id] -> nil
+pub fn shim_heap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let inst_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(inst_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.clear();
+        }
+    }
+    task.ram.push_i32(-2147483647); // nil
+    Ok(())
+}
+
+/// InlineInt64.new() -> instance_id
+pub fn shim_inline_int64_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let mut list: ListData<i32> = ListData::new();
+    for _ in 0..64 {
+        list.push(0);
+    }
+    let id = vm.insert_heap_object(list);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// InlineInt64.capacity() -> 64
+/// Stack: [instance_id] -> 64
+pub fn shim_inline_int64_capacity(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _inst_id = task.ram.pop_i32();
+    task.ram.push_i32(64);
+    Ok(())
+}
+
+/// InlineInt64.try_grow(min_cap) -> bool
+/// Stack: [min_cap, instance_id] -> bool
+pub fn shim_inline_int64_try_grow(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let min_cap = task.ram.pop_i32() as u32;
+    let _inst_id = task.ram.pop_i32();
+    task.ram.push_i32(if min_cap <= 64 { 1 } else { 0 });
+    Ok(())
+}
+
+/// InlineInt64.drop() -> nil
+pub fn shim_inline_int64_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _inst_id = task.ram.pop_i32();
+    task.ram.push_i32(-2147483647); // nil
+    Ok(())
+}
+
+// ============================================================================
+// List Extra Shims
+// ============================================================================
+
+/// list.capacity() -> capacity
+/// Get list capacity.
+/// Stack: [list_id] -> capacity
+pub fn shim_list_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.elems.capacity() as i32);
+            return Ok(());
+        }
+    }
     task.ram.push_i32(0);
     Ok(())
 }

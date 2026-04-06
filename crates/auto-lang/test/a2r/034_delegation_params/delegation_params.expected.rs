@@ -27,6 +27,7 @@ struct Computer {
 
 fn main() {
     let comp = Computer {};
+
     let result1 = comp.add(5, 3);
     let result2 = comp.multiply(4, 7);
     println!("{}", result1);
