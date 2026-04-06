@@ -4,7 +4,7 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestRow {
   build() {
-    Row() {
+        Row() {
           Text('Left')
           Text('Right')
         }

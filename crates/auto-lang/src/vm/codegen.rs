@@ -844,6 +844,21 @@ impl Codegen {
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
+                            } else if type_name == "String" && (method == "new" || method == "from") {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from("String"),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::User(type_decl));
                             }
                             // Plan 087 Phase 3: Track user-defined type instances
                             // Example: let c = Counter.new()
@@ -3179,15 +3194,27 @@ impl Codegen {
                                 self.emit(OpCode::DIV);
                             }
                         }
-                        // Comparison operators currently use integer opcodes for all types
-                        // TODO: Add float/double comparison opcodes if needed
+                        Op::Mod => {
+                            if is_double {
+                                self.emit(OpCode::MOD_D);
+                            } else if is_float {
+                                self.emit(OpCode::MOD_F);
+                            } else {
+                                self.emit(OpCode::MOD);
+                            }
+                        }
                         Op::Eq => self.emit(OpCode::EQ),
                         Op::Neq => self.emit(OpCode::NE),
                         Op::Lt => self.emit(OpCode::LT),
                         Op::Le => self.emit(OpCode::LE),
                         Op::Gt => self.emit(OpCode::GT),
                         Op::Ge => self.emit(OpCode::GE),
-                        _ => unimplemented!("Binary Op {:?}", op),
+                        Op::And => self.emit(OpCode::AND),
+                        Op::Or => self.emit(OpCode::OR),
+                        Op::Not => self.emit(OpCode::NOT),
+                        _ => {
+                            // Other ops (Bang, DotView, etc.) shouldn't appear in binary expressions
+                        }
                     }
 
                     // Plan 118 Phase 4: Track result type for binary operations
@@ -4123,6 +4150,27 @@ impl Codegen {
                 // Compile the inner expression
                 // The result will be on the stack
                 self.compile_expr(&hash_brace.expr)?;
+            }
+            // Hold expression: bind value to name, evaluate body
+            // For MVP: compile path, compile body statements
+            Expr::Hold(hold) => {
+                // Compile the path expression (the value to hold)
+                self.compile_expr(&hold.path)?;
+                // Compile the body statements
+                for stmt in &hold.body.stmts {
+                    self.compile_stmt(stmt)?;
+                }
+            }
+            // Nil expression: push nil marker
+            Expr::Nil => {
+                // Use special nil marker value (i32::MIN + 1 = -2147483647)
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(-2147483647);
+            }
+            // Null literal: push -1 (VM representation of null, distinct from nil)
+            Expr::Null => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(-1);
             }
             _ => {
                 unimplemented!("Expression {:?}", expr);

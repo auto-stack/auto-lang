@@ -1,4 +1,4 @@
-tag Side {
+enum Side {
     Left int
     Right int
 }

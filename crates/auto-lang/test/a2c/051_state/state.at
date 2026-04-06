@@ -1,4 +1,4 @@
-tag State {
+enum State {
     Open int
     Closed int
 }

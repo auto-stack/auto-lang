@@ -1,7 +1,7 @@
 // May<T> is implemented using AutoLang's tag type system
 // No external C code needed - all functionality is in AutoLang
 
-tag May<T> {
+enum May<T> {
     nil Nil
     val T
     err int

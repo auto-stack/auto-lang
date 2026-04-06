@@ -116,8 +116,6 @@ impl CTrans {
 
     /// Look up metadata by name (works with Universe or Database or local var map)
     fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
-        eprintln!("[DEBUG-LOOKUP-ENTRY] looking up '{}', local_var_types keys={:?}, declared_types keys={:?}",
-            name, self.local_var_types.keys().collect::<Vec<_>>(), self.declared_types.keys().collect::<Vec<_>>());
         // First try local variable type map (works even without Database)
         if let Some(ty) = self.local_var_types.get(name) {
             let store = Store {
@@ -130,10 +128,7 @@ impl CTrans {
         }
         // Then try declared types (enum, tag, struct names)
         if let Some(ty) = self.declared_types.get(name) {
-            eprintln!("[DEBUG-LOOKUP] found '{}' in declared_types: {:?}", name, std::mem::discriminant(ty));
             return Some(Rc::new(Meta::Type(ty.clone())));
-        } else {
-            eprintln!("[DEBUG-LOOKUP] '{}' NOT in declared_types (keys: {:?})", name, self.declared_types.keys().collect::<Vec<_>>());
         }
         // Then try Database
         if let Some(db) = &self.db {
@@ -326,7 +321,6 @@ impl CTrans {
     }
 
     fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
-        eprintln!("[DEBUG-STMT] processing stmt: {:?}", std::mem::discriminant(stmt));
         let out = &mut sink.body;
         match stmt {
             Stmt::TypeDecl(type_decl) => {
@@ -345,21 +339,15 @@ impl CTrans {
                 self.eos(out)?;
             }
             Stmt::Store(store) => {
-                eprintln!("[DEBUG-STORE] name={}, kind={:?}, ty={:?}", store.name, store.kind, store.ty);
                 if matches!(store.kind, StoreKind::CVar) {
                     return Ok(false);
                 }
                 // Register variable type for later lookup (e.g., is-stmt target)
                 if !matches!(store.ty, Type::Unknown) {
-                    eprintln!("[DEBUG] Registering var '{}' with type {:?}", store.name, store.ty);
                     self.local_var_types.insert(store.name.clone(), store.ty.clone());
                 } else {
-                    eprintln!("[DEBUG] Trying to infer type for var '{}' from expr {:?}", store.name, store.expr);
                     if let Some(inferred) = self.infer_expr_type(&store.expr) {
-                        eprintln!("[DEBUG] Registering var '{}' with inferred type {:?}", store.name, inferred);
                         self.local_var_types.insert(store.name.clone(), inferred);
-                    } else {
-                        eprintln!("[DEBUG] Could not infer type for var '{}'", store.name);
                     }
                 }
                 self.store(store, out)?;
@@ -402,6 +390,11 @@ impl CTrans {
                 self.empty_line(n, out)?;
             }
             Stmt::Union(union) => {
+                // Register union type for later type inference
+                self.declared_types.insert(
+                    union.name.clone(),
+                    Type::Union(union.clone()),
+                );
                 self.union(union, sink)?;
             }
             Stmt::Tag(tag) => {
@@ -2238,7 +2231,12 @@ impl CTrans {
                     && usr_type.parent.is_none();
 
                 if is_type_param {
-                    // Type parameter - use void* in C
+                    // Before defaulting to void*, check if this name refers to a
+                    // declared enum, tag, or union type that the parser resolved
+                    // as a bare Type::User placeholder.
+                    if let Some(actual_ty) = self.declared_types.get(&usr_type.name) {
+                        return self.c_type_name(actual_ty);
+                    }
                     "void*".to_string()
                 } else {
                     // Regular user-defined type
@@ -2814,32 +2812,34 @@ impl CTrans {
 
     /// Infer the return type of an expression if possible
     fn infer_expr_type(&mut self, expr: &Expr) -> Option<Type> {
-        eprintln!("[DEBUG-INFER-ENTRY] expr discriminant = {:?}", std::mem::discriminant(expr));
         match expr {
             // For method calls like file.read_text()
             Expr::Call(call) => {
-                eprintln!("[DEBUG-INFER-CALL] call.name discriminant = {:?}", std::mem::discriminant(call.name.as_ref()));
                 // First check if it's a direct function call
                 if let Expr::Ident(fn_name) = &call.name.as_ref() {
                     if let Some(meta) = self.lookup_meta(fn_name) {
-                        if let Meta::Fn(fn_decl) = meta.as_ref() {
-                            return Some(fn_decl.ret.clone());
-                        }
-                        // Plan 060: Check if it's a closure/function pointer variable
-                        if let Meta::Store(store) = meta.as_ref() {
-                            if let Type::Fn(_, return_type) = &store.ty {
-                                return Some(*return_type.clone());
+                        match meta.as_ref() {
+                            Meta::Fn(fn_decl) => {
+                                return Some(fn_decl.ret.clone());
                             }
+                            // Plan 060: Check if it's a closure/function pointer variable
+                            Meta::Store(store) => {
+                                if let Type::Fn(_, return_type) = &store.ty {
+                                    return Some(*return_type.clone());
+                                }
+                            }
+                            // Struct/Enum/Union constructor calls
+                            Meta::Type(ty) => {
+                                return Some(ty.clone());
+                            }
+                            _ => {}
                         }
                     }
                 }
 
                 // Then check if it's a method call (obj.method())
-                eprintln!("[DEBUG-INFER] call.name discriminant = {:?}", std::mem::discriminant(call.name.as_ref()));
                 if let Expr::Dot(object, method_name) = call.name.as_ref() {
-                    eprintln!("[DEBUG-INFER] matched Dot, method_name={}", method_name);
                     if let Expr::Ident(obj_name) = object.as_ref() {
-                        eprintln!("[DEBUG-INFER] obj_name={}", obj_name);
                         // Check if this is a tag type method call (tag construction)
                         if let Some(meta) = self.lookup_meta(obj_name) {
                             match meta.as_ref() {
@@ -2934,6 +2934,19 @@ impl CTrans {
             }
             // For direct identifier lookups
             Expr::Ident(name) => self.get_type_of(name),
+            // For dot expressions like Color.BLUE (enum variant access)
+            Expr::Dot(object, _field) => {
+                if let Expr::Ident(obj_name) = object.as_ref() {
+                    if let Some(meta) = self.lookup_meta(obj_name) {
+                        match meta.as_ref() {
+                            // Enum variant access: Color.BLUE -> returns the enum type
+                            Meta::Type(ty) => return Some(ty.clone()),
+                            _ => {}
+                        }
+                    }
+                }
+                None
+            }
             // Literal expressions
             Expr::Bool(_) => Some(Type::Bool),
             Expr::Int(_) => Some(Type::Int),
@@ -4112,10 +4125,6 @@ impl CTrans {
 
 impl Trans for CTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        eprintln!("[DEBUG-TRANS-ENTRY] ast.stmts.len() = {}", ast.stmts.len());
-        for (i, s) in ast.stmts.iter().enumerate() {
-            eprintln!("[DEBUG-TRANS-ENTRY] stmt[{}] discriminant = {:?}", i, std::mem::discriminant(s));
-        }
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();
@@ -4123,7 +4132,6 @@ impl Trans for CTrans {
 
         // preprocess
         for stmt in ast.stmts.into_iter() {
-            eprintln!("[DEBUG-TRANS] stmt discriminant = {:?}", std::mem::discriminant(&stmt));
             if stmt.is_decl() {
                 // Check if this is a Store statement with a non-constant initializer
                 // If so, it should go to main() instead of global scope

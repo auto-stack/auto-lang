@@ -209,6 +209,18 @@ pub fn register_builtin_natives() {
     registry.register_with_id("str.upper", 175);  // NATIVE_STR_UPPER - Plan 118 Phase 4
     registry.register_with_id("String.from", 176);  // NATIVE_STRING_FROM - Plan 155
 
+    // Mutable String functions (177-186)
+    registry.register_with_id("String.new", 177);
+    registry.register_with_id("String.push", 178);
+    registry.register_with_id("String.pop", 179);
+    registry.register_with_id("String.get", 180);
+    registry.register_with_id("String.set", 181);
+    registry.register_with_id("String.insert", 182);
+    registry.register_with_id("String.remove", 183);
+    registry.register_with_id("String.clear", 184);
+    registry.register_with_id("String.is_empty", 185);
+    registry.register_with_id("String.reserve", 186);
+
     // =========================================================================
     // FFI Shim Registrations (Plan 094)
     // These map Auto function names to their native IDs

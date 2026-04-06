@@ -1,4 +1,4 @@
-tag Result {
+enum Result {
     Pass int
     Fail int
 }

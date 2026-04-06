@@ -139,10 +139,6 @@ name = "014_closure"
 path = "test/a2r/014_closure/closure.expected.rs"
 
 [[example]]
-name = "014_tag"
-path = "test/a2r/014_tag/tag.expected.rs"
-
-[[example]]
 name = "015_nested_if"
 path = "test/a2r/015_nested_if/nested_if.expected.rs"
 
@@ -209,10 +205,6 @@ path = "test/a2r/026_ref_expr/ref_expr.expected.rs"
 [[example]]
 name = "027_range_expr"
 path = "test/a2r/027_range_expr/range_expr.expected.rs"
-
-[[example]]
-name = "028_object"
-path = "test/a2r/028_object/object.expected.rs"
 
 [[example]]
 name = "029_composition"
@@ -313,10 +305,6 @@ path = "test/a2r/094_question_zero/question_zero.expected.rs"
 [[example]]
 name = "095_question_negative"
 path = "test/a2r/095_question_negative/question_negative.expected.rs"
-
-[[example]]
-name = "109_generic_tag"
-path = "test/a2r/109_generic_tag/generic_tag.expected.rs"
 
 [[example]]
 name = "110_const_generics"

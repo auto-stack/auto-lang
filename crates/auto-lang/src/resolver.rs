@@ -531,8 +531,8 @@ mod plan131_tests {
         assert!(err.contains("Searched locations"), "Error should mention 'Searched locations', got: {}", err);
         // Error should show file module path
         assert!(err.contains("nonexistent.at"), "Error should mention 'nonexistent.at', got: {}", err);
-        // Error should show directory module path
-        assert!(err.contains("nonexistent/mod.at"), "Error should mention 'nonexistent/mod.at', got: {}", err);
+        // Error should show directory module path (may use backslash on Windows)
+        assert!(err.contains("nonexistent") && err.contains("mod.at"), "Error should mention 'nonexistent/mod.at', got: {}", err);
     }
 
     #[test]
@@ -561,7 +561,8 @@ mod plan131_tests {
         assert!(err.contains("Ambiguous"), "Error should mention 'Ambiguous', got: {}", err);
         // Error should show both file paths
         assert!(err.contains("db.at"), "Error should mention 'db.at', got: {}", err);
-        assert!(err.contains("db/mod.at"), "Error should mention 'db/mod.at', got: {}", err);
+        // Path separator varies by OS (backslash on Windows)
+        assert!(err.contains("db") && err.contains("mod.at"), "Error should mention 'db/mod.at', got: {}", err);
     }
 
 }

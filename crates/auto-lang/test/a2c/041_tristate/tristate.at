@@ -1,4 +1,4 @@
-tag TriState {
+enum TriState {
     On int
     Off int
     Unknown int

@@ -3,14 +3,14 @@ import { Button } from '@kit.ArkUI';
 @Preview
 @Component
 export struct TestForLoop {
-    @State items: any = ["A", "B", "C"]
+    @State items: Object = ["A", "B", "C"]
 
   build() {
-    Column() {
-                ForEach(this.items, (item: any) => {
-                  Text()
-                  /* Unknown component: item */
-                }, (item: any): string => item.id)
+        Column() {
+          ForEach(this.items, (item: Object) => {
+            Text()
+    /* Unknown component: item */
+          }, (item: Object): string => item.id)
         }
   }
 }

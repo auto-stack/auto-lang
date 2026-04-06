@@ -1,4 +1,4 @@
-tag Speed {
+enum Speed {
     Fast int
     Slow int
 }

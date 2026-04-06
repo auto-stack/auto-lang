@@ -1,4 +1,4 @@
-tag Format {
+enum Format {
     Text int
     Binary int
 }

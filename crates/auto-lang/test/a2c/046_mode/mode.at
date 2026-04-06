@@ -1,4 +1,4 @@
-tag Mode {
+enum Mode {
     Read int
     Write int
 }

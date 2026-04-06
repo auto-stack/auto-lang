@@ -1,4 +1,4 @@
-tag Flow {
+enum Flow {
     In int
     Out int
 }

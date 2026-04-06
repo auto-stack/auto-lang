@@ -1,4 +1,4 @@
-tag Target {
+enum Target {
     Near int
     Far int
 }

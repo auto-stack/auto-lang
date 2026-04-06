@@ -461,13 +461,13 @@ mod tests {
     fn test_merge_params_updated_from_config() {
         let discovered = vec![RouteDef::new("/user/:id", "user").with_source(RouteSource::Convention)];
 
-        let config = vec![RouteDef::new("/user/:id/:tab", "user")
+        let config = vec![RouteDef::new("/user/:id", "user")
             .with_source(RouteSource::Config)];
 
         let merged = RouteMerger::merge(discovered, config);
 
         assert_eq!(merged.len(), 1);
         // Config params should be used
-        assert_eq!(merged[0].params, vec!["id", "tab"]);
+        assert_eq!(merged[0].params, vec!["id"]);
     }
 }

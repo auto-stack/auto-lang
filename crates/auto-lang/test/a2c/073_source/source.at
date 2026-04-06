@@ -1,4 +1,4 @@
-tag Source {
+enum Source {
     Internal int
     External int
 }

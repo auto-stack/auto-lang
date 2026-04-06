@@ -13,7 +13,7 @@ members = [
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
     # Plan 082: AutoCache global build cache
     "crates/auto-cache",
-    # "crates/xdm-gen",
+    "crates/xdm-gen",
 ]
 resolver = "2"
 

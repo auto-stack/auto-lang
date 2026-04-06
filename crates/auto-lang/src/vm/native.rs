@@ -224,6 +224,18 @@ impl NativeInterface {
         self.register(NATIVE_INT_STR, shim_int_str);
         self.register(NATIVE_STR_UPPER, shim_str_upper);
         self.register(NATIVE_STRING_FROM, shim_string_from);
+
+        // Mutable String functions (177-186)
+        self.register(NATIVE_STRING_NEW, shim_string_new);
+        self.register(NATIVE_STRING_PUSH, shim_string_push);
+        self.register(NATIVE_STRING_POP, shim_string_pop);
+        self.register(NATIVE_STRING_GET, shim_string_get);
+        self.register(NATIVE_STRING_SET, shim_string_set);
+        self.register(NATIVE_STRING_INSERT, shim_string_insert);
+        self.register(NATIVE_STRING_REMOVE, shim_string_remove);
+        self.register(NATIVE_STRING_CLEAR, shim_string_clear);
+        self.register(NATIVE_STRING_IS_EMPTY, shim_string_is_empty);
+        self.register(NATIVE_STRING_RESERVE, shim_string_reserve);
     }
 }
 
@@ -319,8 +331,40 @@ pub const NATIVE_STR_APPEND: u16 = 173;   // Plan 118: String append
 pub const NATIVE_INT_STR: u16 = 174;      // Plan 118 Phase 4: int to string
 pub const NATIVE_STR_UPPER: u16 = 175;    // Plan 118 Phase 4: string to uppercase
 pub const NATIVE_STRING_FROM: u16 = 176;  // Plan 155: String.from(str) -> String
+pub const NATIVE_STRING_NEW: u16 = 177;       // String.new() -> sb_id
+pub const NATIVE_STRING_PUSH: u16 = 178;      // s.push(char) -> 0
+pub const NATIVE_STRING_POP: u16 = 179;       // s.pop() -> char_codepoint (0 if empty)
+pub const NATIVE_STRING_GET: u16 = 180;       // s.get(index) -> char_codepoint
+pub const NATIVE_STRING_SET: u16 = 181;       // s.set(index, char) -> 0
+pub const NATIVE_STRING_INSERT: u16 = 182;    // s.insert(index, char) -> 0
+pub const NATIVE_STRING_REMOVE: u16 = 183;    // s.remove(index) -> char_codepoint
+pub const NATIVE_STRING_CLEAR: u16 = 184;     // s.clear() -> 0
+pub const NATIVE_STRING_IS_EMPTY: u16 = 185;  // s.is_empty() -> bool (1/0)
+pub const NATIVE_STRING_RESERVE: u16 = 186;   // s.reserve(n) -> 0
 
 // === Standard Shims ===
+
+/// Generic print that handles any value type.
+/// If the value is a tagged string index (negative), prints the string.
+/// Otherwise prints as an integer.
+pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+
+    // Check if it's a tagged string index (negative value from LOAD_STR)
+    if val < 0 {
+        let str_index = ((-val) - 1) as u16;
+        if let Some(bytes) = vm.get_string(str_index) {
+            let s = String::from_utf8_lossy(&bytes);
+            println!("{}", s);
+        } else {
+            println!("<invalid string index: {}>", str_index);
+        }
+    } else {
+        // Regular integer
+        println!("{}", val);
+    }
+    Ok(())
+}
 
 pub fn shim_print_i32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // Expect arg on TOS.
@@ -342,8 +386,9 @@ pub fn shim_print_f32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
     Ok(())
 }
 
-/// Print a string from the string constant pool.
+/// Print a string from the string constant pool, or an integer if not a string.
 /// Expects tagged string index on TOS (LOAD_STR pushes -(idx+1)).
+/// If the value is non-negative and not a valid string index, prints as integer.
 pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let tagged = task.ram.pop_i32();
     // Decode tagged string index: LOAD_STR pushes -(idx+1)
@@ -352,11 +397,17 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     } else {
         tagged as u16
     };
-    if let Some(bytes) = vm.get_string(str_index) {
-        let s = String::from_utf8_lossy(&bytes);
-        println!("{}", s);
+    // Try to get string - only valid if it was a tagged (negative) index
+    if tagged < 0 {
+        if let Some(bytes) = vm.get_string(str_index) {
+            let s = String::from_utf8_lossy(&bytes);
+            println!("{}", s);
+        } else {
+            println!("<invalid string index: {}>", str_index);
+        }
     } else {
-        println!("<invalid string index: {}>", str_index);
+        // Non-tagged value - print as integer
+        println!("{}", tagged);
     }
     // Plan 118: print() is a void function, don't push return value
     Ok(())
@@ -2005,13 +2056,25 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-/// Get the length of a string from the constant pool (String.len alias).
-/// Stack: str_idx (tagged) -> length (as i32)
+/// Get the length of a string (String.len).
+/// Supports both constant pool strings (tagged index) and heap-based mutable Strings (SpecializedStringBuilder).
+/// Stack: str_idx_or_sb_id -> length (as i32, char count for heap, byte count for const pool)
 pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_bits = task.ram.pop_i32();
-    // Decode tagged string index
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let bits = task.ram.pop_i32();
 
+    // First try as heap object (mutable String)
+    let sb_id = bits as u64;
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+            // Return character count (not byte count) for mutable String
+            task.ram.push_i32(sb.buffer.chars().count() as i32);
+            return Ok(());
+        }
+    }
+
+    // Fall back to constant pool string (tagged index)
+    let str_idx = decode_str_idx(bits) as u16;
     if let Some(bytes) = vm.get_string(str_idx) {
         task.ram.push_i32(bytes.len() as i32);
     } else {
@@ -2129,12 +2192,242 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Plan 155: String.from(str) -> String
-/// Creates an owned String from a string value.
-/// In the VM, strings are stored in the constant pool as tagged indices,
-/// so this is essentially an identity operation at the VM level.
-/// Stack: str_idx (tagged) -> str_idx (tagged)
-pub fn shim_string_from(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+/// Creates an owned mutable String (heap object) from a string literal.
+/// Stack: str_idx (tagged) -> sb_id (heap object ID)
+pub fn shim_string_from(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let str_bits = task.ram.pop_i32();
-    task.ram.push_i32(str_bits);
+    let str_idx = decode_str_idx(str_bits) as u16;
+
+    // Get string content from constant pool
+    let content = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_string()
+    } else {
+        String::new()
+    };
+
+    // Create a SpecializedStringBuilder with the content
+    let mut sb = crate::vm::collections::SpecializedStringBuilder::new();
+    sb.buffer = content;
+
+    // Register in heap
+    let sb_id = vm.insert_heap_object(sb);
+    task.ram.push_i32(sb_id as i32);
+    Ok(())
+}
+
+// ============================================================================
+// Mutable String Shims (177-186)
+// ============================================================================
+
+/// String.new() -> sb_id
+/// Create a new mutable String (backed by SpecializedStringBuilder).
+/// Stack: [] -> sb_id
+pub fn shim_string_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb = crate::vm::collections::SpecializedStringBuilder::new();
+    let sb_id = vm.insert_heap_object(sb);
+    task.ram.push_i32(sb_id as i32);
+    Ok(())
+}
+
+/// s.push(char) -> 0
+/// Push a character (as codepoint) to the end of the mutable string.
+/// Stack: [char_codepoint, sb_id] -> 0
+pub fn shim_string_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_codepoint = task.ram.pop_i32();
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(ch) = char::from_u32(char_codepoint as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+                sb.buffer.push(ch);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.pop() -> char_codepoint (0 if empty)
+/// Pop the last character from the mutable string.
+/// Stack: [sb_id] -> char_codepoint
+pub fn shim_string_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            match sb.buffer.pop() {
+                Some(ch) => ch as i32,
+                None => 0,
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.get(index) -> char_codepoint
+/// Get the character at the given char index.
+/// Stack: [index, sb_id] -> char_codepoint
+pub fn shim_string_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let index = task.ram.pop_i32() as usize;
+    let sb_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.chars().nth(index).map(|ch| ch as i32).unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.set(index, char) -> 0
+/// Replace the character at the given char index.
+/// Stack: [char_codepoint, index, sb_id] -> 0
+pub fn shim_string_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_codepoint = task.ram.pop_i32();
+    let index = task.ram.pop_i32() as usize;
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(new_ch) = char::from_u32(char_codepoint as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+                // Find byte offset and old char len at char position `index`
+                if let Some((byte_offset, old_ch)) = sb.buffer.char_indices().nth(index) {
+                    let old_len = old_ch.len_utf8();
+                    sb.buffer.replace_range(byte_offset..byte_offset + old_len, &new_ch.to_string());
+                }
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.insert(index, char) -> 0
+/// Insert a character at the given char index.
+/// Stack: [char_codepoint, index, sb_id] -> 0
+pub fn shim_string_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_codepoint = task.ram.pop_i32();
+    let index = task.ram.pop_i32() as usize;
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(ch) = char::from_u32(char_codepoint as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+                // Find byte offset at char position `index`
+                let byte_offset = sb.buffer.char_indices()
+                    .nth(index)
+                    .map(|(offset, _)| offset)
+                    .unwrap_or(sb.buffer.len());
+                sb.buffer.insert(byte_offset, ch);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.remove(index) -> char_codepoint
+/// Remove the character at the given char index and return it.
+/// Stack: [index, sb_id] -> char_codepoint
+pub fn shim_string_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let index = task.ram.pop_i32() as usize;
+    let sb_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            // Find byte offset and char len at char position `index`
+            if let Some((byte_offset, old_ch)) = sb.buffer.char_indices().nth(index) {
+                let old_len = old_ch.len_utf8();
+                let removed_codepoint = old_ch as i32;
+                sb.buffer.drain(byte_offset..byte_offset + old_len);
+                removed_codepoint
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.clear() -> 0
+/// Clear all characters from the mutable string.
+/// Stack: [sb_id] -> 0
+pub fn shim_string_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.is_empty() -> bool (1/0)
+/// Check if the mutable string is empty.
+/// Stack: [sb_id] -> 1/0
+pub fn shim_string_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+            if sb.buffer.is_empty() { 1 } else { 0 }
+        } else {
+            1
+        }
+    } else {
+        1
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.reserve(n) -> 0
+/// Reserve capacity for at least n additional bytes.
+/// Stack: [n, sb_id] -> 0
+pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32() as usize;
+    let sb_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedStringBuilder>() {
+            sb.buffer.reserve(n);
+        }
+    }
+
+    task.ram.push_i32(0);
     Ok(())
 }

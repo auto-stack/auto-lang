@@ -1,4 +1,4 @@
-tag Level {
+enum Level {
     High int
     Low int
 }

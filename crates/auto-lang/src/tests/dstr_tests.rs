@@ -1,9 +1,9 @@
 use crate::run;
 
 #[test]
-fn test_dstr_new() {
+fn test_string_new() {
     let code = r#"
-            let s = dstr.new()
+            let s = String.new()
             s.len()
         "#;
     let result = run(code).unwrap();
@@ -11,9 +11,9 @@ fn test_dstr_new() {
 }
 
 #[test]
-fn test_dstr_from_byte() {
+fn test_string_from() {
     let code = r#"
-            let s = dstr.from_byte(65)
+            let s = String.from("A")
             s.len()
         "#;
     let result = run(code).unwrap();
@@ -21,9 +21,9 @@ fn test_dstr_from_byte() {
 }
 
 #[test]
-fn test_dstr_from_bytes() {
+fn test_string_from_multi_char() {
     let code = r#"
-            let s = dstr.from_bytes(65, 66)
+            let s = String.from("AB")
             s.len()
         "#;
     let result = run(code).unwrap();
@@ -31,12 +31,12 @@ fn test_dstr_from_bytes() {
 }
 
 #[test]
-fn test_dstr_push() {
+fn test_string_push() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             s.len()
         "#;
     let result = run(code).unwrap();
@@ -44,41 +44,41 @@ fn test_dstr_push() {
 }
 
 #[test]
-fn test_dstr_push_and_get() {
+fn test_string_push_and_get() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(72)
-            s.push(101)
-            s.push(108)
-            s.push(108)
-            s.push(111)
+            var s = String.new()
+            s.push('H')
+            s.push('e')
+            s.push('l')
+            s.push('l')
+            s.push('o')
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "72");
+    assert_eq!(result, "72");  // 'H' = 72
 }
 
 #[test]
-fn test_dstr_pop() {
+fn test_string_pop() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             let val = s.pop()
             val
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "67");
+    assert_eq!(result, "67");  // 'C' = 67
 }
 
 #[test]
-fn test_dstr_pop_reduces_length() {
+fn test_string_pop_reduces_length() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             s.pop()
             s.len()
         "#;
@@ -87,35 +87,35 @@ fn test_dstr_pop_reduces_length() {
 }
 
 #[test]
-fn test_dstr_get() {
+fn test_string_get() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             s.get(1)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "66");
+    assert_eq!(result, "66");  // 'B' = 66
 }
 
 #[test]
-fn test_dstr_set() {
+fn test_string_set() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.set(0, 67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.set(0, 'C')
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "67");
+    assert_eq!(result, "67");  // 'C' = 67
 }
 
 #[test]
-fn test_dstr_is_empty() {
+fn test_string_is_empty() {
     let code = r#"
-            let s = dstr.new()
+            let s = String.new()
             s.is_empty()
         "#;
     let result = run(code).unwrap();
@@ -123,10 +123,10 @@ fn test_dstr_is_empty() {
 }
 
 #[test]
-fn test_dstr_is_empty_after_push() {
+fn test_string_is_empty_after_push() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
+            var s = String.new()
+            s.push('A')
             s.is_empty()
         "#;
     let result = run(code).unwrap();
@@ -134,51 +134,51 @@ fn test_dstr_is_empty_after_push() {
 }
 
 #[test]
-fn test_dstr_insert() {
+fn test_string_insert() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(67)
-            s.insert(1, 66)
+            var s = String.new()
+            s.push('A')
+            s.push('C')
+            s.insert(1, 'B')
             s.get(1)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "66");
+    assert_eq!(result, "66");  // 'B' = 66
 }
 
 #[test]
-fn test_dstr_insert_at_beginning() {
+fn test_string_insert_at_beginning() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(66)
-            s.push(67)
-            s.insert(0, 65)
+            var s = String.new()
+            s.push('B')
+            s.push('C')
+            s.insert(0, 'A')
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "65");
+    assert_eq!(result, "65");  // 'A' = 65
 }
 
 #[test]
-fn test_dstr_remove() {
+fn test_string_remove() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             s.remove(1)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "66");
+    assert_eq!(result, "66");  // 'B' = 66
 }
 
 #[test]
-fn test_dstr_remove_reduces_length() {
+fn test_string_remove_reduces_length() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             s.remove(1)
             s.len()
         "#;
@@ -187,12 +187,12 @@ fn test_dstr_remove_reduces_length() {
 }
 
 #[test]
-fn test_dstr_clear() {
+fn test_string_clear() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
             s.clear()
             s.is_empty()
         "#;
@@ -201,11 +201,11 @@ fn test_dstr_clear() {
 }
 
 #[test]
-fn test_dstr_reserve() {
+fn test_string_reserve() {
     let code = r#"
-            mut s = dstr.new()
+            var s = String.new()
             s.reserve(100)
-            s.push(65)
+            s.push('A')
             s.len()
         "#;
     let result = run(code).unwrap();
@@ -213,14 +213,14 @@ fn test_dstr_reserve() {
 }
 
 #[test]
-fn test_dstr_comprehensive_hello() {
+fn test_string_comprehensive_hello() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(72)
-            s.push(101)
-            s.push(108)
-            s.push(108)
-            s.push(111)
+            var s = String.new()
+            s.push('H')
+            s.push('e')
+            s.push('l')
+            s.push('l')
+            s.push('o')
 
             let len = s.len()
             if len == 5 {
@@ -244,14 +244,14 @@ fn test_dstr_comprehensive_hello() {
 }
 
 #[test]
-fn test_dstr_multiple_operations() {
+fn test_string_multiple_operations() {
     let code = r#"
-            mut s = dstr.new()
-            s.push(65)
-            s.push(66)
-            s.push(67)
-            s.set(0, 68)
-            s.insert(1, 69)
+            var s = String.new()
+            s.push('A')
+            s.push('B')
+            s.push('C')
+            s.set(0, 'D')
+            s.insert(1, 'E')
             s.remove(2)
             let len = s.len()
             let val = s.get(0)
@@ -270,25 +270,25 @@ fn test_dstr_multiple_operations() {
 }
 
 #[test]
-fn test_dstr_from_byte_then_push() {
+fn test_string_from_then_push() {
     let code = r#"
-            mut s = dstr.from_byte(65)
-            s.push(66)
-            s.push(67)
+            var s = String.from("A")
+            s.push('B')
+            s.push('C')
             s.len()
         "#;
     let result = run(code).unwrap();
     assert_eq!(result, "3");
 }
-
+// 19317196129
 #[test]
-fn test_dstr_from_bytes_then_modify() {
+fn test_string_from_then_modify() {
     let code = r#"
-            mut s = dstr.from_bytes(65, 66)
-            s.push(67)
-            s.set(0, 68)
+            var s = String.from("AB")
+            s.push('C')
+            s.set(0, 'D')
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "68");
+    assert_eq!(result, "68");  // 'D' = 68
 }

@@ -1,4 +1,4 @@
-tag Mode2 {
+enum Mode2 {
     Auto int
     Manual int
 }

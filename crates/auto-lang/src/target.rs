@@ -204,84 +204,51 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_default() {
-        // 清除环境变量
+    fn test_detect_all_env_scenarios() {
+        // All environment-based detection tests merged into one to avoid parallel test races.
+        // These tests modify global env vars and are not thread-safe with each other.
+
+        // --- Scenario 0: Default (no env vars) ---
         env::remove_var("AUTO_TARGET");
         env::remove_var("CARGO_BUILD_TARGET");
+        assert_eq!(Target::detect(), Target::Pc);
 
-        // 默认应为 Pc
-        let target = Target::detect();
-        assert_eq!(target, Target::Pc);
-
-        // 清理
-        env::remove_var("AUTO_TARGET");
-        env::remove_var("CARGO_BUILD_TARGET");
-    }
-
-    #[test]
-    fn test_detect_from_env_var() {
-        // 清除环境变量
-        env::remove_var("AUTO_TARGET");
+        // --- Scenario 1: AUTO_TARGET env var ---
         env::remove_var("CARGO_BUILD_TARGET");
 
-        // 测试 AUTO_TARGET=mcu
         env::set_var("AUTO_TARGET", "mcu");
         assert_eq!(Target::detect(), Target::Mcu);
 
-        // 测试 AUTO_TARGET=pc
         env::set_var("AUTO_TARGET", "pc");
         assert_eq!(Target::detect(), Target::Pc);
 
-        // 测试大小写不敏感
         env::set_var("AUTO_TARGET", "MCU");
         assert_eq!(Target::detect(), Target::Mcu);
 
         env::set_var("AUTO_TARGET", "PC");
         assert_eq!(Target::detect(), Target::Pc);
 
-        // 清理
+        // --- Scenario 2: CARGO_BUILD_TARGET ---
         env::remove_var("AUTO_TARGET");
-        env::remove_var("CARGO_BUILD_TARGET");
-    }
 
-    #[test]
-    fn test_detect_from_cargo_target() {
-        // 清除其他环境变量
-        env::remove_var("AUTO_TARGET");
-        env::remove_var("CARGO_BUILD_TARGET");
-
-        // 测试 ARM/Thumb MCU 目标
         env::set_var("CARGO_BUILD_TARGET", "thumbv7em-none-eabihf");
         assert_eq!(Target::detect(), Target::Mcu);
 
         env::set_var("CARGO_BUILD_TARGET", "arm-none-eabi");
         assert_eq!(Target::detect(), Target::Mcu);
 
-        // 测试 PC 目标
         env::set_var("CARGO_BUILD_TARGET", "x86_64-unknown-linux-gnu");
         assert_eq!(Target::detect(), Target::Pc);
 
         env::set_var("CARGO_BUILD_TARGET", "x86_64-pc-windows-msvc");
         assert_eq!(Target::detect(), Target::Pc);
 
-        // 清理
-        env::remove_var("AUTO_TARGET");
-        env::remove_var("CARGO_BUILD_TARGET");
-    }
-
-    #[test]
-    fn test_auto_target_takes_precedence() {
-        // 清除环境变量
-        env::remove_var("AUTO_TARGET");
-        env::remove_var("CARGO_BUILD_TARGET");
-
-        // AUTO_TARGET 优先于 CARGO_BUILD_TARGET
+        // --- Scenario 3: AUTO_TARGET takes precedence ---
         env::set_var("AUTO_TARGET", "pc");
         env::set_var("CARGO_BUILD_TARGET", "thumbv7em-none-eabihf");
-
         assert_eq!(Target::detect(), Target::Pc);
 
-        // 清理
+        // Cleanup
         env::remove_var("AUTO_TARGET");
         env::remove_var("CARGO_BUILD_TARGET");
     }

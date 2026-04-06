@@ -3,7 +3,7 @@ fn get_size() int {
 }
 
 fn main() int {
-    mut arr [get_size()]int
+    var arr [get_size()]int
     arr[0] = 42
     arr[0]
 }

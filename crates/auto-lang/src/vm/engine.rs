@@ -2080,6 +2080,24 @@ impl AutoVM {
                     }
                     task.ram.push_f64(a / b);
                 }
+                OpCode::MOD => {
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    if b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    task.ram.push_i32(a % b);
+                }
+                OpCode::MOD_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_f32(a % b);
+                }
+                OpCode::MOD_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_f64(a % b);
+                }
                 OpCode::NEG_D => {
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(-a);

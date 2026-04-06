@@ -1,4 +1,4 @@
-tag Power {
+enum Power {
     On int
     Off int
 }

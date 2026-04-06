@@ -1,4 +1,4 @@
-tag Color {
+enum Color {
     Red int
     Blue int
 }

@@ -1,6 +1,6 @@
 # Test multi-parameter generic types
 
-tag Pair<K, V> {
+enum Pair<K, V> {
     first K
     second V
 }

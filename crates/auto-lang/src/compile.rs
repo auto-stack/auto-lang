@@ -337,7 +337,21 @@ impl CompileSession {
                 break;
             }
             // 也尝试 stdlib/auto 路径
-            let stdlib_path = std::path::Path::new("stdlib/auto").join(&path);
+            // For "auto.io", module_path is "auto/io", but stdlib file is "stdlib/auto/io.at"
+            // Strip the "auto/" prefix when building stdlib path
+            let stdlib_relative = if module_path.starts_with("auto/") {
+                &module_path[5..] // strip "auto/"
+            } else {
+                &module_path
+            };
+            // Use CARGO_MANIFEST_DIR to find project root for stdlib lookup
+            let stdlib_base = if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+                // CARGO_MANIFEST_DIR is crates/auto-lang, go up to project root (../../), then stdlib/auto
+                std::path::PathBuf::from(manifest_dir).join("../../stdlib/auto")
+            } else {
+                std::path::PathBuf::from("stdlib/auto")
+            };
+            let stdlib_path = stdlib_base.join(stdlib_relative).with_extension(&ext[1..]);
             if stdlib_path.exists() {
                 found_path = Some(stdlib_path);
                 break;

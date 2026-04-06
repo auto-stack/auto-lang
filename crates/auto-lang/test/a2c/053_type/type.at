@@ -1,4 +1,4 @@
-tag Type {
+enum Type {
     A int
     B int
 }

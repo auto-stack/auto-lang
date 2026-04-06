@@ -1,4 +1,4 @@
-tag Gate {
+enum Gate {
     Open int
     Shut int
 }

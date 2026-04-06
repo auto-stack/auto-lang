@@ -4,6 +4,6 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestImage {
   build() {
-    Image('https://example.com/logo.png')
+        Image('https://example.com/logo.png')
   }
 }

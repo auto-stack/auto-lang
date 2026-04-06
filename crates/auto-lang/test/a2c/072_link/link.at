@@ -1,4 +1,4 @@
-tag Link {
+enum Link {
     Connected int
     Disconnected int
 }

@@ -8,7 +8,7 @@ export struct ParentWidget {
     @Provide("pathStack") pathStack: NavPathStack = new NavPathStack()
 
   build() {
-    Column() {
+        Column() {
           ChildWidget()
         }
         .width('100%')
@@ -24,9 +24,9 @@ export struct ChildWidget {
     @State count: number = 0
 
   build() {
-    Column() {
+        Column() {
           Text('Child')
-                .fontSize(20)
+          .fontSize(20)
         }
         .width('100%')
         .height('100%')

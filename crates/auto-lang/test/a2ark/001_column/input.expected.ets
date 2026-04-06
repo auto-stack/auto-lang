@@ -4,7 +4,7 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestColumn {
   build() {
-    Column() {
+        Column() {
           Text('Hello')
           Text('World')
         }

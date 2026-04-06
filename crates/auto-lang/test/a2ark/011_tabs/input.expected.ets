@@ -33,23 +33,23 @@ export struct TestTabs {
     }
 
   build() {
-    Column() {
+        Column() {
           Text('Tab Navigation')
-                .fontSize(18)
-                .fontWeight(FontWeight.Bold)
-              Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-                TabContent() {
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+        Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
+          TabContent() {
                   Text('Welcome to the home page')
-                }
-                .tabBar(this.tabBarBuilder('Home', 0))
-                TabContent() {
+          }
+          .tabBar(this.tabBarBuilder('Home', 0))
+          TabContent() {
                   Text('Settings page')
-                }
-                .tabBar(this.tabBarBuilder('Settings', 1))
-              }
-              .vertical(false)
-              .scrollable(false)
-              .backgroundColor('#F1F3F5')
+          }
+          .tabBar(this.tabBarBuilder('Settings', 1))
+        }
+        .vertical(false)
+        .scrollable(false)
+        .backgroundColor('#F1F3F5')
         }
         .padding(16)
   }

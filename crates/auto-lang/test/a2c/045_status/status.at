@@ -1,4 +1,4 @@
-tag Status {
+enum Status {
     Active int
     Inactive int
 }

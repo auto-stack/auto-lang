@@ -1,4 +1,4 @@
-tag Binary {
+enum Binary {
     Yes int
     No int
 }

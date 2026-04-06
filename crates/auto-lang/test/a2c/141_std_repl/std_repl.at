@@ -3,8 +3,8 @@ use.c <stdlib.h>
 fn.c free(p cstr)
 
 fn main() {
-    mut lineptr *char = null
-    mut n int = 0
+    var lineptr *char = null
+    var n int = 0
 
     for {
         print(c"Enter a line of text: ") // TODO: print without newline

@@ -1,4 +1,4 @@
-tag Zone {
+enum Zone {
     A int
     B int
     C int

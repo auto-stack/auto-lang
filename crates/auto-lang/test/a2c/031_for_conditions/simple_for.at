@@ -1,7 +1,7 @@
 // Test for loops with conditions
 
 fn main() {
-    let mut i = 0
+    var i = 0
     let max = 5
 
     for i < max {

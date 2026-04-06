@@ -1,4 +1,4 @@
-tag Size {
+enum Size {
     Big int
     Small int
 }

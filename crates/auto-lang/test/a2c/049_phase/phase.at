@@ -1,4 +1,4 @@
-tag Phase {
+enum Phase {
     Start int
     End int
 }

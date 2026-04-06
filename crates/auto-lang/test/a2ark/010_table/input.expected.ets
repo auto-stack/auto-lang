@@ -4,28 +4,28 @@ import { Button } from '@kit.ArkUI';
 @Component
 export struct TestTable {
   build() {
-    Column() {
+        Column() {
           Text('Users Table')
-                .fontSize(18)
-                .fontWeight(FontWeight.Bold)
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
           Table() {
-                  Column() {
-                            Row() {
-                                        Text()
-                                                    Name
-                                        Text()
-                                                    Email
-                                      }
-                          }
-                  Column() {
-                            Row() {
-                                        Text()
-                                                    John
-                                        Text()
-                                                    john@example.com
-                                      }
-                          }
-                }
+            Column() {
+              Row() {
+                Text() { }
+                Name
+                Text() { }
+                Email
+              }
+            }
+            Column() {
+              Row() {
+                Text() { }
+                John
+                Text() { }
+                john@example.com
+              }
+            }
+          }
         }
         .padding(16)
   }

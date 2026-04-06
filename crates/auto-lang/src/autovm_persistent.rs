@@ -134,9 +134,22 @@ impl AutovmReplSession {
         // Convert module path to file path
         let module_path = use_stmt.module.replace(".", "/");
 
+        // For "auto.io", module_path is "auto/io", but stdlib file is "stdlib/auto/io.at"
+        // Strip the "auto/" prefix when building stdlib path
+        let stdlib_relative = if module_path.starts_with("auto/") {
+            &module_path[5..] // strip "auto/"
+        } else {
+            &module_path
+        };
+
         // Find the module root file (.at)
-        let stdlib_path = std::path::Path::new("stdlib/auto");
-        let root_file = stdlib_path.join(&module_path).with_extension("at");
+        // Use CARGO_MANIFEST_DIR to find project root for stdlib lookup
+        let stdlib_path = if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            std::path::PathBuf::from(manifest_dir).join("../../stdlib/auto")
+        } else {
+            std::path::PathBuf::from("stdlib/auto")
+        };
+        let root_file = stdlib_path.join(stdlib_relative).with_extension("at");
 
         if !root_file.exists() {
             return Err(AutoError::Msg(format!(
