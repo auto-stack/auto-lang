@@ -5,20 +5,14 @@ int double_or_default(struct Option opt, int default) {
     switch (opt.tag) {
     case OPTION_SOME:
         {
-            int v = opt.as.Some;
-            {
-                return opt.as.Some * 2;
-            }
-            break;
+            return opt.as.Some * 2;
         }
+        break;
     case OPTION_NONE:
         {
-            int x = opt.as.None;
-            {
-                return default;
-            }
-            break;
+            return default;
         }
+        break;
     }
     return 0;
 }
@@ -27,20 +21,14 @@ int get_value(struct Option opt) {
     switch (opt.tag) {
     case OPTION_SOME:
         {
-            int x = opt.as.Some;
-            {
-                return opt.as.Some;
-            }
-            break;
+            return opt.as.Some;
         }
+        break;
     case OPTION_NONE:
         {
-            int x = opt.as.None;
-            {
-                return 0;
-            }
-            break;
+            return 0;
         }
+        break;
     }
     return 0;
 }

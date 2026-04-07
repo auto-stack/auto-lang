@@ -4,7 +4,7 @@ int helper(void) {
     return 42;
 }
 
-struct MayInt test_nested_call(void) {
+int test_nested_call(void) {
     return helper();
 }
 

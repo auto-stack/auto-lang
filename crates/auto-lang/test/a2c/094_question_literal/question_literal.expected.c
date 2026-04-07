@@ -1,6 +1,6 @@
 #include "question_literal.h"
 
-struct MayInt test_question_literal(void) {
+int test_question_literal(void) {
     return 0;
 }
 

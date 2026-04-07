@@ -1,16 +1,16 @@
-enum Link {
+enum Connection {
     Connected int
     Disconnected int
 }
 
-fn is_first(m Link) bool {
+fn is_first(m Connection) bool {
     is m {
-        Link.Connected(x) => true
-        Link.Disconnected(x) => false
+        Connection.Connected(x) => true
+        Connection.Disconnected(x) => false
     }
 }
 
 fn main() {
-    let s = Link.Connected()
+    let s = Connection.Connected()
     is_first(s)
 }

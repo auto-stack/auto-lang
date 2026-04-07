@@ -1,6 +1,6 @@
 #include "question_return_str.h"
 
-struct MayStr test_question_return_str(void) {
+char* test_question_return_str(void) {
     return "test";
 }
 

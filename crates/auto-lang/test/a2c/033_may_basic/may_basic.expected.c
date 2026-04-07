@@ -5,28 +5,19 @@ bool is_nil(struct MayInt m) {
     switch (m.tag) {
     case MAYINT_NIL:
         {
-            int x = m.as.Nil;
-            {
-                return true;
-            }
-            break;
+            return true;
         }
+        break;
     case MAYINT_VAL:
         {
-            int x = m.as.Val;
-            {
-                return false;
-            }
-            break;
+            return false;
         }
+        break;
     case MAYINT_ERR:
         {
-            int x = m.as.Err;
-            {
-                return false;
-            }
-            break;
+            return false;
         }
+        break;
     }
     return false;
 }
@@ -35,28 +26,19 @@ bool is_some(struct MayInt m) {
     switch (m.tag) {
     case MAYINT_NIL:
         {
-            int x = m.as.Nil;
-            {
-                return false;
-            }
-            break;
+            return false;
         }
+        break;
     case MAYINT_VAL:
         {
-            int x = m.as.Val;
-            {
-                return true;
-            }
-            break;
+            return true;
         }
+        break;
     case MAYINT_ERR:
         {
-            int x = m.as.Err;
-            {
-                return false;
-            }
-            break;
+            return false;
         }
+        break;
     }
     return false;
 }
@@ -65,28 +47,19 @@ bool is_err(struct MayInt m) {
     switch (m.tag) {
     case MAYINT_NIL:
         {
-            int x = m.as.Nil;
-            {
-                return false;
-            }
-            break;
+            return false;
         }
+        break;
     case MAYINT_VAL:
         {
-            int x = m.as.Val;
-            {
-                return false;
-            }
-            break;
+            return false;
         }
+        break;
     case MAYINT_ERR:
         {
-            int x = m.as.Err;
-            {
-                return true;
-            }
-            break;
+            return true;
         }
+        break;
     }
     return false;
 }
@@ -95,28 +68,19 @@ int unwrap(struct MayInt m) {
     switch (m.tag) {
     case MAYINT_NIL:
         {
-            int x = m.as.Nil;
-            {
-                panic("unwrap on nil");
-            }
-            break;
+            panic("unwrap on nil");
         }
+        break;
     case MAYINT_VAL:
         {
-            int v = m.as.Val;
-            {
-                m.as.Val;
-            }
-            break;
+            m.as.Val;
         }
+        break;
     case MAYINT_ERR:
         {
-            int x = m.as.Err;
-            {
-                panic("unwrap on error");
-            }
-            break;
+            panic("unwrap on error");
         }
+        break;
     }
     return 0;
 }
@@ -125,36 +89,27 @@ int unwrap_or(struct MayInt m, int default) {
     switch (m.tag) {
     case MAYINT_NIL:
         {
-            int x = m.as.Nil;
-            {
-                return default;
-            }
-            break;
+            return default;
         }
+        break;
     case MAYINT_VAL:
         {
-            int v = m.as.Val;
-            {
-                return m.as.Val;
-            }
-            break;
+            return m.as.Val;
         }
+        break;
     case MAYINT_ERR:
         {
-            int x = m.as.Err;
-            {
-                return default;
-            }
-            break;
+            return default;
         }
+        break;
     }
     return 0;
 }
 
 int main(void) {
     struct MayInt x = {.tag = MAYINT_VAL, .as.Val = 42};
-    unknown check1 = is_some(m.as.Err);
-    unknown val1 = unwrap(m.as.Err);
+    unknown check1 = is_some(x);
+    unknown val1 = unwrap(x);
 
     struct MayInt y = {.tag = MAYINT_NIL, .as.Nil = 0};
     unknown check2 = is_nil(y);

@@ -1,6 +1,6 @@
 #include "question_uint.h"
 
-struct MayUint test_question_uint(void) {
+unsigned int test_question_uint(void) {
     return 42;
 }
 

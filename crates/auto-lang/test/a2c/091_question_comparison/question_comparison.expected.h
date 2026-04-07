@@ -1,3 +1,3 @@
 #pragma once
 
-struct MayBool test_comparison(void);
+bool test_comparison(void);

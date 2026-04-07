@@ -1,6 +1,6 @@
 #include "question_negative.h"
 
-struct MayInt test_question_negative(void) {
+int test_question_negative(void) {
     return 0;
 }
 

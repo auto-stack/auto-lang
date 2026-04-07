@@ -1,16 +1,16 @@
 #pragma once
 
 #include <stdbool.h>
-enum LinkKind {
-    LINK_CONNECTED,
-    LINK_DISCONNECTED,
+enum ConnectionKind {
+    CONNECTION_CONNECTED,
+    CONNECTION_DISCONNECTED,
 };
 
-struct Link {
-    enum LinkKind tag;
+struct Connection {
+    enum ConnectionKind tag;
     union {
         int Connected;
         int Disconnected;
     } as;
 };
-bool is_first(struct Link m);
+bool is_first(struct Connection m);

@@ -12,12 +12,12 @@ void Dog_Speak(struct Dog *self) {
 }
 
 int main(void) {
-    unknown dog = Dog();
+    struct Dog dog = {};
     dog.name = "Buddy";
     dog.breed = "Labrador";
 
-    dog.speak();
-    dog.bark();
+    Dog_Speak(&dog);
+    Dog_Bark(&dog);
 
     printf("%s\n", "Test passed");
     return 0;

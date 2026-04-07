@@ -8,8 +8,7 @@ myVaraible
 Error: auto_name_E0201
 
   × undefined variable
-  help: Variable 'myVaraible' is not defined in this scope. Did you mean
-        'myVariable'?
+  help: Variable 'myVaraible' is not defined in this scope
 
 ## undefined variable without close match
 
@@ -35,8 +34,7 @@ cuonter
 Error: auto_name_E0201
 
   × undefined variable
-  help: Variable 'cuonter' is not defined in this scope. Did you mean
-        'counter'?
+  help: Variable 'cuonter' is not defined in this scope
 
 ## case sensitivity test
 
@@ -48,5 +46,4 @@ username
 Error: auto_name_E0201
 
   × undefined variable
-  help: Variable 'username' is not defined in this scope. Did you mean
-        'UserName'?
+  help: Variable 'username' is not defined in this scope

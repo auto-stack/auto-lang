@@ -7,28 +7,19 @@ int main(void) {
     switch (atom.tag) {
     case ATOM_INT:
         {
-            int i = atom.as.Int;
-            {
-                printf("%s %d\n", "Got Int:", atom.as.Int);
-            }
-            break;
+            printf("%s %d\n", "Got Int:", atom.as.Int);
         }
+        break;
     case ATOM_CHAR:
         {
-            char c = atom.as.Char;
-            {
-                printf("%s %c\n", "Got Char:", atom.as.Char);
-            }
-            break;
+            printf("%s %c\n", "Got Char:", atom.as.Char);
         }
+        break;
     case ATOM_FLOAT:
         {
-            float f = atom.as.Float;
-            {
-                printf("%s %f\n", "Got Float:", atom.as.Float);
-            }
-            break;
+            printf("%s %f\n", "Got Float:", atom.as.Float);
         }
+        break;
     }
     return 0;
 }

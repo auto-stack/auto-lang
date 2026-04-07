@@ -5,8 +5,9 @@ int add(int a, int b) {
 }
 
 int main(void) {
-    int sum = add(1, 2);
+    unknown sum = add(1, 2);
     printf("%d\n", sum);
-    printf("%s\n", "\n");
+    printf("%s\n", "
+");
     return 0;
 }

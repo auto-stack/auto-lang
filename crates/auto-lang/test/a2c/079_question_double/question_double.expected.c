@@ -1,6 +1,6 @@
 #include "question_double.h"
 
-struct MayDouble test_question_double(void) {
+double test_question_double(void) {
     return 2.71;
 }
 

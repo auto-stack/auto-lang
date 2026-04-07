@@ -1,3 +1,3 @@
 #pragma once
 
-struct MayDouble test_question_double(void);
+double test_question_double(void);

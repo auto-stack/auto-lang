@@ -1,3 +1,3 @@
 #pragma once
 
-struct MayInt test_question_zero(void);
+int test_question_zero(void);

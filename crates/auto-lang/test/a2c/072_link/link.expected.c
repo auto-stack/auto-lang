@@ -1,14 +1,14 @@
 #include "link.h"
 
 
-bool is_first(struct Link m) {
+bool is_first(struct Connection m) {
     switch (m.tag) {
-    case LINK_CONNECTED:
+    case CONNECTION_CONNECTED:
         {
             return true;
         }
         break;
-    case LINK_DISCONNECTED:
+    case CONNECTION_DISCONNECTED:
         {
             return false;
         }
@@ -18,6 +18,6 @@ bool is_first(struct Link m) {
 }
 
 int main(void) {
-    struct Link s = {.tag = LINK_CONNECTED, .as.Connected = 0};
+    struct Connection s = {.tag = CONNECTION_CONNECTED, .as.Connected = 0};
     return is_first(s);
 }

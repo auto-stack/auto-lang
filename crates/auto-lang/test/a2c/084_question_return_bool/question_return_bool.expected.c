@@ -1,6 +1,6 @@
 #include "question_return_bool.h"
 
-struct MayBool test_question_return_bool(void) {
+bool test_question_return_bool(void) {
     return true;
 }
 

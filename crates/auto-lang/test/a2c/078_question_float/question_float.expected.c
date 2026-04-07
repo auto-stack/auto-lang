@@ -1,6 +1,6 @@
 #include "question_float.h"
 
-struct MayFloat test_question_float(void) {
+float test_question_float(void) {
     return 3.14;
 }
 

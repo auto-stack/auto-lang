@@ -1,6 +1,6 @@
 #include "question_return_int.h"
 
-struct MayInt test_question_return_int(void) {
+int test_question_return_int(void) {
     return 42;
 }
 

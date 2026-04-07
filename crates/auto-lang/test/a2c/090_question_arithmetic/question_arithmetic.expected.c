@@ -1,6 +1,6 @@
 #include "question_arithmetic.h"
 
-struct MayInt test_arithmetic(void) {
+int test_arithmetic(void) {
     return 10 + 32;
 }
 

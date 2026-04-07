@@ -1,6 +1,6 @@
 #include "question_comparison.h"
 
-struct MayBool test_comparison(void) {
+bool test_comparison(void) {
     return 42 > 10;
 }
 

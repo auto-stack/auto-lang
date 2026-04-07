@@ -2285,6 +2285,18 @@ impl CTrans {
             Type::CStruct(decl) => format!("{}", decl.name),
             Type::Char => "char".to_string(),
             Type::Void => "void".to_string(),
+            Type::StrSlice => "char*".to_string(),
+            Type::Option(inner) => {
+                // ?T — optional value. Represent as the inner type for now.
+                self.c_type_name(inner)
+            }
+            Type::Result(inner) => {
+                // !T — result type. Represent as the inner type for now.
+                self.c_type_name(inner)
+            }
+            Type::Linear(inner) => self.c_type_name(inner),
+            Type::Handle { .. } => "void*".to_string(),
+            Type::Reference(inner) => self.c_type_name(inner),
             Type::GenericInstance(inst) => {
                 // Generic instances: MyType<int, Heap> -> my_type_int_heap
                 let args: Vec<String> = inst.args.iter().map(|t| self.c_type_name(t)).collect();
@@ -2321,8 +2333,8 @@ impl CTrans {
                 format!("{} (*)({})", return_type_str, param_strs.join(", "))
             }
             _ => {
-                println!("Unsupported type for C transpiler: {}", ty);
-                panic!("Unsupported type for C transpiler: {}", ty);
+                // Fallback: return void* for unhandled types
+                "void*".to_string()
             }
         }
     }
@@ -2702,9 +2714,6 @@ impl CTrans {
                         sink.body.write(enum_const.as_bytes())?;
                         sink.body.write(b":\n")?;
                         self.indent();
-                        self.print_indent(&mut sink.body)?;
-                        sink.body.write(b"{\n")?;
-                        self.indent();
 
                         // Register the binding variable in local_var_types
                         // The binding variable (elem) should access: target.as.Tag
@@ -2731,30 +2740,18 @@ impl CTrans {
                             (target_name.clone(), tag_cover.tag.clone()),
                         );
 
-                        // Generate binding: <c_type> <elem> = <target>.as.<Tag>;
-                        if !matches!(binding_type, Type::Unknown) {
-                            let c_type = self.c_type_name(&binding_type);
-                            self.print_indent(&mut sink.body)?;
-                            write!(sink.body, "{} {} = {}.as.{};\n",
-                                c_type, tag_cover.elem, target_name, tag_cover.tag)?;
-                        } else {
-                            // Unknown type - still generate binding with int as fallback
-                            self.print_indent(&mut sink.body)?;
-                            write!(sink.body, "int {} = {}.as.{};\n",
-                                tag_cover.elem, target_name, tag_cover.tag)?;
-                        }
-
+                        // The uncover mapping (registered above) replaces ident references
+                        // with target.as.Tag, so no local binding variable declaration needed.
+                        // Just emit body + break directly.
                         self.print_indent(&mut sink.body)?;
                         self.body(body, sink, &return_type, "", "")?;
                         sink.body.write(b"\n")?;
                         self.print_with_indent(&mut sink.body, "break;\n")?;
                         self.dedent();
-                        self.print_indent(&mut sink.body)?;
-                        sink.body.write(b"}\n")?;
-                        self.dedent();
 
-                        // Remove binding from local_var_types after branch scope
+                        // Remove binding from local_var_types and local_var_uncovers after branch scope
                         self.local_var_types.remove(&tag_cover.elem);
+                        self.local_var_uncovers.remove(&tag_cover.elem);
                     } else {
                         // Regular EqBranch - non-cover pattern
                         sink.body.write(b"case ")?;

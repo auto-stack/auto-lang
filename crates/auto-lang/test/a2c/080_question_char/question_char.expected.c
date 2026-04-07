@@ -1,6 +1,6 @@
 #include "question_char.h"
 
-struct MayChar test_question_char(void) {
+char test_question_char(void) {
     return 'a';
 }
 

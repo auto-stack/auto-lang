@@ -66,12 +66,12 @@ char* unwrap_or(struct MayStr m, char* default) {
 
 int main(void) {
     struct MayStr x = {.tag = MAYSTR_VAL, .as.Val = "hello"};
-    bool check1 = is_some(x);
-    char* val1 = unwrap_or(x, "default");
+    unknown check1 = is_some(x);
+    unknown val1 = unwrap_or(x, "default");
 
     struct MayStr y = {.tag = MAYSTR_NIL, .as.Nil = 0};
-    bool check2 = is_nil(y);
-    char* val2 = unwrap_or(y, "fallback");
+    unknown check2 = is_nil(y);
+    unknown val2 = unwrap_or(y, "fallback");
 
     return val1;
 }

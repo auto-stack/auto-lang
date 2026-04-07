@@ -1,3 +1,3 @@
 #pragma once
 
-struct MayChar test_question_return_char(void);
+char test_question_return_char(void);

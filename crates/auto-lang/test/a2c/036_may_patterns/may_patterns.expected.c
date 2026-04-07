@@ -51,12 +51,12 @@ bool is_err(struct Result r) {
 
 int main(void) {
     struct Result r1 = {.tag = RESULT_OK, .as.Ok = 42};
-    char* msg1 = get_message(r1);
-    bool check1 = is_ok(r1);
+    unknown msg1 = get_message(r1);
+    unknown check1 = is_ok(r1);
 
     struct Result r2 = {.tag = RESULT_ERR, .as.Err = 1};
-    char* msg2 = get_message(r2);
-    bool check2 = is_err(r2);
+    unknown msg2 = get_message(r2);
+    unknown check2 = is_err(r2);
 
     return check1;
 }

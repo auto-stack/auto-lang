@@ -1,3 +1,3 @@
 #pragma once
 
-struct MayFloat test_question_return_float(void);
+float test_question_return_float(void);

@@ -1,14 +1,14 @@
 #include "question_syntax.h"
 
-struct MayInt test_question_int(void) {
+int test_question_int(void) {
     return 42;
 }
 
-struct MayStr test_question_str(void) {
+char* test_question_str(void) {
     return "hello";
 }
 
-struct MayBool test_question_bool(void) {
+bool test_question_bool(void) {
     return true;
 }
 

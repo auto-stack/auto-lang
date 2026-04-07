@@ -7327,6 +7327,16 @@ impl<'a> Parser<'a> {
         || self.is_kind(TokenKind::Star) // ptr types like `*int`
         || self.is_kind(TokenKind::At) // ref types like `@int`
         || self.is_kind(TokenKind::Fn) // function types like `fn(int)str` (Plan 060)
+        || self.is_keyword_as_type() // keywords that can serve as type names (e.g., Link)
+    }
+
+    /// Check if the current token is a keyword that can also serve as a type name.
+    /// Some keywords like `Link`, `Type` are PascalCase identifiers that users
+    /// may use as enum/type names.
+    fn is_keyword_as_type(&self) -> bool {
+        matches!(self.cur.kind,
+            TokenKind::Link | TokenKind::Type
+        )
     }
 
     pub fn parse_type(&mut self) -> AutoResult<Type> {
@@ -7365,6 +7375,11 @@ impl<'a> Parser<'a> {
             TokenKind::Star => self.parse_ptr_type(),
             TokenKind::LSquare => self.parse_array_type(),
             TokenKind::Fn => self.parse_fn_type(), // Plan 060: function types like fn(int)str
+            // Allow keyword tokens that can also serve as type/ident names (e.g., Link, Path, Type, Color)
+            _ if self.cur.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) => {
+                // Keywords that look like type names (PascalCase) should be treated as identifiers
+                self.parse_ident_or_generic_type()
+            }
             _ => {
                 let message = format!("Expected type, got {}", self.cur.text);
                 let span = pos_to_span(self.cur.pos);

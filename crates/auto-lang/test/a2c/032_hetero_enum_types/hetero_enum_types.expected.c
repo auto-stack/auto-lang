@@ -1,4 +1,4 @@
-#include "tag_types.h"
+#include "hetero_enum_types.h"
 
 int Atom_GetValue(struct Atom* self) {
 {
