@@ -507,6 +507,7 @@ fn test_last_block_or_object() {
 }
 
 #[test]
+#[ignore = "Grid expression removed — Matrix data representation needs redesign"]
 fn test_grid() {
     let code = r#"var g = grid(a:"first", b:"second", c:"third") {
             [1, 2, 3]
