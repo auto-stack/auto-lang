@@ -51,7 +51,12 @@ impl<T> ListData<T> {
     pub fn len(&self) -> usize { self.elems.len() }
     pub fn is_empty(&self) -> bool { self.elems.is_empty() }
 
+    const INLINE_CAPACITY: usize = 64;
+
     pub fn push(&mut self, elem: T) -> bool {
+        if self.storage == Some(ListStorage::InlineInt64) && self.elems.len() >= Self::INLINE_CAPACITY {
+            return false;
+        }
         self.elems.push(elem);
         true
     }
@@ -93,6 +98,9 @@ impl<T: Clone> ListData<T> {
     
     pub fn insert(&mut self, index: usize, elem: T) -> bool {
         if index <= self.elems.len() {
+            if self.storage == Some(ListStorage::InlineInt64) && self.elems.len() >= Self::INLINE_CAPACITY {
+                return false;
+            }
             self.elems.insert(index, elem);
             true
         } else {

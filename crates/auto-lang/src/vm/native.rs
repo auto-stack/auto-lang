@@ -149,6 +149,7 @@ impl NativeInterface {
         self.register(NATIVE_LIST_INSERT, shim_list_insert);
         self.register(NATIVE_LIST_REMOVE, shim_list_remove);
         self.register(NATIVE_LIST_DROP, shim_list_drop);
+        self.register(NATIVE_LIST_RESERVE, shim_list_reserve);
 
         // Iterator functions
         self.register(NATIVE_LIST_ITER, shim_list_iter);
@@ -274,6 +275,7 @@ pub const NATIVE_LIST_SET: u16 = 107;
 pub const NATIVE_LIST_INSERT: u16 = 108;
 pub const NATIVE_LIST_REMOVE: u16 = 109;
 pub const NATIVE_LIST_DROP: u16 = 110;
+pub const NATIVE_LIST_RESERVE: u16 = 118;
 
 // === Iterator Native Functions (111+) ===
 pub const NATIVE_LIST_ITER: u16 = 111;
@@ -702,6 +704,25 @@ pub fn shim_list_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     vm.remove_heap_object(list_id);
 
     // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// List.reserve(list_id, additional) -> 0
+/// Pre-allocate capacity for additional elements
+pub fn shim_list_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let additional = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.reserve(additional);
+        }
+    }
+
     task.ram.push_i32(0);
     Ok(())
 }

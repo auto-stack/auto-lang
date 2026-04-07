@@ -119,19 +119,19 @@ lazy_static::lazy_static! {
 pub fn register_builtin_natives() {
     let mut registry = BIGVM_NATIVES.lock().unwrap();
 
-    // List functions
-    registry.register("List.new");
-    registry.register("List.push");
-    registry.register("List.pop");
-    registry.register("List.len");
-    registry.register("List.is_empty");
-    registry.register("List.clear");
-    registry.register("List.get");
-    registry.register("List.set");
-    registry.register("List.insert");
-    registry.register("List.remove");
-    registry.register("List.drop");
-    registry.register("List.reserve");
+    // List functions (IDs 100-110 aligned with NATIVE_LIST_* in native.rs)
+    registry.register_with_id("List.new", 100);
+    registry.register_with_id("List.push", 101);
+    registry.register_with_id("List.pop", 102);
+    registry.register_with_id("List.len", 103);
+    registry.register_with_id("List.is_empty", 104);
+    registry.register_with_id("List.clear", 105);
+    registry.register_with_id("List.get", 106);
+    registry.register_with_id("List.set", 107);
+    registry.register_with_id("List.insert", 108);
+    registry.register_with_id("List.remove", 109);
+    registry.register_with_id("List.drop", 110);
+    registry.register_with_id("List.reserve", 118);  // No hardcoded shim, but reserved ID
     registry.register_with_id("List.capacity", 205);
 
     // Memory allocation functions (Plan 052 Phase 2)
@@ -161,26 +161,26 @@ pub fn register_builtin_natives() {
     registry.register_with_id("InlineInt64.try_grow", 201);
     registry.register_with_id("InlineInt64.drop", 202);
 
-    // Iterator functions
-    registry.register("List.iter");
-    registry.register("Iterator.next");
-    registry.register("Iterator.map");
-    registry.register("Iterator.filter");
-    registry.register("Iterator.collect");
-    registry.register("Iterator.reduce");
-    registry.register("Iterator.find");
+    // Iterator functions (IDs 111-117 aligned with NATIVE_LIST_ITER + NATIVE_ITERATOR_*)
+    registry.register_with_id("List.iter", 111);
+    registry.register_with_id("Iterator.next", 112);
+    registry.register_with_id("Iterator.map", 113);
+    registry.register_with_id("Iterator.filter", 114);
+    registry.register_with_id("Iterator.collect", 115);
+    registry.register_with_id("Iterator.reduce", 116);
+    registry.register_with_id("Iterator.find", 117);
 
-    // HashMap functions
-    registry.register("HashMap.new");
-    registry.register("HashMap.insert_str");
-    registry.register("HashMap.insert_int");
-    registry.register("HashMap.get_str");
-    registry.register("HashMap.get_int");
-    registry.register("HashMap.contains");
-    registry.register("HashMap.remove");
-    registry.register("HashMap.size");
-    registry.register("HashMap.clear");
-    registry.register("HashMap.drop");
+    // HashMap functions (IDs 119-128 aligned with NATIVE_HASHMAP_* in native.rs)
+    registry.register_with_id("HashMap.new", 119);
+    registry.register_with_id("HashMap.insert_str", 120);
+    registry.register_with_id("HashMap.insert_int", 121);
+    registry.register_with_id("HashMap.get_str", 122);
+    registry.register_with_id("HashMap.get_int", 123);
+    registry.register_with_id("HashMap.contains", 124);
+    registry.register_with_id("HashMap.remove", 125);
+    registry.register_with_id("HashMap.size", 126);
+    registry.register_with_id("HashMap.clear", 127);
+    registry.register_with_id("HashMap.drop", 128);
 
     // HashSet functions (129-135)
     registry.register_with_id("HashSet.new", 129);

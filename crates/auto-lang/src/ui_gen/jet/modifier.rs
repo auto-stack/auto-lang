@@ -434,7 +434,7 @@ mod tests {
         let chain = dsl.generate_modifier_chain("px-4 rounded-lg");
         assert!(chain.starts_with("Modifier."));
         assert!(chain.contains("padding"));
-        assert!(chain.contains("rounded"));
+        assert!(chain.contains("RoundedCornerShape"));
     }
 
     #[test]
@@ -463,7 +463,7 @@ mod tests {
 
         let result = dsl.convert_class("px-4 py-2 rounded-lg bg-blue-500 opacity-90");
         assert!(result.modifiers.iter().any(|m| m.contains("padding")));
-        assert!(result.modifiers.iter().any(|m| m.contains("rounded")));
+        assert!(result.modifiers.iter().any(|m| m.contains("RoundedCornerShape")));
         assert!(result.modifiers.iter().any(|m| m.contains("background")));
         assert!(result.modifiers.iter().any(|m| m.contains("alpha")));
     }

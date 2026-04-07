@@ -696,6 +696,8 @@ impl AutoVM {
                     task.ip += 2;
                     // Tag string indices as negative: -(index+1)
                     task.ram.push_i32(-(str_idx as i32) - 1);
+                    // Reset result type since this produces a string, not a number
+                    task.last_result_type = ResultType::default();
                 }
                 // Plan 073: Node support
                 OpCode::CREATE_NODE => {

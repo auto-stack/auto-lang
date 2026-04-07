@@ -744,7 +744,27 @@ impl Codegen {
                                 let ret_type = self.infer_expr_type(&closure.body);
                                 Type::Fn(param_types, Box::new(ret_type))
                             }
-                            _ => store.ty.clone(),
+                            // Plan 158: Infer type from function call
+                                Expr::Call(call) => {
+                                    if let Expr::Ident(fn_name) = call.name.as_ref() {
+                                        self.fn_return_types.get(fn_name.as_ref())
+                                            .cloned()
+                                            .unwrap_or(Type::Unknown)
+                                    } else if let Expr::Dot(obj, method) = call.name.as_ref() {
+                                        // Instance method: try to infer from var_types + method return type
+                                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                                            let full_name = format!("{}.{}", obj_name, method);
+                                            self.fn_return_types.get(&full_name)
+                                                .cloned()
+                                                .unwrap_or(Type::Unknown)
+                                        } else {
+                                            Type::Unknown
+                                        }
+                                    } else {
+                                        Type::Unknown
+                                    }
+                                }
+                                _ => store.ty.clone(),
                         };
                         self.var_types.insert(name_str.clone(), inferred_type);
                     }
@@ -2571,6 +2591,7 @@ impl Codegen {
                     // Emit LOAD_STR instruction
                     self.emit(OpCode::LOAD_STR);
                     self.code.extend_from_slice(&str_idx.to_le_bytes());
+                    self.last_expr_type = ObjectType::String;
                     vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
                         obj, type_name
                     );

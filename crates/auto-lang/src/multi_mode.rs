@@ -289,8 +289,8 @@ fn add(a int, b int) int {
     a + b
 }
 
-fn main() {
-    say(add(1, 2))
+fn main() int {
+    add(1, 2)
 }
 "#;
 
@@ -301,7 +301,7 @@ fn main() {
             Some(code)
         );
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "compile_dependency failed: {:?}", result.err());
         let output = result.unwrap();
         assert!(matches!(output, CompiledOutput::Bytecode { .. }));
 

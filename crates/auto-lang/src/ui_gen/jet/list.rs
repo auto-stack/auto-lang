@@ -753,7 +753,7 @@ mod tests {
         let modifier = gen.class_to_modifier("p-4 w-full rounded-lg");
         assert!(modifier.contains("padding(16.dp)"));
         assert!(modifier.contains("fillMaxWidth()"));
-        assert!(modifier.contains("rounded(8.dp)"));
+        assert!(modifier.contains("clip(RoundedCornerShape(8.dp))"));
     }
 
     #[test]

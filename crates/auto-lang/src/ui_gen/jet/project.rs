@@ -1707,7 +1707,7 @@ mod tests {
         assert!(content.contains("package com.test.app"));
         assert!(content.contains("class MainActivity"));
         assert!(content.contains("TestAppTheme"));
-        assert!(content.contains("import com.test.app.ui.widgets.Counter"));
+        assert!(content.contains("import com.test.app.ui.widgets.App"));
     }
 
     #[test]

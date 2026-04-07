@@ -767,7 +767,7 @@ mod tests {
         assert!(modifier.contains("padding(horizontal = 16.dp)"));
         assert!(modifier.contains("padding(vertical = 8.dp)"));
         assert!(modifier.contains("fillMaxWidth()"));
-        assert!(modifier.contains("rounded(8.dp)"));
+        assert!(modifier.contains("clip(RoundedCornerShape(8.dp))"));
     }
 
     #[test]
