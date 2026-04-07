@@ -770,8 +770,34 @@ impl Codegen {
                     }
                 }
 
-                // Compile the RHS expression (pushes result on stack)
-                self.compile_expr(&store.expr)?;
+                // Plan 052: Handle runtime array allocation (var arr [N]int)
+                // If the type is RuntimeArray or static Array AND there's no initializer expression,
+                // allocate the array. If there IS an initializer, compile it normally (CREATE_ARRAY).
+                if let Type::RuntimeArray(ref rta) = store.ty {
+                    if matches!(&store.expr, Expr::Nil | Expr::Int(0)) {
+                        // No initializer - allocate zeroed array
+                        self.compile_expr(&rta.size_expr)?;
+                        self.emit(OpCode::CALL_NAT);
+                        self.code.extend_from_slice(&190u16.to_le_bytes());
+                    } else {
+                        // Has initializer - compile the expression
+                        self.compile_expr(&store.expr)?;
+                    }
+                } else if let Type::Array(ref arr) = store.ty {
+                    if matches!(&store.expr, Expr::Nil | Expr::Int(0)) {
+                        // No initializer - allocate zeroed array of static size
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(arr.len as i32);
+                        self.emit(OpCode::CALL_NAT);
+                        self.code.extend_from_slice(&190u16.to_le_bytes());
+                    } else {
+                        // Has initializer (e.g., [1, 2, 3]) - compile the expression
+                        self.compile_expr(&store.expr)?;
+                    }
+                } else {
+                    // Compile the RHS expression (pushes result on stack)
+                    self.compile_expr(&store.expr)?;
+                }
 
                 // Plan 080: Track variable type for instance method support
                 // If the expression is a call like List.new(), track that the variable has type List
@@ -2979,6 +3005,9 @@ impl Codegen {
 
                         // Quick fix: Accept the current order and change SET_ELEM to expect [value, array, index]
                         self.emit(OpCode::SET_ELEM); // Expects: value, array_id, index
+                        // SET_ELEM doesn't push a return value - mark as void to prevent
+                        // Stmt::Expr from emitting a POP that would corrupt the stack
+                        self.last_expr_type = ObjectType::Void;
                     } else if let Expr::Dot(obj, field) = lhs.as_ref() {
                         // Plan 075: Field assignment: obj.field = value
                         // Plan 087 Phase 2: Support generic instance field assignment

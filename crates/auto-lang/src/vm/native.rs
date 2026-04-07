@@ -2494,18 +2494,24 @@ pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 // ============================================================================
 
 /// alloc_array(size) -> list_id
-/// Allocate a new list of the given size initialized to 0.
+/// Allocate a new array of the given size initialized to 0.
 /// Stack: [size] -> list_id
+/// Uses the same arrays registry as CREATE_ARRAY for compatibility with SET_ELEM/GET_ELEM.
 pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::types::ListData;
+    use std::sync::atomic::Ordering;
 
-    let size = task.ram.pop_i32() as usize;
-    let mut list: ListData<i32> = ListData::new();
-    for _ in 0..size {
-        list.push(0);
+    let size_raw = task.ram.pop_i32();
+    if size_raw < 0 {
+        return Err(VMError::RuntimeError(format!(
+            "alloc_array: invalid size {} (must be >= 0)", size_raw
+        )));
     }
-    let id = vm.insert_heap_object(list);
-    task.ram.push_i32(id as i32);
+    let size = size_raw as usize;
+    let elems: Vec<auto_val::Value> = vec![auto_val::Value::Int(0); size];
+
+    let array_id = vm.array_id_gen.fetch_add(1, Ordering::SeqCst);
+    vm.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
+    task.ram.push_i32(array_id as i32);
     Ok(())
 }
 

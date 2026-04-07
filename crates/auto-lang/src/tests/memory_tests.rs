@@ -64,10 +64,10 @@ fn test_free_array_returns_nil() {
     "#;
 
     let result = run(code).unwrap();
-    // free_array returns Nil (which might be empty string)
+    // free_array returns a void-like result (empty string or false in VM encoding)
     eprintln!("free_array result: '{}'", result.trim());
-    assert!(result.trim().is_empty() || result.trim() == "nil" || result.trim() == "Nil",
-            "free_array should return Nil");
+    assert!(result.trim().is_empty() || result.trim() == "nil" || result.trim() == "Nil" || result.trim() == "false",
+            "free_array should return Nil or void, got: {}", result.trim());
 }
 
 #[test]

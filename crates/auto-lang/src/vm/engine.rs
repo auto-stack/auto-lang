@@ -651,9 +651,6 @@ impl AutoVM {
                 OpCode::CONST_I32 => {
                     let val = self.flash.read_i32(task.ip);
                     task.ip += 4;
-                    vm_debug!("DEBUG: CONST_I32: val={}, sp before push={}",
-                        val, task.ram.sp
-                    );
                     task.ram.push_i32(val);
                     vm_debug!("DEBUG: CONST_I32: sp after push={}, wrote to address {}",
                         task.ram.sp,

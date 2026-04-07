@@ -12,12 +12,15 @@ use std::collections::HashMap as StdHashMap;
 pub struct VmInterpreter {
     /// Function exports (name -> address)
     exports: StdHashMap<String, u32>,
+    /// Global variables (name -> value)
+    globals: StdHashMap<String, Value>,
 }
 
 impl VmInterpreter {
     pub fn new() -> Self {
         Self {
             exports: StdHashMap::new(),
+            globals: StdHashMap::new(),
         }
     }
 
@@ -143,18 +146,19 @@ impl VmInterpreter {
     }
 
     /// Set a global variable
-    pub fn set_global(&mut self, _name: &str, _value: Value) {
-        // TODO: Implement global variable setting
+    pub fn set_global(&mut self, name: &str, value: Value) {
+        self.globals.insert(name.to_string(), value);
     }
 
     /// Get a global variable
-    pub fn get_global(&self, _name: &str) -> Option<Value> {
-        None
+    pub fn get_global(&self, name: &str) -> Option<Value> {
+        self.globals.get(name).cloned()
     }
 
     /// Reset interpreter state
     pub fn reset(&mut self) {
         self.exports.clear();
+        self.globals.clear();
     }
 
     /// Check if a function exists

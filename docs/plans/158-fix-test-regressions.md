@@ -491,32 +491,65 @@ Phase 1 (Easy Wins) → Phase 2 (Type System) → Phase 3 (VM Features) → Phas
 - jet/ui_gen: 186 passed / 0 failed
 - infer: 16 passed / 0 failed
 - dstr/String: 21 passed / 0 failed
+- mem_tests: 10 passed / 0 failed ✅ (fixed)
 - storage (non-crash): 73 passed
-- Total (lib): 2485 passed / 33 failed / 76 ignored
+- Total (lib): 1450 passed / 8 failed / 77 ignored
 
-### Remaining Failures (33)
+### ✅ 已修复: 类别 1 — 运行时数组 ID 无效 (9→0 failures)
 
-#### VM Runtime (11 failures)
-- `test_atom_query` — UndefinedVariable "root" (scope issue)
-- `test_access_fields_in_method` — UndefinedVariable "status" (scope issue)
-- `test_borrow_mut_basic` — assertion "hello" not found (output mismatch)
-- `test_grid` — Grid expression not implemented in codegen
-- `test_last_block_or_object` — wrong output `{a: 1, b: 2}` → `1000000`
-- `test_atom_reader_multiline` — InvalidType error
-- `test_nodes` — Parser error: VBar token not supported
-- `test_node_arg_ident` — wrong output "lib Xiaoming {}"
-- `test_node_store` — UndefinedVariable "x" (scope issue)
-- `test_str_slice_type_lookup` — result not ok
-- `test_node_newline` — config parse error
+**根因**: 两个 bug:
+1. `store_stmt` 中的数组分配代码只在 `store.expr` 为 `Expr::Int(0)` 时触发，但解析器对 `var arr [5]int` 生成的默认表达式是 `Expr::Nil`。修复: 匹配 `Expr::Nil | Expr::Int(0)`。
+2. `Expr::Bina` 中的数组元素赋值 `arr[0] = 10` 使用 `SET_ELEM`，它不推送返回值到栈上。但 `Stmt::Expr` 看到 `last_expr_type != Void`，会发出 `POP` 指令，这会弹出保留的栈空间（local variable slots），导致后续操作覆盖局部变量。修复: 在 `SET_ELEM` 后设置 `last_expr_type = ObjectType::Void`。
 
-#### Memory Tests (9 failures)
-- `test_runtime_array_*` — Array allocation/expression issues (some cause crashes)
+**修复文件**:
+- `crates/auto-lang/src/vm/codegen.rs` — store_stmt 数组分配 + SET_ELEM void 标记
+- `crates/auto-lang/src/vm/native.rs` — `shim_alloc_array` 使用 `vm.arrays` 注册表
+- `crates/auto-lang/src/vm/engine.rs` — 清除调试语句
+- `crates/auto-lang/src/parser.rs` — 清除调试 eprintln
 
-#### Ownership Tests (3 failures)
-- `test_hold_with_mut` / `test_hold_with_view` / `test_nested_hold`
+### Remaining Failures (18) — 按根因分类
 
-#### Config/Unified API (4 failures)
-- `test_config_mode_with_*` / `test_run_with_mode_config`
+#### 类别 A: Undefined variable — 变量作用域问题 (6 failures)
+**根因**: 变量在某个上下文中定义，但在另一个上下文中不可见（config mode、方法内字段访问、跨执行）
+- `unified_api_tests::test_config_mode_with_expressions` — `Undefined variable: port`
+- `unified_api_tests::test_config_mode_with_nested_fields` — `Undefined variable: server`
+- `unified_api_tests::test_run_with_mode_config` — `Undefined variable: server`
+- `vm_tests::test_access_fields_in_method` — `Undefined variable: status`（方法内访问字段）
+- `vm_tests::test_atom_query` — `UndefinedVariable { name: "root" }`（atom 中变量未绑定）
+- `vm_tests::test_node_store` — `Undefined variable: x`（store 后变量不可见）
 
-#### Other (6 failures)
-- `test_atom_basics`, various config/codegen tests
+#### 类别 B: 表达式求值返回值错误 (3 failures)
+**根因**: VM 求值返回了错误的类型/值
+- `vm_tests::test_last_block_or_object` — 期望 `{a: 1, b: 2}`，实际 `1000000`（object→int）
+- `vm_tests::test_node_arg_ident` — 期望 `"lib Xiaoming {}"`，实际 `"0"`（node→int）
+- `field_access_tests::test_field_access_bool` — 期望 bool，实际 int `1`
+
+#### 类别 C: 解析/求值意外失败 (4 failures)
+**根因**: 合法语法被 parser 或 evaluator 拒绝
+- `vm_tests::test_node_newline` — 带 newline 的 node 解析失败
+- `vm_tests::test_atom_reader_multiline` — 多行 atom 解析失败
+- `vm_tests::test_str_slice_type_lookup` — str_slice 类型查找失败
+- `vm_tests::test_borrow_mut_basic` — borrow_mut 结果不包含 "hello"
+- `vm_tests::test_nodes` — Parser 不支持 `|` (VBar) 语法
+
+#### 类别 D: 未实现 — 命名参数 (1 failure)
+**根因**: `codegen.rs:3813` 有显式 `todo!()` — AutoVM 不支持命名参数
+- `ownership_tests::test_hold_with_view` — `not implemented: Named arguments not supported in AutoVM yet`
+
+#### 类别 E: Atom 类型错误 (1 failure)
+**根因**: atom 求值返回 Nil/Int 而非 Node，6 个子测试全部失败
+- `atom_tests::test_atom_basics` — 空 atom 返回 Nil（期望 Node），单 pair atom 返回 Int(1000000)（期望 Node）
+
+#### 类别 F: hold 所有权未实现 (2 failures)
+**根因**: `hold mut` 和嵌套 `hold` 表达式在 VM 中未实现
+- `ownership_tests::test_hold_with_mut` — `Hold with mut should succeed`（result was Err）
+- `ownership_tests::test_nested_hold` — `Nested hold expressions should succeed`（result was Err）
+
+#### 类别 G: memory_tests 预存在问题 (2 failures)
+**根因**: `memory_tests` 使用 `alloc_array()`/`free_array()` 函数调用 API，非数组类型注解
+- `memory_tests::test_alloc_invalid_size` — 负大小导致 panic（应返回错误）
+- `memory_tests::test_free_array_returns_nil` — 返回 "false" 而非 "nil"
+
+### 另外: storage crash (约 5 个测试)
+- `storage_tests::test_heap_memory_allocation` 等 — 触发 `opcode.rs:212` panic（invalid enum value 0x65）
+- 进程直接 abort，非普通测试失败

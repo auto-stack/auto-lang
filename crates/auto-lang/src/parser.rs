@@ -1598,7 +1598,6 @@ impl<'a> Parser<'a> {
 
             // Special case: .! is the bang operator for eager collection
             // When we see Op::Dot, check if the next token is ! and treat it as postfix Op::Not
-            eprintln!("[DEBUG-PEEK-DOT] op={:?}, cur.kind={:?}, cur.text={}", op, self.cur.kind, self.cur.text);
             if matches!(op, Op::Dot) {
                 // Try to peek at next token - if it's Not, convert this to a postfix Not operation
                 // We need to be very careful here to not corrupt the token stream
@@ -1688,13 +1687,7 @@ impl<'a> Parser<'a> {
             if power.l < min_power {
                 break;
             }
-            if matches!(op, Op::Dot) || matches!(self.cur.kind, TokenKind::ErrKW) {
-                eprintln!("[DEBUG-OP] op={:?}, cur_before_next.kind={:?}, cur_before_next.text={}", op, self.cur.kind, self.cur.text);
-            }
             self.next(); // skip binary op
-            if matches!(op, Op::Dot) || matches!(self.cur.kind, TokenKind::ErrKW) {
-                eprintln!("[DEBUG-OP-AFTER] op={:?}, cur.kind={:?}, cur.text={}", op, self.cur.kind, self.cur.text);
-            }
                          // Check for whether assignment is allowed
             match op {
                 Op::Asn => {
@@ -1739,9 +1732,6 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     // Regular infix operators need rhs
-                    if matches!(op, Op::Dot) {
-                        eprintln!("[DEBUG-DOT-ENTRY] op=Dot, cur.kind={:?}, cur.text={}", self.cur.kind, self.cur.text);
-                    }
                     // Plan 124: Special case for Dot operator - check for .await before parsing rhs
                     if matches!(op, Op::Dot) && self.is_kind(TokenKind::Await) {
                         // .await suffix - consume the 'await' token
@@ -1764,7 +1754,6 @@ impl<'a> Parser<'a> {
                             TokenKind::ErrKW | TokenKind::OkKW | TokenKind::SomeKW | TokenKind::NoneKW
                         )
                     {
-                        eprintln!("[DEBUG-DOT-KW] TRIGGERED! cur.kind={:?}, cur.text={}", self.cur.kind, self.cur.text);
                         let variant_name: AutoStr = self.cur.text.clone().into();
                         self.next(); // consume the keyword token
                         // Check if followed by parentheses (constructor call)

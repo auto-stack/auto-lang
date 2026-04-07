@@ -390,6 +390,10 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
                     return Ok(format!("{}", result));
                 }
             }
+            ObjectType::Bool => {
+                let result = task.ram.pop_i32();
+                return Ok(if result != 0 { "true".to_string() } else { "false".to_string() });
+            }
             ObjectType::Void => {
                 // Void functions return nothing - pop the dummy value and return empty string
                 let _ = task.ram.pop_i32();
