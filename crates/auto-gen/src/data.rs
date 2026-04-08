@@ -38,6 +38,8 @@ impl DataLoader {
     ///
     /// # Example
     /// ```
+    /// use auto_gen::DataLoader;
+    /// let mut loader = DataLoader::new();
     /// loader.add_lib_path("./data/libs");
     /// loader.add_lib_path("/usr/local/my_modules");
     /// ```

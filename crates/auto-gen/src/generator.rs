@@ -234,6 +234,8 @@ impl CodeGeneratorBuilder {
     ///
     /// # Example
     /// ```
+    /// use auto_gen::CodeGenerator;
+    /// use std::path::PathBuf;
     /// let builder = CodeGenerator::builder()
     ///     .lib_paths(vec![
     ///         PathBuf::from("./generator/utils"),
@@ -249,6 +251,7 @@ impl CodeGeneratorBuilder {
     ///
     /// # Example
     /// ```
+    /// use auto_gen::CodeGenerator;
     /// let builder = CodeGenerator::builder()
     ///     .add_lib_path("./generator/utils")
     ///     .add_lib_path("/usr/local/my_modules");
@@ -287,6 +290,7 @@ impl CodeGeneratorBuilder {
     ///
     /// # Example
     /// ```
+    /// use auto_gen::{CodeGenerator, DataSource, GeneratorConfig};
     /// let spec = CodeGenerator::builder()
     ///     .data_source(DataSource::AutoCode("...".to_string()))
     ///     .add_template("template.at", "output.txt")
@@ -295,7 +299,7 @@ impl CodeGeneratorBuilder {
     ///     .unwrap();
     ///
     /// let mut generator = CodeGenerator::new(GeneratorConfig::default());
-    /// generator.generate(&spec)?;
+    /// let _ = generator.generate(&spec);
     /// ```
     pub fn create_spec(self) -> GenResult<GenerationSpec> {
         let data_source = self.data_source.ok_or_else(|| {

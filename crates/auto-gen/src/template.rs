@@ -42,6 +42,8 @@ impl TemplateEngine {
     ///
     /// # Example
     /// ```
+    /// use auto_gen::TemplateEngine;
+    /// let mut engine = TemplateEngine::new();
     /// engine.add_lib_path("./templates/common");
     /// engine.add_lib_path("/usr/local/my_modules");
     /// ```
