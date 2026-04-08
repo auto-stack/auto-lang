@@ -2769,17 +2769,15 @@ mod tests {
 
     #[test]
     fn test_theme_file_generation() {
-        use crate::ui_gen::jet::project::ThemeColors;
-
         let gen = JetGenerator::new();
         let files = gen.generate_project_with_theme("ThemeTest", "#9C27B0", "#E91E63");
 
-        // Find Color.kt
-        let color_kt = files.values().find(|v| v.contains("Purple40"));
-        assert!(color_kt.is_some());
+        // Find Color.kt by looking for the file that contains Color(0x definitions
+        let color_kt = files.iter().find(|(path, _)| path.contains("Color.kt"));
+        assert!(color_kt.is_some(), "Color.kt file not found in generated files");
 
-        let color_content = color_kt.unwrap();
-        assert!(color_content.contains("Color(0x"));
+        let color_content = color_kt.unwrap().1;
+        assert!(color_content.contains("Color(0x"), "Missing Color(0x in:\n{}", color_content);
         assert!(color_content.contains("import androidx.compose.ui.graphics.Color"));
     }
 

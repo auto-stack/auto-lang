@@ -1240,6 +1240,13 @@ val Purple40 = Color(0x{primary_40})
 val PurpleGrey40 = Color(0x{secondary_40})
 val Pink40 = Color(0x{tertiary_40})
 "#,
+            package = package,
+            primary_80 = primary_80,
+            secondary_80 = secondary_80,
+            tertiary_80 = tertiary_80,
+            primary_40 = primary_40,
+            secondary_40 = secondary_40,
+            tertiary_40 = tertiary_40,
         );
         self.add_file(
             &format!("app/src/main/java/{}/ui/theme/Color.kt", self.config.package_path()),

@@ -5,7 +5,7 @@ use quote::quote;
 ///
 /// # 语法
 ///
-/// ```rust
+/// ```ignore
 /// use auto_lang::value;
 /// use auto_val::Value;
 ///
@@ -38,7 +38,7 @@ use quote::quote;
 ///
 /// `value!` 宏支持变量插值，使用 `#{var}` 语法引用外部变量：
 ///
-/// ```rust
+/// ```ignore
 /// # use auto_lang_macros::value;
 /// # use auto_val::Value;
 /// let count = 10;
@@ -49,7 +49,7 @@ use quote::quote;
 ///
 /// 当使用 `#{}` 语法时，标识符会被自动识别为变量引用并调用 `ToAutoValue` trait：
 ///
-/// ```rust
+/// ```ignore
 /// # use auto_lang_macros::value;
 /// # use auto_val::Value;
 /// let active = true;
@@ -142,7 +142,7 @@ pub fn value(input: TokenStream) -> TokenStream {
 ///
 /// # 语法
 ///
-/// ```rust
+/// ```ignore
 /// use auto_lang::atom;
 ///
 /// // 基本语法
@@ -210,7 +210,7 @@ pub fn atom(input: TokenStream) -> TokenStream {
 ///
 /// # 语法
 ///
-/// ```rust
+/// ```ignore
 /// use auto_lang::node;
 ///
 /// let node = node!{

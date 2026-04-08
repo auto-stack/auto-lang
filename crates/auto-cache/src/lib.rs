@@ -278,6 +278,9 @@ impl AutoCache {
 
     /// Get statistics about the cache
     pub fn get_statistics(&self) -> CacheStatistics {
+        // NOTE: All queries must be done within a single lock scope.
+        // Do NOT call self.current_size() or self.calculate_hit_rate() here
+        // because they also acquire self.db.lock(), and Rust's Mutex is non-reentrant.
         let conn = self.db.lock().unwrap();
 
         let count: u64 = conn.query_row(
@@ -286,9 +289,35 @@ impl AutoCache {
             |row| row.get(0)
         ).unwrap_or(0);
 
-        let size_bytes = self.current_size();
-        let hit_rate = self.calculate_hit_rate();
+        let size_bytes: u64 = conn.query_row(
+            "SELECT COALESCE(SUM(file_size), 0) FROM artifacts",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
 
+        let total_accesses: u64 = conn.query_row(
+            "SELECT COALESCE(SUM(access_count), 0) FROM artifacts",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
+
+        let hit_rate = if total_accesses == 0 {
+            0.0
+        } else {
+            let seven_days_ago = chrono::Utc::now().timestamp() as u64 - (7 * 24 * 60 * 60);
+            let recent_accesses: u64 = conn.query_row(
+                "SELECT COALESCE(SUM(access_count), 0) FROM artifacts WHERE last_used_at > ?1",
+                [&seven_days_ago as &dyn rusqlite::ToSql],
+                |row| row.get(0)
+            ).unwrap_or(0);
+            if recent_accesses == 0 {
+                0.0
+            } else {
+                (recent_accesses as f64) / (total_accesses as f64)
+            }
+        };
+
+        // Lock is dropped here when conn goes out of scope
         CacheStatistics {
             count,
             size_bytes,
@@ -296,42 +325,6 @@ impl AutoCache {
             max_size_gb: self.max_size_gb,
             hit_rate,
         }
-    }
-
-    /// Calculate cache hit rate (last 7 days)
-    fn calculate_hit_rate(&self) -> f64 {
-        // Calculate hit rate from access_count and total accesses
-        // This is an approximation based on access patterns
-        let conn = self.db.lock().unwrap();
-
-        // Get total accesses (sum of all access_count)
-        let total_accesses: u64 = conn.query_row(
-            "SELECT COALESCE(SUM(access_count), 0) FROM artifacts",
-            [],
-            |row| row.get(0)
-        ).unwrap_or(0);
-
-        if total_accesses == 0 {
-            return 0.0;
-        }
-
-        // Estimate hit rate based on recency and access frequency
-        // More recent and frequent accesses indicate higher hit rate
-        let seven_days_ago = chrono::Utc::now().timestamp() as u64 - (7 * 24 * 60 * 60);
-
-        let recent_accesses: u64 = conn.query_row(
-            "SELECT COALESCE(SUM(access_count), 0) FROM artifacts WHERE last_used_at > ?1",
-            [&seven_days_ago as &dyn rusqlite::ToSql],
-            |row| row.get(0)
-        ).unwrap_or(0);
-
-        if recent_accesses == 0 {
-            return 0.0;
-        }
-
-        // Hit rate is the ratio of recent accesses to total accesses
-        // This is a simplified metric - a real implementation would track actual hits/misses
-        (recent_accesses as f64) / (total_accesses as f64)
     }
 
     /// Check if garbage collection is needed

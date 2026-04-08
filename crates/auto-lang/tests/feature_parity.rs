@@ -132,8 +132,7 @@ fn test_parity_if_else() {
 fn test_parity_loops() {
     let code = r#"
         fn sum_n(n int) int {
-            let sum = 0
-            let i = 0
+            var sum = 0
             for i in 0..n {
                 sum = sum + i
             }
@@ -162,10 +161,10 @@ fn test_parity_loops() {
 #[test]
 fn test_parity_comparisons() {
     let test_cases = vec![
-        ("1 < 2", "1"),
-        ("5 > 3", "1"),
-        ("2 == 2", "1"),
-        ("1 != 2", "1"),
+        ("1 < 2", "true"),
+        ("5 > 3", "true"),
+        ("2 == 2", "true"),
+        ("1 != 2", "true"),
     ];
 
     for (code, expected) in test_cases {

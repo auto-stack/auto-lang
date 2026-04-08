@@ -11,40 +11,57 @@ use auto_lang::ast::{ModulePath, PathPrefix, Stmt, Use};
 use auto_lang::parser::Parser;
 use auto_lang::resolver::FilesystemResolver;
 use std::path::PathBuf;
+use tempfile::TempDir;
 
-/// Get the project root directory (workspace root)
-fn project_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR is the crate directory (crates/auto-lang)
-    // We need to go up 2 levels to get the workspace root
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR not set");
-    PathBuf::from(manifest_dir)
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("Failed to get project root")
-        .to_path_buf()
+/// Setup the test project directory structure in a unique temp dir.
+/// Returns (TempDir, src_path) — TempDir must be kept alive for duration of test.
+fn setup_test_project() -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().expect("Failed to create temp dir");
+    let src = tmp.path().join("src");
+
+    // Create directory structure
+    std::fs::create_dir_all(src.join("api")).unwrap();
+
+    // src/db.at
+    std::fs::write(src.join("db.at"), r#"
+fn connect() { 1 }
+fn query(sql str) { 0 }
+"#).unwrap();
+
+    // src/utils.at
+    std::fs::write(src.join("utils.at"), r#"
+fn helper() { 42 }
+"#).unwrap();
+
+    // src/main.at
+    std::fs::write(src.join("main.at"), r#"
+use pac.db
+use pac.api.handlers
+"#).unwrap();
+
+    // src/api/mod.at (directory module)
+    std::fs::write(src.join("api/mod.at"), r#"
+fn api_init() { 1 }
+"#).unwrap();
+
+    // src/api/handlers.at
+    std::fs::write(src.join("api/handlers.at"), r#"
+use pac.db
+use super.utils
+fn handle_request() { 0 }
+"#).unwrap();
+
+    (tmp, src)
 }
 
-/// Get the test project root
-fn test_project_root() -> PathBuf {
-    project_root().join("tmp/plan131_test_project")
-}
-
-/// Get the test project src directory
-fn test_project_src() -> PathBuf {
-    test_project_root().join("src")
-}
-
-/// Plan 131 Integration Test: Full module resolution pipeline
-/// Tests that parsing, ModulePath construction, and file resolution work end-to-end
 #[test]
 fn test_integration_pac_import_parsing_and_resolution() {
-    let src_root = test_project_src();
+    let (_tmp, src_root) = setup_test_project();
 
     // Parse handlers.at
     let handlers_path = src_root.join("api/handlers.at");
     let source = std::fs::read_to_string(&handlers_path)
-        .expect("Test project file not found - run setup first");
+        .expect("Test project file not found");
 
     let mut parser = Parser::from(source.as_str());
     let ast = parser.parse().expect("Failed to parse handlers.at");
@@ -121,7 +138,7 @@ fn test_integration_pac_import_parsing_and_resolution() {
 
 #[test]
 fn test_integration_main_imports() {
-    let src_root = test_project_src();
+    let (_tmp, src_root) = setup_test_project();
     let main_path = src_root.join("main.at");
 
     let source =
@@ -158,7 +175,7 @@ fn test_integration_main_imports() {
 
 #[test]
 fn test_integration_deep_module_path() {
-    let src_root = test_project_src();
+    let (_tmp, src_root) = setup_test_project();
 
     // Test resolving pac.api.handlers from main.at
     let resolver = FilesystemResolver::with_package_root(src_root.clone());
@@ -178,7 +195,7 @@ fn test_integration_deep_module_path() {
 
 #[test]
 fn test_integration_module_directory_vs_file() {
-    let src_root = test_project_src();
+    let (_tmp, src_root) = setup_test_project();
 
     // Test resolving pac.api (should resolve to api/mod.at, not api.at)
     let resolver = FilesystemResolver::with_package_root(src_root.clone());
@@ -198,7 +215,7 @@ fn test_integration_module_directory_vs_file() {
 
 #[test]
 fn test_integration_module_not_found() {
-    let src_root = test_project_src();
+    let (_tmp, src_root) = setup_test_project();
 
     // Test resolving non-existent module
     let resolver = FilesystemResolver::with_package_root(src_root.clone());

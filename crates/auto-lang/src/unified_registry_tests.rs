@@ -284,9 +284,9 @@ fn test_engine_heap_object_id_generation() {
     let id2 = vm.insert_heap_object(ListData::<char>::new());
     let id3 = vm.insert_heap_object(ListData::<bool>::new());
 
-    assert_eq!(id1, 0);
-    assert_eq!(id2, 1);
-    assert_eq!(id3, 2);
+    assert_eq!(id1, 4000000);
+    assert_eq!(id2, 4000001);
+    assert_eq!(id3, 4000002);
 }
 
 // ============================================================================

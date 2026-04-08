@@ -129,7 +129,7 @@ impl AutoInterpreter {
         }
         let prefix = format!("{} ", self.fstr_note);
 
-        flipped_code.push_str("let __out__ = \"\"\n");
+        flipped_code.push_str("var __out__ = \"\"\n");
 
         for line in template.lines() {
             if line.starts_with(&prefix) {
