@@ -143,6 +143,8 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
 
         Type::List(elem) => occurs_in(var_name, elem),
 
+        Type::Map(k, v) => occurs_in(var_name, k) || occurs_in(var_name, v),
+
         Type::Slice(slice) => occurs_in(var_name, &slice.elem),
 
         Type::Ptr(ptr) => {

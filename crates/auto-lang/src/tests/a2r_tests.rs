@@ -218,6 +218,16 @@ fn test_127_generic_ptr_field() {
 }
 
 #[test]
+fn test_128_map_type() {
+    test_a2r("128_map_type").unwrap();
+}
+
+#[test]
+fn test_129_map_func() {
+    test_a2r("129_map_func").unwrap();
+}
+
+#[test]
 fn test_110_const_generics() {
     test_a2r("110_const_generics").unwrap();
 }

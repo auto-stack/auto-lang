@@ -71,6 +71,28 @@ fn http_get_stream(url str) HTTPStream
 #[pub]
 fn http_post_stream(url str, body str) HTTPStream
 
+/// Create a streaming HTTP POST request with custom headers
+///
+/// Sends a POST request with custom headers (e.g. Authorization, Content-Type)
+/// and returns a streaming response handle for reading chunks.
+///
+/// # Parameters
+/// - `url`: Request URL
+/// - `body`: Request body (JSON string)
+/// - `headers`: JSON object of headers, e.g. `'{"Authorization": "Bearer xxx"}'`
+///
+/// # Returns
+/// HTTPStream handle
+///
+/// # Example
+/// ```auto
+/// let headers = '{"Authorization": "Bearer sk-xxx", "Content-Type": "application/json"}'
+/// let stream = http_post_stream_with_headers("https://api.example.com/v1/chat", '{"model":"gpt-4"}', headers)
+/// ```
+#[vm]
+#[pub]
+fn http_post_stream_with_headers(url str, body str, headers str) HTTPStream
+
 // ═══════════════════════════════════════════════════════════════════════
 // 流操作函数
 // ═══════════════════════════════════════════════════════════════════════

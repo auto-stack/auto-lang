@@ -249,6 +249,9 @@ impl RustTrans {
                 // List<T> transpiles to Vec<T> in Rust
                 format!("Vec<{}>", self.rust_type_name(elem))
             }
+            Type::Map(k, v) => {
+                format!("std::collections::HashMap<{}, {}>", self.rust_type_name(k), self.rust_type_name(v))
+            }
             Type::Slice(slice) => {
                 // []T transpiles to &[T] in Rust
                 format!("&[{}]", self.rust_type_name(&slice.elem))

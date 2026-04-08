@@ -58,6 +58,8 @@ urlencoding = { workspace = true }
 
 # Plan 154: 真正的 HTTP 流式实现（reqwest::blocking）
 reqwest = { version = "0.12", features = ["blocking"] }
+# Plan 159: Directory walking for AutoCode agent
+walkdir = "2"
 # Plan 152: SSE 解析（保留可选依赖用于高级流式场景）
 tokio-util = { version = "0.7", features = ["io"], optional = true }
 futures = { version = "0.3", optional = true }

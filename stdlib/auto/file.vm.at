@@ -52,3 +52,19 @@ fn create_dir(path str) int
 /// Check if a path is a directory
 #[vm]
 fn is_dir(path str) bool
+
+/// Walk a directory tree recursively, returning all file paths as a JSON array string
+///
+/// Returns a JSON string like `["file1.txt", "dir/file2.rs", ...]`
+#[vm]
+fn walk(path str) str
+
+/// Append text to a file (creates file if it doesn't exist, creates parent dirs)
+#[vm]
+fn append_text(path str, content str) int
+
+/// Read file contents as a JSON array of lines
+///
+/// Returns a JSON string like `["line one", "line two", ...]`
+#[vm]
+fn read_lines(path str) str

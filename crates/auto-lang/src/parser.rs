@@ -7262,6 +7262,20 @@ impl<'a> Parser<'a> {
                     .into())
                 }
             }
+            "Map" => {
+                if args.len() == 2 {
+                    Ok(Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone())))
+                } else {
+                    Err(SyntaxError::Generic {
+                        message: format!(
+                            "Map expects exactly 2 type parameters (Map<K, V>), but got {}",
+                            args.len()
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into())
+                }
+            }
             "Fixed" if args.len() == 1 => {
                 // Fixed<N> storage type - parse capacity from first argument
                 // The capacity should be a constant expression (int literal or const)

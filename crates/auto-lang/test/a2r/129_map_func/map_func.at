@@ -1,0 +1,15 @@
+// Test Map<K, V> in function parameters and return types (Plan 160)
+
+fn get_headers() Map<str, str> {
+    let h Map<str, str> = { "Accept": "application/json" }
+    return h
+}
+
+fn process(data Map<str, int>) int {
+    return 0
+}
+
+fn main() {
+    let m Map<str, int> = { "count": 10, "total": 100 }
+    let result = process(m)
+}

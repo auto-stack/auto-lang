@@ -17,6 +17,13 @@ fn set_current_dir(path str) int
 #[vm]
 fn spawn(cmd_args []str) int
 
+/// Spawn an external process and capture stdout/stderr output
+///
+/// Args should be a JSON array string: `["cmd", "arg1", "arg2"]`
+/// Returns a JSON string: `{"exit_code": 0, "stdout": "...", "stderr": "..."}`
+#[vm]
+fn spawn_with_output(args_json str) str
+
 /// Exit the process with an exit code
 #[vm]
 fn exit(code int)

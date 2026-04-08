@@ -1,0 +1,12 @@
+// Test Map<K, V> type transpilation (Plan 160)
+
+type Config {
+    env Map<str, str>
+    ports List<int>
+}
+
+fn main() {
+    let headers Map<str, str> = { "Authorization": "Bearer xxx", "Content-Type": "application/json" }
+    let counts Map<str, int> = { "hello": 3, "world": 5 }
+    let x = 42
+}

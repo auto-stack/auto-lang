@@ -5412,6 +5412,7 @@ impl Codegen {
             // Return the base type name (without generic parameters for now)
             match ty {
                 Type::List(_) => Some("List".to_string()),
+                Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
                 Type::User(type_decl) => Some(type_decl.name.to_string()),
                 Type::GenericInstance(inst) => Some(inst.base_name.to_string()),
                 _ => None,

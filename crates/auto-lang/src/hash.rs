@@ -151,6 +151,7 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::Array(_) => hasher.update(b"Array"),
         Type::RuntimeArray(_) => hasher.update(b"RuntimeArray"),
         Type::List(_) => hasher.update(b"List"),
+        Type::Map(_, _) => hasher.update(b"Map"),
         Type::Slice(_) => hasher.update(b"Slice"),
         Type::Ptr(_) => hasher.update(b"Ptr"),
         Type::Reference(_) => hasher.update(b"Reference"),

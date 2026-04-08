@@ -40,6 +40,9 @@ pub const NATIVE_FILE_WRITE_BYTES: u16 = 1006;
 pub const NATIVE_FILE_COPY: u16 = 1007;
 pub const NATIVE_FILE_SIZE: u16 = 1008;
 pub const NATIVE_FILE_IS_DIR: u16 = 1009;
+pub const NATIVE_FILE_WALK: u16 = 1010;
+pub const NATIVE_FILE_APPEND_TEXT: u16 = 1011;
+pub const NATIVE_FILE_READ_LINES: u16 = 1012;
 
 // Env functions: 1100-1199
 pub const NATIVE_ENV_GET: u16 = 1100;
@@ -57,6 +60,7 @@ pub const NATIVE_PROCESS_ARGS: u16 = 1301;
 pub const NATIVE_PROCESS_CURRENT_DIR: u16 = 1302;
 pub const NATIVE_PROCESS_SET_CURRENT_DIR: u16 = 1303;
 pub const NATIVE_PROCESS_SPAWN: u16 = 1304;
+pub const NATIVE_PROCESS_SPAWN_WITH_OUTPUT: u16 = 1305;
 
 // Math functions: 1700-1799
 pub const NATIVE_MATH_ABS: u16 = 1700;
@@ -162,6 +166,13 @@ pub const NATIVE_SSE_EVENT_EVENT: u16 = 2247;
 pub const NATIVE_SSE_EVENT_ID: u16 = 2248;
 pub const NATIVE_SSE_EVENT_IS_DONE: u16 = 2249;
 pub const NATIVE_SSE_PARSE: u16 = 2250;
+
+// Plan 159: HTTP streaming with custom headers (2255-2259)
+pub const NATIVE_HTTP_POST_STREAM_WITH_HEADERS: u16 = 2255;
+
+// Regex functions (Plan 159): 2400-2499
+pub const NATIVE_REGEX_IS_MATCH: u16 = 2400;
+pub const NATIVE_REGEX_FIND_ALL: u16 = 2401;
 
 // Task/Msg functions (Plan 121): 2300-2399
 pub const NATIVE_TASK_SPAWN: u16 = 2300;
@@ -277,6 +288,80 @@ pub fn shim_file_is_dir(path: String) -> bool {
     fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false)
 }
 
+/// Walk a directory tree, returning all file paths as a JSON array.
+///
+/// Uses walkdir for recursive directory traversal. Returns a JSON string
+/// like `["file1.txt", "dir/file2.rs", ...]`.
+pub fn shim_file_walk(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let root = Path::new(&path);
+    if !root.exists() {
+        return Err(VMError::RuntimeError(format!(
+            "File.walk failed: path not found: {}",
+            path
+        )));
+    }
+
+    let mut files: Vec<String> = Vec::new();
+    if root.is_file() {
+        files.push(path.clone());
+    } else {
+        for entry in walkdir::WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+            if entry.file_type().is_file() {
+                if let Some(p) = entry.path().to_str() {
+                    files.push(p.to_string());
+                }
+            }
+        }
+    }
+
+    let json = serde_json::to_string(&files)
+        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
+
+    json.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Append text content to a file (creates if doesn't exist)
+#[auto_macros::rust_fn("File.append_text")]
+pub fn shim_file_append_text(path: String, content: String) -> Result<(), String> {
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(&path).parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("File.append_text failed to create dir: {}", e))?;
+        }
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("File.append_text failed: {} - {}", path, e))?;
+    use std::io::Write;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("File.append_text failed: {} - {}", path, e))?;
+    Ok(())
+}
+
+/// Read file contents as an array of lines (JSON string array)
+pub fn shim_file_read_lines(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let content = fs::read_to_string(&path)
+        .map_err(|e| VMError::RuntimeError(format!("File.read_lines failed: {} - {}", path, e)))?;
+
+    let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+
+    let json = serde_json::to_string(&lines)
+        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
+
+    json.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
 // ============================================================================
 // Environment Functions
 // ============================================================================
@@ -382,6 +467,61 @@ pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
         Ok(status) => Ok(status.code().unwrap_or(-1)),
         Err(e) => Err(format!("Process.spawn failed: {} - {}", cmd, e)),
     }
+}
+
+/// Spawn an external process and capture its stdout/stderr output.
+///
+/// Returns a JSON object: `{"exit_code": i32, "stdout": String, "stderr": String}`
+///
+/// This is a manual shim (not `#[rust_fn]`) because it returns a complex JSON value
+/// that doesn't map cleanly to a single primitive type.
+pub fn shim_process_spawn_with_output(
+    task: &mut AutoTask,
+    _vm: &AutoVM,
+) -> Result<(), VMError> {
+    // Pop args as JSON array string: ["cmd", "arg1", "arg2"]
+    let args_json: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let args: Vec<String> = serde_json::from_str(&args_json)
+        .map_err(|e| VMError::RuntimeError(format!("Invalid args JSON: {}", e)))?;
+
+    if args.is_empty() {
+        return Err(VMError::RuntimeError(
+            "Process.spawn_with_output failed: empty arguments".into(),
+        ));
+    }
+
+    let cmd = &args[0];
+    let cmd_args: Vec<&str> = args.iter().skip(1).map(|s| s.as_str()).collect();
+
+    let output = std::process::Command::new(cmd)
+        .args(&cmd_args)
+        .output()
+        .map_err(|e| VMError::RuntimeError(format!("Process.spawn_with_output failed: {} - {}", cmd, e)))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let exit_code = output.status.code().unwrap_or(-1);
+
+    // Truncate stdout at 64KB to avoid excessive memory use
+    let stdout_truncated = if stdout.len() > 65536 {
+        format!("{}...(truncated, {} bytes total)", &stdout[..65536], stdout.len())
+    } else {
+        stdout
+    };
+
+    let result_json = serde_json::json!({
+        "exit_code": exit_code,
+        "stdout": stdout_truncated,
+        "stderr": stderr,
+    });
+
+    let result_str = serde_json::to_string(&result_json)
+        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
+
+    result_str.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
 }
 
 // ============================================================================
@@ -1512,6 +1652,97 @@ pub fn shim_http_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
     Ok(())
 }
 
+/// POST streaming with custom headers (Plan 159: AutoCode agent support).
+///
+/// Stack args (bottom to top): url, body, headers_json
+/// - url: String
+/// - body: String (JSON body)
+/// - headers_json: String (JSON object like `{"Authorization": "Bearer xxx", "Content-Type": "application/json"}`)
+///
+/// Returns an HTTP stream handle (i64) on the stack.
+pub fn shim_http_post_stream_with_headers(
+    task: &mut AutoTask,
+    _vm: &AutoVM,
+) -> Result<(), VMError> {
+    let headers_json: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let body: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    // Parse headers JSON
+    let headers_map: std::collections::HashMap<String, String> =
+        serde_json::from_str(&headers_json).unwrap_or_default();
+
+    let mut request = reqwest::blocking::Client::new()
+        .post(&url)
+        .body(body);
+
+    for (key, value) in &headers_map {
+        request = request.header(key.as_str(), value.as_str());
+    }
+
+    let response = request
+        .send()
+        .map_err(|e| VMError::RuntimeError(format!("HTTP POST stream with headers failed: {}", e)))?;
+
+    let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let stream_data = HttpStreamData::new(url, response);
+    HTTP_STREAMS.with(|streams| {
+        streams.borrow_mut().insert(stream_handle, stream_data);
+    });
+
+    task.ram.push_i64(stream_handle as i64);
+    Ok(())
+}
+
+// ============================================================================
+// Regex Functions (Plan 159: 2400-2499)
+// ============================================================================
+
+/// Check if a string matches a regex pattern.
+///
+/// Returns 1 if match found, 0 otherwise.
+#[auto_macros::rust_fn("Regex.is_match")]
+pub fn shim_regex_is_match(pattern: String, text: String) -> Result<i32, String> {
+    let re = regex::Regex::new(&pattern)
+        .map_err(|e| format!("Regex.is_match failed: invalid pattern '{}': {}", pattern, e))?;
+    Ok(if re.is_match(&text) { 1 } else { 0 })
+}
+
+/// Find all matches of a regex pattern in text.
+///
+/// Returns a JSON array of match objects: `[{"match": "...", "start": 0, "end": 5}, ...]`
+pub fn shim_regex_find_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let pattern: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let re = regex::Regex::new(&pattern)
+        .map_err(|e| VMError::RuntimeError(format!("Regex.find_all failed: invalid pattern '{}': {}", pattern, e)))?;
+
+    let mut matches: Vec<serde_json::Value> = Vec::new();
+    for cap in re.find_iter(&text) {
+        matches.push(serde_json::json!({
+            "match": cap.as_str(),
+            "start": cap.start(),
+            "end": cap.end(),
+        }));
+        // Limit to 250 matches to avoid excessive memory
+        if matches.len() >= 250 {
+            break;
+        }
+    }
+
+    let json = serde_json::to_string(&matches)
+        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
+
+    json.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
 // ============================================================================
 // Plan 152: SSE Parser Functions
 // ============================================================================
@@ -2133,6 +2364,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_FILE_COPY, __shim_File_copy);
     natives.register_static(NATIVE_FILE_SIZE, __shim_File_size);
     natives.register_static(NATIVE_FILE_IS_DIR, __shim_File_is_dir);
+    natives.register_static(NATIVE_FILE_WALK, shim_file_walk);
+    natives.register_static(NATIVE_FILE_APPEND_TEXT, __shim_File_append_text);
+    natives.register_static(NATIVE_FILE_READ_LINES, shim_file_read_lines);
 
     // Env functions
     natives.register_static(NATIVE_ENV_GET, __shim_Env_get);
@@ -2153,6 +2387,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
         __shim_Process_set_current_dir,
     );
     natives.register_static(NATIVE_PROCESS_SPAWN, __shim_Process_spawn);
+    natives.register_static(NATIVE_PROCESS_SPAWN_WITH_OUTPUT, shim_process_spawn_with_output);
 
     // Path functions
     natives.register_static(NATIVE_PATH_JOIN, __shim_Path_join);
@@ -2253,9 +2488,15 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_HTTP_STREAM_NEXT, shim_http_stream_next);
     natives.register_static(NATIVE_HTTP_STREAM_IS_DONE, shim_http_stream_is_done);
     natives.register_static(NATIVE_HTTP_STREAM_CLOSE, shim_http_stream_close);
+    // Plan 159: HTTP streaming with custom headers
+    natives.register_static(NATIVE_HTTP_POST_STREAM_WITH_HEADERS, shim_http_post_stream_with_headers);
 
     // SSE Parser functions (Plan 152)
     natives.register_static(NATIVE_SSE_PARSE, __shim_parse_sse);
+
+    // Regex functions (Plan 159)
+    natives.register_static(NATIVE_REGEX_IS_MATCH, __shim_Regex_is_match);
+    natives.register_static(NATIVE_REGEX_FIND_ALL, shim_regex_find_all);
 
     // Task/Msg functions (Plan 121)
     natives.register_static(NATIVE_TASK_SPAWN, __shim_Task_spawn);
@@ -2314,6 +2555,9 @@ mod tests {
         assert!((1000..1100).contains(&NATIVE_FILE_COPY));
         assert!((1000..1100).contains(&NATIVE_FILE_SIZE));
         assert!((1000..1100).contains(&NATIVE_FILE_IS_DIR));
+        assert!((1000..1100).contains(&NATIVE_FILE_WALK));
+        assert!((1000..1100).contains(&NATIVE_FILE_APPEND_TEXT));
+        assert!((1000..1100).contains(&NATIVE_FILE_READ_LINES));
 
         // Env: 1100-1199
         assert!((1100..1200).contains(&NATIVE_ENV_GET));
@@ -2326,6 +2570,14 @@ mod tests {
         assert!((1300..1400).contains(&NATIVE_PROCESS_ARGS));
         assert!((1300..1400).contains(&NATIVE_PROCESS_CURRENT_DIR));
         assert!((1300..1400).contains(&NATIVE_PROCESS_SPAWN));
+        assert!((1300..1400).contains(&NATIVE_PROCESS_SPAWN_WITH_OUTPUT));
+
+        // HTTP streaming with headers: 2255-2259
+        assert!((2250..2260).contains(&NATIVE_HTTP_POST_STREAM_WITH_HEADERS));
+
+        // Regex: 2400-2499
+        assert!((2400..2500).contains(&NATIVE_REGEX_IS_MATCH));
+        assert!((2400..2500).contains(&NATIVE_REGEX_FIND_ALL));
 
         // Path: 1400-1499
         assert!((1400..1500).contains(&NATIVE_PATH_JOIN));
@@ -2427,5 +2679,88 @@ mod tests {
 
         // Each spawn should return a unique handle ID
         assert_ne!(id1, id2);
+    }
+
+    // Plan 159: New FFI function tests
+
+    #[test]
+    fn test_file_append_text() {
+        let dir = std::env::temp_dir().join("ac-ffi-test-append");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("append_test.txt");
+
+        // First append creates the file
+        shim_file_append_text(
+            path.to_str().unwrap().to_string(),
+            "line one\n".to_string(),
+        )
+        .unwrap();
+
+        // Second append adds to existing file
+        shim_file_append_text(
+            path.to_str().unwrap().to_string(),
+            "line two\n".to_string(),
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "line one\nline two\n");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_append_creates_parent_dirs() {
+        let dir = std::env::temp_dir().join("ac-ffi-test-append-nested");
+        let _ = fs::remove_dir_all(&dir);
+
+        let path = dir.join("a/b/c/test.txt");
+        shim_file_append_text(
+            path.to_str().unwrap().to_string(),
+            "hello".to_string(),
+        )
+        .unwrap();
+
+        assert!(path.exists());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "hello");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_regex_is_match() {
+        // Match found
+        let result = shim_regex_is_match("hello\\s+world".to_string(), "hello world".to_string());
+        assert_eq!(result.unwrap(), 1);
+
+        // No match
+        let result = shim_regex_is_match("xyz\\d+".to_string(), "hello world".to_string());
+        assert_eq!(result.unwrap(), 0);
+
+        // Invalid regex
+        let result = shim_regex_is_match("[invalid(".to_string(), "test".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_regex_find_all_simple() {
+        let text = "hello world, hello rust";
+        let re = regex::Regex::new("hello").unwrap();
+        let matches: Vec<_> = re.find_iter(text).collect();
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].as_str(), "hello");
+        assert_eq!(matches[1].as_str(), "hello");
+    }
+
+    #[test]
+    fn test_regex_find_all_with_groups() {
+        let text = "foo123bar456baz";
+        let re = regex::Regex::new("\\d+").unwrap();
+        let matches: Vec<_> = re.find_iter(text).collect();
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].as_str(), "123");
+        assert_eq!(matches[1].as_str(), "456");
     }
 }

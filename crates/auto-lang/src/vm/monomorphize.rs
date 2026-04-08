@@ -168,6 +168,7 @@ impl Default for Monomorphizer {
 pub fn is_monomorphizable(ty: &Type) -> bool {
     match ty {
         Type::List(_) => true,  // List<T> is monomorphizable
+        Type::Map(_, _) => true,  // Map<K, V> is monomorphizable (Plan 160)
         Type::GenericInstance(_) => true,  // User-defined generics
         _ => false,
     }
@@ -182,6 +183,11 @@ pub fn collect_monomorphizable_types(ty: &Type) -> Vec<Type> {
             results.push(ty.clone());
             // Recursively collect from element type
             results.extend(collect_monomorphizable_types(elem));
+        }
+        Type::Map(k, v) => {
+            results.push(ty.clone());
+            results.extend(collect_monomorphizable_types(k));
+            results.extend(collect_monomorphizable_types(v));
         }
         Type::GenericInstance(inst) => {
             results.push(ty.clone());

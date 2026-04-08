@@ -23,6 +23,7 @@ pub enum Type {
     Array(ArrayType),         // [N]T - static array (compile-time size)
     RuntimeArray(RuntimeArrayType),  // [expr]T - runtime-sized array (Plan 052)
     List(Box<Type>),          // List<T> - dynamic list
+    Map(Box<Type>, Box<Type>), // Map<K, V> - typed dictionary (Plan 160)
     Slice(SliceType),         // []T - slice type
     Ptr(PtrType),             // *T - raw pointer (Plan 052)
     Reference(Box<Type>),     // &T - reference (Plan 052, for Rust transpiler)
@@ -73,6 +74,7 @@ impl Type {
                 format!("[runtime:{}]{}", rta.elem.unique_name(), rta.size_expr.repr()).into()
             }
             Type::List(elem) => format!("List<{}>", elem.unique_name()).into(),
+            Type::Map(k, v) => format!("Map<{}, {}>", k.unique_name(), v.unique_name()).into(),
             Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
             Type::Storage(storage) => storage.to_string().into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
@@ -129,6 +131,7 @@ impl Type {
             Type::Array(_) => "[]".into(),
             Type::RuntimeArray(_) => "[runtime]".into(),  // Runtime array placeholder
             Type::List(_) => "List.new()".into(),  // Empty list constructor
+            Type::Map(_, _) => "Map.new()".into(),  // Plan 160: Empty map constructor
             Type::Slice(_) => "[]".into(),  // Empty slice literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::Reference(inner) => format!("&{}", inner.default_value()).into(),  // Plan 052
@@ -197,6 +200,12 @@ impl Type {
             // Compound types: recursive substitution
             Type::List(elem) => {
                 Type::List(Box::new(elem.substitute(params, args)))
+            }
+            Type::Map(k, v) => {
+                Type::Map(
+                    Box::new(k.substitute(params, args)),
+                    Box::new(v.substitute(params, args)),
+                )
             }
             Type::Array(array_type) => {
                 Type::Array(ArrayType {
@@ -285,7 +294,7 @@ impl Type {
 
             // Large types - use reference passing (heap-allocated or expensive to copy)
             Type::Str(_) | Type::CStr | Type::StrSlice | Type::String => false,
-            Type::Array(_) | Type::RuntimeArray(_) | Type::List(_) => false,
+            Type::Array(_) | Type::RuntimeArray(_) | Type::List(_) | Type::Map(_, _) => false,
             Type::Slice(_) | Type::Ptr(_) | Type::Reference(_) => false,
 
             // User-defined types - use reference passing (V1 conservative)
@@ -483,6 +492,7 @@ impl fmt::Display for Type {
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::RuntimeArray(rta) => write!(f, "{}", rta),
             Type::List(elem) => write!(f, "List<{}>", elem),
+            Type::Map(k, v) => write!(f, "Map<{}, {}>", k, v),
             Type::Slice(slice_type) => write!(f, "{}", slice_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::Reference(inner) => write!(f, "&{}", inner),  // Plan 052
@@ -534,6 +544,7 @@ impl From<Type> for auto_val::Type {
             Type::Array(_) => auto_val::Type::Array,
             Type::RuntimeArray(_) => auto_val::Type::Array,  // Runtime arrays transpile to Array type
             Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
+            Type::Map(_, _) => auto_val::Type::User("Map".into()),  // Plan 160: Map as user type in auto_val
             Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::Reference(_) => auto_val::Type::Ptr,  // Plan 052: Reference transpiles to Ptr in auto_val
@@ -836,6 +847,9 @@ impl AtomWriter for Type {
             }
             Type::List(elem) => {
                 write!(f, "list({})", elem.to_atom_str())?;
+            }
+            Type::Map(k, v) => {
+                write!(f, "map({}, {})", k.to_atom_str(), v.to_atom_str())?;
             }
             Type::Slice(slice_type) => {
                 write!(f, "slice({})", slice_type.elem.to_atom_str())?;

@@ -143,6 +143,7 @@ impl PatternMatcher {
             // Array types
             (Type::Array(_), Value::Array(_)) => true,
             (Type::List(_), Value::Array(_)) => true,
+            (Type::Map(_, _), Value::Obj(_)) => true,  // Plan 160: Map matches Obj
 
             // Option types
             (Type::Option(_), Value::Nil) => true,

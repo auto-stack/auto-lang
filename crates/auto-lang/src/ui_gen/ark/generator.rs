@@ -385,6 +385,7 @@ impl ArkGenerator {
                         Type::Slice(slice) => Some(Self::type_to_arkts_simple(&slice.elem)),
                         Type::List(inner) => Some(Self::type_to_arkts_simple(inner)),
                         Type::Array(arr) => Some(Self::type_to_arkts_simple(&arr.elem)),
+                        Type::Map(_, v) => Some(Self::type_to_arkts_simple(v)),  // Plan 160
                         _ => None,
                     };
 
@@ -1666,6 +1667,9 @@ impl ArkGenerator {
                 } else {
                     format!("{}[]", elem_type)
                 }
+            }
+            Type::Map(k, v) => {
+                format!("HashMap<{}, {}>", Self::type_to_arkts_simple(k), Self::type_to_arkts_simple(v))
             }
             Type::Slice(slice) => {
                 let elem_type = Self::type_to_arkts_simple(&slice.elem);

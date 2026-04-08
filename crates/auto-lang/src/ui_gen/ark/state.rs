@@ -394,6 +394,7 @@ fn auto_type_to_arkts(ty: &Type, interfaces: &[InterfaceDef]) -> String {
         Type::Str(_) | Type::String => "string".to_string(),
         Type::Array(arr) => format!("{}[]", auto_type_to_arkts(&arr.elem, interfaces)),
         Type::List(elem) => format!("{}[]", auto_type_to_arkts(elem, interfaces)),
+        Type::Map(k, v) => format!("HashMap<{}, {}>", auto_type_to_arkts(k, interfaces), auto_type_to_arkts(v, interfaces)),
         Type::User(decl) => decl.name.as_str().to_string(),
         Type::Tag(tag) => tag.borrow().name.as_str().to_string(),
         Type::Enum(enum_decl) => enum_decl.borrow().name.as_str().to_string(),
@@ -416,6 +417,7 @@ fn generate_default_value(ty: &Type) -> String {
         Type::Str(_) | Type::String => "\"\"".to_string(),
         Type::Array(_) => "[]".to_string(),
         Type::List(_) => "[]".to_string(),
+        Type::Map(_, _) => "new HashMap()".to_string(),
         Type::Option(_) => "null".to_string(),
         _ => "null".to_string(),
     }

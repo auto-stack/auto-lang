@@ -1,0 +1,17 @@
+/// VM function declarations for Regex operations (Plan 159)
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Check if a string matches a regex pattern
+///
+/// Returns 1 if match found, 0 otherwise.
+#[vm]
+fn is_match(pattern str, text str) int
+
+/// Find all matches of a regex pattern in text
+///
+/// Returns a JSON array string of match objects:
+/// `[{"match": "...", "start": 0, "end": 5}, ...]`
+///
+/// Limited to 250 matches.
+#[vm]
+fn find_all(pattern str, text str) str

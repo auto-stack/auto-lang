@@ -594,6 +594,7 @@ impl PythonTrans {
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::List(_) => "list".into(),  // List<T> → list in Python
+            Type::Map(_, _) => "dict".into(),  // Map<K, V> → dict in Python (Plan 160)
             _ => "Any".into(), // Fallback for complex types
         }
     }

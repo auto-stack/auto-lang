@@ -2231,6 +2231,12 @@ impl CTrans {
                 let elem_type = self.c_type_name(elem);
                 format!("list_{}*", elem_type)
             }
+            Type::Map(k, v) => {
+                // Map<K, V> transpiles to map_K_V* (Plan 160)
+                let key_type = self.c_type_name(k);
+                let val_type = self.c_type_name(v);
+                format!("map_{}_{}*", key_type, val_type)
+            }
             Type::User(usr_type) => {
                 // Plan 052: Check if this is a type parameter
                 // Type parameters have no members, methods, delegations, has, or specs
@@ -2403,6 +2409,10 @@ impl CTrans {
             Type::List(elem) => Type::List(Box::new(
                 self.substitute_type_params_recursive(elem, param_map),
             )),
+            Type::Map(k, v) => Type::Map(
+                Box::new(self.substitute_type_params_recursive(k, param_map)),
+                Box::new(self.substitute_type_params_recursive(v, param_map)),
+            ),
 
             Type::RuntimeArray(rta) => Type::RuntimeArray(crate::ast::RuntimeArrayType {
                 size_expr: rta.size_expr.clone(),

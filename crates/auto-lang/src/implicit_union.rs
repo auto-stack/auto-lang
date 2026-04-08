@@ -304,6 +304,9 @@ fn type_to_rust_type(ty: &Type) -> String {
             let elem_type = type_to_rust_type(elem);
             format!("Vec<{}>", elem_type)
         }
+        Type::Map(k, v) => {
+            format!("std::collections::HashMap<{}, {}>", type_to_rust_type(k), type_to_rust_type(v))
+        }
         Type::Option(inner) => {
             let inner_type = type_to_rust_type(inner);
             format!("Option<{}>", inner_type)

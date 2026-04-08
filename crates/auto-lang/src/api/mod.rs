@@ -212,6 +212,7 @@ fn type_to_string(ty: &Type) -> String {
             format!("[runtime:{}]", elem_str)
         }
         Type::List(elem) => format!("List<{}>", type_to_string(elem)),
+        Type::Map(k, v) => format!("Map<{}, {}>", type_to_string(k), type_to_string(v)),
         Type::Slice(slice_type) => format!("[]{}", type_to_string(&slice_type.elem)),
         Type::Ptr(ptr_type) => format!("*{}", type_to_string(&ptr_type.of.borrow())),
         Type::Reference(inner) => format!("&{}", type_to_string(inner)),

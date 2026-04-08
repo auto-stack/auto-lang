@@ -49,6 +49,7 @@ impl GenericInstance {
             Type::Str(_) | Type::String => "str".to_string(),
             Type::CStr => "cstr".to_string(),
             Type::List(inner) => format!("List_{}", Self::type_to_simple_name(inner)),
+            Type::Map(k, v) => format!("Map_{}_{}", Self::type_to_simple_name(k), Self::type_to_simple_name(v)),
             Type::User(type_decl) => type_decl.name.to_string(),
             _ => format!("unknown_{:?}", ty),
         }
@@ -154,6 +155,10 @@ pub fn extract_generic_instance(ty: &Type) -> Option<GenericInstance> {
         Type::List(elem) => Some(GenericInstance::new(
             "List".to_string(),
             vec![*(elem.clone())],
+        )),
+        Type::Map(k, v) => Some(GenericInstance::new(
+            "Map".to_string(),
+            vec![*(k.clone()), *(v.clone())],
         )),
 
         // User-defined generics: MyType<int, bool>

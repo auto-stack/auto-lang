@@ -385,6 +385,9 @@ impl ArkProject {
                     format!("{}[]", elem_type)
                 }
             }
+            Type::Map(k, v) => {
+                format!("HashMap<{}, {}>", Self::type_to_arkts(k), Self::type_to_arkts(v))
+            }
             Type::Slice(slice) => {
                 let elem_type = Self::type_to_arkts(&slice.elem);
                 if elem_type == "Object" {

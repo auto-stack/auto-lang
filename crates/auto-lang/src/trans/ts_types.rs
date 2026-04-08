@@ -29,6 +29,9 @@ impl TypeScriptTrans {
                 let elem_ts = Self::type_to_ts(elem);
                 format!("{}[]", elem_ts)
             }
+            Type::Map(k, v) => {
+                format!("Record<{}, {}>", Self::type_to_ts(k), Self::type_to_ts(v))
+            }
             Type::Slice(slice) => {
                 let elem_ts = Self::type_to_ts(&slice.elem);
                 format!("{}[]", elem_ts)
