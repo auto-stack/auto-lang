@@ -1342,10 +1342,34 @@ impl<'a> Parser<'a> {
             // group or multi-param closure
             TokenKind::LParen => {
                 // Plan 060: Check if this is a multi-param closure: (a, b) => expr
+                // Or zero-param closure: () => expr
                 self.next(); // skip (
 
-                // Quick check: if first token is identifier, might be a closure
-                let is_closure = if self.is_kind(TokenKind::Ident) {
+                // Quick check for zero-param closure: () => expr
+                if self.is_kind(TokenKind::RParen) {
+                    // Peek ahead to check for =>
+                    if let Ok(next_token) = self.lexer.next() {
+                        let is_closure = next_token.kind == TokenKind::DoubleArrow;
+                        self.lexer.push_token(next_token);
+                        if is_closure {
+                            // This is a zero-param closure: () => expr
+                            // Restore state so parse_closure sees the ( token
+                            let saved_token = self.cur.clone();
+                            self.cur = Token {
+                                kind: TokenKind::LParen,
+                                text: AutoStr::from("("),
+                                pos: saved_token.pos,
+                            };
+                            self.lexer.push_token(saved_token);
+                            return self.parse_closure();
+                        }
+                    }
+                    // Not a closure, continue with regular group expression
+                    // But we already consumed (, so handle empty group ()
+                    let lhs = self.expr_pratt(0)?;
+                    self.expect(TokenKind::RParen)?;
+                    lhs
+                } else if self.is_kind(TokenKind::Ident) {
                     // Collect tokens for lookahead and rollback
                     let mut tokens = Vec::new();
                     let mut found_comma = false;
@@ -1393,31 +1417,34 @@ impl<'a> Parser<'a> {
                         self.lexer.push_token(token);
                     }
 
-                    found_comma || found_double_arrow
+                    let is_closure = found_comma || found_double_arrow;
+
+                    if is_closure {
+                        // Multi-param closure: (a, b) => expr
+                        // Need to restore state so parse_closure sees the ( token
+                        // Save current token (identifier)
+                        let ident_token = self.cur.clone();
+
+                        // Set current token back to (
+                        self.cur = Token {
+                            kind: TokenKind::LParen,
+                            text: AutoStr::from("("),
+                            pos: ident_token.pos, // Use identifier's position for better error messages
+                        };
+
+                        // Push the identifier back to lexer
+                        self.lexer.push_token(ident_token);
+
+                        // Now parse_closure will see ( as current token
+                        self.parse_closure()?
+                    } else {
+                        // Regular group expression: (expr)
+                        let lhs = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?; // skip )
+                        lhs
+                    }
                 } else {
-                    false
-                };
-
-                if is_closure {
-                    // Multi-param closure: (a, b) => expr
-                    // Need to restore state so parse_closure sees the ( token
-                    // Save current token (identifier)
-                    let ident_token = self.cur.clone();
-
-                    // Set current token back to (
-                    self.cur = Token {
-                        kind: TokenKind::LParen,
-                        text: AutoStr::from("("),
-                        pos: ident_token.pos, // Use identifier's position for better error messages
-                    };
-
-                    // Push the identifier back to lexer
-                    self.lexer.push_token(ident_token);
-
-                    // Now parse_closure will see ( as current token
-                    self.parse_closure()?
-                } else {
-                    // Regular group expression: (expr)
+                    // Regular group expression starting with something other than identifier
                     let lhs = self.expr_pratt(0)?;
                     self.expect(TokenKind::RParen)?; // skip )
                     lhs
@@ -2807,29 +2834,36 @@ impl<'a> Parser<'a> {
         // Check if this is a single-param or multi-param closure
         let params = if self.is_kind(TokenKind::LParen) {
             // Multi-param closure: (a, b) => body or (a int, b int) => body
+            // Or zero-param closure: () => body
             self.next(); // skip (
 
             let mut params = Vec::new();
-            loop {
-                let name = self.parse_name()?;
 
-                // Optional type annotation (no colon - Auto syntax: a int, b int)
-                // Same logic as fn_params: check if next token is a type
-                let ty = if self.is_type_name() {
-                    Some(self.parse_type()?)
-                } else {
-                    None
-                };
+            // Check for empty parameter list: () => body
+            if self.is_kind(TokenKind::RParen) {
+                self.next(); // skip )
+            } else {
+                loop {
+                    let name = self.parse_name()?;
 
-                params.push(ClosureParam::new(name, ty));
+                    // Optional type annotation (no colon - Auto syntax: a int, b int)
+                    // Same logic as fn_params: check if next token is a type
+                    let ty = if self.is_type_name() {
+                        Some(self.parse_type()?)
+                    } else {
+                        None
+                    };
 
-                if !self.is_kind(TokenKind::Comma) {
-                    break;
+                    params.push(ClosureParam::new(name, ty));
+
+                    if !self.is_kind(TokenKind::Comma) {
+                        break;
+                    }
+                    self.next(); // skip ,
                 }
-                self.next(); // skip ,
-            }
 
-            self.expect(TokenKind::RParen)?; // skip )
+                self.expect(TokenKind::RParen)?; // skip )
+            }
             params
         } else {
             // Single-param closure:  x => body (no parentheses)

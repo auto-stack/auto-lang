@@ -128,6 +128,27 @@ impl VmInterpreter {
                             }
                         }
                     }
+                    // Check if it's an object ID (1000000-1999999)
+                    if result.is_none() && top_val >= 1000000 && top_val < 2000000 {
+                        let id = top_val as u64;
+                        if let Some(obj_arc) = vm.objects.get(&id) {
+                            let obj = obj_arc.read().unwrap();
+                            let mut result_obj = auto_val::Obj::new();
+                            for (key, val) in &obj.fields {
+                                result_obj.set(key.clone(), val.clone());
+                            }
+                            result = Some(Value::Obj(result_obj));
+                        }
+                    }
+                    // Check if it's an array ID (2000000-2999999)
+                    if result.is_none() && top_val >= 2000000 && top_val < 3000000 {
+                        let id = top_val as u64;
+                        if let Some(arr_arc) = vm.arrays.get(&id) {
+                            let arr = arr_arc.read().unwrap();
+                            let items: Vec<Value> = arr.iter().cloned().collect();
+                            result = Some(Value::Array(auto_val::Array::from_vec(items)));
+                        }
+                    }
                     if result.is_none() {
                         result = Some(Value::Int(top_val));
                     }

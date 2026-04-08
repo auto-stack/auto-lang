@@ -133,6 +133,10 @@ pub struct Codegen {
     /// Used to correctly identify parameters: index >= fn_scope_start && index < fn_scope_start + n_args
     pub fn_scope_start: usize,
 
+    /// Track current type's member names during method compilation
+    /// Used to resolve implicit field access (bare field names → self.field)
+    pub current_type_members: Option<Vec<String>>,
+
     /// Plan 087 Phase 3: Type inference context for .type property support
     /// Uses the infer module's comprehensive type inference system
     pub infer_ctx: InferenceContext,
@@ -218,6 +222,7 @@ impl Codegen {
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
+            current_type_members: None, // Plan 087 Phase 3: No type context initially
         }
     }
 
@@ -270,6 +275,7 @@ impl Codegen {
             should_pop_expr_result: false,
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
+            current_type_members: None, // Plan 087 Phase 3: No type context initially
         }
     }
 
@@ -1137,6 +1143,7 @@ impl Codegen {
                 // Method naming: TypeName.method_name (e.g., Counter.increment)
                 // self becomes the first parameter
                 let type_name = type_decl.name.to_string();
+                let member_names: Vec<String> = type_decl.members.iter().map(|m| m.name.to_string()).collect();
                 for method in &type_decl.methods {
                     // Create mangled method name: TypeName.method_name
                     let mangled_name = format!("{}.{}", type_name, method.name);
@@ -1146,8 +1153,26 @@ impl Codegen {
                     method_fn.name = crate::ast::Name::from(mangled_name.as_str());
                     method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
 
+                    // For instance methods (non-static), inject 'self' as first parameter
+                    if !method.is_static {
+                        let has_self = method_fn.params.first().map(|p| p.name.to_string() == "self").unwrap_or(false);
+                        if !has_self {
+                            method_fn.params.insert(0, crate::ast::Param {
+                                name: crate::ast::Name::from("self"),
+                                ty: Type::User(type_decl.clone()),
+                                default: None,
+                                mode: crate::ast::ParamMode::View,
+                            });
+                        }
+                    }
+
+                    // Store member names for implicit field access resolution
+                    self.current_type_members = Some(member_names.clone());
+
                     // Compile as a standalone function
                     self.compile_stmt(&Stmt::Fn(method_fn))?;
+
+                    self.current_type_members = None;
                 }
             }
             Stmt::EnumDecl(_enum_decl) => {
@@ -2581,6 +2606,23 @@ impl Codegen {
                         self.emit_i32(value);
                         self.last_expr_type = ObjectType::Int;
                     } else {
+                        // Plan 087 Phase 3: Check implicit field access in methods
+                        // If we're inside a type method, bare field names should resolve to self.field
+                        if let Some(ref members) = self.current_type_members {
+                            if members.contains(&name_str) {
+                                if let Some(self_index) = self.lookup_var("self") {
+                                    vm_debug!("DEBUG: Variable {} resolved as implicit self.{} access", name_str, name_str);
+                                    self.emit_load_loc(self_index);
+                                    // Emit GET_FIELD with field name
+                                    let field_bytes = name_str.as_bytes().to_vec();
+                                    let field_idx = self.strings.len() as u16;
+                                    self.strings.push(field_bytes);
+                                    self.emit(OpCode::GET_FIELD);
+                                    self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                    return Ok(());
+                                }
+                            }
+                        }
                         vm_debug!("DEBUG: Variable {} NOT FOUND!", name_str);
                         // Plan 080: Variable not found - return proper error
                         // Even with skip_check=true in parser, we catch undefined variables here

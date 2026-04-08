@@ -165,6 +165,54 @@ macro_rules! vm_debug {
     };
 }
 
+/// Format a Value for display in object literals
+fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> String {
+    match val {
+        Value::Int(i) => {
+            // Check if it's a tagged string index
+            if *i < 0 && *i > -1000000 && *i != -2147483648 && *i != -2147483647 {
+                let str_idx = (-i - 1) as usize;
+                let strings = vm.strings.read().unwrap();
+                if let Some(bytes) = strings.get(str_idx) {
+                    return format!("\"{}\"", String::from_utf8_lossy(bytes));
+                }
+            }
+            i.to_string()
+        }
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s) => format!("\"{}\"", s.as_str()),
+        Value::Nil => "nil".to_string(),
+        Value::VmRef(vm_ref) => {
+            // Recursively format VmRef values
+            let id = vm_ref.id as u64;
+            if let Some(obj_arc) = vm.objects.get(&id) {
+                let obj = obj_arc.read().unwrap();
+                let fields: Vec<String> = obj.fields.iter().map(|(k, v)| {
+                    format!("{}: {}", k, format_value_for_display(vm, v))
+                }).collect();
+                format!("{{{}}}", fields.join(", "))
+            } else if let Some(arr_arc) = vm.arrays.get(&id) {
+                let arr = arr_arc.read().unwrap();
+                let items: Vec<String> = arr.iter().map(|v| format_value_for_display(vm, v)).collect();
+                format!("[{}]", items.join(", "))
+            } else {
+                format!("<ref:{}>", id)
+            }
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.values.iter().map(|v| format_value_for_display(vm, v)).collect();
+            format!("[{}]", items.join(", "))
+        }
+        Value::Obj(obj) => {
+            let fields: Vec<String> = obj.iter().map(|(k, v)| {
+                format!("{}: {}", k, format_value_for_display(vm, v))
+            }).collect();
+            format!("{{{}}}", fields.join(", "))
+        }
+        _ => val.repr().to_string(),
+    }
+}
+
 /// Run AutoLang code using the default execution engine
 ///
 /// **Plan 081 Phase 1**: Default engine is AutoVM (faster bytecode VM)
@@ -426,7 +474,7 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             return Ok(format!("[{}]", formatted.join(", ")));
         }
 
-        // Check heap objects (for List, HashMap, etc.)
+        // Check heap objects (for List, HashMap, StringBuilder, etc.)
         if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
             let obj = obj_arc.read().unwrap();
             // Try to format as List<int>
@@ -436,6 +484,29 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             {
                 let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
                 return Ok(format!("[{}]", formatted.join(", ")));
+            }
+            // Try to format as SpecializedStringBuilder
+            if let Some(sb) = obj
+                .as_any()
+                .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+            {
+                return Ok(sb.buffer.clone());
+            }
+        }
+
+        // Check objects registry (for object literals) - IDs start at 1000000
+        if result >= 1000000 && result < 2000000 {
+            if let Some(obj_arc) = vm.objects.get(&result_u64) {
+                let obj = obj_arc.read().unwrap();
+                // Sort fields by key for consistent output
+                let mut fields: Vec<(&auto_val::ValueKey, &Value)> = obj.fields.iter().collect();
+                fields.sort_by(|(k1, _), (k2, _)| k1.to_string().cmp(&k2.to_string()));
+                let formatted: Vec<String> = fields.iter().map(|(k, v)| {
+                    let key_str = k.to_string();
+                    let val_str = format_value_for_display(&vm, v);
+                    format!("{}: {}", key_str, val_str)
+                }).collect();
+                return Ok(format!("{{{}}}", formatted.join(", ")));
             }
         }
 
