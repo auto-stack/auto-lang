@@ -1,15 +1,16 @@
-# Plan 158: Fix Test Regressions (270 Failures)
+# Plan 158: Fix Test Regressions (270 Failures) — ✅ COMPLETED
 
 ## Objective
 
 Fix all 270 failing tests introduced by recent commits (5c9b68a ~ 92fe855: unified enum, Box\<Node> fix, parser changes).
 
-## Current State
+## Final State (2026-04-09)
 
-- **Total tests**: ~2,533 (lib tests, excluding storage crash)
-- **Passing**: 2,442 (96.5%)
-- **Failing**: 10
-- **Ignored**: 81
+- **Status**: ✅ COMPLETED — 0 failing tests across all crates
+- **Total tests**: ~2,533+
+- **Passing**: All non-ignored tests pass
+- **Failing**: 0
+- **Ignored**: ~81 (documented with clear TODO reasons)
 
 ### Root Cause
 
