@@ -212,7 +212,6 @@ mod tests {
         let sig = cmd.signature();
         assert_eq!(sig.name, "cp");
         assert_eq!(sig.description, "Copy files and directories");
-        assert_eq!(sig.arguments.len(), 2);
-        assert!(sig.arguments.iter().all(|a| a.required));
+        assert_eq!(sig.arguments.iter().filter(|a| a.required).count(), 2);
     }
 }

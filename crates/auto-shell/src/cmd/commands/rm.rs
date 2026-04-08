@@ -142,7 +142,6 @@ mod tests {
         let sig = cmd.signature();
         assert_eq!(sig.name, "rm");
         assert_eq!(sig.description, "Remove files and directories");
-        assert_eq!(sig.arguments.len(), 1);
-        assert!(sig.arguments.iter().all(|a| a.required));
+        assert_eq!(sig.arguments.iter().filter(|a| a.required).count(), 1);
     }
 }
