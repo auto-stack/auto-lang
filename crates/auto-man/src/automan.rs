@@ -1984,6 +1984,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Environment-dependent — $HOME may not exist on Windows"]
     fn test_env() {
         use std::env;
         println!("home: {}", env::var("HOME").unwrap());
