@@ -1463,7 +1463,7 @@ impl ArkGenerator {
     ///
     /// Generates code to retrieve navigation params using getParamByName()
     /// Example:
-    /// ```
+    /// ```typescript
     /// aboutToAppear(): void {
     ///   this.articleDetail = this.pathStack.getParamByName('articleDetail')[0] as ArticleClass;
     /// }

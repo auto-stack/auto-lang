@@ -17,7 +17,7 @@ use crate::error::{AutoResult, AutoError};
 /// ```
 ///
 /// Output: bytecode that concatenates strings with variable values:
-/// ```rust
+/// ```text
 /// LOAD_STR "Hello, "
 /// LOAD_VAR "name"
 /// TO_STR                    // Convert to string

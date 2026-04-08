@@ -25,14 +25,14 @@ use std::sync::Arc;
 /// ## Workflow
 ///
 /// 1. **Compilation Phase**:
-///    ```auto
+///    ```text
 ///    // hal.at transpiled to C
 ///    #[c]
-/// fn gpio_init(pin int) int;
+///    fn gpio_init(pin int) int;
 ///    ```
 ///
 /// 2. **Registration Phase**:
-///    ```rust
+///    ```ignore
 ///    ffi_bridge.register_c_function(
 //     "hal",
 ///     "gpio_init",
@@ -42,7 +42,7 @@ use std::sync::Arc;
 ///    ```
 ///
 /// 3. **Code Generation Phase**:
-///    ```rust
+///    ```ignore
 ///    // When AutoVM sees extern "c" { gpio_init(pin) }
 ///    // It generates: CALL_NAT <native_id_for_gpio_init>
 ///    ```

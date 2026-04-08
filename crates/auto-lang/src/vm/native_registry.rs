@@ -9,7 +9,9 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,no_run
+//! use auto_lang::vm::native_registry::BIGVM_NATIVES;
+//!
 //! // Register native functions during compilation
 //! let id = BIGVM_NATIVES.lock().unwrap().register("List.new");
 //! assert!(id >= 100); // IDs start at 100

@@ -485,12 +485,15 @@ impl Clone for SpecializedPair {
 ///
 /// # Example
 /// ```rust
+/// use auto_lang::vm::generic_registry::GenericInstanceData;
+/// use auto_val::Value;
+///
 /// // Source: type Pair<K, V> { key K; val V }
 /// // Instantiation: let p: Pair<int, string> = Pair.new(1, "a")
 ///
 /// let instance = GenericInstanceData {
 ///     mono_name: "Pair_int_str".to_string(),
-///     fields: vec![Value::Int(1), Value::Str("a")],
+///     fields: vec![Value::Int(1), Value::str("a")],
 /// };
 /// ```
 #[derive(Debug)]

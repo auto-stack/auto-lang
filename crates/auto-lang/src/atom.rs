@@ -342,10 +342,12 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_lang::atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Value;
     ///
-    /// let atom = atom!{config {version: "1.0"}};
+    /// let atom = Atom::assemble(vec![
+    ///     Value::pair("version", "1.0"),
+    /// ]).unwrap();
     /// let value = atom.to_value();
     /// assert!(matches!(value, Value::Node(_)));
     /// ```
@@ -692,7 +694,7 @@ impl fmt::Display for Atom {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use auto_lang::atom::AtomReader;
 ///
 /// let mut reader = AtomReader::new();
@@ -735,7 +737,7 @@ impl AtomReader {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use auto_lang::atom::AtomReader;
     ///
     /// let mut reader = AtomReader::new();

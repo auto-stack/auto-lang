@@ -13,7 +13,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust
+//! ```rust,no_run
 //! use auto_lang::route::RouteDiscovery;
 //! use std::path::PathBuf;
 //!

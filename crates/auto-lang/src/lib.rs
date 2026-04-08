@@ -1561,7 +1561,7 @@ pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
 ///
 /// # Example
 /// ```no_run
-/// use auto_lang::detect_mode_from_extension;
+/// use auto_lang::{detect_mode_from_extension, CompileMode};
 /// use std::path::Path;
 ///
 /// let mode = detect_mode_from_extension(Path::new("database.config.at")).unwrap();

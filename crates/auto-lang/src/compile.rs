@@ -659,6 +659,8 @@ impl CompileSession {
     /// # Example
     ///
     /// ```rust,no_run
+    /// use auto_lang::compile::CompileSession;
+    ///
     /// let mut session = CompileSession::new();
     /// session.compile_source("fn main() int { 42 }", "test.at").unwrap();
     ///

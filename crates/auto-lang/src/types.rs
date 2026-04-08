@@ -27,7 +27,7 @@
 //!
 //! # 架构
 //!
-//! ```
+//! ```text
 //! Parser ───────┐
 //! type_store: Arc<TypeStore> ──────┐
 //!     ├── type_decls

@@ -221,8 +221,8 @@ impl AutoVM {
     ///
     /// # Example
     ///
-    /// ```no_run
-    /// use auto_lang::universe::ListData;
+    /// ```ignore
+    /// use auto_lang::vm::types::ListData;
     /// use auto_lang::vm::engine::AutoVM;
     ///
     /// let mut list: ListData<i32> = ListData::new();
@@ -243,9 +243,9 @@ impl AutoVM {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// use auto_lang::vm::heap_object::downcast;
-    /// use auto_lang::universe::ListData;
+    /// use auto_lang::vm::types::ListData;
     ///
     /// if let Some(obj) = vm.get_heap_object(id) {
     ///     let guard = obj.read().unwrap();

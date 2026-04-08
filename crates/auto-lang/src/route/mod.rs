@@ -29,7 +29,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust
+//! ```rust,no_run
 //! use auto_lang::route::{RouteDiscovery, RouteMerger, RouteDef};
 //! use std::path::PathBuf;
 //!

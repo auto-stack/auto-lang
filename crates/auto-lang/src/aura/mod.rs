@@ -33,6 +33,7 @@
 //!         name: "count".to_string(),
 //!         type_info: Type::Int,
 //!         initial: AuraExpr::Int(0),
+//!         decorators: vec![],
 //!     }],
 //!     messages: vec![AuraMessage {
 //!         name: "Msg".to_string(),
@@ -50,6 +51,8 @@
 //!     },
 //!     handlers: std::collections::HashMap::new(),
 //!     props: vec![],
+//!     routes: None,
+//!     lifecycle: vec![],
 //! };
 //! ```
 

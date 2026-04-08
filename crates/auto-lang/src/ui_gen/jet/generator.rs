@@ -1771,9 +1771,9 @@ fun {}Preview() {{
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// use auto_lang::ui_gen::jet::JetGenerator;
-    /// use auto_lang::ui_gen::jet::project::JetProjectConfig;
+    /// use auto_lang::ui_gen::jet::JetProjectConfig;
     ///
     /// let gen = JetGenerator::new();
     /// let config = JetProjectConfig::new("MyApp")

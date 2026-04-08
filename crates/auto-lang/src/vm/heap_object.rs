@@ -16,8 +16,9 @@ use std::any::Any;
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::{HeapObject, TypeTag};
+/// use auto_lang::vm::heap_object::{HeapObject, TypeTag};
 /// use std::any::Any;
+/// use std::sync::{Arc, RwLock};
 ///
 /// pub struct MyData {
 ///     value: i32,
@@ -31,7 +32,7 @@ use std::any::Any;
 ///
 /// // Usage in unified registry:
 /// let obj: Arc<RwLock<dyn HeapObject>> = Arc::new(RwLock::new(MyData { value: 42 }));
-/// let guard = obj.read();
+/// let guard = obj.read().unwrap();
 /// let my_data = guard.as_any().downcast_ref::<MyData>().unwrap();
 /// assert_eq!(my_data.value, 42);
 /// ```
@@ -179,12 +180,12 @@ impl std::fmt::Display for TypeTag {
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::{is_type, TypeTag};
+/// use auto_lang::vm::heap_object::{is_type, TypeTag, HeapObject};
+/// use auto_lang::vm::types::ListData;
 ///
-/// let obj: &dyn HeapObject = &my_list;
-/// if is_type(obj, TypeTag::ListInt) {
-///     println!("This is a List<int>");
-/// }
+/// let list: ListData<i32> = ListData::new();
+/// let obj: &dyn HeapObject = &list;
+/// assert!(is_type(obj, TypeTag::ListInt));
 /// ```
 pub fn is_type(obj: &dyn HeapObject, tag: TypeTag) -> bool {
     obj.type_tag() == tag
@@ -197,13 +198,15 @@ pub fn is_type(obj: &dyn HeapObject, tag: TypeTag) -> bool {
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::downcast;
+/// use auto_lang::vm::heap_object::downcast;
+/// use auto_lang::vm::heap_object::HeapObject;
+/// use auto_lang::vm::types::ListData;
 ///
-/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
-/// let guard = obj.read();
+/// let list: ListData<i32> = ListData::new();
+/// let obj: &dyn HeapObject = &list;
 ///
-/// if let Some(list_int) = downcast::<ListData<i32>>(&*guard) {
-///     println!("Got List<int> with {} elements", list_int.len());
+/// if let Some(list_int) = downcast::<ListData<i32>>(obj) {
+///     println!("Got List<int> with {} elements", list_int.elems.len());
 /// }
 /// ```
 pub fn downcast<T: Any>(obj: &dyn HeapObject) -> Option<&T> {
@@ -217,13 +220,15 @@ pub fn downcast<T: Any>(obj: &dyn HeapObject) -> Option<&T> {
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::downcast_mut;
+/// use auto_lang::vm::heap_object::downcast_mut;
+/// use auto_lang::vm::heap_object::HeapObject;
+/// use auto_lang::vm::types::ListData;
 ///
-/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
-/// let mut guard = obj.write();
+/// let mut list: ListData<i32> = ListData::new();
+/// let obj: &mut dyn HeapObject = &mut list;
 ///
-/// if let Some(list_int) = downcast_mut::<ListData<i32>>(&mut *guard) {
-///     list_int.push(42);
+/// if let Some(list_int) = downcast_mut::<ListData<i32>>(obj) {
+///     list_int.elems.push(42);
 /// }
 /// ```
 pub fn downcast_mut<T: Any>(obj: &mut dyn HeapObject) -> Option<&mut T> {
@@ -237,11 +242,13 @@ pub fn downcast_mut<T: Any>(obj: &mut dyn HeapObject) -> Option<&mut T> {
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::type_name;
+/// use auto_lang::vm::heap_object::type_name;
+/// use auto_lang::vm::heap_object::HeapObject;
+/// use auto_lang::vm::types::ListData;
 ///
-/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
-/// let guard = obj.read();
-/// println!("Object type: {}", type_name(&*guard));
+/// let list: ListData<i32> = ListData::new();
+/// let obj: &dyn HeapObject = &list;
+/// println!("Object type: {}", type_name(obj));
 /// ```
 pub fn type_name(obj: &dyn HeapObject) -> String {
     obj.type_tag().name().to_string()
@@ -270,13 +277,13 @@ pub fn type_name(obj: &dyn HeapObject) -> String {
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::{try_downcast_checked, TypeTag};
-/// use crate::vm::types::ListData;
+/// use auto_lang::vm::heap_object::{try_downcast_checked, TypeTag, HeapObject};
+/// use auto_lang::vm::types::ListData;
 ///
-/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
-/// let guard = obj.read().unwrap();
+/// let list: ListData<i32> = ListData::new();
+/// let obj: &dyn HeapObject = &list;
 ///
-/// if let Some(list) = try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt) {
+/// if let Some(list) = try_downcast_checked::<ListData<i32>>(obj, TypeTag::ListInt) {
 ///     // Use list...
 /// }
 /// ```
@@ -297,14 +304,14 @@ pub fn try_downcast_checked<T: Any>(obj: &dyn HeapObject, expected_tag: TypeTag)
 /// # Example
 ///
 /// ```rust
-/// use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
-/// use crate::vm::types::ListData;
+/// use auto_lang::vm::heap_object::{try_downcast_checked_mut, TypeTag, HeapObject};
+/// use auto_lang::vm::types::ListData;
 ///
-/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
-/// let mut guard = obj.write().unwrap();
+/// let mut list: ListData<i32> = ListData::new();
+/// let obj: &mut dyn HeapObject = &mut list;
 ///
-/// if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
-///     list.push(42);
+/// if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(obj, TypeTag::ListInt) {
+///     list.elems.push(42);
 /// }
 /// ```
 #[inline]

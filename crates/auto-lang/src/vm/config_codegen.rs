@@ -19,7 +19,7 @@ use auto_val::ValueKey;
 /// ```
 ///
 /// Output: bytecode that creates a single object with all fields:
-/// ```rust
+/// ```text
 /// LOAD_STR "localhost"
 /// LOAD_CONST 8080
 /// LOAD_STR "mydb"

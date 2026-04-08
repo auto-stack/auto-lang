@@ -142,7 +142,7 @@ impl MessageContext {
     /// Convert to a Value representation for VM
     ///
     /// This creates an object value that can be used in the VM:
-    /// ```
+    /// ```text
     /// {
     ///     sender_id: ?i64,
     ///     trace_id: string,

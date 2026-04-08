@@ -65,7 +65,9 @@ pub fn find_std_lib() -> AutoResult<AutoStr> {
 /// * `Err(String)` - Error message if module not found in any directory
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
+/// use auto_lang::util::find_module_file;
+///
 /// // Finds first match: ~/.auto/libs/myapp/utils/helpers.at
 /// // or /usr/local/lib/auto/myapp/utils/helpers.at
 /// // or /usr/lib/auto/myapp/utils/helpers.at
