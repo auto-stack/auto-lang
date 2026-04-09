@@ -1,7 +1,7 @@
 // Plan 159 Phase 6B-2.1: async fn transpilation
+// Functions returning ~T (Future) are automatically async in Rust
 
-#[async]
-fn fetch_data(url str) str {
+fn fetch_data(url str) ~str {
     return url
 }
 

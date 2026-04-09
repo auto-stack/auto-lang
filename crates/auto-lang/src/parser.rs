@@ -2969,7 +2969,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let (has_c, has_vm, has_rs, _has_pub, _has_async, with_params) = self.parse_fn_annotations()?;
+                let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
@@ -3002,7 +3002,6 @@ impl<'a> Parser<'a> {
                             has_vm,
                             has_rs,
                             is_static,
-                            _has_async,
                             with_params.clone(),
                         );
                         return Ok(Stmt::Expr(Expr::Nil));
@@ -3026,7 +3025,6 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static,
-                        _has_async,
                         with_params,
                     )?
                 } else if self.is_kind(TokenKind::Type) {
@@ -3218,7 +3216,7 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, has_rs, _has_pub, _has_async, with_params) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -3302,7 +3300,6 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static_method,
-                        _has_async,
                         with_params.clone(),
                     );
                     self.expect_eos(false)?;
@@ -3316,7 +3313,6 @@ impl<'a> Parser<'a> {
                     has_vm,
                     has_rs,
                     is_static_method,
-                    _has_async,
                     with_params,
                 )?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
@@ -5195,12 +5191,11 @@ impl<'a> Parser<'a> {
     /// Plan 083: Added support for #[rs] (Rust transpiler)
     fn parse_fn_annotations(
         &mut self,
-    ) -> AutoResult<(bool, bool, bool, bool, bool, Vec<crate::ast::TypeParam>)> {
+    ) -> AutoResult<(bool, bool, bool, bool, Vec<crate::ast::TypeParam>)> {
         let mut has_c = false;
         let mut has_vm = false;
         let mut has_rs = false;
         let mut has_pub = false;
-        let mut has_async = false;
         let mut with_params: Vec<crate::ast::TypeParam> = Vec::new();
 
         // Parse all annotation blocks: #[...] #[...] ...
@@ -5227,8 +5222,7 @@ impl<'a> Parser<'a> {
                             with_params = self.parse_with_params()?;
                         }
                         "async" => {
-                            // Plan 159 Phase 6B-2: #[async] fn -> async fn
-                            has_async = true;
+                            // async is inferred from return type ~T (Handle), not annotation
                         }
                         "derive" | "serde" | "tokio" | "allow" | "cfg" | "test" => {
                             // Plan 159 Phase 6B-2: Pass-through annotations for Rust transpiler
@@ -5317,7 +5311,7 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
 
-        Ok((has_c, has_vm, has_rs, has_pub, has_async, with_params))
+        Ok((has_c, has_vm, has_rs, has_pub, with_params))
     }
 
     /// Plan 061: Parse with(...) parameter list: (T, U as Spec<V>)
@@ -5389,10 +5383,10 @@ impl<'a> Parser<'a> {
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         // Check for annotations: #[c], #[vm], #[rs], #[c,vm] BEFORE fn keyword
-        let (has_c, has_vm, has_rs, _has_pub, has_async, with_params) = if self.is_kind(TokenKind::Hash) {
+        let (has_c, has_vm, has_rs, _has_pub, with_params) = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
         } else {
-            (false, false, false, false, false, Vec::new())
+            (false, false, false, false, Vec::new())
         };
 
         // Skip empty lines after annotations
@@ -5481,6 +5475,7 @@ impl<'a> Parser<'a> {
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
             || self.is_kind(TokenKind::Not)
+            || self.is_kind(TokenKind::Tilde)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -5570,7 +5565,7 @@ impl<'a> Parser<'a> {
         };
 
         // Create function, preserving return type name if type is Unknown
-        let mut fn_expr = if matches!(ret_type, Type::Unknown) {
+        let fn_expr = if matches!(ret_type, Type::Unknown) {
             if let Some(ret_name) = ret_type_name {
                 Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
             } else {
@@ -5579,9 +5574,6 @@ impl<'a> Parser<'a> {
         } else {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
-
-        // Plan 159 Phase 6B-2: Set async flag from #[async] annotation
-        fn_expr.is_async = has_async;
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
@@ -5614,7 +5606,6 @@ impl<'a> Parser<'a> {
         has_vm: bool,
         has_rs: bool,
         is_static: bool,
-        has_async: bool,
         with_params: Vec<crate::ast::TypeParam>,
     ) -> AutoResult<Stmt> {
         self.next(); // skip keyword `fn`
@@ -5687,6 +5678,7 @@ impl<'a> Parser<'a> {
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
             || self.is_kind(TokenKind::Not)
+            || self.is_kind(TokenKind::Tilde)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -5791,9 +5783,6 @@ impl<'a> Parser<'a> {
 
         // Set is_static flag
         fn_expr.is_static = is_static;
-
-        // Plan 159 Phase 6B-2: Set async flag
-        fn_expr.is_async = has_async;
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
@@ -6378,7 +6367,7 @@ impl<'a> Parser<'a> {
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, has_rs, _has_pub, _has_async, with_params) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -6407,7 +6396,6 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static,
-                        _has_async,
                         with_params.clone(),
                     );
                 }
@@ -6437,7 +6425,6 @@ impl<'a> Parser<'a> {
                     has_vm,
                     has_rs,
                     is_static,
-                    _has_async,
                     with_params,
                 )?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {

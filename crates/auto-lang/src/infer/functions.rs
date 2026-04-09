@@ -148,7 +148,6 @@ mod tests {
             ret: Type::Int,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -187,7 +186,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -225,7 +223,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -251,7 +248,6 @@ mod tests {
             ret: Type::Unknown,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -298,7 +294,6 @@ mod tests {
             ret: Type::Int,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -330,7 +325,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -367,7 +361,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -400,7 +393,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: true,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -425,7 +417,6 @@ mod tests {
             ret: Type::Unknown,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -456,7 +447,6 @@ mod tests {
             ret: Type::Unknown,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -492,7 +482,6 @@ mod tests {
             ret: Type::Int,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -538,7 +527,6 @@ mod tests {
             ret: Type::Bool,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -575,7 +563,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -600,7 +587,6 @@ mod tests {
             ret: Type::Void,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -632,7 +618,6 @@ mod tests {
             ret: Type::Unknown,
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };
@@ -663,7 +648,6 @@ mod tests {
             ret: Type::Int,  // Declared return type but no body
             ret_name: None,
             is_static: false,
-            is_async: false,
             type_params: vec![],
             span: None,
         };

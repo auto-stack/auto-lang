@@ -1965,8 +1965,10 @@ impl RustTrans {
         }
 
         // Function signature
-        // Plan 159 Phase 6B-2: async fn support
-        if fn_decl.is_async {
+        // Auto-detect async: functions returning ~T (Future/Handle) are async in Rust
+        let is_async_fn = matches!(fn_decl.ret, Type::Handle { .. })
+            || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
+        if is_async_fn {
             write!(sink.body, "async ")?;
         }
         write!(sink.body, "fn {}", fn_decl.name)?;
@@ -1995,9 +1997,20 @@ impl RustTrans {
         }
         write!(sink.body, ")")?;
 
-        // Return type
+        // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         if !matches!(fn_decl.ret, Type::Void) {
-            write!(sink.body, " -> {}", self.rust_type_name(&fn_decl.ret))?;
+            let ret_str = if is_async_fn {
+                match &fn_decl.ret {
+                    Type::Handle { task_type } => self.rust_type_name(task_type),
+                    Type::GenericInstance(inst) if inst.base_name == "Future" => {
+                        self.rust_type_name(inst.args.first().unwrap_or(&Type::Unknown))
+                    }
+                    other => self.rust_type_name(other),
+                }
+            } else {
+                self.rust_type_name(&fn_decl.ret)
+            };
+            write!(sink.body, " -> {}", ret_str)?;
         }
 
         // Function body

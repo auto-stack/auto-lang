@@ -291,7 +291,6 @@ mod tests {
             ret,
             ret_name: None,
             is_static: false,  // Plan 035 Phase 4: Default to instance method
-            is_async: false,   // Plan 159 Phase 6B-2
             type_params: Vec::new(),  // Plan 061: No generic parameters
             span: None,  // Plan 061: No source location
         }
