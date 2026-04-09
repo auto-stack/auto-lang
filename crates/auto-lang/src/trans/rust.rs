@@ -2882,8 +2882,24 @@ impl RustTrans {
                 })
                 .collect();
 
-            // Generate impl block for each spec
+            // Generate impl block for each spec (only if type provides matching methods)
             for spec_decl in spec_decls {
+                // Collect matching methods first — skip empty impls
+                let matched_methods: Vec<_> = spec_decl
+                    .methods
+                    .iter()
+                    .filter(|spec_method| {
+                        type_decl
+                            .methods
+                            .iter()
+                            .any(|m| m.name == spec_method.name)
+                    })
+                    .collect();
+
+                if matched_methods.is_empty() {
+                    continue; // Skip empty impl blocks
+                }
+
                 sink.body.write(b"\n")?;
 
                 // Build impl signature with generic parameters
@@ -2928,8 +2944,8 @@ impl RustTrans {
                 writeln!(sink.body, " {{")?;
                 self.indent();
 
-                // Find methods in type_decl that match spec methods
-                for spec_method in &spec_decl.methods {
+                // Generate matched methods
+                for spec_method in &matched_methods {
                     // Find the implementation in type_decl
                     if let Some(method) = type_decl
                         .methods

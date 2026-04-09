@@ -13,7 +13,7 @@ int main(void) {
     struct MyReader reader = {.data = "Hello, spec!"};
 
 
-    void* readers[1] = {reader};
+    void* readers[1] = {&reader};
     for (int i = 0; i < 0; i++) {
         void* r = readers[i];
         unknown text = r.read();
