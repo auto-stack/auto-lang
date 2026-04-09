@@ -11,7 +11,7 @@ trait Flyer {
 
 struct Pigeon {}
 
-impl Pigeon {
+impl Flyer for Pigeon {
     fn fly(&self) {
         println!("Flap");
     }

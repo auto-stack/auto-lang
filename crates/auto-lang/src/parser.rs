@@ -787,6 +787,12 @@ impl<'a> Parser<'a> {
             if let Some(enum_decl) = store.lookup_enum_decl_str(name) {
                 return shared(Type::Enum(shared(enum_decl.as_ref().clone())));
             }
+            // Plan 159 Phase 6B-2.2: Check spec declarations
+            // When a spec name is used as a type annotation, return Type::Spec
+            // so the transpiler can generate Box<dyn Trait>
+            if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+                return shared(Type::Spec(shared(spec_decl.clone())));
+            }
         }
 
         // 从 InferenceContext 查找

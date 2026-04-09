@@ -1240,8 +1240,8 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 | # | 特性 | 当前状态 | 需要做什么 | 影响的 AutoCode 模块 |
 |---|------|---------|-----------|-------------------|
-| 6B-2.1 | `async fn` 声明 | ✅ test 134 | `#[async] fn foo()` → `async fn foo()` | Agent 循环、API 调用 |
-| 6B-2.2 | trait object `dyn` | ⏸️ deferred | `Box<dyn Spec>` 真正工作 | 工具注册表 |
+| 6B-2.1 | `async fn` 声明 | ✅ test 134 | 返回 `~T` 自动 → `async fn`，unwrap 返回类型 | Agent 循环、API 调用 |
+| 6B-2.2 | trait object `dyn` | ✅ test 031 | `spec` 作类型 → `Box<dyn Trait>`，`[]Spec` → `Vec<Box<dyn>>` | 工具注册表 |
 | 6B-2.3 | derive 宏属性 | ✅ test 135 | `#[derive(Debug, Clone)]` 透传到 Rust | 所有核心类型 |
 | 6B-2.4 | serde 标签枚举 | ✅ (2.3 统一实现) | `#[serde(tag = "type")]` 属性透传 | API 类型系统 |
 | 6B-2.5 | 自定义属性透传 | ✅ (2.3 统一实现) | `#[serde(...)]` / `#[tokio::main]` 等直接透传 | API 层、CLI |

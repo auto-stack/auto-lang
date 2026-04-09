@@ -80,6 +80,9 @@ pub struct RustTrans {
     // Cache for tag type names (for tag construction detection)
     tag_types: HashSet<AutoStr>,
 
+    // Plan 159 Phase 6B-2.2: Cache for spec declarations (for impl Trait for Type)
+    spec_decls: HashMap<AutoStr, Vec<SpecMethod>>,
+
     // Plan 151: Global variables (top-level var declarations)
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
@@ -99,6 +102,7 @@ impl RustTrans {
             _current_scope: None,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
+            spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             mut_borrowed: HashSet::new(),
         }
@@ -115,6 +119,7 @@ impl RustTrans {
             _current_scope: None,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
+            spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             mut_borrowed: HashSet::new(),
         }
@@ -253,8 +258,12 @@ impl RustTrans {
                 format!("std::collections::HashMap<{}, {}>", self.rust_type_name(k), self.rust_type_name(v))
             }
             Type::Slice(slice) => {
-                // []T transpiles to &[T] in Rust
-                format!("&[{}]", self.rust_type_name(&slice.elem))
+                // []T → &[T], but []Spec → Vec<Box<dyn Spec>> (dynamic polymorphism)
+                if matches!(&*slice.elem, Type::Spec(_)) {
+                    format!("Vec<{}>", self.rust_type_name(&slice.elem))
+                } else {
+                    format!("&[{}]", self.rust_type_name(&slice.elem))
+                }
             }
             Type::Ptr(ptr) => {
                 // **Phase 1.1: Pointer Types (test: 005_pointer)**
@@ -268,7 +277,7 @@ impl RustTrans {
             }
             Type::User(usr) => usr.name.to_string(),
             Type::Enum(en) => en.borrow().name.to_string(),
-            Type::Spec(spec) => format!("dyn {}", spec.borrow().name), // Spec 作为 trait object
+            Type::Spec(spec) => format!("Box<dyn {}>", spec.borrow().name), // Spec 作为类型标注 → Box<dyn Trait>
             Type::Union(u) => u.name.to_string(),
             Type::Tag(t) => t.borrow().name.to_string(),
             Type::Variadic => "...".to_string(), // C variadic, not used in Rust
@@ -1936,7 +1945,27 @@ impl RustTrans {
             }
         }
 
-        self.expr(&store.expr, out)?;
+        // Plan 159 6B-2.2: Wrap array elements in Box::new() for []Spec types
+        let is_spec_slice = matches!(&store.ty, Type::Slice(slice) if matches!(&*slice.elem, Type::Spec(_)));
+        if is_spec_slice {
+            // [b1, b2] → vec![Box::new(b1), Box::new(b2)]
+            if let Expr::Array(elems) = &store.expr {
+                write!(out, "vec![")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    write!(out, "Box::new(")?;
+                    self.expr(elem, out)?;
+                    write!(out, ")")?;
+                    if i < elems.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "]")?;
+            } else {
+                self.expr(&store.expr, out)?;
+            }
+        } else {
+            self.expr(&store.expr, out)?;
+        }
 
         // When assigning a string literal to a String/Str type, add .to_string()
         // because Rust string literals are &str, but String type needs conversion
@@ -2782,8 +2811,22 @@ impl RustTrans {
             }
         }
 
-        // Generate impl block with own methods
-        if !type_decl.methods.is_empty() {
+        // Generate impl block with own methods (excluding spec methods)
+        // Collect spec method names to avoid duplication in impl Type block
+        let spec_method_names: HashSet<AutoStr> = type_decl
+            .specs
+            .iter()
+            .filter_map(|s| self.spec_decls.get(s))
+            .flat_map(|methods| methods.iter().map(|m| m.name.clone()))
+            .collect();
+
+        let own_methods: Vec<_> = type_decl
+            .methods
+            .iter()
+            .filter(|m| !spec_method_names.contains(&m.name))
+            .collect();
+
+        if !own_methods.is_empty() {
             sink.body.write(b"\n")?;
             write!(sink.body, "impl {}", type_decl.name)?;
 
@@ -2807,7 +2850,7 @@ impl RustTrans {
             writeln!(sink.body, " {{")?;
             self.indent();
 
-            for method in &type_decl.methods {
+            for method in &own_methods {
                 self.fn_decl(method, sink)?;
                 sink.body.write(b"\n")?;
             }
@@ -2819,12 +2862,15 @@ impl RustTrans {
 
         // Generate trait implementations for specs
         if !type_decl.specs.is_empty() {
-            // Collect spec declarations from scope
+            // Collect spec declarations: prefer local cache, fallback to database lookup
             let spec_decls: Vec<_> = type_decl
                 .specs
                 .iter()
                 .filter_map(|spec_name| {
-                    if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
+                    // Plan 159 6B-2.2: Use cached spec methods first
+                    if let Some(methods) = self.spec_decls.get(spec_name) {
+                        Some(SpecDecl::new(spec_name.clone(), methods.clone()))
+                    } else if let Some(meta) = self.lookup_meta(spec_name) {
                         if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
                             Some(spec_decl.clone())
                         } else {
@@ -2912,15 +2958,10 @@ impl RustTrans {
                             write!(sink.body, ")")?;
                         }
 
-                        writeln!(sink.body, " {{")?;
-                        self.indent();
-
-                        // Generate method body
+                        // Generate method body (body() writes its own { })
+                        write!(sink.body, " ")?;
                         self.body(&method.body, sink, &method.ret, "")?;
-
-                        self.dedent();
-                        self.print_indent(&mut sink.body)?;
-                        writeln!(sink.body, "}}")?;
+                        writeln!(sink.body)?;
                     }
                 }
 
@@ -3192,6 +3233,9 @@ impl RustTrans {
 
     // Spec/trait declaration
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Cache spec methods for later use in impl Trait for Type
+        self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
+
         // Generate trait definition with generic parameters
         write!(sink.body, "trait {}", spec_decl.name)?;
 

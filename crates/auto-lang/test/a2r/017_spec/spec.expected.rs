@@ -11,7 +11,7 @@ trait Flyer {
 
 struct Pigeon {}
 
-impl Pigeon {
+impl Flyer for Pigeon {
     fn fly(&self) {
         println!("Flap Flap");
     }
@@ -19,7 +19,7 @@ impl Pigeon {
 
 struct Hawk {}
 
-impl Hawk {
+impl Flyer for Hawk {
     fn fly(&self) {
         println!("Gawk! Gawk!");
     }
@@ -32,7 +32,7 @@ fn main() {
 
 
 
-    let arr: &[Flyer] = [b1, b2];
+    let arr: Vec<Box<dyn Flyer>> = vec![Box::new(b1), Box::new(b2)];
     for b in arr {
         b.fly();
     }

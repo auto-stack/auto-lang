@@ -12,7 +12,7 @@ trait Calculator {
 
 struct MathEngine {}
 
-impl MathEngine {
+impl Calculator for MathEngine {
     fn add(&self, a: i32, b: i32) -> i32 {
         a + b
     }
