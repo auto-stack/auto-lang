@@ -608,6 +608,7 @@ pub struct TypeDecl {
     pub members: Vec<Member>,
     pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
+    pub attrs: Vec<AutoStr>,       // Plan 159 Phase 6B-2: derive/serde attribute passthrough
 }
 
 impl TypeDecl {
@@ -633,6 +634,7 @@ impl TypeDecl {
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
+            attrs: Vec::new(),
         }
     }
 }

@@ -490,6 +490,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert("self".to_string(), Type::User(type_decl));
@@ -833,6 +834,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -848,6 +850,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -863,6 +866,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -878,6 +882,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -893,6 +898,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -908,6 +914,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -928,6 +935,7 @@ impl Codegen {
                                         members: vec![],
                                         delegations: vec![],
                                         methods: vec![],
+                                        attrs: vec![],
                                     };
                                     self.var_types
                                         .insert(store.name.to_string(), Type::User(type_decl));
@@ -958,6 +966,7 @@ impl Codegen {
                                     }).collect(),
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 }
                             } else if let Some(type_info) = self.get_type(type_name) {
                                 // Create TypeDecl from TypeInfo (only has member names, use Unknown type)
@@ -976,6 +985,7 @@ impl Codegen {
                                     }).collect(),
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 }
                             } else {
                                 // Fallback: create minimal type decl
@@ -990,6 +1000,7 @@ impl Codegen {
                                     members: vec![],
                                     delegations: vec![],
                                     methods: vec![],
+                                    attrs: vec![],
                                 }
                             };
                             self.var_types
@@ -1042,6 +1053,7 @@ impl Codegen {
                                 members: vec![],
                                 delegations: vec![],
                                 methods: vec![],
+                                attrs: vec![],
                             };
                             self.var_types
                                 .insert(store.name.to_string(), Type::User(type_decl));

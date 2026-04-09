@@ -1,0 +1,12 @@
+// Plan 159 Phase 6B-2.3: derive attribute passthrough
+
+#[derive(Debug, Clone)]
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point(1, 2)
+    print(p.x)
+}

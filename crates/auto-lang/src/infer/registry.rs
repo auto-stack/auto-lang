@@ -126,6 +126,7 @@ mod tests {
             delegations: vec![],
             methods: vec![],
             spec_impls: vec![],
+            attrs: vec![],
         };
 
         registry.register_type_decl(type_decl);
@@ -156,6 +157,7 @@ mod tests {
             delegations: vec![],
             methods: vec![],
             spec_impls: vec![],
+            attrs: vec![],
         };
 
         registry.register_type_decl(type_decl);

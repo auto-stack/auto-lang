@@ -485,6 +485,7 @@ mod tests {
             ],
             methods: vec![],
             delegations: vec![],
+            attrs: vec![],
         };
 
         store.register_type_decl(&type_decl);
@@ -568,6 +569,7 @@ mod tests {
             members: vec![],
             methods: vec![],
             delegations: vec![],
+            attrs: vec![],
         };
         store.register_type_decl(&point_type);
 

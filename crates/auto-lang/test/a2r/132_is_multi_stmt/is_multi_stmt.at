@@ -1,0 +1,14 @@
+// Plan 159 Phase 6B-1: is statement with multi-statement match arms
+
+fn main() {
+    let x = 10
+
+    is x {
+        0 => print("zero")
+        1 => {
+            let msg = "one"
+            print(msg)
+        }
+        else => print("other")
+    }
+}

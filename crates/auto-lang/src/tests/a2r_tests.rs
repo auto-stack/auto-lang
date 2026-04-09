@@ -233,6 +233,11 @@ fn test_130_option_construct() {
 }
 
 #[test]
+fn test_131_method_chain() {
+    test_a2r("131_method_chain").unwrap();
+}
+
+#[test]
 fn test_110_const_generics() {
     test_a2r("110_const_generics").unwrap();
 }
@@ -301,4 +306,28 @@ fn test_117_list_storage() {
 #[test]
 fn test_120_option() {
     test_a2r("120_option").unwrap();
+}
+
+// Plan 159 Phase 6B-1: is statement with multi-statement match arms
+#[test]
+fn test_132_is_multi_stmt() {
+    test_a2r("132_is_multi_stmt").unwrap();
+}
+
+// Plan 159 Phase 6B-2.6: External crate use statement
+#[test]
+fn test_133_rust_use() {
+    test_a2r("133_rust_use").unwrap();
+}
+
+// Plan 159 Phase 6B-2.1: async fn transpilation
+#[test]
+fn test_134_async_fn() {
+    test_a2r("134_async_fn").unwrap();
+}
+
+// Plan 159 Phase 6B-2.3: derive attribute passthrough
+#[test]
+fn test_135_derive_attr() {
+    test_a2r("135_derive_attr").unwrap();
 }

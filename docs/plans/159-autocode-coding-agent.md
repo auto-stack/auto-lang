@@ -1240,13 +1240,13 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 | # | 特性 | 当前状态 | 需要做什么 | 影响的 AutoCode 模块 |
 |---|------|---------|-----------|-------------------|
-| 6B-2.1 | `async fn` 声明 | 只有 `~{}` block | `#[async] fn foo()` → `async fn foo()` | Agent 循环、API 调用 |
-| 6B-2.2 | trait object `dyn` | spec 只生成 `dyn Name` | `Box<dyn Spec>` 真正工作 | 工具注册表 |
-| 6B-2.3 | derive 宏属性 | 无 | `#[derive(Debug, Clone)]` 透传到 Rust | 所有核心类型 |
-| 6B-2.4 | serde 标签枚举 | 无 | `#[serde(tag = "type")]` 属性透传 | API 类型系统 |
-| 6B-2.5 | 自定义属性透传 | 无 | `#[serde(...)]` / `#[tokio::main]` 等直接透传 | API 层、CLI |
-| 6B-2.6 | 外部 crate use | 简单字符串替换 | `use rust:reqwest::blocking::Client` → 真正 import | 所有模块 |
-| 6B-2.7 | `impl From<A> for B` | 无 | `ext From for B { fn from(a A) B }` → `impl From<A> for B` | 错误转换链 |
+| 6B-2.1 | `async fn` 声明 | ✅ test 134 | `#[async] fn foo()` → `async fn foo()` | Agent 循环、API 调用 |
+| 6B-2.2 | trait object `dyn` | ⏸️ deferred | `Box<dyn Spec>` 真正工作 | 工具注册表 |
+| 6B-2.3 | derive 宏属性 | ✅ test 135 | `#[derive(Debug, Clone)]` 透传到 Rust | 所有核心类型 |
+| 6B-2.4 | serde 标签枚举 | ✅ (2.3 统一实现) | `#[serde(tag = "type")]` 属性透传 | API 类型系统 |
+| 6B-2.5 | 自定义属性透传 | ✅ (2.3 统一实现) | `#[serde(...)]` / `#[tokio::main]` 等直接透传 | API 层、CLI |
+| 6B-2.6 | 外部 crate use | ✅ test 133 | `use.rust crate::module` → `use crate::module;` | 所有模块 |
+| 6B-2.7 | `impl From<A> for B` | ⏸️ deferred | `ext From for B { fn from(a A) B }` → `impl From<A> for B` | 错误转换链 |
 
 **Phase 6B-3: 完整模块系统 + 泛型约束** (覆盖 ~95% 需求)
 
@@ -1263,7 +1263,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 - [ ] AutoLang VM 版本能启动 REPL 并连接 LLM API（Phase 6A 待完成）
 - [x] a2r 转译器支持 Option/Result 构造和匹配（Phase 6B-1）✅ test 130
 - [x] a2r 转译器支持 HashMap 类型（Phase 6B-1）✅ Plan 160 完成
-- [ ] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）
+- [x] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）✅ tests 133-135
 - [ ] 纯 .at 代码转译为 Rust 后功能与 Rust 原型对等（Phase 6B-3）
 
 ### ac-api

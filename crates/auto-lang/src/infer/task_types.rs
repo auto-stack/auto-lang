@@ -117,6 +117,7 @@ impl TaskTypeChecker {
                     members: Vec::new(),
                     delegations: Vec::new(),
                     methods: Vec::new(),
+                    attrs: vec![],
                 })
             }
             TaskMsgPattern::WithBindings { variant, bindings: _ } => {
@@ -132,6 +133,7 @@ impl TaskTypeChecker {
                     members: Vec::new(),
                     delegations: Vec::new(),
                     methods: Vec::new(),
+                    attrs: vec![],
                 })
             }
         }
@@ -255,6 +257,7 @@ impl TaskTypeChecker {
                 members: Vec::new(),
                 delegations: Vec::new(),
                 methods: Vec::new(),
+                attrs: vec![],
             }),
             Arg::Pair(_, expr) => self.expr_to_type(expr),
         }
@@ -283,6 +286,7 @@ impl TaskTypeChecker {
                 members: Vec::new(),
                 delegations: Vec::new(),
                 methods: Vec::new(),
+                attrs: vec![],
             }),
             _ => Type::Unknown,
         }

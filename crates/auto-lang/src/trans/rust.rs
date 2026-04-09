@@ -1965,6 +1965,10 @@ impl RustTrans {
         }
 
         // Function signature
+        // Plan 159 Phase 6B-2: async fn support
+        if fn_decl.is_async {
+            write!(sink.body, "async ")?;
+        }
         write!(sink.body, "fn {}", fn_decl.name)?;
 
         // Parameters
@@ -2259,6 +2263,48 @@ impl RustTrans {
     }
 
     // Is statement (pattern matching)
+    /// Write a match arm body: single expression inline, or block for multiple statements
+    fn write_match_arm_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        if body.stmts.is_empty() {
+            sink.body.write(b"{}")?;
+        } else if body.stmts.len() == 1 {
+            // Single statement: write inline
+            match &body.stmts[0] {
+                Stmt::Expr(expr) => self.expr(expr, &mut sink.body)?,
+                Stmt::Return(ret) => {
+                    sink.body.write(b"return ")?;
+                    self.expr(ret, &mut sink.body)?;
+                }
+                _ => {
+                    // For other statement types, use a block
+                    sink.body.write(b"{\n")?;
+                    self.indent();
+                    for stmt in &body.stmts {
+                        self.print_indent(&mut sink.body)?;
+                        self.stmt(stmt, sink)?;
+                        sink.body.write(b"\n")?;
+                    }
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                }
+            }
+        } else {
+            // Multiple statements: use a block
+            sink.body.write(b"{\n")?;
+            self.indent();
+            for stmt in &body.stmts {
+                self.print_indent(&mut sink.body)?;
+                self.stmt(stmt, sink)?;
+                sink.body.write(b"\n")?;
+            }
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"}")?;
+        }
+        Ok(())
+    }
+
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"match ")?;
         self.expr(&is_stmt.target, &mut sink.body)?;
@@ -2272,34 +2318,18 @@ impl RustTrans {
                 IsBranch::EqBranch(expr, body) => {
                     self.expr(expr, &mut sink.body)?;
                     sink.body.write(b" => ")?;
-                    // Simple body processing
-                    if let Some(stmt) = body.stmts.first() {
-                        match stmt {
-                            Stmt::Expr(expr) => self.expr(expr, &mut sink.body)?,
-                            _ => sink.body.write_all(b"/* TODO */")?,
-                        }
-                    }
+                    self.write_match_arm_body(body, sink)?;
                     sink.body.write(b",\n")?;
                 }
                 IsBranch::IfBranch(expr, body) => {
                     self.expr(expr, &mut sink.body)?;
                     sink.body.write(b" if true => ")?;
-                    if let Some(stmt) = body.stmts.first() {
-                        match stmt {
-                            Stmt::Expr(expr) => self.expr(expr, &mut sink.body)?,
-                            _ => sink.body.write_all(b"/* TODO */")?,
-                        }
-                    }
+                    self.write_match_arm_body(body, sink)?;
                     sink.body.write(b",\n")?;
                 }
                 IsBranch::ElseBranch(body) => {
                     sink.body.write(b"_ => ")?;
-                    if let Some(stmt) = body.stmts.first() {
-                        match stmt {
-                            Stmt::Expr(expr) => self.expr(expr, &mut sink.body)?,
-                            _ => sink.body.write_all(b"/* TODO */")?,
-                        }
-                    }
+                    self.write_match_arm_body(body, sink)?;
                     sink.body.write(b",\n")?;
                 }
             }
@@ -2326,10 +2356,15 @@ impl RustTrans {
                 // Ignore C imports for Rust transpiler
             }
             UseKind::Rust => {
-                // Direct Rust imports
-                for path in &use_stmt.paths {
-                    write!(out, "use {};", path)?;
-                    self.uses.insert(path.clone());
+                // Direct Rust imports: join paths with :: to form full Rust path
+                if !use_stmt.paths.is_empty() {
+                    let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
+                    if use_stmt.items.is_empty() {
+                        write!(out, "use {};", full_path)?;
+                    } else {
+                        write!(out, "use {}::{{{}}};", full_path, use_stmt.items.join(", "))?;
+                    }
+                    self.uses.insert(full_path.into());
                 }
             }
         }
@@ -2432,6 +2467,11 @@ impl RustTrans {
                     write!(sink.body, "}}\n\n")?;
                 }
             }
+        }
+
+        // Plan 159 Phase 6B-2: Output derive/serde attributes
+        for attr in &type_decl.attrs {
+            write!(sink.body, "#[{}]\n", attr)?;
         }
 
         // Struct definition with generic parameters

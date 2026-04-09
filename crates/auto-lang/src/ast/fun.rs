@@ -24,6 +24,7 @@ pub struct Fn {
     pub ret: Type,
     pub ret_name: Option<Name>, // Original return type name (for unresolved types)
     pub is_static: bool, // Plan 035 Phase 4: true for static methods, false for instance methods
+    pub is_async: bool, // Plan 159 Phase 6B-2: async fn transpilation
     pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
     pub span: Option<(usize, usize)>, // Source location for error reporting
 }
@@ -83,6 +84,7 @@ impl Fn {
             ret,
             ret_name: None,
             is_static: false,        // Default to instance method
+            is_async: false,         // Plan 159 Phase 6B-2: async fn transpilation
             type_params: Vec::new(), // Default to no generic parameters
             span: None,
         }
@@ -106,6 +108,7 @@ impl Fn {
             ret,
             ret_name: Some(ret_name),
             is_static: false,        // Default to instance method
+            is_async: false,         // Plan 159 Phase 6B-2: async fn transpilation
             type_params: Vec::new(), // Default to no generic parameters
             span: None,
         }

@@ -1,0 +1,10 @@
+// Plan 159 Phase 6B-2.1: async fn transpilation
+
+#[async]
+fn fetch_data(url str) str {
+    return url
+}
+
+fn main() {
+    let x = 42
+}

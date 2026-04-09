@@ -266,6 +266,7 @@ mod tests {
             members: Vec::new(),
             delegations: Vec::new(),
             methods,
+            attrs: vec![],
         }
     }
 
@@ -290,6 +291,7 @@ mod tests {
             ret,
             ret_name: None,
             is_static: false,  // Plan 035 Phase 4: Default to instance method
+            is_async: false,   // Plan 159 Phase 6B-2
             type_params: Vec::new(),  // Plan 061: No generic parameters
             span: None,  // Plan 061: No source location
         }
@@ -425,6 +427,7 @@ mod tests {
             members: Vec::new(),
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
+            attrs: vec![],
         };
 
         // Mock spec lookup function
@@ -482,6 +485,7 @@ mod tests {
             members: Vec::new(),
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
+            attrs: vec![],
         };
 
         // Mock spec lookup function
@@ -534,6 +538,7 @@ mod tests {
             members: Vec::new(),
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)], // Missing 'set'
+            attrs: vec![],
         };
 
         // Mock spec lookup function
@@ -571,6 +576,7 @@ mod tests {
             members: Vec::new(),
             delegations: Vec::new(),
             methods: vec![],
+            attrs: vec![],
         };
 
         // Mock spec lookup function that returns None

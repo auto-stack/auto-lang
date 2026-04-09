@@ -728,6 +728,7 @@ mod tests {
             members: vec![],
             delegations: vec![],
             methods: vec![],
+            attrs: vec![],
         }
     }
 

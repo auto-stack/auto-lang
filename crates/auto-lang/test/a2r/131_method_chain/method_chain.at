@@ -1,0 +1,9 @@
+// Plan 159: Method chain transpilation test
+
+fn main() {
+    let s = "hello world"
+    let upper = s.to_upper()
+    let trimmed = "  hello  ".trim()
+    let parts = "a,b,c".split(",")
+    let x = 42
+}
