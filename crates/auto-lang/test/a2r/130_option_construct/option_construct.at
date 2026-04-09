@@ -1,0 +1,25 @@
+// Plan 159: Option/Result constructor transpilation test
+
+fn maybe_value(x int) ?int {
+    if x > 0 {
+        return Some(x)
+    }
+    return None
+}
+
+fn divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return Ok(a / b)
+}
+
+fn main() {
+    let a = Some(42)
+    let b = None
+    let c = Ok(100)
+    let d = Err("something went wrong")
+
+    let result1 = maybe_value(10)
+    let result2 = divide(10, 2)
+}

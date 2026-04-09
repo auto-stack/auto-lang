@@ -1227,10 +1227,10 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 | # | 特性 | 当前状态 | 需要做什么 | 影响的 AutoCode 模块 |
 |---|------|---------|-----------|-------------------|
-| 6B-1.1 | Option 构造器转译 | AST 有，a2r 无 | `Some(expr)` → `Some(expr)`, `None` → `None` | 所有模块 |
-| 6B-1.2 | Result 构造器转译 | AST 有，a2r 无 | `Ok(expr)` → `Ok(expr)`, `Err(expr)` → `Err(expr)` | 所有模块 |
-| 6B-1.3 | Option 模式匹配转译 | AST 有，a2r 无 | `OptionPattern` → `match x { Some(v) => ..., None => ... }` | Agent 循环、工具执行 |
-| 6B-1.4 | Result 模式匹配转译 | AST 有，a2r 无 | `ResultPattern` → `match x { Ok(v) => ..., Err(e) => ... }` | API 响应处理 |
+| 6B-1.1 | Option 构造器转译 | ✅ **已完成** | `Some(expr)` → `Some(expr)`, `None` → `None` | 所有模块 |
+| 6B-1.2 | Result 构造器转译 | ✅ **已完成** | `Ok(expr)` → `Ok(expr)`, `Err(expr)` → `Err(expr)` | 所有模块 |
+| 6B-1.3 | Option 模式匹配转译 | ✅ **已完成** | `OptionPattern/OptionUncover` 转译完成 | Agent 循环、工具执行 |
+| 6B-1.4 | Result 模式匹配转译 | ✅ **已完成** | `ResultPattern/ResultUncover` 转译完成 | API 响应处理 |
 | 6B-1.5 | HashMap 类型 | ✅ **已完成** (Plan 160) | `Map<K, V>` 类型，a2r→`HashMap<K,V>`，a2c→`map_K_V*` | 工具注册表、消息历史 |
 | 6B-1.6 | HashMap 字面量 | ⏸️ 类型注解已支持 | `{k: v}` 在有 Map 注解时仍输出结构体语法，需后续添加 HashMap::from 转译 | JSON 构造 |
 | 6B-1.7 | 方法链支持 | 单方法支持 | 连续 `.method()` 调用转译正确 | 所有模块 |
@@ -1261,7 +1261,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 **验证标准**:
 - [ ] 所有新增 FFI 函数通过单元测试（✅ 已完成）
 - [ ] AutoLang VM 版本能启动 REPL 并连接 LLM API（Phase 6A 待完成）
-- [ ] a2r 转译器支持 Option/Result 构造和匹配（Phase 6B-1）
+- [x] a2r 转译器支持 Option/Result 构造和匹配（Phase 6B-1）✅ test 130
 - [x] a2r 转译器支持 HashMap 类型（Phase 6B-1）✅ Plan 160 完成
 - [ ] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）
 - [ ] 纯 .at 代码转译为 Rust 后功能与 Rust 原型对等（Phase 6B-3）
@@ -1396,24 +1396,23 @@ dirs = "6"
 > - a2r 转译器现有实现 (`crates/auto-lang/src/trans/rust.rs`)
 > - 现有 a2r 测试用例 (`crates/auto-lang/test/a2r/`)
 
-### F.1 优先级 P0：Option/Result 构造与匹配（阻塞所有模块）
+### F.1 优先级 P0：Option/Result 构造与匹配 ✅ 已完成
 
-**当前状态**: AST 中已定义 `Expr::Some`, `Expr::None_`, `Expr::Ok`, `Expr::Err`,
-`OptionPattern`, `ResultPattern`, `OptionUncover`, `ResultUncover`，但 a2r 转译器
-的 `expr()` match 中没有对应 arm，会走到 `_ => Err(...)` 报错。
+**当前状态**: ✅ a2r 转译器已支持所有 Option/Result 表达式的转译。
 
-**需要实现**:
-- `Some(expr)` → `Some(expr)`
-- `None` → `None`
-- `Ok(expr)` → `Ok(expr)`
-- `Err(expr)` → `Err(String::from(expr))`
-- `OptionPattern` → `match x { Some(v) => ..., None => ... }`
-- `ResultPattern` → `match x { Ok(v) => ..., Err(e) => ... }`
-- `.?` 错误传播已在 a2r 中转译为 `?`，但缺少 `impl From<A> for B` 自动转换
+**已完成**:
+- ✅ `Some(expr)` → `Some(expr)`
+- ✅ `None` → `None`
+- ✅ `Ok(expr)` → `Ok(expr)`
+- ✅ `Err(expr)` → `Err(expr)`
+- ✅ `OptionPattern` → `Some(binding)` / `None` (在 is 分支中)
+- ✅ `ResultPattern` → `Ok(binding)` / `Err(binding)` (在 is 分支中)
+- ✅ `OptionUncover` → 提取绑定变量
+- ✅ `ResultUncover` → 提取绑定变量
+- ✅ a2r 测试 `130_option_construct` 通过
 
-**影响的 AutoCode 模块**: 全部（API 响应处理、工具执行、Agent 循环）
-
-**测试验证**: 新增 a2r 测试用例验证 Option/Result 构造和匹配
+**待完成**:
+- ⏸️ `impl From<A> for B` 自动转换（需要 a2r 支持外部 crate use）
 
 ### F.2 优先级 P0：HashMap/Map 类型 ✅ 已完成（Plan 160）
 

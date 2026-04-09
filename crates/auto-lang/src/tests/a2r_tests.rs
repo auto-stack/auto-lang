@@ -228,6 +228,11 @@ fn test_129_map_func() {
 }
 
 #[test]
+fn test_130_option_construct() {
+    test_a2r("130_option_construct").unwrap();
+}
+
+#[test]
 fn test_110_const_generics() {
     test_a2r("110_const_generics").unwrap();
 }

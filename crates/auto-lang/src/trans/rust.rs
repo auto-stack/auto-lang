@@ -378,6 +378,24 @@ impl RustTrans {
             Expr::Nil => write!(out, "None").map_err(Into::into),
             Expr::Null => write!(out, "None").map_err(Into::into),
 
+            // Plan 120/159: Option and Result constructors
+            Expr::Some(e) => {
+                write!(out, "Some(")?;
+                self.expr(e, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
+            Expr::None => write!(out, "None").map_err(Into::into),
+            Expr::Ok(e) => {
+                write!(out, "Ok(")?;
+                self.expr(e, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
+            Expr::Err(e) => {
+                write!(out, "Err(")?;
+                self.expr(e, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
+
             // Operators
             Expr::Bina(lhs, op, rhs) => {
                 match op {
@@ -658,6 +676,53 @@ impl RustTrans {
             Expr::Uncover(uncover) => {
                 // Uncover expression for pattern matching
                 write!(out, "/* TagUncover: {} */", uncover.src).map_err(Into::into)
+            }
+
+            // Plan 120/159: Option/Result uncover (extract inner value)
+            Expr::OptionUncover(uncover) => {
+                // OptionUncover: extract binding from Some variant
+                // e.g., after `is x { Some(val) => ... }`, val is the binding
+                write!(out, "{}", uncover.binding).map_err(Into::into)
+            }
+            Expr::ResultUncover(uncover) => {
+                // ResultUncover: extract binding from Ok/Err variant
+                write!(out, "{}", uncover.binding).map_err(Into::into)
+            }
+
+            // Plan 120/159: Option/Result patterns (used in is statement branches)
+            // These are handled in is_stmt, not as standalone expressions.
+            // Provide a fallback for cases where they appear as expressions.
+            Expr::OptionPattern(cover) => {
+                match cover.variant {
+                    crate::ast::cover::OptionVariant::Some => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "Some({})", binding).map_err(Into::into)
+                        } else {
+                            write!(out, "Some(_)").map_err(Into::into)
+                        }
+                    }
+                    crate::ast::cover::OptionVariant::None => {
+                        write!(out, "None").map_err(Into::into)
+                    }
+                }
+            }
+            Expr::ResultPattern(cover) => {
+                match cover.variant {
+                    crate::ast::cover::ResultVariant::Ok => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "Ok({})", binding).map_err(Into::into)
+                        } else {
+                            write!(out, "Ok(_)").map_err(Into::into)
+                        }
+                    }
+                    crate::ast::cover::ResultVariant::Err => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "Err({})", binding).map_err(Into::into)
+                        } else {
+                            write!(out, "Err(_)").map_err(Into::into)
+                        }
+                    }
+                }
             }
 
             Expr::Ref(name) => {
