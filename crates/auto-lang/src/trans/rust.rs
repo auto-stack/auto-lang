@@ -87,8 +87,6 @@ pub struct RustTrans {
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
 
-    // Tracks variables that are mutably borrowed (&mut), need `let mut` declaration
-    mut_borrowed: HashSet<AutoStr>,
 }
 
 impl RustTrans {
@@ -104,7 +102,6 @@ impl RustTrans {
             tag_types: HashSet::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
-            mut_borrowed: HashSet::new(),
         }
     }
 
@@ -121,7 +118,6 @@ impl RustTrans {
             tag_types: HashSet::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
-            mut_borrowed: HashSet::new(),
         }
     }
 
