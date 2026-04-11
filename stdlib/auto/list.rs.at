@@ -1,0 +1,129 @@
+// Rust implementation of List<T, S> methods
+// These methods are implemented in Auto and transpiled to Rust by a2r
+// Uses raw pointer operations from the Storage<T> spec
+
+ext List {
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty List with the given storage strategy
+    #[pub]
+    static fn new() List<T, S> {
+        return List(len: 0, store: S.new())
+    }
+
+    // ========================================================================
+    // Instance Methods - Access
+    // ========================================================================
+
+    /// Get the number of elements in the list
+    #[pub]
+    fn len() int {
+        return .len.as(int)
+    }
+
+    /// Check if the list is empty
+    #[pub]
+    fn is_empty() bool {
+        return .len == 0
+    }
+
+    /// Get the total capacity (from storage)
+    #[pub]
+    fn capacity() int {
+        return .store.capacity().as(int)
+    }
+
+    /// Get element at index (bounds checking)
+    #[pub]
+    fn get(index int) T {
+        if index < 0 or index >= .len.as(int) {
+            return nil
+        }
+        let data = .store.data()
+        return data.add(index.as(u32)).read()
+    }
+
+    // ========================================================================
+    // Instance Methods - Modification
+    // ========================================================================
+
+    /// Push element to the end (grows storage if needed)
+    #[pub]
+    fn push(elem T) {
+        if .len >= .store.capacity() {
+            var new_cap = .len * 2
+            if new_cap < 8 {
+                new_cap = 8
+            }
+            .store.try_grow(new_cap)
+        }
+        let data = .store.data()
+        data.add(.len).write(elem)
+        .len = .len + 1
+    }
+
+    /// Pop element from the end
+    #[pub]
+    fn pop() T {
+        if .len == 0 {
+            return nil
+        }
+        .len = .len - 1
+        let data = .store.data()
+        return data.add(.len).read()
+    }
+
+    /// Set element at index
+    #[pub]
+    fn set(index int, elem T) int {
+        if index < 0 or index >= .len.as(int) {
+            return -1
+        }
+        let data = .store.data()
+        data.add(index.as(u32)).write(elem)
+        return 0
+    }
+
+    /// Remove all elements (keeps capacity)
+    #[pub]
+    fn clear() {
+        .len = 0
+    }
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the list's resources (drops storage)
+    #[pub]
+    fn drop() {
+        .store.drop()
+    }
+
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+
+    /// Get an iterator over list elements
+    #[pub]
+    fn iter() ListIter<T, S> {
+        return ListIter.new(.self)
+    }
+}
+
+// Iterator for List<T, S>
+ext ListIter {
+    /// Get the next element from the iterator
+    /// Returns nil when iteration is complete
+    #[pub]
+    fn next() May<T> {
+        if .index >= .list.len() {
+            return nil
+        }
+        let item = .list.get(.index.as(int))
+        .index = .index + 1
+        return item
+    }
+}

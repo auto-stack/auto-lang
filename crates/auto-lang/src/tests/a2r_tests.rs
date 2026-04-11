@@ -331,3 +331,36 @@ fn test_134_async_fn() {
 fn test_135_derive_attr() {
     test_a2r("135_derive_attr").unwrap();
 }
+
+// Plan 162: Type cast — expr.as(Type)
+#[test]
+fn test_136_type_cast() {
+    test_a2r("136_type_cast").unwrap();
+}
+
+// Plan 162: Pointer methods — is_null, is_not_null, add, read, write, .ptr
+#[test]
+fn test_137_ptr_methods() {
+    test_a2r("137_ptr_methods").unwrap();
+}
+
+// Plan 162: List-style methods with .as() type casts and or operator
+#[test]
+fn test_138_list_as_cast() {
+    test_a2r("138_list_as_cast").unwrap();
+}
+
+#[test]
+fn test_139_if_multistmt() {
+    test_a2r("139_if_multistmt").unwrap();
+}
+
+#[test]
+fn test_140_if_return() {
+    test_a2r("140_if_return").unwrap();
+}
+
+#[test]
+fn test_141_func_literal_return() {
+    test_a2r("141_func_literal_return").unwrap();
+}

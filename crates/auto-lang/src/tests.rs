@@ -40,3 +40,4 @@ mod vm_functions_tests;
 mod vm_tests;
 mod infer_tests;
 mod autodown_tests;
+mod book_listing_tests;

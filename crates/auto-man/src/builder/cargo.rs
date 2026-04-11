@@ -35,11 +35,73 @@ impl CargoBuilder {
             Ok(())
         }
     }
+
+    /// Find auto-lang crate path relative to the build directory.
+    ///
+    /// Strategy:
+    /// 1. If the project is inside the auto-lang monorepo (has crates/auto-lang ancestor),
+    ///    compute a relative path from the build dir.
+    /// 2. Otherwise, use the compile-time known location of auto-lang via CARGO_MANIFEST_DIR.
+    fn find_auto_lang_path(&self) -> Option<String> {
+        let cwd = std::env::current_dir().ok()?;
+        let build_dir = cwd.join(self.path.parent().path());
+        let canonical_build = build_dir.canonicalize().ok()?;
+
+        // Strategy 1: walk up from build dir looking for crates/auto-lang
+        let mut dir = canonical_build.clone();
+        let mut ups = 0;
+        loop {
+            let candidate = dir.join("crates/auto-lang");
+            if candidate.is_dir() {
+                let mut rel = "../".repeat(ups);
+                rel.push_str("crates/auto-lang");
+                return Some(rel);
+            }
+            match dir.parent() {
+                Some(p) => {
+                    dir = p.to_path_buf();
+                    ups += 1;
+                }
+                None => break,
+            }
+        }
+
+        // Strategy 2: use compile-time auto-man crate dir to compute relative path
+        // auto-man is at <repo>/crates/auto-man, auto-lang is at <repo>/crates/auto-lang
+        let auto_man_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let auto_lang_abs = auto_man_dir.parent()?.join("auto-lang");
+        let canonical_auto_lang = auto_lang_abs.canonicalize().ok()?;
+        if canonical_auto_lang.is_dir() {
+            // Compute relative path from build_dir to canonical_auto_lang
+            let mut ups = 0;
+            let mut d = canonical_build.as_path();
+            // Walk up from build_dir until we find a common ancestor with canonical_auto_lang
+            loop {
+                if let Ok(stripped) = canonical_auto_lang.strip_prefix(d) {
+                    let mut rel = "../".repeat(ups);
+                    for (i, component) in stripped.components().enumerate() {
+                        if i > 0 {
+                            rel.push('/');
+                        }
+                        rel.push_str(&component.as_os_str().to_string_lossy());
+                    }
+                    return Some(rel.replace('\\', "/"));
+                }
+                d = d.parent()?;
+                ups += 1;
+            }
+        }
+
+        None
+    }
 }
 
 impl Builder for CargoBuilder {
-    fn build(&mut self, _pac: &mut Pac) -> AutoResult<()> {
+    fn build(&mut self, pac: &mut Pac) -> AutoResult<()> {
         log::info!("Building with Cargo: {}", self.path);
+
+        // Generate Cargo.toml pointing to already-transpiled rust/src/
+        self.setup(pac)?;
 
         if self.memory_output_enabled {
             log::info!("Memory output enabled, skipping physical cargo execution");
@@ -61,114 +123,93 @@ impl Builder for CargoBuilder {
 
     fn setup(&mut self, pac: &mut Pac) -> AutoResult<()> {
         log::info!("Setting up Cargo builder: {}", self.path);
-        let build_dir = self.path.parent();
 
-        let mut members = Vec::new();
+        // Find the first rust app/lib target to use as the Cargo package
+        let target = pac.targets.iter().find(|t| {
+            t.lang.as_str() == "rust"
+                && (t.kind == TargetKind::App || t.kind == TargetKind::Lib)
+        });
 
-        // Setup each target as a Cargo package
-        for target in &pac.targets {
-            if target.lang.as_str() != "rust" {
-                continue;
-            }
+        let Some(target) = target else {
+            log::warn!("No rust target found, skipping Cargo setup");
+            return Ok(());
+        };
 
-            let target_name = target.name.as_str();
-            members.push(target_name.to_string());
+        // Use "0.1.0" as fallback version (cargo doesn't accept "latest")
+        let version = target.version.as_str();
+        let version = if version.is_empty() || version == "latest" {
+            "0.1.0"
+        } else {
+            version
+        };
 
-            let target_dir = build_dir.join(target_name);
-            let target_cargo_toml = target_dir.join("Cargo.toml");
-            let src_dir = target_dir.join("src");
+        // Determine crate type based on target kind
+        let crate_type = if target.kind == TargetKind::App {
+            ""
+        } else {
+            "\n[lib]"
+        };
 
-            // Generate Cargo.toml for this target
-            let mut cargo_toml = format!(
-                r#"[package]
+        let mut cargo_toml = format!(
+            r#"[package]
 name = "{}"
 version = "{}"
 edition = "2021"
+{}"#,
+            target.name.as_str(),
+            version,
+            crate_type
+        );
 
-[dependencies]
-"#,
-                target.name.as_str(),
-                target.version.as_str()
-            );
-
-            // Map target dependencies to Cargo path dependencies
-            for dep in &target.deps {
-                if dep.lang.as_str() == "rust" {
-                    cargo_toml.push_str(&format!(
-                        r#"{} = {{ path = "../{}" }}"#,
-                        dep.name.as_str(),
-                        dep.name.as_str()
-                    ));
-                    cargo_toml.push('\n');
-                }
+        // Add dependencies
+        cargo_toml.push_str("\n\n[dependencies]\n");
+        // a2r-generated code imports auto_lang::a2r_std, so always add it
+        // Try to find auto-lang relative to current workspace
+        let auto_lang_path = self.find_auto_lang_path();
+        if let Some(path) = auto_lang_path {
+            cargo_toml.push_str(&format!("auto-lang = {{ path = \"{}\" }}\n", path));
+        } else {
+            // Fallback: assume it's available via cargo registry or workspace
+            cargo_toml.push_str("auto-lang = \"*\"\n");
+        }
+        for dep in &target.deps {
+            if dep.lang.as_str() == "rust" {
+                cargo_toml.push_str(&format!(
+                    "{} = {{ path = \"../{}\" }}\n",
+                    dep.name.as_str(),
+                    dep.name.as_str()
+                ));
             }
-
-            self.write_file(target_cargo_toml.path(), &cargo_toml)?;
-
-            // Generate root source file based on target kind
-            let is_app = target.kind == TargetKind::App;
-            let root_file = if is_app {
-                src_dir.join("main.rs")
-            } else {
-                src_dir.join("lib.rs")
-            };
-
-            let mut root_content = String::new();
-
-            // Find transpiled .rs files belonging to this target and declare them as modules
-            for src in &target.srcs {
-                let src_path = AutoPath::new(src.as_str());
-                if let Some(ext) = src_path.path().extension() {
-                    if ext == "rs" {
-                        if let Some(stem) = src_path.path().file_stem() {
-                            let module_name = stem.to_string_lossy();
-
-                            // Don't declare main.rs or lib.rs inside themselves
-                            if module_name != "main" && module_name != "lib" {
-                                root_content.push_str(&format!("pub mod {};\n", module_name));
-                            }
-                        }
-
-                        // Copy or move the transpiled file into the src directory
-                        let dest_path = src_dir.join(src_path.filename());
-
-                        if !self.memory_output_enabled {
-                            let parent_path = dest_path.parent();
-                            if !parent_path.path().as_os_str().is_empty() {
-                                fs::create_dir_all(parent_path.path())?;
-                            }
-                            fs::copy(src_path.path(), dest_path.path())?;
-                        }
-                    }
-                }
-            }
-
-            // If App, ensure we have a main function if one wasn't somehow copied
-            if is_app
-                && !root_content.contains("fn main")
-                && !target
-                    .srcs
-                    .iter()
-                    .any(|s| AutoPath::new(s.as_str()).filename() == "main.rs")
-            {
-                root_content.push_str("\nfn main() {\n    // Application entry point\n}\n");
-            }
-
-            self.write_file(root_file.path(), &root_content)?;
         }
 
-        // Generate workspace Cargo.toml
-        if !members.is_empty() {
-            let mut workspace_toml = String::from("[workspace]\nmembers = [\n");
-            for member in members {
-                workspace_toml.push_str(&format!("    \"{}\",\n", member));
-            }
-            workspace_toml.push_str("]\n");
-            // Setup a default resolver
-            workspace_toml.push_str("resolver = \"2\"\n");
+        // Prevent cargo from detecting parent workspace
+        cargo_toml.push_str("\n\n[workspace]\n");
 
-            let path = self.path.clone();
-            self.write_file(path.path(), &workspace_toml)?;
+        // Write Cargo.toml at self.path (e.g., rust/Cargo.toml)
+        let cargo_toml_path = self.path.path().to_path_buf();
+        self.write_file(&cargo_toml_path, &cargo_toml)?;
+
+        // Ensure rust/src/ directory exists (transpile should have already created it)
+        let src_dir = self.path.parent().join("src");
+        if !self.memory_output_enabled && !src_dir.path().exists() {
+            fs::create_dir_all(src_dir.path())?;
+        }
+
+        // Check if main.rs/lib.rs exists; if not, generate a stub
+        let is_app = target.kind == TargetKind::App;
+        let root_file = if is_app {
+            src_dir.join("main.rs")
+        } else {
+            src_dir.join("lib.rs")
+        };
+
+        if !self.memory_output_enabled && !root_file.path().exists() {
+            let stub = if is_app {
+                "\nfn main() {\n    // Application entry point\n}\n"
+            } else {
+                ""
+            };
+            self.write_file(root_file.path(), stub)?;
         }
 
         Ok(())

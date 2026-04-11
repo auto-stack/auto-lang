@@ -712,6 +712,12 @@ fn test_151_std_file_read() {
     test_a2c("151_std_file_read").unwrap();
 }
 
+// Plan 162: Type cast — expr.as(Type)
+#[test]
+fn test_152_type_cast() {
+    test_a2c("152_type_cast").unwrap();
+}
+
 // ===================== Generic Type Tests =====================
 
 #[test]

@@ -1457,6 +1457,13 @@ impl CTrans {
                 // For now, just emit the expression (TODO: implement proper early return)
                 self.expr(expr, out)
             }
+            // Plan 162: Type cast: expr.as(Type) -> ((Type)(expr))
+            Expr::Cast { expr, target_type } => {
+                write!(out, "(({})(", self.c_type_name(target_type))?;
+                self.expr(expr, out)?;
+                write!(out, "))")?;
+                Ok(())
+            }
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
                 // Check if this is an enum access: Enum.Value -> ENUM_VALUE
@@ -3588,6 +3595,54 @@ impl CTrans {
 
                     out.write(b")").to()?;
                     return Ok(true);
+                }
+                Type::Ptr(_) => {
+                    // Plan 162: Pointer intrinsic methods
+                    // In C, these are native operations
+                    let Expr::Ident(method_name) = rhs.as_ref() else {
+                        return Ok(false);
+                    };
+                    match method_name.as_str() {
+                        "is_null" => {
+                            write!(out, "(")?;
+                            self.expr(lhs, out)?;
+                            write!(out, " == NULL)")?;
+                            return Ok(true);
+                        }
+                        "is_not_null" => {
+                            write!(out, "(")?;
+                            self.expr(lhs, out)?;
+                            write!(out, " != NULL)")?;
+                            return Ok(true);
+                        }
+                        "add" => {
+                            write!(out, "(")?;
+                            self.expr(lhs, out)?;
+                            write!(out, " + ")?;
+                            if let Some(arg) = call.args.args.first() {
+                                self.arg(arg, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(true);
+                        }
+                        "read" => {
+                            write!(out, "(*")?;
+                            self.expr(lhs, out)?;
+                            write!(out, ")")?;
+                            return Ok(true);
+                        }
+                        "write" => {
+                            write!(out, "(*")?;
+                            self.expr(lhs, out)?;
+                            write!(out, " = ")?;
+                            if let Some(arg) = call.args.args.first() {
+                                self.arg(arg, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(true);
+                        }
+                        _ => return Ok(false),
+                    }
                 }
                 Type::User(decl) => {
                     // User-defined type: regular method, pass by pointer

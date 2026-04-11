@@ -1,0 +1,15 @@
+// Plan 162: Pointer methods — is_null, is_not_null, add, read, write
+
+fn main() {
+    let buf [10]int = [0]
+    let ptr *int = buf.ptr
+    if ptr.is_null() {
+        print("null")
+    }
+    if ptr.is_not_null() {
+        print("not null")
+    }
+    ptr.write(42)
+    let val = ptr.read()
+    print(val)
+}

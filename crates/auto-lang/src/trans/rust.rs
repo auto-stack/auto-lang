@@ -772,8 +772,8 @@ impl RustTrans {
                                                 }
                                                 self.expr(&branch.cond, out)?;
                                                 write!(out, " {{ ")?;
-                                                // Single statement body
-                                                if let Some(stmt) = branch.body.stmts.first() {
+                                                // Multi-statement body
+                                                for stmt in branch.body.stmts.iter() {
                                                     match stmt {
                                                         Stmt::Expr(expr) => {
                                                             self.expr(expr, out)?;
@@ -781,6 +781,15 @@ impl RustTrans {
                                                         }
                                                         Stmt::Break => {
                                                             write!(out, "break; ")?;
+                                                        }
+                                                        Stmt::Return(ret) => {
+                                                            write!(out, "return ")?;
+                                                            self.expr(ret, out)?;
+                                                            write!(out, "; ")?;
+                                                        }
+                                                        Stmt::Store(store) => {
+                                                            self.store(store, out)?;
+                                                            write!(out, "; ")?;
                                                         }
                                                         _ => {}
                                                     }
@@ -789,7 +798,7 @@ impl RustTrans {
                                             }
                                             if let Some(else_) = &if_.else_ {
                                                 write!(out, " else {{ ")?;
-                                                if let Some(stmt) = else_.stmts.first() {
+                                                for stmt in else_.stmts.iter() {
                                                     match stmt {
                                                         Stmt::Expr(expr) => {
                                                             self.expr(expr, out)?;
@@ -797,6 +806,15 @@ impl RustTrans {
                                                         }
                                                         Stmt::Break => {
                                                             write!(out, "break; ")?;
+                                                        }
+                                                        Stmt::Return(ret) => {
+                                                            write!(out, "return ")?;
+                                                            self.expr(ret, out)?;
+                                                            write!(out, "; ")?;
+                                                        }
+                                                        Stmt::Store(store) => {
+                                                            self.store(store, out)?;
+                                                            write!(out, "; ")?;
                                                         }
                                                         _ => {}
                                                     }
@@ -991,8 +1009,20 @@ impl RustTrans {
                                     out.write(b";\n")?;
                                 }
                                 _ => {
-                                    // Other statement types - write directly
-                                    write!(out, "/* unsupported statement in if body */\n")?;
+                                    // Other statement types - handle Break, Return, etc.
+                                    match stmt {
+                                        Stmt::Break => {
+                                            out.write(b"break;\n")?;
+                                        }
+                                        Stmt::Return(ret) => {
+                                            out.write(b"return ")?;
+                                            self.expr(ret, out)?;
+                                            out.write(b";\n")?;
+                                        }
+                                        _ => {
+                                            write!(out, "/* unsupported statement in if body */\n")?;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1053,7 +1083,19 @@ impl RustTrans {
                                     out.write(b";\n")?;
                                 }
                                 _ => {
-                                    write!(out, "/* unsupported statement in else body */\n")?;
+                                    match stmt {
+                                        Stmt::Break => {
+                                            out.write(b"break;\n")?;
+                                        }
+                                        Stmt::Return(ret) => {
+                                            out.write(b"return ")?;
+                                            self.expr(ret, out)?;
+                                            out.write(b";\n")?;
+                                        }
+                                        _ => {
+                                            write!(out, "/* unsupported statement in else body */\n")?;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1217,6 +1259,12 @@ impl RustTrans {
                         self.expr(object, out)?;
                         return Ok(());
                     }
+                    // Plan 162: Array .ptr -> .as_mut_ptr() for raw pointer access
+                    "ptr" => {
+                        self.expr(object, out)?;
+                        write!(out, ".as_mut_ptr()")?;
+                        return Ok(());
+                    }
                     _ => {}
                 }
 
@@ -1264,6 +1312,14 @@ impl RustTrans {
                 // Plan 067: May system support
                 self.expr(expr, out)?;
                 write!(out, "?")?;
+                Ok(())
+            }
+
+            // Plan 162: Type cast: expr.as(Type) -> (expr as Type)
+            Expr::Cast { expr, target_type } => {
+                write!(out, "(")?;
+                self.expr(expr, out)?;
+                write!(out, " as {})", self.rust_type_name(target_type))?;
                 Ok(())
             }
 
@@ -1438,6 +1494,24 @@ impl RustTrans {
 
         // Also handle Expr::Dot method calls (parser emits Dot for method calls)
         if let Expr::Dot(object, method_name) = call.name.as_ref() {
+            // Plan 162: Pointer intrinsic methods (only unique names that won't conflict)
+            // ptr.is_null() -> ptr.is_null()
+            // ptr.is_not_null() -> !ptr.is_null()
+            match method_name.as_str() {
+                "is_null" => {
+                    self.expr(object, out)?;
+                    write!(out, ".is_null()")?;
+                    return Ok(());
+                }
+                "is_not_null" => {
+                    write!(out, "(!")?;
+                    self.expr(object, out)?;
+                    write!(out, ".is_null())")?;
+                    return Ok(());
+                }
+                _ => {} // fall through to regular method handling
+            }
+
             let rust_method = match method_name.as_str() {
                 // String methods
                 "to_lower" => Some("to_lowercase"),
@@ -1976,7 +2050,7 @@ impl RustTrans {
 
     // Function declaration
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
-        // Skip C function declarations
+        // Skip C/VM function declarations (implemented externally)
         if matches!(fn_decl.kind, FnKind::CFunction | FnKind::VmFunction) {
             return Ok(());
         }
@@ -2234,6 +2308,14 @@ impl RustTrans {
                         self.store(store, &mut sink.body)?;
                         sink.body.write(b";\n")?;
                     }
+                    Stmt::Break => {
+                        sink.body.write(b"break;\n")?;
+                    }
+                    Stmt::Return(ret) => {
+                        sink.body.write(b"return ")?;
+                        self.expr(ret, &mut sink.body)?;
+                        sink.body.write(b";\n")?;
+                    }
                     _ => {}
                 }
             }
@@ -2287,6 +2369,14 @@ impl RustTrans {
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
+                        sink.body.write(b";\n")?;
+                    }
+                    Stmt::Break => {
+                        sink.body.write(b"break;\n")?;
+                    }
+                    Stmt::Return(ret) => {
+                        sink.body.write(b"return ")?;
+                        self.expr(ret, &mut sink.body)?;
                         sink.body.write(b";\n")?;
                     }
                     _ => {}
@@ -3370,24 +3460,23 @@ impl RustTrans {
 
     fn is_returnable(&self, stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::Expr(expr) => match expr {
-                Expr::Call(call) => {
-                    // print() is not returnable (returns unit type)
-                    if let Expr::Ident(name) = call.name.as_ref() {
-                        if name == "print" {
-                            return false;
+            Stmt::Expr(expr) => {
+                match expr {
+                    // Void function calls are not returnable
+                    Expr::Call(call) => {
+                        if let Expr::Ident(name) = call.name.as_ref() {
+                            if name == "print" || name == "println" {
+                                return false;
+                            }
                         }
+                        true
                     }
-                    true
+                    // Nil/Null are not valid return expressions
+                    Expr::Nil | Expr::Null => false,
+                    // All other expressions (literals, operators, etc.) are returnable
+                    _ => true,
                 }
-                Expr::If(_) => true,
-                Expr::Block(_) => true,
-                Expr::Bina(_, _, _) => true,
-                Expr::Ident(_) => true,
-                Expr::Array(_) => true,
-                Expr::Index(_, _) => true,
-                _ => false,
-            },
+            }
             _ => false,
         }
     }

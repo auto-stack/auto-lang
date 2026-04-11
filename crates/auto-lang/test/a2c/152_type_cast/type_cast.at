@@ -1,0 +1,7 @@
+// Plan 162: Type cast — expr.as(Type)
+
+fn main() {
+    let x int = 42
+    let y u32 = x.as(u32)
+    print(y)
+}

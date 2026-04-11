@@ -1,0 +1,66 @@
+// Rust implementation of inline storage strategies
+// Stack-allocated fixed-size storage for embedded systems
+
+ext InlineInt64 {
+    /// Create new inline storage (zeroed buffer)
+    #[rs, pub]
+    static fn new() InlineInt64 {
+        return InlineInt64(buffer: [0])
+    }
+
+    /// Get raw data pointer
+    #[rs, pub]
+    fn data() *int {
+        return .buffer.ptr
+    }
+
+    /// Get physical capacity (fixed at 64)
+    #[rs, pub]
+    fn capacity() u32 {
+        return 64
+    }
+
+    /// Try to grow (always fails for inline - fixed size)
+    #[rs, pub]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 64
+    }
+
+    /// Drop (no-op for stack allocation)
+    #[rs, pub]
+    fn drop() {
+        // No-op for stack allocation
+    }
+}
+
+ext InlineU8_256 {
+    /// Create new inline storage (zeroed buffer)
+    #[rs, pub]
+    static fn new() InlineU8_256 {
+        return InlineU8_256(buffer: [0])
+    }
+
+    /// Get raw data pointer
+    #[rs, pub]
+    fn data() *u8 {
+        return .buffer.ptr
+    }
+
+    /// Get physical capacity (fixed at 256)
+    #[rs, pub]
+    fn capacity() u32 {
+        return 256
+    }
+
+    /// Try to grow (always fails for inline - fixed size)
+    #[rs, pub]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 256
+    }
+
+    /// Drop (no-op for stack allocation)
+    #[rs, pub]
+    fn drop() {
+        // No-op for stack allocation
+    }
+}

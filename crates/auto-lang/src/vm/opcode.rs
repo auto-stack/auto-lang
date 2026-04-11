@@ -51,6 +51,13 @@ pub enum OpCode {
     UNWRAP_SOME = 0xE3,   // Some(value) -> value (unwrap Option, panic if None)
     UNWRAP_OK = 0xE4,     // Ok(value) -> value (unwrap Result, panic if Err)
     UNWRAP_ERR = 0xE5,    // Err(msg) -> msg (unwrap Result error, panic if Ok)
+    // Plan 162: Type cast: expr.as(Type) — runtime type conversion
+    TYPE_CAST_I32 = 0xE6,   // value -> i32 (truncate/reinterpret to i32)
+    TYPE_CAST_U32 = 0xE7,   // value -> u32 (truncate/reinterpret to u32)
+    TYPE_CAST_I64 = 0xE8,   // value -> i64 (extend to i64)
+    TYPE_CAST_U64 = 0xE9,   // value -> u64 (extend to u64)
+    TYPE_CAST_F64 = 0xEA,   // value -> f64 (convert to f64)
+    TYPE_CAST_PTR = 0xEB,   // value -> pointer (no-op, just type change)
     // Plan 075: Template string opcodes
     TO_STR = 0x7A,        // Convert any value to string
     IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)

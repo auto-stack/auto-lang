@@ -1545,6 +1545,18 @@ impl<'a> Parser<'a> {
 
         // Handle chained property access like .section.title
         while self.is_kind(TokenKind::Dot) {
+            // Plan 162: Check for .as(Type) type conversion — peek at next token
+            let next_is_as = if let Ok(tok) = self.lexer.next() {
+                let is_as = matches!(tok.kind, TokenKind::As);
+                self.lexer.push_token(tok);
+                is_as
+            } else {
+                false
+            };
+            if next_is_as {
+                // This is .as(Type), not a field access — let the Pratt parser handle it
+                break;
+            }
             self.next(); // skip dot
             let field_name = self.cur.text.clone();
             self.next(); // skip field name
@@ -1785,6 +1797,16 @@ impl<'a> Parser<'a> {
                         // .go suffix - consume the 'go' token
                         self.next();
                         lhs = Expr::Go { expr: Box::new(lhs) };
+                        continue;
+                    }
+                    // Plan 162: .as(Type) type conversion
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::As) {
+                        // .as( Type ) — type conversion
+                        self.next(); // consume 'as'
+                        self.expect(TokenKind::LParen)?;
+                        let target_type = self.parse_type()?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::Cast { expr: Box::new(lhs), target_type };
                         continue;
                     }
                     // Handle enum variant constructors after dot: MayInt.Err(1), MayInt.Ok(val), etc.

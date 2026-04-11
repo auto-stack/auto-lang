@@ -1,0 +1,13 @@
+// Plan 162: .as() type cast inside ext methods
+
+ext Counter {
+    #[pub]
+    fn get_value() u32 {
+        return .count.as(u32)
+    }
+}
+
+fn main() {
+    let c = Counter(10)
+    print(c.get_value())
+}

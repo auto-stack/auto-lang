@@ -846,6 +846,20 @@ impl Automan {
                     }
                 }
             }
+            "rust" => {
+                // Rust backend: transpile Auto -> Rust, then cargo build
+                println!("Transpiling Auto code to Rust (backend: rust)");
+                self.transpile_auto()?;
+                self.pac.build()?;
+
+                if let Some(ref cache) = self.cache {
+                    if cache.should_gc() {
+                        println!("Running cache garbage collection...");
+                        let freed_mb = cache.run_gc()? / (1024 * 1024);
+                        println!("Cache GC: freed {} MB", freed_mb);
+                    }
+                }
+            }
             _ => {
                 // Default C backend
                 println!("Transpiling auto code to c code");
@@ -1232,6 +1246,19 @@ impl Automan {
             auto_lang::config::BackendType::Arkts => {
                 println!("Running ArkTS/HarmonyOS project (backend: ark)");
                 crate::ark::run_ark_project(&root_dir, args)
+            }
+            auto_lang::config::BackendType::Rust => {
+                println!("Running Rust project (backend: rust)");
+                let mut cmd = std::process::Command::new("cargo");
+                cmd.arg("run");
+                for arg in args {
+                    cmd.arg(arg);
+                }
+                let status = cmd.current_dir(&root_dir).status()?;
+                if !status.success() {
+                    return Err(format!("Cargo run failed with status: {}", status).into());
+                }
+                Ok(())
             }
             _ => {
                 Err(format!("Backend {:?} does not support run command", backend).into())

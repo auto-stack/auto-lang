@@ -2567,10 +2567,21 @@ impl Codegen {
                     self.emit(OpCode::CONST_I32);
                     self.emit_i32(-1); // kids_id
 
-                    // Emit CREATE_NODE with name index and arg count
+                    // Compile node.id (if present) as string index, or 0xFFFF if absent
+                    let id_idx = if !node.id.is_empty() {
+                        let id_bytes = node.id.as_bytes().to_vec();
+                        let idx = self.strings.len() as u16;
+                        self.strings.push(id_bytes);
+                        idx
+                    } else {
+                        0xFFFF // sentinel: no id
+                    };
+
+                    // Emit CREATE_NODE with name index, arg count, and id index
                     self.emit(OpCode::CREATE_NODE);
                     self.code.extend_from_slice(&name_idx.to_le_bytes());
                     self.code.push(arg_count);
+                    self.code.extend_from_slice(&id_idx.to_le_bytes());
                 }
             }
             Expr::Str(s) => {
@@ -4161,6 +4172,25 @@ impl Codegen {
                 self.compile_expr(expr)?;
                 // Emit ERROR_PROPAGATE (pops May<T>, pushes unwrapped value or early returns)
                 self.emit(OpCode::ERROR_PROPAGATE);
+            }
+            // Plan 162: Type cast: expr.as(Type) — runtime type conversion
+            Expr::Cast { expr, target_type } => {
+                // Compile inner expression
+                self.compile_expr(expr)?;
+                // Emit appropriate cast opcode based on target type
+                let opcode = match target_type {
+                    Type::Int => OpCode::TYPE_CAST_I32,
+                    Type::Uint => OpCode::TYPE_CAST_U32,
+                    Type::I64 => OpCode::TYPE_CAST_I64,
+                    Type::U64 => OpCode::TYPE_CAST_U64,
+                    Type::Float | Type::Double => OpCode::TYPE_CAST_F64,
+                    Type::Ptr(_) => OpCode::TYPE_CAST_PTR,
+                    _ => {
+                        // For unknown/unsupported types, just leave the value as-is
+                        return Ok(());
+                    }
+                };
+                self.emit(opcode);
             }
             // Plan 120: Option type constructor - Some(value)
             Expr::Some(inner) => {

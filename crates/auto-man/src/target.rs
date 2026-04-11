@@ -117,22 +117,31 @@ impl<T: Hash + Eq> VecExt<T> for Vec<T> {
 }
 
 pub fn get_root_dir(name: &AutoStr, kind: &TargetKind, pac: &AutoStr) -> AutoStr {
-    // 现在只支持最简单的当前目录
     // 如果target的名称和pac名称相同，说明是主target，使用当前目录
     if name == pac {
-        AutoStr::from(".")
-    } else {
-        // 否则，使用libs/apps/deps中的目录
-        let target_dir = match kind {
-            TargetKind::App => "apps",
-            TargetKind::Lib => "libs",
-            TargetKind::Bag => "bags",
-            TargetKind::Dep => "deps",
-            TargetKind::Device => "devices",
-            TargetKind::Test => "tests",
-        };
-        AutoStr::from(format!("{}/{}", target_dir, name))
+        return AutoStr::from(".");
     }
+
+    // 对于 app 类型，如果名称是 "main" 或与 pac 相同，
+    // 先尝试 apps/<name>，如果不存在则回退到当前目录 "."
+    if *kind == TargetKind::App && (name.as_str() == "main" || name == pac) {
+        let app_dir = format!("apps/{}", name);
+        if Path::new(&app_dir).is_dir() {
+            return AutoStr::from(app_dir);
+        }
+        return AutoStr::from(".");
+    }
+
+    // 否则，使用libs/apps/deps中的目录
+    let target_dir = match kind {
+        TargetKind::App => "apps",
+        TargetKind::Lib => "libs",
+        TargetKind::Bag => "bags",
+        TargetKind::Dep => "deps",
+        TargetKind::Device => "devices",
+        TargetKind::Test => "tests",
+    };
+    AutoStr::from(format!("{}/{}", target_dir, name))
 }
 
 fn dir_filter(name: &AutoStr, selects: &HashSet<AutoStr>, skips: &HashSet<AutoStr>) -> bool {
@@ -591,14 +600,19 @@ impl Target {
             let fname = AutoPath::new(path).basename();
 
             if self.lang.as_str() == "rust" {
-                let mut rust_code = auto_lang::trans::rust::transpile_rust(fname, &content)
+                let mut rust_code = auto_lang::trans::rust::transpile_rust(fname.clone(), &content)
                     .map_err(|e| format!("Failed to transpile '{}' to rust: {}", path, e))?;
 
-                let rs_path = path.as_str().replace(".at", ".rs");
                 let rs_content = rust_code.done()?;
-
                 if !rs_content.is_empty() {
-                    std::fs::write(Path::new(rs_path.as_str()), rs_content)
+                    // Output to rust/src/ directory
+                    // basename() returns file stem (e.g. "main" from "main.at"), so append ".rs"
+                    let rs_filename = format!("{}.rs", fname.as_str());
+                    let rs_dir = "rust/src";
+                    std::fs::create_dir_all(rs_dir)
+                        .map_err(|e| format!("Failed to create dir '{}': {}", rs_dir, e))?;
+                    let rs_path = format!("{}/{}", rs_dir, rs_filename);
+                    std::fs::write(Path::new(&rs_path), rs_content)
                         .map_err(|e| format!("Failed to write Rust file '{}': {}", rs_path, e))?;
                     self.srcs.insert(AutoStr::from(rs_path.clone()));
                     info!("Generated {}", rs_path);

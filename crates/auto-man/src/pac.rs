@@ -90,6 +90,12 @@ impl Pac {
         let version = config.version();
         let props = config.root.props_clone();
 
+        // Determine lang from pac.at top-level prop (e.g., lang: "rust")
+        let top_lang = props.get("lang").and_then(|v| match v {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }).unwrap_or_else(|| "c".to_string());
+
         // Parse backend field - supports three forms (Plan 129):
         //   1. backend: "vue"                          -> Single(BackendType::Vue)
         //   2. backend: { front: "vue", back: "rust" } -> Split { front: [Vue], back: Rust }
@@ -99,8 +105,13 @@ impl Pac {
         let backend_config = BackendConfig::from_value(&backend_value);
 
         // Legacy backend string (for backwards compatibility)
+        // Also consider top-level lang: "rust" as backend "rust"
         let backend_str = backend_value.to_astr();
-        let backend = if backend_str.is_empty() { "c".into() } else { backend_str };
+        let backend = if backend_str.is_empty() {
+            if top_lang == "rust" { "rust".into() } else { "c".into() }
+        } else {
+            backend_str
+        };
 
         // ports
         let ports = config.root.get_nodes("port");
@@ -120,15 +131,8 @@ impl Pac {
         let target_props = vec!["at", "lang"];
 
         let mut default_builder: AutoStr = "ninja".into();
-        if target_props.contains(&"lang") {
-            let lang_val = config.args.get("lang");
-            let lang_str = match lang_val {
-                Some(v) => v.to_astr(),
-                None => "c".into(),
-            };
-            if lang_str == "rust" {
-                default_builder = "cargo".into();
-            }
+        if top_lang == "rust" {
+            default_builder = "cargo".into();
         }
 
         // targets, NOTE: ports are not targets
@@ -146,6 +150,11 @@ impl Pac {
                                 n.set_prop(*p, value);
                             }
                         }
+                    }
+
+                    // Inherit top-level lang into target if not explicitly set
+                    if !n.has_prop("lang") && top_lang != "c" {
+                        n.set_prop("lang", top_lang.as_str());
                     }
 
                     let mut target = Target::from((*n).clone(), pac_name.clone());
@@ -453,12 +462,20 @@ impl Pac {
         self.build_at = at.clone();
         self.build_location = AutoPath::new(at.clone()).to_astr();
         // set builder
+        // For rust projects, use "rust" as build dir and cargo builder
+        let builder_name: AutoStr;
+        if self.backend.as_str() == "rust" {
+            builder_name = "cargo".into();
+            self.build_location = "rust".into();
+        } else {
+            builder_name = self.port.builder.clone();
+        }
         let build_path = AutoPath::new(self.build_location.clone());
         println!(
             "setting port builder: {} {}, at {}",
-            port_name, self.port.builder, build_path
+            port_name, builder_name, build_path
         );
-        self.builder = make_builder(&self.port.builder, build_path);
+        self.builder = make_builder(&builder_name, build_path);
         if self.port.builder == "ghs" || self.port.builder == "ninja" {
             self.set_show_headers();
         }

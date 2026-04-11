@@ -799,13 +799,13 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
     use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
 
-    // Preprocess macros (e.g., widget → type ... is Widget)
-    let code = crate::macro_::preprocess(code);
-
     // Note: Plan 091 - Universe parameter removed, AutoVM uses its own state
+    // Note: Do NOT preprocess macros here — pac.at is config code, not UI code.
+    // The `app` keyword in pac.at means a node definition (app (id: "main") {...}),
+    // not a UI macro (which would expand to `type ... is App {...}`).
 
     // 1. Parse the code
-    let mut parser = Parser::from(code.as_str());
+    let mut parser = Parser::from(code);
     let ast = parser.parse()?;
 
     // 2. Compile to bytecode using ConfigCodegen

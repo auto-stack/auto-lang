@@ -6,6 +6,7 @@ use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
 use crate::vm::task_system::TaskRegistry;
 use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
+use auto_val::AutoStr;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -702,6 +703,8 @@ impl AutoVM {
                     task.ip += 2;
                     let arg_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
+                    let id_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
 
                     // Pop kids_id and props_id first
                     let kids_id = task.ram.pop_i32();
@@ -728,16 +731,26 @@ impl AutoVM {
                     }
                     args.reverse();
 
-                    // Decode name
+                    // Decode name and id
                     let strings = self.strings.read().unwrap();
                     let name = if let Some(bytes) = strings.get(name_idx as usize) {
                         String::from_utf8_lossy(bytes).to_string()
                     } else {
                         "".to_string()
                     };
+                    let id = if id_idx != 0xFFFF {
+                        strings.get(id_idx as usize)
+                            .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
                     drop(strings);
 
                     let mut node = auto_val::Node::new(&name);
+                    if !id.is_empty() {
+                        node.id = AutoStr::from(id);
+                    }
                     
                     // Assign args
                     for arg in args {
@@ -1034,6 +1047,31 @@ impl AutoVM {
                         // TODO: When stack supports proper May<T> types, extract the actual value
                         task.ram.push_i32(may_bits);
                     }
+                }
+                // Plan 162: Type cast opcodes — runtime type conversion
+                OpCode::TYPE_CAST_I32 => {
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v);
+                }
+                OpCode::TYPE_CAST_U32 => {
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v); // u32 has same bit width as i32
+                }
+                OpCode::TYPE_CAST_I64 => {
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v); // TODO: i64 support needs wider stack
+                }
+                OpCode::TYPE_CAST_U64 => {
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v); // TODO: u64 support needs wider stack
+                }
+                OpCode::TYPE_CAST_F64 => {
+                    // int -> float conversion
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v); // TODO: proper float stack support
+                }
+                OpCode::TYPE_CAST_PTR => {
+                    // Pointer cast — no-op at runtime
                 }
                 // Plan 075: Convert any value to string
                 OpCode::TO_STR => {

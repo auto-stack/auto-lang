@@ -1,0 +1,66 @@
+// Rust implementation of Heap<T> storage
+// Uses Rust standard library allocator for memory management
+
+use.rust std::alloc::{alloc, realloc, dealloc, Layout}
+use.rust std::mem: size_of
+use.rust std::ptr: null_mut
+
+ext Heap {
+    /// Create empty heap storage
+    #[rs, pub]
+    static fn new() Heap<T> {
+        return Heap(ptr: null_mut() as *T, cap: 0)
+    }
+
+    /// Get raw data pointer
+    #[rs, pub]
+    fn data() *T {
+        return .ptr
+    }
+
+    /// Get physical capacity
+    #[rs, pub]
+    fn capacity() u32 {
+        return .cap
+    }
+
+    /// Try to grow to minimum capacity
+    /// Uses exponential growth: max(min_cap, cap * 2)
+    #[rs, pub]
+    fn try_grow(min_cap u32) bool {
+        let new_cap = if .cap == 0 { 8 } else { .cap * 2 }
+        if new_cap < min_cap {
+            new_cap = min_cap
+        }
+
+        let elem_size = size_of::<T>()
+        let layout = Layout::from_size_align(new_cap as u64 * elem_size as u64, 8)
+
+        let new_ptr = if .ptr == null_mut() as *T {
+            alloc(layout) as *T
+        } else {
+            let old_layout = Layout::from_size_align(.cap as u64 * elem_size as u64, 8)
+            realloc(.ptr as *u8, old_layout, new_cap as u64 * elem_size as u64) as *T
+        }
+
+        if new_ptr == null_mut() as *T {
+            return false
+        }
+
+        .ptr = new_ptr
+        .cap = new_cap
+        return true
+    }
+
+    /// Free memory
+    #[rs, pub]
+    fn drop() {
+        if .ptr != null_mut() as *T {
+            let elem_size = size_of::<T>()
+            let layout = Layout::from_size_align(.cap as u64 * elem_size as u64, 8)
+            dealloc(.ptr as *u8, layout)
+            .ptr = null_mut() as *T
+            .cap = 0
+        }
+    }
+}
