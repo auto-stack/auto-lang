@@ -1,0 +1,7 @@
+fn five() int {
+    5
+}
+
+fn main() {
+    print(five())
+}

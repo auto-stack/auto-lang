@@ -1,0 +1,10 @@
+fn abs(x int) int {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+fn main() {
+    print(abs(-5))
+}
