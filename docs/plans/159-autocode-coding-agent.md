@@ -1258,6 +1258,60 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-3.4 | 静态常量 `const` | 无 | `const NAME: str = "..."` → `const NAME: &str = "..."` |
 | 6B-3.5 | 多文件模块系统 | 单文件 | `use module::function` 真正解析为多文件 |
 
+**Phase 6B-4: 深度特性差距（auto-code-rs 原型对比）** (覆盖 ~100% 需求)
+
+> 以下分析基于 `auto-code-rs/` 原型全部源码（4 crate, 5325 行）与 a2r 转译器能力的逐行对比。
+> 更新日期: 2026-04-12
+
+**严重阻碍（Blocking）— 必须实现才能转译核心代码**:
+
+| # | 功能 | auto-code-rs 示例 | 当前 a2r 状态 | 建议优先级 |
+|---|------|-------------------|--------------|-----------|
+| 6B-4.1 | **per-field serde 属性** | `#[serde(rename = "role")] content: String` | 仅支持 type 级 derive | P0 |
+| 6B-4.2 | **`pub` 可见性** | `pub struct`, `pub fn`, `pub enum` | 所有输出都是私有的 | P0 |
+| 6B-4.3 | **关联函数（无 self）** | `fn new() -> Self` 在 `impl Type` 块中 | 方法强制加 `&self` 参数 | P0 |
+| 6B-4.4 | **impl Trait for Type（外部 trait）** | `impl Display for Message`, `impl Clone for Session` | 仅支持 spec（Auto 自定义 trait） | P0 |
+| 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | 匹配模式不支持字段绑定 | P1 |
+| 6B-4.6 | **`serde_json::json!` 宏** | `json!({"role": "user", "content": msg})` | 无宏展开支持 | P1 |
+| 6B-4.7 | **`&mut self` 方法** | `fn push(&mut self, msg: Message)` | 方法总是 `&self` | P1 |
+| 6B-4.8 | **`#[tokio::main]`** | 异步 main 函数 | 无属性透传到 main | P1 |
+| 6B-4.9 | **`impl Into<String>` 参数** | `fn new(base_url: impl Into<String>)` | 无泛型约束语法 | P2 |
+| 6B-4.10 | **方法链中的复杂闭包** | `.map(\|r\| r.content).collect::<Vec<_>>()` | 闭包类型推断有限 | P2 |
+
+**中等阻碍 — 影响功能完整性**:
+
+| # | 功能 | 说明 | 建议优先级 |
+|---|------|------|-----------|
+| 6B-4.11 | **`String` vs `&str` 精确区分** | Rust 中两者不可互换，当前 a2r 统一用 String | P2 |
+| 6B-4.12 | **生命周期标注** | `&'a str`, `struct Session<'a>` | P3 |
+| 6B-4.13 | **enum variant 构造 + 方法链** | `Message::system(content).with_model(model)` | P2 |
+| 6B-4.14 | **`Box::new()` / `Arc::new()`** | 智能指针包装 | P2（部分已有 Box<dyn Spec>） |
+| 6B-4.15 | **`Result<T>` 错误处理链** | `.map_err()?`, `anyhow::Result` | P2 |
+| 6B-4.16 | **多文件模块系统** | `mod types; mod anthropic;` | P3（同 6B-3.5） |
+| 6B-4.17 | **Cargo.toml 生成** | 依赖管理 | P3（同 6B-3.2） |
+| 6B-4.18 | **`const` 常量** | `const API_URL: &str = "...";` | P3（同 6B-3.4） |
+| 6B-4.19 | **`static` 变量** | `static CLIENT: Lazy<Client>` | P2（部分已有 global_vars） |
+| 6B-4.20 | **泛型约束 `where T: Trait`** | `where T: Serialize + Clone` | P3（同 6B-3.1） |
+
+**实施优先级建议**:
+
+```
+第一批（核心结构支持）— 解锁 ~70% 代码转译:
+  1. 6B-4.2  pub 可见性         — 最简单，影响面最广
+  2. 6B-4.3  关联函数（无 self）  — struct 构造器必需
+  3. 6B-4.7  &mut self 方法     — 可变方法必需
+  4. 6B-4.1  per-field 属性     — serde 集成必需
+
+第二批（trait 系统）— 解锁 ~85% 代码转译:
+  5. 6B-4.4  impl ExternalTrait for Type — Display/Clone 等 std trait
+  6. 6B-3.1  泛型约束 where T: Trait
+
+第三批（高级特性）— 解锁 ~95% 代码转译:
+  7. 6B-4.5  struct 解构匹配
+  8. 6B-4.10 复杂闭包/方法链
+  9. 6B-3.5  多文件模块系统
+```
+
 **验证标准**:
 - [ ] 所有新增 FFI 函数通过单元测试（✅ 已完成）
 - [ ] AutoLang VM 版本能启动 REPL 并连接 LLM API（Phase 6A 待完成）
