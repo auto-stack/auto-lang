@@ -341,7 +341,8 @@ pub enum Expr {
     // May type operators (Phase 1b.3)
     NullCoalesce(Box<Expr>, Box<Expr>),  // left ?? right
     ErrorPropagate(Box<Expr>),            // expression.?
-    Cast { expr: Box<Expr>, target_type: Type },  // expr.as(Type) — type conversion
+    Cast { expr: Box<Expr>, target_type: Type },  // expr.as(Type) — type conversion (zero-cost reinterpret)
+    To { expr: Box<Expr>, target_type: Type },    // expr.to(Type) — explicit type conversion (may allocate)
     // Plan 120: Option and Result constructors
     Some(Box<Expr>),                      // Some(value)
     None,                                 // None
@@ -453,6 +454,7 @@ impl fmt::Display for Expr {
             Expr::NullCoalesce(l, r) => write!(f, "(?? {} {})", l, r),
             Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
             Expr::Cast { expr, target_type } => write!(f, "(as {} {})", expr, target_type),
+            Expr::To { expr, target_type } => write!(f, "(to {} {})", expr, target_type),
             // Plan 120: Option and Result constructors
             Expr::Some(e) => write!(f, "(Some {})", e),
             Expr::None => write!(f, "None"),
@@ -914,6 +916,12 @@ impl ToNode for Expr {
             }
             Expr::Cast { expr, target_type } => {
                 let mut node = AutoNode::new("as");
+                node.add_kid(expr.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::str(format!("{:?}", target_type))));
+                node
+            }
+            Expr::To { expr, target_type } => {
+                let mut node = AutoNode::new("to");
                 node.add_kid(expr.to_node());
                 node.add_arg(auto_val::Arg::Pos(Value::str(format!("{:?}", target_type))));
                 node

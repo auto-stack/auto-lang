@@ -364,3 +364,9 @@ fn test_140_if_return() {
 fn test_141_func_literal_return() {
     test_a2r("141_func_literal_return").unwrap();
 }
+
+// Plan 162: .to(Type) explicit type conversion
+#[test]
+fn test_142_to_convert() {
+    test_a2r("142_to_convert").unwrap();
+}

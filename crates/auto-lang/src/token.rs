@@ -112,6 +112,7 @@ pub enum TokenKind {
     Pac,    // Plan 131: package keyword (use pac.db)
     Super,  // Plan 131: super keyword (use super.utils)
     As,
+    To,   // Plan 162: .to(Type) method keyword for explicit type conversion
     Enum,
     On,
     Alias,
@@ -358,6 +359,7 @@ impl Token {
             "pac" => Some(TokenKind::Pac),   // Plan 131: package keyword
             "super" => Some(TokenKind::Super), // Plan 131: super keyword
             "as" => Some(TokenKind::As),
+            "to" => Some(TokenKind::To),
             "enum" => Some(TokenKind::Enum),
             "grid" => Some(TokenKind::Grid),
             "alias" => Some(TokenKind::Alias),

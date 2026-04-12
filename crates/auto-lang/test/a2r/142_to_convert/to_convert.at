@@ -1,0 +1,20 @@
+// Plan 162: .to(Type) explicit type conversion
+
+fn main() {
+    let x int = 42
+
+    // int → String
+    let s String = x.to(str)
+
+    // str literal → int
+    let n int = "123".to(int)
+
+    // int → float (degrades to as)
+    let f float = x.to(float)
+
+    // int → u32 (degrades to as)
+    let u u32 = x.to(u32)
+
+    print(s)
+    print(n)
+}

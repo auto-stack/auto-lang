@@ -1323,6 +1323,50 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 162: Explicit type conversion: expr.to(Type)
+            // Strategy: .to(str) generates .to_string() (always valid);
+            // for string literal sources targeting numeric types, generate .parse::<T>().unwrap();
+            // for all other numeric targets, degrade to `as` cast (same as .as()).
+            // Future: refine based on source type inference.
+            Expr::To { expr, target_type } => {
+                match target_type {
+                    Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => {
+                        // x.to(str) / x.to(String) → x.to_string()
+                        self.expr(expr, out)?;
+                        write!(out, ".to_string()")?;
+                    }
+                    // For string literal sources, parse works; for others, use `as`
+                    // Heuristic: check if expr is a string literal
+                    Type::Int => {
+                        if matches!(expr.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                            self.expr(expr, out)?;
+                            write!(out, ".parse::<i32>().unwrap()")?;
+                        } else {
+                            write!(out, "(")?;
+                            self.expr(expr, out)?;
+                            write!(out, " as i32)")?;
+                        }
+                    }
+                    Type::Float | Type::Double => {
+                        if matches!(expr.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                            self.expr(expr, out)?;
+                            write!(out, ".parse::<f64>().unwrap()")?;
+                        } else {
+                            write!(out, "(")?;
+                            self.expr(expr, out)?;
+                            write!(out, " as f64)")?;
+                        }
+                    }
+                    _ => {
+                        // Fallback: treat as cast (same as .as())
+                        write!(out, "(")?;
+                        self.expr(expr, out)?;
+                        write!(out, " as {})", self.rust_type_name(target_type))?;
+                    }
+                }
+                Ok(())
+            }
+
             // Plan 124: Async/Future/Await system
             Expr::AsyncBlock { body, return_type: _ } => {
                 // ~{ stmts } -> async { stmts }

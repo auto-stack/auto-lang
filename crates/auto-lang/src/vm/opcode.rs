@@ -58,6 +58,10 @@ pub enum OpCode {
     TYPE_CAST_U64 = 0xE9,   // value -> u64 (extend to u64)
     TYPE_CAST_F64 = 0xEA,   // value -> f64 (convert to f64)
     TYPE_CAST_PTR = 0xEB,   // value -> pointer (no-op, just type change)
+    // Plan 162: Explicit type conversion: expr.to(Type) — may allocate/parse
+    TYPE_TO_STR = 0xEC,     // value -> string (via .to_string())
+    TYPE_TO_I32 = 0xED,     // value -> i32 (parse string or truncate)
+    TYPE_TO_F64 = 0xEE,     // value -> f64 (parse string or convert)
     // Plan 075: Template string opcodes
     TO_STR = 0x7A,        // Convert any value to string
     IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)

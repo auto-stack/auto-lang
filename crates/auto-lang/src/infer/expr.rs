@@ -457,6 +457,8 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::Comptime(hash_brace) => infer_expr(ctx, &hash_brace.expr),
         // Type cast: expr.as(Type) — the result type is the target type
         Expr::Cast { target_type, .. } => target_type.clone(),
+        // Explicit type conversion: expr.to(Type) — the result type is the target type
+        Expr::To { target_type, .. } => target_type.clone(),
     }
 }
 

@@ -4192,6 +4192,26 @@ impl Codegen {
                 };
                 self.emit(opcode);
             }
+            // Plan 162: Explicit type conversion: expr.to(Type)
+            Expr::To { expr, target_type } => {
+                // Compile inner expression
+                self.compile_expr(expr)?;
+                // Emit appropriate conversion opcode based on target type
+                let opcode = match target_type {
+                    Type::Str(_) | Type::String => OpCode::TYPE_TO_STR,
+                    Type::Int => OpCode::TYPE_TO_I32,
+                    Type::Float | Type::Double => OpCode::TYPE_TO_F64,
+                    // For numeric-to-numeric, reuse cast opcodes (no allocation needed)
+                    Type::Uint => OpCode::TYPE_CAST_U32,
+                    Type::I64 => OpCode::TYPE_CAST_I64,
+                    Type::U64 => OpCode::TYPE_CAST_U64,
+                    _ => {
+                        // For unknown/unsupported types, just leave the value as-is
+                        return Ok(());
+                    }
+                };
+                self.emit(opcode);
+            }
             // Plan 120: Option type constructor - Some(value)
             Expr::Some(inner) => {
                 // Compile inner expression (pushes value onto stack)

@@ -1464,6 +1464,36 @@ impl CTrans {
                 write!(out, "))")?;
                 Ok(())
             }
+            // Plan 162: Explicit type conversion: expr.to(Type)
+            Expr::To { expr, target_type } => {
+                match target_type {
+                    Type::Str(_) | Type::String => {
+                        // x.to(str) → need runtime helper auto_to_str()
+                        write!(out, "auto_to_str(")?;
+                        self.expr(expr, out)?;
+                        write!(out, ")")?;
+                    }
+                    Type::Int | Type::I64 => {
+                        // x.to(int) → atoi(x)
+                        write!(out, "atoi(")?;
+                        self.expr(expr, out)?;
+                        write!(out, ")")?;
+                    }
+                    Type::Float | Type::Double => {
+                        // x.to(float) → atof(x)
+                        write!(out, "atof(")?;
+                        self.expr(expr, out)?;
+                        write!(out, ")")?;
+                    }
+                    _ => {
+                        // Fallback: C cast (same as .as())
+                        write!(out, "(({})(", self.c_type_name(target_type))?;
+                        self.expr(expr, out)?;
+                        write!(out, "))")?;
+                    }
+                }
+                Ok(())
+            }
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
                 // Check if this is an enum access: Enum.Value -> ENUM_VALUE

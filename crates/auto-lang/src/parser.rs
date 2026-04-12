@@ -1545,16 +1545,16 @@ impl<'a> Parser<'a> {
 
         // Handle chained property access like .section.title
         while self.is_kind(TokenKind::Dot) {
-            // Plan 162: Check for .as(Type) type conversion — peek at next token
-            let next_is_as = if let Ok(tok) = self.lexer.next() {
-                let is_as = matches!(tok.kind, TokenKind::As);
+            // Plan 162: Check for .as(Type) / .to(Type) — peek at next token
+            let next_is_as_or_to = if let Ok(tok) = self.lexer.next() {
+                let is_special = matches!(tok.kind, TokenKind::As | TokenKind::To);
                 self.lexer.push_token(tok);
-                is_as
+                is_special
             } else {
                 false
             };
-            if next_is_as {
-                // This is .as(Type), not a field access — let the Pratt parser handle it
+            if next_is_as_or_to {
+                // This is .as(Type) or .to(Type), not a field access — let the Pratt parser handle it
                 break;
             }
             self.next(); // skip dot
@@ -1807,6 +1807,16 @@ impl<'a> Parser<'a> {
                         let target_type = self.parse_type()?;
                         self.expect(TokenKind::RParen)?;
                         lhs = Expr::Cast { expr: Box::new(lhs), target_type };
+                        continue;
+                    }
+                    // Plan 162: .to(Type) explicit type conversion
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::To) {
+                        // .to( Type ) — explicit type conversion (may allocate)
+                        self.next(); // consume 'to'
+                        self.expect(TokenKind::LParen)?;
+                        let target_type = self.parse_type()?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::To { expr: Box::new(lhs), target_type };
                         continue;
                     }
                     // Handle enum variant constructors after dot: MayInt.Err(1), MayInt.Ok(val), etc.

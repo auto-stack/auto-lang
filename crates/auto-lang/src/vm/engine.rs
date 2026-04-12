@@ -1073,6 +1073,23 @@ impl AutoVM {
                 OpCode::TYPE_CAST_PTR => {
                     // Pointer cast — no-op at runtime
                 }
+                // Plan 162: Explicit type conversion (.to) opcodes
+                OpCode::TYPE_TO_STR => {
+                    // Convert value to string — reuse existing TO_STR logic
+                    let value_bits = task.ram.pop_i32();
+                    // For now, just push the value back (TODO: proper string conversion)
+                    task.ram.push_i32(value_bits);
+                }
+                OpCode::TYPE_TO_I32 => {
+                    // Convert value to i32 (parse string or truncate)
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v); // TODO: parse from string when string stack is supported
+                }
+                OpCode::TYPE_TO_F64 => {
+                    // Convert value to f64
+                    let v = task.ram.pop_i32();
+                    task.ram.push_i32(v); // TODO: proper float conversion
+                }
                 // Plan 075: Convert any value to string
                 OpCode::TO_STR => {
                     // Pop value from stack
