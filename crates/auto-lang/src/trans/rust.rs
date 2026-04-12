@@ -1034,7 +1034,7 @@ impl RustTrans {
 
                 // Else clause
                 if let Some(else_body) = &if_.else_ {
-                    write!(out, "\nelse {{")?;
+                    write!(out, " else {{")?;
                     if !else_body.stmts.is_empty() {
                         write!(out, "\n")?;
                         self.indent();
@@ -1102,10 +1102,10 @@ impl RustTrans {
                         self.dedent();
                         self.print_indent(out)?;
                     }
-                    write!(out, "}}\n")?;
+                    write!(out, "}}")?;
                 } else {
-                    // No else clause - add newline after closing brace
-                    write!(out, "\n")?;
+                    // No else clause
+                    write!(out, "")?;
                 }
 
                 Ok(())
