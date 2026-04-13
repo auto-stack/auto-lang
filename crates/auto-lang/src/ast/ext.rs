@@ -49,6 +49,10 @@ pub struct Ext {
     /// Type being extended (e.g., "str", "Point", "File", "ListIter<T, S>")
     pub target: Name,
 
+    /// External trait name (None = inherent impl, Some = trait impl)
+    /// e.g., `ext Point for Display` → trait_name = Some("Display")
+    pub trait_name: Option<Name>,
+
     /// Generic parameters for the impl block (Plan 059)
     /// e.g., ["T", "S"] for `impl<T, S> ListIter<T, S>`
     pub generic_params: Vec<GenericParam>,
@@ -71,6 +75,7 @@ impl Ext {
     pub fn new(target: Name, methods: Vec<Fn>) -> Self {
         Self {
             target,
+            trait_name: None,
             generic_params: Vec::new(),
             fields: Vec::new(),
             methods,
@@ -89,6 +94,7 @@ impl Ext {
     ) -> Self {
         Self {
             target,
+            trait_name: None,
             generic_params: Vec::new(),
             fields,
             methods,
@@ -105,6 +111,7 @@ impl Ext {
     ) -> Self {
         Self {
             target,
+            trait_name: None,
             generic_params,
             fields: Vec::new(),
             methods,
@@ -117,6 +124,7 @@ impl Ext {
 impl PartialEq for Ext {
     fn eq(&self, other: &Self) -> bool {
         self.target == other.target
+            && self.trait_name == other.trait_name
             // Note: generic_params comparison omitted (GenericParam doesn't impl PartialEq)
             && self.fields.len() == other.fields.len()
             && self.methods == other.methods
@@ -128,6 +136,10 @@ impl PartialEq for Ext {
 impl fmt::Display for Ext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(ext (target {}", self.target)?;
+
+        if let Some(ref trait_name) = self.trait_name {
+            write!(f, " (for {})", trait_name)?;
+        }
 
         // Add generic params if present (Plan 059)
         if !self.generic_params.is_empty() {
@@ -163,6 +175,10 @@ impl AtomWriter for Ext {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(f, "ext({}, ", self.target)?;
 
+        if let Some(ref trait_name) = self.trait_name {
+            write!(f, "for:{}, ", trait_name)?;
+        }
+
         // Write fields if present
         if !self.fields.is_empty() {
             write!(f, "fields: [")?;
@@ -191,6 +207,10 @@ impl ToNode for Ext {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("ext");
         node.set_prop("target", auto_val::Value::Str(self.target.clone()));
+
+        if let Some(ref trait_name) = self.trait_name {
+            node.set_prop("trait_name", auto_val::Value::Str(trait_name.clone()));
+        }
 
         // Add fields if present
         if !self.fields.is_empty() {
@@ -309,5 +329,13 @@ mod tests {
         assert_eq!(target_value.as_str(), "File");
         assert_eq!(module_path_value.as_str(), "auto.io");
         assert_eq!(is_same_module_value.as_bool(), true);
+    }
+
+    #[test]
+    fn test_ext_with_trait_name() {
+        let mut ext = Ext::new("Point".into(), vec![]);
+        ext.trait_name = Some("Display".into());
+        assert_eq!(ext.target, "Point");
+        assert_eq!(ext.trait_name, Some("Display".into()));
     }
 }

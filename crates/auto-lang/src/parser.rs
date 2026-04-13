@@ -3426,6 +3426,7 @@ impl<'a> Parser<'a> {
         // Plan 059: Create Ext with generic params, fields, and methods
         let ext = Ext {
             target,
+            trait_name: None,
             generic_params,
             fields,
             methods,
