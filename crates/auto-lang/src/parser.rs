@@ -3253,6 +3253,29 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::Gt)?; // skip '>'
         }
 
+        // Plan 164: Parse optional "for TraitName" for external trait implementation
+        // e.g., ext Point for Display { ... }
+        let mut trait_name: Option<Name> = None;
+        if self.is_kind(TokenKind::For) {
+            self.next(); // skip 'for'
+            trait_name = Some(self.parse_name()?);
+
+            // Skip generic args on trait name, e.g., ext MyType for From<String>
+            if self.is_kind(TokenKind::Lt) {
+                self.next(); // skip '<'
+                if self.next_token_is_type() {
+                    let _ = self.parse_type()?;
+                }
+                while self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    if self.next_token_is_type() {
+                        let _ = self.parse_type()?;
+                    }
+                }
+                self.expect(TokenKind::Gt)?;
+            }
+        }
+
         // Expect opening brace
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -3426,7 +3449,7 @@ impl<'a> Parser<'a> {
         // Plan 059: Create Ext with generic params, fields, and methods
         let ext = Ext {
             target,
-            trait_name: None,
+            trait_name,
             generic_params,
             fields,
             methods,
