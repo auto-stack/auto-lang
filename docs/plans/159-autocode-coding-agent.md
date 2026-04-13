@@ -1312,8 +1312,8 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-4.2 | **`pub` 可见性** | `pub struct`, `pub fn`, `pub enum` | ✅ **已完成** (Plan 163 Step 2, test 149) | ~~P0~~ |
 | 6B-4.3 | **关联函数（无 self）** | `fn new() -> Self` 在 `impl Type` 块中 | ✅ **已完成** (Plan 163 Step 1, test 148) | ~~P0~~ |
 | 6B-4.4 | **impl Trait for Type（外部 trait）** | `impl Display for Message`, `impl Clone for Session` | ✅ **已完成** (Plan 164, test 153) | ~~P0~~ |
-| 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | 匹配模式不支持字段绑定 | P1 |
-| 6B-4.6 | **`serde_json::json!` 宏** | `json!({"role": "user", "content": msg})` | 无宏展开支持 | P1 |
+| 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | 匹配模式不支持字段绑定 | P1（Plan 165） |
+| 6B-4.6 | **`serde_json::json!` 宏** | `json!({"role": "user", "content": msg})` | ✅ 不需要 — AutoLang 原生 object 已覆盖 | ~~P1~~ |
 | 6B-4.7 | **`&mut self` 方法** | `fn push(&mut self, msg: Message)` | ✅ **已完成** (Plan 163 Step 4, test 151) | ~~P1~~ |
 | 6B-4.8 | **`#[tokio::main]`** | 异步 main 函数 | ✅ **已完成** (Plan 163 Step 3, test 150) | ~~P1~~ |
 | 6B-4.9 | **`impl Into<String>` 参数** | `fn new(base_url: impl Into<String>)` | 无泛型约束语法 | P2 |
