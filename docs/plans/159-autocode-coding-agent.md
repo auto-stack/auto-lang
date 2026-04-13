@@ -1311,7 +1311,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-4.1 | **per-field serde 属性** | `#[serde(rename = "role")] content: String` | ✅ **已完成** (Plan 163 Step 5, test 152) | ~~P0~~ |
 | 6B-4.2 | **`pub` 可见性** | `pub struct`, `pub fn`, `pub enum` | ✅ **已完成** (Plan 163 Step 2, test 149) | ~~P0~~ |
 | 6B-4.3 | **关联函数（无 self）** | `fn new() -> Self` 在 `impl Type` 块中 | ✅ **已完成** (Plan 163 Step 1, test 148) | ~~P0~~ |
-| 6B-4.4 | **impl Trait for Type（外部 trait）** | `impl Display for Message`, `impl Clone for Session` | 仅支持 spec（Auto 自定义 trait） | P0 |
+| 6B-4.4 | **impl Trait for Type（外部 trait）** | `impl Display for Message`, `impl Clone for Session` | ✅ **已完成** (Plan 164, test 153) | ~~P0~~ |
 | 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | 匹配模式不支持字段绑定 | P1 |
 | 6B-4.6 | **`serde_json::json!` 宏** | `json!({"role": "user", "content": msg})` | 无宏展开支持 | P1 |
 | 6B-4.7 | **`&mut self` 方法** | `fn push(&mut self, msg: Message)` | ✅ **已完成** (Plan 163 Step 4, test 151) | ~~P1~~ |
@@ -1345,7 +1345,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
   5. 6B-4.8  #[tokio::main]     ✅ Plan 163 Step 3 (test 150)
 
 第二批（trait 系统）— 解锁 ~85% 代码转译:
-  6. 6B-4.4  impl ExternalTrait for Type — Display/Clone 等 std trait
+  6. 6B-4.4  impl ExternalTrait for Type ✅ Plan 164 (test 153)
   7. 6B-3.1  泛型约束 where T: Trait
 
 第三批（高级特性）— 解锁 ~95% 代码转译:
@@ -1361,6 +1361,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 - [x] a2r 转译器支持 HashMap 类型（Phase 6B-1）✅ Plan 160 完成
 - [x] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）✅ tests 133-135
 - [x] a2r 转译器支持核心结构：pub、static fn、&mut self、tokio main、per-field attrs（Phase 6B-4 第一批）✅ Plan 163 tests 148-152
+- [x] a2r 转译器支持 impl Trait for Type（外部 trait）✅ Plan 164 test 153
 - [ ] 纯 .at 代码转译为 Rust 后功能与 Rust 原型对等（Phase 6B-3）
 
 ### ac-api
