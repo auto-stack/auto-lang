@@ -1,0 +1,33 @@
+// Plan 165: Struct destructuring in is match arms
+
+type Point {
+    x int
+    y int
+}
+
+enum Shape {
+    Circle int
+    Rect Point
+    None
+}
+
+fn main() {
+    let p = Point(x: 3, y: 4)
+
+    // Plain struct destructuring
+    is p {
+        Point { x, y } => print(x)
+    }
+
+    // Enum variant with struct destructuring
+    let s = Shape.Rect(p)
+    is s {
+        Shape.Circle(r) => print(r)
+        Shape.Rect(pt) => {
+            is pt {
+                Point { x, y } => print(x)
+            }
+        }
+        Shape.None => print("none")
+    }
+}

@@ -411,3 +411,9 @@ fn test_152_field_attrs() {
 fn test_153_ext_for() {
     test_a2r("153_ext_for").unwrap();
 }
+
+// Plan 165: Struct destructuring in is match arms
+#[test]
+fn test_154_struct_destructure() {
+    test_a2r("154_struct_destructure").unwrap();
+}
