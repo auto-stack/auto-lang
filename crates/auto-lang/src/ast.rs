@@ -350,6 +350,9 @@ pub enum Expr {
     None,                                 // None
     Ok(Box<Expr>),                        // Ok(value)
     Err(Box<Expr>),                       // Err(message)
+    // Plan 6B-4.14: Smart pointer constructors
+    BoxExpr(Box<Expr>),                   // Box(value) → Box::new(value) in Rust
+    ArcExpr(Box<Expr>),                   // Arc(value) → Arc::new(value) in Rust
     // Router navigation (Plan 105)
     NavCall {
         path: Box<Expr>,
@@ -464,6 +467,9 @@ impl fmt::Display for Expr {
             Expr::None => write!(f, "None"),
             Expr::Ok(e) => write!(f, "(Ok {})", e),
             Expr::Err(e) => write!(f, "(Err {})", e),
+            // Plan 6B-4.14: Smart pointer constructors
+            Expr::BoxExpr(e) => write!(f, "(Box {})", e),
+            Expr::ArcExpr(e) => write!(f, "(Arc {})", e),
             Expr::NavCall { path, params } => {
                 write!(f, "(nav {} ", path)?;
                 for (i, param) in params.iter().enumerate() {
@@ -961,6 +967,17 @@ impl ToNode for Expr {
             }
             Expr::Err(e) => {
                 let mut node = AutoNode::new("Err");
+                node.add_kid(e.to_node());
+                node
+            }
+            // Plan 6B-4.14: Smart pointer constructors
+            Expr::BoxExpr(e) => {
+                let mut node = AutoNode::new("Box");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::ArcExpr(e) => {
+                let mut node = AutoNode::new("Arc");
                 node.add_kid(e.to_node());
                 node
             }

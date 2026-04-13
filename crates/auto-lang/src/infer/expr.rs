@@ -397,6 +397,10 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // Err(msg) returns !never (Result type with unknown success type)
         Expr::Err(_e) => Type::Result(Box::new(Type::Unknown)),
 
+        // Plan 6B-4.14: Smart pointer constructors
+        Expr::BoxExpr(_e) => Type::Unknown, // Box type not yet represented
+        Expr::ArcExpr(_e) => Type::Unknown, // Arc type not yet represented
+
         // Plan 120: Option/Result patterns in is statements
         // These are used in pattern matching context, return Bool for the pattern check
         Expr::OptionPattern(_) => Type::Bool,

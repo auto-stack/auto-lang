@@ -400,6 +400,17 @@ impl RustTrans {
                 self.expr(e, out)?;
                 write!(out, ")").map_err(Into::into)
             }
+            // Plan 6B-4.14: Smart pointer constructors
+            Expr::BoxExpr(e) => {
+                write!(out, "Box::new(")?;
+                self.expr(e, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
+            Expr::ArcExpr(e) => {
+                write!(out, "Arc::new(")?;
+                self.expr(e, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
 
             // Operators
             Expr::Bina(lhs, op, rhs) => {
@@ -2014,6 +2025,18 @@ impl RustTrans {
                 return Ok(());
             }
             _ => {}
+        }
+
+        // Plan 6B-3.4: const declaration → const NAME: &str = "...";
+        if matches!(store.kind, StoreKind::Const) {
+            let ty_name = if matches!(store.ty, Type::Str(_)) {
+                "&str".to_string()
+            } else {
+                self.rust_type_name(&store.ty)
+            };
+            write!(out, "const {}: {} = ", store.name, ty_name)?;
+            self.expr(&store.expr, out)?;
+            return Ok(());
         }
 
         // Plan 151: Generate static Lazy<Mutex<T>> for global variables

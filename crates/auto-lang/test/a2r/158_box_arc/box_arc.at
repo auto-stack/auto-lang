@@ -1,0 +1,11 @@
+// Plan 6B-4.14: Box::new() / Arc::new() smart pointer constructors
+
+type Node {
+    value int
+}
+
+fn main() {
+    let x = Box(42)
+    let node = Box(Node(value: 10))
+    let shared = Arc("hello")
+}

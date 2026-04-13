@@ -677,6 +677,7 @@ impl Codegen {
                     store.kind,
                     crate::ast::StoreKind::Let
                         | crate::ast::StoreKind::Var
+                        | crate::ast::StoreKind::Const
                         | crate::ast::StoreKind::CVar
                 );
 
@@ -1108,7 +1109,8 @@ impl Codegen {
                 // the outer scope's slot.
                 let var_index = if let Some(existing_index) = self.lookup_var(&name_str) {
                     match store.kind {
-                        crate::ast::StoreKind::Let => {
+                        crate::ast::StoreKind::Let
+                        | crate::ast::StoreKind::Const => {
                             // `let x = ...` always creates a new slot, even if x exists in outer scope
                             self.add_var(&store.name)
                         }

@@ -6,6 +6,7 @@ use std::{fmt, io as stdio};
 pub enum StoreKind {
     Let,
     Var,
+    Const, // const declaration (Plan 6B-3.4)
     CVar,  // C variable declaration
     Field, // field of struct
 }
@@ -28,6 +29,7 @@ impl fmt::Display for Store {
         match self.kind {
             StoreKind::Let => write!(f, "(let (name {}){}{})", self.name, ty_str, self.expr),
             StoreKind::Var => write!(f, "(var (name {}) {})", self.name, self.expr),
+            StoreKind::Const => write!(f, "(const (name {}){}{})", self.name, ty_str, self.expr),
             StoreKind::Field => write!(f, "(field (name {}) {})", self.name, self.expr),
             StoreKind::CVar => write!(f, "(cvar (name {}))", self.name),
         }
@@ -39,6 +41,7 @@ impl fmt::Display for StoreKind {
         match self {
             StoreKind::Let => write!(f, "let"),
             StoreKind::Var => write!(f, "var"),
+            StoreKind::Const => write!(f, "const"),
             StoreKind::Field => write!(f, "field"),
             StoreKind::CVar => write!(f, "cvar"),
         }
@@ -56,6 +59,7 @@ impl AtomWriter for Store {
         let kind_name = match self.kind {
             StoreKind::Let => "let",
             StoreKind::Var => "var",
+            StoreKind::Const => "const",
             StoreKind::Field => "field",
             StoreKind::CVar => "cvar",
         };
@@ -76,6 +80,7 @@ impl ToNode for Store {
         let node_name = match &self.kind {
             StoreKind::Let => "let",
             StoreKind::Var => "var",
+            StoreKind::Const => "const",
             StoreKind::CVar => "cvar",
             StoreKind::Field => "field",
         };

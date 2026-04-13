@@ -251,6 +251,9 @@ impl<'db> DepScanner<'db> {
             | Expr::None => {}
             | Expr::Ok(e) => { self.walk_expr(e, deps); }
             | Expr::Err(e) => { self.walk_expr(e, deps); }
+            // Plan 6B-4.14: Smart pointer constructors
+            | Expr::BoxExpr(e) => { self.walk_expr(e, deps); }
+            | Expr::ArcExpr(e) => { self.walk_expr(e, deps); }
             // Plan 120: Option/Result patterns in is statements - no dependencies
             | Expr::OptionPattern(_) => {}
             | Expr::ResultPattern(_) => {}

@@ -2512,6 +2512,26 @@ impl<'a> Parser<'a> {
 
 
             // Not a special type expression, just a regular identifier
+            // Plan 6B-4.14: Smart pointer constructors Box(expr) and Arc(expr)
+            match name.as_str() {
+                "Box" => {
+                    if self.is_kind(TokenKind::LParen) {
+                        self.next(); // consume '('
+                        let value = self.parse_expr()?;
+                        self.expect(TokenKind::RParen)?;
+                        return Ok(Expr::BoxExpr(Box::new(value)));
+                    }
+                }
+                "Arc" => {
+                    if self.is_kind(TokenKind::LParen) {
+                        self.next(); // consume '('
+                        let value = self.parse_expr()?;
+                        self.expect(TokenKind::RParen)?;
+                        return Ok(Expr::ArcExpr(Box::new(value)));
+                    }
+                }
+                _ => {}
+            }
             return Ok(Expr::Ident(name));
         }
 
@@ -3070,6 +3090,7 @@ impl<'a> Parser<'a> {
             TokenKind::Var => self.parse_store_stmt()?,
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
+            TokenKind::Const => self.parse_store_stmt()?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
@@ -5284,6 +5305,7 @@ impl<'a> Parser<'a> {
         match self.kind() {
             TokenKind::Var => Ok(StoreKind::Var),
             TokenKind::Let => Ok(StoreKind::Let),
+            TokenKind::Const => Ok(StoreKind::Const),
             TokenKind::Mut => {
                 let message = "'mut' is not supported as a storage modifier. Use 'var' for mutable variables.".to_string();
                 let span = pos_to_span(self.cur.pos);

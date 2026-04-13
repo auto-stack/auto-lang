@@ -429,3 +429,15 @@ fn test_155_with_constraint() {
 fn test_156_ext_from() {
     test_a2r("156_ext_from").unwrap();
 }
+
+// Plan 6B-3.4: const declaration
+#[test]
+fn test_157_const_decl() {
+    test_a2r("157_const_decl").unwrap();
+}
+
+// Plan 6B-4.14: Box::new() / Arc::new() smart pointer constructors
+#[test]
+fn test_158_box_arc() {
+    test_a2r("158_box_arc").unwrap();
+}

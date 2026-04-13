@@ -1,0 +1,11 @@
+// Plan 6B-3.4: const declaration
+
+const MAX_SIZE int = 1024
+const APP_NAME str = "AutoLang"
+const VERSION str = "0.1.0"
+
+fn main() {
+    say(APP_NAME)
+    say(VERSION)
+    say(MAX_SIZE)
+}
