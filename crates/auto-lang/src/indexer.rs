@@ -638,6 +638,8 @@ mod tests {
             module_path: None,
             paths: vec![AutoStr::from("std::io")],
             items: vec![],
+            is_pub: false,
+            is_wildcard: false,
         };
 
         let mut ast = Code::new();

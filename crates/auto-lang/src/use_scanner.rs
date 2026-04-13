@@ -36,6 +36,8 @@ pub struct UseStatement {
     pub c_header: Option<String>,
     /// Plan 092: 是否是 Rust 导入 (use.rust serde::json)
     pub is_rust_import: bool,
+    /// Plan 167: 是否是 pub use
+    pub is_pub: bool,
 }
 
 impl UseStatement {
@@ -49,6 +51,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_pub: false,
         }
     }
 
@@ -62,6 +65,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_pub: false,
         }
     }
 
@@ -75,6 +79,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_pub: false,
         }
     }
 
@@ -88,6 +93,7 @@ impl UseStatement {
             is_c_import: true,
             c_header: Some(header.into()),
             is_rust_import: false,
+            is_pub: false,
         }
     }
 
@@ -101,6 +107,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: true,
+            is_pub: false,
         }
     }
 }
@@ -199,6 +206,13 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
         return None;
     }
 
+    // Plan 167: pub use — check for "pub " prefix
+    let (line, is_pub) = if line.starts_with("pub ") {
+        (&line[4..], true)
+    } else {
+        (line, false)
+    };
+
     // 检查是否有别名: use std.io as io
     let (module_part, alias) = if let Some(as_pos) = line.find(" as ") {
         let module = line[..as_pos].trim();
@@ -230,6 +244,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
                 is_c_import: false,
                 c_header: None,
                 is_rust_import: false,
+                is_pub,
             });
         }
 
@@ -241,6 +256,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_pub,
         });
     }
 
@@ -256,6 +272,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_pub,
         });
     }
 
@@ -267,6 +284,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
         is_c_import: false,
         c_header: None,
         is_rust_import: false,
+        is_pub,
     })
 }
 

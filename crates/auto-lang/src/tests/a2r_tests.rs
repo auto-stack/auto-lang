@@ -441,3 +441,15 @@ fn test_157_const_decl() {
 fn test_158_box_arc() {
     test_a2r("158_box_arc").unwrap();
 }
+
+// Plan 167 Phase 2: wildcard import (use module: *)
+#[test]
+fn test_160_wildcard_import() {
+    test_a2r("160_wildcard_import").unwrap();
+}
+
+// Plan 167 Phase 1: pub use re-export
+#[test]
+fn test_159_pub_use() {
+    test_a2r("159_pub_use").unwrap();
+}

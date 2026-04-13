@@ -19,6 +19,10 @@ pub struct Use {
     pub paths: Vec<AutoStr>,
     /// Symbols to import (after `:`)
     pub items: Vec<AutoStr>,
+    /// Plan 167: pub use re-export
+    pub is_pub: bool,
+    /// Plan 167: wildcard import (use module: *)
+    pub is_wildcard: bool,
 }
 
 impl fmt::Display for Use {
@@ -37,6 +41,12 @@ impl fmt::Display for Use {
         }
         if !self.items.is_empty() {
             write!(f, " (items {})", self.items.join(","))?;
+        }
+        if self.is_pub {
+            write!(f, " (pub)")?;
+        }
+        if self.is_wildcard {
+            write!(f, " (wildcard)")?;
         }
         write!(f, ")")
     }
@@ -117,6 +127,8 @@ mod plan131_tests {
             module_path: Some(ModulePath::pac(vec!["db".into()])),
             paths: vec![],
             items: vec![],
+            is_pub: false,
+            is_wildcard: false,
         };
         assert_eq!(
             use_stmt.module_path.as_ref().unwrap().display(),
@@ -133,6 +145,8 @@ mod plan131_tests {
             module_path: Some(ModulePath::super_path(vec!["utils".into()])),
             paths: vec![],
             items: vec![],
+            is_pub: false,
+            is_wildcard: false,
         };
         assert_eq!(
             use_stmt.module_path.as_ref().unwrap().display(),
@@ -151,6 +165,8 @@ mod plan131_tests {
             ),
             paths: vec![],
             items: vec!["say".into(), "ask".into()],
+            is_pub: false,
+            is_wildcard: false,
         };
         assert_eq!(use_stmt.items, vec!["say", "ask"]);
         // Test Display trait
@@ -168,6 +184,8 @@ mod plan131_tests {
             module_path: None,
             paths: vec!["std".into(), "io".into()],
             items: vec!["say".into()],
+            is_pub: false,
+            is_wildcard: false,
         };
         assert!(use_stmt.module_path.is_none());
         assert_eq!(format!("{}", use_stmt), "(use (path std.io) (items say))");
@@ -180,6 +198,8 @@ mod plan131_tests {
             module_path: Some(ModulePath::pac(vec!["db".into()])),
             paths: vec![],
             items: vec![],
+            is_pub: false,
+            is_wildcard: false,
         };
         let node = use_stmt.to_node();
         assert_eq!(node.name.as_str(), "use");
@@ -197,6 +217,8 @@ mod plan131_tests {
             module_path: Some(ModulePath::pac(vec!["db".into()])),
             paths: vec![],
             items: vec!["load".into(), "save".into()],
+            is_pub: false,
+            is_wildcard: false,
         };
         let mut output = Vec::new();
         use_stmt.write_atom(&mut output).unwrap();

@@ -1,0 +1,8 @@
+// Plan 167 Phase 1: pub use re-export
+use auto.io: say
+
+pub use auto.io: say
+
+fn main() {
+    say("hello from pub use")
+}

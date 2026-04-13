@@ -1297,7 +1297,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-3.2 | Cargo.toml 自动生成 | 无 | 分析 use 语句，生成正确的 Cargo.toml |
 | 6B-3.3 | 动态值类型 `Value` | 无 | `type Value` → `serde_json::Value` 或自定义 enum |
 | 6B-3.4 | 静态常量 `const` | ✅ test 157 | `const NAME str = "..."` → `const NAME: &str = "..."` |
-| 6B-3.5 | 多文件模块系统 | 单文件 | `use module::function` 真正解析为多文件 |
+| 6B-3.5 | 多文件模块系统 | 单文件 | `use module::function` 真正解析为多文件 → **Plan 167** |
 
 **Phase 6B-4: 深度特性差距（auto-code-rs 原型对比）** (覆盖 ~100% 需求)
 
@@ -1328,8 +1328,8 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-4.13 | **enum variant 构造 + 方法链** | `Message::system(content).with_model(model)` | P2 |
 | 6B-4.14 | **`Box::new()` / `Arc::new()`** | 智能指针包装 | ✅ test 158 — `Box(expr)` → `Box::new(expr)` |
 | 6B-4.15 | **`Result<T>` 错误处理链** | `.map_err()?`, `anyhow::Result` | P2 |
-| 6B-4.16 | **多文件模块系统** | `mod types; mod anthropic;` | P3（同 6B-3.5） |
-| 6B-4.17 | **Cargo.toml 生成** | 依赖管理 | P3（同 6B-3.2） |
+| 6B-4.16 | **多文件模块系统** | `mod types; mod anthropic;` | P3（Plan 167） |
+| 6B-4.17 | **Cargo.toml 生成** | 依赖管理 | P3（Plan 167 Phase 6） |
 | 6B-4.18 | **`const` 常量** | `const API_URL: &str = "...";` | P3（同 6B-3.4） |
 | 6B-4.19 | **`static` 变量** | `static CLIENT: Lazy<Client>` | P2（部分已有 global_vars） |
 | 6B-4.20 | **泛型约束 `where T: Trait`** | `where T: Serialize + Clone` | P3（同 6B-3.1） |
@@ -1354,7 +1354,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
   10. 6B-3.4  const 常量          ✅ test 157
   11. 6B-4.14 Box::new/Arc::new ✅ test 158
   12. 6B-4.10 复杂闭包/方法链
-  13. 6B-3.5 多文件模块系统
+  13. 6B-3.5 多文件模块系统 → Plan 167
 ```
 
 **验证标准**:

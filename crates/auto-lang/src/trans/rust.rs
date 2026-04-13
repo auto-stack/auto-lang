@@ -2611,13 +2611,22 @@ impl RustTrans {
 
     // Use statement
     fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
+        let pub_kw = if use_stmt.is_pub { "pub " } else { "" };
         match use_stmt.kind {
             UseKind::Auto => {
                 // Map Auto stdlib to Rust modules
-                for path in &use_stmt.paths {
-                    let rust_path = path.replace("auto.", "crate::");
-                    write!(out, "use {};", rust_path)?;
-                    self.uses.insert(path.clone());
+                // Join all path segments into a single Rust path
+                if !use_stmt.paths.is_empty() {
+                    let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
+                    let rust_path = full_path.replace("auto::", "crate::");
+                    if use_stmt.is_wildcard {
+                        write!(out, "{}use {}::*;", pub_kw, rust_path)?;
+                    } else if !use_stmt.items.is_empty() {
+                        write!(out, "{}use {}::{{{}}};", pub_kw, rust_path, use_stmt.items.join(", "))?;
+                    } else {
+                        write!(out, "{}use {};", pub_kw, rust_path)?;
+                    }
+                    self.uses.insert(use_stmt.paths.join(".").into());
                 }
             }
             UseKind::C => {
@@ -2627,7 +2636,9 @@ impl RustTrans {
                 // Direct Rust imports: join paths with :: to form full Rust path
                 if !use_stmt.paths.is_empty() {
                     let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
-                    if use_stmt.items.is_empty() {
+                    if use_stmt.is_wildcard {
+                        write!(out, "use {}::*;", full_path)?;
+                    } else if use_stmt.items.is_empty() {
                         write!(out, "use {};", full_path)?;
                     } else {
                         write!(out, "use {}::{{{}}};", full_path, use_stmt.items.join(", "))?;

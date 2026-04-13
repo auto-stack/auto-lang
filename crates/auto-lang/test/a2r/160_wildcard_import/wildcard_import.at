@@ -1,0 +1,6 @@
+// Plan 167 Phase 2: wildcard import
+use auto.io: *
+
+fn main() {
+    say("hello from wildcard")
+}

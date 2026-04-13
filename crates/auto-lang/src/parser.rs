@@ -3073,6 +3073,25 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 167: pub use — "pub" is an ident, check if followed by "use"
+        if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+            let saved_cur = self.cur.clone();
+            let saved_prev = self.prev.clone();
+            self.next(); // consume "pub"
+            if self.is_kind(TokenKind::Use) {
+                // It's "pub use" — parse as pub use statement
+                let mut stmt = self.use_stmt()?;
+                if let Stmt::Use(ref mut u) = stmt {
+                    u.is_pub = true;
+                }
+                return Ok(stmt);
+            }
+            // Not "pub use" — put the token back
+            self.lexer.push_token(self.cur.clone());
+            self.cur = saved_cur;
+            self.prev = saved_prev;
+        }
+
         let stmt = match self.kind() {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Return => self.return_stmt()?,
@@ -3188,13 +3207,15 @@ impl<'a> Parser<'a> {
                             paths.push(format!("\"{}\"", name).into());
                         }
 
-                        let items = self.parse_use_items()?;
+                        let (items, _is_wildcard) = self.parse_use_items()?;
                         // Plan 085: Import is now handled by CompileSession.resolve_uses()
                         let uses = Use {
                             kind: UseKind::C,
                             module_path: None,
                             paths,
                             items,
+                            is_pub: false,
+                            is_wildcard: false,
                         };
                         Stmt::Use(uses)
                     } else {
@@ -4169,18 +4190,22 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_use_items(&mut self) -> AutoResult<Vec<AutoStr>> {
+    fn parse_use_items(&mut self) -> AutoResult<(Vec<AutoStr>, bool)> {
         let mut items = Vec::new();
+        let mut is_wildcard = false;
         // end of path, next should be a colon (for items) or end-of-statement
         if self.is_kind(TokenKind::Colon) {
             self.next(); // skip :
-                         // parse items
-            if self.is_kind(TokenKind::Ident) {
+            // Plan 167: Support wildcard import (use module: *)
+            if self.is_kind(TokenKind::Star) {
+                self.next(); // skip *
+                is_wildcard = true;
+            } else if self.is_kind(TokenKind::Ident) {
                 let name = self.expect_ident_str()?;
                 items.push(name);
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!("Expected identifier, got {:?}", self.kind()),
+                    message: format!("Expected identifier or *, got {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
                 }
                 .into());
@@ -4191,7 +4216,7 @@ impl<'a> Parser<'a> {
                 items.push(name);
             }
         }
-        Ok(items)
+        Ok((items, is_wildcard))
     }
 
     pub fn use_c_stmt(&mut self) -> AutoResult<Stmt> {
@@ -4224,7 +4249,7 @@ impl<'a> Parser<'a> {
             .into());
         }
 
-        let items = self.parse_use_items()?;
+        let (items, _is_wildcard) = self.parse_use_items()?;
 
         for item in items.iter() {
             // add item to scope
@@ -4236,6 +4261,8 @@ impl<'a> Parser<'a> {
             module_path: None,
             paths,
             items,
+            is_pub: false,
+            is_wildcard: false,
         };
 
         Ok(Stmt::Use(uses))
@@ -4272,13 +4299,15 @@ impl<'a> Parser<'a> {
         }
 
         // Parse import items
-        let items = self.parse_use_items()?;
+        let (items, is_wildcard) = self.parse_use_items()?;
 
         let uses = Use {
             kind: UseKind::Rust,
             module_path: None,
             paths,
             items,
+            is_pub: false,
+            is_wildcard,
         };
 
         Ok(Stmt::Use(uses))
@@ -4336,7 +4365,7 @@ impl<'a> Parser<'a> {
             segments.push(segment.into());
         }
 
-        let items = self.parse_use_items()?;
+        let (items, is_wildcard) = self.parse_use_items()?;
 
         // Build ModulePath (Plan 131)
         let module_path = Some(ModulePath::new(prefix.clone(), segments.clone(), items.clone()));
@@ -4362,6 +4391,8 @@ impl<'a> Parser<'a> {
             module_path,
             paths,
             items,
+            is_pub: false,
+            is_wildcard,
         };
         Ok(Stmt::Use(uses))
     }

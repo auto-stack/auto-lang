@@ -49,6 +49,8 @@ pub struct CompileSession {
     sandbox: Option<Sandbox>,
     /// Plan 092: Declared crate names (from dep statements)
     declared_crates: HashSet<String>,
+    /// Plan 167: Tracks modules currently being loaded (for circular dependency detection)
+    loading_stack: Vec<String>,
 }
 
 impl Clone for CompileSession {
@@ -60,6 +62,7 @@ impl Clone for CompileSession {
             auto_cache: self.auto_cache.clone(),
             sandbox: None, // Sandbox is recreated on-demand
             declared_crates: self.declared_crates.clone(),
+            loading_stack: Vec::new(),
         }
     }
 }
@@ -76,6 +79,7 @@ impl CompileSession {
             auto_cache: AutoCache::new(),
             sandbox: None,
             declared_crates: HashSet::new(),
+            loading_stack: Vec::new(),
         }
     }
 
@@ -307,6 +311,25 @@ impl CompileSession {
     /// Plan 085 Phase 5: 支持模块缓存，避免重复解析。
     /// Plan 094: 同时加载 .at (root) 和 .vm.at (context) 文件，合并处理。
     fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
+        // Plan 167: Circular dependency detection
+        if self.loading_stack.contains(&use_stmt.module) {
+            let cycle = format!("{} -> {}", self.loading_stack.join(" -> "), use_stmt.module);
+            return Err(AutoError::Msg(format!(
+                "Circular dependency detected: {}", cycle
+            )));
+        }
+
+        self.loading_stack.push(use_stmt.module.clone());
+
+        let result = self.load_module_inner(use_stmt);
+
+        self.loading_stack.pop();
+
+        result
+    }
+
+    /// Inner implementation of load_module (called after cycle check)
+    fn load_module_inner(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
         // Phase 5: 检查 AutoCache
         if self.auto_cache.is_cached_and_valid(&use_stmt.module) {
             // 使用缓存的 type_store
@@ -1123,5 +1146,54 @@ mod tests {
 
         // Interface hash should be CHANGED
         assert_ne!(hash_v1, hash_v2, "Interface hash should change when signature changes");
+    }
+
+    // =============================================================================
+    // Plan 167: Circular Dependency Detection Tests
+    // =============================================================================
+
+    #[test]
+    fn test_circular_dependency_detected() {
+        // Test that loading_stack detects cycles when load_module is called
+        // with the same module name while it's already being loaded.
+        // This verifies the infrastructure is in place for Phase 4 (recursive loading).
+        let mut session = CompileSession::new();
+
+        // Simulate a cycle: push "a" onto the loading stack, then try to load "a"
+        session.loading_stack.push("b".to_string());
+        session.loading_stack.push("a".to_string());
+
+        let use_a = UseStatement::new("a".to_string());
+        let result = session.load_module(&use_a);
+
+        // Should detect circular dependency
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Circular dependency"), "Expected 'Circular dependency' in error, got: {}", err);
+        assert!(err.contains("b -> a -> a"), "Expected cycle path in error, got: {}", err);
+    }
+
+    #[test]
+    fn test_no_circular_dependency() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Create module c.at that uses d (no cycle)
+        let c_path = tmp.path().join("c.at");
+        std::fs::write(&c_path, "fn c_func() int { 1 }").unwrap();
+
+        let d_path = tmp.path().join("d.at");
+        std::fs::write(&d_path, "fn d_func() int { 2 }").unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+
+        let mut session = CompileSession::new();
+        let use_c = UseStatement::new("c".to_string());
+        let result = session.load_module(&use_c);
+
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        // Should succeed — no cycle
+        assert!(result.is_ok(), "Expected success, got error: {:?}", result.err());
     }
 }
