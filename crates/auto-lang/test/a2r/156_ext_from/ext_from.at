@@ -1,0 +1,15 @@
+// Plan 159 Phase 6B-2.7: impl From<A> for B via ext-for
+
+type Name {
+    value String
+}
+
+ext Name for From<String> {
+    static fn from(s String) Name {
+        return Name(value: s)
+    }
+}
+
+fn main() {
+    let n = Name.from("hello")
+}

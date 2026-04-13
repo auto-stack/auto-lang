@@ -423,3 +423,9 @@ fn test_154_struct_destructure() {
 fn test_155_with_constraint() {
     test_a2r("155_with_constraint").unwrap();
 }
+
+// Plan 159 Phase 6B-2.7: impl From<A> for B via ext-for
+#[test]
+fn test_156_ext_from() {
+    test_a2r("156_ext_from").unwrap();
+}

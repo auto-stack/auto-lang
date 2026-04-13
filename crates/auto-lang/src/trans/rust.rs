@@ -3430,9 +3430,21 @@ impl RustTrans {
     // Ext block (type extension) - transpiles to impl block
     fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
         // Plan 164: Support "ext Type for Trait" → impl Trait for Type
+        // Plan 6B-2.7: Support generic args on trait: ext Type for From<String> → impl From<String> for Type
         match &ext.trait_name {
             Some(trait_name) => {
-                write!(sink.body, "impl {} for {}", trait_name, ext.target)?;
+                write!(sink.body, "impl {}", trait_name)?;
+                if !ext.trait_generic_args.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, arg) in ext.trait_generic_args.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        write!(sink.body, "{}", self.rust_type_name(arg))?;
+                    }
+                    write!(sink.body, ">")?;
+                }
+                write!(sink.body, " for {}", ext.target)?;
             }
             None => {
                 write!(sink.body, "impl {}", ext.target)?;

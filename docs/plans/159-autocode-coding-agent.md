@@ -1287,7 +1287,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-2.4 | serde 标签枚举 | ✅ (2.3 统一实现) | `#[serde(tag = "type")]` 属性透传 | API 类型系统 |
 | 6B-2.5 | 自定义属性透传 | ✅ (2.3 统一实现) | `#[serde(...)]` / `#[tokio::main]` 等直接透传 | API 层、CLI |
 | 6B-2.6 | 外部 crate use | ✅ test 133 | `use.rust crate::module` → `use crate::module;` | 所有模块 |
-| 6B-2.7 | `impl From<A> for B` | ⏸️ deferred | `ext From for B { fn from(a A) B }` → `impl From<A> for B` | 错误转换链 |
+| 6B-2.7 | `impl From<A> for B` | ✅ test 156 | `ext Name for From<String> { static fn from(...) }` → `impl From<String> for Name` | 错误转换链 |
 
 **Phase 6B-3: 完整模块系统 + 泛型约束** (覆盖 ~95% 需求)
 
@@ -1350,8 +1350,9 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 第三批（高级特性）— 解锁 ~95% 代码转译:
   8. 6B-4.5  struct 解构匹配    ✅ Plan 165 (test 154)
-  9. 6B-4.10 复杂闭包/方法链
-  10. 6B-3.5 多文件模块系统
+  9. 6B-2.7  impl From<A> for B ✅ test 156
+  10. 6B-4.10 复杂闭包/方法链
+  11. 6B-3.5 多文件模块系统
 ```
 
 **验证标准**:
@@ -1433,6 +1434,7 @@ dirs = "6"
 - [x] a2r Phase 6B-1：is 多语句 match arm ✅ test 132
 - [x] a2r Phase 6B-4 第一批：pub、static fn、&mut self、tokio main、per-field attrs ✅ Plan 163 tests 148-152
 - [x] a2r Phase 6B-4 第二批：impl Trait for Type ✅ Plan 164 test 153
+- [x] a2r Phase 6B-2.7：impl From<A> for B via ext-for ✅ test 156
 - [ ] a2r Phase 6B-3：纯 .at 代码转译为 Rust 后功能与原型对等
 
 ---
@@ -1513,7 +1515,7 @@ dirs = "6"
 - ✅ a2r 测试 `130_option_construct` 通过
 
 **待完成**:
-- ⏸️ `impl From<A> for B` 自动转换（需要 a2r 支持外部 crate use）
+- ✅ `impl From<A> for B` 自动转换 — 已完成 (test 156, `ext Name for From<String>`)
 
 ### F.2 优先级 P0：HashMap/Map 类型 ✅ 已完成（Plan 160）
 

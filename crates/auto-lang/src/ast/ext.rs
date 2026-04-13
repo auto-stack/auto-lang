@@ -1,4 +1,4 @@
-use super::{Fn, GenericParam, Member, Name};
+use super::{Fn, GenericParam, Member, Name, Type};
 use crate::ast::{AtomWriter, ToNode};
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
@@ -53,6 +53,10 @@ pub struct Ext {
     /// e.g., `ext Point for Display` → trait_name = Some("Display")
     pub trait_name: Option<Name>,
 
+    /// Generic arguments on the trait name (Plan 6B-2.7)
+    /// e.g., `ext Name for From<String>` → trait_generic_args = [Type::Str]
+    pub trait_generic_args: Vec<Type>,
+
     /// Generic parameters for the impl block (Plan 059)
     /// e.g., ["T", "S"] for `impl<T, S> ListIter<T, S>`
     pub generic_params: Vec<GenericParam>,
@@ -76,6 +80,7 @@ impl Ext {
         Self {
             target,
             trait_name: None,
+            trait_generic_args: Vec::new(),
             generic_params: Vec::new(),
             fields: Vec::new(),
             methods,
@@ -95,6 +100,7 @@ impl Ext {
         Self {
             target,
             trait_name: None,
+            trait_generic_args: Vec::new(),
             generic_params: Vec::new(),
             fields,
             methods,
@@ -112,6 +118,7 @@ impl Ext {
         Self {
             target,
             trait_name: None,
+            trait_generic_args: Vec::new(),
             generic_params,
             fields: Vec::new(),
             methods,
