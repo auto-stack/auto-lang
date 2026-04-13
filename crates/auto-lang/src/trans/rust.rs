@@ -700,9 +700,28 @@ impl RustTrans {
                 write!(out, "{}", uncover.binding).map_err(Into::into)
             }
 
-            // Plan 165: Struct destructuring pattern (handled in is_stmt, stub here)
-            Expr::StructPattern(_) => {
-                write!(out, "/* struct-pattern */").map_err(Into::into)
+            // Plan 165: Struct destructuring pattern
+            Expr::StructPattern(sc) => {
+                match &sc.variant {
+                    Some(variant) => {
+                        write!(out, "{}::{}", sc.type_name, variant)?;
+                    }
+                    None => {
+                        write!(out, "{}", sc.type_name)?;
+                    }
+                }
+                write!(out, " {{ ")?;
+                for (i, fb) in sc.fields.iter().enumerate() {
+                    if fb.field == fb.binding {
+                        write!(out, "{}", fb.field)?;
+                    } else {
+                        write!(out, "{}: {}", fb.field, fb.binding)?;
+                    }
+                    if i < sc.fields.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, " }}").map_err(Into::into)
             }
 
             // Plan 120/159: Option/Result patterns (used in is statement branches)
