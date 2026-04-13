@@ -251,6 +251,7 @@ mod tests {
             name: Name::from(name),
             generic_params: Vec::new(), // Plan 057
             methods,
+            is_pub: false,
         }
     }
 
@@ -267,6 +268,7 @@ mod tests {
             delegations: Vec::new(),
             methods,
             attrs: vec![],
+            is_pub: false,
         }
     }
 
@@ -293,6 +295,8 @@ mod tests {
             is_static: false,  // Plan 035 Phase 4: Default to instance method
             type_params: Vec::new(),  // Plan 061: No generic parameters
             span: None,  // Plan 061: No source location
+            is_mut: false,
+            is_pub: false,
         }
     }
 
@@ -409,6 +413,7 @@ mod tests {
                 constraint: None,
             })],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
+            is_pub: false,
         };
 
         // Create a type that implements the spec with correct type args
@@ -427,6 +432,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
             attrs: vec![],
+            is_pub: false,
         };
 
         // Mock spec lookup function
@@ -467,6 +473,7 @@ mod tests {
                 }),
             ],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
+            is_pub: false,
         };
 
         // Create a type that implements the spec with wrong number of type args
@@ -485,6 +492,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
             attrs: vec![],
+            is_pub: false,
         };
 
         // Mock spec lookup function
@@ -520,6 +528,7 @@ mod tests {
                 create_spec_method("get", vec![], Type::Unknown),
                 create_spec_method("set", vec![], Type::Void),
             ],
+            is_pub: false,
         };
 
         // Create a type that implements the spec but is missing a method
@@ -538,6 +547,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)], // Missing 'set'
             attrs: vec![],
+            is_pub: false,
         };
 
         // Mock spec lookup function
@@ -576,6 +586,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![],
             attrs: vec![],
+            is_pub: false,
         };
 
         // Mock spec lookup function that returns None

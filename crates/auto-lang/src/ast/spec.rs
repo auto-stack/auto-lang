@@ -18,6 +18,7 @@ pub struct SpecDecl {
     pub name: Name,
     pub generic_params: Vec<GenericParam>,  // Plan 057: Generic parameters
     pub methods: Vec<SpecMethod>,
+    pub is_pub: bool,
 }
 
 impl SpecDecl {
@@ -26,6 +27,7 @@ impl SpecDecl {
             name,
             generic_params: Vec::new(),
             methods,
+            is_pub: false,
         }
     }
 
@@ -34,6 +36,7 @@ impl SpecDecl {
             name,
             generic_params,
             methods,
+            is_pub: false,
         }
     }
 

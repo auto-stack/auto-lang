@@ -2113,9 +2113,32 @@ impl RustTrans {
             self.print_indent(&mut sink.body)?;
         }
 
+        // Plan 163: #[tokio::main] for async main
+        let is_main_with_await = !is_method
+            && fn_decl.name.as_ref() == "main"
+            && Self::has_await(&fn_decl.body.stmts);
+        if is_main_with_await {
+            if is_method {
+                // already indented
+            } else {
+                self.print_indent(&mut sink.body)?;
+            }
+            write!(sink.body, "#[tokio::main]\n")?;
+            if is_method {
+                self.print_indent(&mut sink.body)?;
+            }
+        }
+
+        // Plan 163: Output pub prefix
+        if fn_decl.is_pub {
+            write!(sink.body, "pub ")?;
+        }
+
         // Function signature
         // Auto-detect async: functions returning ~T (Future/Handle) are async in Rust
-        let is_async_fn = matches!(fn_decl.ret, Type::Handle { .. })
+        // Also detect async main (has .await in body)
+        let is_async_fn = is_main_with_await
+            || matches!(fn_decl.ret, Type::Handle { .. })
             || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
         if is_async_fn {
             write!(sink.body, "async ")?;
@@ -2126,8 +2149,13 @@ impl RustTrans {
         write!(sink.body, "(")?;
 
         // Add &self as first parameter for methods
-        if is_method {
-            write!(sink.body, "&self")?;
+        if is_method && !fn_decl.is_static {
+            // Plan 163: &mut self for mut methods
+            if fn_decl.is_mut {
+                write!(sink.body, "&mut self")?;
+            } else {
+                write!(sink.body, "&self")?;
+            }
             if !fn_decl.params.is_empty() {
                 write!(sink.body, ", ")?;
             }
@@ -2652,6 +2680,11 @@ impl RustTrans {
             write!(sink.body, "#[{}]\n", attr)?;
         }
 
+        // Plan 163: Output pub prefix
+        if type_decl.is_pub {
+            write!(sink.body, "pub ")?;
+        }
+
         // Struct definition with generic parameters
         write!(sink.body, "struct {}", type_decl.name)?;
 
@@ -2724,6 +2757,11 @@ impl RustTrans {
 
             // First, write regular members
             for member in all_members {
+                // Plan 163: Output per-field attributes
+                for attr in &member.attrs {
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "#[{}]\n", attr)?;
+                }
                 self.print_indent(&mut sink.body)?;
                 write!(
                     sink.body,
@@ -3189,6 +3227,11 @@ impl RustTrans {
 
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Plan 163: Output pub prefix
+        if enum_decl.is_pub {
+            sink.body.write(b"pub ")?;
+        }
+
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
                 // C-style scalar enum: emit Rust enum with values + Display impl
@@ -3388,6 +3431,11 @@ impl RustTrans {
         // Cache spec methods for later use in impl Trait for Type
         self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
 
+        // Plan 163: Output pub prefix
+        if spec_decl.is_pub {
+            write!(sink.body, "pub ")?;
+        }
+
         // Generate trait definition with generic parameters
         write!(sink.body, "trait {}", spec_decl.name)?;
 
@@ -3532,6 +3580,92 @@ impl RustTrans {
     }
 
     /// Incremental transpilation (Phase 066)
+    /// Plan 163: Check if statements contain any await expression
+    fn has_await(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    if Self::expr_has_await(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Store(store) => {
+                    if Self::expr_has_await(&store.expr) {
+                        return true;
+                    }
+                }
+                Stmt::Return(expr) => {
+                    if Self::expr_has_await(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Block(body) => {
+                    if Self::has_await(&body.stmts) {
+                        return true;
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        if Self::has_await(&branch.body.stmts) {
+                            return true;
+                        }
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        if Self::has_await(&else_body.stmts) {
+                            return true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Plan 163: Check if an expression contains await
+    fn expr_has_await(expr: &Expr) -> bool {
+        match expr {
+            Expr::Await { .. } => true,
+            Expr::Call(call) => {
+                if Self::expr_has_await(call.name.as_ref()) {
+                    return true;
+                }
+                for arg in &call.args.args {
+                    match arg {
+                        Arg::Pos(e) | Arg::Pair(_, e) => {
+                            if Self::expr_has_await(e) {
+                                return true;
+                            }
+                        }
+                        Arg::Name(_) => {}
+                    }
+                }
+                false
+            }
+            Expr::Block(body) => Self::has_await(&body.stmts),
+            Expr::Bina(left, _, right) => {
+                Self::expr_has_await(left) || Self::expr_has_await(right)
+            }
+            Expr::Unary(_, expr) => Self::expr_has_await(expr),
+            Expr::Dot(obj, _) => Self::expr_has_await(obj),
+            Expr::Index(arr, idx) => {
+                Self::expr_has_await(arr) || Self::expr_has_await(idx)
+            }
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => {
+                Self::expr_has_await(e)
+            }
+            Expr::AsyncBlock { body, .. } => Self::has_await(&body.stmts),
+            Expr::Cast { expr, .. } | Expr::To { expr, .. } => Self::expr_has_await(expr),
+            Expr::NullCoalesce(l, r) => {
+                Self::expr_has_await(l) || Self::expr_has_await(r)
+            }
+            Expr::ErrorPropagate(e) => {
+                Self::expr_has_await(e)
+            }
+            _ => false,
+        }
+    }
+
     /// Only transpiles dirty fragments, caches results in Database
     pub fn trans_incremental(
         &mut self,
@@ -3647,7 +3781,14 @@ impl Trans for RustTrans {
                 }
             }
 
-            sink.body.write(b"fn main() {\n")?;
+            // Plan 163: Check for async (await) and generate #[tokio::main] if needed
+            let is_async = Self::has_await(&main);
+            if is_async {
+                sink.body.write(b"#[tokio::main]\n")?;
+                sink.body.write(b"async fn main() {\n")?;
+            } else {
+                sink.body.write(b"fn main() {\n")?;
+            }
             self.indent();
 
             for stmt in main.iter() {

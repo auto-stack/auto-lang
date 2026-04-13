@@ -608,6 +608,7 @@ impl<'a> Parser<'a> {
                         methods: vec![],
                         delegations: vec![],
                         attrs: vec![],
+                        is_pub: false,
                     };
                     if let Ok(mut store) = self.type_store.write() {
                         store.register_type_decl(&type_decl);
@@ -669,6 +670,7 @@ impl<'a> Parser<'a> {
                     methods: vec![],
                     delegations: vec![],
                     attrs: vec![],
+                    is_pub: false,
                 };
                 if let Ok(mut store) = self.type_store.write() {
                     store.register_type_decl(&type_decl);
@@ -818,6 +820,7 @@ impl<'a> Parser<'a> {
                 delegations: Vec::new(),
                 methods: Vec::new(),
                 attrs: vec![],
+                is_pub: false,
             }));
         }
 
@@ -3011,7 +3014,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
+                let (has_c, has_vm, has_rs, has_pub, with_params) = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
@@ -3044,6 +3047,7 @@ impl<'a> Parser<'a> {
                             has_vm,
                             has_rs,
                             is_static,
+                            has_pub,
                             with_params.clone(),
                         );
                         return Ok(Stmt::Expr(Expr::Nil));
@@ -3067,11 +3071,12 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static,
+                        has_pub,
                         with_params,
                     )?
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
-                    self.type_decl_stmt_with_annotation(has_c)?
+                    self.type_decl_stmt_with_annotation(has_c, has_pub)?
                 } else if self.is_kind(TokenKind::Use) {
                     // Use statement with annotation
                     // Check if this is a C/Rust import (use.c or use.rust style with angle brackets)
@@ -3258,7 +3263,7 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, has_rs, has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -3302,7 +3307,12 @@ impl<'a> Parser<'a> {
                     }
 
                     // ext fields are always private
-                    fields.push(crate::ast::Member::new(field_name, field_type, value));
+                    let mut member = crate::ast::Member::new(field_name, field_type, value);
+                    // Plan 163: Collect per-field attributes from raw_attrs
+                    if !self.raw_attrs.is_empty() {
+                        member.attrs = std::mem::take(&mut self.raw_attrs);
+                    }
+                    fields.push(member);
 
                     self.expect_eos(false)?;
                     self.skip_empty_lines();
@@ -3312,9 +3322,11 @@ impl<'a> Parser<'a> {
 
             // Parse method declarations (fn or static fn)
             // IMPORTANT: Check Static BEFORE Fn, since "static fn" starts with Static
-            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
+            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
                 // Track if this is a static method (Plan 035 Phase 4)
                 let is_static_method = self.is_kind(TokenKind::Static);
+                // Plan 163: Track if this is a mut method (&mut self)
+                let is_mut_method = self.is_kind(TokenKind::Mut);
 
                 // If static fn, skip the static keyword first
                 if is_static_method {
@@ -3324,6 +3336,21 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: format!(
                                 "expected 'fn' after 'static', found {:?}",
+                                self.kind()
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+
+                // Plan 163: If mut fn, skip the mut keyword first
+                if is_mut_method {
+                    self.next(); // skip `mut` keyword
+                    if !self.is_kind(TokenKind::Fn) {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "expected 'fn' after 'mut', found {:?}",
                                 self.kind()
                             ),
                             span: pos_to_span(self.cur.pos),
@@ -3342,6 +3369,7 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static_method,
+                        has_pub,
                         with_params.clone(),
                     );
                     self.expect_eos(false)?;
@@ -3355,12 +3383,17 @@ impl<'a> Parser<'a> {
                     has_vm,
                     has_rs,
                     is_static_method,
+                    has_pub,
                     with_params,
                 )?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
                     // Set is_static flag for static methods (Plan 035 Phase 4.2)
                     if is_static_method {
                         fn_expr.is_static = true;
+                    }
+                    // Plan 163: Set is_mut flag for mutable methods
+                    if is_mut_method {
+                        fn_expr.is_mut = true;
                     }
                     methods.push(fn_expr);
                 }
@@ -3410,6 +3443,14 @@ impl<'a> Parser<'a> {
     ///
     /// Also handles `tag` keyword (deprecated) by redirecting here.
     fn enum_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 163: Check for #[pub] annotation before enum keyword
+        let mut is_pub = false;
+        if self.is_kind(TokenKind::Hash) {
+            let (_, _, _, has_pub, _) = self.parse_fn_annotations()?;
+            is_pub = has_pub;
+            self.skip_empty_lines();
+        }
+
         // Support both 'enum' and 'tag' keywords (tag is deprecated)
         if self.is_kind(TokenKind::Tag) || self.is_kind(TokenKind::Enum) {
             self.next(); // skip 'enum' or 'tag'
@@ -3484,6 +3525,7 @@ impl<'a> Parser<'a> {
             name: name.clone(),
             items,
             kind,
+            is_pub,
         };
         self.register_enum_decl(&enum_decl, &generic_params);
         Ok(Stmt::EnumDecl(enum_decl))
@@ -5292,6 +5334,11 @@ impl<'a> Parser<'a> {
                                         }
                                     } else if self.is_kind(TokenKind::Comma) {
                                         attr_str.push_str(", ");
+                                    } else if self.is_kind(TokenKind::Asn) {
+                                        attr_str.push_str(" = ");
+                                    } else if self.is_kind(TokenKind::Str) {
+                                        // Plan 163: Restore quotes around string literals in attributes
+                                        attr_str.push_str(&format!("\"{}\"", self.cur.text));
                                     } else {
                                         attr_str.push_str(&self.cur.text);
                                     }
@@ -5430,7 +5477,7 @@ impl<'a> Parser<'a> {
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         // Check for annotations: #[c], #[vm], #[rs], #[c,vm] BEFORE fn keyword
-        let (has_c, has_vm, has_rs, _has_pub, with_params) = if self.is_kind(TokenKind::Hash) {
+        let (has_c, has_vm, has_rs, has_pub, with_params) = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
         } else {
             (false, false, false, false, Vec::new())
@@ -5612,7 +5659,7 @@ impl<'a> Parser<'a> {
         };
 
         // Create function, preserving return type name if type is Unknown
-        let fn_expr = if matches!(ret_type, Type::Unknown) {
+        let mut fn_expr = if matches!(ret_type, Type::Unknown) {
             if let Some(ret_name) = ret_type_name {
                 Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
             } else {
@@ -5621,6 +5668,9 @@ impl<'a> Parser<'a> {
         } else {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
+
+        // Plan 163: Set is_pub flag
+        fn_expr.is_pub = has_pub;
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
@@ -5653,6 +5703,7 @@ impl<'a> Parser<'a> {
         has_vm: bool,
         has_rs: bool,
         is_static: bool,
+        is_pub: bool,
         with_params: Vec<crate::ast::TypeParam>,
     ) -> AutoResult<Stmt> {
         self.next(); // skip keyword `fn`
@@ -5831,6 +5882,9 @@ impl<'a> Parser<'a> {
         // Set is_static flag
         fn_expr.is_static = is_static;
 
+        // Plan 163: Set is_pub flag
+        fn_expr.is_pub = is_pub;
+
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
             name.clone()
@@ -6006,6 +6060,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn spec_decl_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 163: Check for #[pub] annotation before spec keyword
+        let mut is_pub = false;
+        if self.is_kind(TokenKind::Hash) {
+            let (_, _, _, has_pub, _) = self.parse_fn_annotations()?;
+            is_pub = has_pub;
+            self.skip_empty_lines();
+        }
+
         self.next(); // skip `spec` keyword
 
         let name = self.parse_name()?;
@@ -6055,11 +6117,16 @@ impl<'a> Parser<'a> {
         }
 
         // Plan 057: Use SpecDecl::with_generic_params if we have generic params
-        let spec_decl = if generic_params.is_empty() {
+        let mut spec_decl = if generic_params.is_empty() {
             SpecDecl::new(name, methods)
         } else {
             SpecDecl::with_generic_params(name, generic_params, methods)
         };
+
+        // Plan 163: Set is_pub flag
+        if is_pub {
+            spec_decl.is_pub = true;
+        }
 
         // Register spec in scope
         self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
@@ -6142,10 +6209,10 @@ impl<'a> Parser<'a> {
     }
 
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
-        self.type_decl_stmt_with_annotation(false)
+        self.type_decl_stmt_with_annotation(false, false)
     }
 
-    pub fn type_decl_stmt_with_annotation(&mut self, has_c_annotation: bool) -> AutoResult<Stmt> {
+    pub fn type_decl_stmt_with_annotation(&mut self, has_c_annotation: bool, is_pub: bool) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
 
@@ -6180,6 +6247,7 @@ impl<'a> Parser<'a> {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: vec![],
+                    is_pub: false,
                 };
                 // put type in scope
                 self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
@@ -6277,7 +6345,12 @@ impl<'a> Parser<'a> {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: std::mem::take(&mut self.raw_attrs), // Plan 159 Phase 6B-2: collect derive/serde attrs
+            is_pub: false, // Plan 163: default private
         };
+        // Plan 163: Override is_pub from annotation
+        if is_pub {
+            decl.is_pub = true;
+        }
         // println!(
         //     "Defining type {} in scope {}",
         //     name,
@@ -6414,7 +6487,7 @@ impl<'a> Parser<'a> {
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, has_rs, has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -6431,10 +6504,14 @@ impl<'a> Parser<'a> {
 
             if should_skip {
                 // Skip the entire function declaration
-                if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
+                if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
                     let is_static = self.is_kind(TokenKind::Static);
+                    let is_mut = self.is_kind(TokenKind::Mut);
                     if is_static {
                         self.next(); // skip static
+                    }
+                    if is_mut {
+                        self.next(); // skip mut
                     }
                     // Parse with actual flags to correctly handle the function syntax
                     let _ = self.fn_decl_stmt_with_annotations(
@@ -6443,6 +6520,7 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static,
+                        has_pub,
                         with_params.clone(),
                     );
                 }
@@ -6450,11 +6528,15 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            // Check for static fn or fn
-            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
+            // Check for static fn, mut fn, or fn
+            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
                 let is_static = self.is_kind(TokenKind::Static);
+                let is_mut = self.is_kind(TokenKind::Mut);
                 if is_static {
                     self.next(); // skip static keyword
+                }
+                if is_mut {
+                    self.next(); // skip mut keyword
                 }
 
                 // Now expect fn keyword
@@ -6472,9 +6554,14 @@ impl<'a> Parser<'a> {
                     has_vm,
                     has_rs,
                     is_static,
+                    has_pub,
                     with_params,
                 )?;
-                if let Stmt::Fn(fn_expr) = fn_stmt {
+                if let Stmt::Fn(mut fn_expr) = fn_stmt {
+                    // Plan 163: Set is_mut flag for mutable methods
+                    if is_mut {
+                        fn_expr.is_mut = true;
+                    }
                     methods.push(fn_expr);
                 }
             } else if self.is_kind(TokenKind::Has) {
@@ -6655,7 +6742,12 @@ impl<'a> Parser<'a> {
         // Plan 091: Use wrapper method
         self.define_symbol_location(qualified_name.clone().into(), loc);
 
-        Ok(Member::new(name, ty, value))
+        // Plan 163: Include per-field attributes from raw_attrs
+        let mut member = Member::new(name, ty, value);
+        if !self.raw_attrs.is_empty() {
+            member.attrs = std::mem::take(&mut self.raw_attrs);
+        }
+        Ok(member)
     }
 
     /// Parse member-level delegation: `has member Type for Spec`
@@ -7202,6 +7294,7 @@ impl<'a> Parser<'a> {
                         delegations: Vec::new(),
                         methods: Vec::new(),
                         attrs: vec![],
+                        is_pub: false,
                     }));
                 }
 

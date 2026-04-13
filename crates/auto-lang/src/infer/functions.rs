@@ -150,6 +150,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -188,6 +190,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -225,6 +229,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -250,6 +256,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -296,6 +304,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -327,6 +337,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -363,6 +375,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -395,6 +409,8 @@ mod tests {
             is_static: true,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -419,6 +435,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -449,6 +467,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -484,6 +504,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -529,6 +551,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -565,6 +589,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -589,6 +615,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -620,6 +648,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -650,6 +680,8 @@ mod tests {
             is_static: false,
             type_params: vec![],
             span: None,
+            is_mut: false,
+            is_pub: false,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);

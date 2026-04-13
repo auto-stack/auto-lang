@@ -1,0 +1,18 @@
+// Plan 163 Step 1: static fn support
+
+type Foo {
+    value int
+
+    static fn new(v int) Foo {
+        return Foo(v)
+    }
+
+    fn get_value() int {
+        return .value
+    }
+}
+
+fn main() {
+    let f = Foo.new(42)
+    print(f.get_value())
+}

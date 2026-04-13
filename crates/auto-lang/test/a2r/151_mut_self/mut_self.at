@@ -1,0 +1,24 @@
+// Plan 163 Step 4: &mut self methods
+
+type Counter {
+    count int
+
+    fn new() Counter {
+        return Counter(0)
+    }
+
+    mut fn increment() void {
+        .count = .count + 1
+    }
+
+    fn get_count() int {
+        return .count
+    }
+}
+
+fn main() {
+    let c = Counter.new()
+    c.increment()
+    c.increment()
+    print(c.get_count())
+}

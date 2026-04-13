@@ -1,0 +1,13 @@
+// Plan 163 Step 5: per-field serde attributes
+
+type Role {
+    #[serde(rename = "role_id")]
+    id int
+    #[serde(rename = "role_name")]
+    name str
+}
+
+fn main() {
+    let r = Role(1, "admin")
+    print(r.id)
+}

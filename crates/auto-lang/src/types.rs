@@ -476,16 +476,19 @@ mod tests {
                     name: Name::from("x"),
                     ty: Type::Int,
                     value: None,
+                    attrs: vec![],
                 },
                 crate::ast::Member {
                     name: Name::from("y"),
                     ty: Type::Int,
                     value: None,
+                    attrs: vec![],
                 },
             ],
             methods: vec![],
             delegations: vec![],
             attrs: vec![],
+            is_pub: false,
         };
 
         store.register_type_decl(&type_decl);
@@ -570,6 +573,7 @@ mod tests {
             methods: vec![],
             delegations: vec![],
             attrs: vec![],
+            is_pub: false,
         };
         store.register_type_decl(&point_type);
 

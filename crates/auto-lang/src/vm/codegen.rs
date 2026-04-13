@@ -491,6 +491,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert("self".to_string(), Type::User(type_decl));
@@ -835,6 +836,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -851,6 +853,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -867,6 +870,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -883,6 +887,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -899,6 +904,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -915,6 +921,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 };
                                 self.var_types
                                     .insert(store.name.to_string(), Type::User(type_decl));
@@ -936,6 +943,7 @@ impl Codegen {
                                         delegations: vec![],
                                         methods: vec![],
                                         attrs: vec![],
+                                    is_pub: false,
                                     };
                                     self.var_types
                                         .insert(store.name.to_string(), Type::User(type_decl));
@@ -963,10 +971,12 @@ impl Codegen {
                                         name: crate::ast::Name::from(f.name.as_str()),
                                         ty: f.field_type.clone(),
                                         value: None,
+                                        attrs: Vec::new(),
                                     }).collect(),
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 }
                             } else if let Some(type_info) = self.get_type(type_name) {
                                 // Create TypeDecl from TypeInfo (only has member names, use Unknown type)
@@ -982,10 +992,12 @@ impl Codegen {
                                         name: crate::ast::Name::from(name.as_str()),
                                         ty: Type::Unknown,
                                         value: None,
+                                        attrs: Vec::new(),
                                     }).collect(),
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 }
                             } else {
                                 // Fallback: create minimal type decl
@@ -1001,6 +1013,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    is_pub: false,
                                 }
                             };
                             self.var_types
@@ -1054,6 +1067,7 @@ impl Codegen {
                                 delegations: vec![],
                                 methods: vec![],
                                 attrs: vec![],
+                                    is_pub: false,
                             };
                             self.var_types
                                 .insert(store.name.to_string(), Type::User(type_decl));

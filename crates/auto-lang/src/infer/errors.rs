@@ -407,6 +407,7 @@ mod tests {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            is_pub: false,
         });
         let found = Type::User(crate::ast::TypeDecl {
             name: Name::from("MyTyp"), // typo
@@ -420,6 +421,7 @@ mod tests {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            is_pub: false,
         });
         let hint = suggest_type_mismatch_fix(&expected, &found);
         assert!(hint.is_some());

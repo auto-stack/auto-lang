@@ -1,0 +1,22 @@
+// Plan 163 Step 2: pub visibility
+
+#[pub]
+type Point {
+    x int
+    y int
+
+    #[pub]
+    fn distance() int {
+        return .x * .x + .y * .y
+    }
+}
+
+#[pub]
+fn get_origin() Point {
+    return Point(0, 0)
+}
+
+fn main() {
+    let p = get_origin()
+    print(p.distance())
+}

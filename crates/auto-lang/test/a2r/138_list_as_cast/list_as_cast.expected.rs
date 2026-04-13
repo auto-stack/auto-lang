@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 impl Counter {
-    fn get_value(&self) -> u32 {
+    pub fn get_value(&self) -> u32 {
         return (self.count() as u32);
     }
 }

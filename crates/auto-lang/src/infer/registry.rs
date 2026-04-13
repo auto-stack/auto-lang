@@ -116,17 +116,20 @@ mod tests {
                     name: Name::from("x"),
                     ty: Type::Int,
                     value: None,
+                    attrs: Vec::new(),
                 },
                 Member {
                     name: Name::from("y"),
                     ty: Type::Str(0),
                     value: None,
+                    attrs: Vec::new(),
                 },
             ],
             delegations: vec![],
             methods: vec![],
             spec_impls: vec![],
             attrs: vec![],
+            is_pub: false,
         };
 
         registry.register_type_decl(type_decl);
@@ -158,6 +161,7 @@ mod tests {
             methods: vec![],
             spec_impls: vec![],
             attrs: vec![],
+            is_pub: false,
         };
 
         registry.register_type_decl(type_decl);

@@ -102,7 +102,6 @@ fn test_std_str_str_with_literal() {
 }
 
 #[test]
-#[test]
 #[ignore = "requires VM output capture support"]
 fn test_std_io_print() {
     // Test print function with multiple arguments
@@ -114,7 +113,6 @@ fn test_std_io_print() {
     assert_eq!(output, "Hello World 42\n");
 }
 
-#[test]
 #[test]
 #[ignore = "requires VM output capture support"]
 fn test_std_io_print_with_vars() {
@@ -130,7 +128,6 @@ fn test_std_io_print_with_vars() {
 }
 
 #[test]
-#[test]
 #[ignore = "requires VM output capture support"]
 fn test_std_io_print_number() {
     // Test print with numbers
@@ -143,7 +140,6 @@ fn test_std_io_print_number() {
     assert_eq!(output, "123\n456\n");
 }
 
-#[test]
 #[test]
 #[ignore = "requires VM output capture support"]
 fn test_std_io_print_bool() {
@@ -158,7 +154,6 @@ fn test_std_io_print_bool() {
 }
 
 #[test]
-#[test]
 #[ignore = "requires VM output capture support"]
 fn test_std_io_print_array() {
     // Test print with arrays
@@ -171,7 +166,6 @@ fn test_std_io_print_array() {
     assert_eq!(output, "[1, 2, 3]\n");
 }
 
-#[test]
 #[test]
 #[ignore = "requires VM output capture support"]
 fn test_std_io_print_object() {

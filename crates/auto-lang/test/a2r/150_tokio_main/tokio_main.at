@@ -1,0 +1,6 @@
+// Plan 163 Step 3: #[tokio::main] + async main
+
+fn main() {
+    let result = fetch_data().await
+    print(result)
+}

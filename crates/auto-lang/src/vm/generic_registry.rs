@@ -729,6 +729,7 @@ mod tests {
             delegations: vec![],
             methods: vec![],
             attrs: vec![],
+            is_pub: false,
         }
     }
 

@@ -375,3 +375,33 @@ fn test_141_func_literal_return() {
 fn test_142_to_convert() {
     test_a2r("142_to_convert").unwrap();
 }
+
+// Plan 163: static fn support
+#[test]
+fn test_148_static_fn() {
+    test_a2r("148_static_fn").unwrap();
+}
+
+// Plan 163: pub visibility
+#[test]
+fn test_149_pub_visibility() {
+    test_a2r("149_pub_visibility").unwrap();
+}
+
+// Plan 163: #[tokio::main] + async main
+#[test]
+fn test_150_tokio_main() {
+    test_a2r("150_tokio_main").unwrap();
+}
+
+// Plan 163: &mut self methods
+#[test]
+fn test_151_mut_self() {
+    test_a2r("151_mut_self").unwrap();
+}
+
+// Plan 163: per-field serde attributes
+#[test]
+fn test_152_field_attrs() {
+    test_a2r("152_field_attrs").unwrap();
+}
