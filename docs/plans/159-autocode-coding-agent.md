@@ -920,7 +920,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 ---
 
-### Phase 1: API 通信层（`ac-api`）
+### Phase 1: API 通信层（`ac-api`）✅ 已完成
 
 > **开始前: 对比分析两个参考项目的 API 通信层**
 >
@@ -940,37 +940,78 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 **目标**: 能流式调用 Claude 和 OpenAI API，正确解析 SSE 响应
 
+**Architecture:** 参考 claw-code 的 crate 结构，定义统一的 `StreamEvent` 枚举屏蔽 Anthropic/OpenAI 差异。Anthropic SSE 直接解析为 `StreamEvent`；OpenAI SSE 通过 `StreamState` 状态机归一化后再输出。两个 provider 共享一套类型定义。
+
 **交付物**:
-- `ac-api` crate，包含 `LlmClient` trait 和两个实现
+- `ac-api` crate，包含 `AnthropicClient` 和 `OpenAiClient`
+- SSE 增量解析器
 - 单元测试：mock SSE 数据解析
 - 集成测试：真实 API 调用（需要 API key）
 
-**详细步骤**:
+#### Task 1: Workspace 和 Crate 骨架
 
-| # | 步骤 | 产出文件 | 参考 |
-|---|------|---------|------|
-| 1.1 | 创建 `D:\autostack\auto-code-rs` 目录 | 目录结构 | claw-code workspace |
-| 1.2 | 创建 workspace `Cargo.toml`，声明 members | `Cargo.toml` | claw-code `rust/Cargo.toml` |
-| 1.3 | 创建 `crates/ac-api/` crate 骨架 | `crates/ac-api/Cargo.toml`, `src/lib.rs` | claw-code `crates/api/` |
-| 1.4 | 定义核心类型 | `src/types.rs` — `Role`, `ContentBlock`, `Message`, `ToolDefinition`, `ApiRequest`, `ApiResponse`, `StreamEvent`, `StopReason`, `ApiUsage` | claw-code `types.rs` |
-| 1.5 | 定义 `LlmClient` trait | `src/client.rs` — `stream()` + `complete()` 方法 | claw-code `ApiClient` trait |
-| 1.6 | 实现 SSE 解析器 | `src/sse.rs` — 解析 `event:` / `data:` 行，处理 chunked 传输，返回 `Vec<SseEvent>` | claw-code `crates/api/src/sse.rs` |
-| 1.7 | 实现 SSE 流适配器 | `src/sse_stream.rs` — 将 `reqwest` response body bytes 转为 `Stream<Item = StreamEvent>` | claw-code `providers/anthropic.rs` 的流处理 |
-| 1.8 | 实现 `AnthropicClient` | `src/anthropic.rs` — 请求构建（messages → Anthropic JSON 格式）+ SSE 解析 + 错误处理 | claw-code `providers/anthropic.rs` + Claude Code `claude.ts` |
-| 1.9 | 实现 `OpenAiClient` | `src/openai.rs` — 请求构建（messages → OpenAI JSON 格式）+ SSE 解析 + 可配置 base_url | claw-code `providers/openai_compat.rs` |
-| 1.10 | 实现消息格式转换 | `src/message_format.rs` — `Message` → Anthropic format / OpenAI format 的双向转换 | 两个项目的消息格式差异 |
-| 1.11 | SSE 解析单元测试 | `src/sse.rs` 测试 — 用硬编码的 SSE 数据验证解析正确性 | claw-code `sse.rs` tests |
-| 1.12 | API 集成测试（可选，需 API key） | `tests/integration.rs` — 真实调用 Claude API，验证流式输出 | - |
+| # | 步骤 | 产出文件 |
+|---|------|---------|
+| 1.1 | 创建 `D:\autostack\auto-code-rs` 目录 | `Cargo.toml` workspace |
+| 1.2 | 创建 `crates/ac-api/` crate 骨架 | `Cargo.toml`, `src/lib.rs` |
+| 1.3 | 创建空模块文件占位 | `src/types.rs`, `src/sse.rs`, `src/anthropic.rs`, `src/openai.rs` |
+
+#### Task 2: 核心类型定义
+
+| # | 步骤 | 说明 |
+|---|------|------|
+| 2.1 | 定义请求类型 | `ApiRequest`, `InputMessage`, `InputContentBlock` (Text/ToolUse/ToolResult) |
+| 2.2 | 定义工具类型 | `ToolDefinition`, `ToolChoice` |
+| 2.3 | 定义响应类型 | `ApiResponse`, `OutputContentBlock`, `Usage` |
+| 2.4 | 定义流事件类型 | `StreamEvent` (MessageStart/ContentBlockStart/Delta/Stop), `ContentBlockDelta` |
+| 2.5 | 定义错误类型 | `ApiError` (Http/Json/Api/Sse/Auth/RetriesExhausted) |
+
+#### Task 3: SSE 解析器
+
+| # | 步骤 | 说明 |
+|---|------|------|
+| 3.1 | 实现 `SseParser` | 缓冲区增量解析器，处理 chunked 传输 |
+| 3.2 | 实现 `next_frame()` | 按 `\n\n` 或 `\r\n\r\n` 分割帧 |
+| 3.3 | 实现 `parse_frame()` | 解析 `event:` / `data:` 行，忽略注释和 ping |
+
+#### Task 4: Anthropic Provider
+
+| # | 步骤 | 说明 |
+|---|------|------|
+| 4.1 | 实现 `AnthropicClient` | `new()`, `from_env()`, `with_base_url()` |
+| 4.2 | 实现 `build_request_body()` | 统一格式 → Anthropic JSON |
+| 4.3 | 实现 `apply_auth()` | `x-api-key` + `anthic-version` headers |
+| 4.4 | 实现 `send_with_retry()` | 指数退避 + 抖动，最多 5 次重试 |
+| 4.5 | 实现 `complete()` 和 `stream()` | 非流式/流式请求 |
+| 4.6 | 实现 `AnthropicStream` | SSE 流迭代器 |
+
+#### Task 5: OpenAI Provider
+
+| # | 步骤 | 说明 |
+|---|------|------|
+| 5.1 | 实现 `OpenAiClient` | `new()`, `from_env()` |
+| 5.2 | 实现 `build_request_body()` | 统一格式 → OpenAI JSON（system → messages 头部） |
+| 5.3 | 实现 `translate_message()` | `InputMessage` → OpenAI 格式 |
+| 5.4 | 实现 `normalize_response()` | OpenAI 响应 → 统一 `ApiResponse` |
+| 5.5 | 实现 `StreamState` 状态机 | OpenAI chunk → 统一 `StreamEvent` |
+| 5.6 | 实现 `OpenAiStream` | SSE 流迭代器 |
+
+#### Task 6: 集成测试
+
+| # | 步骤 | 说明 |
+|---|------|------|
+| 6.1 | Anthropic 流式测试 | `test_anthropic_streaming` (需 API key) |
+| 6.2 | OpenAI 流式测试 | `test_openai_streaming` (需 API key) |
 
 **验证标准**:
-- [ ] `cargo build -p ac-api` 编译通过
-- [ ] SSE 解析器能正确处理 Anthropic 和 OpenAI 格式的 mock 数据
-- [ ] `StreamEvent` 枚举正确映射两种 API 的所有事件类型
-- [ ] （可选）真实 API 调用能流式返回文本
+- [x] `cargo build -p ac-api` 编译通过
+- [x] SSE 解析器能正确处理 Anthropic 和 OpenAI 格式的 mock 数据
+- [x] `StreamEvent` 枚举正确映射两种 API 的所有事件类型
+- [x] 真实 API 调用能流式返回文本
 
 ---
 
-### Phase 2: 工具系统 + Bash（`ac-tools`）
+### Phase 2: 工具系统 + Bash（`ac-tools`）✅ 已完成
 
 > **开始前: 对比分析两个参考项目的工具系统**
 >
@@ -1017,7 +1058,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 ---
 
-### Phase 3: Agent 运行时 + 文件工具（`ac-runtime`）
+### Phase 3: Agent 运行时 + 文件工具（`ac-runtime`）✅ 已完成
 
 > **开始前: 对比分析两个参考项目的 Agent 循环**
 >
@@ -1072,7 +1113,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 ---
 
-### Phase 4: CLI + REPL（`ac-cli`）
+### Phase 4: CLI + REPL（`ac-cli`）✅ 已完成
 
 > **开始前: 对比分析两个参考项目的 CLI 和 REPL**
 >
@@ -1125,7 +1166,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 ---
 
-### Phase 5: Grep + Context 压缩 + 持久化
+### Phase 5: Grep + Context 压缩 + 持久化 ✅ 已完成
 
 > **开始前: 对比分析两个参考项目的搜索、压缩和持久化**
 >
@@ -1267,14 +1308,14 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 | # | 功能 | auto-code-rs 示例 | 当前 a2r 状态 | 建议优先级 |
 |---|------|-------------------|--------------|-----------|
-| 6B-4.1 | **per-field serde 属性** | `#[serde(rename = "role")] content: String` | 仅支持 type 级 derive | P0 |
-| 6B-4.2 | **`pub` 可见性** | `pub struct`, `pub fn`, `pub enum` | 所有输出都是私有的 | P0 |
-| 6B-4.3 | **关联函数（无 self）** | `fn new() -> Self` 在 `impl Type` 块中 | 方法强制加 `&self` 参数 | P0 |
+| 6B-4.1 | **per-field serde 属性** | `#[serde(rename = "role")] content: String` | ✅ **已完成** (Plan 163 Step 5, test 152) | ~~P0~~ |
+| 6B-4.2 | **`pub` 可见性** | `pub struct`, `pub fn`, `pub enum` | ✅ **已完成** (Plan 163 Step 2, test 149) | ~~P0~~ |
+| 6B-4.3 | **关联函数（无 self）** | `fn new() -> Self` 在 `impl Type` 块中 | ✅ **已完成** (Plan 163 Step 1, test 148) | ~~P0~~ |
 | 6B-4.4 | **impl Trait for Type（外部 trait）** | `impl Display for Message`, `impl Clone for Session` | 仅支持 spec（Auto 自定义 trait） | P0 |
 | 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | 匹配模式不支持字段绑定 | P1 |
 | 6B-4.6 | **`serde_json::json!` 宏** | `json!({"role": "user", "content": msg})` | 无宏展开支持 | P1 |
-| 6B-4.7 | **`&mut self` 方法** | `fn push(&mut self, msg: Message)` | 方法总是 `&self` | P1 |
-| 6B-4.8 | **`#[tokio::main]`** | 异步 main 函数 | 无属性透传到 main | P1 |
+| 6B-4.7 | **`&mut self` 方法** | `fn push(&mut self, msg: Message)` | ✅ **已完成** (Plan 163 Step 4, test 151) | ~~P1~~ |
+| 6B-4.8 | **`#[tokio::main]`** | 异步 main 函数 | ✅ **已完成** (Plan 163 Step 3, test 150) | ~~P1~~ |
 | 6B-4.9 | **`impl Into<String>` 参数** | `fn new(base_url: impl Into<String>)` | 无泛型约束语法 | P2 |
 | 6B-4.10 | **方法链中的复杂闭包** | `.map(\|r\| r.content).collect::<Vec<_>>()` | 闭包类型推断有限 | P2 |
 
@@ -1297,19 +1338,20 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 ```
 第一批（核心结构支持）— 解锁 ~70% 代码转译:
-  1. 6B-4.2  pub 可见性         — 最简单，影响面最广
-  2. 6B-4.3  关联函数（无 self）  — struct 构造器必需
-  3. 6B-4.7  &mut self 方法     — 可变方法必需
-  4. 6B-4.1  per-field 属性     — serde 集成必需
+  1. 6B-4.2  pub 可见性         ✅ Plan 163 Step 2 (test 149)
+  2. 6B-4.3  关联函数（无 self）  ✅ Plan 163 Step 1 (test 148)
+  3. 6B-4.7  &mut self 方法     ✅ Plan 163 Step 4 (test 151)
+  4. 6B-4.1  per-field 属性     ✅ Plan 163 Step 5 (test 152)
+  5. 6B-4.8  #[tokio::main]     ✅ Plan 163 Step 3 (test 150)
 
 第二批（trait 系统）— 解锁 ~85% 代码转译:
-  5. 6B-4.4  impl ExternalTrait for Type — Display/Clone 等 std trait
-  6. 6B-3.1  泛型约束 where T: Trait
+  6. 6B-4.4  impl ExternalTrait for Type — Display/Clone 等 std trait
+  7. 6B-3.1  泛型约束 where T: Trait
 
 第三批（高级特性）— 解锁 ~95% 代码转译:
-  7. 6B-4.5  struct 解构匹配
-  8. 6B-4.10 复杂闭包/方法链
-  9. 6B-3.5  多文件模块系统
+  8. 6B-4.5  struct 解构匹配
+  9. 6B-4.10 复杂闭包/方法链
+  10. 6B-3.5 多文件模块系统
 ```
 
 **验证标准**:
@@ -1318,6 +1360,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 - [x] a2r 转译器支持 Option/Result 构造和匹配（Phase 6B-1）✅ test 130
 - [x] a2r 转译器支持 HashMap 类型（Phase 6B-1）✅ Plan 160 完成
 - [x] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）✅ tests 133-135
+- [x] a2r 转译器支持核心结构：pub、static fn、&mut self、tokio main、per-field attrs（Phase 6B-4 第一批）✅ Plan 163 tests 148-152
 - [ ] 纯 .at 代码转译为 Rust 后功能与 Rust 原型对等（Phase 6B-3）
 
 ### ac-api
@@ -1366,26 +1409,26 @@ dirs = "6"
 
 ## 12. 成功标准
 
-### MVP（Phase 1-4）
-- [ ] 能在 REPL 中输入 prompt，获得 LLM 响应
-- [ ] LLM 能调用 Bash 工具执行命令
-- [ ] LLM 能使用 Read/Write/Edit 工具操作文件
-- [ ] 支持 Claude 和 OpenAI 两个 provider
-- [ ] 权限系统工作（Ask 模式下提示用户确认）
-- [ ] 流式输出实时显示
+### MVP（Phase 1-4）✅ 已完成
+- [x] 能在 REPL 中输入 prompt，获得 LLM 响应
+- [x] LLM 能调用 Bash 工具执行命令
+- [x] LLM 能使用 Read/Write/Edit 工具操作文件
+- [x] 支持 Claude 和 OpenAI 两个 provider
+- [x] 权限系统工作（Ask 模式下提示用户确认）
+- [x] 流式输出实时显示
 
-### 完整版（Phase 1-5）
-- [ ] Grep 搜索工具工作
-- [ ] 长对话不超出上下文（自动压缩）
-- [ ] 会话可持久化和恢复
-- [ ] System prompt 正确引导 LLM 行为
+### 完整版（Phase 1-5）✅ 已完成
+- [x] Grep 搜索工具工作
+- [x] 长对话不超出上下文（自动压缩）
+- [x] 会话可持久化和恢复
+- [x] System prompt 正确引导 LLM 行为
 
 ### AutoLang 版（Phase 6）
 - [ ] VM FFI 版本：所有 7 个 FFI 函数通过测试（✅ 已完成）
 - [ ] VM FFI 版本：AutoLang 代码能驱动 Agent 循环（Phase 6A 待完成）
 - [ ] a2r Phase 6B-1：Option/Result 构造和匹配转译通过测试
 - [x] a2r Phase 6B-1：HashMap 类型转译通过测试（128_map_type + 129_map_func）✅
-- [ ] a2r Phase 6B-2：async fn + derive 宏转译通过测试
+- [x] a2r Phase 6B-2：async fn + derive 宏转译通过测试 ✅ tests 133-135
 - [ ] a2r Phase 6B-3：纯 .at 代码转译为 Rust 后功能与原型对等
 
 ---
