@@ -453,3 +453,52 @@ fn test_160_wildcard_import() {
 fn test_159_pub_use() {
     test_a2r("159_pub_use").unwrap();
 }
+
+// Plan 167 Phase 4: multi-file project transpilation
+#[test]
+fn test_161_multi_file() {
+    use crate::trans::rust::transpile_rust_project;
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let entry = d.join("test/a2r/161_multi_file/main.at");
+
+    let result = transpile_rust_project(entry.to_str().unwrap()).unwrap();
+
+    // Check that all 4 files were generated
+    assert!(result.contains_key("main.rs"), "Missing main.rs");
+    assert!(result.contains_key("db.rs"), "Missing db.rs");
+    assert!(result.contains_key("api/mod.rs"), "Missing api/mod.rs");
+    assert!(result.contains_key("api/handlers.rs"), "Missing api/handlers.rs");
+
+    // Validate main.rs
+    let main_rs = String::from_utf8_lossy(&result["main.rs"]);
+    assert!(main_rs.contains("mod db;"), "main.rs should have 'mod db;'");
+    assert!(main_rs.contains("mod api;"), "main.rs should have 'mod api;'");
+    assert!(main_rs.contains("fn main()"), "main.rs should have fn main()");
+
+    // Validate api/mod.rs
+    let api_mod = String::from_utf8_lossy(&result["api/mod.rs"]);
+    assert!(api_mod.contains("pub mod handlers;"), "api/mod.rs should have 'pub mod handlers;'");
+
+    // Validate db.rs
+    let db_rs = String::from_utf8_lossy(&result["db.rs"]);
+    assert!(db_rs.contains("struct Connection"), "db.rs should have struct Connection");
+    assert!(db_rs.contains("fn connect()"), "db.rs should have fn connect()");
+
+    // Validate api/handlers.rs
+    let handlers_rs = String::from_utf8_lossy(&result["api/handlers.rs"]);
+    assert!(handlers_rs.contains("use super::db;"), "api/handlers.rs should have 'use super::db;'");
+    assert!(handlers_rs.contains("fn handle_request"), "api/handlers.rs should have fn handle_request");
+
+    // Validate Cargo.toml
+    assert!(result.contains_key("Cargo.toml"), "Missing Cargo.toml");
+    let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"]);
+    assert!(cargo_toml.contains("[package]"), "Cargo.toml should have [package]");
+    assert!(cargo_toml.contains("name = \"161_multi_file\""), "Cargo.toml should have project name");
+    assert!(cargo_toml.contains("edition = \"2021\""), "Cargo.toml should have edition = 2021");
+}
+
+#[test]
+fn test_999_doc_comments() {
+    test_a2r("999_doc_comments").unwrap();
+}

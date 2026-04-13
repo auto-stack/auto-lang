@@ -1,0 +1,7 @@
+type Connection {
+    url str
+}
+
+fn connect() Connection {
+    Connection(url: "localhost")
+}

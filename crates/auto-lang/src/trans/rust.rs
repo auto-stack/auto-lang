@@ -47,7 +47,7 @@ use crate::ast::*;
 use crate::database::Database;
 use crate::parser::Parser;
 // Plan 091: Universe removed
-use crate::{AutoResult, Rc};
+use crate::{AutoError, AutoResult, Rc};
 use auto_val::{shared, Shared};
 use auto_val::{AutoStr, Op};
 use std::collections::{HashMap, HashSet};
@@ -87,6 +87,9 @@ pub struct RustTrans {
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
 
+    // Plan 167: Multi-file mode — local module names for mod declarations
+    local_modules: HashSet<String>,
+
 }
 
 impl RustTrans {
@@ -102,6 +105,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            local_modules: HashSet::new(),
         }
     }
 
@@ -118,6 +122,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            local_modules: HashSet::new(),
         }
     }
 
@@ -2614,6 +2619,19 @@ impl RustTrans {
         let pub_kw = if use_stmt.is_pub { "pub " } else { "" };
         match use_stmt.kind {
             UseKind::Auto => {
+                // Plan 167: In multi-file mode, local module use → mod declaration
+                if !self.local_modules.is_empty()
+                    && use_stmt.items.is_empty()
+                    && !use_stmt.is_wildcard
+                    && use_stmt.paths.len() == 1
+                {
+                    let mod_name = use_stmt.paths[0].as_str();
+                    if self.local_modules.contains(mod_name) {
+                        write!(out, "{}mod {};", pub_kw, mod_name)?;
+                        return Ok(());
+                    }
+                }
+
                 // Map Auto stdlib to Rust modules
                 // Join all path segments into a single Rust path
                 if !use_stmt.paths.is_empty() {
@@ -3945,4 +3963,297 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     transpiler.trans(ast, &mut out)?;
     let src = out.done()?.clone();
     Ok(String::from_utf8(src).unwrap().into())
+}
+
+// =============================================================================
+// Plan 167: Multi-file project transpilation
+// =============================================================================
+
+/// A module discovered during project scanning
+struct ProjectModule {
+    /// Module name (e.g., "db", "api", "api::handlers")
+    name: String,
+    /// Path to the .at source file
+    source_path: std::path::PathBuf,
+    /// Rust output file name (e.g., "db.rs", "api/mod.rs", "api/handlers.rs")
+    output_name: String,
+    /// Whether this is a directory module (mod.at)
+    is_dir_module: bool,
+    /// Import statements from this module
+    uses: Vec<crate::ast::Use>,
+}
+
+/// Transpile a multi-file AutoLang project to Rust
+///
+/// Starting from an entry file, this function:
+/// 1. Parses the entry file and discovers its module dependencies
+/// 2. Recursively discovers and parses all module files
+/// 3. Transpiles each module into its own .rs file
+/// 4. Generates mod.rs from mod.at with pub mod declarations
+///
+/// Returns a HashMap mapping output filename to generated Rust code.
+pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::HashMap<String, Vec<u8>>> {
+    use super::MultiSink;
+    use crate::ast::Stmt;
+
+    let entry_path = std::path::Path::new(entry_file);
+    let entry_dir = entry_path.parent()
+        .ok_or_else(|| AutoError::Msg("Entry file has no parent directory".into()))?;
+
+    // Phase 1: Discover all modules
+    let mut modules = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    discover_modules(entry_path, entry_dir, &mut modules, &mut visited)?;
+
+    // Phase 2: Parse each module
+    let mut parsed_modules = Vec::new();
+    for module in &modules {
+        let source = std::fs::read_to_string(&module.source_path)
+            .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+        let _scope = shared(crate::scope_manager::ScopeManager::new());
+        let mut parser = Parser::from(source.as_str());
+        parser.set_dest(crate::parser::CompileDest::TransRust);
+        parser.skip_check = true; // Plan 167: skip type checking for multi-file mode
+        let ast = parser.parse().map_err(|e| {
+            AutoError::Msg(format!("Parse error in {}: {}", module.source_path.display(), e.to_string()))
+        })?;
+        parsed_modules.push((module, ast));
+    }
+
+    // Phase 3: Transpile each module into its own Sink
+    let mut multi_sink = MultiSink::new();
+    for (module, ast) in &parsed_modules {
+        let sink = multi_sink.add(&module.output_name);
+        let mut transpiler = RustTrans::new(AutoStr::from(&module.output_name));
+
+        // Plan 167: Populate local_modules with all discovered module names
+        // (excluding self) so that use X → mod X; for local modules
+        for other in &modules {
+            if other.source_path == module.source_path {
+                continue;
+            }
+            // Use the module name as it would appear in use statements
+            let other_name = if other.is_dir_module {
+                // Directory module: use the directory name (e.g., "api" for api/mod.at)
+                other.source_path.parent().unwrap()
+                    .file_name().unwrap().to_string_lossy().to_string()
+            } else {
+                // File module: use the file stem (e.g., "db" for db.at)
+                other.source_path.file_stem()
+                    .unwrap().to_string_lossy().to_string()
+            };
+            transpiler.local_modules.insert(other_name);
+        }
+
+        // For directory modules (mod.at), emit pub mod declarations for sibling files
+        if module.is_dir_module {
+            let mod_dir = module.source_path.parent().unwrap();
+            // Collect sibling .at files (excluding mod.at itself)
+            let mut submodules: Vec<String> = Vec::new();
+            for entry in std::fs::read_dir(mod_dir).map_err(|e| AutoError::Msg(e.to_string()))? {
+                let entry = entry.map_err(|e| AutoError::Msg(e.to_string()))?;
+                let path = entry.path();
+                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    if let Some(name) = path.file_stem() {
+                        let name_str = name.to_string_lossy().to_string();
+                        if name_str != "mod" {
+                            submodules.push(name_str);
+                        }
+                    }
+                }
+            }
+            submodules.sort();
+            for sub in &submodules {
+                let _ = write!(sink.body, "pub mod {};\n", sub);
+            }
+        }
+
+        transpiler.trans(ast.clone(), sink)?;
+    }
+
+    // Phase 3.5: Generate Cargo.toml
+    let mut result = std::collections::HashMap::new();
+    {
+        let project_name = entry_dir.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("auto_project");
+        // Sanitize: replace non-alphanumeric with underscore
+        let project_name = project_name.chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '_' })
+            .collect::<String>()
+            .to_lowercase();
+
+        let mut cargo_toml = format!(
+            "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            project_name
+        );
+
+        // Scan parsed ASTs for external Rust crate imports (.rust use kind)
+        let mut deps: Vec<String> = Vec::new();
+        for (_, ast) in &parsed_modules {
+            for stmt in &ast.stmts {
+                if let Stmt::Use(u) = stmt {
+                    if matches!(u.kind, UseKind::Rust) && !u.paths.is_empty() {
+                        let crate_name = u.paths[0].as_str();
+                        if !deps.contains(&crate_name.to_string()) {
+                            deps.push(crate_name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if !deps.is_empty() {
+            cargo_toml.push_str("\n[dependencies]\n");
+            for dep in &deps {
+                cargo_toml.push_str(&format!("{} = \"*\"\n", dep));
+            }
+        }
+
+        result.insert("Cargo.toml".to_string(), cargo_toml.into_bytes());
+    }
+
+    // Phase 4: Collect results
+    let files = multi_sink.done();
+    for (name, content) in files {
+        result.insert(name, content);
+    }
+
+    Ok(result)
+}
+
+/// Recursively discover all modules starting from an entry file
+fn discover_modules(
+    file_path: &std::path::Path,
+    base_dir: &std::path::Path,
+    modules: &mut Vec<ProjectModule>,
+    visited: &mut std::collections::HashSet<String>,
+) -> AutoResult<()> {
+    let canonical = file_path.canonicalize()
+        .map_err(|e| AutoError::Msg(format!("Cannot canonicalize {}: {}", file_path.display(), e)))?;
+    let key = canonical.to_string_lossy().to_string();
+
+    if visited.contains(&key) {
+        return Ok(());
+    }
+    visited.insert(key);
+
+    let file_name = file_path.file_stem()
+        .ok_or_else(|| AutoError::Msg("File has no stem".into()))?
+        .to_string_lossy()
+        .to_string();
+
+    let is_dir_module = file_name == "mod";
+
+    // Determine output path relative to base_dir
+    let rel_path = file_path.parent()
+        .and_then(|p| p.strip_prefix(base_dir).ok())
+        .unwrap_or(std::path::Path::new(""));
+    let output_name = if rel_path.as_os_str().is_empty() {
+        format!("{}.rs", file_name)
+    } else {
+        format!("{}/{}.rs", rel_path.display(), file_name)
+    };
+
+    // Read and parse the file to discover its use statements
+    let source = std::fs::read_to_string(file_path)
+        .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", file_path.display(), e)))?;
+
+    let mut local_uses = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.is_empty() {
+            continue;
+        }
+        // Plan 167: handle both "use X" and "pub use X"
+        let rest = if let Some(r) = trimmed.strip_prefix("pub use ") {
+            r
+        } else {
+            match trimmed.strip_prefix("use ") {
+                Some(r) => r,
+                None => continue,
+            }
+        };
+        if !rest.starts_with("c ") && !rest.starts_with(".rust") && !rest.starts_with("auto.") {
+            // Extract module name (first segment before :, *, or end)
+            let module_name = rest.split(|c: char| c == ':' || c == ' ' || c == '*')
+                .next()
+                .unwrap_or("")
+                .trim();
+            // Skip pac/super prefixed (handled by the resolver)
+            if module_name == "pac" || module_name == "super"
+                || module_name.starts_with("pac.") || module_name.starts_with("super.")
+            {
+                continue;
+            }
+            local_uses.push(module_name.to_string());
+        }
+    }
+
+    // Add this module
+    modules.push(ProjectModule {
+        name: file_name.clone(),
+        source_path: file_path.to_path_buf(),
+        output_name: output_name.clone(),
+        is_dir_module,
+        uses: Vec::new(), // populated from parsed AST later
+    });
+
+    // Recursively discover dependencies
+    for dep_name in &local_uses {
+        // Plan 167: Handle dotted module names (e.g., "api.handlers")
+        let parts: Vec<&str> = dep_name.split('.').collect();
+        if parts.len() > 1 {
+            // Check if the first segment matches the current directory module name
+            // e.g., in api/mod.at, "api.handlers" -> just discover "handlers"
+            let dir_name = rel_path.to_str().unwrap_or("");
+            if dir_name == parts[0] {
+                // Self-referential dotted path: strip the directory prefix
+                let rest = parts[1..].join(".");
+                let rest_file = file_path.parent().unwrap().join(format!("{}.at", rest));
+                let rest_dir = file_path.parent().unwrap().join(&rest).join("mod.at");
+                if rest_file.exists() {
+                    discover_modules(&rest_file, base_dir, modules, visited)?;
+                } else if rest_dir.exists() {
+                    discover_modules(&rest_dir, base_dir, modules, visited)?;
+                }
+                continue;
+            }
+
+            // Cross-module dotted path: resolve each segment
+            let first_file = file_path.parent().unwrap().join(format!("{}.at", parts[0]));
+            let first_dir = file_path.parent().unwrap().join(&parts[0]).join("mod.at");
+
+            let first_path = if first_file.exists() {
+                first_file
+            } else if first_dir.exists() {
+                first_dir
+            } else {
+                continue;
+            };
+            // Discover the parent module
+            discover_modules(&first_path, base_dir, modules, visited)?;
+
+            // Then discover the nested module
+            let parent_dir = first_path.parent().unwrap();
+            let nested_name = parts[1..].join(".");
+            let nested_file = parent_dir.join(format!("{}.at", nested_name));
+            let nested_dir = parent_dir.join(&nested_name).join("mod.at");
+            if nested_file.exists() {
+                discover_modules(&nested_file, base_dir, modules, visited)?;
+            } else if nested_dir.exists() {
+                discover_modules(&nested_dir, base_dir, modules, visited)?;
+            }
+        } else {
+            let dep_file = file_path.parent().unwrap().join(format!("{}.at", dep_name));
+            let dep_dir = file_path.parent().unwrap().join(dep_name).join("mod.at");
+
+            if dep_file.exists() {
+                discover_modules(&dep_file, base_dir, modules, visited)?;
+            } else if dep_dir.exists() {
+                discover_modules(&dep_dir, base_dir, modules, visited)?;
+            }
+        }
+    }
+
+    Ok(())
 }

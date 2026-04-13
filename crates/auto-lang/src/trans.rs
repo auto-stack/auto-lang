@@ -85,3 +85,38 @@ impl ToStrError for Result<usize, io::Error> {
         }
     }
 }
+
+/// Plan 167: Multi-file output sink for project-level transpilation
+pub struct MultiSink {
+    pub files: Vec<(String, Sink)>,
+}
+
+impl MultiSink {
+    pub fn new() -> Self {
+        Self { files: Vec::new() }
+    }
+
+    pub fn add(&mut self, name: &str) -> &mut Sink {
+        self.files.push((name.to_string(), Sink::new(AutoStr::from(name))));
+        &mut self.files.last_mut().unwrap().1
+    }
+
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Sink> {
+        self.files.iter_mut().find(|(n, _)| n == name).map(|(_, s)| s)
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Sink> {
+        self.files.iter().find(|(n, _)| n == name).map(|(_, s)| s)
+    }
+
+    /// Get all files as (name, content) pairs
+    pub fn done(self) -> Vec<(String, Vec<u8>)> {
+        self.files
+            .into_iter()
+            .map(|(name, mut sink)| {
+                let content = sink.done().unwrap().clone();
+                (name, content)
+            })
+            .collect()
+    }
+}

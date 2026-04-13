@@ -8100,10 +8100,13 @@ impl<'a> Parser<'a> {
                             let value_ty = self.infer_type_expr(&value);
 
                             // 检查类型匹配（使用当前 token 位置作为近似位置）
-                            if let Err(err) =
-                                check_field_type(member, &value_ty, pos_to_span(self.cur.pos))
-                            {
-                                self.errors.push(err);
+                            // Plan 167: skip type checking when skip_check is set
+                            if !self.skip_check {
+                                if let Err(err) =
+                                    check_field_type(member, &value_ty, pos_to_span(self.cur.pos))
+                                {
+                                    self.errors.push(err);
+                                }
                             }
                         }
                     }
