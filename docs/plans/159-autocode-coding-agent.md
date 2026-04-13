@@ -1293,7 +1293,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 | # | 特性 | 当前状态 | 需要做什么 |
 |---|------|---------|-----------|
-| 6B-3.1 | 泛型约束 `where T: Trait` | 无 | `fn foo<T>(x T) where T: Clone` |
+| 6B-3.1 | 泛型约束 `#[with(T as Trait)]` | ✅ **已完成** (Plan 166, test 155) | ~~P0~~ |
 | 6B-3.2 | Cargo.toml 自动生成 | 无 | 分析 use 语句，生成正确的 Cargo.toml |
 | 6B-3.3 | 动态值类型 `Value` | 无 | `type Value` → `serde_json::Value` 或自定义 enum |
 | 6B-3.4 | 静态常量 `const` | 无 | `const NAME: str = "..."` → `const NAME: &str = "..."` |
@@ -1346,7 +1346,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 
 第二批（trait 系统）— 解锁 ~85% 代码转译:
   6. 6B-4.4  impl ExternalTrait for Type ✅ Plan 164 (test 153)
-  7. 6B-3.1  泛型约束 where T: Trait
+  7. 6B-3.1  泛型约束 #[with(T as Trait)] ✅ Plan 166 (test 155)
 
 第三批（高级特性）— 解锁 ~95% 代码转译:
   8. 6B-4.5  struct 解构匹配    ✅ Plan 165 (test 154)

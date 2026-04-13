@@ -1,0 +1,22 @@
+// Plan 166: Generic constraints via #[with(T as Trait)]
+
+#[with(T)]
+fn identity(x T) T {
+    return x
+}
+
+#[with(T as Clone)]
+fn duplicate(x T) T {
+    return x
+}
+
+#[with(A, B as Clone)]
+fn multi(a A, b B) A {
+    return a
+}
+
+fn main() {
+    let a = identity(42)
+    let b = duplicate(1)
+    let c = multi(1, 2)
+}

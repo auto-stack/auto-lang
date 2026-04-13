@@ -417,3 +417,9 @@ fn test_153_ext_for() {
 fn test_154_struct_destructure() {
     test_a2r("154_struct_destructure").unwrap();
 }
+
+// Plan 166: Generic constraints #[with(T as Trait)]
+#[test]
+fn test_155_with_constraint() {
+    test_a2r("155_with_constraint").unwrap();
+}

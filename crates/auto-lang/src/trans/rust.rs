@@ -2169,6 +2169,21 @@ impl RustTrans {
         }
         write!(sink.body, "fn {}", fn_decl.name)?;
 
+        // Plan 166: Emit generic type parameters from #[with(T as Trait)]
+        if !fn_decl.type_params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, tp) in fn_decl.type_params.iter().enumerate() {
+                if i > 0 {
+                    write!(sink.body, ", ")?;
+                }
+                write!(sink.body, "{}", tp.name)?;
+                if let Some(constraint) = &tp.constraint {
+                    write!(sink.body, ": {}", self.rust_type_name(constraint))?;
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
         // Parameters
         write!(sink.body, "(")?;
 
