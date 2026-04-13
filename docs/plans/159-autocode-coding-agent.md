@@ -1312,7 +1312,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-4.2 | **`pub` 可见性** | `pub struct`, `pub fn`, `pub enum` | ✅ **已完成** (Plan 163 Step 2, test 149) | ~~P0~~ |
 | 6B-4.3 | **关联函数（无 self）** | `fn new() -> Self` 在 `impl Type` 块中 | ✅ **已完成** (Plan 163 Step 1, test 148) | ~~P0~~ |
 | 6B-4.4 | **impl Trait for Type（外部 trait）** | `impl Display for Message`, `impl Clone for Session` | ✅ **已完成** (Plan 164, test 153) | ~~P0~~ |
-| 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | 匹配模式不支持字段绑定 | P1（Plan 165） |
+| 6B-4.5 | **struct 解构匹配** | `Message::User { content } => ...` | ✅ **已完成** (Plan 165, test 154) | ~~P1~~ |
 | 6B-4.6 | **`serde_json::json!` 宏** | `json!({"role": "user", "content": msg})` | ✅ 不需要 — AutoLang 原生 object 已覆盖 | ~~P1~~ |
 | 6B-4.7 | **`&mut self` 方法** | `fn push(&mut self, msg: Message)` | ✅ **已完成** (Plan 163 Step 4, test 151) | ~~P1~~ |
 | 6B-4.8 | **`#[tokio::main]`** | 异步 main 函数 | ✅ **已完成** (Plan 163 Step 3, test 150) | ~~P1~~ |
@@ -1349,7 +1349,7 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
   7. 6B-3.1  泛型约束 where T: Trait
 
 第三批（高级特性）— 解锁 ~95% 代码转译:
-  8. 6B-4.5  struct 解构匹配
+  8. 6B-4.5  struct 解构匹配    ✅ Plan 165 (test 154)
   9. 6B-4.10 复杂闭包/方法链
   10. 6B-3.5 多文件模块系统
 ```
