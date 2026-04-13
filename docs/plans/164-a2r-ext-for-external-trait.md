@@ -1,106 +1,260 @@
 # Plan 164: a2r — `ext Type for Trait` (External Trait Implementation)
 
-**Date**: 2026-04-13
-**Status**: Design approved
-**Scope**: a2r transpiler only
-**Parent**: Plan 159 Phase 6B-2 (item 6B-4.4)
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-## Goal
+**Goal:** Allow AutoLang code to implement external Rust traits (Display, Debug, Clone, Default, etc.) via `ext Type for Trait { }` syntax.
 
-Allow AutoLang code to implement external Rust traits (Display, Debug, Clone, Default, etc.) for Auto-defined types, via a new `ext Type for Trait` syntax.
+**Architecture:** Add `trait_name: Option<Name>` to the `Ext` AST node. Parser checks for `for` keyword after the target type name. Rust transpiler emits `impl Trait for Type` when present. Other transpilers ignore the field.
 
-## Syntax
+**Tech Stack:** Rust, a2r transpiler, existing Ext/ast infrastructure
 
-```auto
-// Inherent methods (existing, unchanged)
-ext MyType {
-    fn helper() { ... }
-}
+---
 
-// NEW: External trait implementation
-ext MyType for Display {
-    fn fmt() String { ... }
-}
+### Task 1: AST — Add `trait_name` field to `Ext`
 
-// With generics on the trait
-ext MyType for From<String> {
-    fn from(s String) MyType { ... }
-}
+**Files:**
+- Modify: `crates/auto-lang/src/ast/ext.rs`
 
-// With generics on the type
-ext List<T> for From<Vec<T>> {
-    fn from(v Vec<T>) List<T> { ... }
-}
-```
+**Step 1: Add the field**
 
-Reading: "extend MyType for Display" — type first, then trait.
-
-## What Changes
-
-### 1. AST (`ast/ext.rs`)
-
-Add `trait_name: Option<Name>` to `Ext`:
+In `Ext` struct (line 48), add after `target`:
 
 ```rust
 pub struct Ext {
-    pub target: Name,           // Type being extended (existing)
-    pub trait_name: Option<Name>,  // NEW: external trait name (None = inherent impl)
-    pub generic_params: Vec<GenericParam>,  // existing
-    pub fields: Vec<Member>,    // existing
-    pub methods: Vec<Fn>,       // existing
-    // ...
+    /// Type being extended (e.g., "str", "Point")
+    pub target: Name,
+
+    /// External trait name (None = inherent impl, Some = trait impl)
+    /// e.g., `ext Point for Display` → trait_name = Some("Display")
+    pub trait_name: Option<Name>,
+
+    pub generic_params: Vec<GenericParam>,
+    // ... rest unchanged
 }
 ```
 
-### 2. Parser (`parser.rs` — `parse_ext_stmt()`)
+**Step 2: Update all constructors**
 
-After parsing the target type name, check for `for` keyword:
+In `Ext::new()` (line 71), add `trait_name: None,` after `target,`.
 
-```
-ext <Type> [for <TraitName>] { methods }
-         ^^^^^^^^^^^^^^^^^^^^
-         new optional clause
-```
+In `Ext::with_fields()` (line 90), add `trait_name: None,` after `target,`.
 
-- No `for` → `trait_name = None` (inherent impl, existing behavior)
-- `for` present → parse trait name, store in `trait_name`
+In `Ext::with_generic_params()` (line 106), add `trait_name: None,` after `target,`.
 
-### 3. Transpiler (`trans/rust.rs` — `ext_decl()`)
+**Step 3: Update `PartialEq` impl**
+
+In `PartialEq` (line 117), add comparison:
 
 ```rust
-fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) {
-    match &ext.trait_name {
-        Some(trait_name) => {
-            // NEW: impl Trait for Type { ... }
-            write!(sink.body, "impl {} for {}", trait_name, ext.target)?;
-        }
-        None => {
-            // EXISTING: impl Type { ... }
-            write!(sink.body, "impl {}", ext.target)?;
-        }
-    }
-    // ... generics, methods ...
+fn eq(&self, other: &Self) -> bool {
+    self.target == other.target
+        && self.trait_name == other.trait_name
+        && self.fields.len() == other.fields.len()
+        && self.methods == other.methods
+        && self.module_path == other.module_path
+        && self.is_same_module == other.is_same_module
 }
 ```
 
-### 4. Other transpilers (a2c, a2py, a2ts, a2ark)
+**Step 4: Update `Display` impl**
 
-No changes. When `trait_name` is `Some`, these transpilers ignore it and treat the block as an inherent impl (same as `trait_name = None`). External traits are a Rust-specific concept.
+In `fmt` (line 128), add trait_name after target:
 
-## What Stays the Same
+```rust
+fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "(ext (target {}", self.target)?;
 
-- `ext Type { }` → `impl Type { }` (inherent, unchanged)
-- `type X as Spec { }` → `impl Spec for X { }` (unchanged, spec-based impl)
-- No validation of trait names — any name passes through
-- `impl` keyword remains a synonym for `ext`
+    if let Some(ref trait_name) = self.trait_name {
+        write!(f, " (for {})", trait_name)?;
+    }
 
-## Test Cases
+    // ... rest unchanged (generic params, fields, methods)
+}
+```
 
-New a2r test directory: `153_ext_for/`
+**Step 5: Update `ToNode` impl**
+
+In `to_node()` (line 190), add trait_name property:
+
+```rust
+fn to_node(&self) -> AutoNode {
+    let mut node = AutoNode::new("ext");
+    node.set_prop("target", auto_val::Value::Str(self.target.clone()));
+
+    if let Some(ref trait_name) = self.trait_name {
+        node.set_prop("trait_name", auto_val::Value::Str(trait_name.clone()));
+    }
+
+    // ... rest unchanged
+}
+```
+
+**Step 6: Update `AtomWriter` impl**
+
+In `write_atom()` (line 162), add trait_name after target:
+
+```rust
+fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+    write!(f, "ext({}, ", self.target)?;
+
+    if let Some(ref trait_name) = self.trait_name {
+        write!(f, "for:{}, ", trait_name)?;
+    }
+
+    // ... rest unchanged
+}
+```
+
+**Step 7: Update existing unit tests**
+
+In `tests` module (line 227), update assertions to account for `trait_name: None`:
+
+No changes needed — existing tests use constructors that default `trait_name` to `None`.
+
+**Step 8: Add new unit test for trait_name**
+
+```rust
+#[test]
+fn test_ext_with_trait_name() {
+    let mut ext = Ext::new("Point".into(), vec![]);
+    ext.trait_name = Some("Display".into());
+    assert_eq!(ext.target, "Point");
+    assert_eq!(ext.trait_name, Some("Display".into()));
+}
+```
+
+**Step 9: Build to verify**
+
+Run: `cargo build -p auto-lang`
+Expected: Compiles with no errors (parser/transpiler not yet using the field).
+
+**Step 10: Commit**
+
+```bash
+git add crates/auto-lang/src/ast/ext.rs
+git commit -m "feat: add trait_name field to Ext AST node (Plan 164)"
+```
+
+---
+
+### Task 2: Parser — Parse `for TraitName` in ext blocks
+
+**Files:**
+- Modify: `crates/auto-lang/src/parser.rs:3254-3258`
+
+**Step 1: Parse `for` keyword**
+
+In `parse_ext_stmt()`, after the generic instance skip block (line 3254), and **before** the `expect(TokenKind::LBrace)` (line 3257), insert the `for` parsing:
+
+```rust
+        // Plan 164: Parse optional "for TraitName" for external trait implementation
+        // e.g., ext Point for Display { ... }
+        let mut trait_name: Option<Name> = None;
+        if self.is_kind(TokenKind::For) {
+            self.next(); // skip 'for'
+            trait_name = Some(self.parse_name()?);
+
+            // Skip generic args on trait name, e.g., ext MyType for From<String>
+            if self.is_kind(TokenKind::Lt) {
+                self.next(); // skip '<'
+                if self.next_token_is_type() {
+                    let _ = self.parse_type()?;
+                }
+                while self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    if self.next_token_is_type() {
+                        let _ = self.parse_type()?;
+                    }
+                }
+                self.expect(TokenKind::Gt)?;
+            }
+        }
+
+        // Expect opening brace
+        self.expect(TokenKind::LBrace)?;
+```
+
+**Step 2: Wire into Ext construction**
+
+At line 3427 where `Ext` is constructed, add `trait_name`:
+
+```rust
+        let ext = Ext {
+            target,
+            trait_name,
+            generic_params,
+            fields,
+            methods,
+            module_path,
+            is_same_module,
+        };
+```
+
+**Step 3: Build to verify**
+
+Run: `cargo build -p auto-lang`
+Expected: Compiles successfully.
+
+**Step 4: Commit**
+
+```bash
+git add crates/auto-lang/src/parser.rs
+git commit -m "feat: parse 'ext Type for Trait' syntax (Plan 164)"
+```
+
+---
+
+### Task 3: Transpiler — Emit `impl Trait for Type`
+
+**Files:**
+- Modify: `crates/auto-lang/src/trans/rust.rs:3391-3394`
+
+**Step 1: Update `ext_decl()` header**
+
+In `ext_decl()` (line 3392), replace the existing `write!(sink.body, "impl {}", ext.target)?;` with:
+
+```rust
+    fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
+        // Plan 164: Support "ext Type for Trait" → impl Trait for Type
+        match &ext.trait_name {
+            Some(trait_name) => {
+                write!(sink.body, "impl {} for {}", trait_name, ext.target)?;
+            }
+            None => {
+                write!(sink.body, "impl {}", ext.target)?;
+            }
+        }
+
+        // Add generic parameters if present (unchanged)
+        // ...
+```
+
+**Step 2: Build to verify**
+
+Run: `cargo build -p auto-lang`
+Expected: Compiles successfully.
+
+**Step 3: Commit**
+
+```bash
+git add crates/auto-lang/src/trans/rust.rs
+git commit -m "feat: a2r emit impl Trait for Type (Plan 164)"
+```
+
+---
+
+### Task 4: Test — Create a2r test case `153_ext_for`
+
+**Files:**
+- Create: `crates/auto-lang/test/a2r/153_ext_for/ext_for.at`
+- Create: `crates/auto-lang/test/a2r/153_ext_for/ext_for.expected.rs`
+- Modify: `crates/auto-lang/src/trans/rust.rs` (add test function)
+
+**Step 1: Create test input**
+
+Create `crates/auto-lang/test/a2r/153_ext_for/ext_for.at`:
 
 ```auto
-// 153_ext_for/ext_for.at
-
 type Point {
     x int
     y int
@@ -112,60 +266,79 @@ ext Point for Default {
     }
 }
 
-ext Point for Display {
-    fn fmt() String {
-        return f"(${.x}, ${.y})"
+ext Point {
+    fn origin() Point {
+        return Point(x: 0, y: 0)
     }
 }
 
 fn main() {
     let p = Point.default()
-    let s = p.fmt()
+    let o = Point.origin()
 }
 ```
 
-Expected Rust output:
+**Step 2: Run test to generate initial output**
+
+Run: `cargo test -p auto-lang test_153_ext_for 2>&1 || true`
+
+This will create `ext_for.wrong.rs`. Inspect the output.
+
+**Step 3: Review and create expected output**
+
+Create `crates/auto-lang/test/a2r/153_ext_for/ext_for.expected.rs` based on the `.wrong.rs` output (fixing any issues).
+
+Expected structure:
+- `struct Point { x: i32, y: i32 }`
+- `impl Default for Point { fn default() -> Point { ... } }`
+- `impl Point { fn origin() -> Point { ... } }`
+- `fn main() { ... }`
+
+**Step 4: Add test function to `trans/rust.rs`**
+
+In the `#[cfg(test)]` module at the end of `trans/rust.rs`, add:
 
 ```rust
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-impl Default for Point {
-    fn default() -> Point {
-        Point { x: 0, y: 0 }
-    }
-}
-
-impl Display for Point {
-    fn fmt(&self) -> String {
-        format!("({}, {})", self.x, self.y)
-    }
-}
-
-fn main() {
-    let p = Point::default();
-    let s = p.fmt();
+#[test]
+fn test_153_ext_for() {
+    test_a2r("153_ext_for").unwrap();
 }
 ```
 
-## Files to Modify
+**Step 5: Run test to verify**
 
-| File | Change |
-|------|--------|
-| `crates/auto-lang/src/ast/ext.rs` | Add `trait_name: Option<Name>` field |
-| `crates/auto-lang/src/parser.rs` | Parse `for TraitName` in `parse_ext_stmt()` |
-| `crates/auto-lang/src/trans/rust.rs` | Emit `impl Trait for Type` when `trait_name` is Some |
-| `crates/auto-lang/test/a2r/153_ext_for/` | New test case |
-| `crates/auto-lang/test/a2r/153_ext_for/ext_for.at` | Input |
-| `crates/auto-lang/test/a2r/153_ext_for/ext_for.expected.rs` | Expected output |
+Run: `cargo test -p auto-lang test_153_ext_for`
+Expected: PASS
 
-## Success Criteria
+**Step 6: Run all a2r tests to verify no regressions**
 
-- [ ] `ext Type for TraitName { }` parses correctly
-- [ ] a2r generates `impl TraitName for Type { }`
-- [ ] Existing `ext Type { }` (inherent impl) still works
-- [ ] Existing `type X as Spec { }` (spec-based impl) still works
-- [ ] All existing a2r tests still pass
-- [ ] New test `153_ext_for` passes
+Run: `cargo test -p auto-lang -- trans`
+Expected: All tests pass.
+
+**Step 7: Commit**
+
+```bash
+git add crates/auto-lang/test/a2r/153_ext_for/ crates/auto-lang/src/trans/rust.rs
+git commit -m "test: add a2r ext-for external trait test (Plan 164)"
+```
+
+---
+
+### Task 5: Final verification
+
+**Step 1: Run full test suite**
+
+Run: `cargo test -p auto-lang`
+Expected: All tests pass, no regressions.
+
+**Step 2: Update Plan 159 status**
+
+In `docs/plans/159-autocode-coding-agent.md`, update Phase 6B-4.4 status:
+- `6B-4.4 | impl Trait for Type | ❌ 仅支持 spec | P0` → `6B-4.4 | impl Trait for Type | ✅ Plan 164 | ~~P0~~`
+
+**Step 3: Final commit**
+
+```bash
+git add docs/plans/159-autocode-coding-agent.md
+git commit -m "docs: update plan 159 — mark 6B-4.4 done via Plan 164"
+```
