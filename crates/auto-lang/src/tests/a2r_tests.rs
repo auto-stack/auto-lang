@@ -233,6 +233,11 @@ fn test_130_option_construct() {
 }
 
 #[test]
+fn test_143_empty_variant_match() {
+    test_a2r("143_empty_variant_match").unwrap();
+}
+
+#[test]
 fn test_131_method_chain() {
     test_a2r("131_method_chain").unwrap();
 }

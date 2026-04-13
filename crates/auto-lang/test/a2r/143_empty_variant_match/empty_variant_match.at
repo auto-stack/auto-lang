@@ -1,0 +1,17 @@
+// Test: empty variant enum pattern matching in is statement
+
+enum Coin {
+    Penny
+    Nickel
+    Dime
+    Quarter
+}
+
+fn main() {
+    let c = Coin.Penny
+    is c {
+        Coin.Penny => print("Penny!")
+        Coin.Nickel => print("Nickel!")
+        else => print("Other")
+    }
+}

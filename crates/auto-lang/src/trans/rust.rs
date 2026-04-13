@@ -668,12 +668,18 @@ impl RustTrans {
                     crate::ast::Cover::Tag(tag_cover) => {
                         // **Phase 1.3: Tag Types**
                         // Tag patterns: Atom.Int(i) -> Atom::Int(i)
-                        write!(
-                            out,
-                            "{}::{}({})",
-                            tag_cover.kind, tag_cover.tag, tag_cover.elem
-                        )
-                        .map_err(Into::into)
+                        // Empty variants (elem == "_"): Coin.Penny -> Coin::Penny
+                        if tag_cover.elem.as_str() == "_" {
+                            write!(out, "{}::{}", tag_cover.kind, tag_cover.tag)
+                                .map_err(Into::into)
+                        } else {
+                            write!(
+                                out,
+                                "{}::{}({})",
+                                tag_cover.kind, tag_cover.tag, tag_cover.elem
+                            )
+                            .map_err(Into::into)
+                        }
                     }
                 }
             }

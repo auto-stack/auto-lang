@@ -2860,12 +2860,16 @@ impl<'a> Parser<'a> {
         // if expr is A Tag/Enum, could be a Tag Creation Expr,
         // format is: EnumName.Variant(elem)
         let typ = self.lookup_type(&name);
-        match *typ.borrow() {
-            Type::Tag(_) | Type::Enum(_) => return self.tag_cover(&name),
-            _ => {
-                return Ok(Expr::Ident(name));
-            }
-        };
+        let is_enum_or_tag = matches!(*typ.borrow(), Type::Enum(_) | Type::Tag(_));
+        // Type::User may shadow an enum — check type_store explicitly
+        let is_user_enum = matches!(*typ.borrow(), Type::User(_))
+            && self.type_store.read()
+                .map(|store| store.lookup_enum_decl_str(&name).is_some())
+                .unwrap_or(false);
+        if is_enum_or_tag || is_user_enum {
+            return self.tag_cover(&name);
+        }
+        Ok(Expr::Ident(name))
     }
 
     pub fn iterable_expr(&mut self) -> AutoResult<Expr> {
@@ -4869,55 +4873,60 @@ impl<'a> Parser<'a> {
 
                 // Check for pattern binding cases
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
-                    // Tag pattern: Msg.Inc(value) => ...
-                    self.enter_scope();
-                    let tag_typ = self.lookup_type(&cover.kind);
-                    let tag_field_type = match *tag_typ.borrow() {
-                        Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
-                        Type::Enum(ref en) => {
-                            // Heterogeneous enum pattern: Atom.Int(i) => ...
-                            let en_ref = en.borrow();
-                            match &en_ref.kind {
-                                EnumKind::Heterogeneous { .. } => {
-                                    // Find the variant's payload type
-                                    en_ref.items.iter()
-                                        .find(|item| item.name == cover.tag.as_str())
-                                        .and_then(|item| item.payload_type.clone())
-                                        .unwrap_or(Type::Unknown)
-                                }
-                                _ => {
-                                    return Err(SyntaxError::Generic {
-                                        message: format!("Invalid enum type for tag pattern: {}", cover.kind),
-                                        span: pos_to_span(self.cur.pos),
+                    // Empty variant (elem == "_"): no binding needed
+                    if cover.elem.as_str() == "_" {
+                        self.parse_expr_or_body()?
+                    } else {
+                        // Tag pattern with binding: Msg.Inc(value) => ...
+                        self.enter_scope();
+                        let tag_typ = self.lookup_type(&cover.kind);
+                        let tag_field_type = match *tag_typ.borrow() {
+                            Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                            Type::Enum(ref en) => {
+                                // Heterogeneous enum pattern: Atom.Int(i) => ...
+                                let en_ref = en.borrow();
+                                match &en_ref.kind {
+                                    EnumKind::Heterogeneous { .. } => {
+                                        // Find the variant's payload type
+                                        en_ref.items.iter()
+                                            .find(|item| item.name == cover.tag.as_str())
+                                            .and_then(|item| item.payload_type.clone())
+                                            .unwrap_or(Type::Unknown)
                                     }
-                                    .into());
+                                    _ => {
+                                        return Err(SyntaxError::Generic {
+                                            message: format!("Invalid enum type for tag pattern: {}", cover.kind),
+                                            span: pos_to_span(self.cur.pos),
+                                        }
+                                        .into());
+                                    }
                                 }
                             }
-                        }
-                        _ => {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Invalid tag type: {}", cover.kind),
-                                span: pos_to_span(self.cur.pos),
+                            _ => {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Invalid tag type: {}", cover.kind),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
                             }
-                            .into());
-                        }
-                    };
+                        };
 
-                    self.define(
-                        cover.elem.as_str(),
-                        Meta::Store(Store {
-                            name: cover.elem.clone(),
-                            kind: StoreKind::Let,
-                            ty: tag_field_type,
-                            expr: Expr::Uncover(TagUncover {
-                                src: tgt.repr(),
-                                cover: cover.clone(),
+                        self.define(
+                            cover.elem.as_str(),
+                            Meta::Store(Store {
+                                name: cover.elem.clone(),
+                                kind: StoreKind::Let,
+                                ty: tag_field_type,
+                                expr: Expr::Uncover(TagUncover {
+                                    src: tgt.repr(),
+                                    cover: cover.clone(),
+                                }),
                             }),
-                        }),
-                    );
-                    let body = self.parse_expr_or_body()?;
-                    self.exit_scope();
-                    body
+                        );
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    }
                 } else if let Expr::OptionPattern(opt_cover) = &expr {
                     // Plan 120: Option pattern: Some(x) => ... or None => ...
                     if let Some(binding) = &opt_cover.binding {
