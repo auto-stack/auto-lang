@@ -3390,8 +3390,15 @@ impl RustTrans {
 
     // Ext block (type extension) - transpiles to impl block
     fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
-        // Generate impl block for the target type
-        write!(sink.body, "impl {}", ext.target)?;
+        // Plan 164: Support "ext Type for Trait" → impl Trait for Type
+        match &ext.trait_name {
+            Some(trait_name) => {
+                write!(sink.body, "impl {} for {}", trait_name, ext.target)?;
+            }
+            None => {
+                write!(sink.body, "impl {}", ext.target)?;
+            }
+        }
 
         // Add generic parameters if present
         if !ext.generic_params.is_empty() {
