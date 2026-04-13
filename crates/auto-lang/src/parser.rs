@@ -1157,7 +1157,12 @@ impl<'a> Parser<'a> {
             if let Stmt::TypeDecl(ref decl) = stmt {
                 type_decl_indices.insert(decl.name.clone(), i);
             } else if let Stmt::Ext(ref ext) = stmt {
-                ext_statements.push((i, ext.clone()));
+                // Plan 164: ext blocks with "for Trait" should NOT be merged into TypeDecl
+                // They must remain as standalone Stmt::Ext so the transpiler can emit
+                // "impl Trait for Type" instead of "impl Type"
+                if ext.trait_name.is_none() {
+                    ext_statements.push((i, ext.clone()));
+                }
             }
         }
 

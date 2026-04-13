@@ -405,3 +405,9 @@ fn test_151_mut_self() {
 fn test_152_field_attrs() {
     test_a2r("152_field_attrs").unwrap();
 }
+
+// Plan 164: ext Type for Trait { } — external trait impl
+#[test]
+fn test_153_ext_for() {
+    test_a2r("153_ext_for").unwrap();
+}

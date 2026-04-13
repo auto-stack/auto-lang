@@ -1,0 +1,21 @@
+type Point {
+    x int
+    y int
+}
+
+ext Point for Default {
+    fn default() Point {
+        return Point(x: 0, y: 0)
+    }
+}
+
+ext Point {
+    fn origin() Point {
+        return Point(x: 0, y: 0)
+    }
+}
+
+fn main() {
+    let p = Point.default()
+    let o = Point.origin()
+}
