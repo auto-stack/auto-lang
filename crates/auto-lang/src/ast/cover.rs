@@ -47,6 +47,24 @@ pub enum ResultVariant {
     Err,
 }
 
+// Plan 165: Struct destructuring pattern for is statement
+// is x { Point { x, y } => ... } or is x { Message.User { content } => ... }
+
+/// A single field binding in a struct destructuring pattern
+#[derive(Debug, Clone)]
+pub struct FieldBinding {
+    pub field: AutoStr,       // Field name
+    pub binding: AutoStr,     // Binding name (same as field when using shorthand)
+}
+
+/// Struct destructuring pattern: Type { field1, field2: alias }
+#[derive(Debug, Clone)]
+pub struct StructCover {
+    pub type_name: AutoStr,           // "Point" or "Message"
+    pub variant: Option<AutoStr>,     // Some("User") for enum variant, None for plain struct
+    pub fields: Vec<FieldBinding>,    // field bindings
+}
+
 // Unwrap expressions for is statement pattern matching
 #[derive(Debug, Clone)]
 pub struct OptionUncover {
@@ -134,6 +152,31 @@ impl fmt::Display for ResultUncover {
     }
 }
 
+// Plan 165: Display for struct destructuring pattern
+impl fmt::Display for FieldBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.field == self.binding {
+            write!(f, "{}", self.field)
+        } else {
+            write!(f, "{}: {}", self.field, self.binding)
+        }
+    }
+}
+
+impl fmt::Display for StructCover {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.variant {
+            Some(v) => write!(f, "(struct-cover {}.{} {{", self.type_name, v)?,
+            None => write!(f, "(struct-cover {} {{", self.type_name)?,
+        }
+        for (i, fb) in self.fields.iter().enumerate() {
+            if i > 0 { write!(f, " ")?; }
+            write!(f, "{}", fb)?;
+        }
+        write!(f, "}})")
+    }
+}
+
 // ToNode implementations
 use crate::ast::ToNode;
 
@@ -211,6 +254,30 @@ impl ToNode for ResultUncover {
         node.set_prop("src", Value::Str(self.src.clone()));
         node.set_prop("binding", Value::Str(self.binding.clone()));
         node.set_prop("variant", Value::Str(self.variant.to_string().into()));
+        node
+    }
+}
+
+// Plan 165: ToNode for struct destructuring pattern
+impl ToNode for FieldBinding {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("field-binding");
+        node.set_prop("field", Value::Str(self.field.clone()));
+        node.set_prop("binding", Value::Str(self.binding.clone()));
+        node
+    }
+}
+
+impl ToNode for StructCover {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("struct-cover");
+        node.set_prop("type_name", Value::Str(self.type_name.clone()));
+        if let Some(ref v) = self.variant {
+            node.set_prop("variant", Value::Str(v.clone()));
+        }
+        for fb in &self.fields {
+            node.add_kid(fb.to_node());
+        }
         node
     }
 }

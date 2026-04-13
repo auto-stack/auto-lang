@@ -256,6 +256,8 @@ impl<'db> DepScanner<'db> {
             | Expr::ResultPattern(_) => {}
             | Expr::OptionUncover(_) => {}
             | Expr::ResultUncover(_) => {}
+            // Plan 165: Struct destructuring pattern - no dependencies
+            | Expr::StructPattern(_) => {}
             // Plan 124: Async/Future/Await - walk inner expressions
             | Expr::AsyncBlock { body, .. } => {
                 for stmt in &body.stmts {

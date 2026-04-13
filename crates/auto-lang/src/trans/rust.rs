@@ -700,6 +700,11 @@ impl RustTrans {
                 write!(out, "{}", uncover.binding).map_err(Into::into)
             }
 
+            // Plan 165: Struct destructuring pattern (handled in is_stmt, stub here)
+            Expr::StructPattern(_) => {
+                write!(out, "/* struct-pattern */").map_err(Into::into)
+            }
+
             // Plan 120/159: Option/Result patterns (used in is statement branches)
             // These are handled in is_stmt, not as standalone expressions.
             // Provide a fallback for cases where they appear as expressions.

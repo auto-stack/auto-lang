@@ -405,6 +405,9 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::OptionUncover(_) => Type::Unknown,  // Type depends on Option<T>
         Expr::ResultUncover(_) => Type::Unknown,  // Type depends on Result<T, E>
 
+        // Plan 165: Struct destructuring pattern in is statement
+        Expr::StructPattern(_) => Type::Bool,
+
         // ========== Plan 124: Async/Future/Await ==========
         // Async block returns Future<T> where T is the return type of the block
         Expr::AsyncBlock { body: _, return_type } => {
