@@ -2788,9 +2788,64 @@ impl<'a> Parser<'a> {
             self.atom()?
         };
 
+        // Plan 165: Check for plain struct destructuring: Point { x, y }
+        if let Expr::Ident(name) = &lhs {
+            if self.is_kind(TokenKind::LBrace) {
+                let name = name.clone();
+                return self.parse_struct_cover(name, None);
+            }
+        }
+
         // Continue parsing to handle member access (e.g., Msg.Inc)
-        // This allows expressions like "Msg.Inc" in is branches
-        self.expr_pratt_with_left(lhs, 0)
+        let result = self.expr_pratt_with_left(lhs, 0)?;
+
+        // Plan 165: Check for enum variant struct destructuring: Msg.User { content }
+        if let Expr::Cover(Cover::Tag(tag)) = &result {
+            if self.is_kind(TokenKind::LBrace) {
+                let type_name = tag.kind.clone();
+                let variant = Some(tag.tag.clone());
+                return self.parse_struct_cover(type_name, variant);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Plan 165: Parse struct destructuring pattern: Name { field1, field2: alias }
+    /// Called when we see `{` after a type name in an is branch.
+    fn parse_struct_cover(&mut self, type_name: AutoStr, variant: Option<AutoStr>) -> AutoResult<Expr> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut fields = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            let field = self.parse_name()?;
+            let binding = if self.is_kind(TokenKind::Colon) {
+                // field: alias
+                self.next(); // skip ':'
+                self.parse_name()?
+            } else {
+                // shorthand: field name = binding name
+                field.clone()
+            };
+            fields.push(crate::ast::cover::FieldBinding {
+                field,
+                binding,
+            });
+
+            // Optional comma separator
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Expr::StructPattern(crate::ast::cover::StructCover {
+            type_name,
+            variant,
+            fields,
+        }))
     }
 
     /// Parse Option pattern: Some(binding) for is statement
