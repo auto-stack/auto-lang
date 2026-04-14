@@ -1,15 +1,15 @@
 class Wing {
 
     fly(): void {
-    console.log("flying");
-}
+        console.log("flying");
+    }
 }
 
 class Duck {
 
     fly(): void {
-    console.log("flying");
-}
+        console.log("flying");
+    }
 }
 
 function main(): void {

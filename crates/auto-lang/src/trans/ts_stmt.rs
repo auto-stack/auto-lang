@@ -441,10 +441,16 @@ impl TypeScriptTrans {
             out.write_all(method.name.as_bytes())?;
             out.write(b"(")?;
 
-            for (i, param) in method.params.iter().enumerate() {
-                if i > 0 {
+            // Skip 'self' parameter — TypeScript methods use implicit `this`
+            let mut first = true;
+            for param in method.params.iter() {
+                if param.name == "self" {
+                    continue;
+                }
+                if !first {
                     out.write(b", ")?;
                 }
+                first = false;
                 out.write_all(param.name.as_bytes())?;
                 if !matches!(param.ty, Type::Unknown) {
                     out.write(b": ")?;
@@ -462,7 +468,28 @@ impl TypeScriptTrans {
                 out.write(b": void")?;
             }
 
-            self.body(&method.body, out)?;
+            // Method body — add `return` before the last expression
+            // if the method has a non-void return type (TS method body
+            // does not auto-return like arrow functions)
+            let needs_return = !matches!(method.ret, Type::Unknown | Type::Void);
+            out.write(b" {")?;
+            let stmts = &method.body.stmts;
+            for (i, stmt) in stmts.iter().enumerate() {
+                out.write(b"\n        ")?;
+                let is_last = i == stmts.len() - 1;
+                if is_last && needs_return {
+                    if let Stmt::Expr(expr) = stmt {
+                        out.write(b"return ")?;
+                        self.expr(expr, out)?;
+                        out.write(b";")?;
+                    } else {
+                        self.stmt(stmt, out)?;
+                    }
+                } else {
+                    self.stmt(stmt, out)?;
+                }
+            }
+            out.write(b"\n    }")?;
         }
 
         out.write(b"\n}")?;
@@ -694,9 +721,15 @@ impl TypeScriptTrans {
             out.write(b".prototype.")?;
             out.write_all(method.name.as_bytes())?;
             out.write(b" = function(")?;
-            
-            for (i, param) in method.params.iter().enumerate() {
-                if i > 0 { out.write(b", ")?; }
+
+            // Skip 'self' parameter — TypeScript methods use implicit `this`
+            let mut first = true;
+            for param in method.params.iter() {
+                if param.name == "self" {
+                    continue;
+                }
+                if !first { out.write(b", ")?; }
+                first = false;
                 out.write_all(param.name.as_bytes())?;
                 if !matches!(param.ty, Type::Unknown) {
                     out.write(b": ")?;
@@ -712,7 +745,28 @@ impl TypeScriptTrans {
                 out.write(b": void")?;
             }
 
-            self.body(&method.body, out)?;
+            // Method body — add `return` before the last expression
+            // if the method has a non-void return type (TS function()
+            // does not auto-return like arrow functions)
+            let needs_return = !matches!(method.ret, Type::Unknown | Type::Void);
+            out.write(b" {")?;
+            let stmts = &method.body.stmts;
+            for (i, stmt) in stmts.iter().enumerate() {
+                out.write(b"\n    ")?;
+                let is_last = i == stmts.len() - 1;
+                if is_last && needs_return {
+                    if let Stmt::Expr(expr) = stmt {
+                        out.write(b"return ")?;
+                        self.expr(expr, out)?;
+                        out.write(b";")?;
+                    } else {
+                        self.stmt(stmt, out)?;
+                    }
+                } else {
+                    self.stmt(stmt, out)?;
+                }
+            }
+            out.write(b"\n}")?;
             out.write(b";\n")?;
         }
         Ok(())

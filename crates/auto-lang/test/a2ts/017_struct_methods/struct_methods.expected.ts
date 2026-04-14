@@ -6,12 +6,12 @@ class Calculator {
     }
 
     add(a: number, b: number): number {
-    a + b;
-}
+        return a + b;
+    }
 
     multiply(a: number, b: number): number {
-    a * b;
-}
+        return a * b;
+    }
 }
 
 function main(): void {

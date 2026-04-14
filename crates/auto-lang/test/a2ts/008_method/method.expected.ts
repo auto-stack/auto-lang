@@ -8,8 +8,8 @@ class Point {
     }
 
     modulus(): number {
-    this.x * this.x + this.y * this.y;
-}
+        return this.x * this.x + this.y * this.y;
+    }
 }
 
 function main(): void {

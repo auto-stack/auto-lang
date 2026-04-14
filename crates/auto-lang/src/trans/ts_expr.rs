@@ -218,6 +218,28 @@ impl TypeScriptTrans {
                 Ok(())
             }
 
+            // Box/Arc smart pointer (hardcoded in parser for Rust backend)
+            // In TS context, treat as regular constructor calls
+            Expr::BoxExpr(inner) => {
+                out.write(b"new Box(")?;
+                self.expr(inner, out)?;
+                out.write(b")")?;
+                Ok(())
+            }
+            Expr::ArcExpr(inner) => {
+                out.write(b"new Arc(")?;
+                self.expr(inner, out)?;
+                out.write(b")")?;
+                Ok(())
+            }
+
+            // Generic name expression (e.g. Pair<int, str> in expression position)
+            // Strip generic args — TypeScript infers them at call sites
+            Expr::GenName(name) => {
+                let base = name.split('<').next().unwrap_or(name);
+                out.write_all(base.as_bytes()).map_err(Into::into)
+            }
+
             // Unsupported expressions
             _ => Err(format!("TypeScript Transpiler: unsupported expression: {}", expr).into()),
         }

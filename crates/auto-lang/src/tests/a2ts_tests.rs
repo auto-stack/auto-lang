@@ -153,3 +153,9 @@ fn test_030_range_expr() {
 fn test_018_delegation() {
     test_a2ts("018_delegation").unwrap();
 }
+
+#[test]
+fn test_033_ext() {
+    test_a2ts("033_ext").unwrap();
+}
+

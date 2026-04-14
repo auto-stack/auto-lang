@@ -1,15 +1,15 @@
 class Pigeon implements Flyer {
 
     fly(): void {
-    console.log("Flap Flap");
-}
+        console.log("Flap Flap");
+    }
 }
 
 class Hawk implements Flyer {
 
     fly(): void {
-    console.log("Gawk! Gawk!");
-}
+        console.log("Gawk! Gawk!");
+    }
 }
 
 function main(): void {

@@ -1,0 +1,19 @@
+type Point {
+    x int
+    y int
+}
+
+ext Point {
+    fn distance(self, other Point) int {
+        let dx = self.x - other.x
+        let dy = self.y - other.y
+        dx * dx + dy * dy
+    }
+}
+
+fn main() {
+    let p1 = Point(1, 2)
+    let p2 = Point(4, 6)
+    let d = p1.distance(p2)
+    print("Distance:", d)
+}

@@ -1,8 +1,8 @@
 class Pigeon implements Flyer {
 
     fly(): void {
-    console.log("Flap");
-}
+        console.log("Flap");
+    }
 }
 
 function main(): void {
