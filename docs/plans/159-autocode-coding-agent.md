@@ -20,6 +20,8 @@
 - **后续**: 移植到 AutoLang，作为 auto-lang workspace 中的新 crate
 
 ### 参考架构
+- **Rust 原型** (`D:\autostack\auto-code-rs`): Rust 实现，功能完整的 MVP（Phase 1-5）
+- **AutoLang 移植版** (`D:\autostack\auto-coder`): .at 代码移植版（Phase 6A）
 - **Claude Code** (`D:\github\claude-code`): TypeScript 实现，核心参考
 - **claw-code** (`D:\github\claw-code`): Rust 实现，直接参考其 crate 结构和 API 设计
 
@@ -69,14 +71,19 @@ D:\autostack\auto-code-rs\
 │           └── repl.rs           # 交互式 REPL 循环
 ```
 
-AutoLang 移植版本（后续，在 auto-lang workspace 中）：
+AutoLang 移植版本（✅ 已完成，位于 `D:\autostack\auto-coder`）：
 
 ```
-crates/
-├── auto-code-api/      # LLM API 模块（.at 代码 + Rust FFI）
-├── auto-code-tools/    # 工具模块
-├── auto-code-core/     # Agent 运行时
-└── auto-code-cli/      # CLI 入口
+D:\autostack\auto-coder\
+├── auto-coder.at        # CLI 入口 + REPL
+├── agent.at             # Agent 运行时（agentic loop）
+├── llm_client.at        # LLM API 通信层
+├── anthropic.at         # Claude Messages API 适配器
+├── openai.at            # OpenAI Chat Completions 适配器
+├── tools.at             # 工具定义与执行（Bash/Read/Write/Edit/Grep）
+├── context.at           # 上下文压缩
+├── session.at           # 会话持久化（JSONL）
+└── prompt.at            # System prompt
 ```
 
 ### 2.2 Crate 依赖关系
@@ -1229,11 +1236,11 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 >
 > 两条轨道互相促进：VM FFI 提供即时可用的运行时能力，a2r 增强提供长期编译路径。
 
-#### Phase 6A: VM FFI 桥接（已完成 FFI 部分）
+#### Phase 6A: VM FFI 桥接 + AutoLang 移植 ✅ 已完成
 
 **目标**: 通过 VM FFI 让 AutoLang 代码可以驱动 AutoCode 的全部功能
 
-**已完成** (2026-04-08):
+**FFI 基础** (2026-04-08):
 
 | # | FFI 函数 | NATIVE_ID | 状态 |
 |---|---------|-----------|------|
@@ -1245,18 +1252,18 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6A.6 | `File.append_text` | 1011 | ✅ 完成 |
 | 6A.7 | `File.read_lines` | 1012 | ✅ 完成 |
 
-**待完成（VM FFI 应用层）**:
+**AutoLang 移植** (位于 `D:\autostack\auto-coder`):
 
-| # | 步骤 | 产出文件 | 说明 |
+| # | 步骤 | 产出文件 | 状态 |
 |---|------|---------|------|
-| 6A.8 | 创建 auto-code crate 骨架 | `crates/auto-code/Cargo.toml`, `src/lib.rs` | 空壳，导出 .at 模块 |
-| 6A.9 | 移植 API 通信层 | `crates/auto-code/src/llm_client.at` | 用 http_post_stream_with_headers 调 LLM |
-| 6A.10 | 移植 Anthropic 适配器 | `crates/auto-code/src/anthropic.at` | Claude API 格式 |
-| 6A.11 | 移植 OpenAI 适配器 | `crates/auto-code/src/openai.at` | OpenAI API 格式 |
-| 6A.12 | 移植工具系统 | `crates/auto-code/src/tools.at` | Bash/Read/Write/Edit/Grep |
-| 6A.13 | 移植 Agent 循环 | `crates/auto-code/src/agent.at` | Agentic loop |
-| 6A.14 | 移植 CLI + REPL | `crates/auto-code/src/repl.at` | 交互式 REPL |
-| 6A.15 | 功能验证 | 测试 | 对比 Rust 原型功能 |
+| 6A.8 | 创建 auto-coder 骨架 | `auto-coder.at` | ✅ 完成 |
+| 6A.9 | 移植 API 通信层 | `llm_client.at` | ✅ 完成 |
+| 6A.10 | 移植 Anthropic 适配器 | `anthropic.at` | ✅ 完成 |
+| 6A.11 | 移植 OpenAI 适配器 | `openai.at` | ✅ 完成 |
+| 6A.12 | 移植工具系统 | `tools.at` | ✅ 完成 |
+| 6A.13 | 移植 Agent 循环 | `agent.at` | ✅ 完成 |
+| 6A.14 | 移植 CLI + REPL | `auto-coder.at` | ✅ 完成 |
+| 6A.15 | 功能验证 | 测试 | ✅ 完成 |
 
 #### Phase 6B: a2r 转译器增强
 
@@ -1360,8 +1367,8 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 ```
 
 **验证标准**:
-- [ ] 所有新增 FFI 函数通过单元测试（✅ 已完成）
-- [ ] AutoLang VM 版本能启动 REPL 并连接 LLM API（Phase 6A 待完成）
+- [x] 所有新增 FFI 函数通过单元测试 ✅
+- [x] AutoLang VM 版本能启动 REPL 并连接 LLM API ✅ Phase 6A 完成（`D:\autostack\auto-coder`）
 - [x] a2r 转译器支持 Option/Result 构造和匹配（Phase 6B-1）✅ test 130
 - [x] a2r 转译器支持 HashMap 类型（Phase 6B-1）✅ Plan 160 完成
 - [x] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）✅ tests 133-135
@@ -1433,7 +1440,7 @@ dirs = "6"
 
 ### AutoLang 版（Phase 6）
 - [x] VM FFI 版本：所有 7 个 FFI 函数通过测试 ✅
-- [ ] VM FFI 版本：AutoLang 代码能驱动 Agent 循环（Phase 6A 待完成）
+- [x] VM FFI 版本：AutoLang 代码能驱动 Agent 循环 ✅ Phase 6A 完成（`D:\autostack\auto-coder`）
 - [x] a2r Phase 6B-1：Option/Result 构造和匹配转译通过测试 ✅ test 130
 - [x] a2r Phase 6B-1：HashMap 类型转译通过测试 ✅ test 128-129
 - [x] a2r Phase 6B-2：async fn + derive 宏转译通过测试 ✅ tests 133-135

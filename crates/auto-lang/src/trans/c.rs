@@ -735,6 +735,17 @@ impl CTrans {
     }
 
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Emit doc comments
+        if let Some(ref doc) = enum_decl.doc {
+            let mut out = std::mem::take(&mut self.header);
+            write!(out, "/**\n")?;
+            for line in doc.split('\n') {
+                write!(out, " * {}\n", line)?;
+            }
+            write!(out, " */\n")?;
+            self.header = out;
+        }
+
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
                 // C-style scalar enum: emit enum with values in header
@@ -800,6 +811,17 @@ impl CTrans {
     }
 
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Emit doc comments
+        if let Some(ref doc) = type_decl.doc {
+            let mut out = std::mem::take(&mut self.header);
+            write!(out, "/**\n")?;
+            for line in doc.split('\n') {
+                write!(out, " * {}\n", line)?;
+            }
+            write!(out, " */\n")?;
+            self.header = out;
+        }
+
         let mut out = std::mem::take(&mut self.header);
         // write type body
         out.write(b"struct ")?;
@@ -1965,6 +1987,16 @@ impl CTrans {
     }
 
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        // Emit doc comments
+        if let Some(ref doc) = fn_decl.doc {
+            let out = &mut sink.body;
+            write!(out, "/**\n")?;
+            for line in doc.split('\n') {
+                write!(out, " * {}\n", line)?;
+            }
+            write!(out, " */\n")?;
+        }
+
         let out = &mut sink.body;
         // header
         let mut header = Vec::new();

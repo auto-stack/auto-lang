@@ -64,6 +64,7 @@ pub enum TokenKind {
     CommentContent,   // any text in comment
     CommentStart,     // /*
     CommentEnd,       // */
+    DocComment,       // ///
     Arrow,            // ->
     DoubleArrow,      // =>
     Question,         // ?
@@ -246,6 +247,7 @@ impl fmt::Display for Token {
             TokenKind::CommentContent => write!(f, "<comment:...>"),
             TokenKind::CommentStart => write!(f, "</*>"),
             TokenKind::CommentEnd => write!(f, "<*/>"),
+            TokenKind::DocComment => write!(f, "<///>"),
             TokenKind::EOF => write!(f, "<eof>"),
             TokenKind::Char => write!(f, "<'{}'>", self.text),
             TokenKind::Is => write!(f, "<is>"),

@@ -2168,6 +2168,17 @@ impl RustTrans {
             return Ok(());
         }
 
+        // Emit doc comments
+        if let Some(ref doc) = fn_decl.doc {
+            let is_method = fn_decl.parent.is_some();
+            for line in doc.split('\n') {
+                if is_method {
+                    self.print_indent(&mut sink.body)?;
+                }
+                write!(sink.body, "/// {}\n", line)?;
+            }
+        }
+
         // Check if this is a method (has parent)
         let is_method = fn_decl.parent.is_some();
 
@@ -2681,6 +2692,13 @@ impl RustTrans {
 
     // Type declaration (struct)
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Emit doc comments
+        if let Some(ref doc) = type_decl.doc {
+            for line in doc.split('\n') {
+                write!(sink.body, "/// {}\n", line)?;
+            }
+        }
+
         // Generate traits for composed types
         for has_type in &type_decl.has {
             if let Type::User(has_decl) = has_type {
@@ -3329,6 +3347,13 @@ impl RustTrans {
 
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Emit doc comments
+        if let Some(ref doc) = enum_decl.doc {
+            for line in doc.split('\n') {
+                write!(sink.body, "/// {}\n", line)?;
+            }
+        }
+
         // Plan 163: Output pub prefix
         if enum_decl.is_pub {
             sink.body.write(b"pub ")?;

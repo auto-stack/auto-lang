@@ -1,0 +1,10 @@
+/// This is a test function
+/// With multiple lines
+fn test_func(x int) int {
+    x + 1
+}
+
+fn main() {
+    let result = test_func(5)
+    print(result)
+}

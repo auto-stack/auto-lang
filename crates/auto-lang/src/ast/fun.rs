@@ -27,6 +27,7 @@ pub struct Fn {
     pub is_pub: bool,   // Plan 163: true for #[pub] functions
     pub is_mut: bool,   // Plan 163: true for mut fn (generates &mut self)
     pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
+    pub doc: Option<AutoStr>,        /// Doc comment lines (///)
     pub span: Option<(usize, usize)>, // Source location for error reporting
 }
 
@@ -88,6 +89,7 @@ impl Fn {
             is_pub: false,           // Plan 163: default private
             is_mut: false,           // Plan 163: default immutable self
             type_params: Vec::new(), // Default to no generic parameters
+            doc: None,
             span: None,
         }
     }
@@ -113,6 +115,7 @@ impl Fn {
             is_pub: false,           // Plan 163: default private
             is_mut: false,           // Plan 163: default immutable self
             type_params: Vec::new(), // Default to no generic parameters
+            doc: None,
             span: None,
         }
     }

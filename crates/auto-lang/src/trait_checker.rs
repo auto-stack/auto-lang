@@ -268,6 +268,7 @@ mod tests {
             delegations: Vec::new(),
             methods,
             attrs: vec![],
+            doc: None,
             is_pub: false,
         }
     }
@@ -296,6 +297,7 @@ mod tests {
             type_params: Vec::new(),  // Plan 061: No generic parameters
             span: None,  // Plan 061: No source location
             is_mut: false,
+            doc: None,
             is_pub: false,
         }
     }
@@ -432,6 +434,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
             attrs: vec![],
+            doc: None,
             is_pub: false,
         };
 
@@ -492,6 +495,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
             attrs: vec![],
+            doc: None,
             is_pub: false,
         };
 
@@ -547,6 +551,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)], // Missing 'set'
             attrs: vec![],
+            doc: None,
             is_pub: false,
         };
 
@@ -586,6 +591,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![],
             attrs: vec![],
+            doc: None,
             is_pub: false,
         };
 

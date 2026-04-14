@@ -129,6 +129,7 @@ mod tests {
             methods: vec![],
             spec_impls: vec![],
             attrs: vec![],
+            doc: None,
             is_pub: false,
         };
 
@@ -161,6 +162,7 @@ mod tests {
             methods: vec![],
             spec_impls: vec![],
             attrs: vec![],
+            doc: None,
             is_pub: false,
         };
 

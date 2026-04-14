@@ -45,6 +45,7 @@ pub struct EnumDecl {
     pub name: AutoStr,
     pub items: Vec<EnumItem>,
     pub kind: EnumKind,
+    pub doc: Option<AutoStr>,
     pub is_pub: bool,
 }
 
@@ -91,6 +92,7 @@ impl EnumDecl {
             kind: EnumKind::Scalar {
                 repr_type: None,
             },
+            doc: None,
             is_pub: false,
         }
     }

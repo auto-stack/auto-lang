@@ -130,7 +130,8 @@
       "Bash(D:/autostack/auto-lang/target/release/auto.exe build:*)"
     ],
     "additionalDirectories": [
-      "d:\\autostack\\auto-lang\\docs\\plans"
+      "d:\\autostack\\auto-lang\\docs\\plans",
+      "C:\\Users\\zhaop\\.claude"
     ]
   }
 }

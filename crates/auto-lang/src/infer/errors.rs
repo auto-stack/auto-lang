@@ -407,6 +407,7 @@ mod tests {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            doc: None,
             is_pub: false,
         });
         let found = Type::User(crate::ast::TypeDecl {
@@ -421,6 +422,7 @@ mod tests {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            doc: None,
             is_pub: false,
         });
         let hint = suggest_type_mismatch_fix(&expected, &found);

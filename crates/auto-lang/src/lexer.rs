@@ -850,9 +850,8 @@ impl<'a> Lexer<'a> {
     fn slash_or_comment(&mut self) -> Token {
         self.chars.next();
         if self.peek('/') {
-            // //
-            let tok = Token::new(TokenKind::CommentLine, self.pos(2), "//".into());
-            // content
+            // // or ///
+            // Read content after //
             let mut text = String::new();
             while let Some(&c) = self.chars.peek() {
                 if c == '\n' {
@@ -861,7 +860,19 @@ impl<'a> Lexer<'a> {
                 text.push(c);
                 self.chars.next();
             }
-            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text.into());
+            // Check for doc comment: /// (content starts with //)
+            if let Some(rest) = text.strip_prefix("//") {
+                let doc_content = rest.trim_start();
+                return Token::new(
+                    TokenKind::DocComment,
+                    self.pos(text.len() + 2),
+                    doc_content.trim_end().into(),
+                );
+            }
+            // Regular line comment
+            let tok = Token::new(TokenKind::CommentLine, self.pos(2), "//".into());
+            let content =
+                Token::new(TokenKind::CommentContent, self.pos(text.len()), text.into());
             self.buffer.push_back(content);
             tok
         } else if self.peek('*') {

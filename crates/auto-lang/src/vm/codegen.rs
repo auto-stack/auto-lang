@@ -491,6 +491,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -838,6 +839,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -855,6 +857,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -872,6 +875,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -889,6 +893,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -906,6 +911,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -923,6 +929,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 };
                                 self.var_types
@@ -945,6 +952,7 @@ impl Codegen {
                                         delegations: vec![],
                                         methods: vec![],
                                         attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                     };
                                     self.var_types
@@ -978,6 +986,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 }
                             } else if let Some(type_info) = self.get_type(type_name) {
@@ -999,6 +1008,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 }
                             } else {
@@ -1015,6 +1025,7 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                     attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                                 }
                             };
@@ -1069,6 +1080,7 @@ impl Codegen {
                                 delegations: vec![],
                                 methods: vec![],
                                 attrs: vec![],
+                                    doc: None,
                                     is_pub: false,
                             };
                             self.var_types

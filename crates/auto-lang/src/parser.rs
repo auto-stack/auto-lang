@@ -195,6 +195,8 @@ pub struct Parser<'a> {
     pub session: crate::session::CompilerSession,
     /// Plan 159 Phase 6B-2: Collected raw attribute strings for derive/serde passthrough
     raw_attrs: Vec<AutoStr>,
+    /// Collected doc comment lines (///) to attach to the next declaration
+    pending_docs: Vec<AutoStr>,
 }
 
 impl<'a> Parser<'a> {
@@ -238,6 +240,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            pending_docs: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -301,6 +304,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            pending_docs: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -343,6 +347,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            pending_docs: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -476,6 +481,11 @@ impl<'a> Parser<'a> {
     pub fn skip_comments(&mut self) {
         loop {
             match self.kind() {
+                TokenKind::DocComment => {
+                    let text = self.cur.text.clone();
+                    self.pending_docs.push(text);
+                    self.cur = self.lexer.next().expect("lexer should produce token");
+                }
                 TokenKind::CommentLine
                 | TokenKind::CommentStart
                 | TokenKind::CommentContent
@@ -487,6 +497,21 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+    }
+
+    /// Collect pending doc comments and return them as a single string (joined by \n).
+    /// Returns None if no doc comments were collected.
+    pub fn take_docs(&mut self) -> Option<AutoStr> {
+        if self.pending_docs.is_empty() {
+            return None;
+        }
+        let doc: String = self
+            .pending_docs
+            .drain(..)
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        Some(doc.into())
     }
 
     pub fn next(&mut self) -> &Token {
@@ -608,6 +633,7 @@ impl<'a> Parser<'a> {
                         methods: vec![],
                         delegations: vec![],
                         attrs: vec![],
+                        doc: None,
                         is_pub: false,
                     };
                     if let Ok(mut store) = self.type_store.write() {
@@ -670,6 +696,7 @@ impl<'a> Parser<'a> {
                     methods: vec![],
                     delegations: vec![],
                     attrs: vec![],
+                    doc: None,
                     is_pub: false,
                 };
                 if let Ok(mut store) = self.type_store.write() {
@@ -820,6 +847,7 @@ impl<'a> Parser<'a> {
                 delegations: Vec::new(),
                 methods: Vec::new(),
                 attrs: vec![],
+                doc: None,
                 is_pub: false,
             }));
         }
@@ -3692,11 +3720,12 @@ impl<'a> Parser<'a> {
             .into());
         }
 
-        let enum_decl = EnumDecl {
+        let mut enum_decl = EnumDecl {
             name: name.clone(),
             items,
             kind,
             is_pub: false,
+            doc: self.take_docs(),
         };
         self.register_enum_decl(&enum_decl, &generic_params);
         Ok(Stmt::EnumDecl(enum_decl))
@@ -5865,6 +5894,9 @@ impl<'a> Parser<'a> {
         // Plan 163: Set is_pub flag
         fn_expr.is_pub = has_pub;
 
+        // Attach doc comments
+        fn_expr.doc = self.take_docs();
+
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
             name.clone()
@@ -6427,6 +6459,7 @@ impl<'a> Parser<'a> {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: vec![],
+                    doc: None,
                     is_pub: false,
                 };
                 // put type in scope
@@ -6525,12 +6558,16 @@ impl<'a> Parser<'a> {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: std::mem::take(&mut self.raw_attrs), // Plan 159 Phase 6B-2: collect derive/serde attrs
+            doc: None,
             is_pub: false, // Plan 163: default private
         };
         // Plan 163: Override is_pub from annotation
         if is_pub {
             decl.is_pub = true;
         }
+
+        // Attach doc comments
+        decl.doc = self.take_docs();
         // println!(
         //     "Defining type {} in scope {}",
         //     name,
@@ -7483,6 +7520,7 @@ impl<'a> Parser<'a> {
                         delegations: Vec::new(),
                         methods: Vec::new(),
                         attrs: vec![],
+                        doc: None,
                         is_pub: false,
                     }));
                 }
