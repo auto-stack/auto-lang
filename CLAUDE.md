@@ -140,7 +140,7 @@ Parser (parser.rs) → AST (ast.rs)
 │                    User Code (.at files)                    │
 │                                                              │
 │  fn add(a int, b int) int { a + b }                         │
-│  fn main() { say(add(1, 2)) }                               │
+│  fn main() { print(add(1, 2)) }                               │
 └─────────────────────────────────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -212,13 +212,31 @@ Located in `crates/auto-lang/test/a2r/`:
 - Each test has `.at` source file and `.expected.rs` output file
 - Run with: `cargo test -p auto-lang -- trans`
 
+## Auto Code Generation Rules
+
+**CRITICAL: When generating AutoLang (.at) code, ALWAYS invoke the `/auto-lang-creator` skill first.** This skill contains the authoritative syntax reference and gotcha checklist verified against a2r test cases. Common mistakes that the skill prevents:
+
+| Wrong (AI tendency) | Correct (AutoLang) | Rule |
+|---|---|---|
+| `fn foo() -> int` | `fn foo() int` | No `->` for return type |
+| `type T { x: int }` | `type T { x int }` | Type fields use space, not colon |
+| `enum E { V(field: int) }` | `enum E { V(field int) }` | Enum variant fields use space |
+| `let mut x = 5` | `var x = 5` | `var` for mutable, not `let mut` |
+| `fn foo(mut self, ...)` | `mut fn foo(...)` | `mut fn` prefix, no self parameter |
+| `Option::Some(x)` | `Some(x)` | No module prefix on constructors |
+| `Result::Ok(x)` | `Ok(x)` | No module prefix on constructors |
+| `is x { 0 -> ... }` | `is x { 0 => ... }` | `=>` arrows in pattern matching |
+| `while cond { ... }` | `for cond { ... }` | No `while` keyword |
+| `async fn foo()` | `fn foo() ~RetType` | `~T` return type = async |
+| `say("hello")` | `print("hello")` | Use `print()` |
+| `println!("hello")` | `print("hello")` | No macros |
+
 ## Language Features
 
 ### Storage Types
 - `let` - Immutable binding
-- `mut` - Mutable binding with type inference
+- `var` - Mutable binding (NOT `let mut`)
 - `const` - Global constant
-- `var` - Dynamic type (script mode only)
 
 ### Control Flow
 - `if/else if/else` - Conditional branching
