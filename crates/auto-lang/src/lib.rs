@@ -1195,6 +1195,34 @@ pub fn trans_typescript(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, tsname))
 }
 
+/// Transpile AutoLang file to TypeScript with custom output path
+pub fn trans_typescript_to(path: &str, output: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let fname = AutoPath::new(path).filename();
+
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let mut parser = Parser::from(code.as_str());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::typescript::TypeScriptTrans::new(fname);
+    trans.trans(ast, &mut sink)?;
+
+    // Write TypeScript file to custom output path
+    std::fs::write(output, sink.done()?)?;
+
+    // Write runtime file if any runtime symbols were used
+    if trans.needs_range || trans.needs_print {
+        let runtime_dir = std::path::Path::new(output).parent()
+            .unwrap_or(std::path::Path::new("."));
+        let runtime_path = runtime_dir.join("runtime.ts");
+        std::fs::write(&runtime_path, crate::trans::typescript::ts_runtime::runtime_file_content())?;
+    }
+
+    Ok(format!("[trans] {} -> {}", path, output))
+}
+
 // ============================================================================
 // Plan 096: UI Backend Generators
 // ============================================================================

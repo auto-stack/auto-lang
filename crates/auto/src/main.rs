@@ -198,6 +198,30 @@ enum EnvAction {
 }
 
 #[derive(Subcommand, Debug)]
+enum TransTarget {
+    Ts {
+        #[arg(short, long, help = "Output file path (default: same name with .ts extension)")]
+        output: Option<String>,
+    },
+    C {
+        #[arg(short, long, help = "Output file path (default: same name with .c extension)")]
+        output: Option<String>,
+    },
+    Rust {
+        #[arg(short, long, help = "Output file path (default: same name with .rs extension)")]
+        output: Option<String>,
+    },
+    Python {
+        #[arg(short, long, help = "Output file path (default: same name with .py extension)")]
+        output: Option<String>,
+    },
+    Js {
+        #[arg(short, long, help = "Output file path (default: same name with .js extension)")]
+        output: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum Commands {
     // ========== Project Creation ==========
     #[command(about = "Create a new Auto project (app, lib, gear, gadget)")]
@@ -291,6 +315,15 @@ enum Commands {
     Eval { code: String },
     #[command(about = "Treat File as AutoConfig", hide = true)]
     Config { path: String },
+    // ========== Transpile (single file) ==========
+    #[command(about = "Transpile a single .at file to a target language")]
+    Trans {
+        /// Input .at file to transpile
+        #[arg(short, long, help = "Input .at file to transpile")]
+        path: String,
+        #[command(subcommand)]
+        target: TransTarget,
+    },
     #[command(about = "Transpile Auto to C", hide = true)]
     C {
         path: String,
@@ -929,6 +962,70 @@ fn main() -> Result<()> {
                 to_miette_err(e)
             })?;
             output_success(ai_mode, &js);
+        }
+        // ========== Trans (single file) ==========
+        Some(Commands::Trans { path, target }) => match target {
+            TransTarget::Ts { output } => {
+                let out_path = output.unwrap_or_else(|| {
+                    std::path::Path::new(&path)
+                        .with_extension("ts")
+                        .to_string_lossy()
+                        .into_owned()
+                });
+                let msg = auto_lang::trans_typescript_to(&path, &out_path).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                println!("{}", msg);
+            }
+            TransTarget::C { output } => {
+                let c = auto_lang::trans_c(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &c).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[trans] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &c);
+                }
+            }
+            TransTarget::Rust { output } => {
+                let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &r).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[trans] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &r);
+                }
+            }
+            TransTarget::Python { output } => {
+                let py = auto_lang::trans_python(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &py).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[trans] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &py);
+                }
+            }
+            TransTarget::Js { output } => {
+                let js = auto_lang::trans_javascript(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &js).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[trans] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &js);
+                }
+            }
         }
         Some(Commands::A2cStdlib) => {
             cmd_a2c_stdlib::run()?;
