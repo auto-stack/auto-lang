@@ -860,6 +860,12 @@ impl Automan {
                     }
                 }
             }
+            "ts" => {
+                // TypeScript backend: transpile Auto -> TypeScript only (no compilation step)
+                println!("Transpiling Auto code to TypeScript (backend: ts)");
+                self.transpile_auto()?;
+                // No build step needed for TypeScript
+            }
             _ => {
                 // Default C backend
                 println!("Transpiling auto code to c code");

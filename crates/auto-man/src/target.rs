@@ -617,6 +617,15 @@ impl Target {
                     self.srcs.insert(AutoStr::from(rs_path.clone()));
                     info!("Generated {}", rs_path);
                 }
+            } else if self.lang.as_str() == "ts" || self.lang.as_str() == "typescript" {
+                // TypeScript transpilation via a2ts
+                let ts_path = path.as_str().replace(".at", ".ts");
+                let result = auto_lang::trans_typescript(path.as_str());
+                match result {
+                    Ok(msg) => info!("{}", msg),
+                    Err(e) => return Err(format!("Failed to transpile '{}' to typescript: {}", path, e).into()),
+                }
+                self.srcs.insert(AutoStr::from(ts_path.clone()));
             } else {
                 // Default to C transpilation
                 let mut c_code = transpile_c(fname, &content)

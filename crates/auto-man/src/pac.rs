@@ -105,10 +105,12 @@ impl Pac {
         let backend_config = BackendConfig::from_value(&backend_value);
 
         // Legacy backend string (for backwards compatibility)
-        // Also consider top-level lang: "rust" as backend "rust"
+        // Also consider top-level lang: "rust" as backend "rust", "ts"/"typescript" as backend "ts"
         let backend_str = backend_value.to_astr();
         let backend = if backend_str.is_empty() {
-            if top_lang == "rust" { "rust".into() } else { "c".into() }
+            if top_lang == "rust" { "rust".into() }
+            else if top_lang == "ts" || top_lang == "typescript" { "ts".into() }
+            else { "c".into() }
         } else {
             backend_str
         };
@@ -133,6 +135,8 @@ impl Pac {
         let mut default_builder: AutoStr = "ninja".into();
         if top_lang == "rust" {
             default_builder = "cargo".into();
+        } else if top_lang == "ts" || top_lang == "typescript" {
+            default_builder = "noop".into(); // TypeScript only needs transpilation, no compilation
         }
 
         // targets, NOTE: ports are not targets
