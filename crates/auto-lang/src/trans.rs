@@ -86,6 +86,24 @@ impl ToStrError for Result<usize, io::Error> {
     }
 }
 
+/// Plan 168: Escape a string for embedding in a double-quoted string literal.
+/// Handles newlines, tabs, carriage returns, backslashes, and double quotes.
+pub fn escape_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str(r"\\"),
+            '"' => out.push_str(r#"\""#),
+            '\n' => out.push_str(r"\n"),
+            '\r' => out.push_str(r"\r"),
+            '\t' => out.push_str(r"\t"),
+            '\0' => out.push_str(r"\0"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Plan 167: Multi-file output sink for project-level transpilation
 pub struct MultiSink {
     pub files: Vec<(String, Sink)>,

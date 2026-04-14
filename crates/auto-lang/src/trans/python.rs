@@ -1,4 +1,4 @@
-use super::{Sink, Trans, ToStrError};
+use super::{escape_str, Sink, Trans, ToStrError};
 use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
@@ -46,7 +46,7 @@ impl PythonTrans {
             Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Char(c) => write!(out, "'{}'", c).map_err(Into::into),
-            Expr::Str(s) => write!(out, "\"{}\"", s).map_err(Into::into),
+            Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
 
             // F-strings (direct mapping - AutoLang and Python have identical syntax!)

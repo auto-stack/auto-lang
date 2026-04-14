@@ -1,0 +1,19 @@
+fn main() {
+    // Multi-line string with newline
+    let msg = """hello
+world"""
+    print(msg)
+
+    // Multi-line with embedded quotes
+    let quote = """she said "hello"
+and "goodbye""""
+    print(quote)
+
+    // Single-line triple-quoted string
+    let simple = """just a string"""
+    print(simple)
+
+    // Multi-line with escape sequences
+    let escaped = """line1\ttab\nline2"""
+    print(escaped)
+}

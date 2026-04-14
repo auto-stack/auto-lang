@@ -276,6 +276,74 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text.into())
     }
 
+    /// Plan 168: Parse a triple-quoted multi-line string: """..."""
+    /// The LAST three consecutive quotes close the string.
+    /// If 4+ quotes appear, extras become content (e.g. """" → " then close).
+    /// Escape sequences (\n, \t, \\, \") are still processed.
+    /// Literal newlines in source are preserved as '\n' characters.
+    pub fn multi_str(&mut self) -> Token {
+        let mut text = String::new();
+        // Consume opening """
+        self.chars.next();
+        self.chars.next();
+        self.chars.next();
+
+        while let Some(&c) = self.chars.peek() {
+            if c == '"' {
+                // Count consecutive quotes to handle runs like """" (4 quotes)
+                let mut count = 0u32;
+                let mut iter = self.chars.clone();
+                while iter.next() == Some('"') {
+                    count += 1;
+                }
+                if count >= 3 {
+                    // Extra quotes beyond the closing 3 become content
+                    let extra = count - 3;
+                    for _ in 0..extra {
+                        text.push('"');
+                        self.chars.next();
+                    }
+                    // Consume closing """
+                    self.chars.next();
+                    self.chars.next();
+                    self.chars.next();
+                    break;
+                }
+                // Less than 3 — all are content
+                self.chars.next();
+                text.push('"');
+                continue;
+            }
+            if c == '\\' {
+                self.chars.next(); // skip backslash
+                if let Some(&esc) = self.chars.peek() {
+                    match esc {
+                        'n' => text.push('\n'),
+                        't' => text.push('\t'),
+                        'r' => text.push('\r'),
+                        '0' => text.push('\0'),
+                        '\\' => text.push('\\'),
+                        '"' => text.push('"'),
+                        _ => {
+                            // Unknown escape, keep as-is
+                            text.push('\\');
+                            text.push(esc);
+                        }
+                    }
+                    self.chars.next();
+                    continue;
+                }
+            }
+            if c == '\n' {
+                self.line += 1;
+                self.at = 0;
+            }
+            text.push(c);
+            self.chars.next();
+        }
+        Token::str(self.pos(text.len()), text.into())
+    }
+
     fn cstr(&mut self) -> Token {
         self.chars.next(); // skip c
         self.chars.next(); // skip "
@@ -655,6 +723,12 @@ impl<'a> Lexer<'a> {
                     return self.char();
                 }
                 '"' => {
+                    // Plan 168: Check for triple-quote """ (multi-line string)
+                    let mut iter = self.chars.clone();
+                    iter.next(); // skip current "
+                    if iter.next() == Some('"') && iter.next() == Some('"') {
+                        return Ok(self.multi_str());
+                    }
                     return Ok(self.str());
                 }
                 '#' => {
@@ -1331,5 +1405,56 @@ mod tests {
         let code = "#form";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<#><ident:form>");
+    }
+
+    // Plan 168: Multi-line string tests
+
+    #[test]
+    fn test_multi_str_simple() {
+        let code = r#""""hello""""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:hello>");
+    }
+
+    #[test]
+    fn test_multi_str_with_newlines() {
+        let code = "\"\"\"hello\nworld\"\"\"";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:hello\nworld>");
+    }
+
+    #[test]
+    fn test_multi_str_embedded_single_quote() {
+        let code = r#""""she said "hi""""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, r###"<str:she said "hi>"###);
+    }
+
+    #[test]
+    fn test_multi_str_embedded_double_quotes() {
+        let code = r#""""a""b""""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, r###"<str:a""b>"###);
+    }
+
+    #[test]
+    fn test_multi_str_with_escapes() {
+        let code = r#""""hello\tworld""""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:hello\tworld>");
+    }
+
+    #[test]
+    fn test_multi_str_empty() {
+        let code = r#""""""""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:>");
+    }
+
+    #[test]
+    fn test_regular_str_unchanged() {
+        let code = r#""hello""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:hello>");
     }
 }

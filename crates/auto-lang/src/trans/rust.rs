@@ -42,7 +42,7 @@
 //! | `type Point<T>` | `struct Point<T>` |
 //! | `use auto.io: say` | `use crate::io::say;` |
 
-use super::{Sink, Trans};
+use super::{escape_str, Sink, Trans};
 use crate::ast::*;
 use crate::database::Database;
 use crate::parser::Parser;
@@ -373,7 +373,7 @@ impl RustTrans {
                 write!(out, "'{}'", c)
             }
             .map_err(Into::into),
-            Expr::Str(s) => write!(out, "\"{}\"", s).map_err(Into::into),
+            Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
             Expr::Ident(name) => {
                 // Plan 151: Global variable access - add .lock().unwrap() pattern

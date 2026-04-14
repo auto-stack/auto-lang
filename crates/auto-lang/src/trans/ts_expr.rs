@@ -3,6 +3,7 @@ use crate::AutoResult;
 use auto_val::Op;
 use std::io::Write;
 use super::{TypeScriptTrans, ToStrError};
+use super::super::escape_str;
 
 impl TypeScriptTrans {
     pub fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
@@ -14,7 +15,7 @@ impl TypeScriptTrans {
             Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Char(c) => write!(out, "'{}'", c).map_err(Into::into),
-            Expr::Str(s) => write!(out, "\"{}\"", s).map_err(Into::into),
+            Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
 
             // F-strings → Template literals (perfect match!)

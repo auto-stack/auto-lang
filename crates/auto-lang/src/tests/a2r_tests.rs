@@ -498,6 +498,12 @@ fn test_161_multi_file() {
     assert!(cargo_toml.contains("edition = \"2021\""), "Cargo.toml should have edition = 2021");
 }
 
+// Plan 168: Multi-line strings
+#[test]
+fn test_163_multi_str() {
+    test_a2r("163_multi_str").unwrap();
+}
+
 // Plan 6B-4.19: shared variable declaration (static storage)
 #[test]
 fn test_162_shared_var() {

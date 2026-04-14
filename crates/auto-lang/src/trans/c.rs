@@ -1,4 +1,4 @@
-use super::{Sink, ToStrError, Trans};
+use super::{escape_str, Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::ast::{ArrayType, Type};
 use crate::database::Database;
@@ -1419,7 +1419,7 @@ impl CTrans {
             }
             Expr::Ident(name) => self.ident(name, out),
             Expr::GenName(name) => out.write(name.as_bytes()).to(),
-            Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
+            Expr::Str(s) => out.write_all(format!("\"{}\"", escape_str(s)).as_bytes()).to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::FStr(fs) => self.fstr(fs, out),
             Expr::Bool(b) => {
