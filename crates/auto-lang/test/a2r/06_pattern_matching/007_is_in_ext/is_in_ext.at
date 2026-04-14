@@ -1,0 +1,12 @@
+pub enum ToolError {
+    ExecutionFailed str
+    InvalidInput str
+}
+ext ToolError {
+    pub fn to_string() str {
+        is self {
+            ToolError.ExecutionFailed(msg) => { return msg }
+            ToolError.InvalidInput(msg) => { return msg }
+        }
+    }
+}

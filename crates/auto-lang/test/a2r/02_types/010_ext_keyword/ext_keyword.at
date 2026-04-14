@@ -1,0 +1,4 @@
+pub fn test() int {
+    let file_ext = ".rs"
+    return 0
+}

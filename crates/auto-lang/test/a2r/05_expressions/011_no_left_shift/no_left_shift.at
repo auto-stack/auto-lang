@@ -1,0 +1,9 @@
+pub fn test() int {
+    var base_secs = 1
+    var i = 0
+    for i < 3 {
+        base_secs = base_secs * 2
+        i = i + 1
+    }
+    return base_secs
+}

@@ -1,0 +1,11 @@
+pub type Settings {
+    env Map<str, str>
+}
+ext Settings {
+    pub static fn default() Settings {
+        return Settings({})
+    }
+    pub static fn inject_env(settings Settings) {
+        // Iterate over env map and set each key-value pair
+    }
+}

@@ -1,0 +1,9 @@
+pub type Settings {
+    env Map<str, str>
+}
+const SETTINGS_DIR str = ".auto-code-rs"
+ext Settings {
+    pub static fn default() Settings {
+        return Settings({})
+    }
+}

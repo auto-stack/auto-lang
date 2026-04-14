@@ -1,0 +1,7 @@
+pub fn check(x int) str {
+    is x {
+        0 => { return "zero" }
+        1 => { return "one" }
+    }
+    return "other"
+}

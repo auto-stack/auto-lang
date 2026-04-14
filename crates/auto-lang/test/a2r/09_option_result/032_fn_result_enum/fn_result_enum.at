@@ -1,0 +1,10 @@
+pub enum ToolError {
+    ExecutionFailed str
+    InvalidInput str
+}
+pub fn execute(input str) Result<str, ToolError> {
+    if input == "" {
+        return Err(ToolError.InvalidInput("empty"))
+    }
+    return Ok(input)
+}

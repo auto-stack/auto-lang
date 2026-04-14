@@ -1,0 +1,5 @@
+pub fn test() str {
+    let template = `hello
+world`
+    return template
+}

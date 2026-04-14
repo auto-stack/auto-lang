@@ -6,8 +6,9 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 
 fn test_a2r(case: &str) -> AutoResult<()> {
-    // Parse test case name: "000_hello" -> "hello"
-    let parts: Vec<&str> = case.split("_").collect();
+    // Parse test case name: "01_basics/001_hello" -> "hello"
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let parts: Vec<&str> = dir_name.split("_").collect();
     let name = parts[1..].join("_");
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -27,7 +28,6 @@ fn test_a2r(case: &str) -> AutoResult<()> {
     let rs_code = rcode.done()?;
 
     if rs_code != expected.as_bytes() {
-        // Generate .wrong.rs for comparison
         let gen_path = format!("test/a2r/{}/{}.wrong.rs", case, name);
         let gen_path = d.join(gen_path);
         std::fs::write(&gen_path, rs_code)?;
@@ -37,430 +37,154 @@ fn test_a2r(case: &str) -> AutoResult<()> {
     Ok(())
 }
 
-#[test]
-fn test_000_hello() {
-    test_a2r("000_hello").unwrap();
-}
-
-#[test]
-fn test_001_sqrt() {
-    test_a2r("001_sqrt").unwrap();
-}
-
-#[test]
-fn test_002_array() {
-    test_a2r("002_array").unwrap();
-}
-
-#[test]
-fn test_003_func() {
-    test_a2r("003_func").unwrap();
-}
-
-#[test]
-fn test_005_pointer() {
-    test_a2r("005_pointer").unwrap();
-}
-
-#[test]
-fn test_006_struct() {
-    test_a2r("006_struct").unwrap();
-}
-
-#[test]
-fn test_007_enum() {
-    test_a2r("007_enum").unwrap();
-}
-
-#[test]
-fn test_008_method() {
-    test_a2r("008_method").unwrap();
-}
-
-#[test]
-fn test_010_if() {
-    test_a2r("010_if").unwrap();
-}
-
-#[test]
-fn test_011_for() {
-    test_a2r("011_for").unwrap();
-}
-
-#[test]
-fn test_012_is() {
-    test_a2r("012_is").unwrap();
-}
-
-#[test]
-fn test_013_while() {
-    test_a2r("013_while").unwrap();
-}
-
-#[test]
-fn test_014_closure() {
-    test_a2r("014_closure").unwrap();
-}
-
-#[test]
-fn test_015_nested_if() {
-    test_a2r("015_nested_if").unwrap();
-}
-
-#[test]
-fn test_016_complex() {
-    test_a2r("016_complex").unwrap();
-}
-
-#[test]
-fn test_017_struct_methods() {
-    test_a2r("017_struct_methods").unwrap();
-}
-
-#[test]
-fn test_018_enum_pattern() {
-    test_a2r("018_enum_pattern").unwrap();
-}
-
-#[test]
-fn test_019_blocks() {
-    test_a2r("019_blocks").unwrap();
-}
-
-#[test]
-fn test_020_comprehensive() {
-    test_a2r("020_comprehensive").unwrap();
-}
-
-#[test]
-fn test_021_indexing() {
-    test_a2r("021_indexing").unwrap();
-}
-
-#[test]
-fn test_022_unary() {
-    test_a2r("022_unary").unwrap();
-}
-
-#[test]
-fn test_023_arithmetic() {
-    test_a2r("023_arithmetic").unwrap();
-}
-
-#[test]
-fn test_024_fstring() {
-    test_a2r("024_fstring").unwrap();
-}
-
-#[test]
-fn test_025_fstring_edge() {
-    test_a2r("025_fstring_edge").unwrap();
-}
-
-#[test]
-fn test_026_ref_expr() {
-    test_a2r("026_ref_expr").unwrap();
-}
-
-#[test]
-fn test_027_range_expr() {
-    test_a2r("027_range_expr").unwrap();
-}
-
-#[test]
-fn test_028_object() {
-    test_a2r("028_object").unwrap();
-}
-
-#[test]
-fn test_029_composition() {
-    test_a2r("029_composition").unwrap();
-}
-
-#[test]
-fn test_030_field_composition() {
-    test_a2r("030_field_composition").unwrap();
-}
-
-#[test]
-fn test_031_spec() {
-    test_a2r("031_spec").unwrap();
-}
-
-#[test]
-fn test_032_delegation() {
-    test_a2r("032_delegation").unwrap();
-}
-
-#[test]
-fn test_033_multi_delegation() {
-    test_a2r("033_multi_delegation").unwrap();
-}
-
-#[test]
-fn test_034_delegation_params() {
-    test_a2r("034_delegation_params").unwrap();
-}
-
-#[test]
-fn test_111_generic_alias() {
-    test_a2r("111_generic_alias").unwrap();
-}
-
-#[test]
-fn test_126_generic_field() {
-    test_a2r("126_generic_field").unwrap();
-}
-
-#[test]
-fn test_127_generic_ptr_field() {
-    test_a2r("127_generic_ptr_field").unwrap();
-}
-
-#[test]
-fn test_128_map_type() {
-    test_a2r("128_map_type").unwrap();
-}
-
-#[test]
-fn test_129_map_func() {
-    test_a2r("129_map_func").unwrap();
-}
-
-#[test]
-fn test_130_option_construct() {
-    test_a2r("130_option_construct").unwrap();
-}
-
-#[test]
-fn test_143_empty_variant_match() {
-    test_a2r("143_empty_variant_match").unwrap();
-}
-
-#[test]
-fn test_131_method_chain() {
-    test_a2r("131_method_chain").unwrap();
-}
-
-#[test]
-fn test_110_const_generics() {
-    test_a2r("110_const_generics").unwrap();
-}
-
-#[test]
-fn test_109_generic_hetero_enum() {
-    test_a2r("109_generic_hetero_enum").unwrap();
-}
-
-#[test]
-fn test_035_inheritance() {
-    test_a2r("035_inheritance").unwrap();
-}
-
-#[test]
-fn test_055_union() {
-    test_a2r("055_union").unwrap();
-}
-
-#[test]
-fn test_014_hetero_enum() {
-    test_a2r("014_hetero_enum").unwrap();
-}
-
-#[test]
-fn test_004_cstr() {
-    test_a2r("004_cstr").unwrap();
-}
-
-#[test]
-fn test_023_borrow_view() {
-    test_a2r("023_borrow_view").unwrap();
-}
-
-#[test]
-fn test_024_borrow_mut() {
-    test_a2r("024_borrow_mut").unwrap();
-}
-
-#[test]
-fn test_025_borrow_move() {
-    test_a2r("025_borrow_move").unwrap();
-}
-
-#[test]
-fn test_026_borrow_conflicts() {
-    test_a2r("026_borrow_conflicts").unwrap();
-}
-
-#[test]
-fn test_016_basic_spec() {
-    test_a2r("016_basic_spec").unwrap();
-}
-
-#[test]
-fn test_017_spec() {
-    test_a2r("017_spec").unwrap();
-}
-
-#[test]
-fn test_117_list_storage() {
-    test_a2r("117_list_storage").unwrap();
-}
-
-// Plan 120: Option and Result type tests
-#[test]
-fn test_120_option() {
-    test_a2r("120_option").unwrap();
-}
-
-// Plan 159 Phase 6B-1: is statement with multi-statement match arms
-#[test]
-fn test_132_is_multi_stmt() {
-    test_a2r("132_is_multi_stmt").unwrap();
-}
-
-// Plan 159 Phase 6B-2.6: External crate use statement
-#[test]
-fn test_133_rust_use() {
-    test_a2r("133_rust_use").unwrap();
-}
-
-// Plan 159 Phase 6B-2.1: async fn transpilation
-#[test]
-fn test_134_async_fn() {
-    test_a2r("134_async_fn").unwrap();
-}
-
-// Plan 159 Phase 6B-2.3: derive attribute passthrough
-#[test]
-fn test_135_derive_attr() {
-    test_a2r("135_derive_attr").unwrap();
-}
-
-// Plan 162: Type cast — expr.as(Type)
-#[test]
-fn test_136_type_cast() {
-    test_a2r("136_type_cast").unwrap();
-}
-
-// Plan 162: Pointer methods — is_null, is_not_null, add, read, write, .ptr
-#[test]
-fn test_137_ptr_methods() {
-    test_a2r("137_ptr_methods").unwrap();
-}
-
-// Plan 162: List-style methods with .as() type casts and or operator
-#[test]
-fn test_138_list_as_cast() {
-    test_a2r("138_list_as_cast").unwrap();
-}
-
-#[test]
-fn test_139_if_multistmt() {
-    test_a2r("139_if_multistmt").unwrap();
-}
-
-#[test]
-fn test_140_if_return() {
-    test_a2r("140_if_return").unwrap();
-}
-
-#[test]
-fn test_141_func_literal_return() {
-    test_a2r("141_func_literal_return").unwrap();
-}
-
-// Plan 162: .to(Type) explicit type conversion
-#[test]
-fn test_142_to_convert() {
-    test_a2r("142_to_convert").unwrap();
-}
-
-// Plan 163: static fn support
-#[test]
-fn test_148_static_fn() {
-    test_a2r("148_static_fn").unwrap();
-}
-
-// Plan 163: pub visibility
-#[test]
-fn test_149_pub_visibility() {
-    test_a2r("149_pub_visibility").unwrap();
-}
-
-// Plan 163: #[tokio::main] + async main
-#[test]
-fn test_150_tokio_main() {
-    test_a2r("150_tokio_main").unwrap();
-}
-
-// Plan 163: &mut self methods
-#[test]
-fn test_151_mut_self() {
-    test_a2r("151_mut_self").unwrap();
-}
-
-// Plan 163: per-field serde attributes
-#[test]
-fn test_152_field_attrs() {
-    test_a2r("152_field_attrs").unwrap();
-}
-
-// Plan 164: ext Type for Trait { } — external trait impl
-#[test]
-fn test_153_ext_for() {
-    test_a2r("153_ext_for").unwrap();
-}
-
-// Plan 165: Struct destructuring in is match arms
-#[test]
-fn test_154_struct_destructure() {
-    test_a2r("154_struct_destructure").unwrap();
-}
-
-// Plan 166: Generic constraints #[with(T as Trait)]
-#[test]
-fn test_155_with_constraint() {
-    test_a2r("155_with_constraint").unwrap();
-}
-
-// Plan 159 Phase 6B-2.7: impl From<A> for B via ext-for
-#[test]
-fn test_156_ext_from() {
-    test_a2r("156_ext_from").unwrap();
-}
-
-// Plan 6B-3.4: const declaration
-#[test]
-fn test_157_const_decl() {
-    test_a2r("157_const_decl").unwrap();
-}
-
-// Plan 6B-4.14: Box::new() / Arc::new() smart pointer constructors
-#[test]
-fn test_158_box_arc() {
-    test_a2r("158_box_arc").unwrap();
-}
-
-// Plan 167 Phase 2: wildcard import (use module: *)
-#[test]
-fn test_160_wildcard_import() {
-    test_a2r("160_wildcard_import").unwrap();
-}
-
-// Plan 167 Phase 1: pub use re-export
-#[test]
-fn test_159_pub_use() {
-    test_a2r("159_pub_use").unwrap();
-}
-
-// Plan 167 Phase 4: multi-file project transpilation
-#[test]
-fn test_161_multi_file() {
+// === 01_basics ===
+#[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
+#[test] fn test_01_basics_002_sqrt() { test_a2r("01_basics/002_sqrt").unwrap(); }
+#[test] fn test_01_basics_003_func() { test_a2r("01_basics/003_func").unwrap(); }
+#[test] fn test_01_basics_004_doc_comments() { test_a2r("01_basics/004_doc_comments").unwrap(); }
+
+// === 02_types ===
+#[test] fn test_02_types_001_struct() { test_a2r("02_types/001_struct").unwrap(); }
+#[test] fn test_02_types_002_enum() { test_a2r("02_types/002_enum").unwrap(); }
+#[test] fn test_02_types_003_union() { test_a2r("02_types/003_union").unwrap(); }
+#[test] fn test_02_types_004_pointer() { test_a2r("02_types/004_pointer").unwrap(); }
+#[test] fn test_02_types_005_inheritance() { test_a2r("02_types/005_inheritance").unwrap(); }
+#[test] fn test_02_types_006_object() { test_a2r("02_types/006_object").unwrap(); }
+#[test] fn test_02_types_007_cstr() { test_a2r("02_types/007_cstr").unwrap(); }
+#[test] fn test_02_types_008_mut_self() { test_a2r("02_types/008_mut_self").unwrap(); }
+#[test] fn test_02_types_009_self_field() { test_a2r("02_types/009_self_field").unwrap(); }
+#[test] fn test_02_types_010_ext_keyword() { test_a2r("02_types/010_ext_keyword").unwrap(); }
+
+// === 03_control_flow ===
+#[test] fn test_03_control_flow_001_if_basic() { test_a2r("03_control_flow/001_if_basic").unwrap(); }
+#[test] fn test_03_control_flow_002_if_nested() { test_a2r("03_control_flow/002_if_nested").unwrap(); }
+#[test] fn test_03_control_flow_003_if_multistmt() { test_a2r("03_control_flow/003_if_multistmt").unwrap(); }
+#[test] fn test_03_control_flow_004_if_return() { test_a2r("03_control_flow/004_if_return").unwrap(); }
+#[test] fn test_03_control_flow_005_for_range() { test_a2r("03_control_flow/005_for_range").unwrap(); }
+#[test] fn test_03_control_flow_006_for_conditions() { test_a2r("03_control_flow/006_for_conditions").unwrap(); }
+#[test] fn test_03_control_flow_007_while_loop() { test_a2r("03_control_flow/007_while_loop").unwrap(); }
+#[test] fn test_03_control_flow_008_is_match() { test_a2r("03_control_flow/008_is_match").unwrap(); }
+#[test] fn test_03_control_flow_009_is_multi_stmt() { test_a2r("03_control_flow/009_is_multi_stmt").unwrap(); }
+#[test] fn test_03_control_flow_010_is_non_exhaustive() { test_a2r("03_control_flow/010_is_non_exhaustive").unwrap(); }
+
+// === 04_strings ===
+#[test] fn test_04_strings_001_fstring() { test_a2r("04_strings/001_fstring").unwrap(); }
+#[test] fn test_04_strings_002_fstring_edge() { test_a2r("04_strings/002_fstring_edge").unwrap(); }
+#[test] fn test_04_strings_003_multi_str() { test_a2r("04_strings/003_multi_str").unwrap(); }
+#[test] fn test_04_strings_004_backtick_string() { test_a2r("04_strings/004_backtick_string").unwrap(); }
+#[test] fn test_04_strings_005_escaped_quotes() { test_a2r("04_strings/005_escaped_quotes").unwrap(); }
+
+// === 05_expressions ===
+#[test] fn test_05_expressions_001_arithmetic() { test_a2r("05_expressions/001_arithmetic").unwrap(); }
+#[test] fn test_05_expressions_002_unary() { test_a2r("05_expressions/002_unary").unwrap(); }
+#[test] fn test_05_expressions_003_indexing() { test_a2r("05_expressions/003_indexing").unwrap(); }
+#[test] fn test_05_expressions_004_blocks() { test_a2r("05_expressions/004_blocks").unwrap(); }
+#[test] fn test_05_expressions_005_ref_expr() { test_a2r("05_expressions/005_ref_expr").unwrap(); }
+#[test] fn test_05_expressions_006_range_expr() { test_a2r("05_expressions/006_range_expr").unwrap(); }
+#[test] fn test_05_expressions_007_composition() { test_a2r("05_expressions/007_composition").unwrap(); }
+#[test] fn test_05_expressions_008_field_composition() { test_a2r("05_expressions/008_field_composition").unwrap(); }
+#[test] fn test_05_expressions_009_comprehensive() { test_a2r("05_expressions/009_comprehensive").unwrap(); }
+#[test] fn test_05_expressions_010_or_keyword() { test_a2r("05_expressions/010_or_keyword").unwrap(); }
+#[test] fn test_05_expressions_011_no_left_shift() { test_a2r("05_expressions/011_no_left_shift").unwrap(); }
+
+// === 06_pattern_matching ===
+#[test] fn test_06_pattern_matching_001_enum_pattern() { test_a2r("06_pattern_matching/001_enum_pattern").unwrap(); }
+#[test] fn test_06_pattern_matching_002_struct_destructure() { test_a2r("06_pattern_matching/002_struct_destructure").unwrap(); }
+#[test] fn test_06_pattern_matching_003_empty_variant_match() { test_a2r("06_pattern_matching/003_empty_variant_match").unwrap(); }
+#[test] fn test_06_pattern_matching_004_hetero_enum() { test_a2r("06_pattern_matching/004_hetero_enum").unwrap(); }
+#[test] fn test_06_pattern_matching_005_generic_hetero_enum() { test_a2r("06_pattern_matching/005_generic_hetero_enum").unwrap(); }
+#[test] fn test_06_pattern_matching_006_enum_fn_param() { test_a2r("06_pattern_matching/006_enum_fn_param").unwrap(); }
+#[test] fn test_06_pattern_matching_007_is_in_ext() { test_a2r("06_pattern_matching/007_is_in_ext").unwrap(); }
+
+// === 07_ownership ===
+#[test] fn test_07_ownership_001_borrow_view() { test_a2r("07_ownership/001_borrow_view").unwrap(); }
+#[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
+#[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
+#[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }
+
+// === 08_generics ===
+#[test] fn test_08_generics_001_type_alias() { test_a2r("08_generics/001_type_alias").unwrap(); }
+#[test] fn test_08_generics_002_const_generics() { test_a2r("08_generics/002_const_generics").unwrap(); }
+#[test] fn test_08_generics_003_generic_field() { test_a2r("08_generics/003_generic_field").unwrap(); }
+#[test] fn test_08_generics_004_generic_ptr_field() { test_a2r("08_generics/004_generic_ptr_field").unwrap(); }
+#[test] fn test_08_generics_005_with_constraint() { test_a2r("08_generics/005_with_constraint").unwrap(); }
+#[test] fn test_08_generics_006_map_type() { test_a2r("08_generics/006_map_type").unwrap(); }
+#[test] fn test_08_generics_007_no_tuple_generic() { test_a2r("08_generics/007_no_tuple_generic").unwrap(); }
+
+// === 09_option_result ===
+#[test] fn test_09_option_result_001_option() { test_a2r("09_option_result/001_option").unwrap(); }
+#[test] fn test_09_option_result_002_option_construct() { test_a2r("09_option_result/002_option_construct").unwrap(); }
+#[test] fn test_09_option_result_003_null_coalesce() { test_a2r("09_option_result/003_null_coalesce").unwrap(); }
+#[test] fn test_09_option_result_004_error_propagate() { test_a2r("09_option_result/004_error_propagate").unwrap(); }
+#[test] fn test_09_option_result_005_question_uint() { test_a2r("09_option_result/005_question_uint").unwrap(); }
+#[test] fn test_09_option_result_006_question_float() { test_a2r("09_option_result/006_question_float").unwrap(); }
+#[test] fn test_09_option_result_007_question_double() { test_a2r("09_option_result/007_question_double").unwrap(); }
+#[test] fn test_09_option_result_008_question_return_int() { test_a2r("09_option_result/008_question_return_int").unwrap(); }
+#[test] fn test_09_option_result_009_question_return_str() { test_a2r("09_option_result/009_question_return_str").unwrap(); }
+#[test] fn test_09_option_result_010_question_return_bool() { test_a2r("09_option_result/010_question_return_bool").unwrap(); }
+#[test] fn test_09_option_result_011_question_propagate() { test_a2r("09_option_result/011_question_propagate").unwrap(); }
+#[test] fn test_09_option_result_012_question_return_float() { test_a2r("09_option_result/012_question_return_float").unwrap(); }
+#[test] fn test_09_option_result_013_question_return_double() { test_a2r("09_option_result/013_question_return_double").unwrap(); }
+#[test] fn test_09_option_result_014_question_return_char() { test_a2r("09_option_result/014_question_return_char").unwrap(); }
+#[test] fn test_09_option_result_015_question_return_uint() { test_a2r("09_option_result/015_question_return_uint").unwrap(); }
+#[test] fn test_09_option_result_016_question_return_float() { test_a2r("09_option_result/016_question_return_float").unwrap(); }
+#[test] fn test_09_option_result_017_question_return_double() { test_a2r("09_option_result/017_question_return_double").unwrap(); }
+#[test] fn test_09_option_result_018_question_return_char() { test_a2r("09_option_result/018_question_return_char").unwrap(); }
+#[test] fn test_09_option_result_019_question_nested_call() { test_a2r("09_option_result/019_question_nested_call").unwrap(); }
+#[test] fn test_09_option_result_020_question_arithmetic() { test_a2r("09_option_result/020_question_arithmetic").unwrap(); }
+#[test] fn test_09_option_result_021_question_comparison() { test_a2r("09_option_result/021_question_comparison").unwrap(); }
+#[test] fn test_09_option_result_022_question_literal() { test_a2r("09_option_result/022_question_literal").unwrap(); }
+#[test] fn test_09_option_result_023_question_negation() { test_a2r("09_option_result/023_question_negation").unwrap(); }
+#[test] fn test_09_option_result_024_question_zero() { test_a2r("09_option_result/024_question_zero").unwrap(); }
+#[test] fn test_09_option_result_025_question_negative() { test_a2r("09_option_result/025_question_negative").unwrap(); }
+#[test] fn test_09_option_result_026_list_basic() { test_a2r("09_option_result/026_list_basic").unwrap(); }
+#[test] fn test_09_option_result_027_list_methods() { test_a2r("09_option_result/027_list_methods").unwrap(); }
+#[test] fn test_09_option_result_028_list_may() { test_a2r("09_option_result/028_list_may").unwrap(); }
+#[test] fn test_09_option_result_029_list_propagate() { test_a2r("09_option_result/029_list_propagate").unwrap(); }
+#[test] fn test_09_option_result_030_list_coalesce() { test_a2r("09_option_result/030_list_coalesce").unwrap(); }
+#[test] fn test_09_option_result_031_option_bool_field() { test_a2r("09_option_result/031_option_bool_field").unwrap(); }
+#[test] fn test_09_option_result_032_fn_result_enum() { test_a2r("09_option_result/032_fn_result_enum").unwrap(); }
+
+// === 10_collections ===
+#[test] fn test_10_collections_001_array() { test_a2r("10_collections/001_array").unwrap(); }
+#[test] fn test_10_collections_002_list_storage() { test_a2r("10_collections/002_list_storage").unwrap(); }
+#[test] fn test_10_collections_003_map_func() { test_a2r("10_collections/003_map_func").unwrap(); }
+#[test] fn test_10_collections_004_list_as_cast() { test_a2r("10_collections/004_list_as_cast").unwrap(); }
+#[test] fn test_10_collections_005_method_chain() { test_a2r("10_collections/005_method_chain").unwrap(); }
+
+// === 11_methods ===
+#[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }
+#[test] fn test_11_methods_002_struct_methods() { test_a2r("11_methods/002_struct_methods").unwrap(); }
+#[test] fn test_11_methods_003_closure() { test_a2r("11_methods/003_closure").unwrap(); }
+#[test] fn test_11_methods_004_static_fn() { test_a2r("11_methods/004_static_fn").unwrap(); }
+#[test] fn test_11_methods_005_func_literal_return() { test_a2r("11_methods/005_func_literal_return").unwrap(); }
+#[test] fn test_11_methods_006_ext_for() { test_a2r("11_methods/006_ext_for").unwrap(); }
+#[test] fn test_11_methods_007_ext_from() { test_a2r("11_methods/007_ext_from").unwrap(); }
+#[test] fn test_11_methods_008_empty_body() { test_a2r("11_methods/008_empty_body").unwrap(); }
+
+// === 12_specs ===
+#[test] fn test_12_specs_001_basic_spec() { test_a2r("12_specs/001_basic_spec").unwrap(); }
+#[test] fn test_12_specs_002_spec() { test_a2r("12_specs/002_spec").unwrap(); }
+#[test] fn test_12_specs_003_spec_delegation() { test_a2r("12_specs/003_spec_delegation").unwrap(); }
+
+// === 13_delegation ===
+#[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }
+#[test] fn test_13_delegation_002_multi_spec() { test_a2r("13_delegation/002_multi_spec").unwrap(); }
+#[test] fn test_13_delegation_003_multi_delegation() { test_a2r("13_delegation/003_multi_delegation").unwrap(); }
+
+// === 14_modules ===
+#[test] fn test_14_modules_001_rust_use() { test_a2r("14_modules/001_rust_use").unwrap(); }
+#[test] fn test_14_modules_002_pub_use() { test_a2r("14_modules/002_pub_use").unwrap(); }
+#[test] fn test_14_modules_003_pub_visibility() { test_a2r("14_modules/003_pub_visibility").unwrap(); }
+#[test] fn test_14_modules_004_wildcard_import() { test_a2r("14_modules/004_wildcard_import").unwrap(); }
+
+// Special: multi_file uses transpile_rust_project with its own assertions
+#[test]
+fn test_14_modules_005_multi_file() {
     use crate::trans::rust::transpile_rust_project;
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let entry = d.join("test/a2r/161_multi_file/main.at");
+    let entry = d.join("test/a2r/14_modules/005_multi_file/main.at");
 
     let result = transpile_rust_project(entry.to_str().unwrap()).unwrap();
 
@@ -494,135 +218,58 @@ fn test_161_multi_file() {
     assert!(result.contains_key("Cargo.toml"), "Missing Cargo.toml");
     let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"]);
     assert!(cargo_toml.contains("[package]"), "Cargo.toml should have [package]");
-    assert!(cargo_toml.contains("name = \"161_multi_file\""), "Cargo.toml should have project name");
+    assert!(cargo_toml.contains("name = \"005_multi_file\""), "Cargo.toml should have project name");
     assert!(cargo_toml.contains("edition = \"2021\""), "Cargo.toml should have edition = 2021");
 }
 
-// Plan 168: Multi-line strings
-#[test]
-fn test_163_multi_str() {
-    test_a2r("163_multi_str").unwrap();
+#[test] fn test_14_modules_006_const_decl() { test_a2r("14_modules/006_const_decl").unwrap(); }
+#[test] fn test_14_modules_007_shared_var() { test_a2r("14_modules/007_shared_var").unwrap(); }
+#[test] fn test_14_modules_008_derive_attr() { test_a2r("14_modules/008_derive_attr").unwrap(); }
+#[test] fn test_14_modules_009_const_before_ext() { test_a2r("14_modules/009_const_before_ext").unwrap(); }
+
+// === 15_type_conversion ===
+#[test] fn test_15_type_conversion_001_type_cast() { test_a2r("15_type_conversion/001_type_cast").unwrap(); }
+#[test] fn test_15_type_conversion_002_to_convert() { test_a2r("15_type_conversion/002_to_convert").unwrap(); }
+#[test] fn test_15_type_conversion_003_ptr_methods() { test_a2r("15_type_conversion/003_ptr_methods").unwrap(); }
+#[test] fn test_15_type_conversion_004_box_arc() { test_a2r("15_type_conversion/004_box_arc").unwrap(); }
+
+// === 16_interop ===
+#[test] fn test_16_interop_001_async_fn() { test_a2r("16_interop/001_async_fn").unwrap(); }
+#[test] fn test_16_interop_002_tokio_main() { test_a2r("16_interop/002_tokio_main").unwrap(); }
+#[test] fn test_16_interop_003_field_attrs() { test_a2r("16_interop/003_field_attrs").unwrap(); }
+
+// === 17_autocode: Real-world integration tests ===
+
+fn autocode_src(name: &str) -> String {
+    std::fs::read_to_string(format!("../../../auto-coder/src/{}.at", name)).unwrap()
 }
 
-// Plan 6B-4.19: shared variable declaration (static storage)
-#[test]
-fn test_162_shared_var() {
-    test_a2r("162_shared_var").unwrap();
-}
+#[test] fn test_17_autocode_001_types() { let src = autocode_src("types"); let mut r = transpile_rust("types", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_002_permission() { let src = autocode_src("permission"); let mut r = transpile_rust("permission", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_003_tools() { let src = autocode_src("tools"); let mut r = transpile_rust("tools", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_004_sse() { let src = autocode_src("sse"); let mut r = transpile_rust("sse", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_005_context() { let src = autocode_src("context"); let mut r = transpile_rust("context", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_006_settings() { let src = autocode_src("settings"); let mut r = transpile_rust("settings", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_007_agent() { let src = autocode_src("agent"); let mut r = transpile_rust("agent", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_008_anthropic() { let src = autocode_src("anthropic"); let mut r = transpile_rust("anthropic", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_009_openai() { let src = autocode_src("openai"); let mut r = transpile_rust("openai", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_010_session() { let src = autocode_src("session"); let mut r = transpile_rust("session", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_011_repl() { let src = autocode_src("repl"); let mut r = transpile_rust("repl", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_012_main() { let src = autocode_src("main"); let mut r = transpile_rust("main", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_013_mod() { let src = autocode_src("mod"); let mut r = transpile_rust("mod", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_014_tool_bash() { let src = autocode_src("tool_bash"); let mut r = transpile_rust("tool_bash", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_016_tool_file_read() { let src = autocode_src("tool_file_read"); let mut r = transpile_rust("tool_file_read", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_017_tool_file_write() { let src = autocode_src("tool_file_write"); let mut r = transpile_rust("tool_file_write", &src).unwrap(); r.done().unwrap(); }
+#[test] fn test_17_autocode_018_tool_file_edit() { let src = autocode_src("tool_file_edit"); let mut r = transpile_rust("tool_file_edit", &src).unwrap(); r.done().unwrap(); }
 
+// tool_grep requires 8MB stack for deep Pratt parser recursion
 #[test]
-fn test_999_doc_comments() {
-    test_a2r("999_doc_comments").unwrap();
-}
-
-// === Temporary: verify auto-code .at files can be parsed and transpiled ===
-#[test]
-fn test_autocode_types() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/types.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("types", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_permission() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/permission.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("permission", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_tools() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/tools.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("tools", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_sse() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/sse.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("sse", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_context() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/context.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("context", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_settings() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/settings.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("settings", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_agent() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/agent.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("agent", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_anthropic() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/anthropic.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("anthropic", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_openai() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/openai.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("openai", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_session() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/session.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("session", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_repl() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/repl.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("repl", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_main() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/main.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("main", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_mod() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/mod.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("mod", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_tool_bash() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/tool_bash.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("tool_bash", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_tool_grep() {
-    // tool_grep.at is ~442KB and triggers deep recursion in the Pratt parser,
-    // overflowing the default test thread stack. Use an explicit 8MB stack.
+fn test_17_autocode_015_tool_grep() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(|| {
-            let src = std::fs::read_to_string("../../../auto-coder/src/tool_grep.at").unwrap();
-            let mut r = crate::trans::rust::transpile_rust("tool_grep", &src).unwrap();
+            let src = autocode_src("tool_grep");
+            let mut r = transpile_rust("tool_grep", &src).unwrap();
             r.done().unwrap();
         })
         .unwrap()
@@ -630,259 +277,9 @@ fn test_autocode_tool_grep() {
         .unwrap();
 }
 
+// Detailed error reporting test
 #[test]
-fn test_autocode_tool_file_read() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/tool_file_read.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("tool_file_read", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_tool_file_write() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/tool_file_write.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("tool_file_write", &src).unwrap();
-    r.done().unwrap();
-}
-
-#[test]
-fn test_autocode_tool_file_edit() {
-    let src = std::fs::read_to_string("../../../auto-coder/src/tool_file_edit.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("tool_file_edit", &src).unwrap();
-    r.done().unwrap();
-}
-
-// === Language feature tests ===
-
-#[test]
-fn test_920_enum_as_fn_param() {
-    // enum variants can be passed as function parameters and matched with is
-    let src = r#"
-pub enum ToolError {
-    ExecutionFailed str
-    InvalidInput str
-}
-pub fn handle(err ToolError) str {
-    is err {
-        ToolError.ExecutionFailed(msg) => { return msg }
-        ToolError.InvalidInput(msg) => { return msg }
-    }
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("enum as fn param should work");
-}
-
-#[test]
-fn test_921_is_match_in_ext() {
-    // is pattern matching works inside ext blocks
-    let src = r#"
-pub enum ToolError {
-    ExecutionFailed str
-    InvalidInput str
-}
-ext ToolError {
-    pub fn to_string() str {
-        is self {
-            ToolError.ExecutionFailed(msg) => { return msg }
-            ToolError.InvalidInput(msg) => { return msg }
-        }
-    }
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("is match in ext should work");
-}
-
-#[test]
-fn test_922_or_keyword() {
-    // 'or' keyword for logical OR (|| is not supported)
-    let src = r#"
-pub fn check(a int, b int) bool {
-    return a > 0 or b > 0
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("or keyword should work");
-}
-
-#[test]
-fn test_923_backtick_fstring() {
-    // Backtick strings support multi-line and interpolation
-    let src = r#"
-pub fn test() str {
-    let template = `hello
-world`
-    return template
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("backtick with newline should work");
-}
-
-#[test]
-fn test_924_escaped_quotes_in_fstring() {
-    // Escaped quotes inside f-strings
-    let src = r#"
-pub fn test() str {
-    let template = "{\"env\": {}}"
-    return template
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("escaped quotes in string should work");
-}
-
-#[test]
-fn test_925_option_bool_field() {
-    // Option<bool> as struct field type
-    let src = r#"
-pub type Settings {
-    env Map<str, str>
-    provider Option<str>
-}
-ext Settings {
-    pub static fn default() Settings {
-        return Settings({}, nil)
-    }
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("Option type field should work");
-}
-
-#[test]
-fn test_926_const_declaration() {
-    // const declarations before ext blocks
-    let src = r#"
-pub type Settings {
-    env Map<str, str>
-}
-const SETTINGS_DIR str = ".auto-code-rs"
-ext Settings {
-    pub static fn default() Settings {
-        return Settings({})
-    }
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("const before ext should work");
-}
-
-#[test]
-fn test_927_empty_body_with_comment() {
-    // ext method with empty body (just a comment) is valid
-    let src = r#"
-pub type Settings {
-    env Map<str, str>
-}
-ext Settings {
-    pub static fn default() Settings {
-        return Settings({})
-    }
-    pub static fn inject_env(settings Settings) {
-        // Iterate over env map and set each key-value pair
-    }
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("empty body with comment should work");
-}
-
-#[test]
-fn test_928_self_field_access() {
-    // .field syntax for self access in ext methods
-    let src = r#"
-pub type Counter {
-    count int
-}
-ext Counter {
-    pub fn increment() void {
-        .count = .count + 1
-    }
-    pub fn get() int {
-        return .count
-    }
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("self field access should work");
-}
-
-#[test]
-fn test_929_is_non_exhaustive() {
-    // is match without else branch is allowed
-    let src = r#"
-pub fn check(x int) str {
-    is x {
-        0 => { return "zero" }
-        1 => { return "one" }
-    }
-    return "other"
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("non-exhaustive is match should work");
-}
-
-#[test]
-fn test_930_fn_result_enum() {
-    // Functions returning Result with enum error type
-    let src = r#"
-pub enum ToolError {
-    ExecutionFailed str
-    InvalidInput str
-}
-pub fn execute(input str) Result<str, ToolError> {
-    if input == "" {
-        return Err(ToolError.InvalidInput("empty"))
-    }
-    return Ok(input)
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("fn with enum Result should work");
-}
-
-// === Known limitations (tests that document unsupported features) ===
-
-#[test]
-fn test_940_left_shift_not_supported() {
-    // << operator is not supported by the parser
-    let src = r#"
-pub fn test() int {
-    var base_secs = 1
-    var i = 0
-    for i < 3 {
-        base_secs = base_secs * 2
-        i = i + 1
-    }
-    return base_secs
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("multiply-by-2 loop workaround should work");
-}
-
-#[test]
-fn test_941_tuple_in_generic_not_supported() {
-    // Tuple types inside generics fail: List<(str, str)>, Result<(int, str), E>
-    // Workaround: define a named type instead
-    let src = r#"
-pub type Message {
-    role str
-    content str
-}
-pub fn load() Result<List<Message>, str> {
-    var messages = List.new()
-    return Ok(messages)
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("named type instead of tuple in generic should work");
-}
-
-#[test]
-fn test_942_ext_is_keyword() {
-    // 'ext' is a reserved keyword, cannot be used as variable name
-    let src = r#"
-pub fn test() int {
-    let file_ext = ".rs"
-    return 0
-}
-"#;
-    crate::trans::rust::transpile_rust("test", src).expect("ext as keyword not used as var should work");
-}
-
-// Test each file with full error details — shows exact byte offset, line, and source
-#[test]
-fn test_911_detailed_errors() {
+fn test_17_autocode_019_detailed_errors() {
     use crate::parser::{Parser, CompileDest};
 
     // tool_grep.at is ~442KB and triggers deep recursion in the Pratt parser,

@@ -1,0 +1,4 @@
+pub fn test() str {
+    let template = "{\"env\": {}}"
+    return template
+}

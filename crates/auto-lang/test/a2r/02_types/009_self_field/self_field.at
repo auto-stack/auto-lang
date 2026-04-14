@@ -1,0 +1,11 @@
+pub type Counter {
+    count int
+}
+ext Counter {
+    pub fn increment() void {
+        .count = .count + 1
+    }
+    pub fn get() int {
+        return .count
+    }
+}

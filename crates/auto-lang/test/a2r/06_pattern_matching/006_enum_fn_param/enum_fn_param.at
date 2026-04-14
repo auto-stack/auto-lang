@@ -1,0 +1,10 @@
+pub enum ToolError {
+    ExecutionFailed str
+    InvalidInput str
+}
+pub fn handle(err ToolError) str {
+    is err {
+        ToolError.ExecutionFailed(msg) => { return msg }
+        ToolError.InvalidInput(msg) => { return msg }
+    }
+}

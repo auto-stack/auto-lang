@@ -1,8 +1,0 @@
-// Test generic spec declaration - Plan 057
-spec Storage<T> {
-    fn get() T
-}
-
-fn main() {
-    let x = 42
-}

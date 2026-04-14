@@ -1,0 +1,9 @@
+pub type Settings {
+    env Map<str, str>
+    provider Option<str>
+}
+ext Settings {
+    pub static fn default() Settings {
+        return Settings({}, nil)
+    }
+}

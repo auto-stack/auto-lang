@@ -1,0 +1,8 @@
+pub type Message {
+    role str
+    content str
+}
+pub fn load() Result<List<Message>, str> {
+    var messages = List.new()
+    return Ok(messages)
+}
