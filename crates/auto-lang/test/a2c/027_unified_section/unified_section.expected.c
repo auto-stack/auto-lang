@@ -7,7 +7,6 @@ int add(int a, int b) {
 int main(void) {
     unknown sum = add(1, 2);
     printf("%d\n", sum);
-    printf("%s\n", "
-");
+    printf("%s\n", "\n");
     return 0;
 }

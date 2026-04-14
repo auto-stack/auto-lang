@@ -518,126 +518,135 @@ fn test_999_doc_comments() {
 // === Temporary: verify auto-code .at files can be parsed and transpiled ===
 #[test]
 fn test_autocode_types() {
-    let src = std::fs::read_to_string("../../../auto-code/src/types.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/types.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("types", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_permission() {
-    let src = std::fs::read_to_string("../../../auto-code/src/permission.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/permission.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("permission", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_tools() {
-    let src = std::fs::read_to_string("../../../auto-code/src/tools.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/tools.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("tools", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_sse() {
-    let src = std::fs::read_to_string("../../../auto-code/src/sse.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/sse.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("sse", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_context() {
-    let src = std::fs::read_to_string("../../../auto-code/src/context.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/context.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("context", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_settings() {
-    let src = std::fs::read_to_string("../../../auto-code/src/settings.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/settings.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("settings", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_agent() {
-    let src = std::fs::read_to_string("../../../auto-code/src/agent.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/agent.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("agent", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_anthropic() {
-    let src = std::fs::read_to_string("../../../auto-code/src/anthropic.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/anthropic.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("anthropic", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_openai() {
-    let src = std::fs::read_to_string("../../../auto-code/src/openai.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/openai.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("openai", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_session() {
-    let src = std::fs::read_to_string("../../../auto-code/src/session.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/session.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("session", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_repl() {
-    let src = std::fs::read_to_string("../../../auto-code/src/repl.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/repl.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("repl", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_main() {
-    let src = std::fs::read_to_string("../../../auto-code/src/main.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/main.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("main", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_mod() {
-    let src = std::fs::read_to_string("../../../auto-code/src/mod.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/mod.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("mod", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_tool_bash() {
-    let src = std::fs::read_to_string("../../../auto-code/src/tool_bash.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/tool_bash.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("tool_bash", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_tool_grep() {
-    let src = std::fs::read_to_string("../../../auto-code/src/tool_grep.at").unwrap();
-    let mut r = crate::trans::rust::transpile_rust("tool_grep", &src).unwrap();
-    r.done().unwrap();
+    // tool_grep.at is ~442KB and triggers deep recursion in the Pratt parser,
+    // overflowing the default test thread stack. Use an explicit 8MB stack.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let src = std::fs::read_to_string("../../../auto-coder/src/tool_grep.at").unwrap();
+            let mut r = crate::trans::rust::transpile_rust("tool_grep", &src).unwrap();
+            r.done().unwrap();
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 #[test]
 fn test_autocode_tool_file_read() {
-    let src = std::fs::read_to_string("../../../auto-code/src/tool_file_read.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/tool_file_read.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("tool_file_read", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_tool_file_write() {
-    let src = std::fs::read_to_string("../../../auto-code/src/tool_file_write.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/tool_file_write.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("tool_file_write", &src).unwrap();
     r.done().unwrap();
 }
 
 #[test]
 fn test_autocode_tool_file_edit() {
-    let src = std::fs::read_to_string("../../../auto-code/src/tool_file_edit.at").unwrap();
+    let src = std::fs::read_to_string("../../../auto-coder/src/tool_file_edit.at").unwrap();
     let mut r = crate::trans::rust::transpile_rust("tool_file_edit", &src).unwrap();
     r.done().unwrap();
 }
@@ -876,30 +885,39 @@ pub fn test() int {
 fn test_911_detailed_errors() {
     use crate::parser::{Parser, CompileDest};
 
-    let base = "../../../auto-code/src/";
-    let files = [
-        "tools", "sse", "context", "settings",
-        "agent", "anthropic", "openai", "session", "repl", "main",
-        "tool_bash", "tool_grep", "tool_file_read", "tool_file_write", "tool_file_edit",
-    ];
+    // tool_grep.at is ~442KB and triggers deep recursion in the Pratt parser,
+    // overflowing the default test thread stack. Use an explicit 8MB stack.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let base = "../../../auto-coder/src/";
+            let files = [
+                "tools", "sse", "context", "settings",
+                "agent", "anthropic", "openai", "session", "repl", "main",
+                "tool_bash", "tool_grep", "tool_file_read", "tool_file_write", "tool_file_edit",
+            ];
 
-    for name in &files {
-        let path = format!("{}{}.at", base, name);
-        let src = std::fs::read_to_string(&path).unwrap();
-        let mut parser = Parser::from(&src);
-        parser.set_dest(CompileDest::TransRust);
-        match parser.parse() {
-            Ok(_) => println!("OK: {}", name),
-            Err(e) => {
-                let err_str = format!("{:?}", e);
-                let offset = extract_offset(&err_str);
-                let (line, col, source_line) = offset_to_line_col(&src, offset);
-                println!("FAIL: {} — byte {} = line {} col {}", name, offset, line, col);
-                println!("  | {}", source_line.trim_end());
-                println!("  | {:>width$}", "^", width = col);
+            for name in &files {
+                let path = format!("{}{}.at", base, name);
+                let src = std::fs::read_to_string(&path).unwrap();
+                let mut parser = Parser::from(&src);
+                parser.set_dest(CompileDest::TransRust);
+                match parser.parse() {
+                    Ok(_) => println!("OK: {}", name),
+                    Err(e) => {
+                        let err_str = format!("{:?}", e);
+                        let offset = extract_offset(&err_str);
+                        let (line, col, source_line) = offset_to_line_col(&src, offset);
+                        println!("FAIL: {} — byte {} = line {} col {}", name, offset, line, col);
+                        println!("  | {}", source_line.trim_end());
+                        println!("  | {:>width$}", "^", width = col);
+                    }
+                }
             }
-        }
-    }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 fn extract_offset(s: &str) -> usize {
