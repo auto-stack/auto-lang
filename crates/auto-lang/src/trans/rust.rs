@@ -4006,6 +4006,7 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
 // =============================================================================
 
 /// A module discovered during project scanning
+#[allow(dead_code)]
 struct ProjectModule {
     /// Module name (e.g., "db", "api", "api::handlers")
     name: String,

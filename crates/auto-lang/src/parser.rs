@@ -3720,7 +3720,7 @@ impl<'a> Parser<'a> {
             .into());
         }
 
-        let mut enum_decl = EnumDecl {
+        let enum_decl = EnumDecl {
             name: name.clone(),
             items,
             kind,
