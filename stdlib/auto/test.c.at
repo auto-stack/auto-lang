@@ -1,5 +1,4 @@
 
-#[pub]
-fn test() int {
+pub fn test() int {
     43
 }

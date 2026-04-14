@@ -2032,6 +2032,17 @@ impl RustTrans {
             _ => {}
         }
 
+        // Plan 6B-4.19: shared var → static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...));
+        if matches!(store.kind, StoreKind::Shared) {
+            let static_name = self.global_var_static_name(&store.name);
+            let ty = self.rust_type_name(&store.ty);
+            write!(out, "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
+                   static_name, ty)?;
+            self.expr(&store.expr, out)?;
+            write!(out, "))")?;
+            return Ok(());
+        }
+
         // Plan 6B-3.4: const declaration → const NAME: &str = "...";
         if matches!(store.kind, StoreKind::Const) {
             let ty_name = if matches!(store.ty, Type::Str(_)) {
@@ -3839,7 +3850,7 @@ impl Trans for RustTrans {
             if stmt.is_decl() {
                 // Plan 151: Register global variables (top-level var declarations)
                 if let Stmt::Store(store) = &stmt {
-                    if matches!(store.kind, StoreKind::Var) {
+                    if matches!(store.kind, StoreKind::Var) || matches!(store.kind, StoreKind::Shared) {
                         self.register_global_var(store.name.clone());
                     }
                 }

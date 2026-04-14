@@ -12,21 +12,17 @@ type TcpListener
 
 /// Bind to an address and create a TCP listener
 /// Example: let listener = tcp_bind("127.0.0.1:8080")
-#[pub]
-fn tcp_bind(addr str) TcpListener?;
+pub fn tcp_bind(addr str) TcpListener?;
 
 /// Accept a new connection (blocking)
 /// Returns null if the listener is closed
-#[pub]
-fn TcpListener.accept(self TcpListener) TcpStream?;
+pub fn TcpListener.accept(self TcpListener) TcpStream?;
 
 /// Get the local address the listener is bound to
-#[pub]
-fn TcpListener.local_addr(self TcpListener) str;
+pub fn TcpListener.local_addr(self TcpListener) str;
 
 /// Close the listener
-#[pub]
-fn TcpListener.close(self TcpListener) void;
+pub fn TcpListener.close(self TcpListener) void;
 
 // ═══════════════════════════════════════════════════════════
 // TCP Stream
@@ -37,41 +33,32 @@ type TcpStream
 
 /// Read data from the stream
 /// Returns the number of bytes read, or -1 on error
-#[pub]
-fn TcpStream.read(self TcpStream, buf []byte) int;
+pub fn TcpStream.read(self TcpStream, buf []byte) int;
 
 /// Write data to the stream
 /// Returns the number of bytes written, or -1 on error
-#[pub]
-fn TcpStream.write(self TcpStream, data []byte) int;
+pub fn TcpStream.write(self TcpStream, data []byte) int;
 
 /// Read all data until EOF
-#[pub]
-fn TcpStream.read_all(self TcpStream) []byte;
+pub fn TcpStream.read_all(self TcpStream) []byte;
 
 /// Read a line (until \n)
-#[pub]
-fn TcpStream.read_line(self TcpStream) str?;
+pub fn TcpStream.read_line(self TcpStream) str?;
 
 /// Write a string to the stream
-#[pub]
-fn TcpStream.write_str(self TcpStream, s str) int;
+pub fn TcpStream.write_str(self TcpStream, s str) int;
 
 /// Close the connection
-#[pub]
-fn TcpStream.close(self TcpStream) void;
+pub fn TcpStream.close(self TcpStream) void;
 
 /// Get the peer (remote) address
-#[pub]
-fn TcpStream.peer_addr(self TcpStream) str;
+pub fn TcpStream.peer_addr(self TcpStream) str;
 
 /// Set read timeout in milliseconds
-#[pub]
-fn TcpStream.set_read_timeout(self TcpStream, ms int) void;
+pub fn TcpStream.set_read_timeout(self TcpStream, ms int) void;
 
 /// Set write timeout in milliseconds
-#[pub]
-fn TcpStream.set_write_timeout(self TcpStream, ms int) void;
+pub fn TcpStream.set_write_timeout(self TcpStream, ms int) void;
 
 // ═══════════════════════════════════════════════════════════
 // TCP Client
@@ -79,5 +66,4 @@ fn TcpStream.set_write_timeout(self TcpStream, ms int) void;
 
 /// Connect to a remote TCP server
 /// Example: let stream = tcp_connect("127.0.0.1:8080")
-#[pub]
-fn tcp_connect(addr str) TcpStream?;
+pub fn tcp_connect(addr str) TcpStream?;

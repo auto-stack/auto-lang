@@ -3,14 +3,12 @@ use c.stdio: FILE, fopen, fclose, fgets, fputs, fflush, fgetc, fread
 ext File {
     file *FILE
 
-    #[pub]
-    static fn open(path str) File {
+    pub static fn open(path str) File {
         let f *FILE = fopen(path, c"r")
         File(path: path, file: f)
     }
 
-    #[pub]
-    fn read_text() str {
+    pub fn read_text() str {
         if .file == nil {
             return ""
         }
@@ -23,8 +21,7 @@ ext File {
         result
     }
 
-    #[pub]
-    fn read_line() str {
+    pub fn read_line() str {
         if .file == nil {
             return ""
         }
@@ -37,37 +34,32 @@ ext File {
         result
     }
 
-    #[pub]
-    fn read_char() int {
+    pub fn read_char() int {
         if .file == nil {
             return -1
         }
         fgetc(.file)
     }
 
-    #[pub]
-    fn read_buf(buf str, size int) int {
+    pub fn read_buf(buf str, size int) int {
         if .file == nil {
             return 0
         }
         fread(buf, 1, size, .file)
     }
 
-    #[pub]
-    fn write_line(s str) {
+    pub fn write_line(s str) {
         fputs(s, .file)
         fputs(c"\n", .file)
     }
 
-    #[pub]
-    fn flush() {
+    pub fn flush() {
         if .file != nil {
             fflush(.file)
         }
     }
 
-    #[pub]
-    fn close() {
+    pub fn close() {
         if .file != nil {
             fclose(.file)
         }

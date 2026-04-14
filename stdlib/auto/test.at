@@ -2,5 +2,4 @@
 
 // Forward declaration of test function
 // Implementation is in test.vm.at
-#[pub]
-fn test() int;
+pub fn test() int;

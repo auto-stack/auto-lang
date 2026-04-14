@@ -1,8 +1,7 @@
 // Plan 162: .as() type cast inside ext methods
 
 ext Counter {
-    #[pub]
-    fn get_value() u32 {
+    pub fn get_value() u32 {
         return .count.as(u32)
     }
 }

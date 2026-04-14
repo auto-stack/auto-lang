@@ -3073,25 +3073,65 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_stmt(&mut self) -> AutoResult<Stmt> {
-        // Plan 167: pub use — "pub" is an ident, check if followed by "use"
+        // Plan 6B-4.19: pub keyword prefix — unified visibility handling
         if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
             let saved_cur = self.cur.clone();
             let saved_prev = self.prev.clone();
             self.next(); // consume "pub"
-            if self.is_kind(TokenKind::Use) {
-                // It's "pub use" — parse as pub use statement
-                let mut stmt = self.use_stmt()?;
-                if let Stmt::Use(ref mut u) = stmt {
-                    u.is_pub = true;
+
+            // Check what follows "pub"
+            let stmt = match self.kind() {
+                TokenKind::Use => {
+                    let mut stmt = self.use_stmt()?;
+                    if let Stmt::Use(ref mut u) = stmt {
+                        u.is_pub = true;
+                    }
+                    stmt
                 }
-                return Ok(stmt);
-            }
-            // Not "pub use" — put the token back
-            self.lexer.push_token(self.cur.clone());
-            self.cur = saved_cur;
-            self.prev = saved_prev;
+                TokenKind::Fn => {
+                    self.fn_decl_stmt_with_annotations("", false, false, false, false, true, Vec::new())?
+                }
+                TokenKind::Static => {
+                    // pub static fn ...
+                    self.next(); // skip static
+                    self.fn_decl_stmt_with_annotations("", false, false, false, true, true, Vec::new())?
+                }
+                TokenKind::Type => {
+                    self.type_decl_stmt_with_annotation(false, true)?
+                }
+                TokenKind::Enum | TokenKind::Tag => {
+                    let mut stmt = self.enum_stmt()?;
+                    if let Stmt::EnumDecl(ref mut e) = stmt {
+                        e.is_pub = true;
+                    }
+                    stmt
+                }
+                TokenKind::Spec => {
+                    let mut stmt = self.spec_decl_stmt()?;
+                    if let Stmt::SpecDecl(ref mut s) = stmt {
+                        s.is_pub = true;
+                    }
+                    stmt
+                }
+                TokenKind::Ext => {
+                    // pub ext — ext block itself doesn't carry pub, just parse normally
+                    self.parse_ext_stmt()?
+                }
+                _ => {
+                    // Not a recognized pub declaration — put the token back
+                    self.lexer.push_token(self.cur.clone());
+                    self.cur = saved_cur;
+                    self.prev = saved_prev;
+                    return self.parse_stmt_inner();
+                }
+            };
+            return Ok(stmt);
         }
 
+        self.parse_stmt_inner()
+    }
+
+    fn parse_stmt_inner(&mut self) -> AutoResult<Stmt> {
         let stmt = match self.kind() {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Return => self.return_stmt()?,
@@ -3110,6 +3150,7 @@ impl<'a> Parser<'a> {
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
             TokenKind::Const => self.parse_store_stmt()?,
+            TokenKind::Shared => self.parse_store_stmt()?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
@@ -3388,7 +3429,8 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
+            // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
+            // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
             let (has_c, has_vm, has_rs, has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
@@ -3402,6 +3444,15 @@ impl<'a> Parser<'a> {
                 CompileDest::Interp if has_c && !has_vm => true,     // Skip #[c] in interpreter
                 CompileDest::Interp if has_rs && !has_vm => true,    // Skip #[rs] in interpreter
                 _ => false,
+            };
+
+            // Plan 6B-4.19: Handle `pub` keyword prefix inside ext body
+            // Must be checked BEFORE field detection since `pub` is also an Ident
+            let local_has_pub = if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+                self.next(); // consume "pub"
+                true
+            } else {
+                has_pub
             };
 
             // Parse field declarations: name Type (same syntax as type members)
@@ -3495,7 +3546,7 @@ impl<'a> Parser<'a> {
                         has_vm,
                         has_rs,
                         is_static_method,
-                        has_pub,
+                        local_has_pub,
                         with_params.clone(),
                     );
                     self.expect_eos(false)?;
@@ -3509,7 +3560,7 @@ impl<'a> Parser<'a> {
                     has_vm,
                     has_rs,
                     is_static_method,
-                    has_pub,
+                    local_has_pub,
                     with_params,
                 )?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
@@ -3571,14 +3622,6 @@ impl<'a> Parser<'a> {
     ///
     /// Also handles `tag` keyword (deprecated) by redirecting here.
     fn enum_stmt(&mut self) -> AutoResult<Stmt> {
-        // Plan 163: Check for #[pub] annotation before enum keyword
-        let mut is_pub = false;
-        if self.is_kind(TokenKind::Hash) {
-            let (_, _, _, has_pub, _) = self.parse_fn_annotations()?;
-            is_pub = has_pub;
-            self.skip_empty_lines();
-        }
-
         // Support both 'enum' and 'tag' keywords (tag is deprecated)
         if self.is_kind(TokenKind::Tag) || self.is_kind(TokenKind::Enum) {
             self.next(); // skip 'enum' or 'tag'
@@ -3653,7 +3696,7 @@ impl<'a> Parser<'a> {
             name: name.clone(),
             items,
             kind,
-            is_pub,
+            is_pub: false,
         };
         self.register_enum_decl(&enum_decl, &generic_params);
         Ok(Stmt::EnumDecl(enum_decl))
@@ -5170,9 +5213,20 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_store_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 6B-4.19: Check for 'shared' modifier
+        let is_shared = self.is_kind(TokenKind::Shared);
+        if is_shared {
+            self.next(); // skip 'shared'
+        }
+
         // store kind: var/let (mut keyword is now aliased to var)
         let mut store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
+
+        // Plan 6B-4.19: shared var/let → StoreKind::Shared
+        if is_shared {
+            store_kind = StoreKind::Shared;
+        }
 
         // identifier name
         let mut name = self.parse_name()?;
@@ -5411,7 +5465,8 @@ impl<'a> Parser<'a> {
 
     /// Parse function annotations: [c], [vm], [c,vm], [pub]
     ///
-    /// Parse function annotations: #[c], #[vm], #[rs], #[pub], #[c,vm], #[with(T as Spec)], etc.
+    /// Parse function annotations: #[c], #[vm], #[rs], #[c,vm], #[with(T as Spec)], etc.
+    /// Note: `pub` is handled separately as a keyword prefix, not an annotation.
     /// Annotations must start with # prefix (Rust-style).
     /// Returns (has_c, has_vm, has_rs, has_pub, with_params) tuple
     ///
@@ -5423,7 +5478,7 @@ impl<'a> Parser<'a> {
         let mut has_c = false;
         let mut has_vm = false;
         let mut has_rs = false;
-        let mut has_pub = false;
+        let has_pub = false;
         let mut with_params: Vec<crate::ast::TypeParam> = Vec::new();
 
         // Parse all annotation blocks: #[...] #[...] ...
@@ -5439,7 +5494,6 @@ impl<'a> Parser<'a> {
                         "c" => has_c = true,
                         "vm" => has_vm = true,
                         "rs" => has_rs = true,
-                        "pub" => has_pub = true,
                         "single" => {
                             // Plan 121: #[single] annotation for singleton tasks
                             // This is handled by the caller, just skip here
@@ -5502,7 +5556,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => {
                             return Err(SyntaxError::Generic {
-                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[pub], #[single], #[async], #[with(...)], #[c,vm,rs], #[derive(...)], #[serde(...)]", annot),
+                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[single], #[async], #[with(...)], #[c,vm,rs], #[derive(...)], #[serde(...)]. Use 'pub' keyword prefix for visibility.", annot),
                                 span: pos_to_span(self.cur.pos),
                             }.into());
                         }
@@ -6199,14 +6253,6 @@ impl<'a> Parser<'a> {
     }
 
     pub fn spec_decl_stmt(&mut self) -> AutoResult<Stmt> {
-        // Plan 163: Check for #[pub] annotation before spec keyword
-        let mut is_pub = false;
-        if self.is_kind(TokenKind::Hash) {
-            let (_, _, _, has_pub, _) = self.parse_fn_annotations()?;
-            is_pub = has_pub;
-            self.skip_empty_lines();
-        }
-
         self.next(); // skip `spec` keyword
 
         let name = self.parse_name()?;
@@ -6256,16 +6302,11 @@ impl<'a> Parser<'a> {
         }
 
         // Plan 057: Use SpecDecl::with_generic_params if we have generic params
-        let mut spec_decl = if generic_params.is_empty() {
+        let spec_decl = if generic_params.is_empty() {
             SpecDecl::new(name, methods)
         } else {
             SpecDecl::with_generic_params(name, generic_params, methods)
         };
-
-        // Plan 163: Set is_pub flag
-        if is_pub {
-            spec_decl.is_pub = true;
-        }
 
         // Register spec in scope
         self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
@@ -6625,7 +6666,8 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
+            // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
+            // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
             let (has_c, has_vm, has_rs, has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
@@ -6667,6 +6709,14 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            // Plan 6B-4.19: Handle `pub` keyword prefix inside type body
+            let local_has_pub = if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+                self.next(); // consume "pub"
+                true
+            } else {
+                has_pub
+            };
+
             // Check for static fn, mut fn, or fn
             if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
                 let is_static = self.is_kind(TokenKind::Static);
@@ -6693,7 +6743,7 @@ impl<'a> Parser<'a> {
                     has_vm,
                     has_rs,
                     is_static,
-                    has_pub,
+                    local_has_pub,
                     with_params,
                 )?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {

@@ -679,6 +679,7 @@ impl Codegen {
                         | crate::ast::StoreKind::Var
                         | crate::ast::StoreKind::Const
                         | crate::ast::StoreKind::CVar
+                        | crate::ast::StoreKind::Shared
                 );
 
                 if !is_new_declaration && scope.contains_key(&name_str) {
@@ -699,7 +700,7 @@ impl Codegen {
                     // First-time declaration - track mutability based on StoreKind
                     let is_mutable = matches!(
                         store.kind,
-                        crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar
+                        crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar | crate::ast::StoreKind::Shared
                     );
                     self.var_mutability.insert(name_str.clone(), is_mutable);
 
@@ -1110,7 +1111,8 @@ impl Codegen {
                 let var_index = if let Some(existing_index) = self.lookup_var(&name_str) {
                     match store.kind {
                         crate::ast::StoreKind::Let
-                        | crate::ast::StoreKind::Const => {
+                        | crate::ast::StoreKind::Const
+                        | crate::ast::StoreKind::Shared => {
                             // `let x = ...` always creates a new slot, even if x exists in outer scope
                             self.add_var(&store.name)
                         }

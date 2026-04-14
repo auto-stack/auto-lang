@@ -1330,8 +1330,8 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 | 6B-4.15 | **`Result<T>` 错误处理链** | `.map_err()?`, `anyhow::Result` | P2 |
 | 6B-4.16 | **多文件模块系统** | `mod types; mod anthropic;` | ✅ **已完成** (Plan 167) |
 | 6B-4.17 | **Cargo.toml 生成** | 依赖管理 | ✅ **已完成** (Plan 167 Phase 6) |
-| 6B-4.18 | **`const` 常量** | `const API_URL: &str = "...";` | P3（同 6B-3.4） |
-| 6B-4.19 | **`static` 变量** | `static CLIENT: Lazy<Client>` | P2（部分已有 global_vars） |
+| 6B-4.18 | **`const` 常量** | `const API_URL: &str = "...";` | ✅ test 157 |
+| 6B-4.19 | **`shared` 变量（替代 `static`）** | `shared var CLIENT Client = ...` | ✅ **已完成** (test 162) — `shared` 关键字，a2r→`static Lazy<Mutex<T>>` |
 | 6B-4.20 | **泛型约束 `where T: Trait`** | `where T: Serialize + Clone` | P3（同 6B-3.1） |
 
 **实施优先级建议**:
@@ -1353,9 +1353,10 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
   9. 6B-2.7  impl From<A> for B ✅ test 156
   10. 6B-3.4  const 常量          ✅ test 157
   11. 6B-4.14 Box::new/Arc::new ✅ test 158
-  12. 6B-4.10 复杂闭包/方法链
+  12. 6B-4.19 shared 变量        ✅ test 162
   13. 6B-3.5 多文件模块系统    ✅ Plan 167
   14. 6B-3.2 Cargo.toml 生成    ✅ Plan 167 Phase 6
+  15. 6B-4.10 复杂闭包/方法链
 ```
 
 **验证标准**:
@@ -1366,6 +1367,8 @@ AutoCode 使用以下 system prompt 指导 LLM 行为：
 - [x] a2r 转译器支持 async fn 和 derive 宏（Phase 6B-2）✅ tests 133-135
 - [x] a2r 转译器支持核心结构：pub、static fn、&mut self、tokio main、per-field attrs（Phase 6B-4 第一批）✅ Plan 163 tests 148-152
 - [x] a2r 转译器支持 impl Trait for Type（外部 trait）✅ Plan 164 test 153
+- [x] `#[pub]` 注解语法迁移为 `pub` 关键字前缀（2026-04-14）— 26 个 stdlib 文件 + 测试文件已迁移
+- [x] `shared` 关键字实现（替代 `static`）✅ test 162 — Plan 6B-4.19
 - [ ] 纯 .at 代码转译为 Rust 后功能与 Rust 原型对等（Phase 6B-3）
 
 ### ac-api

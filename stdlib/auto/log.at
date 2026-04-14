@@ -20,8 +20,7 @@ let current_level = LEVEL_INFO
 /// Log a debug message
 /// Only shown when log level is DEBUG.
 /// Example: debug("Processing item {id}")
-#[pub]
-fn debug(msg str) void {
+pub fn debug(msg str) void {
     if current_level <= LEVEL_DEBUG {
         _log_debug(msg)
     }
@@ -29,8 +28,7 @@ fn debug(msg str) void {
 
 /// Log an info message
 /// Example: info("User {name} logged in")
-#[pub]
-fn info(msg str) void {
+pub fn info(msg str) void {
     if current_level <= LEVEL_INFO {
         _log_info(msg)
     }
@@ -38,8 +36,7 @@ fn info(msg str) void {
 
 /// Log a warning message
 /// Example: warn("Rate limit approaching")
-#[pub]
-fn warn(msg str) void {
+pub fn warn(msg str) void {
     if current_level <= LEVEL_WARN {
         _log_warn(msg)
     }
@@ -48,8 +45,7 @@ fn warn(msg str) void {
 /// Log an error message
 /// Always shown unless logging is disabled.
 /// Example: error("Failed to connect: {reason}")
-#[pub]
-fn error(msg str) void {
+pub fn error(msg str) void {
     if current_level <= LEVEL_ERROR {
         _log_error(msg)
     }
@@ -62,8 +58,7 @@ fn error(msg str) void {
 /// Set the current log level
 /// Valid values: "debug", "info", "warn", "error"
 /// Example: set_level("debug")
-#[pub]
-fn set_level(level str) void {
+pub fn set_level(level str) void {
     if level == "debug" {
         current_level = LEVEL_DEBUG
     } else if level == "info" {
@@ -76,8 +71,7 @@ fn set_level(level str) void {
 }
 
 /// Get the current log level as a string
-#[pub]
-fn get_level() str {
+pub fn get_level() str {
     if current_level == LEVEL_DEBUG {
         "debug"
     } else if current_level == LEVEL_INFO {
@@ -95,15 +89,13 @@ fn get_level() str {
 
 /// Log info with format
 /// Example: infof("User %s logged in", name)
-#[pub]
-fn infof(format str, value str) void {
+pub fn infof(format str, value str) void {
     let msg = str.format(format, value)
     info(msg)
 }
 
 /// Log error with format
-#[pub]
-fn errorf(format str, value str) void {
+pub fn errorf(format str, value str) void {
     let msg = str.format(format, value)
     error(msg)
 }

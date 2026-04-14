@@ -498,6 +498,12 @@ fn test_161_multi_file() {
     assert!(cargo_toml.contains("edition = \"2021\""), "Cargo.toml should have edition = 2021");
 }
 
+// Plan 6B-4.19: shared variable declaration (static storage)
+#[test]
+fn test_162_shared_var() {
+    test_a2r("162_shared_var").unwrap();
+}
+
 #[test]
 fn test_999_doc_comments() {
     test_a2r("999_doc_comments").unwrap();

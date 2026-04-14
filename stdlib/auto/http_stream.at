@@ -48,8 +48,7 @@ type HTTPStream
 /// let stream = http_get_stream("https://api.example.com/stream")
 /// ```
 #[vm]
-#[pub]
-fn http_get_stream(url str) HTTPStream
+pub fn http_get_stream(url str) HTTPStream
 
 /// 创建流式 HTTP POST 请求
 ///
@@ -68,8 +67,7 @@ fn http_get_stream(url str) HTTPStream
 /// let stream = http_post_stream("https://api.example.com/stream", '{"data": "test"}')
 /// ```
 #[vm]
-#[pub]
-fn http_post_stream(url str, body str) HTTPStream
+pub fn http_post_stream(url str, body str) HTTPStream
 
 /// Create a streaming HTTP POST request with custom headers
 ///
@@ -90,8 +88,7 @@ fn http_post_stream(url str, body str) HTTPStream
 /// let stream = http_post_stream_with_headers("https://api.example.com/v1/chat", '{"model":"gpt-4"}', headers)
 /// ```
 #[vm]
-#[pub]
-fn http_post_stream_with_headers(url str, body str, headers str) HTTPStream
+pub fn http_post_stream_with_headers(url str, body str, headers str) HTTPStream
 
 // ═══════════════════════════════════════════════════════════════════════
 // 流操作函数
@@ -118,8 +115,7 @@ fn http_post_stream_with_headers(url str, body str, headers str) HTTPStream
 /// }
 /// ```
 #[vm]
-#[pub]
-fn http_stream_next(stream HTTPStream) str
+pub fn http_stream_next(stream HTTPStream) str
 
 /// 检查流是否完成
 ///
@@ -138,8 +134,7 @@ fn http_stream_next(stream HTTPStream) str
 /// }
 /// ```
 #[vm]
-#[pub]
-fn http_stream_is_done(stream HTTPStream) int
+pub fn http_stream_is_done(stream HTTPStream) int
 
 /// 关闭流
 ///
@@ -153,8 +148,7 @@ fn http_stream_is_done(stream HTTPStream) int
 /// http_stream_close(stream)
 /// ```
 #[vm]
-#[pub]
-fn http_stream_close(stream HTTPStream) void
+pub fn http_stream_close(stream HTTPStream) void
 
 // ═══════════════════════════════════════════════════════════════════════
 // 高级用法示例

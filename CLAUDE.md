@@ -301,11 +301,20 @@ use super.utils      // → src/utils.at
 use database.conn    // → ../database/src/conn.at
 ```
 
-### Function Annotations
+### Function Annotations & Visibility
 
-⚠️ **IMPORTANT**: AutoLang uses Rust-style `#[...]` annotation syntax. The old `[...]` syntax is **DEPRECATED** and should not be used.
+⚠️ **IMPORTANT**: AutoLang uses Rust-style `#[...]` annotation syntax for compile targets. The old `[...]` syntax is **DEPRECATED** and should not be used.
 
-**Annotation Syntax** (Rust-style):
+**Visibility** uses the `pub` keyword prefix (like Rust):
+```auto
+pub fn public_function() int;
+pub type Point { x int, y int }
+pub enum Color { Red, Green, Blue }
+pub spec MyTrait { fn foo() }
+pub use math::add
+```
+
+**Annotation Syntax** (Rust-style, for compile targets):
 ```auto
 #[vm]
 fn my_function(x int) void;
@@ -316,19 +325,22 @@ fn c_function(s str) int;
 #[c, vm]
 fn hybrid_function(data []byte) void;
 
-#[pub]
-fn public_function() int;
+#[vm]
+pub fn public_vm_function() int;
 ```
 
 **Annotation Rules**:
 - ✅ **REQUIRED**: All annotations MUST start with `#[]` (Rust-style)
 - ❌ **DEPRECATED**: Old `[...]` syntax (without `#`) is deprecated and will be removed
 - Annotations come **before** the `fn` keyword
-- Supported annotations: `#[c]`, `#[vm]`, `#[pub]`, `#[c, vm]`, `#[pub, c]`, etc.
-- Multiple annotations can be combined: `#[pub, vm]` or `#[pub] #[vm]`
+- Supported annotations: `#[c]`, `#[vm]`, `#[rs]`, `#[c, vm]`, etc.
+- Multiple annotations can be combined: `#[c, vm]` or `#[c] #[vm]`
+- Visibility (`pub`) is a keyword prefix, NOT an annotation: `pub fn`, not `#[pub] fn`
+- ❌ **DEPRECATED**: `#[pub]` annotation syntax is replaced by `pub` keyword prefix
 
 **Annotation Placement**:
 - Annotations should be on their own line (with newlines between annotation and function declaration)
+- `pub` keyword goes before annotations: `#[vm] pub fn foo()`
 
 **In Type Definitions**:
 ```auto
@@ -338,6 +350,8 @@ type MyType {
 
     #[vm]
     fn instance_method(x int) void;
+
+    pub fn public_method(x int) void;
 
     #[c, vm]
     fn hybrid_method(s str) void;

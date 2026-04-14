@@ -1937,14 +1937,14 @@ fn test_vm_annotation_in_ext() {
     ext File {
         _handle uint64
 
-        #[pub, vm]
-        static fn open(path str) File
+        #[vm]
+        pub static fn open(path str) File
 
-        #[pub, vm]
-        fn read_text() str
+        #[vm]
+        pub fn read_text() str
 
-        #[pub, vm]
-        fn close()
+        #[vm]
+        pub fn close()
     }
     "#;
 
@@ -2093,8 +2093,7 @@ fn test_module_simulation() {
     fn test() int;
 
     // Simulating test.vm.at
-    #[pub]
-    fn test() int {
+    pub fn test() int {
         42
     }
 

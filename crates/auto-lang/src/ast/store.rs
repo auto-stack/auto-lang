@@ -7,6 +7,7 @@ pub enum StoreKind {
     Let,
     Var,
     Const, // const declaration (Plan 6B-3.4)
+    Shared, // shared = static storage (Plan 6B-4.19)
     CVar,  // C variable declaration
     Field, // field of struct
 }
@@ -30,6 +31,7 @@ impl fmt::Display for Store {
             StoreKind::Let => write!(f, "(let (name {}){}{})", self.name, ty_str, self.expr),
             StoreKind::Var => write!(f, "(var (name {}) {})", self.name, self.expr),
             StoreKind::Const => write!(f, "(const (name {}){}{})", self.name, ty_str, self.expr),
+            StoreKind::Shared => write!(f, "(shared (name {}){}{})", self.name, ty_str, self.expr),
             StoreKind::Field => write!(f, "(field (name {}) {})", self.name, self.expr),
             StoreKind::CVar => write!(f, "(cvar (name {}))", self.name),
         }
@@ -42,6 +44,7 @@ impl fmt::Display for StoreKind {
             StoreKind::Let => write!(f, "let"),
             StoreKind::Var => write!(f, "var"),
             StoreKind::Const => write!(f, "const"),
+            StoreKind::Shared => write!(f, "shared"),
             StoreKind::Field => write!(f, "field"),
             StoreKind::CVar => write!(f, "cvar"),
         }
@@ -60,6 +63,7 @@ impl AtomWriter for Store {
             StoreKind::Let => "let",
             StoreKind::Var => "var",
             StoreKind::Const => "const",
+            StoreKind::Shared => "shared",
             StoreKind::Field => "field",
             StoreKind::CVar => "cvar",
         };
@@ -81,6 +85,7 @@ impl ToNode for Store {
             StoreKind::Let => "let",
             StoreKind::Var => "var",
             StoreKind::Const => "const",
+            StoreKind::Shared => "shared",
             StoreKind::CVar => "cvar",
             StoreKind::Field => "field",
         };

@@ -1,0 +1,10 @@
+// Plan 6B-4.19: shared variable declaration
+
+shared var COUNTER int = 0
+shared var APP_NAME str = "AutoLang"
+
+fn main() {
+    COUNTER += 1
+    say(APP_NAME)
+    say(COUNTER)
+}

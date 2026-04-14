@@ -9,13 +9,11 @@
 
 /// Encode a value to a JSON string
 /// Example: let s = encode(user)
-#[pub]
-fn encode[T](value T) str;
+pub fn encode[T](value T) str;
 
 /// Encode a value to a pretty-printed JSON string
 /// Example: let s = encode_pretty(data)
-#[pub]
-fn encode_pretty[T](value T) str;
+pub fn encode_pretty[T](value T) str;
 
 // ═══════════════════════════════════════════════════════════
 // Decoding Functions
@@ -24,18 +22,15 @@ fn encode_pretty[T](value T) str;
 /// Decode a JSON string to a value
 /// Returns the decoded value, or throws an error on failure
 /// Example: let user = decode[User](json_str)
-#[pub]
-fn decode[T](s str) T;
+pub fn decode[T](s str) T;
 
 /// Try to decode a JSON string, returns null on failure
 /// Example: let user = try_decode[User](json_str)
-#[pub]
-fn try_decode[T](s str) T?;
+pub fn try_decode[T](s str) T?;
 
 /// Parse a JSON string into a generic JsonValue
 /// Example: let val = parse(json_str)
-#[pub]
-fn parse(s str) JsonValue?;
+pub fn parse(s str) JsonValue?;
 
 // ═══════════════════════════════════════════════════════════
 // JsonValue Type (Dynamic JSON)
@@ -47,54 +42,42 @@ type JsonValue
 
 /// Get the type of this JSON value
 /// Returns: "null", "bool", "number", "string", "array", "object"
-#[pub]
-fn JsonValue.type(self JsonValue) str;
+pub fn JsonValue.type(self JsonValue) str;
 
 /// Check if this value is null
-#[pub]
-fn JsonValue.is_null(self JsonValue) int;
+pub fn JsonValue.is_null(self JsonValue) int;
 
 /// Convert to string (returns empty string if not a string)
-#[pub]
-fn JsonValue.as_string(self JsonValue) str;
+pub fn JsonValue.as_string(self JsonValue) str;
 
 /// Convert to number (returns 0 if not a number)
-#[pub]
-fn JsonValue.as_number(self JsonValue) float;
+pub fn JsonValue.as_number(self JsonValue) float;
 
 /// Convert to integer
-#[pub]
-fn JsonValue.as_int(self JsonValue) int;
+pub fn JsonValue.as_int(self JsonValue) int;
 
 /// Convert to boolean
-#[pub]
-fn JsonValue.as_bool(self JsonValue) int;
+pub fn JsonValue.as_bool(self JsonValue) int;
 
 /// Convert to array (returns empty array if not an array)
-#[pub]
-fn JsonValue.as_array(self JsonValue) []JsonValue;
+pub fn JsonValue.as_array(self JsonValue) []JsonValue;
 
 /// Get object keys
-#[pub]
-fn JsonValue.keys(self JsonValue) []str;
+pub fn JsonValue.keys(self JsonValue) []str;
 
 /// Get a field from an object
 /// Returns null if not an object or key doesn't exist
-#[pub]
-fn JsonValue.get(self JsonValue, key str) JsonValue?;
+pub fn JsonValue.get(self JsonValue, key str) JsonValue?;
 
 /// Get an array element by index
 /// Returns null if not an array or index out of bounds
-#[pub]
-fn JsonValue.get_at(self JsonValue, index int) JsonValue?;
+pub fn JsonValue.get_at(self JsonValue, index int) JsonValue?;
 
 /// Check if an object has a key
-#[pub]
-fn JsonValue.has_key(self JsonValue, key str) int;
+pub fn JsonValue.has_key(self JsonValue, key str) int;
 
 /// Get array length
-#[pub]
-fn JsonValue.len(self JsonValue) int;
+pub fn JsonValue.len(self JsonValue) int;
 
 // ═══════════════════════════════════════════════════════════
 // Utility Functions
@@ -102,15 +85,12 @@ fn JsonValue.len(self JsonValue) int;
 
 /// Format a JSON string with indentation
 /// Example: let pretty = prettify(json_str)
-#[pub]
-fn prettify(s str) str;
+pub fn prettify(s str) str;
 
 /// Minify a JSON string (remove whitespace)
 /// Example: let minified = minify(json_str)
-#[pub]
-fn minify(s str) str;
+pub fn minify(s str) str;
 
 /// Validate if a string is valid JSON
 /// Returns 1 if valid, 0 otherwise
-#[pub]
-fn is_valid(s str) int;
+pub fn is_valid(s str) int;

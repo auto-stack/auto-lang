@@ -8,8 +8,7 @@ ext List {
     // ========================================================================
 
     /// Create a new empty List with the given storage strategy
-    #[pub]
-    static fn new() List<T, S> {
+    pub static fn new() List<T, S> {
         return List(len: 0, store: S.new())
     }
 
@@ -18,26 +17,22 @@ ext List {
     // ========================================================================
 
     /// Get the number of elements in the list
-    #[pub]
-    fn len() int {
+    pub fn len() int {
         return .len.as(int)
     }
 
     /// Check if the list is empty
-    #[pub]
-    fn is_empty() bool {
+    pub fn is_empty() bool {
         return .len == 0
     }
 
     /// Get the total capacity (from storage)
-    #[pub]
-    fn capacity() int {
+    pub fn capacity() int {
         return .store.capacity().as(int)
     }
 
     /// Get element at index (bounds checking)
-    #[pub]
-    fn get(index int) T {
+    pub fn get(index int) T {
         if index < 0 or index >= .len.as(int) {
             return nil
         }
@@ -50,8 +45,7 @@ ext List {
     // ========================================================================
 
     /// Push element to the end (grows storage if needed)
-    #[pub]
-    fn push(elem T) {
+    pub fn push(elem T) {
         if .len >= .store.capacity() {
             var new_cap = .len * 2
             if new_cap < 8 {
@@ -65,8 +59,7 @@ ext List {
     }
 
     /// Pop element from the end
-    #[pub]
-    fn pop() T {
+    pub fn pop() T {
         if .len == 0 {
             return nil
         }
@@ -76,8 +69,7 @@ ext List {
     }
 
     /// Set element at index
-    #[pub]
-    fn set(index int, elem T) int {
+    pub fn set(index int, elem T) int {
         if index < 0 or index >= .len.as(int) {
             return -1
         }
@@ -87,8 +79,7 @@ ext List {
     }
 
     /// Remove all elements (keeps capacity)
-    #[pub]
-    fn clear() {
+    pub fn clear() {
         .len = 0
     }
 
@@ -97,8 +88,7 @@ ext List {
     // ========================================================================
 
     /// Free the list's resources (drops storage)
-    #[pub]
-    fn drop() {
+    pub fn drop() {
         .store.drop()
     }
 
@@ -107,8 +97,7 @@ ext List {
     // ========================================================================
 
     /// Get an iterator over list elements
-    #[pub]
-    fn iter() ListIter<T, S> {
+    pub fn iter() ListIter<T, S> {
         return ListIter.new(.self)
     }
 }
@@ -117,8 +106,7 @@ ext List {
 ext ListIter {
     /// Get the next element from the iterator
     /// Returns nil when iteration is complete
-    #[pub]
-    fn next() May<T> {
+    pub fn next() May<T> {
         if .index >= .list.len() {
             return nil
         }

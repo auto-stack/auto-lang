@@ -8,23 +8,19 @@
 
 /// Returns the absolute value of a number
 /// Example: abs(-5)  // returns 5
-#[pub]
-fn abs(n i64) i64;
+pub fn abs(n i64) i64;
 
 /// Returns the minimum of two numbers
 /// Example: min(3, 5)  // returns 3
-#[pub]
-fn min(a i64, b i64) i64;
+pub fn min(a i64, b i64) i64;
 
 /// Returns the maximum of two numbers
 /// Example: max(3, 5)  // returns 5
-#[pub]
-fn max(a i64, b i64) i64;
+pub fn max(a i64, b i64) i64;
 
 /// Returns the square root of a number
 /// Example: sqrt(25.0)  // returns 5.0
-#[pub]
-fn sqrt(d double) double;
+pub fn sqrt(d double) double;
 
 // ============================================================================
 // Auto-Implemented Functions
