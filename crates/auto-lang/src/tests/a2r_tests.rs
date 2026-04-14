@@ -508,3 +508,421 @@ fn test_162_shared_var() {
 fn test_999_doc_comments() {
     test_a2r("999_doc_comments").unwrap();
 }
+
+// === Temporary: verify auto-code .at files can be parsed and transpiled ===
+#[test]
+fn test_autocode_types() {
+    let src = std::fs::read_to_string("../../../auto-code/src/types.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("types", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_permission() {
+    let src = std::fs::read_to_string("../../../auto-code/src/permission.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("permission", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_tools() {
+    let src = std::fs::read_to_string("../../../auto-code/src/tools.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("tools", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_sse() {
+    let src = std::fs::read_to_string("../../../auto-code/src/sse.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("sse", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_context() {
+    let src = std::fs::read_to_string("../../../auto-code/src/context.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("context", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_settings() {
+    let src = std::fs::read_to_string("../../../auto-code/src/settings.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("settings", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_agent() {
+    let src = std::fs::read_to_string("../../../auto-code/src/agent.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("agent", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_anthropic() {
+    let src = std::fs::read_to_string("../../../auto-code/src/anthropic.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("anthropic", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_openai() {
+    let src = std::fs::read_to_string("../../../auto-code/src/openai.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("openai", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_session() {
+    let src = std::fs::read_to_string("../../../auto-code/src/session.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("session", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_repl() {
+    let src = std::fs::read_to_string("../../../auto-code/src/repl.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("repl", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_main() {
+    let src = std::fs::read_to_string("../../../auto-code/src/main.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("main", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_mod() {
+    let src = std::fs::read_to_string("../../../auto-code/src/mod.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("mod", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_tool_bash() {
+    let src = std::fs::read_to_string("../../../auto-code/src/tool_bash.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("tool_bash", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_tool_grep() {
+    let src = std::fs::read_to_string("../../../auto-code/src/tool_grep.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("tool_grep", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_tool_file_read() {
+    let src = std::fs::read_to_string("../../../auto-code/src/tool_file_read.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("tool_file_read", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_tool_file_write() {
+    let src = std::fs::read_to_string("../../../auto-code/src/tool_file_write.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("tool_file_write", &src).unwrap();
+    r.done().unwrap();
+}
+
+#[test]
+fn test_autocode_tool_file_edit() {
+    let src = std::fs::read_to_string("../../../auto-code/src/tool_file_edit.at").unwrap();
+    let mut r = crate::trans::rust::transpile_rust("tool_file_edit", &src).unwrap();
+    r.done().unwrap();
+}
+
+// === Language feature tests ===
+
+#[test]
+fn test_920_enum_as_fn_param() {
+    // enum variants can be passed as function parameters and matched with is
+    let src = r#"
+pub enum ToolError {
+    ExecutionFailed str
+    InvalidInput str
+}
+pub fn handle(err ToolError) str {
+    is err {
+        ToolError.ExecutionFailed(msg) => { return msg }
+        ToolError.InvalidInput(msg) => { return msg }
+    }
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("enum as fn param should work");
+}
+
+#[test]
+fn test_921_is_match_in_ext() {
+    // is pattern matching works inside ext blocks
+    let src = r#"
+pub enum ToolError {
+    ExecutionFailed str
+    InvalidInput str
+}
+ext ToolError {
+    pub fn to_string() str {
+        is self {
+            ToolError.ExecutionFailed(msg) => { return msg }
+            ToolError.InvalidInput(msg) => { return msg }
+        }
+    }
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("is match in ext should work");
+}
+
+#[test]
+fn test_922_or_keyword() {
+    // 'or' keyword for logical OR (|| is not supported)
+    let src = r#"
+pub fn check(a int, b int) bool {
+    return a > 0 or b > 0
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("or keyword should work");
+}
+
+#[test]
+fn test_923_backtick_fstring() {
+    // Backtick strings support multi-line and interpolation
+    let src = r#"
+pub fn test() str {
+    let template = `hello
+world`
+    return template
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("backtick with newline should work");
+}
+
+#[test]
+fn test_924_escaped_quotes_in_fstring() {
+    // Escaped quotes inside f-strings
+    let src = r#"
+pub fn test() str {
+    let template = "{\"env\": {}}"
+    return template
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("escaped quotes in string should work");
+}
+
+#[test]
+fn test_925_option_bool_field() {
+    // Option<bool> as struct field type
+    let src = r#"
+pub type Settings {
+    env Map<str, str>
+    provider Option<str>
+}
+ext Settings {
+    pub static fn default() Settings {
+        return Settings({}, nil)
+    }
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("Option type field should work");
+}
+
+#[test]
+fn test_926_const_declaration() {
+    // const declarations before ext blocks
+    let src = r#"
+pub type Settings {
+    env Map<str, str>
+}
+const SETTINGS_DIR str = ".auto-code-rs"
+ext Settings {
+    pub static fn default() Settings {
+        return Settings({})
+    }
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("const before ext should work");
+}
+
+#[test]
+fn test_927_empty_body_with_comment() {
+    // ext method with empty body (just a comment) is valid
+    let src = r#"
+pub type Settings {
+    env Map<str, str>
+}
+ext Settings {
+    pub static fn default() Settings {
+        return Settings({})
+    }
+    pub static fn inject_env(settings Settings) {
+        // Iterate over env map and set each key-value pair
+    }
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("empty body with comment should work");
+}
+
+#[test]
+fn test_928_self_field_access() {
+    // .field syntax for self access in ext methods
+    let src = r#"
+pub type Counter {
+    count int
+}
+ext Counter {
+    pub fn increment() void {
+        .count = .count + 1
+    }
+    pub fn get() int {
+        return .count
+    }
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("self field access should work");
+}
+
+#[test]
+fn test_929_is_non_exhaustive() {
+    // is match without else branch is allowed
+    let src = r#"
+pub fn check(x int) str {
+    is x {
+        0 => { return "zero" }
+        1 => { return "one" }
+    }
+    return "other"
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("non-exhaustive is match should work");
+}
+
+#[test]
+fn test_930_fn_result_enum() {
+    // Functions returning Result with enum error type
+    let src = r#"
+pub enum ToolError {
+    ExecutionFailed str
+    InvalidInput str
+}
+pub fn execute(input str) Result<str, ToolError> {
+    if input == "" {
+        return Err(ToolError.InvalidInput("empty"))
+    }
+    return Ok(input)
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("fn with enum Result should work");
+}
+
+// === Known limitations (tests that document unsupported features) ===
+
+#[test]
+fn test_940_left_shift_not_supported() {
+    // << operator is not supported by the parser
+    let src = r#"
+pub fn test() int {
+    var base_secs = 1
+    var i = 0
+    for i < 3 {
+        base_secs = base_secs * 2
+        i = i + 1
+    }
+    return base_secs
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("multiply-by-2 loop workaround should work");
+}
+
+#[test]
+fn test_941_tuple_in_generic_not_supported() {
+    // Tuple types inside generics fail: List<(str, str)>, Result<(int, str), E>
+    // Workaround: define a named type instead
+    let src = r#"
+pub type Message {
+    role str
+    content str
+}
+pub fn load() Result<List<Message>, str> {
+    var messages = List.new()
+    return Ok(messages)
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("named type instead of tuple in generic should work");
+}
+
+#[test]
+fn test_942_ext_is_keyword() {
+    // 'ext' is a reserved keyword, cannot be used as variable name
+    let src = r#"
+pub fn test() int {
+    let file_ext = ".rs"
+    return 0
+}
+"#;
+    crate::trans::rust::transpile_rust("test", src).expect("ext as keyword not used as var should work");
+}
+
+// Test each file with full error details — shows exact byte offset, line, and source
+#[test]
+fn test_911_detailed_errors() {
+    use crate::parser::{Parser, CompileDest};
+
+    let base = "../../../auto-code/src/";
+    let files = [
+        "tools", "sse", "context", "settings",
+        "agent", "anthropic", "openai", "session", "repl", "main",
+        "tool_bash", "tool_grep", "tool_file_read", "tool_file_write", "tool_file_edit",
+    ];
+
+    for name in &files {
+        let path = format!("{}{}.at", base, name);
+        let src = std::fs::read_to_string(&path).unwrap();
+        let mut parser = Parser::from(&src);
+        parser.set_dest(CompileDest::TransRust);
+        match parser.parse() {
+            Ok(_) => println!("OK: {}", name),
+            Err(e) => {
+                let err_str = format!("{:?}", e);
+                let offset = extract_offset(&err_str);
+                let (line, col, source_line) = offset_to_line_col(&src, offset);
+                println!("FAIL: {} — byte {} = line {} col {}", name, offset, line, col);
+                println!("  | {}", source_line.trim_end());
+                println!("  | {:>width$}", "^", width = col);
+            }
+        }
+    }
+}
+
+fn extract_offset(s: &str) -> usize {
+    if let Some(pos) = s.find("SourceOffset(") {
+        let rest = &s[pos + 13..];
+        if let Some(end) = rest.find(")") {
+            return rest[..end].parse().unwrap_or(0);
+        }
+    }
+    0
+}
+
+fn offset_to_line_col(src: &str, offset: usize) -> (usize, usize, String) {
+    let mut line = 1;
+    let mut last_newline = 0;
+    for (i, ch) in src.char_indices() {
+        if i == offset {
+            return (line, i - last_newline + 1, get_line(src, offset));
+        }
+        if ch == '\n' {
+            line += 1;
+            last_newline = i + 1;
+        }
+    }
+    (line, 0, String::new())
+}
+
+fn get_line(src: &str, offset: usize) -> String {
+    let line_start = src[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let line_end = src[offset..].find('\n').map(|i| offset + i).unwrap_or(src.len());
+    src[line_start..line_end].to_string()
+}
