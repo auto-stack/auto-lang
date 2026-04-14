@@ -4,7 +4,11 @@
 
 Reorganize the a2r (Auto-to-Rust) transpiler test suite from chaotic sequential numbering into a categorized, numbered directory structure that makes tests discoverable and maintainable.
 
-## Current State
+## Status: COMPLETE
+
+All tasks implemented and verified. 144 a2r tests passing, `cargo build --examples` clean.
+
+## Current State (Before)
 
 - ~60 active test cases with sequential numbering (000-163, 999)
 - ~35 orphaned directories (on disk but no test runner)
@@ -12,6 +16,15 @@ Reorganize the a2r (Auto-to-Rust) transpiler test suite from chaotic sequential 
 - Huge gaps in numbering (036-054, 056-071, 096-108)
 - Inline tests (920-942) with source as string literals
 - No clear grouping by feature category
+
+## Final State (After)
+
+- 144 test cases across 17 categorized directories
+- 0 orphaned directories
+- 0 number conflicts
+- 0 inline tests (all converted to file-based)
+- 55 `[[example]]` entries that compile as standalone Rust
+- 64 test cases excluded from `[[example]]` (transpiler output not standalone-compilable)
 
 ## Design
 
@@ -308,11 +321,12 @@ These inline tests get converted to file-based tests in their appropriate catego
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Active test cases | ~60 | ~126 |
+| Active test cases | ~60 | 144 |
 | Category directories | 0 (flat) | 17 |
 | Number conflicts | 14 | 0 |
 | Orphaned directories | ~35 | 0 |
 | Inline tests | 14 | 0 (all file-based) |
+| Compilable `[[example]]` targets | ~60 (many broken) | 55 (all clean) |
 
 ---
 

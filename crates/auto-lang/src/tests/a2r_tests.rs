@@ -127,9 +127,9 @@ fn test_a2r(case: &str) -> AutoResult<()> {
 #[test] fn test_09_option_result_013_question_return_double() { test_a2r("09_option_result/013_question_return_double").unwrap(); }
 #[test] fn test_09_option_result_014_question_return_char() { test_a2r("09_option_result/014_question_return_char").unwrap(); }
 #[test] fn test_09_option_result_015_question_return_uint() { test_a2r("09_option_result/015_question_return_uint").unwrap(); }
-#[test] fn test_09_option_result_016_question_return_float() { test_a2r("09_option_result/016_question_return_float").unwrap(); }
-#[test] fn test_09_option_result_017_question_return_double() { test_a2r("09_option_result/017_question_return_double").unwrap(); }
-#[test] fn test_09_option_result_018_question_return_char() { test_a2r("09_option_result/018_question_return_char").unwrap(); }
+#[test] fn test_09_option_result_016_question_return_float_v2() { test_a2r("09_option_result/016_question_return_float_v2").unwrap(); }
+#[test] fn test_09_option_result_017_question_return_double_v2() { test_a2r("09_option_result/017_question_return_double_v2").unwrap(); }
+#[test] fn test_09_option_result_018_question_return_char_v2() { test_a2r("09_option_result/018_question_return_char_v2").unwrap(); }
 #[test] fn test_09_option_result_019_question_nested_call() { test_a2r("09_option_result/019_question_nested_call").unwrap(); }
 #[test] fn test_09_option_result_020_question_arithmetic() { test_a2r("09_option_result/020_question_arithmetic").unwrap(); }
 #[test] fn test_09_option_result_021_question_comparison() { test_a2r("09_option_result/021_question_comparison").unwrap(); }
