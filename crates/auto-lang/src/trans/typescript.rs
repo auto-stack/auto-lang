@@ -29,21 +29,34 @@ pub mod ts_runtime;
 pub struct TypeScriptTrans {
     #[allow(dead_code)]
     name: AutoStr,
+    /// Runtime import path (e.g., "./runtime" or "../stdlib/runtime")
+    pub runtime_path: String,
+    /// Track which runtime symbols are needed
+    pub needs_range: bool,
+    pub needs_print: bool,
 }
 
 impl TypeScriptTrans {
     pub fn new(name: AutoStr) -> Self {
         Self {
             name,
+            runtime_path: "./runtime".to_string(),
+            needs_range: false,
+            needs_print: false,
         }
+    }
+
+    /// Set the runtime import path
+    pub fn with_runtime_path(mut self, path: impl Into<String>) -> Self {
+        self.runtime_path = path.into();
+        self
     }
 }
 
 impl Trans for TypeScriptTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        // Phase 5: Inject runtime helpers first
-        self.inject_runtime(&mut sink.body)?;
-        sink.body.write(b"\n")?;
+        // Phase 1: Transpile AST into a buffer (this sets needs_range, needs_print)
+        let mut body_buf: Vec<u8> = Vec::new();
 
         // Find main function
         let main_func = ast.stmts.iter().find(|s| {
@@ -70,9 +83,9 @@ impl Trans for TypeScriptTrans {
 
         // Generate declarations first
         for (i, decl) in decls.iter().enumerate() {
-            self.stmt(decl, &mut sink.body)?;
+            self.stmt(decl, &mut body_buf)?;
             if i < decls.len() - 1 {
-                sink.body.write(b"\n\n")?;
+                body_buf.write(b"\n\n")?;
             }
         }
 
@@ -80,29 +93,38 @@ impl Trans for TypeScriptTrans {
         if let Some(main_stmt) = main_func {
             // Output the main function
             if !decls.is_empty() {
-                sink.body.write(b"\n\n")?;
+                body_buf.write(b"\n\n")?;
             }
-            self.stmt(&main_stmt, &mut sink.body)?;
+            self.stmt(&main_stmt, &mut body_buf)?;
 
             // Call main at the end
-            sink.body.write(b"\n\nmain();\n")?;
+            body_buf.write(b"\n\nmain();\n")?;
         } else if !main_stmts.is_empty() {
             // Wrap statements in a main function
             if !decls.is_empty() {
-                sink.body.write(b"\n\n")?;
+                body_buf.write(b"\n\n")?;
             }
-            sink.body.write(b"function main(): void {")?;
+            body_buf.write(b"function main(): void {")?;
 
             for stmt in &main_stmts {
-                sink.body.write(b"\n    ")?;
-                self.stmt(stmt, &mut sink.body)?;
+                body_buf.write(b"\n    ")?;
+                self.stmt(stmt, &mut body_buf)?;
             }
 
-            sink.body.write(b"\n}")?;
+            body_buf.write(b"\n}")?;
 
             // Call main at the end
-            sink.body.write(b"\n\nmain();\n")?;
+            body_buf.write(b"\n\nmain();\n")?;
         }
+
+        // Phase 2: Write conditional runtime import based on what was used
+        self.inject_runtime_import(&mut sink.body)?;
+        if self.needs_range || self.needs_print {
+            sink.body.write(b"\n")?;
+        }
+
+        // Phase 3: Append the transpiled body
+        sink.body.write_all(&body_buf)?;
 
         Ok(())
     }

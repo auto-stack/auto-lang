@@ -3,24 +3,57 @@ use std::io::Write;
 use super::TypeScriptTrans;
 
 impl TypeScriptTrans {
-    /// Injects the TypeScript runtime prelude (helpers like range, print, etc.)
-    pub fn inject_runtime(&mut self, out: &mut impl Write) -> AutoResult<()> {
-        out.write(b"/**\n * AutoLang TypeScript Runtime\n */\n")?;
-        
-        // Print alias for function references
-        out.write(b"const print = console.log.bind(console);\n\n")?;
+    /// Generate conditional import statement for runtime symbols.
+    /// Only imports what is actually needed.
+    pub fn inject_runtime_import(&self, out: &mut impl Write) -> AutoResult<()> {
+        if !self.needs_range && !self.needs_print {
+            return Ok(());
+        }
 
-        // Range helper for Expr::Range
-        out.write(b"function range(start: number, end: number, eq: boolean = false): number[] {\n")?;
-        out.write(b"    const res: number[] = [];\n")?;
-        out.write(b"    if (eq) {\n")?;
-        out.write(b"        for (let i = start; i <= end; i++) res.push(i);\n")?;
-        out.write(b"    } else {\n")?;
-        out.write(b"        for (let i = start; i < end; i++) res.push(i);\n")?;
-        out.write(b"    }\n")?;
-        out.write(b"    return res;\n")?;
-        out.write(b"}\n\n")?;
+        out.write(b"import { ")?;
+
+        let mut first = true;
+        if self.needs_range {
+            out.write(b"range")?;
+            first = false;
+        }
+        if self.needs_print {
+            if !first {
+                out.write(b", ")?;
+            }
+            out.write(b"print")?;
+        }
+
+        out.write(b" } from \"")?;
+        out.write_all(self.runtime_path.as_bytes())?;
+        out.write(b"\";\n")?;
 
         Ok(())
     }
+
+    /// Returns the content of the TypeScript runtime module.
+    /// This should be written to a file at the runtime_path location.
+    pub fn runtime_file_content() -> &'static str {
+r#"/**
+ * AutoLang TypeScript Runtime
+ */
+
+export function range(start: number, end: number, eq: boolean = false): number[] {
+    const res: number[] = [];
+    if (eq) {
+        for (let i = start; i <= end; i++) res.push(i);
+    } else {
+        for (let i = start; i < end; i++) res.push(i);
+    }
+    return res;
+}
+
+export const print = console.log.bind(console);
+"#
+    }
+}
+
+/// Standalone function to get runtime file content (for use outside TypeScriptTrans)
+pub fn runtime_file_content() -> &'static str {
+    TypeScriptTrans::runtime_file_content()
 }

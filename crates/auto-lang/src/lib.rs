@@ -1184,6 +1184,14 @@ pub fn trans_typescript(path: &str) -> AutoResult<String> {
     // Write TypeScript file
     std::fs::write(&tsname, sink.done()?)?;
 
+    // Write runtime file if any runtime symbols were used
+    if trans.needs_range || trans.needs_print {
+        let runtime_dir = std::path::Path::new(path).parent()
+            .unwrap_or(std::path::Path::new("."));
+        let runtime_path = runtime_dir.join("runtime.ts");
+        std::fs::write(&runtime_path, crate::trans::typescript::ts_runtime::runtime_file_content())?;
+    }
+
     Ok(format!("[trans] {} -> {}", path, tsname))
 }
 

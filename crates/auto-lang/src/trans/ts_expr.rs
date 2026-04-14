@@ -25,6 +25,9 @@ impl TypeScriptTrans {
                 if name == "self" {
                     out.write(b"this")?;
                 } else {
+                    if name == "print" {
+                        self.needs_print = true;
+                    }
                     out.write_all(name.as_bytes())?;
                 }
                 Ok(())
@@ -66,6 +69,7 @@ impl TypeScriptTrans {
 
             // Range (Phase 1)
             Expr::Range(range) => {
+                self.needs_range = true;
                 out.write(b"range(")?;
                 self.expr(&range.start, out)?;
                 out.write(b", ")?;
