@@ -23,6 +23,9 @@ pub mod event_router;
 #[cfg(feature = "ui-interpreter")]
 pub mod hot_reload;
 
+#[cfg(feature = "ui-headless")]
+pub mod headless;
+
 // Re-exports
 pub use component::Component;
 pub use view::{View, ViewBuilder};
