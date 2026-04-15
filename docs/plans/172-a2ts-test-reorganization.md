@@ -4,7 +4,11 @@
 
 Reorganize the a2ts (Auto-to-TypeScript) transpiler test suite from flat numbered directories into a categorized structure aligned with a2r (Plan 170) and a2c (Plan 171).
 
-## Status: PLANNED
+## Status: COMPLETE
+
+All tasks implemented and verified. 24 a2ts tests passing, 0 wrong files.
+
+## Current State (Before)
 
 ## Current State (Before)
 
