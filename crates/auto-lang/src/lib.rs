@@ -1723,3 +1723,9 @@ pub use ui::{
     event_router::{EventRouter, EventType, EventContext},
     hot_reload::{HotReloadComponent, UIWatcher},
 };
+
+#[cfg(feature = "ui-iced")]
+pub use ui::iced::{IntoIcedElement, ComponentIced};
+
+#[cfg(feature = "ui-gpui")]
+pub use ui::gpui::{IntoGpuiElement, ComponentGpui, GpuiComponentState, VNodeEntity};
