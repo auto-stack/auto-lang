@@ -26,6 +26,9 @@ pub mod hot_reload;
 #[cfg(feature = "ui-headless")]
 pub mod headless;
 
+#[cfg(feature = "ui-iced")]
+pub mod iced;
+
 // Re-exports
 pub use component::Component;
 pub use view::{View, ViewBuilder};
