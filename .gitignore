@@ -60,3 +60,6 @@ examples/**/ark/
 node_modules/
 # Local-only, not committed
 crates/xdm-gen/
+
+# Git worktrees
+.worktrees/
