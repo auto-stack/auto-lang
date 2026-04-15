@@ -1,4 +1,4 @@
-#include "tristate.h"
+#include "enum_smoke_3var.h"
 
 
 bool is_first(struct TriState m) {

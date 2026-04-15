@@ -1,4 +1,4 @@
-#include "mode.h"
+#include "enum_smoke_2var.h"
 
 
 bool is_first(struct Mode m) {

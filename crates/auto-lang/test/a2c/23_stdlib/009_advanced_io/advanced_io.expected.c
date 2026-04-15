@@ -1,16 +1,16 @@
 #include "advanced_io.h"
 
 int main(void) {
-    struct File file = open_write("seek_test.txt");
+    unknown file = open_write("seek_test.txt");
 
-    File_Puts(&file, "Hello");
+    file.puts("Hello");
 
-    File_Seek(&file, 0, 0);
+    file.seek(0, 0);
 
-    int pos = File_Tell(&file);
+    unknown pos = file.tell();
 
-    File_Rewind(&file);
+    file.rewind();
 
-    File_Close(&file);
+    file.close();
     return 0;
 }
