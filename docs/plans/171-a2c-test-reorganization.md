@@ -4,7 +4,9 @@
 
 Reorganize the a2c (Auto-to-C) transpiler test suite from chaotic sequential numbering (239 directories, many orphaned) into a categorized, numbered directory structure aligned with the a2r test suite (Plan 170), plus a2c-specific categories for C-only features.
 
-## Status: PLANNED
+## Status: COMPLETE
+
+All tasks implemented and verified. 106 a2c tests passing, 14 ignored (unsupported features), 0 wrong files.
 
 ## Current State (Before)
 
