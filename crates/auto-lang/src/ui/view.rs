@@ -1365,7 +1365,7 @@ impl<M: Clone + Debug> NavigationRailBuilder<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::style::{Style, StyleClass};
+    use super::super::style::{Style, StyleClass};
 
     #[derive(Clone, Copy, Debug)]
     enum TestMsg {

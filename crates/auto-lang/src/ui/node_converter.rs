@@ -574,7 +574,7 @@ fn extract_child_nodes(node: &Node) -> ConversionResult<Vec<Node>> {
     let kids = node.kids_iter()
         .filter_map(|(_, kid)| {
             if let auto_val::Kid::Node(n) = kid {
-                Some(n.clone())
+                Some((**n).clone())
             } else {
                 None
             }
@@ -590,7 +590,7 @@ fn extract_child_nodes_by_name(node: &Node, name: &str) -> Vec<Node> {
         .filter_map(|(_, kid)| {
             if let auto_val::Kid::Node(n) = kid {
                 if n.name.as_str() == name {
-                    Some(n.clone())
+                    Some((**n).clone())
                 } else {
                     None
                 }

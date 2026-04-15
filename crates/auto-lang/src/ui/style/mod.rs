@@ -24,6 +24,12 @@ pub mod iced_adapter;
 #[cfg(feature = "ui-iced")]
 pub use iced_adapter::IcedStyle; // Re-export for backend adapters
 
+#[cfg(feature = "ui-headless")]
+pub mod headless_adapter;
+
+#[cfg(feature = "ui-headless")]
+pub use headless_adapter::HeadlessStyle;
+
 /// Parsed style collection ready to be applied to backend-specific components
 #[derive(Debug, Clone, Default)]
 pub struct Style {

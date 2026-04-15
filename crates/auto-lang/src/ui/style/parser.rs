@@ -42,7 +42,7 @@ impl Default for StyleParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::SizeValue;
+    use super::super::SizeValue;
 
     #[test]
     fn test_parse_multiple_classes() {
