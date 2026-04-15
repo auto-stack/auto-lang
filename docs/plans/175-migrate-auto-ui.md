@@ -1,175 +1,336 @@
-# Plan 175: Migrate auto-ui into auto-lang Workspace
+# Plan 175: Migrate auto-ui into auto-lang — Implementation Plan
 
-**Date:** 2026-04-15
-**Status:** Approved
-**Depends on:** Plan 174 (Conditional UI Backend Inclusion)
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-## Objective
+**Goal:** Migrate GPUI and ICED backend runners, examples, transpiler API, and CLI from the standalone `auto-ui` project into the `auto-lang` workspace.
 
-Migrate the remaining auto-ui code (backend runners, examples, transpiler API, CLI) into the auto-lang workspace, making auto-lang the single canonical home for all UI code.
+**Architecture:** Feature-gated modules inside `crates/auto-lang/src/ui/`. GPUI at `ui/gpui/`, ICED at `ui/iced/`. Examples in `crates/auto-lang/examples/`. Transpiler API merged into `ui_gen/`. No new CLI commands — uses existing `auto gen` flow.
 
-## Source: `d:\autostack\auto-ui`
+**Tech Stack:** Rust, Cargo features, ICED 0.14, GPUI 0.2.2, gpui-component 0.5.0, existing `IcedStyle`/`GpuiStyle` adapters.
+
+**Source:** `d:\autostack\auto-ui`
+
+---
 
 ## Phase 1: Backend Runners
 
-### Approach
+### Task 1: Migrate ICED Backend Runner
 
-GPUI and ICED backend runners go inside `crates/auto-lang/src/ui/` as feature-gated modules, extending the pattern from Plan 174.
+**Files:**
+- Create: `crates/auto-lang/src/ui/iced/mod.rs`
+- Create: `crates/auto-lang/src/ui/iced/renderer.rs`
+- Modify: `crates/auto-lang/Cargo.toml` (add naga dependency)
+- Modify: `crates/auto-lang/src/ui/mod.rs` (register iced module)
 
-### Module Layout
+**Step 1: Update Cargo.toml — add naga dependency**
 
-```
-src/ui/
-├── gpui/                    # [cfg(feature = "ui-gpui")]
-│   ├── mod.rs               # Public API: run_app(), IntoGpuiElement, ComponentGpui
-│   ├── renderer.rs          # View<M> → GPUI element conversion
-│   ├── auto_render.rs       # GpuiComponentState, apply_style_to_div/button
-│   └── vnode_entity.rs      # VNode → GPUI Entity rendering
-├── iced/                    # [cfg(feature = "ui-iced")]
-│   ├── mod.rs               # Public API: run_app(), IntoIcedElement, ComponentIced
-│   └── renderer.rs          # View<M> → ICED element conversion (with style support)
-├── headless/                # Already done (Plan 174)
-└── ...
+The ICED backend in auto-ui uses `naga` with `termcolor` feature for Windows compatibility. Add it as an optional dependency:
+
+In `crates/auto-lang/Cargo.toml`, after the `iced` dependency line:
+```toml
+naga = { version = "0.27", features = ["termcolor"], optional = true }
 ```
 
-### Source Files → Destination
+Update the `ui-iced` feature:
+```toml
+ui-iced = ["ui", "dep:iced", "dep:naga"]
+```
 
-| auto-ui source | auto-lang destination | Lines |
-|---|---|---|
-| `auto-ui-gpui/src/lib.rs` | `ui/gpui/renderer.rs` | 893 |
-| `auto-ui-gpui/src/auto_render.rs` | `ui/gpui/auto_render.rs` | 1541 |
-| `auto-ui-gpui/src/vnode_entity.rs` | `ui/gpui/vnode_entity.rs` | 583 |
-| `auto-ui-gpui/src/interpreter_component.rs` | `ui/gpui/interpreter_component.rs` | — |
-| `auto-ui-iced/src/lib.rs` | `ui/iced/renderer.rs` | 574 |
-
-### Key Adaptation
-
-- Update import paths from `auto_ui::` to `crate::ui::`
-- ICED runner: integrate `IcedStyle` adapter for unified style support (currently ignored)
-- GPUI runner: already uses `GpuiStyle` adapter, mostly path updates
-
-### Public API (preserved)
+**Step 2: Create `crates/auto-lang/src/ui/iced/mod.rs`**
 
 ```rust
-// GPUI backend
-pub fn run_app<C>(title: &str) -> AppResult<()>
-pub trait IntoGpuiElement<M> { fn into_gpui<F>(self, handle_msg: F) -> AnyElement }
+//! ICED backend - renders View<M> using the Iced GUI framework
+//!
+//! This module provides the Iced backend adapter for AutoUI,
+//! converting abstract View<M> trees into Iced Elements.
 
-// ICED backend
-pub fn run_app<C>() -> AppResult<()>
-pub trait IntoIcedElement<M> { fn into_iced(self) -> iced::Element<'static, M> }
+mod renderer;
+
+pub use renderer::{IntoIcedElement, ComponentIced, run_app};
 ```
 
-### Cargo.toml Updates
+**Step 3: Create `crates/auto-lang/src/ui/iced/renderer.rs`**
 
-Add `gpui-component` dependency (optional):
+Migrate from `d:\autostack\auto-ui\crates\auto-ui-iced\src\lib.rs` with these changes:
+
+1. Replace `use auto_ui::` with `use crate::ui::`
+2. Replace `use auto_ui::{View as AbstractView, Component}` with:
+   ```rust
+   use crate::ui::view::View as AbstractView;
+   use crate::ui::component::Component;
+   use crate::ui::style::iced_adapter::IcedStyle;
+   use crate::ui::app::AppResult;
+   ```
+3. Add style support using `IcedStyle` adapter — where the original has `style: _`, apply the style:
+   ```rust
+   // Example for Text variant:
+   AbstractView::Text { content, style } => {
+       let mut text_widget = text(content);
+       if let Some(s) = style {
+           let iced_style = IcedStyle::from_style(&s);
+           // Apply font size, weight, color from iced_style
+           if let Some(size) = iced_style.font_size {
+               text_widget = text_widget.size(size.value());
+           }
+           if let Some(color) = iced_style.text_color {
+               text_widget = text_widget.style(move |_| iced::widget::text::Style {
+                   color: Some(color),
+                   ..Default::default()
+               });
+           }
+       }
+       text_widget.into()
+   }
+   ```
+4. Apply similar pattern for all variants that currently have `style: _`
+5. Replace `auto_ui::AppResult` with `AppResult` (from `crate::ui::app`)
+6. Replace `auto_ui::{AccordionItem, SidebarPosition, ...}` with `crate::ui::view::{AccordionItem, SidebarPosition, ...}`
+7. Update `run_app` to use `crate::ui::app::AppResult<()>` return type
+
+**Step 4: Register the module in `ui/mod.rs`**
+
+Add after the existing headless block:
+```rust
+#[cfg(feature = "ui-iced")]
+pub mod iced;
+```
+
+**Step 5: Verify compilation**
+
+Run: `cargo build -p auto-lang --features ui-iced`
+Expected: Compiles with zero errors in new files.
+
+**Step 6: Run ICED tests**
+
+Run: `cargo test -p auto-lang --features ui-iced --lib -- iced`
+Expected: 4 tests pass (text, button, column, checkbox conversion).
+
+**Step 7: Commit**
+
+```bash
+git add crates/auto-lang/src/ui/iced/ crates/auto-lang/Cargo.toml crates/auto-lang/src/ui/mod.rs
+git commit -m "feat(ui): migrate ICED backend runner with style support"
+```
+
+---
+
+### Task 2: Migrate GPUI Backend Runner — Core Module
+
+**Files:**
+- Create: `crates/auto-lang/src/ui/gpui/mod.rs`
+- Create: `crates/auto-lang/src/ui/gpui/renderer.rs`
+- Modify: `crates/auto-lang/Cargo.toml` (add gpui-component dependency)
+
+**Step 1: Update Cargo.toml — add gpui-component**
+
 ```toml
 gpui-component = { version = "0.5.0", optional = true }
+```
 
-[features]
+Update the `ui-gpui` feature:
+```toml
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component"]
 ```
 
-## Phase 2: Examples
-
-### Approach
-
-Migrate 20 unified examples into `crates/auto-lang/examples/` with feature-gated backend selection.
-
-### Example Layout
-
-```
-crates/auto-lang/examples/
-├── ui_hello.rs
-├── ui_counter.rs
-├── ui_button.rs
-├── ui_slider.rs
-├── ui_layout.rs
-├── ui_todo.rs
-├── ui_table.rs
-├── ui_gallery.rs
-└── ... (12 more)
-```
-
-### Pattern
+**Step 2: Create `crates/auto-lang/src/ui/gpui/mod.rs`**
 
 ```rust
-use auto_lang::ui::{Component, View};
+//! GPUI backend - renders View<M> using the GPUI framework
+//!
+//! This module provides the GPUI backend adapter for AutoUI,
+//! converting abstract View<M> trees into GPUI Elements.
 
-struct Counter { count: i64 }
-enum Msg { Inc, Dec }
-impl Component for Counter { /* ... */ }
+mod renderer;
 
-fn main() -> auto_lang::AppResult<()> {
-    #[cfg(feature = "ui-iced")]
-    return auto_lang::ui::iced::run_app::<Counter>();
-
-    #[cfg(feature = "ui-gpui")]
-    return auto_lang::ui::gpui::run_app::<Counter>("Counter");
-
-    Err("No backend. Use --features ui-iced or ui-gpui".into())
-}
+pub use renderer::{IntoGpuiElement, ComponentGpui, GpuiContext, GpuiMessageBridge, run_app};
 ```
 
-### Run
+**Step 3: Create `crates/auto-lang/src/ui/gpui/renderer.rs`**
+
+Migrate from `d:\autostack\auto-ui\crates\auto-ui-gpui\src\lib.rs` (893 lines) with these changes:
+
+1. Replace `use auto_ui::` with `use crate::ui::`
+2. Replace `use auto_ui::{View as AbstractView, Component, Style}` with:
+   ```rust
+   use crate::ui::view::View as AbstractView;
+   use crate::ui::component::Component;
+   use crate::ui::style::Style;
+   use crate::ui::app::AppResult;
+   ```
+3. Replace `use auto_ui::style::gpui_adapter::GpuiStyle` with `use crate::ui::style::gpui_adapter::GpuiStyle`
+4. Replace `use anyhow::Error` with `Box<dyn std::error::Error>` (match AppResult pattern)
+5. Update `run_app` return type to `AppResult<()>`
+
+**Step 4: Verify compilation**
+
+Run: `cargo build -p auto-lang --features ui-gpui`
+Expected: Compiles with zero errors.
+
+**Step 5: Commit**
 
 ```bash
-cargo run -p auto-lang --example ui-counter --features ui-iced
-cargo run -p auto-lang --example ui-counter --features ui-gpui
+git add crates/auto-lang/src/ui/gpui/renderer.rs crates/auto-lang/src/ui/gpui/mod.rs crates/auto-lang/Cargo.toml crates/auto-lang/src/ui/mod.rs
+git commit -m "feat(ui): migrate GPUI backend runner (core renderer)"
 ```
 
-### Scope
+---
 
-Migrate only unified examples. Skip backend-specific examples (gpui-examples/, iced-examples/) and interpreter demos.
+### Task 3: Migrate GPUI Backend — Auto Render
 
-## Phase 3: Transpiler Merge
+**Files:**
+- Create: `crates/auto-lang/src/ui/gpui/auto_render.rs`
+- Modify: `crates/auto-lang/src/ui/gpui/mod.rs` (add pub mod)
 
-### Approach
+**Step 1: Migrate `auto_render.rs`**
 
-Migrate only the active AURA-based transpiler code. Skip deprecated modules.
+Migrate from `d:\autostack\auto-ui\crates\auto-ui-gpui\src\auto_render.rs` (1541 lines) with:
+- Replace `use auto_ui::` with `use crate::ui::`
+- Replace `use auto_ui::style::gpui_adapter::{GpuiStyle, GpuiFontWeight}` with `use crate::ui::style::gpui_adapter::{GpuiStyle, GpuiFontWeight}`
+- Replace `use auto_ui::SelectCallback` with `use crate::ui::view::SelectCallback`
 
-### What to Migrate
+**Step 2: Register in mod.rs**
 
-| auto-ui source | What | auto-lang destination |
-|---|---|---|
-| `trans/api.rs` | `transpile_aura()`, `transpile_vue_aura()`, `transpile_file()` | `ui_gen/api.rs` or merge into existing |
-| `trans/mod.rs` | `CodeSink` utility | `ui_gen/mod.rs` |
-| `cli/error.rs` | `TranspileError` with miette | Merge into existing error system |
+Add to `crates/auto-lang/src/ui/gpui/mod.rs`:
+```rust
+pub mod auto_render;
+pub use auto_render::{GpuiComponentState, ViewExt};
+```
 
-### What to Skip (deprecated)
+**Step 3: Verify compilation**
 
-- `trans/rust_gen.rs` — replaced by `ui_gen/rust.rs` RustGenerator
-- `trans/vue_gen.rs` — replaced by `ui_gen/vue.rs` VueGenerator
-- `trans/dsl_preprocess.rs` — replaced by AURA pipeline
-- `trans/auto_ui_trans.rs` — replaced by AURA pipeline
+Run: `cargo build -p auto-lang --features ui-gpui`
+Expected: Compiles with zero errors.
 
-## Phase 4: CLI Integration
-
-### Approach
-
-No new subcommands. The transpile API functions from Phase 3 integrate into the existing `auto gen` pipeline.
-
-### Flow
+**Step 4: Commit**
 
 ```bash
-auto gen my_widget.at          # Generates Rust code (uses transpile_aura internally)
-auto gen my_widget.at --vue    # Generates Vue code (uses transpile_vue_aura internally)
-auto build                      # Builds with selected backend
-auto run                        # Runs the built project
-auto file.at                    # Runs .at script directly (interpreter)
+git add crates/auto-lang/src/ui/gpui/auto_render.rs crates/auto-lang/src/ui/gpui/mod.rs
+git commit -m "feat(ui): migrate GPUI auto_render with component state"
 ```
 
-### What Changes
+---
 
-- `auto gen` command calls `transpile_aura()` or `transpile_vue_aura()` when processing UI widgets
-- Error types from `cli/error.rs` merge into auto-lang's `error.rs`
+### Task 4: Migrate GPUI Backend — VNode Entity
 
-## Success Criteria
+**Files:**
+- Create: `crates/auto-lang/src/ui/gpui/vnode_entity.rs`
+- Modify: `crates/auto-lang/src/ui/gpui/mod.rs` (add pub mod)
 
-1. `cargo build` — no UI deps, fast
-2. `cargo build --features ui-headless` — headless works
-3. `cargo build --features ui-iced` — ICED backend compiles with style support
-4. `cargo build --features ui-gpui` — GPUI backend compiles
-5. `cargo run -p auto-lang --example ui-counter --features ui-iced` — example runs
-6. `auto gen widget.at` — generates Rust code from AURA widget
-7. All existing tests pass with each feature combination
+**Step 1: Migrate `vnode_entity.rs`**
+
+Migrate from `d:\autostack\auto-ui\crates\auto-ui-gpui\src\vnode_entity.rs` (583 lines) with:
+- Replace `use auto_ui::vnode::{VNodeId, VNodeKind, VNodeProps, VTree}` with `use crate::ui::vnode::{VNodeId, VNodeKind, VNodeProps, VTree}`
+- Gate interpreter imports with `#[cfg(feature = "ui-interpreter")]`
+
+**Step 2: Register in mod.rs**
+
+Add to `crates/auto-lang/src/ui/gpui/mod.rs`:
+```rust
+pub mod vnode_entity;
+pub use vnode_entity::VNodeEntity;
+```
+
+**Step 3: Verify compilation**
+
+Run: `cargo build -p auto-lang --features ui-gpui`
+Expected: Compiles with zero errors.
+
+**Step 4: Commit**
+
+```bash
+git add crates/auto-lang/src/ui/gpui/vnode_entity.rs crates/auto-lang/src/ui/gpui/mod.rs
+git commit -m "feat(ui): migrate GPUI VNode entity renderer"
+```
+
+---
+
+### Task 5: Update lib.rs Re-exports for Backend Modules
+
+**Files:**
+- Modify: `crates/auto-lang/src/lib.rs` (add backend re-exports)
+
+**Step 1: Add ICED and GPUI re-exports**
+
+After the existing UI re-exports in `lib.rs`, add:
+```rust
+#[cfg(feature = "ui-iced")]
+pub use ui::iced::{IntoIcedElement, ComponentIced};
+
+#[cfg(feature = "ui-gpui")]
+pub use ui::gpui::{IntoGpuiElement, ComponentGpui, GpuiComponentState, VNodeEntity};
+```
+
+**Step 2: Verify all feature combinations**
+
+Run: `cargo build -p auto-lang --features ui-iced && cargo build -p auto-lang --features ui-gpui && cargo build -p auto-lang --features ui-headless && cargo build -p auto-lang`
+Expected: All four compile successfully.
+
+**Step 3: Commit**
+
+```bash
+git add crates/auto-lang/src/lib.rs
+git commit -m "feat(ui): add public re-exports for ICED and GPUI backends"
+```
+
+---
+
+### Task 6: Verify Phase 1 — All Feature Combinations
+
+**Files:** None (verification only)
+
+**Step 1: Default build (no UI)**
+Run: `cargo build -p auto-lang`
+
+**Step 2: Headless**
+Run: `cargo build -p auto-lang --features ui-headless && cargo test -p auto-lang --features ui-headless --lib -- headless`
+
+**Step 3: ICED backend**
+Run: `cargo build -p auto-lang --features ui-iced && cargo test -p auto-lang --features ui-iced --lib -- iced`
+
+**Step 4: GPUI backend**
+Run: `cargo build -p auto-lang --features ui-gpui`
+
+**Step 5: All existing tests**
+Run: `cargo test -p auto-lang --lib`
+Expected: All 2695+ existing tests pass (no regressions).
+
+---
+
+## Phase 2: Examples (Outline)
+
+### Task 7: Create Example Template + First Example (ui-counter)
+
+- Create `crates/auto-lang/examples/ui_counter.rs` with Component + backend selection pattern
+- Add `[[example]]` to Cargo.toml
+- Verify: `cargo run -p auto-lang --example ui-counter --features ui-iced`
+
+### Task 8: Migrate Remaining 19 Unified Examples
+
+Batch migrate: ui-hello, ui-button, ui-checkbox, ui-input, ui-layout, ui-list, ui-table, ui-slider, ui-progress, ui-select, ui-radio, ui-scroll, ui-container, ui-accordion, ui-sidebar, ui-tabs, ui-navigation-rail, ui-gallery, ui-todo
+
+Source: `d:\autostack\auto-ui\examples\unified-*\src\main.rs`
+
+## Phase 3: Transpiler Merge (Outline)
+
+### Task 9: Migrate CodeSink Utility
+
+- From `auto-ui/crates/auto-ui/src/trans/mod.rs` → `crates/auto-lang/src/ui_gen/code_sink.rs`
+- `CodeSink` struct with import management and indentation
+
+### Task 10: Migrate Transpiler API Functions
+
+- From `auto-ui/crates/auto-ui/src/trans/api.rs` → `crates/auto-lang/src/ui_gen/api.rs`
+- `transpile_aura()`, `transpile_vue_aura()`, `transpile_file()`
+- Update import paths from `auto_ui::` to `crate::`
+
+### Task 11: Merge TranspileError into Error System
+
+- From `auto-ui/crates/auto-ui/src/cli/error.rs`
+- Merge `TranspileError` into `crates/auto-lang/src/error.rs` or a new `ui_gen/error.rs`
+
+## Phase 4: CLI Integration (Outline)
+
+### Task 12: Wire transpile functions into auto gen
+
+- Ensure `auto gen` command can call `transpile_aura()` for UI widget files
+- No new CLI commands needed — uses existing `auto gen` flow
