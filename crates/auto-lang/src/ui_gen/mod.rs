@@ -18,6 +18,7 @@ pub mod style;
 pub mod jet;
 pub mod ark;
 pub mod widget;
+pub mod api;
 
 // Re-export main types
 pub use vue::VueGenerator;
@@ -26,6 +27,9 @@ pub use rust::RustGenerator;
 pub use style::StyleGenerator;
 pub use jet::JetGenerator;
 pub use widget::{WidgetCategory, WidgetRegistry, WidgetSpec};
+
+// Re-export transpiler API (Plan 175 Phase 3)
+pub use api::{transpile_file, transpile_aura, transpile_vue_aura};
 
 use crate::aura::AuraWidget;
 
