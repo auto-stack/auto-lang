@@ -29,6 +29,9 @@ pub mod headless;
 #[cfg(feature = "ui-iced")]
 pub mod iced;
 
+#[cfg(feature = "ui-gpui")]
+pub mod gpui;
+
 // Re-exports
 pub use component::Component;
 pub use view::{View, ViewBuilder};
