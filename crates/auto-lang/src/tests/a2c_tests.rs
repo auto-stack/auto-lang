@@ -115,18 +115,16 @@ fn test_a2c(case: &str) -> AutoResult<()> {
     use std::io::Write;
     use std::path::PathBuf;
 
-    // split number from name: 000_hello -> hello
-    let parts: Vec<&str> = case.split("_").collect();
+    // Parse test case name: "01_basics/001_hello" -> "hello"
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let parts: Vec<&str> = dir_name.split("_").collect();
     let name = parts[1..].join("_");
     let name = name.as_str();
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    println!("Directory of cargo : {}", d.display());
 
     let src_path = format!("test/a2c/{}/{}.at", case, name);
     let src_path = d.join(src_path);
-
-    println!("src_path: {}", src_path.display());
     let src = read_to_string(src_path.as_path())?;
 
     // Check if this is an error test
@@ -179,7 +177,7 @@ fn test_a2c(case: &str) -> AutoResult<()> {
         let src = ccode.done()?;
 
         if src != expected_src.as_bytes() {
-            // out put generated code to a gen file
+            // output generated code to a gen file
             let gen_path = format!("test/a2c/{}/{}.wrong.c", case, name);
             let gen_path = d.join(gen_path);
             let mut file = File::create(gen_path.as_path())?;
@@ -190,7 +188,7 @@ fn test_a2c(case: &str) -> AutoResult<()> {
 
         let header = ccode.header;
         if header != expected_header.as_bytes() {
-            // out put generated code to a gen file
+            // output generated code to a gen file
             let gen_path = format!("test/a2c/{}/{}.wrong.h", case, name);
             let gen_path = d.join(gen_path);
             let mut file = File::create(gen_path.as_path())?;
@@ -201,736 +199,171 @@ fn test_a2c(case: &str) -> AutoResult<()> {
     }
 }
 
+// === 01_basics ===
+#[test] fn test_01_basics_001_hello() { test_a2c("01_basics/001_hello").unwrap(); }
+#[test] fn test_01_basics_002_sqrt() { test_a2c("01_basics/002_sqrt").unwrap(); }
+#[test] fn test_01_basics_003_func() { test_a2c("01_basics/003_func").unwrap(); }
+
+// === 02_types ===
+#[test] fn test_02_types_001_struct() { test_a2c("02_types/001_struct").unwrap(); }
+#[test] fn test_02_types_002_enum() { test_a2c("02_types/002_enum").unwrap(); }
+#[test] fn test_02_types_003_union() { test_a2c("02_types/003_union").unwrap(); }
+#[test] fn test_02_types_004_pointer() { test_a2c("02_types/004_pointer").unwrap(); }
+#[test] fn test_02_types_005_inheritance() { test_a2c("02_types/005_inheritance").unwrap(); }
+#[test] fn test_02_types_006_pointer_types() { test_a2c("02_types/006_pointer_types").unwrap(); }
+#[test] fn test_02_types_007_bool() { test_a2c("02_types/007_bool").unwrap(); }
+
+// === 03_control_flow ===
+#[test] fn test_03_control_flow_001_if_basic() { test_a2c("03_control_flow/001_if_basic").unwrap(); }
+#[test] fn test_03_control_flow_002_for_range() { test_a2c("03_control_flow/002_for_range").unwrap(); }
+#[test] fn test_03_control_flow_003_is_match() { test_a2c("03_control_flow/003_is_match").unwrap(); }
+#[test] fn test_03_control_flow_004_for_conditions() { test_a2c("03_control_flow/004_for_conditions").unwrap(); }
+#[test] fn test_03_control_flow_005_mut_counter() { test_a2c("03_control_flow/005_mut_counter").unwrap(); }
+#[test] fn test_03_control_flow_006_mut_accumulator() { test_a2c("03_control_flow/006_mut_accumulator").unwrap(); }
+#[test] fn test_03_control_flow_007_mut_array_sum() { test_a2c("03_control_flow/007_mut_array_sum").unwrap(); }
+#[test] fn test_03_control_flow_008_mut_multiple() { test_a2c("03_control_flow/008_mut_multiple").unwrap(); }
+
+// === 04_strings ===
+#[test] fn test_04_strings_001_str() { test_a2c("04_strings/001_str").unwrap(); }
+#[test] fn test_04_strings_002_str_split() { test_a2c("04_strings/002_str_split").unwrap(); }
+
+// === 05_expressions ===
+#[test] fn test_05_expressions_001_complex_expr() { test_a2c("05_expressions/001_complex_expr").unwrap(); }
+#[test] fn test_05_expressions_002_field_access() { test_a2c("05_expressions/002_field_access").unwrap(); }
+#[test] fn test_05_expressions_003_bang_operator() { test_a2c("05_expressions/003_bang_operator").unwrap(); }
+#[test] fn test_05_expressions_004_binary() { test_a2c("05_expressions/004_binary").unwrap(); }
+
+// === 06_pattern_matching ===
+#[test] fn test_06_pattern_matching_001_hetero_enum() { test_a2c("06_pattern_matching/001_hetero_enum").unwrap(); }
+#[test] fn test_06_pattern_matching_002_hetero_enum_verify() { test_a2c("06_pattern_matching/002_hetero_enum_verify").unwrap(); }
+#[test] fn test_06_pattern_matching_003_hetero_enum_types() { test_a2c("06_pattern_matching/003_hetero_enum_types").unwrap(); }
+#[test] fn test_06_pattern_matching_004_enum_smoke_2var() { test_a2c("06_pattern_matching/004_enum_smoke_2var").unwrap(); }
+#[test] fn test_06_pattern_matching_005_enum_smoke_3var() { test_a2c("06_pattern_matching/005_enum_smoke_3var").unwrap(); }
+#[test] fn test_06_pattern_matching_006_enum_with_functions() { test_a2c("06_pattern_matching/006_enum_with_functions").unwrap(); }
+
+// === 07_ownership ===
+#[test] fn test_07_ownership_001_borrow_view() { test_a2c("07_ownership/001_borrow_view").unwrap(); }
+#[test] fn test_07_ownership_002_borrow_mut() { test_a2c("07_ownership/002_borrow_mut").unwrap(); }
+#[test] fn test_07_ownership_003_borrow_move() { test_a2c("07_ownership/003_borrow_move").unwrap(); }
+#[test] fn test_07_ownership_004_borrow_conflicts() { test_a2c("07_ownership/004_borrow_conflicts").unwrap(); }
+
+// === 08_generics ===
+#[test] fn test_08_generics_001_const_generics() { test_a2c("08_generics/001_const_generics").unwrap(); }
+#[test] fn test_08_generics_002_generic_field() { test_a2c("08_generics/002_generic_field").unwrap(); }
+#[test] fn test_08_generics_003_generic_ptr_field() { test_a2c("08_generics/003_generic_ptr_field").unwrap(); }
+#[test] fn test_08_generics_004_with_constraint() { test_a2c("08_generics/004_with_constraint").unwrap(); }
+#[test] fn test_08_generics_005_generic_specs() { test_a2c("08_generics/005_generic_specs").unwrap(); }
+#[test] fn test_08_generics_006_generic_spec_ext() { test_a2c("08_generics/006_generic_spec_ext").unwrap(); }
+#[test] fn test_08_generics_007_generic_type_alias() { test_a2c("08_generics/007_generic_type_alias").unwrap(); }
+
+// === 09_option_result ===
+#[test] fn test_09_option_result_001_null_coalesce() { test_a2c("09_option_result/001_null_coalesce").unwrap(); }
+#[test] fn test_09_option_result_002_error_propagate() { test_a2c("09_option_result/002_error_propagate").unwrap(); }
+#[test] fn test_09_option_result_003_closure() { test_a2c("09_option_result/003_closure").unwrap(); }
+
+// === 10_collections ===
+#[test] fn test_10_collections_001_array() { test_a2c("10_collections/001_array").unwrap(); }
+#[test] fn test_10_collections_002_array_return() { test_a2c("10_collections/002_array_return").unwrap(); }
+#[test] fn test_10_collections_003_array_declaration() { test_a2c("10_collections/003_array_declaration").unwrap(); }
+#[test] fn test_10_collections_004_array_mutation() { test_a2c("10_collections/004_array_mutation").unwrap(); }
+#[test] fn test_10_collections_005_array_index_read() { test_a2c("10_collections/005_array_index_read").unwrap(); }
+#[test] fn test_10_collections_006_array_copy() { test_a2c("10_collections/006_array_copy").unwrap(); }
+#[test] fn test_10_collections_007_array_slice() { test_a2c("10_collections/007_array_slice").unwrap(); }
+#[test] fn test_10_collections_008_array_nested() { test_a2c("10_collections/008_array_nested").unwrap(); }
+#[test] fn test_10_collections_009_array_zero_size() { test_a2c("10_collections/009_array_zero_size").unwrap(); }
+#[test] fn test_10_collections_010_array_loop() { test_a2c("10_collections/010_array_loop").unwrap(); }
+#[test] fn test_10_collections_011_list_storage() { test_a2c("10_collections/011_list_storage").unwrap(); }
+#[test] fn test_10_collections_012_list_iter() { test_a2c("10_collections/012_list_iter").unwrap(); }
+#[test] fn test_10_collections_013_list_capacity() { test_a2c("10_collections/013_list_capacity").unwrap(); }
+
+// === 11_methods ===
+#[test] fn test_11_methods_001_method() { test_a2c("11_methods/001_method").unwrap(); }
+#[test] fn test_11_methods_002_multi_param() { test_a2c("11_methods/002_multi_param").unwrap(); }
+#[test] fn test_11_methods_003_generic_list() { test_a2c("11_methods/003_generic_list").unwrap(); }
+
+// === 12_specs ===
+#[test] fn test_12_specs_001_basic_spec() { test_a2c("12_specs/001_basic_spec").unwrap(); }
+#[test] fn test_12_specs_002_spec() { test_a2c("12_specs/002_spec").unwrap(); }
+
+// === 13_delegation ===
+#[test] fn test_13_delegation_001_single() { test_a2c("13_delegation/001_single").unwrap(); }
+#[test] fn test_13_delegation_002_multi_delegation() { test_a2c("13_delegation/002_multi_delegation").unwrap(); }
+#[test] fn test_13_delegation_003_delegation_params() { test_a2c("13_delegation/003_delegation_params").unwrap(); }
+
+// === 15_type_conversion ===
+#[test] fn test_15_type_conversion_001_type_cast() { test_a2c("15_type_conversion/001_type_cast").unwrap(); }
+
+// === 18_c_interop ===
+#[test] fn test_18_c_interop_001_cstr() { test_a2c("18_c_interop/001_cstr").unwrap(); }
+#[test] fn test_18_c_interop_002_alias() { test_a2c("18_c_interop/002_alias").unwrap(); }
+#[test] fn test_18_c_interop_003_unified_section() { test_a2c("18_c_interop/003_unified_section").unwrap(); }
+
+// === 19_option_type ===
+#[test] fn test_19_option_type_001_question_syntax() { test_a2c("19_option_type/001_question_syntax").unwrap(); }
+#[test] fn test_19_option_type_002_question_uint() { test_a2c("19_option_type/002_question_uint").unwrap(); }
+#[test] fn test_19_option_type_003_question_float() { test_a2c("19_option_type/003_question_float").unwrap(); }
+#[test] fn test_19_option_type_004_question_double() { test_a2c("19_option_type/004_question_double").unwrap(); }
+#[test] fn test_19_option_type_005_question_char() { test_a2c("19_option_type/005_question_char").unwrap(); }
+#[test] fn test_19_option_type_006_question_void() { test_a2c("19_option_type/006_question_void").unwrap(); }
+#[test] fn test_19_option_type_007_question_return_int() { test_a2c("19_option_type/007_question_return_int").unwrap(); }
+#[test] fn test_19_option_type_008_question_return_str() { test_a2c("19_option_type/008_question_return_str").unwrap(); }
+#[test] fn test_19_option_type_009_question_return_bool() { test_a2c("19_option_type/009_question_return_bool").unwrap(); }
+#[test] fn test_19_option_type_010_question_return_uint() { test_a2c("19_option_type/010_question_return_uint").unwrap(); }
+#[test] fn test_19_option_type_011_question_return_float() { test_a2c("19_option_type/011_question_return_float").unwrap(); }
+#[test] fn test_19_option_type_012_question_return_double() { test_a2c("19_option_type/012_question_return_double").unwrap(); }
+#[test] fn test_19_option_type_013_question_return_char() { test_a2c("19_option_type/013_question_return_char").unwrap(); }
+#[test] fn test_19_option_type_014_question_nested_call() { test_a2c("19_option_type/014_question_nested_call").unwrap(); }
+#[test] fn test_19_option_type_015_question_arithmetic() { test_a2c("19_option_type/015_question_arithmetic").unwrap(); }
+#[test] fn test_19_option_type_016_question_comparison() { test_a2c("19_option_type/016_question_comparison").unwrap(); }
+#[test] fn test_19_option_type_017_question_logical() { test_a2c("19_option_type/017_question_logical").unwrap(); }
+#[test] fn test_19_option_type_018_question_negation() { test_a2c("19_option_type/018_question_negation").unwrap(); }
+
+// === 21_storage ===
+#[test] fn test_21_storage_001_storage_module() { test_a2c("21_storage/001_storage_module").unwrap(); }
+#[test] fn test_21_storage_002_storage_usage() { test_a2c("21_storage/002_storage_usage").unwrap(); }
+#[test] fn test_21_storage_003_plan055_auto_storage() { test_a2c("21_storage/003_plan055_auto_storage").unwrap(); }
+
+// === 22_iterators ===
+#[test] fn test_22_iterators_001_iter_specs() { test_a2c("22_iterators/001_iter_specs").unwrap(); }
+#[test] fn test_22_iterators_002_map_adapter() { test_a2c("22_iterators/002_map_adapter").unwrap(); }
+#[test] fn test_22_iterators_003_terminal_operators() { test_a2c("22_iterators/003_terminal_operators").unwrap(); }
+#[test] fn test_22_iterators_004_terminal_operators_2() { test_a2c("22_iterators/004_terminal_operators_2").unwrap(); }
+#[test] fn test_22_iterators_005_extended_adapters() { test_a2c("22_iterators/005_extended_adapters").unwrap(); }
+#[test] fn test_22_iterators_006_predicates() { test_a2c("22_iterators/006_predicates").unwrap(); }
+#[test] fn test_22_iterators_007_collect() { test_a2c("22_iterators/007_collect").unwrap(); }
+
+// === 23_stdlib ===
+#[test] fn test_23_stdlib_001_std_hello() { test_a2c("23_stdlib/001_std_hello").unwrap(); }
+#[test] fn test_23_stdlib_002_std_getpid() { test_a2c("23_stdlib/002_std_getpid").unwrap(); }
+#[test] fn test_23_stdlib_003_std_readline() { test_a2c("23_stdlib/003_std_readline").unwrap(); }
+#[test] fn test_23_stdlib_004_std_file() { test_a2c("23_stdlib/004_std_file").unwrap(); }
 #[test]
-fn test_000_hello() {
-    test_a2c("000_hello").unwrap();
-}
-
+#[ignore]
+fn test_23_stdlib_005_std_repl() { test_a2c("23_stdlib/005_std_repl").unwrap(); }
+#[test] fn test_23_stdlib_006_std_str() { test_a2c("23_stdlib/006_std_str").unwrap(); }
 #[test]
-fn test_001_sqrt() {
-    test_a2c("001_sqrt").unwrap();
-}
-
+#[ignore]
+fn test_23_stdlib_007_file_operations() { test_a2c("23_stdlib/007_file_operations").unwrap(); }
+#[test] fn test_23_stdlib_008_char_io() { test_a2c("23_stdlib/008_char_io").unwrap(); }
+#[test] fn test_23_stdlib_009_advanced_io() { test_a2c("23_stdlib/009_advanced_io").unwrap(); }
+#[test] fn test_23_stdlib_010_io_specs() { test_a2c("23_stdlib/010_io_specs").unwrap(); }
+#[test] fn test_23_stdlib_011_std_test() { test_a2c("23_stdlib/011_std_test").unwrap(); }
+#[test] fn test_23_stdlib_012_std_readline_2() { test_a2c("23_stdlib/012_std_readline_2").unwrap(); }
+#[test] fn test_23_stdlib_013_std_file_flush() { test_a2c("23_stdlib/013_std_file_flush").unwrap(); }
+#[test] fn test_23_stdlib_014_std_file_read() { test_a2c("23_stdlib/014_std_file_read").unwrap(); }
 #[test]
-fn test_002_array() {
-    test_a2c("002_array").unwrap();
-}
-
+#[ignore]
+fn test_23_stdlib_015_hashmap() { test_a2c("23_stdlib/015_hashmap").unwrap(); }
 #[test]
-fn test_003_func() {
-    test_a2c("003_func").unwrap();
-}
+#[ignore]
+fn test_23_stdlib_016_hashset() { test_a2c("23_stdlib/016_hashset").unwrap(); }
+#[test] fn test_23_stdlib_017_std_file_write() { test_a2c("23_stdlib/017_std_file_write").unwrap(); }
 
-#[test]
-fn test_004_cstr() {
-    test_a2c("004_cstr").unwrap();
-}
+// === 24_runtime_size ===
+#[test] fn test_24_runtime_size_001_runtime_size_var() { test_a2c("24_runtime_size/001_runtime_size_var").unwrap(); }
+#[test] fn test_24_runtime_size_002_runtime_size_expr() { test_a2c("24_runtime_size/002_runtime_size_expr").unwrap(); }
 
-#[test]
-fn test_005_pointer() {
-    test_a2c("005_pointer").unwrap();
-}
-
-#[test]
-fn test_006_struct() {
-    test_a2c("006_struct").unwrap();
-}
-
-#[test]
-fn test_007_enum() {
-    test_a2c("007_enum").unwrap();
-}
-
-#[test]
-fn test_008_method() {
-    test_a2c("008_method").unwrap();
-}
-
-#[test]
-fn test_009_alias() {
-    test_a2c("009_alias").unwrap();
-}
-
-#[test]
-fn test_010_if() {
-    test_a2c("010_if").unwrap();
-}
-
-#[test]
-fn test_011_for() {
-    test_a2c("011_for").unwrap();
-}
-
-#[test]
-fn test_012_is() {
-    test_a2c("012_is").unwrap();
-}
-
-#[test]
-fn test_013_union() {
-    test_a2c("013_union").unwrap();
-}
-
-#[test]
-fn test_014_hetero_enum() {
-    test_a2c("014_hetero_enum").unwrap();
-}
-
-#[test]
-fn test_015_str() {
-    test_a2c("015_str").unwrap();
-}
-
-#[test]
-fn test_016_basic_spec() {
-    test_a2c("016_basic_spec").unwrap();
-}
-
-#[test]
-fn test_017_spec() {
-    test_a2c("017_spec").unwrap();
-}
-
-#[test]
-fn test_018_delegation() {
-    test_a2c("018_delegation").unwrap();
-}
-
-#[test]
-fn test_019_multi_delegation() {
-    test_a2c("019_multi_delegation").unwrap();
-}
-
-#[test]
-fn test_020_delegation_params() {
-    test_a2c("020_delegation_params").unwrap();
-}
-
-
-#[test]
-fn test_028_for_complex() {
-    test_a2c("028_complex_expr").unwrap();
-}
-
-#[test]
-fn test_029_array_return() {
-    test_a2c("029_array_return").unwrap();
-}
-
-// TODO: Test 038 - string methods with arraGy returns
-// Currently str.split() signature is added but full implementation
-// requires more expression support (loop conditions, string manipulation)
-
+// === 25_type_checking ===
 #[test]
 #[ignore = "C transpiler does not yet validate struct field types"]
-fn test_021_type_error() {
-    test_a2c("021_type_error").unwrap();
-}
-
-// ===================== test cases for Auto's stdlib =======================
-
-// TODO: These tests fail due to pre-existing library file loading issues
-// The transpiler can't find auto/io.h when processing use statements
-// This needs to be fixed separately from the enum refactoring
-#[test]
-fn test_137_std_hello() {
-    test_a2c("137_std_hello").unwrap();
-}
-
-#[test]
-fn test_138_std_getpid() {
-    test_a2c("138_std_getpid").unwrap();
-}
-
-#[test]
-fn test_139_std_readline() {
-    test_a2c("139_std_readline").unwrap();
-}
-
-#[test]
-fn test_140_std_file() {
-    match test_a2c("140_std_file") {
-        Ok(_) => {}
-        Err(e) => {
-            // Print full error using Miette for better diagnostics
-            eprintln!("\n=== Transpilation Error ===\n");
-
-            // Check if it's a SyntaxWithSource error (has source code attached)
-            match &e {
-                crate::error::AutoError::SyntaxWithSource(err) => {
-                    // This has source code - print with rich formatting
-                    eprintln!("{}\n", err);
-                }
-                _ => {
-                    // Fallback to simple display
-                    eprintln!("{}\n", e);
-                }
-            }
-
-            // Also print debug for more details
-            eprintln!("Debug info:\n{:?}\n", e);
-
-            panic!("Transpilation failed");
-        }
-    }
-}
-
-#[test]
-#[ignore]
-fn test_141_std_repl() {
-    test_a2c("141_std_repl").unwrap();
-}
-
-#[test]
-fn test_142_std_str() {
-    test_a2c("142_std_str").unwrap();
-}
-
-#[test]
-#[ignore]
-fn test_143_file_operations() {
-    test_a2c("143_file_operations").unwrap();
-}
-
-// ===================== Phase 5: Unified Section tests =======================
-
-#[test]
-fn test_027_unified_functions() {
-    test_a2c("027_unified_section").unwrap();
-}
-
-// ===================== Hetero Enum Type and May<T> tests =======================
-
-#[test]
-fn test_032_hetero_enum_types() {
-    test_a2c("032_hetero_enum_types").unwrap();
-}
-
-#[test]
-fn test_033_may_basic() {
-    test_a2c("033_may_basic").unwrap();
-}
-
-#[test]
-fn test_034_may_string() {
-    test_a2c("034_may_string").unwrap();
-}
-
-#[test]
-fn test_035_may_bool() {
-    test_a2c("035_may_bool").unwrap();
-}
-
-#[test]
-fn test_036_may_patterns() {
-    test_a2c("036_may_patterns").unwrap();
-}
-
-#[test]
-fn test_037_may_nested() {
-    test_a2c("037_may_nested").unwrap();
-}
-
-#[test]
-fn test_038_binary() {
-    test_a2c("038_binary").unwrap();
-}
-#[test]
-fn test_041_tristate() {
-    test_a2c("041_tristate").unwrap();
-}
-#[test]
-fn test_042_direction() {
-    test_a2c("042_direction").unwrap();
-}
-#[test]
-fn test_045_status() {
-    test_a2c("045_status").unwrap();
-}
-#[test]
-fn test_046_mode() {
-    test_a2c("046_mode").unwrap();
-}
-#[test]
-fn test_048_result() {
-    test_a2c("048_result").unwrap();
-}
-#[test]
-fn test_049_phase() {
-    test_a2c("049_phase").unwrap();
-}
-#[test]
-fn test_050_level() {
-    test_a2c("050_level").unwrap();
-}
-#[test]
-fn test_051_state() {
-    test_a2c("051_state").unwrap();
-}
-#[test]
-fn test_053_type() {
-    test_a2c("053_type").unwrap();
-}
-#[test]
-fn test_056_side() {
-    test_a2c("056_side").unwrap();
-}
-#[test]
-fn test_057_flow() {
-    test_a2c("057_flow").unwrap();
-}
-#[test]
-fn test_058_gate() {
-    test_a2c("058_gate").unwrap();
-}
-#[test]
-fn test_059_path() {
-    test_a2c("059_path").unwrap();
-}
-#[test]
-fn test_061_color() {
-    test_a2c("061_color").unwrap();
-}
-#[test]
-fn test_065_size() {
-    test_a2c("065_size").unwrap();
-}
-#[test]
-fn test_067_speed() {
-    test_a2c("067_speed").unwrap();
-}
-#[test]
-fn test_068_power() {
-    test_a2c("068_power").unwrap();
-}
-#[test]
-fn test_069_signal() {
-    test_a2c("069_signal").unwrap();
-}
-#[test]
-fn test_070_zone() {
-    test_a2c("070_zone").unwrap();
-}
-#[test]
-fn test_071_mode2() {
-    test_a2c("071_mode2").unwrap();
-}
-#[test]
-fn test_072_link() {
-    test_a2c("072_link").unwrap();
-}
-#[test]
-fn test_073_source() {
-    test_a2c("073_source").unwrap();
-}
-#[test]
-fn test_074_target() {
-    test_a2c("074_target").unwrap();
-}
-#[test]
-fn test_075_format() {
-    test_a2c("075_format").unwrap();
-}
-
-#[test]
-fn test_076_question_syntax() {
-    test_a2c("076_question_syntax").unwrap();
-}
-
-#[test]
-fn test_077_question_uint() {
-    test_a2c("077_question_uint").unwrap();
-}
-
-#[test]
-fn test_078_question_float() {
-    test_a2c("078_question_float").unwrap();
-}
-
-#[test]
-fn test_079_question_double() {
-    test_a2c("079_question_double").unwrap();
-}
-
-#[test]
-fn test_080_question_char() {
-    test_a2c("080_question_char").unwrap();
-}
-
-// Skip test_076_question_void - ?void doesn't make semantic sense
-
-#[test]
-fn test_082_question_return_int() {
-    test_a2c("082_question_return_int").unwrap();
-}
-
-#[test]
-fn test_083_question_return_str() {
-    test_a2c("083_question_return_str").unwrap();
-}
-
-#[test]
-fn test_084_question_return_bool() {
-    test_a2c("084_question_return_bool").unwrap();
-}
-
-#[test]
-fn test_085_question_return_uint() {
-    test_a2c("085_question_return_uint").unwrap();
-}
-
-#[test]
-fn test_086_question_return_float() {
-    test_a2c("086_question_return_float").unwrap();
-}
-
-#[test]
-fn test_087_question_return_double() {
-    test_a2c("087_question_return_double").unwrap();
-}
-
-#[test]
-fn test_088_question_return_char() {
-    test_a2c("088_question_return_char").unwrap();
-}
-
-#[test]
-fn test_089_question_nested_call() {
-    test_a2c("089_question_nested_call").unwrap();
-}
-
-#[test]
-fn test_090_question_arithmetic() {
-    test_a2c("090_question_arithmetic").unwrap();
-}
-
-#[test]
-fn test_091_question_comparison() {
-    test_a2c("091_question_comparison").unwrap();
-}
-
-// Skip test_090_question_logical - && operator has parsing issues
-
-#[test]
-fn test_093_question_negation() {
-    test_a2c("093_question_negation").unwrap();
-}
-
-#[test]
-fn test_094_question_literal() {
-    test_a2c("094_question_literal").unwrap();
-}
-
-#[test]
-fn test_095_question_zero() {
-    test_a2c("095_question_zero").unwrap();
-}
-
-#[test]
-fn test_096_question_negative() {
-    test_a2c("096_question_negative").unwrap();
-}
-
-#[test]
-fn test_118_null_coalesce() {
-    test_a2c("118_null_coalesce").unwrap();
-}
-
-#[test]
-fn test_119_error_propagate() {
-    test_a2c("119_error_propagate").unwrap();
-}
-
-#[test]
-fn test_135_bool() {
-    test_a2c("135_bool").unwrap();
-}
-
-#[test]
-fn test_136_with_constraint() {
-    test_a2c("136_with_constraint").unwrap();
-}
-
-#[test]
-fn test_128_inheritance() {
-    test_a2c("128_inheritance").unwrap();
-}
-
-// ===================== Phase 3: HashMap/HashSet tests =======================
-
-// TODO: These tests are incomplete - they use function-style API (HashMap_new)
-// but only the OOP API (HashMap.new) is implemented. Need to either:
-// 1. Register function-style aliases
-// 2. Update tests to use OOP API
-// 3. Create proper expected output files
-#[test]
-#[ignore]
-fn test_123_hashmap() {
-    test_a2c("123_hashmap").unwrap();
-}
-
-#[test]
-#[ignore]
-fn test_124_hashset() {
-    test_a2c("124_hashset").unwrap();
-}
-
-// ===================== Phase 3: Borrow Checker tests =======================
-
-#[test]
-fn test_023_borrow_view() {
-    test_a2c("023_borrow_view").unwrap();
-}
-
-#[test]
-fn test_024_borrow_mut() {
-    test_a2c("024_borrow_mut").unwrap();
-}
-
-#[test]
-fn test_025_borrow_move() {
-    test_a2c("025_borrow_move").unwrap();
-}
-
-#[test]
-fn test_026_borrow_conflicts() {
-    test_a2c("026_borrow_conflicts").unwrap();
-}
-
-#[test]
-fn test_148_std_readline() {
-    test_a2c("148_std_readline").unwrap();
-}
-
-#[test]
-fn test_150_std_file_flush() {
-    test_a2c("150_std_file_flush").unwrap();
-}
-
-#[test]
-fn test_151_std_file_read() {
-    test_a2c("151_std_file_read").unwrap();
-}
-
-// Plan 162: Type cast — expr.as(Type)
-#[test]
-fn test_152_type_cast() {
-    test_a2c("152_type_cast").unwrap();
-}
-
-// ===================== Generic Type Tests =====================
-
-#[test]
-#[ignore = "Generic hetero enum transpilation not yet implemented"]
-fn test_109_generic_hetero_enum() {
-    match test_a2c("109_generic_hetero_enum") {
-        Ok(_) => {}
-        Err(e) => {
-            // Check if this is MultipleErrors and print each one
-            if let crate::error::AutoError::MultipleErrors { errors, .. } = &e {
-                eprintln!("\n=== Transpilation Errors ({}) ===\n", errors.len());
-                for (i, err) in errors.iter().enumerate() {
-                    eprintln!("--- Error {} ---\n", i + 1);
-                    eprintln!("{}\n", err);
-                }
-            } else {
-                eprintln!("\n=== Transpilation Error ===\n");
-                eprintln!("{}\n", e);
-            }
-            panic!("Transpilation failed - generics not yet implemented");
-        }
-    }
-}
-
-#[test]
-fn test_097_array_declaration() {
-    test_a2c("097_array_declaration").unwrap();
-}
-
-#[test]
-fn test_098_array_mutation() {
-    test_a2c("098_array_mutation").unwrap();
-}
-
-#[test]
-fn test_099_array_index_read() {
-    test_a2c("099_array_index_read").unwrap();
-}
-
-#[test]
-fn test_100_array_copy() {
-    test_a2c("100_array_copy").unwrap();
-}
-
-#[test]
-fn test_101_array_slice() {
-    test_a2c("101_array_slice").unwrap();
-}
-
-#[test]
-#[ignore = "Parser does not yet support nested arrays"]
-fn test_102_array_nested() {
-    test_a2c("102_array_nested").unwrap();
-}
-
-#[test]
-#[ignore = "Parser does not yet support zero-size arrays"]
-fn test_103_array_zero_size() {
-    test_a2c("103_array_zero_size").unwrap();
-}
-
-#[test]
-fn test_104_array_loop() {
-    test_a2c("104_array_loop").unwrap();
-}
-
-#[test]
-fn test_106_runtime_size_var() {
-    test_a2c("106_runtime_size_var").unwrap();
-}
-
-#[test]
-fn test_107_runtime_size_expr() {
-    test_a2c("107_runtime_size_expr").unwrap();
-}
-
-#[test]
-fn test_108_pointer_types() {
-    test_a2c("108_pointer_types").unwrap();
-}
-
-#[test]
-#[ignore = "Const generics not yet implemented in C transpiler"]
-fn test_110_const_generics() {
-    test_a2c("110_const_generics").unwrap();
-}
-
-#[test]
-fn test_112_generic_specs() {
-    test_a2c("112_generic_specs").unwrap();
-}
-
-// ============================================================================
-// Plan 057: Generic Spec with Ext Blocks
-// ============================================================================
-
-#[test]
-fn test_113_generic_spec_ext() {
-    test_a2c("113_generic_spec_ext").unwrap();
-}
-
-#[test]
-#[ignore = "Storage module generics not yet implemented in C transpiler"]
-fn test_114_storage_module() {
-    test_a2c("114_storage_module").unwrap();
-}
-
-#[test]
-fn test_115_storage_usage() {
-    test_a2c("115_storage_usage").unwrap();
-}
-
-#[test]
-fn test_117_list_storage() {
-    test_a2c("117_list_storage").unwrap();
-}
-
-
-
-#[test]
-fn test_116_plan055_auto_storage() {
-    test_a2c("116_plan055_auto_storage").unwrap();
-}
-
-#[test]
-fn test_120_iter_specs() {
-    test_a2c("120_iter_specs").unwrap();
-}
-
-#[test]
-fn test_121_map_adapter() {
-    test_a2c("121_map_adapter").unwrap();
-}
-
-#[test]
-fn test_122_list_iter() {
-    test_a2c("122_list_iter").unwrap();
-}
-
-#[test]
-fn test_126_generic_field() {
-    test_a2c("126_generic_field").unwrap();
-}
-
-#[test]
-fn test_127_generic_ptr_field() {
-    test_a2c("127_generic_ptr_field").unwrap();
-}
-
-#[test]
-fn test_129_terminal_operators() {
-    test_a2c("129_terminal_operators").unwrap();
-}
-
-// Plan 060: Closure tests
-#[test]
-fn test_125_closure() {
-    test_a2c("125_closure").unwrap();
-}
-
-// Plan 051 Phase 4: Terminal Operators tests
-#[test]
-fn test_130_terminal_operators() {
-    test_a2c("130_terminal_operators").unwrap();
-}
-
-// Plan 051 Phase 5: Bang Operator tests
-#[test]
-fn test_131_bang_operator() {
-    test_a2c("131_bang_operator").unwrap();
-}
-
-// Plan 051 Phase 6: Extended Adapters tests
-#[test]
-fn test_132_extended_adapters() {
-    test_a2c("132_extended_adapters").unwrap();
-}
-
-// Plan 051 Phase 7: Predicate Terminal Operators tests
-#[test]
-fn test_133_predicates() {
-    test_a2c("133_predicates").unwrap();
-}
-
-// Plan 051 Phase 8: Collect & To Operators tests
-#[test]
-fn test_134_collect() {
-    test_a2c("134_collect").unwrap();
-}
-
-
-#[test]
-fn test_146_io_specs() {
-    test_a2c("146_io_specs").unwrap();
-}
-
-// Plan 053: Mutable variables in loop scopes
-#[test]
-fn test_083_mut_counter() {
-    test_a2c("083_mut_counter").unwrap();
-}
-
-#[test]
-fn test_083_mut_accumulator() {
-    test_a2c("083_mut_accumulator").unwrap();
-}
-
-#[test]
-fn test_083_mut_multiple() {
-    test_a2c("083_mut_multiple").unwrap();
-}
-
-#[test]
-fn test_083_mut_array_sum() {
-    test_a2c("083_mut_array_sum").unwrap();
-}
+fn test_25_type_checking_001_type_error() { test_a2c("25_type_checking/001_type_error").unwrap(); }
