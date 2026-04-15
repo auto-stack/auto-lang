@@ -24,6 +24,7 @@ streaming-http = ["tokio-util", "futures"]
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []
+ui-headless = ["ui"]
 ui-interpreter = ["ui"]
 ui-gpui = ["ui", "dep:gpui-lib"]
 ui-iced = ["ui", "dep:iced"]
