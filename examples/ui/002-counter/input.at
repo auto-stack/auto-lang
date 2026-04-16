@@ -1,0 +1,24 @@
+widget Counter {
+    msg Msg { Inc, Dec, Reset }
+
+    model {
+        var count int = 0
+    }
+
+    view {
+        col {
+            text `Counter: ${.count}`
+            row {
+                button "-" { onclick: .Dec }
+                button "Reset" { onclick: .Reset }
+                button "+" { onclick: .Inc }
+            }
+        }
+    }
+
+    on {
+        .Inc -> { .count = .count + 1 }
+        .Dec -> { .count = .count - 1 }
+        .Reset -> { .count = 0 }
+    }
+}

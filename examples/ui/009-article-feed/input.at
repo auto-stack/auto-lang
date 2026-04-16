@@ -1,0 +1,36 @@
+widget ArticleFeed {
+    model {
+        var articles = [
+            { title: "Getting Started with AutoLang", excerpt: "Learn the basics of AutoLang and build your first cross-platform app in under ten minutes.", author: "Alice", avatar: "/avatars/alice.png", date: "Apr 10, 2026", image: "/images/getting-started.png" }
+            { title: "Cross-Platform UI with AURA", excerpt: "Build once, deploy everywhere. AURA widgets compile to Vue, Compose, ArkTS, and GPUI.", author: "Bob", avatar: "/avatars/bob.png", date: "Apr 12, 2026", image: "/images/cross-platform.png" }
+            { title: "Advanced Patterns in AutoLang", excerpt: "Take your skills to the next level with tasks, specs, and the type system.", author: "Charlie", avatar: "/avatars/charlie.png", date: "Apr 14, 2026", image: "/images/advanced-patterns.png" }
+        ]
+    }
+
+    view {
+        col {
+            text "Latest Articles"
+            col {
+                for article in .articles {
+                    col {
+                        image { src: article.image, class: "w-full h-40 object-cover rounded" }
+                        col {
+                            text article.title
+                            text article.excerpt
+                            row {
+                                image { src: article.avatar, class: "w-8 h-8 rounded-full" }
+                                text article.author
+                                text article.date
+                                class: "gap-2 items-center"
+                            }
+                            class: "p-4 gap-2"
+                        }
+                        class: "bg-white rounded-lg shadow overflow-hidden"
+                    }
+                }
+                class: "gap-6"
+            }
+            class: "w-full max-w-2xl p-8 gap-6"
+        }
+    }
+}

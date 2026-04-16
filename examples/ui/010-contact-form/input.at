@@ -1,0 +1,38 @@
+widget ContactForm {
+    msg Msg { Submit, NameChanged, EmailChanged, SubjectChanged, MessageChanged }
+
+    model {
+        var name str = ""
+        var email str = ""
+        var subject str = "general"
+        var message str = ""
+        var submitted bool = false
+    }
+
+    view {
+        col {
+            text "Contact Us"
+            text "We'd love to hear from you. Send us a message and we'll respond as soon as possible."
+            input { placeholder: "Your Name", value: .name, onchange: .NameChanged }
+            input { placeholder: "Your Email", value: .email, onchange: .EmailChanged }
+            select { value: .subject, options: ["general", "support", "sales"], onchange: .SubjectChanged }
+            textarea { placeholder: "Your Message", value: .message, onchange: .MessageChanged }
+            button "Send Message" { onclick: .Submit }
+            if .submitted {
+                text "Thank you! We'll be in touch."
+            }
+            class: "w-full max-w-lg p-8 gap-4"
+        }
+    }
+
+    on {
+        .Submit -> {
+            .submitted = true
+            print(f"Contact form submitted by ${.name} (${.email})")
+        }
+        .NameChanged -> { .name = .name }
+        .EmailChanged -> { .email = .email }
+        .SubjectChanged -> { .subject = .subject }
+        .MessageChanged -> { .message = .message }
+    }
+}
