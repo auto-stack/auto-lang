@@ -4,11 +4,11 @@ fn main() {
     let x = 10
 
     is x {
-        0 => print("zero")
-        1 => {
+        0 -> print("zero")
+        1 -> {
             let msg = "one"
             print(msg)
         }
-        else => print("other")
+        else -> print("other")
     }
 }

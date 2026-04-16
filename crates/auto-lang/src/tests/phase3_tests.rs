@@ -87,7 +87,7 @@ fn test_parse_on_with_context_param() {
     let code = r#"
         task TestTask {
             on(ctx) {
-                "ping" => { }
+                "ping" -> { }
             }
         }
     "#;
@@ -110,7 +110,7 @@ fn test_parse_on_without_context_param() {
     let code = r#"
         task TestTask {
             on {
-                Reset => { }
+                Reset -> { }
             }
         }
     "#;
@@ -131,7 +131,7 @@ fn test_parse_literal_pattern_string() {
     let code = r#"
         task TestTask {
             on {
-                "ping" => { }
+                "ping" -> { }
             }
         }
     "#;
@@ -153,7 +153,7 @@ fn test_parse_literal_pattern_int() {
     let code = r#"
         task TestTask {
             on {
-                404 => { }
+                404 -> { }
             }
         }
     "#;
@@ -172,8 +172,8 @@ fn test_parse_literal_pattern_bool() {
     let code = r#"
         task TestTask {
             on {
-                true => { }
-                false => { }
+                true -> { }
+                false -> { }
             }
         }
     "#;
@@ -198,7 +198,7 @@ fn test_parse_type_binding_pattern() {
     let code = r#"
         task TestTask {
             on {
-                msg str => { }
+                msg str -> { }
             }
         }
     "#;
@@ -228,7 +228,7 @@ fn test_parse_guard_expression() {
     let code = r#"
         task TestTask {
             on {
-                amount int if amount > 10000 => { }
+                amount int if amount > 10000 -> { }
             }
         }
     "#;
@@ -253,11 +253,11 @@ fn test_parse_mixed_patterns() {
     let code = r#"
         task TestTask {
             on(ctx) {
-                "ping" => { }
-                msg string => { }
-                amount int if amount > 10000 => { }
-                Reset => { }
-                Add(val) => { }
+                "ping" -> { }
+                msg string -> { }
+                amount int if amount > 10000 -> { }
+                Reset -> { }
+                Add(val) -> { }
             }
         }
     "#;
@@ -301,8 +301,8 @@ fn test_parse_else_handler_with_context() {
     let code = r#"
         task TestTask {
             on(ctx) {
-                "ping" => { }
-                else => { }
+                "ping" -> { }
+                else -> { }
             }
         }
     "#;

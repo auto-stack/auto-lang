@@ -78,17 +78,17 @@ const FIB_20 int = #{ fib(20) }
 
 // 根据编译期条件生成不同代码
 #is get_target_os() {
-    "windows" => {
+    "windows" -> {
         fn get_path_sep() str {
             return "\\"
         }
     }
-    "linux" => {
+    "linux" -> {
         fn get_path_sep() str {
             return "/"
         }
     }
-    else => {
+    else -> {
         fn get_path_sep() str {
             return "/"
         }

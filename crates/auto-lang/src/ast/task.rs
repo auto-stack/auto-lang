@@ -476,10 +476,10 @@ impl fmt::Display for TaskOnBlock {
             if let Some(g) = guard {
                 write!(f, " if {}", g)?;
             }
-            write!(f, " => {})", body)?;
+            write!(f, " -> {})", body)?;
         }
         if let Some(else_body) = &self.else_handler {
-            write!(f, " (else => {})", else_body)?;
+            write!(f, " (else -> {})", else_body)?;
         }
         write!(f, ")")
     }
@@ -551,10 +551,10 @@ impl AtomWriter for TaskDef {
             if let Some(g) = guard {
                 write!(f, " if {}", g.to_atom_str())?;
             }
-            write!(f, " => {}", body.to_atom_str())?;
+            write!(f, " -> {}", body.to_atom_str())?;
         }
         if let Some(else_body) = &self.on_block.else_handler {
-            write!(f, "\n        else => {}", else_body.to_atom_str())?;
+            write!(f, "\n        else -> {}", else_body.to_atom_str())?;
         }
         write!(f, "\n    }}")?;
 
@@ -615,7 +615,7 @@ impl AtomWriter for TaskOnBlock {
 
         // Phase 3: handlers with optional guard
         for (pattern, guard, body) in &self.handlers {
-            write!(f, "{} => ", pattern)?;
+            write!(f, "{} -> ", pattern)?;
             if let Some(g) = guard {
                 write!(f, " if {} ", g.to_atom_str())?;
             }
@@ -623,7 +623,7 @@ impl AtomWriter for TaskOnBlock {
         }
 
         if let Some(else_body) = &self.else_handler {
-            write!(f, "else => {}", else_body.to_atom_str())?;
+            write!(f, "else -> {}", else_body.to_atom_str())?;
         }
 
         write!(f, "}}")?;

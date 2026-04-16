@@ -5,17 +5,17 @@
 //! Example (Plan 106 - use syntax):
 //! ```auto
 //! routes {
-//!     "/" => use index
-//!     "/button" => use button
-//!     "/user/:id" => use user
+//!     "/" -> use index
+//!     "/button" -> use button
+//!     "/user/:id" -> use user
 //! }
 //! ```
 //!
 //! Example (Plan 105 - backward compatible):
 //! ```auto
 //! routes {
-//!     "/button" => ButtonPage {}
-//!     "/user/:id" => UserPage {}
+//!     "/button" -> ButtonPage {}
+//!     "/user/:id" -> UserPage {}
 //! }
 //! ```
 
@@ -23,8 +23,8 @@
 // Route Definition
 // ============================================================================
 
-/// Route definition: "/path" => use module_name (Plan 106)
-///                   "/path" => ComponentName {} (Plan 105, backward compat)
+/// Route definition: "/path" -> use module_name (Plan 106)
+///                   "/path" -> ComponentName {} (Plan 105, backward compat)
 ///
 /// Represents a single route mapping from a URL path pattern to a module.
 ///
@@ -37,7 +37,7 @@
 /// # Example (Plan 106)
 ///
 /// ```auto
-/// "/user/:id" => use user
+/// "/user/:id" -> use user
 /// ```
 ///
 /// This creates a `RouteDef` with:
@@ -93,9 +93,9 @@ impl RouteDef {
 ///
 /// ```auto
 /// routes {
-///     "/" => use index
-///     "/button" => use button
-///     "/user/:id" => use user
+///     "/" -> use index
+///     "/button" -> use button
+///     "/user/:id" -> use user
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq)]

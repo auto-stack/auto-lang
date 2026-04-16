@@ -2,8 +2,8 @@
 
 widget App {
     routes {
-        "/" => HomePage {}
-        "/about" => AboutPage {}
+        "/" -> HomePage {}
+        "/about" -> AboutPage {}
     }
 
     view {

@@ -5,22 +5,22 @@ enum Result {
 
 fn get_message(r Result) str {
     is r {
-        Result.Ok(v) => "success"
-        Result.Err(e) => "error"
+        Result.Ok(v) -> "success"
+        Result.Err(e) -> "error"
     }
 }
 
 fn is_ok(r Result) bool {
     is r {
-        Result.Ok(x) => true
-        Result.Err(x) => false
+        Result.Ok(x) -> true
+        Result.Err(x) -> false
     }
 }
 
 fn is_err(r Result) bool {
     is r {
-        Result.Ok(x) => false
-        Result.Err(x) => true
+        Result.Ok(x) -> false
+        Result.Err(x) -> true
     }
 }
 

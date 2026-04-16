@@ -90,9 +90,9 @@ widget LoginBottom {
         }
     }
     on {
-        UpdateAccount => { }
-        UpdatePassword => { }
-        Login => { }
-        ShowToast => { }
+        UpdateAccount -> { }
+        UpdatePassword -> { }
+        Login -> { }
+        ShowToast -> { }
     }
 }

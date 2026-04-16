@@ -108,6 +108,6 @@ widget KnowledgeMap {
     }
 
     routes {
-        "KnowledgeMapContent" => use KnowledgeMapContent
+        "KnowledgeMapContent" -> use KnowledgeMapContent
     }
 }

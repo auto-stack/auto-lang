@@ -5,8 +5,8 @@ enum Binary {
 
 fn is_first(m Binary) bool {
     is m {
-        Binary.Yes(x) => true
-        Binary.No(x) => false
+        Binary.Yes(x) -> true
+        Binary.No(x) -> false
     }
 }
 

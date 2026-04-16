@@ -253,12 +253,12 @@ fn download_image(url str, output_dir str) bool {
     let bytes = res.bytes()
     
     match file.write_bytes(output_path, bytes) {
-        Ok(_) => {
+        Ok(_) -> {
             let size_kb = list.len(bytes) / 1024
             print(f"    ✓ Saved: ${filename} (${size_kb}KB)")
             true
         }
-        Err(e) => {
+        Err(e) -> {
             print(f"    ✗ Save failed: ${e}")
             false
         }

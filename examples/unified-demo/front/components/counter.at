@@ -25,7 +25,7 @@ widget Counter {
     }
 
     on {
-        .Inc => { .count = .count + 1 }
-        .Dec => { .count = .count - 1 }
+        .Inc -> { .count = .count + 1 }
+        .Dec -> { .count = .count - 1 }
     }
 }

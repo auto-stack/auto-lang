@@ -45,10 +45,10 @@ widget TodoApp {
     // Event handlers
     // Plan 130: Use . prefix for message variants
     on {
-        .Add => {
+        .Add -> {
             .count = .count + 1
         }
-        .Clear => {
+        .Clear -> {
             .count = 0
         }
     }

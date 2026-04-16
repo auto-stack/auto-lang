@@ -10,8 +10,8 @@ enum Coin {
 fn main() {
     let c = Coin.Penny
     is c {
-        Coin.Penny => print("Penny!")
-        Coin.Nickel => print("Nickel!")
-        else => print("Other")
+        Coin.Penny -> print("Penny!")
+        Coin.Nickel -> print("Nickel!")
+        else -> print("Other")
     }
 }

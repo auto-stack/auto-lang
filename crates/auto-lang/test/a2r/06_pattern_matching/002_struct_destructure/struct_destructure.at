@@ -16,18 +16,18 @@ fn main() {
 
     // Plain struct destructuring
     is p {
-        Point { x, y } => print(x)
+        Point { x, y } -> print(x)
     }
 
     // Enum variant with struct destructuring
     let s = Shape.Rect(p)
     is s {
-        Shape.Circle(r) => print(r)
-        Shape.Rect(pt) => {
+        Shape.Circle(r) -> print(r)
+        Shape.Rect(pt) -> {
             is pt {
-                Point { x, y } => print(x)
+                Point { x, y } -> print(x)
             }
         }
-        Shape.None => print("none")
+        Shape.None -> print("none")
     }
 }

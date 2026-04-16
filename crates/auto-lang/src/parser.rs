@@ -4132,7 +4132,7 @@ impl<'a> Parser<'a> {
             // Check for 'else' handler
             if self.is_kind(TokenKind::Else) {
                 self.next(); // consume 'else'
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
                 let body = self.body()?;
                 on_block.set_else(body);
             } else {
@@ -4147,7 +4147,7 @@ impl<'a> Parser<'a> {
                     None
                 };
 
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
                 let body = self.body()?;
                 on_block.add_handler_with_guard(pattern, guard, body);
             }
@@ -5002,7 +5002,7 @@ impl<'a> Parser<'a> {
             TokenKind::If => {
                 self.next(); // skip if
                 let expr = self.cond_expr()?;
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
                 let body = self.parse_expr_or_body()?;
                 let branch = HashIsBranch::IfBranch(expr, body);
                 self.skip_empty_lines();
@@ -5010,7 +5010,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Else => {
                 self.next(); // skip else
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
                 let body = self.parse_expr_or_body()?;
                 let branch = HashIsBranch::ElseBranch(body);
                 self.skip_empty_lines();
@@ -5019,7 +5019,7 @@ impl<'a> Parser<'a> {
             _ => {
                 // Pattern expression (e.g., "x64", type_name)
                 let expr = self.is_branch_cond_expr()?;
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
 
                 // Check for pattern binding cases (same as normal is)
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
@@ -5105,7 +5105,7 @@ impl<'a> Parser<'a> {
             TokenKind::If => {
                 self.next(); // skip is
                 let expr = self.cond_expr()?;
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
                 let body = self.parse_expr_or_body()?;
                 let branch = IsBranch::IfBranch(expr, body);
                 self.skip_empty_lines();
@@ -5113,7 +5113,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Else => {
                 self.next(); // skip else
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
                 let body = self.parse_expr_or_body()?;
                 let branch = IsBranch::ElseBranch(body);
                 self.skip_empty_lines();
@@ -5121,7 +5121,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 let expr = self.is_branch_cond_expr()?;
-                self.expect(TokenKind::DoubleArrow)?;
+                self.expect(TokenKind::Arrow)?;
 
                 // Check for pattern binding cases
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
@@ -9023,17 +9023,17 @@ impl<'a> Parser<'a> {
     /// Syntax (Plan 106 - recommended):
     /// ```auto
     /// routes {
-    ///     "/" => use index
-    ///     "/button" => use button
-    ///     "/user/:id" => use user
+    ///     "/" -> use index
+    ///     "/button" -> use button
+    ///     "/user/:id" -> use user
     /// }
     /// ```
     ///
     /// Syntax (Plan 105 - backward compatible):
     /// ```auto
     /// routes {
-    ///     "/button" => ButtonPage {}
-    ///     "/user/:id" => UserPage {}
+    ///     "/button" -> ButtonPage {}
+    ///     "/user/:id" -> UserPage {}
     /// }
     /// ```
     fn parse_routes_block_inner(&mut self) -> AutoResult<RoutesBlock> {
@@ -9049,15 +9049,15 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // Parse: "/path" => use module_name (Plan 106)
-            //     or: "/path" => ComponentName {} (Plan 105, backward compat)
+            // Parse: "/path" -> use module_name (Plan 106)
+            //     or: "/path" -> ComponentName {} (Plan 105, backward compat)
             let path = self.cur.text.to_string();
             self.expect(TokenKind::Str)?;
-            self.expect(TokenKind::DoubleArrow)?;
+            self.expect(TokenKind::Arrow)?;
 
             // Check if next token is `use` keyword (Plan 106 syntax)
             let module = if self.is_kind(TokenKind::Use) {
-                // Plan 106: "/path" => use module_name
+                // Plan 106: "/path" -> use module_name
                 self.next(); // consume 'use'
                 let module_name = self.cur.text.to_string();
                 self.expect(TokenKind::Ident)?;
@@ -9935,8 +9935,8 @@ impl<'a> Parser<'a> {
                 name
             };
 
-            // Expect => (might be DoubleArrow, or Asn followed by Gt)
-            if self.is_kind(TokenKind::DoubleArrow) {
+            // Expect -> (might be Arrow, or Asn followed by Gt)
+            if self.is_kind(TokenKind::Arrow) {
                 self.next();
             } else if self.is_kind(TokenKind::Asn) {
                 self.next();
@@ -10657,9 +10657,9 @@ exe hello {
     #[test]
     fn test_is_stmt() {
         let code = r#"is x {
-        10 => print("ten")
-        20 => print("twenty")
-        else => print("ehh")
+        10 -> print("ten")
+        20 -> print("twenty")
+        else -> print("ehh")
         }"#;
         let when = Is::parse(code).unwrap();
         assert_eq!(
@@ -10762,8 +10762,8 @@ exe hello {
             let atom = Atom.Int(12)
 
             is atom {
-                Atom.Int(i) => i
-                Atom.Float(f) => f
+                Atom.Int(i) -> i
+                Atom.Float(f) -> f
             }
         "#;
         let code = parse_once(code);
@@ -10924,8 +10924,8 @@ widget Counter {
         }
     }
     on {
-        Inc => { count = count + 1 }
-        Dec => { count = count - 1 }
+        Inc -> { count = count + 1 }
+        Dec -> { count = count - 1 }
     }
 }
 "#;
@@ -10971,9 +10971,9 @@ widget Counter {
         let code = r#"
 widget App {
     routes {
-        "/" => HomePage {}
-        "/button" => ButtonPage {}
-        "/user/:id" => UserPage {}
+        "/" -> HomePage {}
+        "/button" -> ButtonPage {}
+        "/user/:id" -> UserPage {}
     }
     view {
         col {
@@ -11218,8 +11218,8 @@ widget Counter {
         }
     }
     on {
-        .Inc => { .count = .count + 1 }
-        .Dec => { .count = .count - 1 }
+        .Inc -> { .count = .count + 1 }
+        .Dec -> { .count = .count - 1 }
     }
 }
 "#;
@@ -11462,9 +11462,9 @@ widget Test {
 
     #[test]
     fn test_parse_hash_is_simple() {
-        // Test: #is T { "x64" => { say("x64") } "arm" => { say("arm") } }
+        // Test: #is T { "x64" -> { say("x64") } "arm" -> { say("arm") } }
         // Use skip_check to avoid undefined variable errors for type variable
-        let code = "#is T {\n    \"x64\" => { say(\"x64\") }\n    \"arm\" => { say(\"arm\") }\n}";
+        let code = "#is T {\n    \"x64\" -> { say(\"x64\") }\n    \"arm\" -> { say(\"arm\") }\n}";
         let mut parser = Parser::from(code);
         parser.skip_check = true;
         let ast = parser.parse().expect("Failed to parse #is");

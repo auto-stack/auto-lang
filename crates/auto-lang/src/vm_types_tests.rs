@@ -1338,9 +1338,9 @@ fn test_is_simple_compiles() {
 fn main() -> int {
     let x = 10
     is x {
-        10 => 0
-        20 => 1
-        else => 2
+        10 -> 0
+        20 -> 1
+        else -> 2
     }
 }
 "#;
@@ -1359,8 +1359,8 @@ fn test_is_single_match_compiles() {
 fn main() -> int {
     let x = 10
     is x {
-        10 => 0
-        else => 1
+        10 -> 0
+        else -> 1
     }
 }
 "#;
@@ -1376,11 +1376,11 @@ fn test_is_nested_compiles() {
 fn main() -> int {
     let x = 1
     is x {
-        1 => {
+        1 -> {
             let y = 2
             y
         }
-        else => 0
+        else -> 0
     }
 }
 "#;
@@ -1395,12 +1395,12 @@ fn test_is_multiple_branches_compiles() {
 fn main() -> int {
     let x = 10
     is x {
-        1 => 0
-        2 => 1
-        3 => 2
-        4 => 3
-        5 => 4
-        else => 99
+        1 -> 0
+        2 -> 1
+        3 -> 2
+        4 -> 3
+        5 -> 4
+        else -> 99
     }
 }
 "#;
@@ -1417,8 +1417,8 @@ fn test_is_if_branch_compiles() {
 fn main() -> int {
     let x = 10
     is x {
-        if x > 5 => 100
-        else => 0
+        if x > 5 -> 100
+        else -> 0
     }
 }
 "#;
@@ -1435,9 +1435,9 @@ fn test_is_if_branch_with_comparison() {
 fn main() -> int {
     let x = 15
     is x {
-        if x > 10 => 1
-        if x < 10 => 2
-        else => 0
+        if x > 10 -> 1
+        if x < 10 -> 2
+        else -> 0
     }
 }
 "#;
@@ -1455,8 +1455,8 @@ fn test_is_if_branch_complex_condition() {
 fn main() -> int {
     let x = 25
     is x {
-        if x > 20 => 100
-        else => 0
+        if x > 20 -> 100
+        else -> 0
     }
 }
 "#;
@@ -1471,11 +1471,11 @@ fn test_is_if_branch_with_block_body() {
 fn main() -> int {
     let x = 10
     is x {
-        if x > 5 => {
+        if x > 5 -> {
             let y = x * 2
             y
         }
-        else => 0
+        else -> 0
     }
 }
 "#;
@@ -1491,9 +1491,9 @@ fn test_is_mixed_branches() {
 fn main() -> int {
     let x = 10
     is x {
-        5 => 1
-        if x > 10 => 2
-        else => 0
+        5 -> 1
+        if x > 10 -> 2
+        else -> 0
     }
 }
 "#;

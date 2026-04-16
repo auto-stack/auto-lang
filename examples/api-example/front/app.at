@@ -40,7 +40,7 @@ widget App {
     }
 
     on {
-        .Load => {
+        .Load -> {
             .loading = true
             .users = listusers()
             .loading = false

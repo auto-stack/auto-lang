@@ -26,15 +26,15 @@ task LoggerTask {
     }
 
     on {
-        Hello => {
+        Hello -> {
             print("[LoggerTask] Hello received!")
         }
 
-        Ping => {
+        Ping -> {
             print("[LoggerTask] Ping received, sending Pong!")
         }
 
-        else => {
+        else -> {
             print("[LoggerTask] Unknown message")
         }
     }
@@ -47,20 +47,20 @@ task MonitorTask {
     }
 
     on {
-        Check => {
+        Check -> {
             print("[MonitorTask] System check OK")
         }
 
-        Status => {
+        Status -> {
             print("[MonitorTask] Status: Running")
         }
 
-        Quit => {
+        Quit -> {
             print("[MonitorTask] Quit signal received! Initiating shutdown...")
             TaskSystem.stop()
         }
 
-        else => {
+        else -> {
         }
     }
 }

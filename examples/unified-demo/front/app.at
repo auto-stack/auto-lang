@@ -7,27 +7,27 @@
 
 widget App {
     routes {
-        "/" => use index
-        "/table" => use table
-        "/textarea" => use textarea
-        "/radio" => use radio
-        "/checkbox" => use checkbox
-        "/switch" => use switch
-        "/slider" => use slider
-        "/list-item" => use listitem
-        "/list" => use listpage
-        "/grid" => use gridpage
-        "/counter" => use counter
-        "/column" => use column
-        "/row" => use row
-        "/button" => use button
-        "/input" => use input
-        "/card" => use card
-        "/chip" => use chip
-        "/tabs" => use tabs
-        "/progress" => use progress
-        "/image" => use image
-        "/badge" => use badge
+        "/" -> use index
+        "/table" -> use table
+        "/textarea" -> use textarea
+        "/radio" -> use radio
+        "/checkbox" -> use checkbox
+        "/switch" -> use switch
+        "/slider" -> use slider
+        "/list-item" -> use listitem
+        "/list" -> use listpage
+        "/grid" -> use gridpage
+        "/counter" -> use counter
+        "/column" -> use column
+        "/row" -> use row
+        "/button" -> use button
+        "/input" -> use input
+        "/card" -> use card
+        "/chip" -> use chip
+        "/tabs" -> use tabs
+        "/progress" -> use progress
+        "/image" -> use image
+        "/badge" -> use badge
     }
 
     view {

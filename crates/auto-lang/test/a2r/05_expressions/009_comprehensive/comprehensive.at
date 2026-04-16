@@ -17,8 +17,8 @@ fn main() {
     }
 
     is sq {
-        25 => print("Square is 25")
-        else => print("Square is not 25")
+        25 -> print("Square is 25")
+        else -> print("Square is not 25")
     }
 
     let arr = [1, 2, 3]

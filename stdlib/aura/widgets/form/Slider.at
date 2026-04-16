@@ -48,7 +48,7 @@ widget Slider {
     }
 
     on {
-        Change(value) => {
+        Change(value) -> {
             value = value
         }
     }

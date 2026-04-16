@@ -49,7 +49,7 @@ widget Select {
     }
 
     on {
-        Change(value) => {
+        Change(value) -> {
             value = value
             open = false
         }

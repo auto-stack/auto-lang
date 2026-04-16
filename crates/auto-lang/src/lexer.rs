@@ -1173,10 +1173,10 @@ mod tests {
     #[test]
     fn test_when() {
         let code = r#"is x {
-            5 => print("x is 5")
-            10 => print("x is 10")
-            if x > 5 => print("x is greater than 5")
-            else => print("x is else")
+            5 -> print("x is 5")
+            10 -> print("x is 10")
+            if x > 5 -> print("x is greater than 5")
+            else -> print("x is else")
         }
         "#;
         let tokens = parse_token_strings(code);
@@ -1185,10 +1185,10 @@ mod tests {
             format!(
                 "{}{}{}{}{}",
                 "<is><ident:x><{><nl>",
-                "<int:5><=>><ident:print><(><str:x is 5><)><nl>",
-                "<int:10><=>><ident:print><(><str:x is 10><)><nl>",
-                "<if><ident:x><gt><int:5><=>><ident:print><(><str:x is greater than 5><)><nl>",
-                "<else><=>><ident:print><(><str:x is else><)><nl><}><nl>"
+                "<int:5><->><ident:print><(><str:x is 5><)><nl>",
+                "<int:10><->><ident:print><(><str:x is 10><)><nl>",
+                "<if><ident:x><gt><int:5><->><ident:print><(><str:x is greater than 5><)><nl>",
+                "<else><->><ident:print><(><str:x is else><)><nl><}><nl>"
             )
         );
     }

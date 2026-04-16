@@ -34,13 +34,13 @@ widget Counter {
     // Event handlers
     // Plan 130: Use . prefix for message variants
     on {
-        .Inc => {
+        .Inc -> {
             .count = .count + 1
         }
-        .Dec => {
+        .Dec -> {
             .count = .count - 1
         }
-        .Reset => {
+        .Reset -> {
             .count = 0
         }
     }

@@ -6,9 +6,9 @@ enum TriState {
 
 fn is_first(m TriState) bool {
     is m {
-        TriState.On(x) => true
-        TriState.Off(x) => false
-        TriState.Unknown(x) => false
+        TriState.On(x) -> true
+        TriState.Off(x) -> false
+        TriState.Unknown(x) -> false
     }
 }
 

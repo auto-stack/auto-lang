@@ -8,8 +8,8 @@ fn main() {
     let atom = Atom.Int(11)
 
     is atom {
-        Atom.Int(i) => print("Got Int:", i)
-        Atom.Char(c) => print("Got Char:", c)
-        Atom.Float(f) => print("Got Float:", f)
+        Atom.Int(i) -> print("Got Int:", i)
+        Atom.Char(c) -> print("Got Char:", c)
+        Atom.Float(f) -> print("Got Float:", f)
     }
 }

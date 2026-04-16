@@ -42,7 +42,7 @@ widget RadioGroup {
     }
 
     on {
-        Change(value) => {
+        Change(value) -> {
             value = value
         }
     }

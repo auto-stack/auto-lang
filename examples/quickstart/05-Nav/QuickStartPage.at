@@ -26,7 +26,7 @@ widget QuickStartPage {
     }
 
     routes {
-        "articleDetail" => use ArticleDetailPage
-        "bannerDetail" => use BannerDetailPage
+        "articleDetail" -> use ArticleDetailPage
+        "bannerDetail" -> use BannerDetailPage
     }
 }

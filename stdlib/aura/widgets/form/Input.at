@@ -61,13 +61,13 @@ widget Input {
     }
 
     on {
-        Change(value) => {
+        Change(value) -> {
             // Value updated by parent
         }
-        Focus => {
+        Focus -> {
             focused = true
         }
-        Blur => {
+        Blur -> {
             focused = false
         }
     }

@@ -19,8 +19,8 @@ widget TestMsg {
     }
 
     on {
-        Increment => { }
-        Decrement => { }
-        Reset => { }
+        Increment -> { }
+        Decrement -> { }
+        Reset -> { }
     }
 }

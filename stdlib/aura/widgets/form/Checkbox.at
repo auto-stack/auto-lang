@@ -51,7 +51,7 @@ widget Checkbox {
     }
 
     on {
-        Change(checked) => {
+        Change(checked) -> {
             checked = checked
         }
     }

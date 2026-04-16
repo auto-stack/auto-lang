@@ -258,7 +258,7 @@ widget DatatablePage {
             }
 
             on {
-                ToggleSortStatus => {
+                ToggleSortStatus -> {
                     if sortColumn == "status" {
                         sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
                     } else {
@@ -266,7 +266,7 @@ widget DatatablePage {
                         sortDirection = "asc"
                     }
                 }
-                ToggleSortEmail => {
+                ToggleSortEmail -> {
                     if sortColumn == "email" {
                         sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
                     } else {
@@ -274,7 +274,7 @@ widget DatatablePage {
                         sortDirection = "asc"
                     }
                 }
-                ToggleSortAmount => {
+                ToggleSortAmount -> {
                     if sortColumn == "amount" {
                         sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
                     } else {

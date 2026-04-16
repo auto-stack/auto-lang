@@ -1119,7 +1119,7 @@ impl R2aTrans {
                 self.expr_to_string(&arm.body)
             };
             let indent_str = "    ".repeat(self.indent);
-            result.push_str(&format!("{}{} => {}\n", indent_str, pat, body));
+            result.push_str(&format!("{}{} -> {}\n", indent_str, pat, body));
         }
         self.indent = saved_indent;
 
@@ -1804,9 +1804,9 @@ mod tests {
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
         assert!(result.contains("is x"));
-        assert!(result.contains("0 =>"));
-        assert!(result.contains("1 =>"));
-        assert!(result.contains("_ =>"));
+        assert!(result.contains("0 ->"));
+        assert!(result.contains("1 ->"));
+        assert!(result.contains("_ ->"));
     }
 
     #[test]

@@ -12,7 +12,7 @@ task SimpleTask {
     }
 
     on {
-        else => {
+        else -> {
             print("[SimpleTask] Message received")
         }
     }

@@ -27,7 +27,7 @@ widget LoopTest {
     }
 
     on {
-        Add => {
+        Add -> {
             count = count + 1
         }
     }

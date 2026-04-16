@@ -17,10 +17,10 @@ widget Counter {
     }
 
     on {
-        Inc => {
+        Inc -> {
             count = count + 1
         }
-        Dec => {
+        Dec -> {
             count = count - 1
         }
     }

@@ -173,7 +173,7 @@ fn test_for_array() {
 
 #[test]
 fn test_is_stmt() {
-    let code = r#"var x = 10; is x { 10 => {print("Here is 10!"); x} }"#;
+    let code = r#"var x = 10; is x { 10 -> {print("Here is 10!"); x} }"#;
     let result = run(code).unwrap();
     assert_eq!(result, "10");
 }
@@ -2988,8 +2988,8 @@ fn test_is_option_some_binding() {
     let code = r#"
 let opt = Some(42)
 is opt {
-    Some(v) => v
-    None => 0
+    Some(v) -> v
+    None -> 0
 }
 "#;
     let result = run(code);
@@ -3003,8 +3003,8 @@ fn test_is_option_none_match() {
     let code = r#"
 let opt = None
 is opt {
-    Some(v) => v
-    None => -1
+    Some(v) -> v
+    None -> -1
 }
 "#;
     let result = run(code);
@@ -3018,8 +3018,8 @@ fn test_is_result_ok_binding() {
     let code = r#"
 let res = Ok(100)
 is res {
-    Ok(v) => v
-    Err(e) => -1
+    Ok(v) -> v
+    Err(e) -> -1
 }
 "#;
     let result = run(code);
@@ -3035,8 +3035,8 @@ fn test_is_result_err_match() {
     let code = r#"
 let res = Err("error occurred")
 is res {
-    Ok(v) => v
-    Err(e) => e
+    Ok(v) -> v
+    Err(e) -> e
 }
 "#;
     let result = run(code);

@@ -47,7 +47,7 @@ widget Collapsible {
     }
 
     on {
-        Toggle => {
+        Toggle -> {
             open = !open
         }
     }

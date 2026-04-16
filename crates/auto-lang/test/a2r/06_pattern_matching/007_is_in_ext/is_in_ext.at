@@ -5,8 +5,8 @@ pub enum ToolError {
 ext ToolError {
     pub fn to_string() str {
         is self {
-            ToolError.ExecutionFailed(msg) => { return msg }
-            ToolError.InvalidInput(msg) => { return msg }
+            ToolError.ExecutionFailed(msg) -> { return msg }
+            ToolError.InvalidInput(msg) -> { return msg }
         }
     }
 }

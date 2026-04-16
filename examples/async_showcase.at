@@ -92,15 +92,15 @@ task CounterTask {
 
     // 消息处理
     on {
-        Add(val) => {
+        Add(val) -> {
             self.count += val
             print("[CounterTask] Added ${val}, count = ${self.count}")
         }
-        Reset => {
+        Reset -> {
             self.count = 0
             print("[CounterTask] Reset to 0")
         }
-        Get => {
+        Get -> {
             print("[CounterTask] Current count = ${self.count}")
         }
     }
@@ -127,12 +127,12 @@ task DatabaseWorker {
     // Phase 3: on(ctx) 显式上下文 + 多态路由
     on(ctx) {
         // 字面量模式匹配
-        "ping" => {
+        "ping" -> {
             ctx.reply("pong")
         }
 
         // 类型绑定模式 + reply
-        QueryUser(id) => {
+        QueryUser(id) -> {
             let user = self.users.get(id)
             if user.is_nil() {
                 ctx.reply("error: user not found")
@@ -142,20 +142,20 @@ task DatabaseWorker {
         }
 
         // 保存用户
-        SaveUser(user) => {
+        SaveUser(user) -> {
             self.users.set(user.id, user)
             ctx.reply("saved")
         }
 
         // 带守卫表达式的模式
-        QueryOrder(id) if id > 0 => {
+        QueryOrder(id) if id > 0 -> {
             // 模拟查询
             let order = { id: id, user_id: 1, amount: 1000, status: "pending" }
             ctx.reply(order)
         }
 
         // 兜底处理
-        QueryOrder(id) => {
+        QueryOrder(id) -> {
             ctx.reply("error: invalid order id")
         }
     }
@@ -170,7 +170,7 @@ task DatabaseWorker {
 #[single]
 task WebClient {
     on(ctx) {
-        "fetch_config" => {
+        "fetch_config" -> {
             // 异步块：模拟 HTTP 请求
             let config = ~{
                 // 模拟网络延迟
@@ -183,7 +183,7 @@ task WebClient {
             ctx.reply(result)
         }
 
-        "fetch_user" => {
+        "fetch_user" -> {
             // 链式异步调用
             let user = DatabaseWorker.ask(QueryUser(1)).await.?
             ctx.reply(user)
@@ -203,13 +203,13 @@ task BackgroundProcessor {
 
     on(ctx) {
         // 添加任务到队列
-        AddTask(data) => {
+        AddTask(data) -> {
             self.queue.push(data)
             ctx.reply("added")
         }
 
         // 处理队列中的所有任务 (使用 .go 后台执行)
-        ProcessAll => {
+        ProcessAll -> {
             let task_count = self.queue.len()
 
             // 使用 .go 派发到后台执行
@@ -225,7 +225,7 @@ task BackgroundProcessor {
         }
 
         // 查询状态
-        Status => {
+        Status -> {
             ctx.reply(self.queue.len())
         }
     }

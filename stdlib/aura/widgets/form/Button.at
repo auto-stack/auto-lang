@@ -47,7 +47,7 @@ widget Button {
     }
 
     on {
-        Click => {
+        Click -> {
             // Emit click event (handled by parent)
         }
     }

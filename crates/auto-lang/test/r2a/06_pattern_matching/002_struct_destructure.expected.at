@@ -12,14 +12,14 @@ enum Shape {
 fn main() {
     let p = Point(x: 3, y: 4)
     is p {
-        Point(x, y) => print(x)
+        Point(x, y) -> print(x)
     }
     let s = Rect(p)
     is s {
-        Circle(r) => print(r)
-        Rect(pt) => is pt {
-            Point(x, y) => print(x)
+        Circle(r) -> print(r)
+        Rect(pt) -> is pt {
+            Point(x, y) -> print(x)
         }
-        None => print("none")
+        None -> print("none")
     }
 }

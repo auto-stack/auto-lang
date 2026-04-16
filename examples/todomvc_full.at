@@ -53,10 +53,10 @@ widget TodoApp {
 
     // Event handlers
     on {
-        Add => {
+        Add -> {
             .count = .count + 1
         }
-        Clear => {
+        Clear -> {
             .count = 0
         }
     }

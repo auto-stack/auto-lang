@@ -51,7 +51,7 @@ widget Toast {
     }
 
     on {
-        Dismiss => {
+        Dismiss -> {
             // Toast is dismissed
         }
     }

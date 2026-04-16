@@ -33,14 +33,14 @@ widget CopyButton {
     }
 
     on {
-        Copy => {
+        Copy -> {
             // Copy to clipboard via VM FFI
             // clipboard.write(.text)
             copied = true
             // Schedule reset
             // setTimeout(.ResetCopyState, .copyDuration)
         }
-        ResetCopyState => {
+        ResetCopyState -> {
             copied = false
         }
     }
@@ -68,7 +68,7 @@ widget CopyIconButton {
     }
 
     on {
-        Copy => {
+        Copy -> {
             copied = true
         }
     }

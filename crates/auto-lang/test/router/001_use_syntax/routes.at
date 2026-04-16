@@ -2,9 +2,9 @@
 
 widget App {
     routes {
-        "/" => use index
-        "/about" => use about
-        "/user/:id" => use user
+        "/" -> use index
+        "/about" -> use about
+        "/user/:id" -> use user
     }
 
     view {

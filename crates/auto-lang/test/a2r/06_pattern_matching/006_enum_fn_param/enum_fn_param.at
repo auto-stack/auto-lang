@@ -4,7 +4,7 @@ pub enum ToolError {
 }
 pub fn handle(err ToolError) str {
     is err {
-        ToolError.ExecutionFailed(msg) => { return msg }
-        ToolError.InvalidInput(msg) => { return msg }
+        ToolError.ExecutionFailed(msg) -> { return msg }
+        ToolError.InvalidInput(msg) -> { return msg }
     }
 }

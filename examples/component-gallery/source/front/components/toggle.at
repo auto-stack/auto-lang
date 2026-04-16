@@ -42,7 +42,7 @@ widget Toggle {
     }
 
     on {
-        Change(pressed) => {
+        Change(pressed) -> {
             pressed = pressed
         }
     }

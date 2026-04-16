@@ -217,8 +217,9 @@ Auto reserves **56 keywords** (from `token.rs`), organized by category:
 
 | Operator | Description |
 |----------|-------------|
-| `->` | Arrow (patterns/events) |
-| `=>` | Double arrow (pattern branches) |
+| `->` | Arrow: function return type annotation (`fn foo() -> int`), event routing (`src -> dest`) |
+| `=>` | Double arrow: closures (`x => expr`) |
+| `->` | Arrow: pattern match branches (`42 -> body`), event routing (`src -> dest`) |
 
 #### Punctuation
 
@@ -1021,7 +1022,7 @@ Used in task message handlers for ask/reply RPC:
 ```auto
 task CounterTask {
     on {
-        GetCount() => {
+        GetCount() -> {
             reply self.count    // send reply to caller
         }
     }
@@ -1156,15 +1157,15 @@ loop {
 
 ```auto
 is value {
-    42 => print("exact match"),
-    as str => print("string type"),
-    in 0..9 => print("single digit"),
-    if value > 10 => print("big number"),
-    else => print("other")
+    42 -> print("exact match"),
+    as str -> print("string type"),
+    in 0..9 -> print("single digit"),
+    if value > 10 -> print("big number"),
+    else -> print("other")
 }
 ```
 
-Note: Pattern branches use `=>` (double arrow), not `->` (single arrow).
+Note: Pattern branches use `->` (arrow). Closures use `=>` (double arrow).
 
 #### Struct Destructuring (Plan 165)
 
@@ -1172,8 +1173,8 @@ Note: Pattern branches use `=>` (double arrow), not `->` (single arrow).
 let point = Point(10, 20)
 
 is point {
-    Point(x, y) => print(f"x=${x}, y=${y}"),
-    else => print("not a point")
+    Point(x, y) -> print(f"x=${x}, y=${y}"),
+    else -> print("not a point")
 }
 ```
 
@@ -1181,8 +1182,8 @@ is point {
 
 ```auto
 is maybe_value {
-    Some(x) => print(f"got: ${x}"),
-    None => print("nothing")
+    Some(x) -> print(f"got: ${x}"),
+    None -> print("nothing")
 }
 ```
 
@@ -1190,8 +1191,8 @@ is maybe_value {
 
 ```auto
 is result {
-    Ok(value) => print(f"success: ${value}"),
-    Err(msg) => print(f"error: ${msg}")
+    Ok(value) -> print(f"success: ${value}"),
+    Err(msg) -> print(f"error: ${msg}")
 }
 ```
 
@@ -1199,9 +1200,9 @@ is result {
 
 ```auto
 when event {
-    Click(x, y) => handleClick(x, y),
-    KeyPress(key) => handleKey(key),
-    else => handleOther()
+    Click(x, y) -> handleClick(x, y),
+    KeyPress(key) -> handleKey(key),
+    else -> handleOther()
 }
 ```
 
@@ -1683,9 +1684,9 @@ let value MyTag = MyTag.i(42)
 
 // Pattern matching with `is`
 is value {
-    i => print("int"),
-    f => print("float"),
-    c => print("char")
+    i -> print("int"),
+    f -> print("float"),
+    c -> print("char")
 }
 ```
 
@@ -1853,8 +1854,8 @@ let empty ?str = None
 
 // Pattern matching
 is name {
-    Some(n) => print(f"Hello, $n"),
-    None => print("no name")
+    Some(n) -> print(f"Hello, $n"),
+    None -> print("no name")
 }
 
 // Null coalescing
@@ -1876,8 +1877,8 @@ let result = divide(10, 0).?    // propagates Err
 
 // Pattern matching
 is result {
-    Ok(value) => print(value),
-    Err(msg) => print(f"Error: $msg")
+    Ok(value) -> print(value),
+    Err(msg) -> print(f"Error: $msg")
 }
 ```
 
@@ -1907,16 +1908,16 @@ task CounterTask {
     }
 
     on {
-        Increment(n int) => {
+        Increment(n int) -> {
             self.count += n
         }
-        GetCount() => {
+        GetCount() -> {
             reply self.count
         }
-        Reset => {
+        Reset -> {
             self.count = 0
         }
-        _ => {
+        _ -> {
             print("unknown message")
         }
     }
@@ -2009,9 +2010,9 @@ Auto supports compile-time code execution (Plan 095).
 
 ```auto
 #is target_os {
-    "linux" => { const PLATFORM = "linux" },
-    "windows" => { const PLATFORM = "windows" },
-    else => { const PLATFORM = "unknown" }
+    "linux" -> { const PLATFORM = "linux" },
+    "windows" -> { const PLATFORM = "windows" },
+    else -> { const PLATFORM = "unknown" }
 }
 ```
 

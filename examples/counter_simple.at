@@ -13,7 +13,7 @@ widget Test {
     }
 
     on {
-        Click => {
+        Click -> {
             x = 1
         }
     }

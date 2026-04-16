@@ -5,8 +5,8 @@ enum Mode {
 
 fn is_first(m Mode) bool {
     is m {
-        Mode.Read(x) => true
-        Mode.Write(x) => false
+        Mode.Read(x) -> true
+        Mode.Write(x) -> false
     }
 }
 

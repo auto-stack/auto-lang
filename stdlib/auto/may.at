@@ -22,37 +22,37 @@ enum May<T> {
     // Instance methods
     fn is_nil() bool {
         is self {
-            nil => true
-            _ => false
+            nil -> true
+            _ -> false
         }
     }
 
     fn is_some() bool {
         is self {
-            val(_) => true
-            _ => false
+            val(_) -> true
+            _ -> false
         }
     }
 
     fn is_err() bool {
         is self {
-            err(_) => true
-            _ => false
+            err(_) -> true
+            _ -> false
         }
     }
 
     fn unwrap() T {
         is self {
-            val(v) => v
-            nil => panic("unwrap on nil")
-            err(e) => panic(f"unwrap on error: $e")
+            val(v) -> v
+            nil -> panic("unwrap on nil")
+            err(e) -> panic(f"unwrap on error: $e")
         }
     }
 
     fn unwrap_or(default T) T {
         is self {
-            val(v) => v
-            _ => default
+            val(v) -> v
+            _ -> default
         }
     }
 }
