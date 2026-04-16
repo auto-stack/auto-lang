@@ -1289,17 +1289,22 @@ impl Automan {
                 crate::ark::run_ark_project(&root_dir, args)
             }
             auto_lang::config::BackendType::Rust => {
-                println!("Running Rust project (backend: rust)");
-                let mut cmd = std::process::Command::new("cargo");
-                cmd.arg("run");
-                for arg in args {
-                    cmd.arg(arg);
+                // Check if this is a UI project (has front/ dir)
+                if root_dir.join("front").exists() {
+                    crate::rust_ui::run_rust_ui(&root_dir, args)
+                } else {
+                    println!("Running Rust project (backend: rust)");
+                    let mut cmd = std::process::Command::new("cargo");
+                    cmd.arg("run");
+                    for arg in args {
+                        cmd.arg(arg);
+                    }
+                    let status = cmd.current_dir(&root_dir).status()?;
+                    if !status.success() {
+                        return Err(format!("Cargo run failed with status: {}", status).into());
+                    }
+                    Ok(())
                 }
-                let status = cmd.current_dir(&root_dir).status()?;
-                if !status.success() {
-                    return Err(format!("Cargo run failed with status: {}", status).into());
-                }
-                Ok(())
             }
             _ => {
                 Err(format!("Backend {:?} does not support run command", backend).into())

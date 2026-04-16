@@ -118,16 +118,26 @@ pub fn generate_rust_ui(
     let main_widget = extract_main_widget(&all_components);
     let full_code = wrap_example(&project_name, &all_components);
 
-    // Write output
-    let output_file = output.join(format!("{}.rs", to_snake_case(&project_name)));
-    fs::write(&output_file, &full_code)
-        .map_err(|e| format!("Failed to write {}: {}", output_file.display(), e))?;
+    // Write output as a Cargo project
+    let src_dir = output.join("src");
+    fs::create_dir_all(&src_dir)
+        .map_err(|e| format!("Failed to create src directory: {}", e))?;
+
+    let main_rs = src_dir.join("main.rs");
+    fs::write(&main_rs, &full_code)
+        .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
+
+    // Generate Cargo.toml with auto-lang dependency + UI features
+    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
+    let cargo_path = output.join("Cargo.toml");
+    fs::write(&cargo_path, &cargo_toml)
+        .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
 
     println!();
     println!(
         "{} {}",
         "  Generated".bright_green(),
-        output_file.display()
+        output.display()
     );
     println!(
         "{} {} (main widget)",
@@ -137,7 +147,7 @@ pub fn generate_rust_ui(
     println!();
     println!(
         "{}",
-        "  Rust UI code generated successfully!".bright_green().bold()
+        "  Rust UI project generated successfully!".bright_green().bold()
     );
 
     Ok(())
@@ -302,6 +312,97 @@ fn to_snake_case(s: &str) -> String {
         }
     }
     result
+}
+
+/// Generate Cargo.toml content for the Rust UI project.
+fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
+    let snake_name = to_snake_case(project_name);
+
+    // Compute relative path from rust/ back to the workspace root
+    let auto_lang_path = if project_dir.join("crates").join("auto-lang").exists() {
+        // We're running from the workspace root itself
+        "../crates/auto-lang".to_string()
+    } else {
+        // Relative path from rust/ to the auto-lang crate
+        // Find auto-lang crate by going up from the project directory
+        find_auto_lang_path(project_dir)
+    };
+
+    format!(
+        r#"[package]
+name = "{snake_name}"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+auto-lang = {{ path = "{auto_lang_path}", features = ["ui-gpui"] }}
+"#
+    )
+}
+
+/// Find the relative path from the generated rust/ project to auto-lang crate.
+fn find_auto_lang_path(project_dir: &Path) -> String {
+    // Try common relative paths
+    let candidates = [
+        "../../crates/auto-lang",  // examples/<project>/rust/ -> crates/auto-lang
+        "../../../crates/auto-lang",
+        "../crates/auto-lang",
+    ];
+
+    for candidate in &candidates {
+        let full = project_dir.join("rust").join(candidate);
+        if full.exists() {
+            return candidate.to_string();
+        }
+    }
+
+    // Fallback: compute from project_dir structure
+    // Count how many levels up to find crates/auto-lang
+    let mut dir = project_dir.to_path_buf();
+    let mut prefix = "..".to_string();
+    for _ in 0..10 {
+        if dir.join("crates").join("auto-lang").exists() {
+            let rel = format!("{}/crates/auto-lang", prefix);
+            // From rust/ subdirectory
+            return format!("../{}", rel);
+        }
+        if !dir.pop() {
+            break;
+        }
+        prefix = format!("{}/..", prefix);
+    }
+
+    // Absolute fallback
+    "../../crates/auto-lang".to_string()
+}
+
+/// Run the generated Rust UI project.
+pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    let rust_dir = project_dir.join("rust");
+
+    if !rust_dir.join("Cargo.toml").exists() {
+        // Auto-generate first
+        println!("{}", "Generating Rust UI project...".bright_cyan());
+        generate_rust_ui(project_dir, None, false)?;
+    }
+
+    println!("{}", "Running Rust UI app (backend: rust-ui)".bright_cyan());
+
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.arg("run");
+    for arg in &args {
+        cmd.arg(arg);
+    }
+    cmd.current_dir(&rust_dir);
+
+    let status = cmd.status()?;
+    if !status.success() {
+        return Err(format!("Cargo run failed with status: {}", status).into());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

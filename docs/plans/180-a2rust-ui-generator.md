@@ -470,3 +470,285 @@ Expected: All existing tests pass, no regressions.
 cargo test -p auto-lang --lib
 ```
 Expected: All tests pass including RustGenerator tests.
+
+---
+
+## Phase 7: Typed Tailwind-like View Styling API
+
+The generated view code currently emits `.style(""p-4 gap-4"")` with double-quoted strings
+that don't compile. The root cause: ViewBuilder's style API uses raw strings, and the
+RustGenerator doesn't know the actual method names.
+
+Solution: Add typed methods to ViewBuilder (`.p(4)`, `.gap(2)`, `.bg("white")`, `.color("gray-700")`)
+that push `StyleClass` variants into the existing `style` field. Update RustGenerator to emit these.
+No adapter changes needed — `GpuiStyle`/`IcedStyle` already consume `StyleClass`.
+
+### Task 7: Add typed style methods to ViewBuilder
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui/view.rs`
+- Modify: `crates/auto-lang/src/ui/style/mod.rs`
+
+**Step 1: Add `add_class` helper to `Style`**
+
+In `crates/auto-lang/src/ui/style/mod.rs`, add after the existing `add()` method:
+
+```rust
+/// Add a style class (mutable)
+pub fn add_class(&mut self, class: StyleClass) {
+    self.classes.push(class);
+}
+```
+
+**Step 2: Add typed methods to `ViewBuilder<M>`**
+
+After the existing `.with_style()` method (~line 480), add:
+
+```rust
+// === Typed Tailwind-like style methods ===
+// Each method pushes a StyleClass into the style field.
+// Unit parameter: 1 unit = 4px (matching Tailwind convention).
+
+pub fn p(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Padding(SizeValue::Fixed(n)));
+    self
+}
+pub fn px(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::PaddingX(SizeValue::Fixed(n)));
+    self
+}
+pub fn py(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::PaddingY(SizeValue::Fixed(n)));
+    self
+}
+pub fn m(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Margin(SizeValue::Fixed(n)));
+    self
+}
+pub fn gap(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Gap(SizeValue::Fixed(n)));
+    self
+}
+pub fn w(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Width(SizeValue::Fixed(n)));
+    self
+}
+pub fn w_full(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Width(SizeValue::Full));
+    self
+}
+pub fn h(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Height(SizeValue::Fixed(n)));
+    self
+}
+pub fn h_full(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Height(SizeValue::Full));
+    self
+}
+pub fn bg(mut self, color: &str) -> Self {
+    if let Some(c) = Color::from_name(color) {
+        self.style.get_or_insert_with(Style::empty).add_class(StyleClass::BackgroundColor(c));
+    }
+    self
+}
+pub fn color(mut self, color: &str) -> Self {
+    if let Some(c) = Color::from_name(color) {
+        self.style.get_or_insert_with(Style::empty).add_class(StyleClass::TextColor(c));
+    }
+    self
+}
+pub fn rounded(mut self, n: u16) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Rounded(SizeValue::Fixed(n)));
+    self
+}
+pub fn flex(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Flex);
+    self
+}
+pub fn flex1(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::Flex1);
+    self
+}
+pub fn items_center(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::ItemsCenter);
+    self
+}
+pub fn items_start(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::ItemsStart);
+    self
+}
+pub fn justify_between(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::JustifyBetween);
+    self
+}
+pub fn justify_center(mut self) -> Self {
+    self.style.get_or_insert_with(Style::empty).add_class(StyleClass::JustifyCenter);
+    self
+}
+```
+
+**Step 3: Verify compilation**
+
+Run: `cargo build -p auto-lang --features ui-iced`
+
+**Step 4: Commit**
+
+```bash
+git add crates/auto-lang/src/ui/view.rs crates/auto-lang/src/ui/style/mod.rs
+git commit -m "feat(ui): add typed Tailwind-like style methods to ViewBuilder (Plan 180)"
+```
+
+---
+
+### Task 8: Update RustGenerator to emit typed methods
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui_gen/rust.rs`
+
+**Step 1: Add `tailwind_to_typed_methods` and `tailwind_class_to_method` helpers**
+
+Add these new methods to `RustGenerator`. They convert Tailwind class strings
+like `"p-4 gap-2 bg-white"` into chained method calls like `.p(4).gap(2).bg("white")`:
+
+```rust
+fn tailwind_to_typed_methods(&self, builder: &str, class_str: &str) -> String {
+    let classes = class_str.trim_matches('"').trim_matches('\'');
+    let mut result = builder.to_string();
+    for class in classes.split_whitespace() {
+        let method = self.tailwind_class_to_method(class);
+        if !method.is_empty() {
+            result = format!("{}{}", result, method);
+        }
+    }
+    result
+}
+
+fn tailwind_class_to_method(&self, class: &str) -> String {
+    // Spacing
+    if let Some(n) = class.strip_prefix("p-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".p({})", v); }
+    }
+    if let Some(n) = class.strip_prefix("px-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".px({})", v); }
+    }
+    if let Some(n) = class.strip_prefix("py-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".py({})", v); }
+    }
+    if let Some(n) = class.strip_prefix("gap-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".gap({})", v); }
+    }
+    if let Some(n) = class.strip_prefix("m-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".m({})", v); }
+    }
+    // Sizing
+    if class == "w-full" { return ".w_full()".into(); }
+    if let Some(n) = class.strip_prefix("w-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".w({})", v); }
+    }
+    if class == "h-full" { return ".h_full()".into(); }
+    if let Some(n) = class.strip_prefix("h-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".h({})", v); }
+    }
+    // Colors
+    if let Some(c) = class.strip_prefix("bg-") { return format!(".bg(\"{}\")", c); }
+    if let Some(c) = class.strip_prefix("text-") {
+        if !c.starts_with(|c: char| c.is_ascii_digit()) {
+            return format!(".color(\"{}\")", c);
+        }
+    }
+    // Border radius
+    if class == "rounded" { return ".rounded(2)".into(); }
+    if let Some(n) = class.strip_prefix("rounded-") {
+        if let Ok(v) = n.parse::<u16>() { return format!(".rounded({})", v); }
+    }
+    // Layout
+    match class {
+        "flex" => ".flex()".into(),
+        "flex-1" => ".flex1()".into(),
+        "items-center" => ".items_center()".into(),
+        "items-start" => ".items_start()".into(),
+        "justify-between" => ".justify_between()".into(),
+        "justify-center" => ".justify_center()".into(),
+        _ => String::new(),
+    }
+}
+```
+
+**Step 2: Update `add_prop_to_builder` to use typed methods**
+
+Replace the existing method. Key change: "class"/"style" keys now route through
+`tailwind_to_typed_methods()` instead of emitting `.style("...")`:
+
+```rust
+fn add_prop_to_builder(&self, builder: &str, key: &str, value: &AuraPropValue) -> String {
+    match value {
+        AuraPropValue::Expr(expr) => {
+            match key {
+                "class" | "className" | "style" => {
+                    self.tailwind_to_typed_methods(builder, &self.expr_to_rust(expr))
+                }
+                "padding" => format!("{}.p({})", builder, self.expr_to_rust(expr)),
+                "spacing" | "gap" => format!("{}.gap({})", builder, self.expr_to_rust(expr)),
+                "width" => format!("{}.w({})", builder, self.expr_to_rust(expr)),
+                "height" => format!("{}.h({})", builder, self.expr_to_rust(expr)),
+                "background" | "bg" => format!("{}.bg({})", builder, self.expr_to_rust(expr)),
+                "color" | "textColor" => format!("{}.color({})", builder, self.expr_to_rust(expr)),
+                "rounded" | "borderRadius" => format!("{}.rounded({})", builder, self.expr_to_rust(expr)),
+                _ => builder.to_string(),
+            }
+        }
+        AuraPropValue::StyleBinding(bindings) => {
+            let _ = bindings;
+            builder.to_string()
+        }
+    }
+}
+```
+
+**Step 3: Verify tests pass**
+
+Run: `cargo test -p auto-lang --lib -- rust`
+Expected: All RustGenerator tests pass.
+
+**Step 4: Commit**
+
+```bash
+git add crates/auto-lang/src/ui_gen/rust.rs
+git commit -m "feat(ui): update RustGenerator to emit typed style methods (Plan 180)"
+```
+
+---
+
+### Task 9: End-to-end test — re-generate and build rust-counter
+
+**Step 1: Re-generate**
+
+```bash
+cd examples/rust-counter && rm -rf rust && auto gen
+```
+
+**Step 2: Verify generated code uses typed methods**
+
+Check `rust/src/main.rs` — `view()` should emit `.p(4).gap(4).child(...)` instead of `.style(""p-4 gap-4"")`.
+
+**Step 3: Build the generated project**
+
+```bash
+cd examples/rust-counter/rust && cargo build
+```
+
+Expected: Compiles with zero errors.
+
+**Step 4: Run all tests**
+
+```bash
+cargo test -p auto-lang --lib -- ui
+cargo test -p auto-man --lib
+```
+
+**Step 5: Commit**
+
+```bash
+git add examples/rust-counter/
+git commit -m "test(ui): verify typed style methods in generated rust-counter (Plan 180)"
+```
