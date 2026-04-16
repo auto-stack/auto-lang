@@ -1,0 +1,17 @@
+fn identity<T>(x T) T {
+    return x
+}
+
+fn duplicate<T: Clone>(x T) T {
+    return x
+}
+
+fn multi<A, B: Clone>(a A, b B) A {
+    return a
+}
+
+fn main() {
+    let a = identity(42)
+    let b = duplicate(1)
+    let c = multi(1, 2)
+}

@@ -1,0 +1,5 @@
+type IntList<T> = List<T>
+
+fn main() {
+    let list List<int> = []
+}

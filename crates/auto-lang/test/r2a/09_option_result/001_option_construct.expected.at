@@ -1,0 +1,20 @@
+fn maybe_value(x int) may int {
+    if x > 0 {
+        return Some(x)
+    }
+    return None
+}
+
+fn divide(a int, b int) result int, str {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return Ok(a / b)
+}
+
+fn main() {
+    let a may int = Some(42)
+    let b may int = None
+    let c result int, str = Ok(100)
+    let d result int, str = Err("something went wrong")
+}

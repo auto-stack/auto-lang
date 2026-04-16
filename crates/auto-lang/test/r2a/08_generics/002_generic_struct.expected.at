@@ -1,0 +1,11 @@
+type Box<T> {
+    value T
+}
+
+type Container {
+    data int
+}
+
+fn main() {
+    let x int = 42
+}

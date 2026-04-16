@@ -244,6 +244,45 @@ impl R2aTrans {
         self.output.push('\n');
     }
 
+    /// Emit generic parameters with optional trait bounds, e.g. `<T>` or `<T: Clone, U>`
+    fn emit_generic_params(&mut self, generics: &syn::Generics) {
+        if generics.params.is_empty() {
+            return;
+        }
+        let params: Vec<String> = generics
+            .params
+            .iter()
+            .filter_map(|p| match p {
+                syn::GenericParam::Type(tp) => {
+                    let ident = tp.ident.to_string();
+                    let bounds: Vec<String> = tp
+                        .bounds
+                        .iter()
+                        .filter_map(|b| match b {
+                            syn::TypeParamBound::Trait(t) => {
+                                t.path.segments.last().map(|s| s.ident.to_string())
+                            }
+                            syn::TypeParamBound::Lifetime(_) => None,
+                            _ => None,
+                        })
+                        .collect();
+                    if bounds.is_empty() {
+                        Some(ident)
+                    } else {
+                        Some(format!("{}: {}", ident, bounds.join("+ ")))
+                    }
+                }
+                syn::GenericParam::Lifetime(_) => None,
+                syn::GenericParam::Const(cp) => Some(cp.ident.to_string()),
+            })
+            .collect();
+        if !params.is_empty() {
+            self.write("<");
+            self.write(&params.join(", "));
+            self.write(">");
+        }
+    }
+
     // ── File ──
 
     fn convert_file(&mut self, file: &syn::File) {
@@ -290,22 +329,7 @@ impl R2aTrans {
         self.write(&item_fn.sig.ident.to_string());
 
         // Generic type params
-        if !item_fn.sig.generics.params.is_empty() {
-            let params: Vec<String> = item_fn
-                .sig
-                .generics
-                .params
-                .iter()
-                .filter_map(|p| match p {
-                    syn::GenericParam::Type(tp) => Some(tp.ident.to_string()),
-                    syn::GenericParam::Lifetime(_) => None,
-                    syn::GenericParam::Const(cp) => Some(cp.ident.to_string()),
-                })
-                .collect();
-            self.write("<");
-            self.write(&params.join(", "));
-            self.write(">");
-        }
+        self.emit_generic_params(&item_fn.sig.generics);
 
         // Parameters
         self.write("(");
@@ -354,6 +378,9 @@ impl R2aTrans {
         self.write("type ");
         self.write(&s.ident.to_string());
 
+        // Generic type params
+        self.emit_generic_params(&s.generics);
+
         match &s.fields {
             syn::Fields::Named(fields) => {
                 self.write(" {\n");
@@ -388,6 +415,10 @@ impl R2aTrans {
         }
         self.write("enum ");
         self.write(&e.ident.to_string());
+
+        // Generic type params
+        self.emit_generic_params(&e.generics);
+
         self.write(" {\n");
 
         self.indent += 1;
@@ -411,9 +442,19 @@ impl R2aTrans {
                     let types: Vec<String> =
                         fields.unnamed.iter().map(|f| map_type(&f.ty)).collect();
                     self.write(&format!("({})", types.join(", ")));
+                    // Emit discriminant if present (after tuple fields)
+                    if let Some((_, expr)) = &variant.discriminant {
+                        let val = self.expr_to_string(expr);
+                        let _ = write!(self.output, " = {}", val);
+                    }
                     self.write("\n");
                 }
                 syn::Fields::Unit => {
+                    // Emit discriminant if present
+                    if let Some((_, expr)) = &variant.discriminant {
+                        let val = self.expr_to_string(expr);
+                        let _ = write!(self.output, " = {}", val);
+                    }
                     self.write("\n");
                 }
             }
@@ -669,7 +710,45 @@ impl R2aTrans {
 
     fn convert_type_alias(&mut self, t: &syn::ItemType) {
         let ty = map_type(&t.ty);
-        self.write_line(&format!("type {} = {}", t.ident, ty));
+        let generics = if !t.generics.params.is_empty() {
+            let mut s = String::new();
+            // Build generic params string for inline use
+            let params: Vec<String> = t
+                .generics
+                .params
+                .iter()
+                .filter_map(|p| match p {
+                    syn::GenericParam::Type(tp) => {
+                        let ident = tp.ident.to_string();
+                        let bounds: Vec<String> = tp
+                            .bounds
+                            .iter()
+                            .filter_map(|b| match b {
+                                syn::TypeParamBound::Trait(t) => {
+                                    t.path.segments.last().map(|s| s.ident.to_string())
+                                }
+                                syn::TypeParamBound::Lifetime(_) => None,
+                                _ => None,
+                            })
+                            .collect();
+                        if bounds.is_empty() {
+                            Some(ident)
+                        } else {
+                            Some(format!("{}: {}", ident, bounds.join("+ ")))
+                        }
+                    }
+                    syn::GenericParam::Lifetime(_) => None,
+                    syn::GenericParam::Const(cp) => Some(cp.ident.to_string()),
+                })
+                .collect();
+            if !params.is_empty() {
+                s = format!("<{}>", params.join(", "));
+            }
+            s
+        } else {
+            String::new()
+        };
+        self.write_line(&format!("type {}{} = {}", t.ident, generics, ty));
     }
 
     // ── Union ──
@@ -2100,5 +2179,226 @@ impl Flyer for Pigeon {
     #[test]
     fn test_r2a_015_raw_pointer() {
         test_r2a_file("05_traits/005_raw_pointer");
+    }
+
+    // ── Phase 3: pattern matching, generics, Option/Result ──
+
+    #[test]
+    fn test_r2a_016_hetero_enum() {
+        test_r2a_file("06_pattern_matching/001_hetero_enum");
+    }
+
+    #[test]
+    fn test_r2a_017_struct_destructure() {
+        test_r2a_file("06_pattern_matching/002_struct_destructure");
+    }
+
+    #[test]
+    fn test_r2a_018_discriminant() {
+        test_r2a_file("06_pattern_matching/003_discriminant");
+    }
+
+    #[test]
+    fn test_r2a_019_generic_enum() {
+        test_r2a_file("06_pattern_matching/004_generic_enum");
+    }
+
+    #[test]
+    fn test_r2a_020_type_alias() {
+        test_r2a_file("08_generics/001_type_alias");
+    }
+
+    #[test]
+    fn test_r2a_021_generic_struct() {
+        test_r2a_file("08_generics/002_generic_struct");
+    }
+
+    #[test]
+    fn test_r2a_022_generic_fn() {
+        test_r2a_file("08_generics/003_generic_fn");
+    }
+
+    #[test]
+    fn test_r2a_023_map_type() {
+        test_r2a_file("08_generics/004_map_type");
+    }
+
+    #[test]
+    fn test_r2a_024_option_construct() {
+        test_r2a_file("09_option_result/001_option_construct");
+    }
+
+    #[test]
+    fn test_r2a_025_try_operator() {
+        test_r2a_file("09_option_result/002_try_operator");
+    }
+
+    #[test]
+    fn test_r2a_026_unwrap_or() {
+        test_r2a_file("09_option_result/003_unwrap_or");
+    }
+
+    // ── Phase 3: unit tests ──
+
+    #[test]
+    fn test_generic_struct() {
+        let rust_code = r#"
+struct Box<T> {
+    value: T,
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("type Box<T>"), "missing generic struct in: {}", result);
+        assert!(result.contains("value T"), "missing generic field in: {}", result);
+    }
+
+    #[test]
+    fn test_generic_enum() {
+        let rust_code = r#"
+enum May<T> {
+    val(T),
+    nil,
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("enum May<T>"), "missing generic enum in: {}", result);
+        assert!(result.contains("val(T)"), "missing tuple variant in: {}", result);
+    }
+
+    #[test]
+    fn test_generic_fn_with_bounds() {
+        let rust_code = r#"
+fn duplicate<T: Clone>(x: T) -> T {
+    x.clone()
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("fn duplicate<T: Clone>"), "missing bounded generic in: {}", result);
+    }
+
+    #[test]
+    fn test_enum_discriminant() {
+        let rust_code = r#"
+enum Coin {
+    Penny = 0,
+    Nickel = 1,
+    Dime = 2,
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("Penny = 0"), "missing discriminant in: {}", result);
+        assert!(result.contains("Nickel = 1"), "missing discriminant in: {}", result);
+        assert!(result.contains("Dime = 2"), "missing discriminant in: {}", result);
+    }
+
+    #[test]
+    fn test_type_alias_generic() {
+        let rust_code = r#"
+type IntList<T> = Vec<T>;"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("type IntList<T>"), "missing generic alias in: {}", result);
+        assert!(result.contains("List<T>"), "missing Vec->List mapping in: {}", result);
+    }
+
+    // ── Phase 3: round-trip tests for groups 06, 08, 09 ──
+
+    #[test]
+    fn rt_06_enum_pattern() {
+        roundtrip_a2r("06_pattern_matching/001_enum_pattern");
+    }
+
+    #[test]
+    fn rt_06_struct_destructure() {
+        roundtrip_a2r("06_pattern_matching/002_struct_destructure");
+    }
+
+    #[test]
+    fn rt_06_empty_variant_match() {
+        roundtrip_a2r("06_pattern_matching/003_empty_variant_match");
+    }
+
+    #[test]
+    fn rt_06_hetero_enum() {
+        roundtrip_a2r("06_pattern_matching/004_hetero_enum");
+    }
+
+    #[test]
+    fn rt_06_generic_hetero_enum() {
+        roundtrip_a2r("06_pattern_matching/005_generic_hetero_enum");
+    }
+
+    #[test]
+    fn rt_06_enum_fn_param() {
+        roundtrip_a2r("06_pattern_matching/006_enum_fn_param");
+    }
+
+    #[test]
+    fn rt_06_is_in_ext() {
+        roundtrip_a2r("06_pattern_matching/007_is_in_ext");
+    }
+
+    #[test]
+    fn rt_08_type_alias() {
+        roundtrip_a2r("08_generics/001_type_alias");
+    }
+
+    #[test]
+    fn rt_08_const_generics() {
+        roundtrip_a2r("08_generics/002_const_generics");
+    }
+
+    #[test]
+    fn rt_08_generic_field() {
+        roundtrip_a2r("08_generics/003_generic_field");
+    }
+
+    #[test]
+    fn rt_08_generic_ptr_field() {
+        roundtrip_a2r("08_generics/004_generic_ptr_field");
+    }
+
+    #[test]
+    fn rt_08_with_constraint() {
+        roundtrip_a2r("08_generics/005_with_constraint");
+    }
+
+    // Skipped: a2r generates invalid Rust (bare identifiers in struct literal with hyphens)
+    #[test]
+    #[ignore]
+    fn rt_08_map_type() {
+        roundtrip_a2r("08_generics/006_map_type");
+    }
+
+    #[test]
+    fn rt_08_no_tuple_generic() {
+        roundtrip_a2r("08_generics/007_no_tuple_generic");
+    }
+
+    #[test]
+    fn rt_09_option() {
+        roundtrip_a2r("09_option_result/001_option");
+    }
+
+    // Skipped: a2r generates Option</* unknown */> with comments inside generics (invalid Rust)
+    #[test]
+    #[ignore]
+    fn rt_09_option_construct() {
+        roundtrip_a2r("09_option_result/002_option_construct");
+    }
+
+    #[test]
+    fn rt_09_null_coalesce() {
+        roundtrip_a2r("09_option_result/003_null_coalesce");
+    }
+
+    #[test]
+    fn rt_09_error_propagate() {
+        roundtrip_a2r("09_option_result/004_error_propagate");
+    }
+
+    #[test]
+    fn rt_09_question_uint() {
+        roundtrip_a2r("09_option_result/005_question_uint");
+    }
+
+    #[test]
+    fn rt_09_question_return_int() {
+        roundtrip_a2r("09_option_result/008_question_return_int");
     }
 }

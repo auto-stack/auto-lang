@@ -1,0 +1,9 @@
+fn test_coalesce() int {
+    let x int = 10
+    let y int = x.unwrap_or(0)
+    y
+}
+
+fn main() {
+    let a = test_coalesce()
+}

@@ -1,0 +1,8 @@
+type Config {
+    env Map<cstr, cstr>
+    ports List<int>
+}
+
+fn main() {
+    let x int = 42
+}

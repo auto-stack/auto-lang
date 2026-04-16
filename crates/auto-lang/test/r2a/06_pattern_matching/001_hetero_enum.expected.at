@@ -1,0 +1,14 @@
+enum Atom {
+    Int(int)
+    Char(char)
+    Float(float)
+}
+
+fn main() {
+    let atom = Int(11)
+    is atom {
+        Int(i) => print(f"Got Int: $i")
+        Char(c) => print(f"Got Char: $c")
+        Float(f) => print(f"Got Float: $f")
+    }
+}
