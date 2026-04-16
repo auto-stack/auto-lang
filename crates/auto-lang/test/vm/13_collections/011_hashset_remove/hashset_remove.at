@@ -1,0 +1,6 @@
+var s = HashSet.new()
+s.insert("key")
+s.remove("key")
+var has = s.contains("key")
+s.drop()
+has

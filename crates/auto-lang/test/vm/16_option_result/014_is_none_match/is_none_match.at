@@ -1,0 +1,5 @@
+let opt = None
+is opt {
+  Some(v) -> v
+  None -> -1
+}

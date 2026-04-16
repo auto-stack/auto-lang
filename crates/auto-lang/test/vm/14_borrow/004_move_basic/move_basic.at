@@ -1,0 +1,3 @@
+let s1 = "hello"
+let s2 = s1.move
+s2

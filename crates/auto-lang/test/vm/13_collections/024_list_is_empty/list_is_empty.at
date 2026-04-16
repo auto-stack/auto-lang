@@ -1,0 +1,6 @@
+var list = List.new()
+var e1 = list.is_empty()
+list.push(1)
+var e2 = list.is_empty()
+list.drop()
+f"[$e1, $e2]"

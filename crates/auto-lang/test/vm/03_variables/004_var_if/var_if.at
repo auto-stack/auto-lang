@@ -1,0 +1,2 @@
+var x = if true { 1 } else { 2 }
+x+1

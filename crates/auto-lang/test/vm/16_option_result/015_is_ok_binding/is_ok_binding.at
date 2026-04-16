@@ -1,0 +1,5 @@
+let res = Ok(100)
+is res {
+  Ok(v) -> v
+  Err(e) -> -1
+}

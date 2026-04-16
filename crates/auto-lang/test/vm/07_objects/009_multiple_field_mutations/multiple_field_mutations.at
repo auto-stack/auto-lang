@@ -1,0 +1,5 @@
+var obj = { x: 100, y: 200, z: 300 }
+obj.x = 100
+obj.y = 200
+obj.z = 300
+obj.x + obj.y + obj.z

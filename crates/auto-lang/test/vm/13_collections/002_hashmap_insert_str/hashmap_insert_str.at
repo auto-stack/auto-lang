@@ -1,0 +1,7 @@
+var m = HashMap.new()
+m.insert_str("name", "Alice")
+m.insert_str("city", "Wonderland")
+var n = m.get_str("name")
+var c = m.get_str("city")
+m.drop()
+f"[$n, $c]"

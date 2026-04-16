@@ -1,0 +1,10 @@
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var v = list.get(1)
+list.set(1, 99)
+var v2 = list.get(1)
+var len = list.len()
+list.drop()
+if v == 20 { if v2 == 99 { if len == 3 { 1 } else { 0 } } else { 0 } } else { 0 }

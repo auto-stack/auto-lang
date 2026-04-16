@@ -1,0 +1,8 @@
+var items = [
+    { name: "Alice", age: 20 }
+    { name: "Bob", age: 21 }
+    { name: "Charlie", age: 22 }
+]
+for item in items {
+    print(f"Hi ${item.name}")
+}

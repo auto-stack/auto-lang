@@ -1,0 +1,7 @@
+var list = List.new()
+var count = 0
+for item in list {
+  count = count + 1
+}
+list.drop()
+count

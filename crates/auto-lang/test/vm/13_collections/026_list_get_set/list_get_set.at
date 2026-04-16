@@ -1,0 +1,10 @@
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var v0 = list.get(0)
+list.set(1, 99)
+var v1 = list.get(1)
+var v2 = list.get(2)
+list.drop()
+f"[$v0, $v1, $v2]"

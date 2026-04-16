@@ -1,0 +1,7 @@
+var x = 10
+is x {
+  10 -> {
+    print("Here is 10!")
+    x
+  }
+}

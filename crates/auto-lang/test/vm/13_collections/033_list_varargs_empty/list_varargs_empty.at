@@ -1,0 +1,4 @@
+var list = List.new()
+var len = list.len()
+list.drop()
+len

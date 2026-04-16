@@ -1,0 +1,3 @@
+let x = Ok(100)
+let y = x.?
+y

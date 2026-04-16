@@ -1,0 +1,4 @@
+let s = "first"
+let v = s.view
+let t = s.move
+v

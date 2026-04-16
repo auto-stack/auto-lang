@@ -1,0 +1,7 @@
+var m = HashMap.new()
+m.insert_int("a", 42)
+m.insert_int("b", 25)
+var a = m.get_int("a")
+var b = m.get_int("b")
+m.drop()
+a + b

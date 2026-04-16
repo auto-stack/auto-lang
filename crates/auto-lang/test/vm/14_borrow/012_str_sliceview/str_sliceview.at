@@ -1,0 +1,3 @@
+let s = "hello world"
+let v = s.view
+v

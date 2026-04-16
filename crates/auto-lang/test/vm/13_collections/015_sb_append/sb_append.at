@@ -1,0 +1,7 @@
+var sb = StringBuilder.new(1024)
+sb.append("hello")
+sb.append(" ")
+sb.append("world")
+var s = sb.build()
+sb.drop()
+s

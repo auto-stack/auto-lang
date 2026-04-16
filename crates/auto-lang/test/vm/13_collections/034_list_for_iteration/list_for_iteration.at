@@ -1,0 +1,12 @@
+var list = List.new()
+list.push(1)
+list.push(2)
+list.push(3)
+list.push(4)
+list.push(5)
+var sum = 0
+for item in list {
+  sum = sum + item
+}
+list.drop()
+sum

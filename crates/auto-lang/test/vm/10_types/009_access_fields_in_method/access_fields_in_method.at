@@ -1,0 +1,4 @@
+type Point { x int; y int }
+fn Point.sum(self) int { self.x + self.y }
+var p = Point { x: 100, y: 200 }
+p.sum()

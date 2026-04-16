@@ -1,0 +1,3 @@
+var s = HashSet.new()
+s.drop()
+0

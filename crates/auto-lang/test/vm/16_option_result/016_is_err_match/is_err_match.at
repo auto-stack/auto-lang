@@ -1,0 +1,5 @@
+let res = Err("fail")
+is res {
+  Ok(v) -> v
+  Err(e) -> -2
+}

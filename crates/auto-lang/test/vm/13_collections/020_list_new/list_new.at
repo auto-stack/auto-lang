@@ -1,0 +1,4 @@
+var list = List.new()
+var empty = list.is_empty()
+list.drop()
+if empty { 1 } else { 0 }

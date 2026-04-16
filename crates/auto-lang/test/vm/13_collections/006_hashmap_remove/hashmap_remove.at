@@ -1,0 +1,6 @@
+var m = HashMap.new()
+m.insert_str("key", "value")
+m.remove("key")
+var has = m.contains("key")
+m.drop()
+has

@@ -1,0 +1,5 @@
+var services = [
+    { name: "ClearDiagnosticInformation", port: 8090 }
+    { name: "UpdateData", port: 8091 }
+]
+services[0].name

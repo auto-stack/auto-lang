@@ -1,0 +1,9 @@
+var list = List.new()
+list.push(10)
+list.push(30)
+list.insert(1, 20)
+var v = list.get(1)
+list.remove(1)
+var len = list.len()
+list.drop()
+if v == 20 { if len == 2 { 1 } else { 0 } } else { 0 }

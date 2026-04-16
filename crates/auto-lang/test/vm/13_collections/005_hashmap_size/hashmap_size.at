@@ -1,0 +1,7 @@
+var m = HashMap.new()
+m.insert_str("a", "1")
+m.insert_str("b", "2")
+m.insert_str("c", "3")
+var s = m.size()
+m.drop()
+s

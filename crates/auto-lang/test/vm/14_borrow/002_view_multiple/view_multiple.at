@@ -1,0 +1,4 @@
+let x = 42
+let v1 = x.view
+let v2 = x.view
+v1 + v2

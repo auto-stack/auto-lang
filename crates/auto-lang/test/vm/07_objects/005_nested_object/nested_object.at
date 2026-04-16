@@ -1,0 +1,2 @@
+var obj = { inner: { x: 10, y: 20 } }
+obj.inner.x

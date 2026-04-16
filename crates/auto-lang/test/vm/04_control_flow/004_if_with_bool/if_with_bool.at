@@ -1,0 +1,8 @@
+var succ = true
+if succ {
+  print("I won!")
+  "succ"
+} else {
+  print("You failed!")
+  "failed"
+}

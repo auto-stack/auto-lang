@@ -1,0 +1,3 @@
+fn test() int;
+fn test() int { 42 }
+test()

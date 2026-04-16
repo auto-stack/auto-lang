@@ -1,0 +1,5 @@
+type Inner { val int }
+type Outer { inner Inner }
+var o = Outer { inner: Inner { val: 10 } }
+o.inner.val = 20
+o.inner.val

@@ -1,0 +1,9 @@
+var list = List.new()
+var e1 = list.is_empty()
+list.push(1)
+list.push(2)
+var len = list.len()
+list.clear()
+var e2 = list.is_empty()
+list.drop()
+if e1 { if e2 { 1 } else { 0 } } else { 0 }

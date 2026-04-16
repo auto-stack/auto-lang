@@ -1,0 +1,2 @@
+fn double(a) { let x = a + a; x }
+double(5)

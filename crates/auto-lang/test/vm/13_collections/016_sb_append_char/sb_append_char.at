@@ -1,0 +1,6 @@
+var sb = StringBuilder.new(1024)
+sb.append("hello")
+sb.append_char('!')
+var s = sb.build()
+sb.drop()
+s

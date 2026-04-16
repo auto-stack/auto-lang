@@ -1,0 +1,6 @@
+var m = HashMap.new()
+m.insert_str("key", "value")
+var yes = m.contains("key")
+var no = m.contains("missing")
+m.drop()
+f"[$yes, $no]"

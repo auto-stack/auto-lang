@@ -1,0 +1,6 @@
+var sb = StringBuilder.new(1024)
+sb.append("hello")
+sb.clear()
+var l = sb.len()
+sb.drop()
+l

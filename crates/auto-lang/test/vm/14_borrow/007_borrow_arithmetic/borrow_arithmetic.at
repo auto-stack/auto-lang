@@ -1,0 +1,5 @@
+let x = 5
+let y = 6
+let vx = x.view
+let vy = y.view
+vx * vy

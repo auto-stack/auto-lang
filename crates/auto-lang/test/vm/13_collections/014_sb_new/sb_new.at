@@ -1,0 +1,3 @@
+var sb = StringBuilder.new(1024)
+sb.drop()
+0

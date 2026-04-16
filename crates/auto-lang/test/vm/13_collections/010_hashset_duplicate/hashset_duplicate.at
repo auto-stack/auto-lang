@@ -1,0 +1,7 @@
+var s = HashSet.new()
+s.insert("a")
+s.insert("a")
+s.insert("a")
+var sz = s.size()
+s.drop()
+sz

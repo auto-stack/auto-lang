@@ -1,0 +1,3 @@
+let x = 42
+let s = "hello"
+[x.view, s.view]

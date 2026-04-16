@@ -1,0 +1,7 @@
+type Wing { speed int }
+type Duck { name str }
+fn Wing.fly(self) { print("flap!flap!") }
+type Duck has Wing
+var duck = Duck { name: "donald", speed: 10 }
+duck.fly()
+1

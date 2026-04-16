@@ -1,0 +1,3 @@
+var a = { name: "Alice" }
+a.name = "Bob"
+a.name

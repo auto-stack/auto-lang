@@ -1,0 +1,4 @@
+var s = "hello"
+var m = s.mut
+m.append(" world")
+s

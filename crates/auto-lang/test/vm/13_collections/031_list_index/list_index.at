@@ -1,0 +1,7 @@
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var v = list[1]
+list.drop()
+v

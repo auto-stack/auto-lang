@@ -1,0 +1,3 @@
+var obj = { a: { b: { c: 100 } } }
+obj.a.b.c = 200
+obj.a.b.c

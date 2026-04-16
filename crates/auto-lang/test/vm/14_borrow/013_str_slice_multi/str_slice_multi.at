@@ -1,0 +1,4 @@
+let s = "hello"
+let v1 = s.view
+let v2 = s.view
+f"[$v1, $v2]"

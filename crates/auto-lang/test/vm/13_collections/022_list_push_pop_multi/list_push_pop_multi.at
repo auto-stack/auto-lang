@@ -1,0 +1,8 @@
+var list = List.new()
+list.push(1)
+list.push(2)
+var len1 = list.len()
+list.pop()
+var len2 = list.len()
+list.drop()
+len1 + len2

@@ -1,0 +1,2 @@
+var a = { name: "auto", age: 18 }
+a.name
