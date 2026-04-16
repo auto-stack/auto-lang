@@ -58,6 +58,9 @@ pub mod api_gen;
 // Phase 10: Tauri backend generator (Plan 151)
 pub mod tauri_backend;
 
+// Phase 11: VSCode extension generator (Plan 181)
+pub mod vscode;
+
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)
@@ -101,6 +104,9 @@ pub use jet::*;
 
 // Re-exports (Phase 8: Ark)
 pub use ark::*;
+
+// Re-exports (Phase 11: VSCode)
+pub use vscode::*;
 
 // NOTE: All types migrated in Phases 1-5
 // NOTE: stubs.rs removed in Phase 6 (cleanup)
