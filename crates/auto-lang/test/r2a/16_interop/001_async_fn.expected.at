@@ -1,0 +1,8 @@
+// async
+fn fetch_data(url cstr) str {
+    "data"
+}
+
+fn main() {
+    let result = fetch_data("http://example.com")
+}

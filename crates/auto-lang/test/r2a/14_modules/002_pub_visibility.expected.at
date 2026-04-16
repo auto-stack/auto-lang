@@ -1,0 +1,18 @@
+pub type Config {
+    name str
+    value int
+}
+
+ext Config {
+    pub static fn new(name str) Config {
+        Config(name: name, value: 0)
+    }
+    pub fn get_value() int {
+        self.value
+    }
+}
+
+
+pub fn create_config(name str) Config {
+    new(name)
+}

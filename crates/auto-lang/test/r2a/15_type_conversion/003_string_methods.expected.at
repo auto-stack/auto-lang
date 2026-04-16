@@ -1,0 +1,8 @@
+fn main() {
+    let s = "hello".to_str()
+    let lower = s.to_lower()
+    let upper = s.to_upper()
+    let trimmed = s.trim()
+    let parts List<cstr> = s.split(",").collect()
+    let has = s.has("ell")
+}

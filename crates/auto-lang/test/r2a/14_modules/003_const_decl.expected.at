@@ -1,0 +1,7 @@
+const MAX_SIZE int = 1024
+
+const APP_NAME cstr = "AutoLang"
+
+fn main() {
+    let x int = MAX_SIZE
+}

@@ -1,0 +1,6 @@
+fn main() {
+    let x int = 42
+    let y uint = x.as(uint)
+    let z i64 = x.as(i64)
+    let f float = x.as(float)
+}

@@ -1,0 +1,10 @@
+pub type Point {
+    x int
+    y int
+}
+
+ext Point {
+    pub static fn new(x int, y int) Point {
+        Point(x: x, y: y)
+    }
+}

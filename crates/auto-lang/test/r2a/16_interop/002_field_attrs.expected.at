@@ -1,0 +1,9 @@
+type User {
+    // #[serde(rename = "role_id")]
+    role int
+    name str
+}
+
+fn main() {
+    let u = User(role: 1, name: "Alice".to_str())
+}

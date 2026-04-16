@@ -317,12 +317,19 @@ impl R2aTrans {
 
     fn convert_fn(&mut self, item_fn: &syn::ItemFn) {
         let is_pub = !matches!(item_fn.vis, syn::Visibility::Inherited);
+        let is_async = item_fn.sig.asyncness.is_some();
 
         self.emit_doc_attrs(&item_fn.attrs);
+        self.emit_non_doc_attrs(&item_fn.attrs);
 
         self.write_indent();
         if is_pub {
             self.write("pub ");
+        }
+
+        if is_async {
+            self.write("// async\n");
+            self.write_indent();
         }
 
         self.write("fn ");
@@ -371,6 +378,7 @@ impl R2aTrans {
         let is_pub = !matches!(s.vis, syn::Visibility::Inherited);
 
         self.emit_doc_attrs(&s.attrs);
+        self.emit_non_doc_attrs(&s.attrs);
         self.write_indent();
         if is_pub {
             self.write("pub ");
@@ -386,6 +394,8 @@ impl R2aTrans {
                 self.write(" {\n");
                 self.indent += 1;
                 for field in &fields.named {
+                    // Emit field-level attributes as comments
+                    self.emit_non_doc_attrs(&field.attrs);
                     let name = field.ident.as_ref().unwrap().to_string();
                     let ty = map_type(&field.ty);
                     self.write_line(&format!("{} {}", name, ty));
@@ -409,6 +419,7 @@ impl R2aTrans {
         let is_pub = !matches!(e.vis, syn::Visibility::Inherited);
 
         self.emit_doc_attrs(&e.attrs);
+        self.emit_non_doc_attrs(&e.attrs);
         self.write_indent();
         if is_pub {
             self.write("pub ");
@@ -1024,7 +1035,10 @@ impl R2aTrans {
             }
 
             syn::Expr::Async(_) => "/* async block */".into(),
-            syn::Expr::Await(await_expr) => format!("{}.await", self.expr_to_string(&await_expr.base)),
+            syn::Expr::Await(await_expr) => {
+                let base = self.expr_to_string(&await_expr.base);
+                format!("{} /* .await */", base)
+            }
 
             syn::Expr::Repeat(repeat) => {
                 let expr = self.expr_to_string(&repeat.expr);
@@ -1303,11 +1317,52 @@ impl R2aTrans {
             }
         }
     }
+
+    /// Emit non-doc attributes as comments (derive, serde, cfg, test, etc.)
+    fn emit_non_doc_attrs(&mut self, attrs: &[syn::Attribute]) {
+        for attr in attrs {
+            // Skip doc attrs (handled by emit_doc_attrs)
+            if attr.path().is_ident("doc") {
+                continue;
+            }
+            // Skip allow/warn attributes (lint control, not semantic)
+            if attr.path().is_ident("allow") || attr.path().is_ident("warn") {
+                continue;
+            }
+            // Build attribute string from meta
+            let attr_str = meta_to_string(&attr.meta);
+            self.write_line(&format!("// #[{}]", attr_str));
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────
 // Free helper functions (no &mut self needed)
 // ──────────────────────────────────────────────────────────────
+
+/// Convert syn::Meta to a readable attribute string without using quote/ToTokens.
+fn meta_to_string(meta: &syn::Meta) -> String {
+    match meta {
+        syn::Meta::Path(path) => path_expr_to_string(path),
+        syn::Meta::List(list) => {
+            let path = path_expr_to_string(&list.path);
+            let tokens = list.tokens.to_string();
+            format!("{}({})", path, tokens)
+        }
+        syn::Meta::NameValue(nv) => {
+            let path = path_expr_to_string(&nv.path);
+            let val = expr_meta_value_to_string(&nv.value);
+            format!("{} = {}", path, val)
+        }
+    }
+}
+
+fn expr_meta_value_to_string(expr: &syn::Expr) -> String {
+    match expr {
+        syn::Expr::Lit(lit) => lit_to_string(&lit.lit),
+        _ => "/* expr */".into(),
+    }
+}
 
 fn use_tree_to_string(tree: &syn::UseTree) -> String {
     match tree {
@@ -2238,6 +2293,63 @@ impl Flyer for Pigeon {
         test_r2a_file("09_option_result/003_unwrap_or");
     }
 
+    // ── Phase 4: collections, modules, type conversion, interop ──
+
+    #[test]
+    fn test_r2a_027_array() {
+        test_r2a_file("10_collections/001_array");
+    }
+
+    #[test]
+    fn test_r2a_028_method_chain() {
+        test_r2a_file("10_collections/002_method_chain");
+    }
+
+    #[test]
+    fn test_r2a_029_use() {
+        test_r2a_file("14_modules/001_use");
+    }
+
+    #[test]
+    fn test_r2a_030_pub_visibility() {
+        test_r2a_file("14_modules/002_pub_visibility");
+    }
+
+    #[test]
+    fn test_r2a_031_const_decl() {
+        test_r2a_file("14_modules/003_const_decl");
+    }
+
+    #[test]
+    fn test_r2a_032_derive_attr() {
+        test_r2a_file("14_modules/004_derive_attr");
+    }
+
+    #[test]
+    fn test_r2a_033_type_cast() {
+        test_r2a_file("15_type_conversion/001_type_cast");
+    }
+
+    #[test]
+    fn test_r2a_034_box_arc() {
+        test_r2a_file("15_type_conversion/002_box_arc");
+    }
+
+    #[test]
+    fn test_r2a_035_string_methods() {
+        test_r2a_file("15_type_conversion/003_string_methods");
+    }
+
+    #[test]
+    fn test_r2a_036_async_fn() {
+        test_r2a_file("16_interop/001_async_fn");
+    }
+
+    #[test]
+    fn test_r2a_037_field_attrs() {
+        test_r2a_file("16_interop/002_field_attrs");
+    }
+
     // ── Phase 3: unit tests ──
 
     #[test]
@@ -2400,5 +2512,122 @@ type IntList<T> = Vec<T>;"#;
     #[test]
     fn rt_09_question_return_int() {
         roundtrip_a2r("09_option_result/008_question_return_int");
+    }
+
+    // ── Phase 4: round-trip tests for groups 10, 14-16 ──
+
+    #[test]
+    fn rt_10_array() {
+        roundtrip_a2r("10_collections/001_array");
+    }
+
+    // Skipped: a2r generates invalid Rust (List<int, Heap>.new() is not valid syntax)
+    #[test]
+    #[ignore]
+    fn rt_10_list_storage() {
+        roundtrip_a2r("10_collections/002_list_storage");
+    }
+
+    #[test]
+    fn rt_10_method_chain() {
+        roundtrip_a2r("10_collections/005_method_chain");
+    }
+
+    #[test]
+    fn rt_14_rust_use() {
+        roundtrip_a2r("14_modules/001_rust_use");
+    }
+
+    #[test]
+    fn rt_14_pub_visibility() {
+        roundtrip_a2r("14_modules/003_pub_visibility");
+    }
+
+    #[test]
+    fn rt_14_const_decl() {
+        roundtrip_a2r("14_modules/006_const_decl");
+    }
+
+    #[test]
+    fn rt_14_derive_attr() {
+        roundtrip_a2r("14_modules/008_derive_attr");
+    }
+
+    #[test]
+    fn rt_15_type_cast() {
+        roundtrip_a2r("15_type_conversion/001_type_cast");
+    }
+
+    #[test]
+    fn rt_15_box_arc() {
+        roundtrip_a2r("15_type_conversion/004_box_arc");
+    }
+
+    #[test]
+    fn rt_16_async_fn() {
+        roundtrip_a2r("16_interop/001_async_fn");
+    }
+
+    // ── Phase 4: unit tests ──
+
+    #[test]
+    fn test_async_fn() {
+        let rust_code = r#"
+async fn fetch_data(url: &str) -> String {
+    String::from("data")
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("// async"), "missing async comment in: {}", result);
+        assert!(result.contains("fn fetch_data"), "missing fn in: {}", result);
+    }
+
+    #[test]
+    fn test_derive_attr() {
+        let rust_code = r#"
+#[derive(Debug, Clone)]
+struct Point {
+    x: i32,
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("derive"), "missing derive comment in: {}", result);
+        assert!(result.contains("type Point"), "missing struct in: {}", result);
+    }
+
+    #[test]
+    fn test_field_attr() {
+        let rust_code = r#"
+struct User {
+    #[serde(rename = "role_id")]
+    role: i32,
+    name: String,
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("serde"), "missing serde comment in: {}", result);
+        assert!(result.contains("role int"), "missing field in: {}", result);
+    }
+
+    #[test]
+    fn test_type_cast() {
+        let rust_code = r#"
+fn main() {
+    let x: i32 = 42;
+    let y: u32 = x as u32;
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains(".as("), "missing type cast in: {}", result);
+    }
+
+    #[test]
+    fn test_box_arc_rc_new() {
+        let rust_code = r#"
+fn main() {
+    let a = Box::new(42);
+    let b = Arc::new("hello");
+    let c = Rc::new(42);
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("let a = 42"), "missing Box simplification in: {}", result);
+        assert!(result.contains("let b = \"hello\""), "missing Arc simplification in: {}", result);
+        assert!(result.contains("let c = 42"), "missing Rc simplification in: {}", result);
     }
 }

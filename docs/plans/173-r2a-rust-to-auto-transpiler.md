@@ -12,6 +12,7 @@ Implement a reverse transpiler (r2a) that converts Rust source code into AutoLan
 - **Phase 1 merged** (2025-04-15): 41 tests — core fn, let/var/const, if/for/while, basic types, print, arithmetic, struct/enum
 - **Phase 2 merged** (2025-04-16): 57 tests total — impl/trait/spec/ext, &self/&mut self, union, raw pointer, dyn Trait, method calls
 - **Phase 3 merged** (2026-04-16): 91 tests total — generics (struct/enum/fn/type alias), trait bounds, enum discriminants, Option/Result round-trips
+- **Phase 4 merged** (2026-04-16): 116 tests total — async/comment degradation, derive/serde attrs, modules, Box/Arc/Rc, type casts, collections
 - Core architecture: direct syn→.at text conversion (no intermediate AutoLang AST)
 
 ## Design Decisions
@@ -278,12 +279,12 @@ Leverage existing a2r test cases:
 
 ### Test Counts
 
-| Category | Phase 1 | Phase 2 | Phase 3 | Total |
-|----------|---------|---------|---------|-------|
-| Unit tests | 22 | 3 | 5 | 30 |
-| File-based tests | 7 | 6 | 11 | 24 |
-| Round-trip tests | 12 | 7 | 18 (+2 ignored) | 37 |
-| **Total** | **41** | **16** | **34** | **91** |
+| Category | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Total |
+|----------|---------|---------|---------|---------|-------|
+| Unit tests | 22 | 3 | 5 | 5 | 35 |
+| File-based tests | 7 | 6 | 11 | 11 | 35 |
+| Round-trip tests | 12 | 7 | 18 (+2 ignored) | 10 (+1 ignored) | 47 |
+| **Total** | **41** | **16** | **34** | **25** | **116** |
 
 ## Public API
 
@@ -301,11 +302,11 @@ Consistent with a2r API style. Project-level API deferred to Phase 4.
 | Phase 1 | Core: fn, let/var/const, if/for/while, basic types, print, arithmetic, struct/enum | ✅ Merged | 41 |
 | Phase 2 | impl/trait/spec/ext, &self/&mut self, union, raw pointer, dyn Trait, method calls | ✅ Merged | +16 = 57 |
 | Phase 3 | Generics (struct/enum/fn/type alias), trait bounds, enum discriminants, Option/Result round-trips | ✅ Merged | +34 = 91 |
-| Phase 4 | async, modules, ownership annotations, unsafe, HashMap, lifetimes | ⏳ Not started | Groups 07, 10, 14-16 |
+| Phase 4 | async/comment degradation, derive/serde attrs, modules, Box/Arc/Rc, type casts, collections | ✅ Merged | +25 = 116 |
 
 ## Key Files
 
-- `crates/auto-lang/src/trans/r2a.rs` — Main transpiler (~2300 lines)
+- `crates/auto-lang/src/trans/r2a.rs` — Main transpiler (~2500 lines)
 - `crates/auto-lang/src/trans.rs` — Module registration (`pub mod r2a`)
 - `crates/auto-lang/test/r2a/` — Test cases directory
   - `01_basics/` — Hello, func
@@ -316,6 +317,10 @@ Consistent with a2r API style. Project-level API deferred to Phase 4.
   - `06_pattern_matching/` — Hetero enum, struct destructure, discriminant, generic enum
   - `08_generics/` — Type alias, generic struct, generic fn, map type
   - `09_option_result/` — Option construct, try operator, unwrap_or
+  - `10_collections/` — Array, method chain
+  - `14_modules/` — Use, pub visibility, const decl, derive attr
+  - `15_type_conversion/` — Type cast, Box/Arc/Rc, string methods
+  - `16_interop/` — Async fn, field attrs (serde)
 - `crates/auto-lang/Cargo.toml` — `syn` dependency
 
 ## Dependencies
