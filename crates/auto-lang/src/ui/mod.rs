@@ -13,6 +13,7 @@ pub mod node_converter;
 pub mod app;
 pub mod widget;
 pub mod style;
+pub mod debug;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod interpreter;
@@ -39,3 +40,4 @@ pub use vnode::{VNodeId, VNodeKind, VNode, VNodeProps, VTree};
 pub use vnode_converter::view_to_vtree;
 pub use app::{App, AppResult};
 pub use style::Style;
+pub use debug::{DebugLayer, DebugState, Rect, LayoutReporter};
