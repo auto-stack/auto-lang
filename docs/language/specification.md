@@ -1,8 +1,8 @@
 # Auto Language Specification
 
-**Version**: 0.1
+**Version**: 0.2
 **Status**: Draft
-**Last Updated**: 2025
+**Last Updated**: 2026-04
 
 ## Table of Contents
 
@@ -17,10 +17,19 @@
 9. [Functions](#functions)
 10. [Data Structures](#data-structures)
 11. [Type Definitions](#type-definitions)
-12. [Unions and Tags](#unions-and-tags)
-13. [Nodes (Atom Format)](#nodes-atom-format)
-14. [Memory Management](#memory-management)
-15. [Implementation Comparison](#implementation-comparison)
+12. [Enums](#enums)
+13. [Specs (Traits)](#specs-traits)
+14. [Generics](#generics)
+15. [Closures](#closures)
+16. [Option and Result](#option-and-result)
+17. [Concurrency: Tasks and Async](#concurrency-tasks-and-async)
+18. [Compile-Time Metaprogramming](#compile-time-metaprogramming)
+19. [Ownership and Borrowing](#ownership-and-borrowing)
+20. [Modules and Imports](#modules-and-imports)
+21. [UI Widgets and Routing](#ui-widgets-and-routing)
+22. [Nodes (Atom Format)](#nodes-atom-format)
+23. [Memory Management](#memory-management)
+24. [Implementation Comparison](#implementation-comparison)
 
 ---
 
@@ -59,20 +68,26 @@ Auto has three implementations:
 ```auto
 // Traditional approach
 fn main() {
-    println("Hello, World!")
+    print("Hello, World!")
 }
 
 // Expression-based (script mode)
-println("Hello, World!")
+print("Hello, World!")
 ```
 
 ### Key Features
 
-- **Four Storage Modifiers**: `let`, `mut`, `const`, `var` for different mutability and lifetime semantics
+- **Six Storage Modifiers**: `let`, `var`, `const`, `mut`, `shared`, `static` for different mutability and lifetime semantics
 - **Type Inference**: Automatic type deduction with optional explicit annotations
-- **Pattern Matching**: Powerful `is` expression for pattern matching
+- **Pattern Matching**: Powerful `is` expression for pattern matching with struct destructuring
 - **F-Strings**: First-class string interpolation with embedded expressions
 - **Ranges**: First-class range expressions `0..10` and `0..=10`
+- **Option/Result**: `?T` for optional values, `!T` for error-propagating results (Plan 120)
+- **Generics**: Parameterized types and functions with type and const parameters
+- **Specs (Traits)**: Interface-like type constraints with polymorphic dispatch
+- **Ownership Trinity**: `view`/`mut`/`move` resource access semantics (Plan 122)
+- **Concurrency**: Task/Actor model with `spawn`/`send`, async/await (Plans 121/124/126)
+- **Compile-Time**: `#if`/`#for`/`#is`/`#{}` for metaprogramming (Plan 095)
 - **C/Rust Interop**: Seamless integration with C and Rust code
 
 ---
@@ -96,6 +111,8 @@ Newlines are significant in Auto - they act as statement terminators (like semic
 ```auto
 // Single-line comment
 
+/// Doc comment
+
 /*
    Multi-line comment
    Spans multiple lines
@@ -104,24 +121,34 @@ Newlines are significant in Auto - they act as statement terminators (like semic
 
 ### Identifiers
 
-Identifiers start with a letter or underscore, followed by letters, digits, or underscores.
+Identifiers start with a letter or underscore, followed by letters, digits, underscores, or hyphens.
 
 ```
-identifier → (letter | "_") (letter | digit | "_")*
+identifier → (letter | "_") (letter | digit | "_" | "-")*
 ```
 
-**Examples**: `foo`, `_bar`, `data123`, `my_variable`
+Hyphens are allowed within identifiers (no surrounding spaces): `preview-card` is a single identifier. With spaces, `a - b` is subtraction.
+
+**Examples**: `foo`, `_bar`, `data123`, `my_variable`, `preview-card`
 
 ### Keywords
 
-The following keywords are reserved:
+Auto reserves **56 keywords** (from `token.rs`), organized by category:
 
-**Declarations**: `fn`, `let`, `mut`, `const`, `var`, `type`, `union`, `enum`, `tag`, `alias`
-**Control Flow**: `if`, `else`, `for`, `while`, `when`, `break`, `is`, `in`, `on`, `as`
+**Declarations**: `fn`, `let`, `mut`, `const`, `var`, `type`, `union`, `enum`, `tag`, `alias`, `spec`, `ext`, `static`, `shared`, `impl`, `node`
+**Control Flow**: `if`, `else`, `for`, `when`, `break`, `is`, `in`, `on`, `as`, `to`
+**Ownership**: `view`, `mut`, `move`, `copy`, `take`, `hold`
 **Literals**: `true`, `false`, `nil`, `null`
-**Other**: `use`, `has`, `fn`
+**Option/Result**: `None`, `Some`, `Ok`, `Err`
+**Concurrency**: `task`, `spawn`, `await`, `reply`, `go`
+**Modules**: `use`, `pac`, `super`, `dep`, `has`
+**Boolean Logic**: `and`, `or`
+**UI/Routing**: `routes`, `outlet`, `link`, `route`, `nav`
+**Other**: `grid`
 
 ### Operators and Punctuation
+
+#### Arithmetic Operators
 
 | Operator | Description |
 |----------|-------------|
@@ -129,27 +156,94 @@ The following keywords are reserved:
 | `-` | Subtraction/negation |
 | `*` | Multiplication |
 | `/` | Division |
-| `=` | Assignment |
+| `%` | Modulo |
+
+#### Comparison Operators
+
+| Operator | Description |
+|----------|-------------|
 | `==` | Equal comparison |
 | `!=` | Not equal |
 | `<` | Less than |
 | `>` | Greater than |
 | `<=` | Less than or equal |
 | `>=` | Greater than or equal |
+
+#### Assignment Operators
+
+| Operator | Description |
+|----------|-------------|
+| `=` | Assignment |
 | `+=` | Addition assignment |
 | `-=` | Subtraction assignment |
 | `*=` | Multiplication assignment |
 | `/=` | Division assignment |
+| `%=` | Modulo assignment |
+
+#### Logical Operators
+
+| Operator | Description |
+|----------|-------------|
+| `!` | Logical NOT |
+| `&&` | Logical AND (also: `and` keyword) |
+| `||` | Logical OR (also: `or` keyword) |
+
+#### Range Operators
+
+| Operator | Description |
+|----------|-------------|
 | `..` | Range (exclusive) |
 | `..=` | Range (inclusive) |
-| `.` | Member access |
+
+#### Null-Safe / Error Propagation Operators (Plan 120)
+
+| Operator | Description |
+|----------|-------------|
+| `?` | Question mark (Option/Result suffix) |
+| `??` | Null coalescing |
+| `?.` | Safe navigation / null-safe access |
+| `.?` | Error propagation |
+
+#### Ownership Dot-Operators (Plan 122)
+
+| Operator | Description |
+|----------|-------------|
+| `.view` | Immutable borrow (`&T`) |
+| `.mut` | Mutable borrow (`&mut T`) |
+| `.move` | Ownership transfer |
+| `.take` | DEPRECATED — use `.move` |
+
+#### Arrow Operators
+
+| Operator | Description |
+|----------|-------------|
 | `->` | Arrow (patterns/events) |
-| `=>` | Double arrow (patterns) |
-| `:` | Colon (object field-value pairs) |
+| `=>` | Double arrow (pattern branches) |
+
+#### Punctuation
+
+| Symbol | Description |
+|--------|-------------|
+| `.` | Member access |
+| `:` | Colon (field-value pairs, type annotations) |
 | `|` | Vertical bar |
-| `?` | Question mark |
-| `@` | At sign |
-| `#` | Hash sign |
+| `@` | At sign (annotations) |
+| `#` | Hash sign (annotations, compile-time) |
+| `~` | Tilde (async/future type marker) |
+| `,` | Comma |
+| `;` | Semicolon |
+| `(` `)` | Parentheses |
+| `[` `]` | Square brackets |
+| `{` `}` | Curly braces |
+
+#### Compile-Time Tokens (Plan 095)
+
+| Token | Description |
+|-------|-------------|
+| `#if` | Compile-time conditional |
+| `#for` | Compile-time loop |
+| `#is` | Compile-time pattern match |
+| `#{` | Compile-time expression block |
 
 ### Literals
 
@@ -157,6 +251,8 @@ The following keywords are reserved:
 
 ```
 integer → digit+ ("u" | "u8" | "i8")?
+       | "0x" hex_digit+          // hexadecimal
+       | digit ("_" digit)* digit? // underscore separators
 ```
 
 ```auto
@@ -164,41 +260,57 @@ integer → digit+ ("u" | "u8" | "i8")?
 42u         // u32
 42u8        // u8
 42i8        // i8
+0x1A        // hexadecimal (26)
+1_000_000   // underscore separators
 ```
 
 #### Floating-Point Literals
 
 ```
-float → digit+ "." digit* (exponent)?
+float → digit+ "." digit* ("f" | "d")? (exponent)?
+     | digit+ ("f" | "d")              // suffix on integer
 exponent → ("e" | "E") ("+" | "-")? digit+
 ```
 
 ```auto
-3.14
-3.14e-10
-1.0e5
+3.14        // float (default)
+3.14f       // float (explicit suffix)
+3.14d       // double
+3.14e-10    // scientific notation
+1.0e5       // scientific notation
+42f         // float from integer
+42d         // double from integer
 ```
 
 #### String Literals
 
 ```
-string → '"' .* '"'
-cstr → 'c' '"' '"'* '"'
+string       → '"' .* '"'
+multi_string → '"""' .* '"""'
+cstr         → 'c' '"' .* '"'
 ```
 
 ```auto
-"Hello, World!"           // Auto string (with length)
-c"Hello, World!"          // C string (null-terminated)
+"Hello, World!"           // Regular string (with length)
+"""Hello
+World"""                  // Multi-line string (Plan 169)
+c"Hello, World!"          // C string (null-terminated, no escape processing)
 ```
+
+Multi-line strings (triple-quoted, Plan 169):
+- Preserve literal newlines
+- Allow embedded 1-2 consecutive double quotes
+- Process standard escape sequences (`\n`, `\t`, etc.)
 
 #### Character Literals
 
 ```
-char → "'" (letter | digit | symbol) "'"
+char → "'" (letter | digit | escape_sequence) "'"
 ```
 
 ```auto
-'a'
+'a'         // Simple character
+'\n'        // Escape sequence
 'Z'
 '0'
 ```
@@ -340,7 +452,9 @@ Auto has a hybrid type system:
 - **Static mode**: Type checking at compile time (default for AutoLang)
 - **Dynamic mode**: Type checking at runtime (script mode with `var`)
 
-### Basic Types
+The type system includes 37 type variants from `ast/types.rs`, covering primitives, compound types, generics, and special types.
+
+### Primitive Types
 
 | Auto Type | C Type | Rust Type | Description |
 |-----------|---------|-----------|-------------|
@@ -352,13 +466,133 @@ Auto has a hybrid type system:
 | `i64` | `int64_t` | `i64` | 64-bit signed integer |
 | `u16` | `uint16_t` | `u16` | 16-bit unsigned integer |
 | `u64` | `uint64_t` | `u64` | 64-bit unsigned integer |
+| `usize` | `size_t` | `usize` | Pointer-sized unsigned integer |
 | `float` | `double` | `f64` | 64-bit floating-point |
 | `double` | `double` | `f64` | Alias for float |
 | `bool` | `bool` | `bool` | Boolean (true/false) |
-| `str` | `struct { len; data; }` | `&str` | String slice with length |
 | `char` | `char` | `char` | Single character |
 | `void` | `void` | `()` | Unit/void type |
 | `nil` | (no equivalent) | `!` | Zero-size type |
+
+### String Types
+
+| Auto Type | C Type | Rust Type | Description |
+|-----------|---------|-----------|-------------|
+| `str` | `struct { len; data; }` | `&str` | String slice with length |
+| `String` | `char*` (dynamic) | `String` | Owned dynamic string (Plan 155) |
+| `cstr` | `const char*` | `&CStr` | C string (null-terminated) |
+
+### Compound Types
+
+#### Array Types
+
+```auto
+[N]T        // Static array: fixed size N, type T (e.g., [10]int)
+[expr]T     // Runtime-sized array: size determined at runtime (Plan 052)
+[]T         // Slice: borrowed view into an array
+```
+
+```auto
+let fixed [5]int = [1, 2, 3, 4, 5]
+let slice []int = fixed[1..3]    // borrowed slice
+```
+
+#### List Type (Dynamic)
+
+```auto
+List<T>     // Growable list (heap-backed)
+```
+
+```auto
+let list = List.new()
+list.push(1)
+list.push(2)
+let len = list.len()    // 2
+```
+
+#### Map Type (Plan 160)
+
+```auto
+Map<K, V>   // Typed key-value dictionary
+```
+
+```auto
+let scores Map<str, int> = Map.new()
+scores.set("Alice", 95)
+```
+
+#### Pointer and Reference Types
+
+```auto
+*T          // Raw pointer
+&T          // Reference (immutable borrow)
+```
+
+```auto
+let val = 42
+let ptr *int = &val
+let ref &int = val.view
+```
+
+#### Option Type (Plan 120)
+
+```auto
+?T          // Optional value: Some(T) or None
+```
+
+```auto
+let name ?str = Some("Alice")
+let empty ?str = None
+```
+
+#### Result Type (Plan 120)
+
+```auto
+!T          // Error-propagating: Ok(T) or Err(...)
+```
+
+```auto
+fn divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    Ok(a / b)
+}
+```
+
+#### Handle Type (Plan 121)
+
+```auto
+Handle<T>   // Reference to a running task
+```
+
+```auto
+let handle Handle<CounterTask> = spawn CounterTask()
+handle.send(Increment(1))
+```
+
+#### Linear Type
+
+```auto
+linear<T>   // Move-only semantics (no implicit copy)
+```
+
+#### Function Types
+
+```auto
+fn(params) ret   // Function type signature
+```
+
+```auto
+let callback fn(int, int) int = add
+```
+
+#### Generic Type Instances
+
+```auto
+MyType<T>           // Generic type with type parameter
+MyType<T, N u32>    // Generic type with type + const parameter
+```
 
 ### Type Annotations
 
@@ -388,13 +622,20 @@ let i int = b      // OK: byte promoted to int
 
 ## Expressions
 
+Auto supports 55 expression types (from `ast.rs` Expr enum). This section documents all major expression categories.
+
 ### Literal Expressions
 
 ```auto
-42          // integer
+42          // int (i32)
+42u         // uint (u32)
+42u8        // byte (u8)
+42i8        // i8
 3.14        // float
-"hello"     // string
+3.14d       // double
 'x'         // character
+"hello"     // string
+c"hello"    // C string (null-terminated)
 true        // boolean
 false       // boolean
 nil         // nil value
@@ -406,20 +647,20 @@ nil         // nil value
 x
 my_variable
 _underscore
+preview-card    // hyphens allowed within identifiers
 ```
 
-### Binary Operators
-
-#### Arithmetic Operators
+### Arithmetic Expressions
 
 ```auto
 let sum = 10 + 5
 let diff = 10 - 5
 let product = 10 * 5
 let quotient = 10 / 5
+let remainder = 10 % 5
 ```
 
-#### Comparison Operators
+### Comparison Expressions
 
 ```auto
 10 == 5    // false
@@ -430,15 +671,17 @@ let quotient = 10 / 5
 10 >= 10   // true
 ```
 
-#### Logical Operators
+### Logical Expressions
 
 ```auto
 true && false    // false
 true || false    // true
 !true            // false
+true and false   // keyword form
+true or false    // keyword form
 ```
 
-### Assignment Operators
+### Assignment Expressions
 
 ```auto
 x = 10
@@ -446,6 +689,7 @@ x += 5    // x = x + 5
 x -= 5    // x = x - 5
 x *= 5    // x = x * 5
 x /= 5    // x = x / 5
+x %= 5    // x = x % 5
 ```
 
 ### Range Expressions
@@ -459,7 +703,7 @@ let r2 = 0..=5
 
 // Using ranges in for loops
 for i in 0..10 {
-    println(i)
+    print(i)
 }
 ```
 
@@ -467,14 +711,14 @@ for i in 0..10 {
 
 ```auto
 let name = "World"
-let msg = f"Hello, {name}!"    // "Hello, World!"
+let msg = f"Hello, $name!"         // "Hello, World!"
 
 let a = 5
 let b = 10
-let result = f"{a} + {b} = {a + b}"    // "5 + 10 = 15"
+let result = f"${a} + ${b} = ${a + b}"  // "5 + 10 = 15"
 
-// Alternative tick string syntax
-let msg = `Hello, ${name}!`
+// Backtick syntax
+let msg2 = `Hello, ${name}!`
 ```
 
 ### Array Expressions
@@ -483,6 +727,8 @@ let msg = `Hello, ${name}!`
 let arr = [1, 2, 3, 4, 5]
 let empty = []
 let strings = ["hello", "world"]
+let first = arr[0]           // 1
+let slice = arr[1..3]        // [2, 3]
 ```
 
 ### Object Expressions
@@ -493,6 +739,7 @@ let obj = {
     age: 30,
     active: true
 }
+let name = obj.name          // "John"
 ```
 
 ### Grouping Expressions
@@ -501,25 +748,196 @@ let obj = {
 let result = (2 + 3) * 5    // 25
 ```
 
+### Unary Expressions
+
+```auto
+let neg = -x        // negation
+let not = !flag     // logical NOT
+```
+
+### Dot Expressions (Member Access / Method Call)
+
+```auto
+obj.field           // field access
+obj.method()        // method call
+list.push(1)        // method with argument
+```
+
+### Ownership Expressions (Plan 122)
+
+```auto
+let ref_val = x.view     // immutable borrow (&T)
+let mut_ref = x.mut      // mutable borrow (&mut T)
+let owned = x.move       // ownership transfer
+```
+
+### Type Conversion Expressions
+
+```auto
+let n = x.as(int)        // zero-cost reinterpret (.as)
+let s = 42.to(str)       // explicit conversion (.to)
+```
+
+### Option/Result Expressions (Plan 120)
+
+```auto
+// Constructors
+let val = Some(42)       // wrap in Option
+let empty = None         // empty Option
+let ok = Ok(42)          // success Result
+let err = Err("failed")  // error Result
+
+// Null coalescing
+let x = maybe_val ?? 0   // default if None
+
+// Error propagation
+let result = expr.?      // propagate Err as return
+
+// Safe navigation
+let name = obj?.name     // access if not None
+```
+
+### Closure Expressions
+
+```auto
+// Simple closure
+let add = (a, b) => a + b
+
+// Typed closure
+let multiply = (a int, b int) => int { a * b }
+
+// Single-param closure (no parens needed)
+let double = x => x * 2
+```
+
+### If Expressions
+
+```auto
+let result = if x > 0 { 1 } else { 0 }
+
+// Multi-branch
+let label = if x > 0 {
+    "positive"
+} else if x < 0 {
+    "negative"
+} else {
+    "zero"
+}
+```
+
+### Block Expressions
+
+```auto
+let result = {
+    let x = 10
+    let y = 20
+    x + y       // last expression is the value
+}
+```
+
+### Null Coalescing Expressions (Plan 120)
+
+```auto
+let value = maybe ?? default    // use default if None
+```
+
+### Error Propagation Expressions (Plan 120)
+
+```auto
+let result = expr.?    // if Err, return early; if Ok, unwrap
+```
+
+### Smart Pointer Expressions
+
+```auto
+let boxed = Box(value)    // heap allocation
+let shared = Arc(value)   // reference-counted
+```
+
+### Async Expressions (Plan 124)
+
+```auto
+// Async block
+let future = ~{
+    let data = fetch().await
+    process(data)
+}
+
+// Await a future
+let result = future.await
+
+// Spawn to background (Plan 126)
+let handle = task.go
+```
+
+### Compile-Time Expressions (Plan 095)
+
+```auto
+let value = #{ 1 + 2 }    // evaluated at compile time
+```
+
+### Node Expressions
+
+```auto
+// Node construction
+widget(attr: "value") {
+    child()
+}
+```
+
+### Grid Expressions
+
+```auto
+let grid = grid(a: "first", b: "second") {
+    [1, 2, 3]
+    [4, 5, 6]
+}
+```
+
+### Hold Expressions
+
+```auto
+let val = expr.hold    // extend lifetime binding
+```
+
+### Precedence Table
+
+| Precedence | Operators | Associativity |
+|------------|-----------|---------------|
+| 1 (highest) | `.view`, `.mut`, `.move`, `.await`, `.go`, `.hold` | Left |
+| 2 | `!` (NOT), `-` (negate) | Right |
+| 3 | `*`, `/`, `%` | Left |
+| 4 | `+`, `-` | Left |
+| 5 | `<`, `>`, `<=`, `>=` | Left |
+| 6 | `==`, `!=` | Left |
+| 7 | `&&`, `and` | Left |
+| 8 | `||`, `or` | Left |
+| 9 | `??` | Left |
+| 10 | `..`, `..=` | Left |
+| 11 (lowest) | `=`, `+=`, `-=`, `*=`, `/=`, `%=` | Right |
+
 ---
 
 ## Statements
 
+Auto supports 34 statement types (from `ast.rs` Stmt enum).
+
 ### Variable Declarations
 
-Auto provides four storage modifiers with different semantics:
+Auto provides six storage modifiers with different semantics:
 
 #### `let` - Immutable Binding
 
 ```auto
 let x = 42
+let name str = "Alice"
 // Error: x = 10  // cannot reassign
 ```
 
-#### `mut` - Mutable Binding
+#### `var` - Mutable Binding
 
 ```auto
-mut x = 42
+var x = 42
 x = 10    // OK
 ```
 
@@ -527,15 +945,41 @@ x = 10    // OK
 
 ```auto
 const MAX_SIZE = 100
+const GREETING str = "Hello"
 // Error: MAX_SIZE = 200  // cannot modify
 ```
 
-#### `var` - Dynamic Variable (Script Mode)
+#### `mut` - Mutable Reference Keyword
 
 ```auto
-var x = 42
-x = "hello"    // OK - type can change
-x = nil        // OK - can be nil
+mut x = 42
+x = 10    // OK
+```
+
+Note: `var` and `mut` are both mutable. `var` is preferred for script mode; `mut` for typed mode.
+
+#### `shared` - Static/Shared Storage (Plan 168)
+
+```auto
+shared counter int = 0
+shared cache Map<str, str> = Map.new()
+```
+
+`shared` creates process-lifetime static storage. Transpiles to Rust `static` with `Lazy<Mutex<T>>`.
+
+#### `static` - Static Member (in type context)
+
+Used inside type definitions for static methods:
+
+```auto
+type Point {
+    x int
+    y int
+
+    static fn new(x int, y int) Point {
+        Point(x, y)
+    }
+}
 ```
 
 ### Expression Statements
@@ -545,6 +989,7 @@ Any expression can be a statement:
 ```auto
 x + 1
 func_call()
+obj.method()
 ```
 
 ### Block Statements
@@ -557,6 +1002,82 @@ func_call()
 }
 ```
 
+### Return Statements
+
+```auto
+fn greet() str {
+    return "Hello"     // explicit return
+}
+
+fn add(a int, b int) int {
+    a + b              // implicit return (last expression)
+}
+```
+
+### Reply Statements (Plan 124)
+
+Used in task message handlers for ask/reply RPC:
+
+```auto
+task CounterTask {
+    on {
+        GetCount() => {
+            reply self.count    // send reply to caller
+        }
+    }
+}
+```
+
+### Break Statements
+
+```auto
+for i in 0..100 {
+    if i == 42 {
+        break
+    }
+}
+```
+
+### Import Statements
+
+```auto
+use math::add           // import from module
+use pac.db              // import from package root
+use super.utils         // import from parent directory
+use db: load, save      // import specific symbols
+dep database(path: "../database")  // declare dependency
+```
+
+### Type Declaration Statements
+
+```auto
+type Point { x int, y int }
+enum Color { Red, Green, Blue }
+tag Shape { Circle float, Rect int, int }
+spec Printable { fn print() }
+alias UserID = int
+```
+
+### Extension Statements
+
+```auto
+ext str {
+    fn is_empty() bool { self.len() == 0 }
+}
+```
+
+### Comment Statements
+
+```auto
+// Single-line comment
+/// Doc comment
+/* Block comment */
+```
+
+### Empty Lines
+
+Empty lines are preserved as statement separators for code formatting.
+
 ---
 
 ## Control Flow
@@ -566,26 +1087,26 @@ func_call()
 ```auto
 // Basic if
 if x > 0 {
-    println("positive")
+    print("positive")
 }
 
 // If-else
 if x > 0 {
-    println("positive")
+    print("positive")
 } else {
-    println("non-positive")
+    print("non-positive")
 }
 
 // If-else if-else
 if x > 0 {
-    println("positive")
+    print("positive")
 } else if x < 0 {
-    println("negative")
+    print("negative")
 } else {
-    println("zero")
+    print("zero")
 }
 
-// If expression
+// If expression (value-producing)
 let result = if x > 0 { 1 } else { 0 }
 ```
 
@@ -594,41 +1115,32 @@ let result = if x > 0 { 1 } else { 0 }
 ```auto
 // Range iteration (exclusive)
 for i in 0..5 {
-    println(i)    // 0, 1, 2, 3, 4
+    print(i)    // 0, 1, 2, 3, 4
 }
 
 // Range iteration (inclusive)
 for i in 0..=5 {
-    println(i)    // 0, 1, 2, 3, 4, 5
+    print(i)    // 0, 1, 2, 3, 4, 5
 }
 
 // Array iteration
 for item in [1, 2, 3] {
-    println(item)
+    print(item)
 }
 
 // With index
 for i, item in [1, 2, 3] {
-    println(f"{i}: {item}")
+    print(f"${i}: ${item}")
 }
 
-// Mutable reference
-mut arr = [1, 2, 3]
-for ref item in arr {
-    item = item * 2
-}
-// arr = [2, 4, 6]
-```
-
-### While Loops
-
-```auto
-mut i = 0
-while i < 10 {
-    println(i)
+// Condition loop (replaces while)
+for i < 10 {
+    print(i)
     i += 1
 }
 ```
+
+Note: Auto does not have a `while` keyword. Use `for condition { }` instead.
 
 ### Loop Control
 
@@ -644,11 +1156,52 @@ loop {
 
 ```auto
 is value {
-    42 -> println("exact match"),
-    as str -> println("string type"),
-    in 0..9 -> println("single digit"),
-    if value > 10 -> println("big number"),
-    else x -> println(f"other: {x}")
+    42 => print("exact match"),
+    as str => print("string type"),
+    in 0..9 => print("single digit"),
+    if value > 10 => print("big number"),
+    else => print("other")
+}
+```
+
+Note: Pattern branches use `=>` (double arrow), not `->` (single arrow).
+
+#### Struct Destructuring (Plan 165)
+
+```auto
+let point = Point(10, 20)
+
+is point {
+    Point(x, y) => print(f"x=${x}, y=${y}"),
+    else => print("not a point")
+}
+```
+
+#### Option Pattern Matching (Plan 120)
+
+```auto
+is maybe_value {
+    Some(x) => print(f"got: ${x}"),
+    None => print("nothing")
+}
+```
+
+#### Result Pattern Matching (Plan 120)
+
+```auto
+is result {
+    Ok(value) => print(f"success: ${value}"),
+    Err(msg) => print(f"error: ${msg}")
+}
+```
+
+### When Blocks
+
+```auto
+when event {
+    Click(x, y) => handleClick(x, y),
+    KeyPress(key) => handleKey(key),
+    else => handleOther()
 }
 ```
 
@@ -659,14 +1212,14 @@ is value {
 ### Function Definition
 
 ```auto
-// Basic function
+// Basic function (no return type annotation needed for void)
 fn greet(name str) {
-    println(f"Hello, {name}!")
+    print(f"Hello, $name!")
 }
 
-// Function with return type
+// Function with return type (space-separated, no ->)
 fn add(a int, b int) int {
-    a + b    // Implicit return
+    a + b    // Implicit return (last expression)
 }
 
 // Function with explicit return
@@ -676,7 +1229,7 @@ fn multiply(a int, b int) int {
 
 // Function with no return value
 fn print_message(msg str) void {
-    println(msg)
+    print(msg)
 }
 ```
 
@@ -688,35 +1241,159 @@ greet("World")
 let result = add(1, 2)
 ```
 
-### Lambda Functions
+### Generic Functions (Plan 048)
 
 ```auto
-let multiply = |a int, b int| (int) a * b
-multiply(3, 4)    // 12
+fn identity<T>(x T) T {
+    x
+}
+
+fn first<T>(arr []T) ?T {
+    if arr.len() == 0 {
+        return None
+    }
+    Some(arr[0])
+}
+
+// With type constraints
+fn compare<T has Comparable>(a T, b T) int {
+    a.compare(b)
+}
 ```
 
-### Parameter Passing Modes
+### Parameter Modes (Plan 088)
+
+Auto uses three parameter passing modes. The default is `view` (immutable reference).
 
 ```auto
-// copy - default for small types
-fn process_copy(x int) {
-    // x is a copy
+// view - immutable reference (DEFAULT, O(1))
+fn process(x int) {
+    // x is an immutable reference
+    // cannot modify x
 }
 
-// ref - immutable reference
-fn process_ref(x ref int) {
-    // can read but not modify
-}
-
-// mut - mutable reference
-fn increment(x mut ref int) {
+// mut - mutable reference (O(1))
+fn increment(x mut int) {
     x += 1    // modifies caller's value
 }
 
-// move - transfer ownership
-fn consume(x move String) {
-    // x is moved from caller
+// move - ownership transfer (O(1))
+fn consume(data String) {
+    // data is moved from caller
+    // caller can no longer use data
 }
+```
+
+The `ParamMode` enum supports: `View` (default), `Mut`, `Move`, `Copy` (deprecated), `Take` (deprecated, use Move).
+
+### Static Methods (Plan 035)
+
+```auto
+type Point {
+    x int
+    y int
+
+    // Static method (called on type)
+    static fn new(x int, y int) Point {
+        Point(x, y)
+    }
+
+    // Instance method (called on instance)
+    fn distance_to(other Point) float {
+        let dx = self.x - other.x
+        let dy = self.y - other.y
+        (dx * dx + dy * dy).to(float).sqrt()
+    }
+}
+
+let p = Point.new(3, 4)       // static call
+let d = p.distance_to(p)      // instance call
+```
+
+### Public Visibility (Plan 163)
+
+```auto
+pub fn public_function() int { 42 }
+
+pub type Point { x int, y int }
+
+pub enum Color { Red, Green, Blue }
+
+pub spec Printable { fn print() }
+```
+
+### Closures (Plan 060)
+
+Closures use `=>` syntax:
+
+```auto
+// Simple closure
+let add = (a, b) => a + b
+add(3, 4)    // 7
+
+// Single-parameter closure (no parens needed)
+let double = x => x * 2
+
+// Typed closure with block body
+let transform = (x int, y int) => int {
+    let sum = x + y
+    sum * 2
+}
+```
+
+Capture semantics:
+- By default, closures capture by reference (view)
+- Use `.move` on the closure to capture by value
+
+### Function Annotations
+
+```auto
+#[vm]
+fn vm_function(x int) void           // VM-implemented
+
+#[c]
+fn c_function(s str) int             // C-transpiled
+
+#[c, vm]
+fn hybrid_function(data []byte) void // both backends
+```
+
+### Function Kinds
+
+The `FnKind` enum supports 5 function types:
+
+| Kind | Description |
+|------|-------------|
+| `Function` | Regular function |
+| `Lambda` | Lambda/anonymous function |
+| `Method` | Instance method (associated with a type) |
+| `CFunction` | C function declaration |
+| `VmFunction` | VM-implemented function |
+
+### Default Parameters
+
+```auto
+fn greet(name str, greeting str = "Hello") str {
+    f"$greeting, $name!"
+}
+
+greet("World")               // "Hello, World!"
+greet("World", "Hi")         // "Hi, World!"
+```
+
+### Mutable Methods (Plan 163)
+
+```auto
+type Counter {
+    count int
+
+    mut fn increment() {
+        self.count += 1
+    }
+}
+
+var c = Counter(0)
+c.increment()    // c.count is now 1
 ```
 
 ---
@@ -740,7 +1417,7 @@ let slice3 = arr[3..]    // [4, 5]
 let slice4 = arr[..]     // [1, 2, 3, 4, 5]
 
 // Modification
-mut arr = [1, 2, 3]
+var arr = [1, 2, 3]
 arr[0] = 10    // [10, 2, 3]
 ```
 
@@ -755,7 +1432,7 @@ let obj = {
 }
 
 // Access members
-println(obj.name)
+print(obj.name)
 
 // Modify members
 obj.name = "Tom"
@@ -771,7 +1448,7 @@ obj.get_or_insert("name", 10)
 
 // Iteration
 for k, v in obj {
-    println(f"{k}: {v}")
+    print(f"${k}: ${v}")
 }
 
 // Remove key
@@ -796,85 +1473,6 @@ let json = grid.to_json()
 
 ## Type Definitions
 
-### Type Modifiers
-
-Auto uses postfix type modifiers that follow C/C++ conventions for better compatibility:
-
-#### Array Types
-
-```auto
-// Dynamic array
-let arr int[] = [1, 2, 3]
-
-// Fixed-size array
-let fixed int[10] = [0..10]
-
-// Multi-dimensional arrays
-let matrix int[3][10] = [
-    [0..10],
-    [1..11],
-    [2..12]
-]
-
-// Multi-dimensional dynamic arrays
-let cube int[][][]
-```
-
-Array dimensions are declared left-to-right (outermost to innermost), matching C/C++:
-
-```auto
-let arr int[3][10]
-let last = arr[2][9]    // Access: outer dimension first
-```
-
-#### Pointer Types
-
-```auto
-// Pointer
-let p int*
-
-// Multi-level pointer
-let pp char**
-
-// Array of pointers
-let ap int*[3]
-
-// Pointer to array
-let pa int[]*
-```
-
-#### Reference Types
-
-```auto
-// Reference
-let r int&
-
-// Multi-level reference
-let rr char&&
-
-// Array of references
-let ar int&[3]
-
-// Pointer to reference
-let pr int&*
-```
-
-#### Optional Types
-
-```auto
-// Optional value
-let opt int?
-
-// Multi-level optional
-let optopt char??
-
-// Array of optionals
-let aopt int?[3]
-
-// Pointer to optional
-let popt int?*
-```
-
 ### Type Definitions
 
 Use the `type` keyword to define custom types:
@@ -891,10 +1489,78 @@ type Rectangle {
 }
 
 // Using custom types
-let p Point = { x: 10, y: 20 }
-let rect Rectangle = {
-    top_left: { x: 0, y: 0 },
-    bottom_right: { x: 100, y: 100 }
+let p Point = Point(10, 20)
+let rect Rectangle = Rectangle(
+    top_left: Point(0, 0),
+    bottom_right: Point(100, 100)
+)
+```
+
+### Single Inheritance
+
+```auto
+type Animal {
+    name str
+    fn speak() str
+}
+
+type Dog is Animal {
+    breed str
+    fn speak() str { "Woof!" }
+}
+```
+
+### Generic Types (Plan 048)
+
+```auto
+type Container<T> {
+    value T
+
+    static fn new(value T) Container<T> {
+        Container(value)
+    }
+
+    fn get() T {
+        self.value
+    }
+}
+
+// Const generics
+type Inline<T, N u32> {
+    data [N]T
+}
+```
+
+### Spec Implementation
+
+```auto
+type Point has Printable {
+    x int
+    y int
+
+    fn print() {
+        print(f"(${self.x}, ${self.y})")
+    }
+}
+
+// Multiple spec implementations
+type File has Readable, Writable {
+    path str
+}
+```
+
+### Extension Blocks (`ext`)
+
+```auto
+// Add methods to existing types
+ext str {
+    fn is_empty() bool { self.len() == 0 }
+    fn reversed() str { /* ... */ }
+}
+
+// With generic params (Plan 059)
+ext<T> Vec<T> {
+    fn first() ?T { /* ... */ }
 }
 ```
 
@@ -912,34 +1578,95 @@ let name Name = "Alice"
 let coord Coordinate = 45.5
 ```
 
+### TypeDecl Fields
+
+The `TypeDecl` struct in `ast/types.rs` includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `Name` | Type name |
+| `parent` | `Option<Box<Type>>` | Parent type (inheritance) |
+| `has` | `Vec<Type>` | Spec implementations (`has`) |
+| `spec_impls` | `Vec<SpecImpl>` | Spec implementations with type args |
+| `generic_params` | `Vec<GenericParam>` | Generic type/const parameters |
+| `members` | `Vec<Member>` | Data fields |
+| `methods` | `Vec<Fn>` | Methods |
+| `attrs` | `Vec<AutoStr>` | Annotations |
+| `is_pub` | `bool` | Public visibility |
+
 ---
 
-## Unions and Tags
+## Enums
 
-Auto provides both C-style unions and tagged unions for different use cases.
+Auto supports three enum kinds (from `ast/enums.rs` EnumKind).
 
-### Unions (C-style)
+### Scalar Enums (C-style)
 
-Unions provide memory reuse where the same memory can be accessed as different types:
+Simple enumeration with optional explicit values and repr type:
 
 ```auto
-union MyUnion {
-    i int
-    f float
-    c char
-}
+enum Color { Red, Green, Blue }
 
-let u MyUnion
-sys {
-    u.i = 42              // Store as int
-    println(u.f)          // Access as float (undefined behavior)
+// With explicit values
+enum HttpStatus u16 {
+    OK = 200,
+    NotFound = 404,
+    ServerError = 500
 }
 ```
 
-**Warning**: Direct union access is unsafe and should be only used in `sys` blocks.
+### Homogeneous Enums
 
-A safe version to use a `Tagged Union`, or a `Tag` in Auto lang.
+All variants share the same payload type:
 
+```auto
+type Point { x int, y int }
+
+enum Vertex Point {
+    LeftTop
+    RightTop
+    LeftBottom
+    RightBottom
+}
+```
+
+### Heterogeneous Enums (ADT / Sum Types)
+
+Each variant can have a different payload type:
+
+```auto
+enum Msg {
+    Quit,
+    Move Point,
+    Write str,
+    Color(int, int, int)
+}
+```
+
+### Generic Enums
+
+```auto
+enum Option<T> {
+    Some(T),
+    None
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+```
+
+### EnumDecl Fields
+
+The `EnumDecl` struct includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `AutoStr` | Enum name |
+| `items` | `Vec<EnumItem>` | Variants |
+| `kind` | `EnumKind` | Scalar, Homogeneous, or Heterogeneous |
+| `is_pub` | `bool` | Public visibility |
 
 ### Tags (Tagged Unions)
 
@@ -956,45 +1683,475 @@ let value MyTag = MyTag.i(42)
 
 // Pattern matching with `is`
 is value {
-    i -> println(`int: {i}`),
-    f -> println(`float: {f}`),
-    c -> println(`char: {c}`)
+    i => print("int"),
+    f => print("float"),
+    c => print("char")
 }
-
-let i = value.i? // 42
-let f = value.f // nil
-let c = value.c? // value.c is nil, so value.c? will trigger nil-return
 ```
 
-#### Tag Definition Semantics
+---
 
-The tag definition:
+## Specs (Traits)
+
+Specs define interface-like contracts that types can implement (Plans 019, 057, 059).
+
+### Spec Declaration
 
 ```auto
-tag MyTag {
-    i int
-    f float
-    c char
+spec Printable {
+    fn print() void
+}
+
+spec Readable {
+    fn read(buf []byte) int
 }
 ```
 
-Translates to C as:
+### Generic Specs
 
-```c
-typedef enum {
-    MyTag_i,
-    MyTag_f,
-    MyTag_c,
-} MyTagKind;
+```auto
+spec Iterable<T> {
+    fn iterator() Iterator<T>
+}
 
-typedef struct {
-    MyTagKind tag;
-    union {
-        int i;
-        float f;
-        char c;
-    } as;
-} MyTag;
+spec Comparable<T> {
+    fn compare(other T) int
+}
+```
+
+### Default Methods
+
+```auto
+spec Loggable {
+    fn log_level() str { "info" }
+    fn log(msg str) void {
+        print(f"[${self.log_level()}] $msg")
+    }
+}
+```
+
+### Spec Implementation
+
+```auto
+type User has Printable {
+    name str
+
+    fn print() void {
+        print(self.name)
+    }
+}
+```
+
+### SpecDecl Fields
+
+The `SpecDecl` struct includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `Name` | Spec name |
+| `generic_params` | `Vec<GenericParam>` | Generic parameters |
+| `methods` | `Vec<SpecMethod>` | Required/default methods |
+| `is_pub` | `bool` | Public visibility |
+
+### Transpilation Behavior
+
+- **C backend**: Specs transpile to vtables (struct of function pointers)
+- **Rust backend**: Specs transpile to native Rust traits
+- **VM mode**: Specs use dynamic dispatch via method registry
+
+---
+
+## Generics
+
+Auto supports generics with type parameters and const parameters (Plan 048).
+
+### Type Parameters
+
+```auto
+type Container<T> {
+    value T
+}
+
+fn identity<T>(x T) T { x }
+```
+
+### Const Parameters
+
+```auto
+type Inline<T, N u32> {
+    data [N]T
+}
+
+let buffer Inline<int, 64> = Inline.new()
+```
+
+### Generic Constraints
+
+```auto
+fn sort<T has Comparable>(items []T) []T {
+    // T must implement Comparable spec
+}
+```
+
+### Monomorphization
+
+Generic types and functions are monomorphized at compile time for C/Rust backends, generating specialized code for each concrete type instantiation.
+
+---
+
+## Closures
+
+Auto closures use `=>` syntax (Plan 060).
+
+### Syntax Forms
+
+```auto
+// No params
+let thunk = => doSomething()
+
+// Single param (no parens)
+let double = x => x * 2
+
+// Multiple params
+let add = (a, b) => a + b
+
+// Typed params
+let multiply = (a int, b int) => int { a * b }
+```
+
+### Capture Semantics
+
+```auto
+let x = 10
+
+// Captures x by reference (view)
+let closure = () => x + 1
+
+// Captures x by value (move)
+let moved = () => x + 1 .move
+```
+
+### Iterator Usage
+
+```auto
+let nums = [1, 2, 3, 4, 5]
+let doubled = nums.map(x => x * 2)
+let evens = nums.filter(x => x % 2 == 0)
+```
+
+---
+
+## Option and Result
+
+Auto provides `?T` (Option) and `!T` (Result) for error handling (Plan 120).
+
+### Option (`?T`)
+
+```auto
+let name ?str = Some("Alice")
+let empty ?str = None
+
+// Pattern matching
+is name {
+    Some(n) => print(f"Hello, $n"),
+    None => print("no name")
+}
+
+// Null coalescing
+let display = name ?? "unknown"
+```
+
+### Result (`!T`)
+
+```auto
+fn divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    Ok(a / b)
+}
+
+// Error propagation with .?
+let result = divide(10, 0).?    // propagates Err
+
+// Pattern matching
+is result {
+    Ok(value) => print(value),
+    Err(msg) => print(f"Error: $msg")
+}
+```
+
+### Constructors
+
+| Constructor | Type | Description |
+|-------------|------|-------------|
+| `Some(value)` | Option | Wrap a value |
+| `None` | Option | No value |
+| `Ok(value)` | Result | Success |
+| `Err(message)` | Result | Failure |
+
+---
+
+## Concurrency: Tasks and Async
+
+Auto provides an Actor-based concurrency model (Plans 121, 124, 126).
+
+### Task Definition
+
+```auto
+task CounterTask {
+    count int = 0
+
+    start() {
+        print("Counter started")
+    }
+
+    on {
+        Increment(n int) => {
+            self.count += n
+        }
+        GetCount() => {
+            reply self.count
+        }
+        Reset => {
+            self.count = 0
+        }
+        _ => {
+            print("unknown message")
+        }
+    }
+
+    stop() {
+        print(f"Counter stopped at ${self.count}")
+    }
+}
+```
+
+### Task Attributes
+
+```auto
+#[single]
+task UniqueTask {
+    on { /* ... */ }
+}
+```
+
+### Spawning and Communication
+
+```auto
+let handle Handle<CounterTask> = spawn CounterTask()
+handle.send(Increment(5))
+handle.send(GetCount)    // for ask/reply
+```
+
+### Message Patterns
+
+| Pattern | Syntax | Description |
+|---------|--------|-------------|
+| Simple | `Reset` | No data |
+| With bindings | `Add(val)` | With named bindings |
+| Literal match | `"start"` | Exact literal match |
+| Type binding | `msg str` | Capture by type |
+
+### Async / Await (Plan 124)
+
+```auto
+// Async function (~T return type)
+fn fetch_data(url str) ~str {
+    // ~T indicates async return
+    let response = http_get(url).await
+    response.body
+}
+
+// Async block
+let result = ~{
+    let a = fetch_data("/api/a").await
+    let b = fetch_data("/api/b").await
+    a + b
+}
+```
+
+### Background Execution (Plan 126)
+
+```auto
+// .go spawns to background worker pool
+let handle = compute_heavy(data).go
+// ... do other work ...
+let result = handle.await
+```
+
+---
+
+## Compile-Time Metaprogramming
+
+Auto supports compile-time code execution (Plan 095).
+
+### `#if` — Compile-Time Conditional
+
+```auto
+#if DEBUG {
+    print("debug mode")
+} else {
+    print("release mode")
+}
+```
+
+### `#for` — Compile-Time Loop Unrolling
+
+```auto
+#for i in 0..4 {
+    let bit_${i} = 1 << i
+}
+// Generates: let bit_0 = 1, bit_1 = 2, bit_2 = 4, bit_3 = 8
+```
+
+### `#is` — Compile-Time Pattern Match
+
+```auto
+#is target_os {
+    "linux" => { const PLATFORM = "linux" },
+    "windows" => { const PLATFORM = "windows" },
+    else => { const PLATFORM = "unknown" }
+}
+```
+
+### `#{}` — Compile-Time Expression
+
+```auto
+const SIZE = #{ 1024 * 768 }
+```
+
+---
+
+## Ownership and Borrowing
+
+Auto implements the "Trinity of Resources": `view`, `mut`, `move` (Plan 122).
+
+### Access Modes
+
+| Mode | Syntax | Cost | Description |
+|------|--------|------|-------------|
+| `view` | `x.view` | O(1) | Immutable borrow (`&T`) |
+| `mut` | `x.mut` | O(1) | Mutable borrow (`&mut T`) |
+| `move` | `x.move` | O(1) | Ownership transfer |
+| `clone` | `x.clone()` | O(N) | Deep copy |
+
+### Default Parameter Mode
+
+Function parameters default to `view` (immutable reference):
+
+```auto
+fn process(data str) {
+    // data is borrowed immutably (view mode)
+    print(data)
+}
+```
+
+### Ownership Transfer
+
+```auto
+fn consume(s String) {
+    // s is moved; caller no longer has access
+    print(s)
+}
+
+let text = String.new("hello")
+consume(text.move)
+// text is no longer accessible here
+```
+
+### Hold
+
+```auto
+let val = expr.hold    // extend lifetime binding
+```
+
+---
+
+## Modules and Imports
+
+Auto supports a hierarchical module system (Plan 131).
+
+### Import Syntax
+
+```auto
+use db              // Same directory: ./db.at or ./db/mod.at
+use super.db         // Parent directory: ../db.at
+use pac.db           // Package root: search source dirs
+use pac.api.handlers // Deep path from root
+use db: load, save   // Import specific symbols
+```
+
+### Dependency Declaration
+
+```auto
+// In pac.at
+name: "myapp"
+src: ["src"]
+dep database(path: "../database")
+```
+
+### Public Exports
+
+```auto
+pub fn public_function() int { 42 }
+pub type Point { x int, y int }
+pub use math::add
+```
+
+### Resolution Rules
+
+1. Try `name.at` (file module)
+2. Try `name/mod.at` (directory module)
+3. Error if both exist (ambiguous)
+4. Error if neither exists
+
+---
+
+## UI Widgets and Routing
+
+### Widget Declaration (Plan 096)
+
+```auto
+widget CounterView {
+    model {
+        count int = 0
+    }
+
+    msg {
+        Increment
+        Decrement
+    }
+
+    view {
+        col {
+            text(text: f"Count: ${model.count}")
+            button(text: "+") {
+                onclick: emit Increment
+            }
+            button(text: "-") {
+                onclick: emit Decrement
+            }
+        }
+    }
+}
+```
+
+### Routing (Plan 105)
+
+```auto
+routes {
+    route("/", HomeView)
+    route("/about", AboutView)
+    route("/users", UserListView)
+}
+
+// Navigation
+nav("/about")
+link(text: "Go to About", to: "/about")
+
+// Outlet for nested routes
+outlet()
 ```
 
 ---
@@ -1012,7 +2169,7 @@ node_name(a: 1, b: "hello") {
         // ...
     }
 
-    // children 
+    // children
     sub_node2() {
         // ...
     }
@@ -1155,7 +2312,7 @@ Nodes are commonly used in:
 ```auto
 window(title: "My App") {
     button(label: "Click me") {
-        onclick: || println("clicked")
+        onclick: => print("clicked")
     }
     textbox(placeholder: "Enter text")
 }
@@ -1237,87 +2394,13 @@ Auto provides three memory management strategies:
 
 | Feature | Rust | C |
 |---------|------|---|
-| Lexer | ✅ Complete | ✅ Complete |
-| Parser | ✅ Complete | ⚠️ Partial |
-| Evaluator | ✅ Complete | ⚠️ Partial |
-| Transpilation | ✅ Complete | ❌ Not implemented |
-| Type System | ✅ Complete | ⚠️ Partial |
-| Pattern Matching | ✅ Complete | ❌ Not implemented |
-| F-Strings | ✅ Complete | ✅ Complete |
-
-#### Performance
-
-| Aspect | Rust | C |
-|--------|------|---|
-| Compilation Speed | Fast | Moderate |
-| Execution Speed | Fast | Fast |
-| Memory Usage | Moderate | Low |
-| Binary Size | Moderate | Small |
-
-#### Code Examples
-
-##### F-String Processing
-
-**Rust Implementation** ([lexer.rs:900-950](../../crates/auto-lang/src/lexer.rs#L900-L950)):
-```rust
-fn fstr(&mut self) -> AutoResult<Token> {
-    // Rust uses match expressions and Result types
-    // for robust error handling
-    let note = self.lexer.fstr_note;
-    let mut parts = vec![];
-    // ... f-string parsing logic
-    Ok(Token { kind: TokenKind::FStrStart, .. })
-}
-```
-
-**C Implementation** ([lexer.c:564-620](autoc/lexer.c#L564-L620)):
-```c
-static Token lexer_fstr(Lexer* lexer) {
-    // C uses manual memory management and return codes
-    // Added in_fstr_expr flag to prevent infinite loops
-    char note = lexer->fstr_note;
-    // ... f-string parsing logic
-    return token;
-}
-```
-
-#### Key Differences
-
-1. **Error Handling**:
-   - Rust: Uses `Result<T, E>` for explicit error handling
-   - C: Uses return codes and manual error checking
-
-2. **Memory Management**:
-   - Rust: Ownership system with borrow checker
-   - C: Manual memory management with `malloc`/`free`
-
-3. **Pattern Matching**:
-   - Rust: Full pattern matching support in `is` expressions
-   - C: Not yet implemented
-
-4. **String Handling**:
-   - Rust: Uses `AutoStr` with reference counting
-   - C: Uses `AutoStr` with manual management via `astr_free()`
-
-#### Bug Fixes
-
-##### F-String Lexer Infinite Loop
-
-The C implementation had a bug where the lexer would hang on `f"hello ${2 + 1} again"`. This was fixed by:
-
-1. Adding `in_fstr_expr` flag to lexer state
-2. Moving f-string detection before identifier check
-3. Collecting tokens in temporary array to avoid buffer conflicts
-
-```c
-// lexer.h:18
-typedef struct {
-    // ... existing fields ...
-    bool in_fstr_expr;  // Flag to prevent re-entering f-string mode
-} Lexer;
-```
-
-This fix ensures that when processing `${...}` in f-strings, the lexer doesn't recursively enter f-string mode.
+| Lexer | Complete | Complete |
+| Parser | Complete | Partial |
+| Evaluator | Complete | Partial |
+| Transpilation | Complete | Not implemented |
+| Type System | Complete | Partial |
+| Pattern Matching | Complete | Not implemented |
+| F-Strings | Complete | Complete |
 
 ---
 
@@ -1325,46 +2408,44 @@ This fix ensures that when processing `${...}` in f-strings, the lexer doesn't r
 
 ### Appendix A: Operator Precedence (Highest to Lowest)
 
-1. Unary operators (`!`, `-`, `+`)
-2. Multiplication (`*`, `/`)
-3. Addition (`+`, `-`)
-4. Comparison (`<`, `>`, `<=`, `>=`)
-5. Equality (`==`, `!=`)
-6. Logical AND (`&&`)
-7. Logical OR (`||`)
-8. Range (`..`, `..=`)
-9. Assignment (`=`, `+=`, `-=`, `*=`, `/=`)
+| Level | Operators | Associativity |
+|-------|-----------|---------------|
+| 1 (highest) | `.view`, `.mut`, `.move`, `.await`, `.go`, `.hold` | Left |
+| 2 | `!` (NOT), `-` (negate) | Right |
+| 3 | `*`, `/`, `%` | Left |
+| 4 | `+`, `-` | Left |
+| 5 | `<`, `>`, `<=`, `>=` | Left |
+| 6 | `==`, `!=` | Left |
+| 7 | `&&`, `and` | Left |
+| 8 | `||`, `or` | Left |
+| 9 | `??` | Left |
+| 10 | `..`, `..=` | Left |
+| 11 (lowest) | `=`, `+=`, `-=`, `*=`, `/=`, `%=` | Right |
 
-### Appendix B: Reserved Keywords
-
-```
-alias, as, break, const, else, enum, false, fn, for, has, if, in,
-is, let, mut, nil, null, on, tag, true, type, union, use, var, when
-```
-
-### Appendix C: ASCII Art Grammar
+### Appendix B: Reserved Keywords (56 keywords)
 
 ```
-Program
- └─ Stmt*
-     ├─ VarStmt
-     │   └─ ("let" | "mut" | "const" | "var") IDENTIFIER Type? "=" Expr
-     ├─ IfStmt
-     │   └─ "if" Expr Stmt ("else" Stmt)?
-     ├─ ForStmt
-     │   └─ "for" IDENTIFIER? "in" Expr Stmt
-     ├─ WhileStmt
-     │   └─ "while" Expr Stmt
-     ├─ BlockStmt
-     │   └─ "{" Stmt* "}"
-     └─ ExprStmt
-         └─ Expr
-             └─ Assignment
-                 └─ LogicalOr ("=" | "+=" | "-=" | "*=" | "/=" LogicalOr)?
+alias, and, as, await, break, const, copy, dep, else, enum, Err, ext,
+fn, for, go, grid, has, hold, if, impl, in, is, let, link, route,
+nav, move, mut, nil, node, None, null, Ok, on, or, outlet, pac,
+pub, reply, routes, shared, Some, spec, spawn, static, super, tag,
+task, to, true, false, type, union, use, var, view, when
+```
+
+### Appendix C: Expression Types (55 variants from ast.rs)
+
+```
+Int, Uint, I8, U8, I64, U64, Byte, Float, Double, Bool, Char, Str,
+CStr, Ident, GenName, Ref, View, Mut, Move, Take, Hold, Unary, Bina,
+Dot, Range, Array, Pair, Block, Object, Call, Node, Index, Lambda,
+Closure, FStr, Grid, Cover, Uncover, OptionPattern, ResultPattern,
+OptionUncover, ResultUncover, StructPattern, If, Nil, Null,
+NullCoalesce, ErrorPropagate, Cast, To, Some, None, Ok, Err,
+BoxExpr, ArcExpr, NavCall, AsyncBlock, Await, Go, Comptime
 ```
 
 ---
 
-**Document Version**: 0.1-draft
+**Document Version**: 0.2-draft
 **Status**: Work in Progress
 **Feedback**: Please report issues and suggest improvements via GitHub issues or pull requests.
