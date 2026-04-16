@@ -9,14 +9,18 @@ Implement a reverse transpiler (r2a) that converts Rust source code into AutoLan
 - a2r (Auto-to-Rust) transpiler is mature with 124 test cases across 17 groups
 - a2r test cases provide excellent round-trip validation material
 - The transpiler module (`crates/auto-lang/src/trans/`) already has a2c and a2r; r2a will join as a sibling
+- **Phase 1 merged** (2025-04-15): 41 tests — core fn, let/var/const, if/for/while, basic types, print, arithmetic, struct/enum
+- **Phase 2 merged** (2025-04-16): 57 tests total — impl/trait/spec/ext, &self/&mut self, union, raw pointer, dyn Trait, method calls
+- Core architecture: direct syn→.at text conversion (no intermediate AutoLang AST)
 
 ## Design Decisions
 
-1. **Rust Parser**: Use `syn` crate — the de facto standard Rust AST library in the ecosystem
-2. **Output**: Reuse existing `Code`/`Stmt`/`Expr` AST from `ast.rs` (same as a2r input)
+1. **Rust Parser**: `syn` crate v2 (NOT syn 1.x — API differs significantly)
+2. **Output**: Direct syn→.at text conversion via `R2aTrans` struct with `String` output (no intermediate AutoLang AST)
 3. **Location**: `crates/auto-lang/src/trans/r2a.rs` alongside a2r and a2c
 4. **Rust Edition**: 2021 first, 2024 later
 5. **Strategy**: Best-effort — features AutoLang can't express get comment markers, not errors
+6. **No `quote` dependency**: Token streams handled via `.to_string()` on syn types, no need for `proc_macro2` direct access
 
 ## Architecture
 
@@ -27,10 +31,10 @@ syn::parse_file() → syn::File (full Rust AST)
     ↓
 R2aTrans (tree-walking converter)
     ↓
-Code (AutoLang AST, reuses ast.rs)
-    ↓
-Serialize → .at text
+String (direct .at text output)
 ```
+
+Key implementation detail: syn's `Display` impls on AST types produce Rust debug format, not useful for us. We walk the syn AST and build `.at` text directly.
 
 ## Type Mapping (Rust → AutoLang)
 
@@ -56,8 +60,12 @@ Serialize → .at text
 | `&[T]` | `[]T` | Slice |
 | `*mut T` / `*const T` | `*T` | Raw pointer |
 | `Box<T>` | `T` | Ownership implicit |
+| `Arc<T>` / `Rc<T>` | `T` | Ownership implicit |
 | `HashMap<K,V>` | `Map<K,V>` | |
-| `&T` / `&mut T` | `T` | Value semantics default |
+| `&T` | `T.view` | Reference → .view |
+| `&mut T` | `T` | Mutable ref dropped |
+| `dyn Trait` | `/* dyn Trait */` | Comment degradation |
+| `impl Trait` | `/* impl Trait */` | Comment degradation |
 
 Unknown generic types (e.g. `MyType<T>`) are preserved as-is.
 
@@ -107,36 +115,48 @@ loop { ... }             → for ever { ... }
 match x { ... }          → is x { ... }
 ```
 
-### Struct / Enum
+### Struct / Enum / Union
 
 ```rust
 // Rust
 struct Point { x: i32, y: i32 }
 enum Color { Red, Green, Blue }
+union Value { int_val: i32, float_val: f32 }
 
 // AutoLang
 type Point { x int, y int }
 enum Color { Red, Green, Blue }
+union Value { int_val int, float_val f32 }
 ```
 
-### Trait / Impl
+### Trait / Impl / Self
 
 ```rust
 // Rust
 trait Flyer { fn fly(&self); }
 impl Flyer for Bird { fn fly(&self) { ... } }
-impl Bird { fn new(name: &str) -> Bird { ... } }
+impl Bird {
+    fn new(name: &str) -> Bird { ... }
+    fn speak(&self) { ... }
+    fn evolve(&mut self) { ... }
+}
 
 // AutoLang
 spec Flyer { fn fly() }
 ext Bird for Flyer { fn fly() { ... } }
-ext Bird { fn new(name cstr) Bird { ... } }
+ext Bird {
+    static fn new(name cstr) Bird { ... }
+    fn speak() { ... }
+    mut fn evolve() { ... }
+}
 ```
 
 - `trait` → `spec`, `&self` param dropped
 - `impl Trait for Type` → `ext Type for Trait`
 - `impl Type` → `ext Type`
-- `static` methods → `static fn`
+- No self parameter → `static fn`
+- `&self` → plain `fn` (instance method)
+- `&mut self` → `mut fn` (mutating method)
 
 ## Expression Mapping
 
@@ -168,6 +188,9 @@ ext Bird { fn new(name cstr) Bird { ... } }
 | `s.trim()` | `s.trim()` |
 | `s.split(",")` | `s.split(",")` |
 | `v.sort()` | `v.sort()` |
+| `x.to_string()` | `x.to_str()` |
+| `x.clone()` | `x` (identity) |
+| `x.into()` | `x` (identity) |
 
 ### Macro Conversions
 
@@ -175,19 +198,25 @@ ext Bird { fn new(name cstr) Bird { ... } }
 println!("hello")                    → print("hello")
 println!("x = {}", x)                → print(f"x = $x")
 println!("{} + {}", a, b)            → print(f"$a + $b")
+println!("{}", expr)                  → print(expr)  // simple case
 format!("hello {}", name)            → f"hello $name"
 vec![1, 2, 3]                       → [1, 2, 3]
 ```
+
+Note: syn 2 parses macros in statement position as `Stmt::Macro`, not `Stmt::Expr(Expr::Macro)`. Both paths are handled.
 
 ### Ownership Simplifications
 
 ```rust
 String::from("x")                    → "x"
-x.clone()                            → x
-x.into()                             → x
 Box::new(val)                        → val
 Arc::new(val)                        → val
+Rc::new(val)                         → val
+x.clone()                            → x
+x.into()                             → x
 ```
+
+Constructor detection checks full path (e.g. `String::from`, `Box::new`), not just the last segment.
 
 ## Features That Cannot Be Expressed (Degradation)
 
@@ -195,11 +224,19 @@ Arc::new(val)                        → val
 |--------------|----------|
 | Procedural macros `#[derive(...)]` | Comment: `// #[derive] skipped` |
 | Attribute/function macros | Preserved in comments |
-| `unsafe` blocks | `unsafe` keyword dropped, contents converted |
+| `unsafe` blocks | `/* unsupported expr */` for block contents |
 | Lifetime annotations `'a` | Dropped |
 | `const fn` | Downgraded to `fn` |
 | Closures `\|x\| x + 1` | Comment marker (Phase 4) |
 | async/await | Comment marker until Phase 4 |
+| `dyn Trait` types | `/* dyn TraitName */` comment |
+| `impl Trait` types | `/* impl TraitName */` comment |
+
+## Known Limitations
+
+1. **Type prefix lost on static calls**: `Counter::new()` → `new()` (type prefix dropped)
+2. **Token stream spacing**: Method calls inside macros may have extra spaces (e.g. `c . get_count ()`) due to syn token stream representation
+3. **Struct literal format**: `Point { x, y }` → `Point(x: x, y: y)` (constructor syntax instead of struct literal)
 
 ## Module System
 
@@ -224,62 +261,64 @@ use utils: helper
 
 ## Test Strategy
 
+### File-Based Tests
+
+- Directory: `crates/auto-lang/test/r2a/`
+- Each case: `input.rs` (Rust) + `input.expected.at` (AutoLang)
+- Runner: `test_r2a_file("group/case_name")` — reads .rs, transpiles, compares with .expected.at, writes .wrong.at on mismatch
+
 ### Round-Trip Validation
 
 Leverage existing a2r test cases:
 1. Take `.expected.rs` as r2a input
 2. r2a converts to `.at`
-3. a2r converts back to Rust
-4. Compare with original `.expected.rs`
+3. Verify output is non-empty and contains no `/* unknown */` markers
+4. Does NOT compare with original (structural correctness only)
 
-### Independent r2a Test Suite
+### Test Counts
 
-- Directory: `crates/auto-lang/test/r2a/`
-- Each case: `input.rs` (Rust) + `input.expected.at` (AutoLang)
-- Naming mirrors a2r: `01_basics/001_hello`, etc.
-
-### Test Infrastructure
-
-```rust
-// crates/auto-lang/src/tests/r2a_tests.rs
-fn test_r2a("group/case_name") {
-    // Read input.rs → transpile_r2a() → compare with .expected.at
-}
-```
+| Category | Phase 1 | Phase 2 | Total |
+|----------|---------|---------|-------|
+| Unit tests | 22 | 3 | 25 |
+| File-based tests | 7 | 6 | 13 |
+| Round-trip tests | 12 | 7 | 19 |
+| **Total** | **41** | **16** | **57** |
 
 ## Public API
 
 ```rust
 /// Main entry: Rust source → AutoLang source
 pub fn transpile_r2a(name: &str, rust_code: &str) -> AutoResult<String>
-
-/// Project-level: Rust project dir → AutoLang project
-pub fn transpile_r2a_project(entry_file: &str) -> AutoResult<MultiSink>
 ```
 
-Consistent with a2r API style for easy integration.
+Consistent with a2r API style. Project-level API deferred to Phase 4.
 
 ## Implementation Phases
 
-| Phase | Content | Test Coverage |
-|-------|---------|---------------|
-| Phase 1 | Core: fn, let/var/const, if/for/while, basic types, print, arithmetic | Groups 01-03 (~25 cases) |
-| Phase 2 | struct/enum/union, impl/trait/spec/ext, method calls, self | Groups 02, 11-13 (~30 cases) |
-| Phase 3 | Generics, Option/Result/may, pattern matching, String methods | Groups 06, 08-09 (~40 cases) |
-| Phase 4 | async, modules, ownership annotations, unsafe, HashMap, lifetimes | Groups 07, 10, 14-16 (~30 cases) |
+| Phase | Content | Status | Tests |
+|-------|---------|--------|-------|
+| Phase 1 | Core: fn, let/var/const, if/for/while, basic types, print, arithmetic, struct/enum | ✅ Merged | 41 |
+| Phase 2 | impl/trait/spec/ext, &self/&mut self, union, raw pointer, dyn Trait, method calls | ✅ Merged | +16 = 57 |
+| Phase 3 | Generics, Option/Result/may, pattern matching, String methods | ⏳ Not started | Groups 06, 08-09 |
+| Phase 4 | async, modules, ownership annotations, unsafe, HashMap, lifetimes | ⏳ Not started | Groups 07, 10, 14-16 |
 
 ## Key Files
 
-- `crates/auto-lang/src/trans/r2a.rs` — Main transpiler (~4000 lines target)
-- `crates/auto-lang/src/trans/mod.rs` — Register r2a module
-- `crates/auto-lang/src/tests/r2a_tests.rs` — Test runner
+- `crates/auto-lang/src/trans/r2a.rs` — Main transpiler (~2070 lines)
+- `crates/auto-lang/src/trans.rs` — Module registration (`pub mod r2a`)
 - `crates/auto-lang/test/r2a/` — Test cases directory
-- `crates/auto-lang/Cargo.toml` — Add `syn` dependency
+  - `01_basics/` — Hello, func
+  - `02_types/` — Struct, enum
+  - `03_control/` — If, for, match, while, loop
+  - `04_methods/` — mut self methods
+  - `05_traits/` — impl for, struct methods, dyn trait, union, raw pointer
+- `crates/auto-lang/Cargo.toml` — `syn` dependency
 
 ## Dependencies
 
 ```toml
 [dependencies]
 syn = { version = "2", features = ["full", "parsing", "extra-traits"] }
-quote = "1"  # optional, for reconstructing Rust in comments
 ```
+
+No `quote` or `proc_macro2` dependency needed — token streams handled via `.to_string()`.
