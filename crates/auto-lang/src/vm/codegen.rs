@@ -471,6 +471,11 @@ impl Codegen {
                 for param in &fn_decl.params {
                     self.add_var(&param.name);
 
+                    // Register parameter type for method resolution (e.g., s.upper())
+                    if !matches!(param.ty, Type::Unknown) {
+                        self.var_types.insert(param.name.to_string(), param.ty.clone());
+                    }
+
                     // Check if this is a 'self' parameter in a method
                     if param.name.to_string() == "self" {
                         // Extract type name from method name (e.g., "Counter.get" → "Counter")
@@ -5503,6 +5508,14 @@ impl Codegen {
         if let Some(ty) = self.var_types.get(var_name) {
             // Return the base type name (without generic parameters for now)
             match ty {
+                Type::Int | Type::I64 => Some("int".to_string()),
+                Type::Uint | Type::U64 | Type::Byte | Type::USize => Some("uint".to_string()),
+                Type::Float | Type::Double => Some("float".to_string()),
+                Type::Bool => Some("bool".to_string()),
+                Type::Char => Some("char".to_string()),
+                Type::Str(_) | Type::String | Type::StrSlice => Some("str".to_string()),
+                Type::CStr => Some("str".to_string()),
+                Type::Array(_) => Some("Array".to_string()),
                 Type::List(_) => Some("List".to_string()),
                 Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
                 Type::User(type_decl) => Some(type_decl.name.to_string()),
@@ -5513,8 +5526,8 @@ impl Codegen {
             // Fallback: heuristic based on variable naming
             match var_name {
                 "list" | "arr" | "array" | "vec" => Some("List".to_string()),
-                "str" | "string" | "s" => Some("String".to_string()),
-                "map" | "dict" | "hashmap" | "m" => Some("HashMap".to_string()), // Plan 086: Added "m" for common map variable name
+                "str" | "string" => Some("str".to_string()),
+                "map" | "dict" | "hashmap" => Some("HashMap".to_string()),
                 "set" => Some("HashSet".to_string()),
                 "opt" | "option" => Some("Option".to_string()),
                 "file" => Some("File".to_string()),
@@ -6143,7 +6156,7 @@ mod tests {
     // Plan 121: Task/Msg statement compilation tests
     #[test]
     fn test_codegen_task_def_basic() {
-        use crate::ast::{TaskDef, TaskOnBlock};
+        use crate::ast::TaskDef;
         use crate::token::Pos;
 
         let mut codegen = Codegen::new();
