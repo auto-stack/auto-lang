@@ -572,17 +572,23 @@ impl RustGenerator {
             AuraPropValue::Expr(expr) => {
                 let value_str = self.expr_to_rust(expr);
                 match key {
-                    "class" | "className" => format!("{}.class(\"{}\")", builder, value_str),
-                    "style" => format!("{}.style(\"{}\")", builder, value_str),
+                    "class" | "className" => {
+                        // Strip surrounding quotes from the expression if present
+                        let class_str = value_str.trim_matches('"');
+                        tailwind_to_methods(builder, class_str)
+                    }
+                    "style" => {
+                        // Strip surrounding quotes from the expression if present
+                        let style_str = value_str.trim_matches('"');
+                        tailwind_to_methods(builder, style_str)
+                    }
                     "padding" => format!("{}.padding({})", builder, value_str),
                     "spacing" => format!("{}.spacing({})", builder, value_str),
                     _ => builder.to_string(),
                 }
             }
             AuraPropValue::StyleBinding(bindings) => {
-                // For Rust, we'll generate conditional class application
-                // This is a simplified approach - a real implementation would need to
-                // integrate with the view builder pattern
+                // For Rust, generate conditional class application
                 let class_conditions: Vec<String> = bindings.iter()
                     .map(|b| {
                         let cond = self.expr_to_rust(&b.condition);
@@ -592,7 +598,6 @@ impl RustGenerator {
                 if class_conditions.is_empty() {
                     builder.to_string()
                 } else {
-                    // Generate a combined conditional class string
                     format!("{}.class({})", builder, class_conditions.join(" + \" \" + "))
                 }
             }
@@ -809,6 +814,150 @@ impl Default for RustGenerator {
     }
 }
 
+/// Convert a Tailwind class string (e.g. "gap-4 p-4 bg-white items-center")
+/// into chained method calls on a builder expression (e.g. ".gap(4).p(4).bg(\"white\").items_center()").
+///
+/// Classes that are not recognized are silently skipped so the generated code
+/// always compiles.
+fn tailwind_to_methods(builder: &str, class_str: &str) -> String {
+    let mut result = builder.to_string();
+
+    for class in class_str.split_whitespace() {
+        result.push_str(&tailwind_single_to_method(class));
+    }
+
+    result
+}
+
+/// Convert a single Tailwind class token to a builder method call string.
+fn tailwind_single_to_method(class: &str) -> String {
+    // --- Spacing ---
+    if let Some(rest) = class.strip_prefix("p-") {
+        if rest == "0" { return ".p(0)".to_string(); }
+        if let Ok(n) = rest.parse::<u16>() { return format!(".p({})", n); }
+    }
+    if let Some(rest) = class.strip_prefix("px-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".px({})", n); }
+    }
+    if let Some(rest) = class.strip_prefix("py-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".py({})", n); }
+    }
+    if let Some(rest) = class.strip_prefix("m-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".m({})", n); }
+    }
+    if let Some(rest) = class.strip_prefix("mx-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".mx({})", n); }
+    }
+    if let Some(rest) = class.strip_prefix("my-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".my({})", n); }
+    }
+    if let Some(rest) = class.strip_prefix("gap-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".gap({})", n); }
+    }
+
+    // --- Colors ---
+    if let Some(color) = class.strip_prefix("bg-") {
+        return format!(".bg(\"{}\")", color);
+    }
+    // text-{color} must come after text size/alignment checks below,
+    // but we handle it here and let the ordering in match below
+    // override for known text- keywords.
+
+    // --- Sizing ---
+    if class == "w-full" { return ".w_full()".to_string(); }
+    if let Some(rest) = class.strip_prefix("w-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".w({})", n); }
+    }
+    if class == "h-full" { return ".h_full()".to_string(); }
+    if let Some(rest) = class.strip_prefix("h-") {
+        if let Ok(n) = rest.parse::<u16>() { return format!(".h({})", n); }
+    }
+
+    // --- Layout ---
+    match class {
+        "flex" => return ".flex()".to_string(),
+        "flex-1" => return ".flex1()".to_string(),
+        "flex-row" => return ".flex_row()".to_string(),
+        "flex-col" => return ".flex_col()".to_string(),
+        "items-center" => return ".items_center()".to_string(),
+        "items-start" => return ".items_start()".to_string(),
+        "items-end" => return ".items_end()".to_string(),
+        "justify-center" => return ".justify_center()".to_string(),
+        "justify-between" => return ".justify_between()".to_string(),
+        "justify-start" => return String::new(), // no direct method, skip
+        "justify-end" => return String::new(),    // no direct method, skip
+        _ => {}
+    }
+
+    // --- Border radius ---
+    match class {
+        "rounded" => return ".rounded()".to_string(),
+        "rounded-sm" => return ".rounded_sm()".to_string(),
+        "rounded-md" => return ".rounded_md()".to_string(),
+        "rounded-lg" => return ".rounded_lg()".to_string(),
+        _ => {}
+    }
+
+    // --- Border ---
+    if class == "border" { return ".border()".to_string(); }
+
+    // --- Typography (text size) ---
+    match class {
+        "text-xs" | "text-sm" | "text-base" | "text-lg" | "text-xl" | "text-2xl" | "text-3xl" => {
+            // These are font-size utilities; for now emit as a comment-style pass-through.
+            // They have no direct builder method on layout builders.
+            return String::new();
+        }
+        _ => {}
+    }
+
+    // --- Font weight ---
+    match class {
+        "font-bold" => return ".font_bold()".to_string(),
+        "font-medium" => return ".font_medium()".to_string(),
+        "font-normal" => return String::new(),
+        _ => {}
+    }
+
+    // --- Text alignment ---
+    match class {
+        "text-center" | "text-left" | "text-right" => return String::new(),
+        _ => {}
+    }
+
+    // --- Text color (must come after text-size/align) ---
+    if let Some(color) = class.strip_prefix("text-") {
+        return format!(".text_color(\"{}\")", color);
+    }
+
+    // --- Effects ---
+    match class {
+        "shadow" | "shadow-sm" | "shadow-md" | "shadow-lg" | "shadow-xl" | "shadow-2xl" | "shadow-none" => {
+            return String::new(); // no direct builder method yet
+        }
+        _ => {}
+    }
+
+    // --- Opacity ---
+    if class.starts_with("opacity-") { return String::new(); }
+
+    // --- Position ---
+    if class == "relative" || class == "absolute" { return String::new(); }
+
+    // --- Z-index ---
+    if class.starts_with("z-") { return String::new(); }
+
+    // --- Overflow ---
+    if class.starts_with("overflow") { return String::new(); }
+
+    // --- Grid ---
+    if class == "grid" || class.starts_with("grid-") { return String::new(); }
+    if class.starts_with("col-") || class.starts_with("row-") { return String::new(); }
+
+    // Unknown class -- skip silently
+    String::new()
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -898,5 +1047,113 @@ mod tests {
         assert_eq!(gen.tag_to_view_fn("col"), "col");
         assert_eq!(gen.tag_to_view_fn("button"), "button");
         assert_eq!(gen.tag_to_view_fn("text"), "text");
+    }
+
+    // ========== Plan 180 Phase 7: tailwind_to_methods tests ==========
+
+    #[test]
+    fn test_tailwind_single_padding() {
+        assert_eq!(tailwind_single_to_method("p-4"), ".p(4)");
+    }
+
+    #[test]
+    fn test_tailwind_single_padding_xy() {
+        assert_eq!(tailwind_single_to_method("px-4"), ".px(4)");
+        assert_eq!(tailwind_single_to_method("py-2"), ".py(2)");
+    }
+
+    #[test]
+    fn test_tailwind_single_margin() {
+        assert_eq!(tailwind_single_to_method("m-4"), ".m(4)");
+        assert_eq!(tailwind_single_to_method("mx-2"), ".mx(2)");
+        assert_eq!(tailwind_single_to_method("my-2"), ".my(2)");
+    }
+
+    #[test]
+    fn test_tailwind_single_gap() {
+        assert_eq!(tailwind_single_to_method("gap-4"), ".gap(4)");
+    }
+
+    #[test]
+    fn test_tailwind_single_bg() {
+        assert_eq!(tailwind_single_to_method("bg-white"), ".bg(\"white\")");
+        assert_eq!(tailwind_single_to_method("bg-blue-500"), ".bg(\"blue-500\")");
+    }
+
+    #[test]
+    fn test_tailwind_single_width() {
+        assert_eq!(tailwind_single_to_method("w-full"), ".w_full()");
+        assert_eq!(tailwind_single_to_method("w-10"), ".w(10)");
+    }
+
+    #[test]
+    fn test_tailwind_single_height() {
+        assert_eq!(tailwind_single_to_method("h-full"), ".h_full()");
+        assert_eq!(tailwind_single_to_method("h-12"), ".h(12)");
+    }
+
+    #[test]
+    fn test_tailwind_single_layout() {
+        assert_eq!(tailwind_single_to_method("flex"), ".flex()");
+        assert_eq!(tailwind_single_to_method("flex-1"), ".flex1()");
+        assert_eq!(tailwind_single_to_method("flex-row"), ".flex_row()");
+        assert_eq!(tailwind_single_to_method("flex-col"), ".flex_col()");
+        assert_eq!(tailwind_single_to_method("items-center"), ".items_center()");
+        assert_eq!(tailwind_single_to_method("justify-center"), ".justify_center()");
+        assert_eq!(tailwind_single_to_method("justify-between"), ".justify_between()");
+    }
+
+    #[test]
+    fn test_tailwind_single_border_radius() {
+        assert_eq!(tailwind_single_to_method("rounded"), ".rounded()");
+        assert_eq!(tailwind_single_to_method("rounded-sm"), ".rounded_sm()");
+        assert_eq!(tailwind_single_to_method("rounded-md"), ".rounded_md()");
+        assert_eq!(tailwind_single_to_method("rounded-lg"), ".rounded_lg()");
+    }
+
+    #[test]
+    fn test_tailwind_single_border() {
+        assert_eq!(tailwind_single_to_method("border"), ".border()");
+    }
+
+    #[test]
+    fn test_tailwind_single_font_weight() {
+        assert_eq!(tailwind_single_to_method("font-bold"), ".font_bold()");
+        assert_eq!(tailwind_single_to_method("font-medium"), ".font_medium()");
+    }
+
+    #[test]
+    fn test_tailwind_single_text_color() {
+        assert_eq!(tailwind_single_to_method("text-slate-500"), ".text_color(\"slate-500\")");
+    }
+
+    #[test]
+    fn test_tailwind_to_methods_chain() {
+        let result = tailwind_to_methods("View::col()", "gap-4 p-4 bg-white items-center");
+        assert_eq!(result, "View::col().gap(4).p(4).bg(\"white\").items_center()");
+    }
+
+    #[test]
+    fn test_tailwind_to_methods_empty() {
+        let result = tailwind_to_methods("View::col()", "");
+        assert_eq!(result, "View::col()");
+    }
+
+    #[test]
+    fn test_tailwind_to_methods_unknown_classes_skipped() {
+        let result = tailwind_to_methods("View::col()", "p-4 unknown-class gap-2");
+        assert_eq!(result, "View::col().p(4).gap(2)");
+    }
+
+    #[test]
+    fn test_tailwind_to_methods_complex() {
+        let result = tailwind_to_methods(
+            "View::row()",
+            "w-full h-full justify-center items-center bg-white"
+        );
+        assert_eq!(
+            result,
+            "View::row().w_full().h_full().justify_center().items_center().bg(\"white\")"
+        );
     }
 }

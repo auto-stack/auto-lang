@@ -5,7 +5,7 @@
 
 use std::fmt::Debug;
 use std::sync::Arc;
-use super::style::Style;
+use super::style::{Style, StyleClass, SizeValue, Color};
 
 /// Callback for select dropdown changes
 ///
@@ -478,6 +478,160 @@ impl<M: Clone + Debug> ViewBuilder<M> {
     /// Set style using Style object
     pub fn with_style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    // ========== Plan 180 Phase 7: Typed style methods ==========
+
+    /// Set uniform padding (p-{n})
+    pub fn p(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::Padding(SizeValue::Fixed(n)))
+    }
+
+    /// Set horizontal padding (px-{n})
+    pub fn px(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::PaddingX(SizeValue::Fixed(n)))
+    }
+
+    /// Set vertical padding (py-{n})
+    pub fn py(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::PaddingY(SizeValue::Fixed(n)))
+    }
+
+    /// Set uniform margin (m-{n})
+    pub fn m(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::Margin(SizeValue::Fixed(n)))
+    }
+
+    /// Set horizontal margin (mx-{n})
+    pub fn mx(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::MarginX(SizeValue::Fixed(n)))
+    }
+
+    /// Set vertical margin (my-{n})
+    pub fn my(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::MarginY(SizeValue::Fixed(n)))
+    }
+
+    /// Set gap (gap-{n})
+    pub fn gap(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::Gap(SizeValue::Fixed(n)))
+    }
+
+    /// Set fixed width (w-{n})
+    pub fn w(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::Width(SizeValue::Fixed(n)))
+    }
+
+    /// Set full width (w-full)
+    pub fn w_full(self) -> Self {
+        self.add_style_class(StyleClass::Width(SizeValue::Full))
+    }
+
+    /// Set fixed height (h-{n})
+    pub fn h(self, n: u16) -> Self {
+        self.add_style_class(StyleClass::Height(SizeValue::Fixed(n)))
+    }
+
+    /// Set full height (h-full)
+    pub fn h_full(self) -> Self {
+        self.add_style_class(StyleClass::Height(SizeValue::Full))
+    }
+
+    /// Set background color (bg-{color})
+    pub fn bg(self, color: Color) -> Self {
+        self.add_style_class(StyleClass::BackgroundColor(color))
+    }
+
+    /// Set text color (text-{color})
+    pub fn text_color(self, color: Color) -> Self {
+        self.add_style_class(StyleClass::TextColor(color))
+    }
+
+    /// Set border radius (rounded)
+    pub fn rounded(self) -> Self {
+        self.add_style_class(StyleClass::Rounded)
+    }
+
+    /// Set border radius small (rounded-sm)
+    pub fn rounded_sm(self) -> Self {
+        self.add_style_class(StyleClass::RoundedSm)
+    }
+
+    /// Set border radius medium (rounded-md)
+    pub fn rounded_md(self) -> Self {
+        self.add_style_class(StyleClass::RoundedMd)
+    }
+
+    /// Set border radius large (rounded-lg)
+    pub fn rounded_lg(self) -> Self {
+        self.add_style_class(StyleClass::RoundedLg)
+    }
+
+    /// Enable flex layout
+    pub fn flex(self) -> Self {
+        self.add_style_class(StyleClass::Flex)
+    }
+
+    /// Enable flex-1 (grow to fill space)
+    pub fn flex1(self) -> Self {
+        self.add_style_class(StyleClass::Flex1)
+    }
+
+    /// Set flex direction to row
+    pub fn flex_row(self) -> Self {
+        self.add_style_class(StyleClass::FlexRow)
+    }
+
+    /// Set flex direction to column
+    pub fn flex_col(self) -> Self {
+        self.add_style_class(StyleClass::FlexCol)
+    }
+
+    /// Center-align items (items-center)
+    pub fn items_center(self) -> Self {
+        self.add_style_class(StyleClass::ItemsCenter)
+    }
+
+    /// Start-align items (items-start)
+    pub fn items_start(self) -> Self {
+        self.add_style_class(StyleClass::ItemsStart)
+    }
+
+    /// End-align items (items-end)
+    pub fn items_end(self) -> Self {
+        self.add_style_class(StyleClass::ItemsEnd)
+    }
+
+    /// Center-justify content (justify-center)
+    pub fn justify_center(self) -> Self {
+        self.add_style_class(StyleClass::JustifyCenter)
+    }
+
+    /// Space-between justify content (justify-between)
+    pub fn justify_between(self) -> Self {
+        self.add_style_class(StyleClass::JustifyBetween)
+    }
+
+    /// Add border
+    pub fn border(self) -> Self {
+        self.add_style_class(StyleClass::Border)
+    }
+
+    /// Set font bold
+    pub fn font_bold(self) -> Self {
+        self.add_style_class(StyleClass::FontBold)
+    }
+
+    /// Set font medium weight
+    pub fn font_medium(self) -> Self {
+        self.add_style_class(StyleClass::FontMedium)
+    }
+
+    /// Helper to add a style class to the accumulated style
+    fn add_style_class(mut self, class: StyleClass) -> Self {
+        let style = self.style.take().unwrap_or_default();
+        self.style = Some(style.add(class));
         self
     }
 
@@ -1857,6 +2011,161 @@ mod tests {
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)));
             }
             _ => panic!("Expected View::Container"),
+        }
+    }
+
+    // ========== Plan 180 Phase 7: Typed style method tests ==========
+
+    #[test]
+    fn test_typed_padding() {
+        let view: TestView = View::col().p(4).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Padding(SizeValue::Fixed(4)))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_padding_xy() {
+        let view: TestView = View::col().px(4).py(2).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::PaddingX(SizeValue::Fixed(4)))));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::PaddingY(SizeValue::Fixed(2)))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_margin() {
+        let view: TestView = View::col().m(4).mx(2).my(1).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Margin(_))));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::MarginX(_))));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::MarginY(_))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_gap() {
+        let view: TestView = View::col().gap(4).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Gap(SizeValue::Fixed(4)))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_sizing() {
+        let view: TestView = View::col().w_full().h_full().build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Full))));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Height(SizeValue::Full))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_bg() {
+        let view: TestView = View::col().bg(Color::White).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(Color::White))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_text_color() {
+        let view: TestView = View::col().text_color(Color::Red(500)).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::TextColor(Color::Red(500)))));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_rounded() {
+        let view: TestView = View::col().rounded().build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Rounded)));
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_flex_layout() {
+        let view: TestView = View::row().flex().flex_row().items_center().justify_between().build();
+        match view {
+            View::Row { style, .. } => {
+                let classes = &style.unwrap().classes;
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::Flex)));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::FlexRow)));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::ItemsCenter)));
+                assert!(classes.iter().any(|c| matches!(c, StyleClass::JustifyBetween)));
+            }
+            _ => panic!("Expected View::Row"),
+        }
+    }
+
+    #[test]
+    fn test_typed_method_chain() {
+        // Test that multiple typed methods chain correctly
+        let view: TestView = View::col()
+            .p(4)
+            .gap(2)
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_lg()
+            .bg(Color::White)
+            .border()
+            .child(View::text("Hello"))
+            .build();
+        match view {
+            View::Column { style, children, .. } => {
+                let classes = &style.unwrap().classes;
+                assert_eq!(classes.len(), 8);
+                assert_eq!(children.len(), 1);
+            }
+            _ => panic!("Expected View::Column"),
+        }
+    }
+
+    #[test]
+    fn test_typed_methods_accumulate() {
+        // Test that typed methods accumulate rather than replace
+        let view: TestView = View::col().p(2).p(4).build();
+        match view {
+            View::Column { style, .. } => {
+                let classes = &style.unwrap().classes;
+                // Both p(2) and p(4) should be present
+                assert_eq!(classes.len(), 2);
+            }
+            _ => panic!("Expected View::Column"),
         }
     }
 }
