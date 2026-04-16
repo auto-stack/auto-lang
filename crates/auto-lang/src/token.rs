@@ -89,7 +89,6 @@ pub enum TokenKind {
     If,
     Else,
     For,
-    When,
     Break,
     Return, // ADDED: return keyword for early returns
     Is,
@@ -251,7 +250,6 @@ impl fmt::Display for Token {
             TokenKind::EOF => write!(f, "<eof>"),
             TokenKind::Char => write!(f, "<'{}'>", self.text),
             TokenKind::Is => write!(f, "<is>"),
-            TokenKind::When => write!(f, "<when>"),
             TokenKind::Return => write!(f, "<return>"),
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
@@ -341,7 +339,6 @@ impl Token {
             "if" => Some(TokenKind::If),
             "else" => Some(TokenKind::Else),
             "for" => Some(TokenKind::For),
-            "when" => Some(TokenKind::When),
             "is" => Some(TokenKind::Is),
             "var" => Some(TokenKind::Var),
             "in" => Some(TokenKind::In),

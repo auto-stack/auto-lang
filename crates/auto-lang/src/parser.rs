@@ -10681,9 +10681,9 @@ exe hello {
         20 -> print("twenty")
         else -> print("ehh")
         }"#;
-        let when = Is::parse(code).unwrap();
+        let result = Is::parse(code).unwrap();
         assert_eq!(
-            when.to_string(),
+            result.to_string(),
             format!(
                 "{}{}{}{}",
                 r#"(is (name x) "#,
@@ -10703,9 +10703,9 @@ exe hello {
                 -> State3 : handler3
             }
         }"#;
-        let when = OnEvents::parse(code).unwrap();
+        let result = OnEvents::parse(code).unwrap();
         assert_eq!(
-            when.to_string(),
+            result.to_string(),
             format!(
                 "{}{}{}{}{}{}",
                 r#"(on "#,

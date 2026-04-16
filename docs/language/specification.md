@@ -133,10 +133,10 @@ Hyphens are allowed within identifiers (no surrounding spaces): `preview-card` i
 
 ### Keywords
 
-Auto reserves **56 keywords** (from `token.rs`), organized by category:
+Auto reserves **55 keywords** (from `token.rs`), organized by category:
 
 **Declarations**: `fn`, `let`, `mut`, `const`, `var`, `type`, `union`, `enum`, `tag`, `alias`, `spec`, `ext`, `static`, `shared`, `impl`, `node`
-**Control Flow**: `if`, `else`, `for`, `when`, `break`, `is`, `in`, `on`, `as`, `to`
+**Control Flow**: `if`, `else`, `for`, `break`, `is`, `in`, `on`, `as`, `to`
 **Ownership**: `view`, `mut`, `move`, `copy`, `take`, `hold`
 **Literals**: `true`, `false`, `nil`, `null`
 **Option/Result**: `None`, `Some`, `Ok`, `Err`
@@ -1193,16 +1193,6 @@ is maybe_value {
 is result {
     Ok(value) -> print(f"success: ${value}"),
     Err(msg) -> print(f"error: ${msg}")
-}
-```
-
-### When Blocks
-
-```auto
-when event {
-    Click(x, y) -> handleClick(x, y),
-    KeyPress(key) -> handleKey(key),
-    else -> handleOther()
 }
 ```
 
@@ -2423,14 +2413,14 @@ Auto provides three memory management strategies:
 | 10 | `..`, `..=` | Left |
 | 11 (lowest) | `=`, `+=`, `-=`, `*=`, `/=`, `%=` | Right |
 
-### Appendix B: Reserved Keywords (56 keywords)
+### Appendix B: Reserved Keywords (55 keywords)
 
 ```
 alias, and, as, await, break, const, copy, dep, else, enum, Err, ext,
 fn, for, go, grid, has, hold, if, impl, in, is, let, link, route,
 nav, move, mut, nil, node, None, null, Ok, on, or, outlet, pac,
 pub, reply, routes, shared, Some, spec, spawn, static, super, tag,
-task, to, true, false, type, union, use, var, view, when
+task, to, true, false, type, union, use, var, view
 ```
 
 ### Appendix C: Expression Types (55 variants from ast.rs)

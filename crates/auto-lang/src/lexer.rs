@@ -1171,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    fn test_when() {
+    fn test_is() {
         let code = r#"is x {
             5 -> print("x is 5")
             10 -> print("x is 10")
