@@ -1,0 +1,7 @@
+fn my_upper(s str) str {
+    s.upper()
+}
+
+fn main() {
+    print(my_upper("hello"))
+}

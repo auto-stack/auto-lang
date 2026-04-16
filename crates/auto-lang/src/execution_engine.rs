@@ -64,6 +64,15 @@ pub fn execute_with_engine(engine: ExecutionEngine, code: &str) -> AutoResult<St
     }
 }
 
+/// Plan 177: Execute code with stdout capture for testing
+pub fn execute_with_engine_capture(engine: ExecutionEngine, code: &str) -> AutoResult<(String, String)> {
+    match engine {
+        ExecutionEngine::AutoVM => crate::run_autovm_capture(code),
+        #[allow(deprecated)]
+        ExecutionEngine::Evaluator => crate::run_autovm_capture(code),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

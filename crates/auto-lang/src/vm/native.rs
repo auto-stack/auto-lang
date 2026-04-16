@@ -382,6 +382,17 @@ pub const NATIVE_LIST_CAPACITY: u16 = 205;
 
 // === Standard Shims ===
 
+/// Plan 177: Helper to print output, captures to buffer if present
+fn vm_print(vm: &AutoVM, s: &str) {
+    if let Some(ref buf) = vm.output_buffer {
+        let mut guard = buf.write().unwrap();
+        guard.push_str(s);
+        guard.push('\n');
+    } else {
+        println!("{}", s);
+    }
+}
+
 /// Generic print that handles any value type.
 /// If the value is a tagged string index (negative), prints the string.
 /// Otherwise prints as an integer.
@@ -393,34 +404,27 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         let str_index = ((-val) - 1) as u16;
         if let Some(bytes) = vm.get_string(str_index) {
             let s = String::from_utf8_lossy(&bytes);
-            println!("{}", s);
+            vm_print(vm, &s);
         } else {
-            println!("<invalid string index: {}>", str_index);
+            vm_print(vm, &format!("<invalid string index: {}>", str_index));
         }
     } else {
         // Regular integer
-        println!("{}", val);
+        vm_print(vm, &val.to_string());
     }
     Ok(())
 }
 
-pub fn shim_print_i32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // Expect arg on TOS.
-    // Callee cleanup: logic assumes we pop the arg.
+pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
-    println!("{}", val);
-    // Plan 118: print() is a void function, don't push return value
+    vm_print(vm, &val.to_string());
     Ok(())
 }
 
-pub fn shim_print_f32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // Not implemented in RAM yet, treating as i32 for now or implementing primitive float read
-    // For MVP Phase 1/4 compatibility, assuming i32-as-bits if needed, or simple placeholder
-    // But let's assume raw bits.
+pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val_bits = task.ram.pop_i32() as u32;
     let val = f32::from_bits(val_bits);
-    println!("{}", val);
-    // Plan 118: print() is a void function, don't push return value
+    vm_print(vm, &val.to_string());
     Ok(())
 }
 
@@ -439,15 +443,14 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if tagged < 0 {
         if let Some(bytes) = vm.get_string(str_index) {
             let s = String::from_utf8_lossy(&bytes);
-            println!("{}", s);
+            vm_print(vm, &s);
         } else {
-            println!("<invalid string index: {}>", str_index);
+            vm_print(vm, &format!("<invalid string index: {}>", str_index));
         }
     } else {
         // Non-tagged value - print as integer
-        println!("{}", tagged);
+        vm_print(vm, &tagged.to_string());
     }
-    // Plan 118: print() is a void function, don't push return value
     Ok(())
 }
 

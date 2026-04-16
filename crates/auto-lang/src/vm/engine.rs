@@ -132,6 +132,9 @@ pub struct AutoVM {
     // Stores pending futures with their body code offsets
     pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
     pub future_id_gen: AtomicU32,
+
+    // Plan 177: Optional stdout capture buffer for testing
+    pub output_buffer: Option<Arc<RwLock<String>>>,
 }
 
 // Plan 124: Future value for async operations
@@ -195,7 +198,17 @@ impl AutoVM {
             // Plan 124: Future registry for async/await
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
+            // Plan 177: stdout capture (None = normal println)
+            output_buffer: None,
         }
+    }
+
+    /// Create VM with stdout capture for testing (Plan 177)
+    pub fn new_with_capture(flash: VirtualFlash, ram_size: usize) -> (Self, Arc<RwLock<String>>) {
+        let mut vm = Self::new(flash, ram_size);
+        let buffer = Arc::new(RwLock::new(String::new()));
+        vm.output_buffer = Some(buffer.clone());
+        (vm, buffer)
     }
 
     /// Load strings from a module's string constant pool
