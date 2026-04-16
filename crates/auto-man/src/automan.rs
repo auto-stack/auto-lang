@@ -866,6 +866,19 @@ impl Automan {
                 self.transpile_auto()?;
                 // No build step needed for TypeScript
             }
+            "vscode" => {
+                // VSCode extension backend: generate and build extension project
+                println!("Building VSCode extension project (backend: vscode)");
+                self.build_vscode()?;
+
+                if let Some(ref cache) = self.cache {
+                    if cache.should_gc() {
+                        println!("Running cache garbage collection...");
+                        let freed_mb = cache.run_gc()? / (1024 * 1024);
+                        println!("Cache GC: freed {} MB", freed_mb);
+                    }
+                }
+            }
             _ => {
                 // Default C backend
                 println!("Transpiling auto code to c code");
@@ -907,6 +920,13 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::ark::build_ark_project(&root_dir)
+    }
+
+    /// Build VSCode extension project (full workflow: generate, webpack build)
+    fn build_vscode(&mut self) -> AutoResult<()> {
+        let root_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        crate::vscode::build_vscode_project(&root_dir)
     }
 
     pub fn export(&mut self, port_name: String, format: String) -> AutoResult<()> {
@@ -1057,6 +1077,21 @@ impl Automan {
                                 crate::rust_ui::generate_rust_ui(&member_dir, None, project)?;
                             }
                         }
+                        BackendType::Vscode => {
+                            println!("  Generating VSCode extension (backend: vscode)");
+                            let output_path = if frontends.len() > 1 {
+                                output.as_ref().map(|o| {
+                                    std::path::PathBuf::from(o).join("vscode")
+                                }).or_else(|| Some(member_dir.join("vscode")))
+                            } else {
+                                output.as_ref().map(|o| std::path::PathBuf::from(o))
+                            };
+                            if let Some(ref out) = output_path {
+                                crate::vscode::generate_vscode_project(&member_dir, Some(out.as_path()), project)?;
+                            } else {
+                                crate::vscode::generate_vscode_project(&member_dir, None, project)?;
+                            }
+                        }
                         _ => {
                             println!("  Skipping unsupported backend: {:?}", backend);
                         }
@@ -1164,6 +1199,25 @@ impl Automan {
                         crate::rust_ui::generate_rust_ui(&root_dir, Some(out.as_path()), project)?;
                     } else {
                         crate::rust_ui::generate_rust_ui(&root_dir, None, project)?;
+                    }
+                }
+                BackendType::Vscode => {
+                    println!("Generating VSCode extension (backend: vscode)");
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+                    let output_path = if frontends.len() > 1 {
+                        output.as_ref().map(|o| {
+                            std::path::PathBuf::from(o).join("vscode")
+                        }).or_else(|| Some(root_dir.join("vscode")))
+                    } else {
+                        output.as_ref().map(|o| std::path::PathBuf::from(o))
+                    };
+
+                    if let Some(ref out) = output_path {
+                        crate::vscode::generate_vscode_project(&root_dir, Some(out.as_path()), project)?;
+                    } else {
+                        crate::vscode::generate_vscode_project(&root_dir, None, project)?;
                     }
                 }
                 _ => {
@@ -1306,6 +1360,10 @@ impl Automan {
                     Ok(())
                 }
             }
+            auto_lang::config::BackendType::Vscode => {
+                println!("Running VSCode extension (backend: vscode)");
+                crate::vscode::run_vscode_project(&root_dir, args)
+            }
             _ => {
                 Err(format!("Backend {:?} does not support run command", backend).into())
             }
@@ -1432,6 +1490,10 @@ impl Automan {
             BackendType::Rust => {
                 println!("  Running Rust backend");
                 // TODO: Implement rust run
+            }
+            BackendType::Vscode => {
+                println!("  Running VSCode extension");
+                crate::vscode::run_vscode_project(root_dir, args)?;
             }
             _ => {
                 println!("  Unknown frontend type: {:?}", frontend);
