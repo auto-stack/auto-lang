@@ -1,0 +1,23 @@
+type Counter {
+    count int
+}
+
+ext Counter {
+    static fn new() Counter {
+        Counter(count: 0)
+    }
+    mut fn increment() {
+        self.count = self.count + 1
+    }
+    fn get_count() int {
+        self.count
+    }
+}
+
+
+fn main() {
+    let c = new()
+    c.increment()
+    c.increment()
+    print(c . get_count ())
+}

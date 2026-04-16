@@ -1,0 +1,6 @@
+fn main() {
+    let x int = 42
+    let ptr *int = x.view
+    let val = /* unsupported expr */
+    print(val)
+}

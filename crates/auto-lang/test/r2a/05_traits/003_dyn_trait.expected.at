@@ -1,0 +1,8 @@
+fn main() {
+    let v List</* dyn Flyer */> = []
+    print("empty")
+}
+
+spec Flyer {
+    fn fly()
+}

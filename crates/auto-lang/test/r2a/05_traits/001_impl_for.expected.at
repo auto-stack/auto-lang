@@ -1,0 +1,19 @@
+spec Flyer {
+    fn fly()
+}
+
+
+type Pigeon {
+}
+
+ext Pigeon for Flyer {
+    fn fly() {
+        print("Flap Flap")
+    }
+}
+
+
+fn main() {
+    let p = Pigeon()
+    p.fly()
+}

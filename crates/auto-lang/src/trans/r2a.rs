@@ -52,6 +52,26 @@ fn map_type(ty: &syn::Type) -> String {
         syn::Type::Never(_) => "void".into(),
         syn::Type::Group(g) => map_type(&g.elem),
         syn::Type::Paren(p) => map_type(&p.elem),
+        syn::Type::TraitObject(t) => {
+            // dyn Trait → comment (AutoLang has no dynamic dispatch)
+            let trait_name = t.bounds.iter().filter_map(|b| match b {
+                syn::TypeParamBound::Trait(t) => {
+                    t.path.segments.last().map(|s| s.ident.to_string())
+                }
+                _ => None,
+            }).collect::<Vec<_>>().join(" + ");
+            format!("/* dyn {} */", trait_name)
+        }
+        syn::Type::ImplTrait(it) => {
+            // impl Trait → same as dyn, extract trait name
+            let trait_name = it.bounds.iter().filter_map(|b| match b {
+                syn::TypeParamBound::Trait(t) => {
+                    t.path.segments.last().map(|s| s.ident.to_string())
+                }
+                _ => None,
+            }).collect::<Vec<_>>().join(" + ");
+            format!("/* impl {} */", trait_name)
+        }
         _ => "/* unknown */".into(),
     }
 }
@@ -178,6 +198,12 @@ fn map_method_name(method: &str) -> &str {
 // ──────────────────────────────────────────────────────────────
 // R2aTrans — Main Converter
 // ──────────────────────────────────────────────────────────────
+
+/// How `self` appears in an impl method signature.
+enum SelfKind {
+    Self_,    // &self
+    MutSelf,  // &mut self
+}
 
 struct R2aTrans {
     output: String,
@@ -499,19 +525,27 @@ impl R2aTrans {
 
     fn convert_impl_fn(&mut self, impl_fn: &syn::ImplItemFn) {
         let is_pub = !matches!(impl_fn.vis, syn::Visibility::Inherited);
-        let has_self = impl_fn
-            .sig
-            .inputs
-            .first()
-            .map(|arg| matches!(arg, syn::FnArg::Receiver(_)))
-            .unwrap_or(false);
+
+        // Determine self kind: &self, &mut self, or none (static)
+        let self_kind = impl_fn.sig.inputs.first().and_then(|arg| match arg {
+            syn::FnArg::Receiver(recv) => {
+                if recv.mutability.is_some() {
+                    Some(SelfKind::MutSelf)
+                } else {
+                    Some(SelfKind::Self_)
+                }
+            }
+            _ => None,
+        });
 
         self.write_indent();
         if is_pub {
             self.write("pub ");
         }
-        if !has_self {
-            self.write("static ");
+        match &self_kind {
+            None => self.write("static "),
+            Some(SelfKind::MutSelf) => self.write("mut "),
+            Some(SelfKind::Self_) => {}
         }
         self.write("fn ");
         self.write(&impl_fn.sig.ident.to_string());
@@ -835,13 +869,6 @@ impl R2aTrans {
             syn::Expr::Assign(assign) => {
                 let left = self.expr_to_string(&assign.left);
                 let right = self.expr_to_string(&assign.right);
-                format!("{} = {}", left, right)
-            }
-
-            syn::Expr::Assign(assign) => {
-                let left = self.expr_to_string(&assign.left);
-                let right = self.expr_to_string(&assign.right);
-                // Check if it's a compound assignment (handled as Binary in syn 2)
                 format!("{} = {}", left, right)
             }
 
@@ -1948,7 +1975,130 @@ pub const VERSION: &str = "1.0";"#;
     }
 
     #[test]
+    fn rt_11_struct_methods() {
+        roundtrip_a2r("11_methods/002_struct_methods");
+    }
+
+    #[test]
+    fn rt_11_ext_for() {
+        roundtrip_a2r("11_methods/006_ext_for");
+    }
+
+    #[test]
     fn rt_12_specs() {
         roundtrip_a2r("12_specs/001_basic_spec");
+    }
+
+    #[test]
+    fn rt_12_spec() {
+        roundtrip_a2r("12_specs/002_spec");
+    }
+
+    #[test]
+    fn rt_12_spec_delegation() {
+        roundtrip_a2r("12_specs/003_spec_delegation");
+    }
+
+    #[test]
+    fn rt_13_single() {
+        roundtrip_a2r("13_delegation/001_single");
+    }
+
+    #[test]
+    fn rt_13_multi_spec() {
+        roundtrip_a2r("13_delegation/002_multi_spec");
+    }
+
+    #[test]
+    fn rt_13_multi_delegation() {
+        roundtrip_a2r("13_delegation/003_multi_delegation");
+    }
+
+    // ── Phase 2: impl methods with self ──
+
+    #[test]
+    fn test_mut_self() {
+        let rust_code = r#"
+struct Counter {
+    count: i32,
+}
+
+impl Counter {
+    fn new() -> Counter {
+        Counter { count: 0 }
+    }
+    fn increment(&mut self) {
+        self.count = self.count + 1;
+    }
+    fn get_count(&self) -> i32 {
+        self.count
+    }
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("mut fn increment"), "missing mut fn in: {}", result);
+        assert!(result.contains("fn get_count() int"), "missing get_count in: {}", result);
+        assert!(result.contains("static fn new"), "missing static fn in: {}", result);
+    }
+
+    #[test]
+    fn test_dyn_trait() {
+        let rust_code = r#"
+fn main() {
+    let v: Vec<Box<dyn Flyer>> = vec![];
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("dyn Flyer"), "missing dyn trait comment in: {}", result);
+    }
+
+    #[test]
+    fn test_impl_for() {
+        let rust_code = r#"
+trait Flyer {
+    fn fly(&self);
+}
+
+struct Pigeon {}
+
+impl Flyer for Pigeon {
+    fn fly(&self) {
+        println!("Flap Flap");
+    }
+}"#;
+        let result = transpile_r2a("test", rust_code).unwrap();
+        assert!(result.contains("spec Flyer"), "missing spec Flyer in: {}", result);
+        assert!(result.contains("ext Pigeon for Flyer"), "missing ext for in: {}", result);
+        assert!(result.contains("print"), "missing print in: {}", result);
+    }
+
+    // ── Phase 2: file-based tests ──
+
+    #[test]
+    fn test_r2a_010_mut_self() {
+        test_r2a_file("04_methods/001_mut_self");
+    }
+
+    #[test]
+    fn test_r2a_011_impl_for() {
+        test_r2a_file("05_traits/001_impl_for");
+    }
+
+    #[test]
+    fn test_r2a_012_struct_methods() {
+        test_r2a_file("05_traits/002_struct_methods");
+    }
+
+    #[test]
+    fn test_r2a_013_dyn_trait() {
+        test_r2a_file("05_traits/003_dyn_trait");
+    }
+
+    #[test]
+    fn test_r2a_014_union() {
+        test_r2a_file("05_traits/004_union");
+    }
+
+    #[test]
+    fn test_r2a_015_raw_pointer() {
+        test_r2a_file("05_traits/005_raw_pointer");
     }
 }

@@ -1,0 +1,28 @@
+type Point {
+    x float
+    y float
+}
+
+ext Point {
+    static fn new(x float, y float) Point {
+        Point(x: x, y: y)
+    }
+    fn distance(other Point) float {
+        let dx = self.x - other.x
+        let dy = self.y - other.y
+        (dx * dx + dy * dy).sqrt()
+    }
+    mut fn translate(dx float, dy float) {
+        self.x = self.x + dx
+        self.y = self.y + dy
+    }
+}
+
+
+fn main() {
+    var p = new(0.0, 0.0)
+    let q = new(3.0, 4.0)
+    let d = p.distance(q.view)
+    print(d)
+    p.translate(1.0, 1.0)
+}

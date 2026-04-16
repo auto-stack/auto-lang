@@ -1,0 +1,9 @@
+union Value {
+    int_val int
+    float_val f32
+}
+
+fn main() {
+    var v = Value(int_val: 42)
+    print("union")
+}
