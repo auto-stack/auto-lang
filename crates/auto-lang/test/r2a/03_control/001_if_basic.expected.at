@@ -1,0 +1,8 @@
+fn main() {
+    let x int = 2
+    if x > 1 {
+        print("Great!")
+    } else {
+        print("Small!")
+    }
+}

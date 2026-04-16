@@ -1,0 +1,10 @@
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn main() {
+    let color Color = Blue
+    print(f"The color is $color")
+}

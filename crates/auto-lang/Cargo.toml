@@ -72,6 +72,8 @@ anyhow = { version = "1.0", optional = true }
 iced = { version = "0.14.0", features = ["tokio", "debug", "image", "svg", "advanced"], optional = true }
 notify = { workspace = true }
 trans = "0.4.0"
+# Plan 173: r2a (Rust to AutoLang transpiler)
+syn = { version = "2", features = ["full", "parsing", "extra-traits"] }
 
 [dev-dependencies]
 criterion = "0.5"

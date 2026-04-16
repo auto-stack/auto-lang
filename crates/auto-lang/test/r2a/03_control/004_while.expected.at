@@ -1,0 +1,8 @@
+fn main() {
+    var count int = 0
+    for count < 10 {
+        /* macro stmt */
+        count = count + 1
+    }
+    print("done")
+}

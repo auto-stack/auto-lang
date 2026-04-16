@@ -1,0 +1,11 @@
+fn main() {
+    var count int = 0
+    for ever {
+        if count >= 10 {
+            break
+        }
+        /* macro stmt */
+        count = count + 1
+    }
+    print("done")
+}

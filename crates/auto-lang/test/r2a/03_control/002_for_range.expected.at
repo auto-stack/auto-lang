@@ -1,0 +1,9 @@
+fn main() {
+    for j in 0..10 {
+        /* macro stmt */
+    }
+    let arr [3]int = [1, 2, 3]
+    for n in arr {
+        /* macro stmt */
+    }
+}
