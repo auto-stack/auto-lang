@@ -10,6 +10,8 @@ pub struct Node {
     // pub props: BTreeMap<Key, Expr>,
     pub body: Body,
     pub typ: Shared<Type>,
+    /// Doc comment from `///` lines (attached to this node)
+    pub doc: Option<AutoStr>,
 }
 
 impl Node {
@@ -21,6 +23,7 @@ impl Node {
             args: Args::new(),
             body: Body::new(),
             typ: shared(Type::Unknown),
+            doc: None,
         }
     }
 

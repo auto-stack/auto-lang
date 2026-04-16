@@ -3523,6 +3523,7 @@ impl CTrans {
                 has_new_line: true,
             },
             typ: shared(Type::Tag(shared(tag.clone()))),
+            doc: None,
         };
         self.node(&node, out)?;
         Ok(true)

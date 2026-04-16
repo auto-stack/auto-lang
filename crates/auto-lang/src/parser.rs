@@ -4613,8 +4613,15 @@ impl<'a> Parser<'a> {
     fn parse_body(&mut self, is_node: bool) -> AutoResult<Body> {
         self.expect(TokenKind::LBrace)?;
         self.enter_scope();
+
         let mut stmts = Vec::new();
         let new_lines = self.skip_empty_lines();
+
+        // Snapshot docs collected right after `{` (and optional newlines) —
+        // these belong to this node's body.
+        // Clear pending_docs so child node bodies don't pollute this snapshot.
+        let body_doc_snapshot: Vec<_> = self.pending_docs.drain(..).collect();
+
         if new_lines > 1 {
             stmts.push(Stmt::EmptyLine(new_lines - 1));
         }
@@ -4675,6 +4682,14 @@ impl<'a> Parser<'a> {
 
         stmts = self.convert_last_block(stmts)?;
         self.exit_scope();
+
+        // Restore the body doc snapshot at the front of pending_docs,
+        // so parse_node's take_docs() picks up this node's own docs (not child nodes' docs).
+        // Any docs accumulated after the last child stmt are also included.
+        let remaining: Vec<_> = self.pending_docs.drain(..).collect();
+        self.pending_docs = body_doc_snapshot;
+        self.pending_docs.extend(remaining);
+
         self.expect(TokenKind::RBrace)?;
         Ok(Body {
             stmts,
@@ -8146,6 +8161,7 @@ impl<'a> Parser<'a> {
     ) -> AutoResult<Node> {
         let n = name.clone().into();
         let mut node = Node::new(name.clone());
+
         if let Some(prime) = primary {
             match prime {
                 Expr::Ident(id) => {
@@ -8218,6 +8234,10 @@ impl<'a> Parser<'a> {
         // check node type
         let typ = self.lookup_type(&node.name);
         node.typ = typ.clone();
+
+        // Attach doc comments (///) collected during body parsing.
+        // In .at files, /// inside a node's body describes that node itself.
+        node.doc = self.take_docs();
 
         Ok(node)
     }
