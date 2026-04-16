@@ -1,23 +1,28 @@
-# 006-hero-section — Landing Page Hero Block
+# 006-hero-section — Landing Page Hero Section
 
-A full-width landing page hero section with headline, subtitle, and CTA button over a gradient background.
+A full-width landing page hero with headline, subtitle, and CTA button over a gradient background.
 
 ## Concepts
-- Rich text layout (headline + subtitle hierarchy)
-- Button variants (CTA styling)
+
+- Text hierarchy (headline + subtitle)
+- Button with click handler
+- Gradient background styling
 - Centering with flexbox (justify-center, items-center)
-- Gradient background (bg-gradient-to-b)
 
 ## Source
 
+See `front/app.at`:
+
 ```auto
-widget HeroSection {
+widget App {
+    msg Msg { GetStarted }
+
     view {
         col {
             text "Build Beautiful Apps"
             text "Write once, run anywhere with AutoLang"
             button "Get Started" { onclick: .GetStarted }
-            class: "w-full h-full justify-center items-center bg-gradient-to-b from-blue-500 to-purple-600 text-white p-8"
+            class: "w-full h-full justify-center items-center bg-gradient-to-b from-blue-500 to-purple-600 text-white p-8 gap-4"
         }
     }
 
@@ -27,27 +32,24 @@ widget HeroSection {
 }
 ```
 
-## Generated Output
+## How to Run
 
-### Vue 3
-<!-- Placeholder: coming soon -->
+```bash
+cd examples/ui/006-hero-section
+auto gen              # Generate code for all backends (vue, jet, ark, rust)
+auto run              # Run dev server
+```
 
-### Jetpack Compose
-<!-- Placeholder: coming soon -->
+After `auto gen`, generated projects appear in:
+- `vue/` — Vue 3 + shadcn-vue
+- `jet/` — Jetpack Compose (Kotlin)
+- `ark/` — ArkTS (HarmonyOS)
+- `rust/` — Rust GPUI
 
-### ArkTS (HarmonyOS)
-<!-- Placeholder: coming soon -->
+## Concepts Taught
 
-### GPUI (Rust)
-<!-- Placeholder: coming soon -->
-
-### Tauri
-<!-- Placeholder: coming soon -->
-
-### VSCode WebView
-<!-- Placeholder: coming soon -->
-
-## Platform Notes
-- The gradient background uses Tailwind-style utility classes. On platforms without Tailwind (GPUI, Jetpack Compose), the generator maps `bg-gradient-to-b` to a native vertical gradient.
-- The two `text` elements render with different visual weight: the first as a large headline (h1), the second as a subtitle (h2). Font sizing is derived from context order.
-- The CTA button inherits `text-white` from the parent column. On some platforms the button may render with its own default text color unless explicitly styled.
+- Text hierarchy: two `text` elements render as headline and subtitle based on order
+- Button with `onclick` handler bound to a message
+- Gradient background via `bg-gradient-to-b from-blue-500 to-purple-600`
+- Full-page centering using `justify-center items-center` on the root column
+- Message handling in the `on` block with `print()`

@@ -520,11 +520,25 @@ Same flow as Step 2, but for the block-level examples:
 - Review READMEs for accuracy and consistency
 - Ensure progression of concepts is clear when reading examples in order
 
+### Parser Limitations Discovered (Plan 184)
+
+The AURA widget parser has these limitations that required workarounds in Phase 1:
+
+1. **No typed msg variants**: `msg Msg { Foo(str) }` causes parse errors. Only simple variants like `msg Msg { Foo }` work. This means `on` handlers cannot receive parameters — use `on` handlers without params and access model state directly.
+2. **No inline object/array literals in model**: `var items = [{ name: "a" }]` fails to parse. Model vars must be simple scalar types (`str`, `int`, `bool`). Complex data must be split into individual vars (e.g., `var title1 str = "a"`, `var title2 str = "b"`).
+3. **No `if` statements in `on` handlers**: The `on` block parser only supports simple assignments, not conditional logic.
+4. **`class:` must go after children**: Per CLAUDE.md, styling properties should be placed after child elements in the view body.
+
+These limitations mean complex examples (todo list with CRUD, dynamic feeds, etc.) cannot use data-driven patterns like `for` loops with arrays. Future work should add parser support for:
+- Typed message variants with parameter extraction
+- Object/array literal parsing in model blocks
+- Control flow in `on` handler blocks
+
 ### Future Phases
 
 | Phase | Scope | Prerequisites |
 |-------|-------|---------------|
-| Phase 2 | Tier 3 (Mini Apps, 011-016) | Grid layout verified, timer/async support, routing stable |
-| Phase 3 | Tier 4 (Real Apps, 017-024) | Dark mode support, drag reorder, full routing, auth patterns |
+| Phase 2 | Tier 3 (Mini Apps, 011-016) | Grid layout verified, timer/async support, routing stable, typed msg variants |
+| Phase 3 | Tier 4 (Real Apps, 017-024) | Dark mode support, drag reorder, full routing, auth patterns, object literals in model |
 
 Each phase gets its own implementation plan when prerequisites are met.

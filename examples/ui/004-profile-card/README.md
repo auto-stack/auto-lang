@@ -1,20 +1,22 @@
 # 004-profile-card — User Profile Card
 
-A visually rich profile card displaying an avatar image, name, online status badge, role, bio, and action buttons. Demonstrates visual composition without interactivity.
+A visually rich profile card with avatar image, name, status badge, role, bio, and action buttons. Demonstrates visual composition with static model data.
 
 Inspired by PrimeBlocks card patterns.
 
 ## Concepts
-- **Image widget** — `image` renders an image from a URL source via the `src` property
-- **Badge** — Styled text in a rounded pill container to indicate role or status
-- **Card layout** — A `col` with shadow, rounded corners, and padding creates a card appearance
-- **Col/row nesting** — Mixing `col` and `row` containers for vertical and horizontal arrangements within the same card
-- **Styling with classes** — Tailwind-style utility classes control spacing, colors, borders, shadows, and gradients
+
+- **Image widget** — `image` renders an image from a URL via the `src` property
+- **Col/row nesting** — Mixing `col` and `row` containers for vertical and horizontal arrangements
+- **Class styling** — Tailwind-style utility classes for spacing, colors, borders, shadows, and gradients
+- **Static data display** — Model fields hold display data without interactivity
 
 ## Source
 
+See `front/app.at`:
+
 ```auto
-widget ProfileCard {
+widget App {
     model {
         var name str = "Jane Cooper"
         var role str = "Full Stack Developer"
@@ -38,7 +40,7 @@ widget ProfileCard {
                 class: "-mt-10 items-center"
             }
 
-            // Name and status
+            // Name and role
             col {
                 text .name
                 class: "text-xl font-bold text-gray-900"
@@ -79,37 +81,24 @@ widget ProfileCard {
 }
 ```
 
-## Generated Output
+## How to Run
 
-### Vue 3
+```bash
+cd examples/ui/004-profile-card
+auto gen              # Generate code for all backends (vue, jet, ark, rust)
+auto run              # Run dev server
+```
 
-*(Placeholder: coming soon)*
+After `auto gen`, generated projects appear in:
+- `vue/` — Vue 3 + shadcn-vue
+- `jet/` — Jetpack Compose (Kotlin)
+- `ark/` — ArkTS (HarmonyOS)
+- `rust/` — Rust GPUI
 
-### Jetpack Compose
+## Concepts Taught
 
-*(Placeholder: coming soon)*
-
-### ArkTS (HarmonyOS)
-
-*(Placeholder: coming soon)*
-
-### GPUI (Rust)
-
-*(Placeholder: coming soon)*
-
-### Tauri
-
-*(Placeholder: coming soon)*
-
-### VSCode WebView
-
-*(Placeholder: coming soon)*
-
-## Platform Notes
-
-- The avatar uses negative margin (`-mt-10`) to overlap the gradient header — this is a CSS-specific technique
-- On Jetpack Compose, the overlap is achieved with `Box` + `offset` or `paddingTop` on the image
-- On GPUI, absolute positioning or overlapping elements in a `div` with negative `mt` achieves the same effect
-- The `rounded-full` class creates a circular avatar on web targets; native targets use platform-specific circle clipping
-- Gradient backgrounds (`bg-gradient-to-r`) map to `LinearGradient` on Compose, `linearGradient` on ArkTS, and CSS gradients on web
-- The status indicator dot uses a small colored `text` element styled as a circle via `w-3 h-3 rounded-full`
+- `image` widget with `src` property for displaying images
+- Deep `col`/`row` nesting for complex card layouts
+- Gradient backgrounds with `bg-gradient-to-r` classes
+- Negative margin (`-mt-10`) for overlapping elements
+- Card pattern with shadow, rounded corners, and max-width

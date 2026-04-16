@@ -3,6 +3,7 @@
 An increment/decrement/reset counter with three buttons demonstrating the Elm Architecture (model/view/update) pattern in AURA.
 
 ## Concepts
+
 - **Model** — The `model` block holds the widget's mutable state (`var count int = 0`)
 - **Msg enum** — `msg Msg { Inc, Dec, Reset }` declares the messages (events) the widget can receive
 - **Event handlers** — `onclick: .Inc` binds a button click to a message; the `on` block maps messages to state updates
@@ -11,8 +12,10 @@ An increment/decrement/reset counter with three buttons demonstrating the Elm Ar
 
 ## Source
 
+See `front/app.at`:
+
 ```auto
-widget Counter {
+widget App {
     msg Msg { Inc, Dec, Reset }
 
     model {
@@ -38,35 +41,24 @@ widget Counter {
 }
 ```
 
-## Generated Output
+## How to Run
 
-### Vue 3
+```bash
+cd examples/ui/002-counter
+auto gen              # Generate code for all backends (vue, jet, ark, rust)
+auto run              # Run dev server
+```
 
-*(Placeholder: coming soon)*
+After `auto gen`, generated projects appear in:
+- `vue/` — Vue 3 + shadcn-vue
+- `jet/` — Jetpack Compose (Kotlin)
+- `ark/` — ArkTS (HarmonyOS)
+- `rust/` — Rust GPUI
 
-### Jetpack Compose
+## Concepts Taught
 
-*(Placeholder: coming soon)*
-
-### ArkTS (HarmonyOS)
-
-*(Placeholder: coming soon)*
-
-### GPUI (Rust)
-
-*(Placeholder: coming soon)*
-
-### Tauri
-
-*(Placeholder: coming soon)*
-
-### VSCode WebView
-
-*(Placeholder: coming soon)*
-
-## Platform Notes
-
-- The `on` block maps to platform-specific event dispatchers: Vue reactive refs, Compose `remember` + `mutableStateOf`, ArkTS `@State`, GPUI `Model`
-- `.count` references the model field; the leading dot is shorthand for `self.count`
-- All three buttons share the same `row` parent for horizontal layout
-- Pattern matching in `on` uses `->` arrows (AutoLang convention, not `=>`)
+- Elm Architecture: `model` block for state, `msg` enum for events, `on` block for updates
+- `button` widget with `onclick` event binding
+- `row` container for horizontal layout of buttons
+- F-string interpolation with `${.count}` to display reactive model values
+- Pattern matching in `on` block with `->` arrows

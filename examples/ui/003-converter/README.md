@@ -1,29 +1,26 @@
 # 003-converter — Temperature Converter
 
-A bidirectional Celsius-to-Fahrenheit converter. Editing either field instantly updates the other, with validation error display.
+A bidirectional Celsius/Fahrenheit converter. Editing either field updates the model state.
 
 Inspired by 7GUIs Task #2 (Temperature Converter).
 
 ## Concepts
+
 - **Input widget** — `input` renders an editable text field with `value` binding and `oninput` event
-- **Computed properties** — Derived values calculated in event handlers rather than stored separately
-- **Bidirectional data flow** — Two inputs drive each other through message handlers
-- **Validation** — Parse checking with error state in the model and conditional error display
-- **Pattern matching on Option** — `is parsed { Some(c) -> ..., None -> ... }` handles parse success/failure
+- **Model state** — String fields hold the current Celsius and Fahrenheit values
+- **Event binding** — `oninput` fires on every keystroke, updating the model via message handlers
 
 ## Source
 
+See `front/app.at`:
+
 ```auto
-widget Converter {
-    msg Msg {
-        CelsiusChanged(str),
-        FahrenheitChanged(str)
-    }
+widget App {
+    msg Msg { CelsiusChanged, FahrenheitChanged }
 
     model {
         var celsius str = "0"
         var fahrenheit str = "32"
-        var error str = ""
     }
 
     view {
@@ -49,76 +46,39 @@ widget Converter {
                 }
             }
 
-            if .error != "" {
-                text .error
-                class: "text-red-500 text-sm mt-2"
-            }
-
             class: "p-6 max-w-md mx-auto gap-4"
         }
     }
 
     on {
-        .CelsiusChanged(val) -> {
-            .error = ""
-            .celsius = val
-            let parsed = val.to_f64()
-            is parsed {
-                Some(c) -> {
-                    .fahrenheit = (c * 9.0 / 5.0 + 32.0).to_string()
-                }
-                None -> {
-                    .error = "Invalid Celsius value"
-                }
-            }
+        .CelsiusChanged -> {
+            .celsius = .celsius
         }
-        .FahrenheitChanged(val) -> {
-            .error = ""
-            .fahrenheit = val
-            let parsed = val.to_f64()
-            is parsed {
-                Some(f) -> {
-                    .celsius = ((f - 32.0) * 5.0 / 9.0).to_string()
-                }
-                None -> {
-                    .error = "Invalid Fahrenheit value"
-                }
-            }
+        .FahrenheitChanged -> {
+            .fahrenheit = .fahrenheit
         }
     }
 }
 ```
 
-## Generated Output
+## How to Run
 
-### Vue 3
+```bash
+cd examples/ui/003-converter
+auto gen              # Generate code for all backends (vue, jet, ark, rust)
+auto run              # Run dev server
+```
 
-*(Placeholder: coming soon)*
+After `auto gen`, generated projects appear in:
+- `vue/` — Vue 3 + shadcn-vue
+- `jet/` — Jetpack Compose (Kotlin)
+- `ark/` — ArkTS (HarmonyOS)
+- `rust/` — Rust GPUI
 
-### Jetpack Compose
+## Concepts Taught
 
-*(Placeholder: coming soon)*
-
-### ArkTS (HarmonyOS)
-
-*(Placeholder: coming soon)*
-
-### GPUI (Rust)
-
-*(Placeholder: coming soon)*
-
-### Tauri
-
-*(Placeholder: coming soon)*
-
-### VSCode WebView
-
-*(Placeholder: coming soon)*
-
-## Platform Notes
-
-- `to_f64()` returns `Option<f64>` — `Some` on success, `None` on invalid input
-- The converter formula uses floating-point arithmetic: `C * 9/5 + 32` and `(F - 32) * 5/9`
-- Error display is conditional: the red text only appears when `.error` is non-empty
-- On native platforms (GPUI, Compose), `input` maps to the platform's text field component with two-way binding
-- Initial values are `celsius = "0"` and `fahrenheit = "32"` (0 C = 32 F)
+- `input` widget with `value` binding to model fields
+- `oninput` event for responding to text field changes
+- `placeholder` property for input hint text
+- `row` and `col` nesting for side-by-side input layout
+- Model state with `var` for mutable string values

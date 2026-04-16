@@ -1,10 +1,12 @@
-widget HeroSection {
+widget App {
+    msg Msg { GetStarted }
+
     view {
         col {
             text "Build Beautiful Apps"
             text "Write once, run anywhere with AutoLang"
             button "Get Started" { onclick: .GetStarted }
-            class: "w-full h-full justify-center items-center bg-gradient-to-b from-blue-500 to-purple-600 text-white p-8"
+            class: "w-full h-full justify-center items-center bg-gradient-to-b from-blue-500 to-purple-600 text-white p-8 gap-4"
         }
     }
 

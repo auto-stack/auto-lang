@@ -1,0 +1,44 @@
+widget App {
+    msg Msg { CelsiusChanged, FahrenheitChanged }
+
+    model {
+        var celsius str = "0"
+        var fahrenheit str = "32"
+    }
+
+    view {
+        col {
+            text "Temperature Converter"
+            class: "text-2xl font-bold mb-4"
+
+            row {
+                col {
+                    text "Celsius"
+                    input (value: .celsius) {
+                        oninput: .CelsiusChanged
+                        placeholder: "Enter Celsius"
+                    }
+                }
+
+                col {
+                    text "Fahrenheit"
+                    input (value: .fahrenheit) {
+                        oninput: .FahrenheitChanged
+                        placeholder: "Enter Fahrenheit"
+                    }
+                }
+            }
+
+            class: "p-6 max-w-md mx-auto gap-4"
+        }
+    }
+
+    on {
+        .CelsiusChanged -> {
+            .celsius = .celsius
+        }
+        .FahrenheitChanged -> {
+            .fahrenheit = .fahrenheit
+        }
+    }
+}

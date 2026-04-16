@@ -1,4 +1,4 @@
-widget ProfileCard {
+widget App {
     model {
         var name str = "Jane Cooper"
         var role str = "Full Stack Developer"

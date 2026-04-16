@@ -1,4 +1,4 @@
-widget Counter {
+widget App {
     msg Msg { Inc, Dec, Reset }
 
     model {
