@@ -24,4 +24,4 @@ version: "1.0.0"
 scene: "ui"
 
 // Multi-backend configuration (Plan 138)
-backend: ["vue", "jet", "arkts"]
+backend: ["vue", "jet", "arkts", "rust"]

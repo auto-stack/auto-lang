@@ -136,7 +136,7 @@ impl RustGenerator {
 
         // Imports
         if self.needs_imports {
-            code.push_str("use auto_ui::prelude::*;\n\n");
+            code.push_str("use auto_lang::ui::{Component, View};\n\n");
         }
 
         // Message enum

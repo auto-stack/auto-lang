@@ -49,6 +49,9 @@ pub mod jet;
 // Phase 8: ArkTS/HarmonyOS project support
 pub mod ark;
 
+// Phase 9: Rust UI support (ICED/GPUI)
+pub mod rust_ui;
+
 // Phase 9: API code generation (Plan 130)
 pub mod api_gen;
 

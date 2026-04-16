@@ -1,0 +1,27 @@
+// front/counter.at - Simple Counter widget for Rust UI backend
+
+widget Counter {
+    msg Msg { Inc, Dec }
+
+    model { var count int = 0 }
+
+    view {
+        Col {
+            style: "gap-4 p-4"
+            Text "Counter Demo"
+
+            Text f"Count: ${.count}"
+
+            Row {
+                style: "gap-2"
+                Button "-" { onclick: .Dec }
+                Button "+" { onclick: .Inc }
+            }
+        }
+    }
+
+    on {
+        .Inc -> { .count = .count + 1 }
+        .Dec -> { .count = .count - 1 }
+    }
+}

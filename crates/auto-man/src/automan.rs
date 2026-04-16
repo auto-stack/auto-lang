@@ -1042,6 +1042,21 @@ impl Automan {
                                 crate::ark::generate_ark_project(&member_dir, None, project)?;
                             }
                         }
+                        BackendType::Rust => {
+                            println!("  Generating Rust UI (backend: rust)");
+                            let output_path = if frontends.len() > 1 {
+                                output.as_ref().map(|o| {
+                                    std::path::PathBuf::from(o).join("rust")
+                                }).or_else(|| Some(member_dir.join("rust")))
+                            } else {
+                                output.as_ref().map(|o| std::path::PathBuf::from(o))
+                            };
+                            if let Some(ref out) = output_path {
+                                crate::rust_ui::generate_rust_ui(&member_dir, Some(out.as_path()), project)?;
+                            } else {
+                                crate::rust_ui::generate_rust_ui(&member_dir, None, project)?;
+                            }
+                        }
                         _ => {
                             println!("  Skipping unsupported backend: {:?}", backend);
                         }
@@ -1130,6 +1145,26 @@ impl Automan {
 
                     let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
                     project_ctx.generate()?;
+                }
+                BackendType::Rust => {
+                    println!("Generating Rust UI (backend: rust)");
+                    let root_dir = std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+                    // For multi-backend, create output subdirectory
+                    let output_path = if frontends.len() > 1 {
+                        output.as_ref().map(|o| {
+                            std::path::PathBuf::from(o).join("rust")
+                        }).or_else(|| Some(root_dir.join("rust")))
+                    } else {
+                        output.as_ref().map(|o| std::path::PathBuf::from(o))
+                    };
+
+                    if let Some(ref out) = output_path {
+                        crate::rust_ui::generate_rust_ui(&root_dir, Some(out.as_path()), project)?;
+                    } else {
+                        crate::rust_ui::generate_rust_ui(&root_dir, None, project)?;
+                    }
                 }
                 _ => {
                     println!("Skipping unsupported backend: {:?}", backend);

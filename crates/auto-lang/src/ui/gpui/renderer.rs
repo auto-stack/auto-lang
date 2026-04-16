@@ -767,15 +767,53 @@ impl<C: Component> std::ops::DerefMut for GpuiMessageBridge<C> {
 ///     run_app::<MyComponent>("My App")
 /// }
 /// ```
-pub fn run_app<C>(_title: &str) -> AppResult<()>
+pub fn run_app<C>(title: &str) -> AppResult<()>
 where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + 'static,
 {
-    // TODO: Full interactive run_app requires the auto_render module (GpuiComponentState)
-    // to be migrated from auto-ui-gpui. The renderer (IntoGpuiElement, ComponentGpui,
-    // GpuiMessageBridge) is fully functional for view-to-element conversion.
-    Err("GPUI interactive run_app not yet available; use IntoGpuiElement directly".into())
+    use super::auto_render::GpuiComponentState;
+
+    let title = title.to_owned();
+
+    let app = gpui::Application::new();
+    app.run(move |cx| {
+        gpui_component::init(cx);
+
+        cx.spawn(async move |cx| {
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: Point { x: px(100.0), y: px(100.0) },
+                        size: gpui::Size {
+                            width: px(800.0),
+                            height: px(600.0),
+                        },
+                    })),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some(title.into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    ..Default::default()
+                },
+                |window, cx| {
+                    let state = cx.new(|_| GpuiComponentState::new(C::default()));
+
+                    state.update(cx, |state, cx| {
+                        state.preinitialize_selects(window, cx);
+                    });
+
+                    cx.new(|cx| Root::new(state, window, cx))
+                },
+            )?;
+
+            Ok::<_, Box<dyn std::error::Error>>(())
+        })
+        .detach();
+    });
+
+    Ok(())
 }
 
 #[cfg(test)]
