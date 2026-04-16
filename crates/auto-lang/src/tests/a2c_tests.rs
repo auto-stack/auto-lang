@@ -391,3 +391,11 @@ fn test_23_stdlib_016_hashset() { test_a2c("23_stdlib/016_hashset").unwrap(); }
 #[test]
 #[ignore = "C transpiler does not yet validate struct field types"]
 fn test_25_type_checking_001_type_error() { test_a2c("25_type_checking/001_type_error").unwrap(); }
+
+// 14_ext — ext statement tests (migrated from test/a2c/035_ext_statement)
+#[test] fn test_14_ext_001_ext_simple() { test_a2c("14_ext/001_ext_simple").unwrap(); }
+#[test] fn test_14_ext_002_ext_instance_method() { test_a2c("14_ext/002_ext_instance_method").unwrap(); }
+#[test] fn test_14_ext_003_ext_builtin_type() { test_a2c("14_ext/003_ext_builtin_type").unwrap(); }
+#[test] fn test_14_ext_004_ext_static_method() { test_a2c("14_ext/004_ext_static_method").unwrap(); }
+#[test] fn test_14_ext_005_ext_multiple() { test_a2c("14_ext/005_ext_multiple").unwrap(); }
+#[test] fn test_14_ext_006_ext_prop_shorthand() { test_a2c("14_ext/006_ext_prop_shorthand").unwrap(); }

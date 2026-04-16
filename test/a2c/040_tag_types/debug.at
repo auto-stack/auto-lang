@@ -1,4 +1,0 @@
-tag Atom {
-    Int int
-    fn test() bool { true }
-}

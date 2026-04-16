@@ -1,7 +1,0 @@
-tag Atom {
-    Int int
-
-    fn test() int {
-        42
-    }
-}
