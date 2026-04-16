@@ -33,7 +33,7 @@ ext List {
 
     /// Get element at index (bounds checking)
     pub fn get(index int) T {
-        if index < 0 or index >= .len.as(int) {
+        if index < 0 || index >= .len.as(int) {
             return nil
         }
         let data = .store.data()
@@ -70,7 +70,7 @@ ext List {
 
     /// Set element at index
     pub fn set(index int, elem T) int {
-        if index < 0 or index >= .len.as(int) {
+        if index < 0 || index >= .len.as(int) {
             return -1
         }
         let data = .store.data()

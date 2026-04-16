@@ -60,6 +60,7 @@ pub enum TokenKind {
     RangeEq,          // ..=
     Colon,            // :
     VBar,             // |
+    Amp,              // &
     CommentLine,      // //
     CommentContent,   // any text in comment
     CommentStart,     // /*
@@ -121,8 +122,8 @@ pub enum TokenKind {
     Static, // ADDED: static keyword for static methods (Plan 035)
     Shared, // ADDED: shared keyword for static storage (Plan 6B-4.19)
     Impl,   // ADDED: impl keyword for trait implementations (Plan 059)
-    And,    // ADDED: logical and keyword (Plan 066)
-    Or,     // ADDED: logical or keyword (Plan 066)
+    And,    // Plan 072 (reverted): && logical and operator
+    Or,     // Plan 072 (reverted): || logical or operator
     Dep,    // ADDED: dep keyword for dependency declaration (Plan 092)
 
     // Router keywords (Plan 105)
@@ -231,8 +232,8 @@ impl fmt::Display for Token {
             TokenKind::Tag => write!(f, "<tag>"),
             TokenKind::Alias => write!(f, "<alias>"),
             TokenKind::Node => write!(f, "<node>"),
-            TokenKind::And => write!(f, "<and>"),
-            TokenKind::Or => write!(f, "<or>"),
+            TokenKind::And => write!(f, "<&&>"),
+            TokenKind::Or => write!(f, "<||>"),
             TokenKind::Routes => write!(f, "<routes>"),
             TokenKind::Outlet => write!(f, "<outlet>"),
             TokenKind::Link => write!(f, "<link>"),
@@ -370,8 +371,8 @@ impl Token {
             "shared" => Some(TokenKind::Shared),
             "impl" => Some(TokenKind::Impl),
             "const" => Some(TokenKind::Const),
-            "and" => Some(TokenKind::And),
-            "or" => Some(TokenKind::Or),
+            "and" => None, // Plan 072 reverted: use && operator instead
+            "or" => None,  // Plan 072 reverted: use || operator instead
             "dep" => Some(TokenKind::Dep), // Plan 092: dependency declaration
             "routes" => Some(TokenKind::Routes), // Plan 105: router keywords
             "outlet" => Some(TokenKind::Outlet),

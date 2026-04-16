@@ -1,0 +1,9 @@
+fn main() {
+    print(0b1100.and(0b1010))
+    print(0b1000.or(0b0011))
+    print(0b1100.xor(0b1010))
+    print(0b0001.shl(3))
+    print(0b1000.shr(2))
+    // not: bitwise NOT of 0b1010 (10) = -11
+    print(0b1010.not())
+}

@@ -92,6 +92,7 @@ impl<'a> Lexer<'a> {
         let mut text = String::new();
         let mut has_dot = false;
         let mut is_hex = false;
+        let mut is_binary = false;
         if self.peek('0') {
             text.push('0');
             self.chars.next();
@@ -100,13 +101,20 @@ impl<'a> Lexer<'a> {
                 text.push('x');
                 self.chars.next();
                 is_hex = true;
+            } else if self.peek('b') {
+                text.push('b');
+                self.chars.next();
+                is_binary = true;
             }
         }
         while let Some(&c) = self.chars.peek() {
-            if c.is_digit(10) {
+            if c.is_digit(10) && !is_binary {
                 text.push(c);
                 self.chars.next();
             } else if c == '_' {
+                self.chars.next();
+            } else if is_binary && (c == '0' || c == '1') {
+                text.push(c);
                 self.chars.next();
             } else if c == '.' {
                 let mut more = self.chars.clone();
@@ -860,7 +868,23 @@ impl<'a> Lexer<'a> {
                     return Ok(self.dot_or_range());
                 }
                 '|' => {
-                    return Ok(self.single(TokenKind::VBar, c));
+                    // Plan 072 reverted: || for logical or
+                    self.chars.next(); // consume first '|'
+                    if self.peek('|') {
+                        self.chars.next(); // consume second '|'
+                        return Ok(Token::new(TokenKind::Or, self.pos(2), "||".into()));
+                    }
+                    return Ok(Token::new(TokenKind::VBar, self.pos(1), "|".into()));
+                }
+                '&' => {
+                    // Plan 072 reverted: && for logical and
+                    self.chars.next(); // consume first '&'
+                    if self.peek('&') {
+                        self.chars.next(); // consume second '&'
+                        return Ok(Token::new(TokenKind::And, self.pos(2), "&&".into()));
+                    }
+                    // Single & — bitwise AND operator reserved for future use
+                    return Ok(Token::new(TokenKind::Amp, self.pos(1), "&".into()));
                 }
                 '`' => {
                     return self.fstr();

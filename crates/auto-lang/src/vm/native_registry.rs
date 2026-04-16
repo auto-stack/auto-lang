@@ -251,6 +251,28 @@ pub fn register_builtin_natives() {
     registry.register_with_id("String.is_empty", 185);
     registry.register_with_id("String.reserve", 186);
 
+    // Plan 178: Bit operation methods on int
+    registry.register_with_id("int.and", 210);
+    registry.register_with_id("int.or", 211);
+    registry.register_with_id("int.xor", 212);
+    registry.register_with_id("int.not", 213);
+    registry.register_with_id("int.shl", 214);
+    registry.register_with_id("int.shr", 215);
+    registry.register_with_id("int.sar", 216);
+    registry.register_with_id("int.rol", 217);
+    registry.register_with_id("int.ror", 218);
+    registry.register_with_id("int.count_ones", 220);
+    registry.register_with_id("int.leading_zeros", 221);
+    registry.register_with_id("int.trailing_zeros", 222);
+    registry.register_with_id("int.flip", 223);
+
+    // Phase 4: Dynamic bitfield views
+    registry.register_with_id("int.bit_read", 230);
+    registry.register_with_id("int.bit_test", 231);
+    registry.register_with_id("int.bit_on", 232);
+    registry.register_with_id("int.bit_off", 233);
+    registry.register_with_id("int.bit_flip", 234);
+
     // =========================================================================
     // FFI Shim Registrations (Plan 094)
     // These map Auto function names to their native IDs

@@ -61,7 +61,13 @@ impl PythonTrans {
                     Op::Dot => self.dot(lhs, rhs, out),
                     _ => {
                         self.expr(lhs, out)?;
-                        out.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                        // Python uses 'and'/'or' keywords, not '&&'/'||'
+                        let op_str = match op {
+                            Op::And => "and",
+                            Op::Or => "or",
+                            _ => op.op(),
+                        };
+                        out.write(format!(" {} ", op_str).as_bytes()).to()?;
                         self.expr(rhs, out)
                     }
                 }

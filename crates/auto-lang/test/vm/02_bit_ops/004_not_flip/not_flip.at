@@ -1,0 +1,14 @@
+fn main() {
+    // not: bitwise NOT of 0 = -1
+    print(0.not())
+    // not: bitwise NOT of -1 = 0
+    print((-1).not())
+    // sar: arithmetic right shift of -8 >> 2 = -2
+    print((-8).sar(2))
+    // sar: arithmetic right shift of 16 >> 2 = 4
+    print(16.sar(2))
+    // rol: rotate left 0b1 by 1 = 0b10 = 2
+    print(0b1.rol(1))
+    // ror: rotate right 0b10 by 1 = 0b1 = 1
+    print(0b10.ror(1))
+}

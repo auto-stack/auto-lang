@@ -2333,6 +2333,15 @@ impl<'a> Parser<'a> {
                     Ok(Expr::U64(val))
                 }
             }
+        } else if self.cur.text.starts_with("0b") {
+            // Plan 178: binary literal (0b prefix)
+            let trim = &self.cur.text[2..];
+            let val = i64::from_str_radix(trim, 2).unwrap();
+            if val > i32::MAX as i64 {
+                Ok(Expr::I64(val))
+            } else {
+                Ok(Expr::Int(val as i32))
+            }
         } else {
             // Try parsing as i64 first, fall back to u64 if it overflows
             let text = self.cur.text.as_str();
@@ -2366,6 +2375,14 @@ impl<'a> Parser<'a> {
                     Ok(Expr::U64(val))
                 }
             }
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = u64::from_str_radix(trim, 2).unwrap();
+            if val > u32::MAX as u64 {
+                Ok(Expr::U64(val))
+            } else {
+                Ok(Expr::Uint(val as u32))
+            }
         } else {
             // Try parsing as u32 first, fall back to u64 if it overflows
             let text = self.cur.text.as_str();
@@ -2382,10 +2399,13 @@ impl<'a> Parser<'a> {
 
     fn parse_u8(&mut self) -> AutoResult<Expr> {
         if self.cur.text.starts_with("0x") {
-            // trim 0x
             let trim = &self.cur.text[2..];
             let val = u8::from_str_radix(trim, 16).unwrap();
             Ok(Expr::U8(val as u8))
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = u8::from_str_radix(trim, 2).unwrap();
+            Ok(Expr::U8(val))
         } else {
             let val = self.cur.text.as_str().parse::<u8>().unwrap();
             Ok(Expr::U8(val as u8))
@@ -2395,9 +2415,12 @@ impl<'a> Parser<'a> {
     #[allow(dead_code)]
     fn parse_u64(&mut self) -> AutoResult<Expr> {
         if self.cur.text.starts_with("0x") {
-            // trim 0x
             let trim = &self.cur.text[2..];
             let val = u64::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::U64(val))
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = u64::from_str_radix(trim, 2).unwrap();
             Ok(Expr::U64(val))
         } else {
             let val = self.cur.text.as_str().parse::<u64>().unwrap();
@@ -2407,10 +2430,13 @@ impl<'a> Parser<'a> {
 
     fn parse_i8(&mut self) -> AutoResult<Expr> {
         if self.cur.text.starts_with("0x") {
-            // trim 0x
             let trim = &self.cur.text[2..];
             let val = i8::from_str_radix(trim, 16).unwrap();
             Ok(Expr::I8(val as i8))
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = i8::from_str_radix(trim, 2).unwrap();
+            Ok(Expr::I8(val))
         } else {
             let val = self.cur.text.as_str().parse::<i8>().unwrap();
             Ok(Expr::I8(val as i8))

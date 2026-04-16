@@ -255,12 +255,182 @@ impl NativeInterface {
 
         // List extra functions
         self.register(NATIVE_LIST_CAPACITY, shim_list_capacity);
+
+        // Plan 178: Bit operation shims
+        self.register(NATIVE_INT_AND, shim_int_and);
+        self.register(NATIVE_INT_OR, shim_int_or);
+        self.register(NATIVE_INT_XOR, shim_int_xor);
+        self.register(NATIVE_INT_NOT, shim_int_not);
+        self.register(NATIVE_INT_SHL, shim_int_shl);
+        self.register(NATIVE_INT_SHR, shim_int_shr);
+        self.register(NATIVE_INT_SAR, shim_int_sar);
+        self.register(NATIVE_INT_ROL, shim_int_rol);
+        self.register(NATIVE_INT_ROR, shim_int_ror);
+        self.register(NATIVE_INT_COUNT_ONES, shim_int_count_ones);
+        self.register(NATIVE_INT_LEADING_ZEROS, shim_int_leading_zeros);
+        self.register(NATIVE_INT_TRAILING_ZEROS, shim_int_trailing_zeros);
+        self.register(NATIVE_INT_BITREV, shim_int_bitrev);
+        self.register(NATIVE_INT_BIT_READ, shim_int_bit_read);
+        self.register(NATIVE_INT_BIT_TEST, shim_int_bit_test);
+        self.register(NATIVE_INT_BIT_ON, shim_int_bit_on);
+        self.register(NATIVE_INT_BIT_OFF, shim_int_bit_off);
+        self.register(NATIVE_INT_BIT_FLIP, shim_int_bit_flip);
     }
 }
 
 pub const NATIVE_PRINT_I32: u16 = 1;
 pub const NATIVE_PRINT_F32: u16 = 2;
 pub const NATIVE_PRINT_STR: u16 = 3;
+
+// ============================================================================
+// Plan 178: Bit Operation Shims
+// ============================================================================
+
+/// int.and(mask) — Bitwise AND: val & mask
+/// Stack: [self, mask] -> result
+fn shim_int_and(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let mask = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val & mask);
+    Ok(())
+}
+
+/// int.or(mask) — Bitwise OR: val | mask
+fn shim_int_or(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let mask = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val | mask);
+    Ok(())
+}
+
+/// int.xor(mask) — Bitwise XOR: val ^ mask
+fn shim_int_xor(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let mask = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val ^ mask);
+    Ok(())
+}
+
+/// int.not() — Bitwise NOT: ~val
+/// Stack: [self] -> result
+fn shim_int_not(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(!val);
+    Ok(())
+}
+
+/// int.shl(n) — Logical left shift: val << n
+fn shim_int_shl(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.wrapping_shl(n as u32));
+    Ok(())
+}
+
+/// int.shr(n) — Logical right shift: val >> n (unsigned)
+fn shim_int_shr(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32((val as u32).wrapping_shr(n as u32) as i32);
+    Ok(())
+}
+
+/// int.sar(n) — Arithmetic right shift: val >> n (preserves sign)
+fn shim_int_sar(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.wrapping_shr(n as u32));
+    Ok(())
+}
+
+/// int.rol(n) — Rotate left
+fn shim_int_rol(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.rotate_left(n as u32));
+    Ok(())
+}
+
+/// int.ror(n) — Rotate right
+fn shim_int_ror(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.rotate_right(n as u32));
+    Ok(())
+}
+
+/// int.count_ones() — Population count
+fn shim_int_count_ones(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.count_ones() as i32);
+    Ok(())
+}
+
+/// int.leading_zeros() — Count leading zeros
+fn shim_int_leading_zeros(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.leading_zeros() as i32);
+    Ok(())
+}
+
+/// int.trailing_zeros() — Count trailing zeros
+fn shim_int_trailing_zeros(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.trailing_zeros() as i32);
+    Ok(())
+}
+
+/// int.flip() — Bit-reverse (mirror all bits)
+fn shim_int_bitrev(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.reverse_bits());
+    Ok(())
+}
+
+// === Phase 4: Dynamic bitfield views ===
+
+/// int.bits_read(start, len) — Read bitfield: (val >> start) & ((1 << len) - 1)
+fn shim_int_bit_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let len = task.ram.pop_i32();
+    let start = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    let mask = if len >= 32 { -1 } else { (1i32 << len) - 1 };
+    task.ram.push_i32((val.wrapping_shr(start as u32)) & mask);
+    Ok(())
+}
+
+/// int.bit_test(n) — Test bit n: (val >> n) & 1 → bool (1 or 0)
+fn shim_int_bit_test(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    let result = (val.wrapping_shr(n as u32)) & 1;
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// int.bit_on(n) — Set bit n: val | (1 << n)
+fn shim_int_bit_on(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val | (1 << n));
+    Ok(())
+}
+
+/// int.bit_off(n) — Clear bit n: val & !(1 << n)
+fn shim_int_bit_off(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val & !(1 << n));
+    Ok(())
+}
+
+/// int.bit_flip(n) — Toggle bit n: val ^ (1 << n)
+fn shim_int_bit_flip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val ^ (1 << n));
+    Ok(())
+}
 
 // === List Native Function IDs (100+) ===
 
@@ -379,6 +549,30 @@ pub const NATIVE_INLINE_INT64_DROP: u16 = 202;
 
 // === List Extra Native IDs (205+) ===
 pub const NATIVE_LIST_CAPACITY: u16 = 205;
+
+// === Bit Operation Native IDs (210+) — Plan 178 ===
+pub const NATIVE_INT_AND: u16 = 210;
+pub const NATIVE_INT_OR: u16 = 211;
+pub const NATIVE_INT_XOR: u16 = 212;
+pub const NATIVE_INT_NOT: u16 = 213;
+pub const NATIVE_INT_SHL: u16 = 214;
+pub const NATIVE_INT_SHR: u16 = 215;
+pub const NATIVE_INT_SAR: u16 = 216;
+pub const NATIVE_INT_ROL: u16 = 217;
+pub const NATIVE_INT_ROR: u16 = 218;
+
+// === Bit Scan Native IDs (220+) — Plan 178 ===
+pub const NATIVE_INT_COUNT_ONES: u16 = 220;
+pub const NATIVE_INT_LEADING_ZEROS: u16 = 221;
+pub const NATIVE_INT_TRAILING_ZEROS: u16 = 222;
+pub const NATIVE_INT_BITREV: u16 = 223;
+
+// Phase 4: Dynamic bitfield views
+pub const NATIVE_INT_BIT_READ: u16 = 230;   // .bits(start, len).read()
+pub const NATIVE_INT_BIT_TEST: u16 = 231;   // .bit(n).test() → bool
+pub const NATIVE_INT_BIT_ON: u16 = 232;     // .bit(n).on() → val | (1 << n)
+pub const NATIVE_INT_BIT_OFF: u16 = 233;    // .bit(n).off() → val & !(1 << n)
+pub const NATIVE_INT_BIT_FLIP: u16 = 234;   // .bit(n).flip() → val ^ (1 << n)
 
 // === Standard Shims ===
 

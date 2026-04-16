@@ -3945,8 +3945,24 @@ impl Codegen {
                         }
                     }
 
+                    // Plan 178: Select correct print intrinsic based on argument type
+                    // print() defaults to NATIVE_PRINT_STR, but if the argument is
+                    // a numeric expression, use NATIVE_PRINT_I32 or NATIVE_PRINT_F32 instead.
+                    // This fixes negative integer printing (e.g., print(-1) would otherwise
+                    // be misinterpreted as a tagged string index).
+                    let resolved_id = if id == NATIVE_PRINT_STR {
+                        match self.last_expr_type {
+                            ObjectType::Int | ObjectType::Byte | ObjectType::Uint
+                            | ObjectType::Bool | ObjectType::Char => NATIVE_PRINT_I32,
+                            ObjectType::Float | ObjectType::Double => NATIVE_PRINT_F32,
+                            _ => id, // keep PRINT_STR for String, Void, etc.
+                        }
+                    } else {
+                        id
+                    };
+
                     self.emit(OpCode::CALL_NAT);
-                    self.code.extend_from_slice(&id.to_le_bytes());
+                    self.code.extend_from_slice(&resolved_id.to_le_bytes());
 
                     // Plan 118: Mark print functions as void (they don't push return values)
                     // This tells run() to return empty string instead of trying to pop a value

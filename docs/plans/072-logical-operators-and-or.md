@@ -1,6 +1,19 @@
-# Plan 072: Logical Operators `and` and `or`
+# Plan 072: Logical Operators `and` and `or` — **已废止 (DEPRECATED)**
 
-## Objective
+> **⚠️ 此计划已废止。** 逻辑运算符已回退为 `&&` 和 `||` 符号形式。
+>
+> **废止理由：**
+> 1. `and`/`or` 作为关键字会与位运算方法名冲突（`.and()`/`.or()` 无法使用）
+> 2. 释放 `and`/`or` 给位运算方法后，设计更一致（`val.and(mask)`、`val.or(mask)`）
+> 3. 实际代码中使用 `and`/`or` 逻辑运算的仅约 4 处，迁移成本极低
+> 4. `&&`/`||` 与 C/Rust/JS/TS 等主流语言一致，降低学习成本
+> 5. 底层 OpCode 和 transpiler 输出本来就是 `AND`/`OR` 和 `&&`/`||`，回退只是统一源码层
+>
+> **回退实现**: 见 Git 提交历史（Plan 178 附带的关键字回退）
+
+---
+
+## Objective (原始内容，仅供参考)
 
 Implement logical operators `and` and `or` as keywords in AutoLang, with short-circuit evaluation semantics.
 

@@ -1,0 +1,19 @@
+fn main() {
+    // bit_read: extract bits 2..5 from 0b11010110
+    // 0b11010110 = 214, bits 2..5 = 0b0101 = 5
+    print(0b11010110.bit_read(2, 3))
+
+    // bit_test: test bit 3 of 0b1010 (should be 1)
+    print(0b1010.bit_test(3))
+    // bit_test: test bit 0 of 0b1010 (should be 0)
+    print(0b1010.bit_test(0))
+
+    // bit_on: set bit 1 of 0b1000 → 0b1010 = 10
+    print(0b1000.bit_on(1))
+
+    // bit_off: clear bit 3 of 0b1010 → 0b0010 = 2
+    print(0b1010.bit_off(3))
+
+    // bit_flip: toggle bit 1 of 0b1010 → 0b1000 = 8
+    print(0b1010.bit_flip(1))
+}

@@ -63,3 +63,10 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_01_basics_001_hello() { test_vm("01_basics/001_hello").unwrap(); }
 #[test] fn test_01_basics_002_arithmetic() { test_vm("01_basics/002_arithmetic").unwrap(); }
 #[test] fn test_01_basics_003_str_upper() { test_vm("01_basics/003_str_upper").unwrap(); }
+
+// === 02_bit_ops ===
+#[test] fn test_02_bit_ops_001_binary_literal() { test_vm("02_bit_ops/001_binary_literal").unwrap(); }
+#[test] fn test_02_bit_ops_002_bitwise_ops() { test_vm("02_bit_ops/002_bitwise_ops").unwrap(); }
+#[test] fn test_02_bit_ops_003_bit_scan() { test_vm("02_bit_ops/003_bit_scan").unwrap(); }
+#[test] fn test_02_bit_ops_004_not_flip() { test_vm("02_bit_ops/004_not_flip").unwrap(); }
+#[test] fn test_02_bit_ops_005_bitfield() { test_vm("02_bit_ops/005_bitfield").unwrap(); }
