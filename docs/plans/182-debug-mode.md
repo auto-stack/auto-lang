@@ -384,3 +384,333 @@ The MVP delivers the core inspection loop. Features are phased:
 - AutoVM `VmEditSink`
 - Hot reload in transpiled mode
 - Performance profiling, breakpoints, event tracing
+
+---
+
+## Implementation Plan
+
+### Module Structure
+
+```
+crates/auto-lang/src/ui/debug/
+├── mod.rs              # DebugLayer, DebugState, DebugPanel, Rect, BoxModel, EdgeInsets, LayoutReporter
+├── hit_test.rs         # hit_test() — point-in-bounds lookup
+├── inspector.rs        # NodeInfo, inspect_node()
+├── overlay.rs          # OverlayInfo, OverlayRect, OverlayColor, generate_overlay()
+├── source_map.rs       # SourceLocation, SourceMap
+└── edit_sink.rs        # DebugEditSink trait, DebugError, DebugEdit (stub)
+```
+
+Existing file that needs changes:
+
+| File | Change |
+|------|--------|
+| `ui/mod.rs` | `pub mod debug;` + re-exports |
+
+---
+
+## Phase 1: Foundation (DONE)
+
+Commit: `c0920464`
+
+### Task 1: Create module structure and core types
+
+**Files:**
+- Create: `crates/auto-lang/src/ui/debug/mod.rs`
+- Create: `crates/auto-lang/src/ui/debug/hit_test.rs`
+- Create: `crates/auto-lang/src/ui/debug/edit_sink.rs`
+- Modify: `crates/auto-lang/src/ui/mod.rs`
+
+**Step 1:** Create `mod.rs` with core types:
+
+- `Rect` — layout rectangle (x, y, width, height) with `contains(px, py)` method
+- `DebugState` — enum: `Disabled`, `InspectOnly`, `PanelOpen`
+- `DebugLayer` — central controller with:
+  - `enabled: bool` — runtime toggle
+  - `hovered: Option<VNodeId>` — currently hovered node
+  - `selected: Option<VNodeId>` — clicked/selected node
+  - `state: DebugState` — current debug state
+  - `bounds: HashMap<VNodeId, Rect>` — layout bounds from backend
+  - Methods: `toggle()`, `enable()`, `disable()`, `is_enabled()`
+  - Methods: `set_bounds()`, `hover()`, `select_hovered()`, `deselect()`
+
+- `LayoutReporter` trait — backends implement this to report layout bounds after render
+
+**Step 2:** Create `hit_test.rs`:
+
+- `hit_test(px, py, bounds) -> Option<VNodeId>` — linear scan O(n), returns smallest-area node containing the point. Uses existing `VNodeId(u64)` from `ui/vnode.rs`.
+
+**Step 3:** Create `edit_sink.rs` (stub for Phase 4):
+
+- `DebugError` struct with message field and Display impl
+- `DebugEdit` enum with placeholder `_Phase4Stub` variant
+- `DebugEditSink` trait with `apply(&self, edits: &[DebugEdit]) -> Result<(), DebugError>` signature
+
+**Step 4:** Wire into `ui/mod.rs`:
+
+- Add `pub mod debug;`
+- Re-export: `DebugLayer`, `DebugState`, `Rect`, `LayoutReporter`
+
+**Step 5:** Verify
+
+```bash
+cargo build -p auto-lang
+cargo test -p auto-lang --lib --features ui -- debug::
+```
+
+Expected: Compiles clean, all tests pass.
+
+---
+
+## Phase 2: Selection and Panel (DONE)
+
+Commit: `1e2035dd`
+
+### Task 2: Add inspector and overlay modules
+
+**Files:**
+- Create: `crates/auto-lang/src/ui/debug/inspector.rs`
+- Create: `crates/auto-lang/src/ui/debug/overlay.rs`
+- Modify: `crates/auto-lang/src/ui/debug/mod.rs`
+
+**Step 1:** Create `inspector.rs`:
+
+- `NodeInfo` struct: `id: VNodeId`, `widget_type: VNodeKind`, `bounds: Rect`, `styles: HashMap<String, String>`
+- `inspect_node(id, widget_type, bounds, styles) -> NodeInfo` — factory function
+- `NodeInfo::render_info(&self) -> String` — formatted display with widget type, bounds, sorted style properties
+
+Uses existing `VNodeKind` enum from `ui/vnode.rs` (Column, Row, Text, Button, etc.).
+
+**Step 2:** Create `overlay.rs`:
+
+- `OverlayColor` enum: `Hover` (blue), `Selection` (orange)
+- `OverlayRect` struct: `id: VNodeId`, `bounds: Rect`, `color: OverlayColor`
+- `OverlayInfo` struct: `hovered: Option<OverlayRect>`, `selected: Option<OverlayRect>`
+- `generate_overlay(hovered_id, selected_id, bounds) -> OverlayInfo` — pure function, assembles overlay data from current hover/selection state and the bounds map
+
+**Step 3:** Add `DebugPanel` to `mod.rs`:
+
+- `DebugPanel` struct: `info: Option<NodeInfo>`, `box_model: Option<BoxModel>`, `source: Option<SourceLocation>`
+- Methods: `set_selection(info, box_model, source)`, `clear()`, `has_selection()`, `render_info() -> String`
+- Update `DebugLayer` to hold `panel: DebugPanel`
+- Update `select_hovered()` to populate the panel with inspected node data
+- Update `deselect()` and `toggle()` to clear panel
+
+**Step 4:** Add convenience method `DebugLayer::overlay() -> OverlayInfo` that calls `generate_overlay()` with current hover/selection state.
+
+**Step 5:** Verify
+
+```bash
+cargo test -p auto-lang --lib --features ui -- debug::
+```
+
+---
+
+## Phase 3: Box Model and Source Map (DONE)
+
+Commit: `1e2035dd`
+
+### Task 3: Add box model display and source map
+
+**Files:**
+- Create: `crates/auto-lang/src/ui/debug/source_map.rs`
+- Modify: `crates/auto-lang/src/ui/debug/mod.rs`
+
+**Step 1:** Add `EdgeInsets` to `mod.rs`:
+
+- `EdgeInsets` struct: `top: f32`, `right: f32`, `bottom: f32`, `left: f32`
+- Constructors: `uniform(v)`, `symmetric(v_h, v_v)`, `only(top, right, bottom, left)`
+- `is_zero() -> bool`
+- `horizontal() -> f32`, `vertical() -> f32`
+
+**Step 2:** Add `BoxModel` to `mod.rs`:
+
+- `BoxModel` struct: `content: Rect`, `padding: EdgeInsets`, `margin: EdgeInsets`
+- `from_bounds(content, padding, margin) -> BoxModel`
+- `padding_box() -> Rect` — content + padding
+- `margin_box() -> Rect` — content + padding + margin
+- `render() -> String` — formatted box model display
+
+**Step 3:** Update `DebugPanel::render_info()` to include box model and source location sections.
+
+**Step 4:** Create `source_map.rs`:
+
+- `SourceLocation` struct: `file: PathBuf`, `line_start: usize`, `line_end: usize` (1-based, inclusive)
+- `SourceLocation::new(file, line_start, line_end) -> Self`
+- `Display` impl: single-line format `"file.at:42"` or multi-line `"file.at:42-48"`
+- `SourceMap` struct: `entries: HashMap<VNodeId, SourceLocation>`
+- Methods: `new()`, `add_mapping()`, `get_location()`, `remove_mapping()`, `len()`, `is_empty()`, `clear()`
+- Initially empty — populated in future work when AURA extraction preserves AST byte offsets
+
+**Step 5:** Update `DebugLayer` to hold `source_map: SourceMap`.
+
+**Step 6:** Verify
+
+```bash
+cargo test -p auto-lang --lib --features ui -- debug::
+```
+
+Expected: 55 total tests across all debug modules, all passing.
+
+---
+
+## Phase 4: Editing (NOT YET IMPLEMENTED)
+
+Prerequisites: source_id field on View variants, AURA extraction preserving byte offsets.
+
+### Task 4: Implement DebugEdit and PendingEdits
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui/debug/edit_sink.rs`
+- Modify: `crates/auto-lang/src/ui/debug/mod.rs`
+
+**Step 1:** Expand `DebugEdit` enum in `edit_sink.rs`:
+
+```rust
+pub enum DebugEdit {
+    StyleChange {
+        node: VNodeId,
+        property: String,
+        old_value: String,
+        new_value: String,
+    },
+    DeleteNode { node: VNodeId },
+    InsertNode {
+        parent: VNodeId,
+        index: usize,
+        widget_code: String,
+    },
+    MoveNode {
+        node: VNodeId,
+        new_parent: VNodeId,
+        new_index: usize,
+    },
+}
+```
+
+**Step 2:** Add `PendingEdits` struct to `mod.rs`:
+
+- `edits: Vec<DebugEdit>` — list of uncommitted edits
+- `add(edit)` — add an edit to the pending list
+- `preview()` — apply edits to overlay rendering only (no files touched)
+- `commit()` — write edits to .at source files via `DebugEditSink`
+- `discard()` — clear all pending edits
+- `is_empty() -> bool`
+
+**Step 3:** Implement `TranspiledEditSink` in `edit_sink.rs`:
+
+- Holds source map and file paths
+- `apply(edits)` — sort edits by byte_start (descending), apply text transformations to .at source, re-parse to validate, re-generate Rust
+
+**Step 4:** Add inline property editing to `DebugLayer`:
+
+- `begin_edit(node, property, new_value)` — creates a `DebugEdit::StyleChange`
+- Preview immediately in overlay
+- `save_edits()` — commit via TranspiledEditSink
+- `discard_edits()` — clear pending
+
+**Step 5:** Add keyboard shortcut support:
+
+- `Ctrl+S` — save pending edits
+- `Escape` — discard pending edits
+
+**Step 6:** Verify
+
+```bash
+cargo test -p auto-lang --lib --features ui -- debug::edit
+```
+
+### Task 5: Wire DebugEdit into panel
+
+**Step 6:** Update `DebugPanel` to show editable fields for style properties.
+
+- Each style property rendered as editable input
+- Changes create `PendingEdits`
+- Panel shows "Discard" and "Save source" buttons when edits are pending
+
+---
+
+## Phase 5: Widget Tree Manipulation (NOT YET IMPLEMENTED)
+
+Prerequisites: Phase 4 complete.
+
+### Task 6: Add context menu and tree operations
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui/debug/mod.rs`
+- Modify: `crates/auto-lang/src/ui/debug/inspector.rs`
+
+**Step 1:** Add widget tree view to inspector:
+
+- `WidgetTreeNode` struct: `id`, `kind`, `children: Vec<WidgetTreeNode>`, `expanded: bool`
+- `build_widget_tree(vtree) -> WidgetTreeNode` — construct from VTree
+- Collapsible tree rendering in Elements tab
+
+**Step 2:** Add context menu actions:
+
+- Right-click on a node shows: Delete, Insert Before, Insert After, Insert Child
+- Delete → `DebugEdit::DeleteNode`
+- Insert → opens mini-editor for widget expression → `DebugEdit::InsertNode`
+- Move → `DebugEdit::MoveNode` (drag reorder)
+
+**Step 3:** Add Console tab to `DebugPanel`:
+
+- `ConsoleEntry` struct: `timestamp`, `message`, `entry_type` (Info, Edit, Error)
+- Edit history displayed as console entries
+- Errors from failed commits shown in red
+
+**Step 4:** Verify
+
+```bash
+cargo test -p auto-lang --lib --features ui -- debug::
+```
+
+---
+
+## Integration with Backend Renderers (Future)
+
+After Phases 1-5, the debug layer needs integration with actual backend renderers:
+
+| Backend | Integration Point |
+|---------|------------------|
+| GPUI | Post-layout: call `LayoutReporter::report_layout()` to populate bounds |
+| Iced | Post-layout: extract bounds from iced's layout tree |
+| Headless | No-op or mock bounds for testing |
+
+### Task 7: GPUI LayoutReporter
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui/gpui/` (or wherever GPUI renderer lives)
+
+Implement `LayoutReporter` for GPUI backend. After GPUI computes layout, extract bounding rectangles for each VNode and populate the DebugLayer's bounds map.
+
+### Task 8: Iced LayoutReporter
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui/iced/` (or wherever Iced renderer lives)
+
+Same pattern as GPUI — extract layout bounds after Iced's layout pass.
+
+### Task 9: Wire DebugLayer into render pipeline
+
+**Files:**
+- Modify: `crates/auto-lang/src/ui/mod.rs`
+
+Insert DebugLayer between VTree and backend renderer. When enabled, intercept VTree, add overlay nodes, forward to backend. When disabled, pass through untouched.
+
+### Task 10: Add Ctrl+Shift+D keyboard shortcut
+
+Wire the keyboard shortcut to toggle `DebugLayer::toggle()`.
+
+---
+
+## Summary
+
+| Phase | Tasks | Status | Tests |
+|-------|-------|--------|-------|
+| Phase 1: Foundation | Task 1 | DONE (c0920464) | 15 |
+| Phase 2: Selection + Panel | Task 2 | DONE (1e2035dd) | 26 |
+| Phase 3: Box Model + Source Map | Task 3 | DONE (1e2035dd) | 55 total |
+| Phase 4: Editing | Tasks 4-5 | NOT DONE | — |
+| Phase 5: Widget Tree | Task 6 | NOT DONE | — |
+| Backend Integration | Tasks 7-10 | NOT DONE | — |
