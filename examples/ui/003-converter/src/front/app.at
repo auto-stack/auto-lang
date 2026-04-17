@@ -2,8 +2,8 @@ widget App {
     msg Msg { CelsiusChanged, FahrenheitChanged }
 
     model {
-        var celsius str = "0"
-        var fahrenheit str = "32"
+        var celsius double = 0.0
+        var fahrenheit double = 32.0
     }
 
     view {
@@ -35,10 +35,10 @@ widget App {
 
     on {
         .CelsiusChanged -> {
-            .celsius = .celsius
+            .fahrenheit = .celsius * 9.0 / 5.0 + 32.0
         }
         .FahrenheitChanged -> {
-            .fahrenheit = .fahrenheit
+            .celsius = (.fahrenheit - 32.0) * 5.0 / 9.0
         }
     }
 }
