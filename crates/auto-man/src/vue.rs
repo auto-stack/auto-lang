@@ -237,7 +237,8 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "tailwindcss": "^3.4.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "@types/prismjs": "^1.26.0"
   }}
 }}
 "#, name, router_dep)

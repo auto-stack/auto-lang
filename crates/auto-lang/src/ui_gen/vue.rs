@@ -5882,7 +5882,8 @@ impl VueGenerator {
     "tailwindcss": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0"
+    "postcss": "^8.4.0",
+    "@types/prismjs": "^1.26.0"
   }}
 }}"#, project_name)
     }
