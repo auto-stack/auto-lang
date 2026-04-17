@@ -1413,8 +1413,16 @@ impl VueGenerator {
                             continue;
                         }
 
-                        let value_str = self.prop_to_attr_value(value)?;
-                        attrs.push(format!("{}={}", key, value_str));
+                        // Use v-bind (:attr) for dynamic values, static quotes for literals
+                        if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                            attrs.push(format!(":{}=\"{}\"", key, name));
+                        } else if let AuraPropValue::Expr(AuraExpr::FieldAccess { .. }) = value {
+                            let value_str = self.prop_to_attr_value(value)?;
+                            attrs.push(format!(":{}={}", key, value_str));
+                        } else {
+                            let value_str = self.prop_to_attr_value(value)?;
+                            attrs.push(format!("{}={}", key, value_str));
+                        }
                     }
 
                     // Event handlers
@@ -2929,10 +2937,19 @@ impl VueGenerator {
     }
 
     /// Convert prop value to HTML attribute value
+    /// For static values: produces `"value"`
+    /// For dynamic values (StateRef, FieldAccess): produces `"name"` (caller must prefix with `:`)
     fn prop_to_attr_value(&self, value: &AuraPropValue) -> GenResult<String> {
         match value {
             AuraPropValue::Expr(expr) => {
-                Ok(format!("\"{}\"", self.expr_to_vue_text(expr)?))
+                match expr {
+                    AuraExpr::StateRef(name) => Ok(format!("\"{}\"", name)),
+                    AuraExpr::FieldAccess { object, field } => {
+                        let obj_str = self.expr_to_vue_text(object)?;
+                        Ok(format!("\"{}.{}\"", obj_str.trim_matches(|c| c == '{' || c == '}'), field))
+                    }
+                    _ => Ok(format!("\"{}\"", self.expr_to_vue_text(expr)?)),
+                }
             }
             AuraPropValue::StyleBinding(_) => {
                 // Class bindings are handled separately in extract_classes
@@ -5637,6 +5654,35 @@ impl VueGenerator {
                 // text becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Image ===
+            "image" | "img" => {
+                for key in &["src", "alt"] {
+                    if let Some(value) = props.get(*key) {
+                        match value {
+                            AuraPropValue::Expr(AuraExpr::StateRef(name)) => {
+                                attrs.push(format!(":{}=\"{}\"", key, name));
+                            }
+                            AuraPropValue::Expr(AuraExpr::FieldAccess { .. }) => {
+                                if let Ok(val) = self.prop_to_attr_value(value) {
+                                    attrs.push(format!(":{}={}", key, val));
+                                }
+                            }
+                            _ => {
+                                if let Ok(val) = self.prop_to_attr_value(value) {
+                                    attrs.push(format!("{}={}", key, val));
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
                 }
             }
 

@@ -640,6 +640,20 @@ fn write_project_files(
 /// Plan 129: Supports two syntaxes:
 /// 1. app("front") {} - source in ./front/ (implied by name)
 /// 2. front: "./source/front" - explicit path (legacy)
+/// Resolve the front directory for a workspace root.
+/// Checks src/front, source/front, front — matching VueProject::from_workspace logic.
+fn resolve_front_dir(root_dir: &Path) -> std::path::PathBuf {
+    if root_dir.join("src").join("front").exists() {
+        root_dir.join("src").join("front")
+    } else if root_dir.join("source").join("front").exists() {
+        root_dir.join("source").join("front")
+    } else if root_dir.join("front").exists() {
+        root_dir.join("front")
+    } else {
+        root_dir.join("src").join("front")
+    }
+}
+
 fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
     // First, look for app("key") syntax (Plan 129)
     // Pattern: app("front") or app("back")
@@ -1224,10 +1238,12 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
 
+    // Resolve front directory using same logic as VueProject::from_workspace
+    let front_dir = resolve_front_dir(root_dir);
+    let output_dir = root_dir.join("gen").join("vue");
+
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
-    let front_dir = root_dir.join("front");
-    let output_dir = root_dir.join("vue");
     let mut changed_files: Vec<(PathBuf, String, String)> = Vec::new(); // (output_path, vue_code, widget_name)
 
     // Check app.at for changes
