@@ -1,42 +1,406 @@
 widget App {
     model {
-        var title1 str = "Revenue"
-        var value1 str = "$256K"
-        var title2 str = "Users"
-        var value2 str = "1,453"
-        var title3 str = "Orders"
-        var value3 str = "83M"
-        var title4 str = "Growth"
-        var value4 str = "+12%"
+        // Header
+        var dashboard_title str = "Dashboard"
+        var dashboard_subtitle str = "Campaign Insights"
+
+        // Stat cards
+        var stat1_title str = "Campaign Alerts"
+        var stat1_value str = "123k"
+        var stat2_title str = "System Alerts"
+        var stat2_value str = "89k"
+        var stat3_title str = "Promotional Offers"
+        var stat3_value str = "3k"
+        var stat4_title str = "Traffic Distribution"
+        var stat4_value str = "175k"
+
+        // Campaign Performance
+        var perf_all_traffic str = "14,582"
+        var perf_instagram str = "8,421"
+        var perf_linkedin str = "3,219"
+        var perf_google str = "1,987"
+        var perf_x str = "952"
+
+        // Campaign Targets
+        var target_progress int = 86
+        var target_current str = "8,571"
+        var target_goal str = "10,000"
+        var kpi1 str = "Revenue Target"
+        var kpi1_value str = "$32.5k"
+        var kpi2 str = "Active Users"
+        var kpi2_value str = "2,450"
+        var kpi3 str = "Conversion Rate"
+        var kpi3_value str = "5.6%"
+        var kpi4 str = "Avg. Order Value"
+        var kpi4_value str = "$128"
+
+        // Team Performance
+        var member1_name str = "Sarah Johnson"
+        var member1_role str = "Marketing Lead"
+        var member1_posts str = "142"
+        var member1_followers str = "12.5k"
+        var member1_engagement str = "4.8%"
+        var member2_name str = "Mike Chen"
+        var member2_role str = "Content Strategist"
+        var member2_posts str = "98"
+        var member2_followers str = "8.2k"
+        var member2_engagement str = "6.1%"
+        var member3_name str = "Emily Davis"
+        var member3_role str = "Social Media Manager"
+        var member3_posts str = "215"
+        var member3_followers str = "15.8k"
+        var member3_engagement str = "5.3%"
     }
 
     view {
         col {
-            text "Dashboard Overview"
+            // Header
             row {
                 col {
-                    text .title1
-                    text .value1
-                    class: "bg-white rounded-lg shadow p-4 flex-1"
+                    h2 .dashboard_title {
+                        class: "text-2xl font-bold text-gray-900"
+                    }
+                    span .dashboard_subtitle {
+                        class: "text-sm text-gray-500"
+                    }
+                    class: "gap-1"
+                }
+                spacer
+                class: "w-full items-center justify-between"
+            }
+
+            // Stat Cards Row
+            row {
+                col {
+                    row {
+                        col {
+                            class: "w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center text-red-500 text-xl font-bold"
+                        }
+                        col {
+                            span .stat1_title {
+                                class: "text-sm text-gray-500"
+                            }
+                            span .stat1_value {
+                                class: "text-2xl font-bold text-gray-900"
+                            }
+                            class: "gap-0"
+                        }
+                        class: "gap-3 items-center"
+                    }
+                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 col {
-                    text .title2
-                    text .value2
-                    class: "bg-white rounded-lg shadow p-4 flex-1"
+                    row {
+                        col {
+                            class: "w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center text-blue-500 text-xl font-bold"
+                        }
+                        col {
+                            span .stat2_title {
+                                class: "text-sm text-gray-500"
+                            }
+                            span .stat2_value {
+                                class: "text-2xl font-bold text-gray-900"
+                            }
+                            class: "gap-0"
+                        }
+                        class: "gap-3 items-center"
+                    }
+                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 col {
-                    text .title3
-                    text .value3
-                    class: "bg-white rounded-lg shadow p-4 flex-1"
+                    row {
+                        col {
+                            class: "w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center text-green-500 text-xl font-bold"
+                        }
+                        col {
+                            span .stat3_title {
+                                class: "text-sm text-gray-500"
+                            }
+                            span .stat3_value {
+                                class: "text-2xl font-bold text-gray-900"
+                            }
+                            class: "gap-0"
+                        }
+                        class: "gap-3 items-center"
+                    }
+                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 col {
-                    text .title4
-                    text .value4
-                    class: "bg-white rounded-lg shadow p-4 flex-1"
+                    row {
+                        col {
+                            class: "w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center text-purple-500 text-xl font-bold"
+                        }
+                        col {
+                            span .stat4_title {
+                                class: "text-sm text-gray-500"
+                            }
+                            span .stat4_value {
+                                class: "text-2xl font-bold text-gray-900"
+                            }
+                            class: "gap-0"
+                        }
+                        class: "gap-3 items-center"
+                    }
+                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
                 }
                 class: "gap-4"
             }
-            class: "w-full p-8 gap-6"
+
+            // Middle Row: Campaign Performance + Campaign Targets
+            row {
+                // Campaign Performance
+                col {
+                    h3 "Campaign Performance" {
+                        class: "text-lg font-semibold text-gray-900"
+                    }
+                    col {
+                        row {
+                            span "All Traffic"
+                            spacer
+                            span .perf_all_traffic {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-3 border-b border-gray-100"
+                        }
+                        row {
+                            span "Instagram"
+                            spacer
+                            span .perf_instagram {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-3 border-b border-gray-100"
+                        }
+                        row {
+                            span "LinkedIn"
+                            spacer
+                            span .perf_linkedin {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-3 border-b border-gray-100"
+                        }
+                        row {
+                            span "Google"
+                            spacer
+                            span .perf_google {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-3 border-b border-gray-100"
+                        }
+                        row {
+                            span "X"
+                            spacer
+                            span .perf_x {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-3"
+                        }
+                        class: "w-full"
+                    }
+                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
+                }
+
+                // Campaign Targets
+                col {
+                    h3 "Campaign Targets" {
+                        class: "text-lg font-semibold text-gray-900"
+                    }
+                    col {
+                        row {
+                            span "Overall Progress"
+                            spacer
+                            span "85.7%"
+                            class: "w-full items-center"
+                        }
+                        progress (value: .target_progress, max: 100) {
+                            class: "mt-2 mb-4"
+                        }
+                        row {
+                            span .target_current
+                            span "/"
+                            span .target_goal
+                            class: "text-sm text-gray-500 gap-1"
+                        }
+                        class: "w-full"
+                    }
+                    divider
+                    col {
+                        row {
+                            span .kpi1
+                            spacer
+                            span .kpi1_value {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-2 border-b border-gray-100"
+                        }
+                        row {
+                            span .kpi2
+                            spacer
+                            span .kpi2_value {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-2 border-b border-gray-100"
+                        }
+                        row {
+                            span .kpi3
+                            spacer
+                            span .kpi3_value {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-2 border-b border-gray-100"
+                        }
+                        row {
+                            span .kpi4
+                            spacer
+                            span .kpi4_value {
+                                class: "font-semibold text-gray-900"
+                            }
+                            class: "w-full items-center py-2"
+                        }
+                        class: "w-full"
+                    }
+                    class: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
+                }
+                class: "gap-4"
+            }
+
+            // Team Performance
+            col {
+                h3 "Team Performance" {
+                    class: "text-lg font-semibold text-gray-900"
+                }
+                row {
+                    col {
+                        row {
+                            avatar {
+                                class: "w-10 h-10 rounded-full bg-blue-100"
+                            }
+                            col {
+                                span .member1_name {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                span .member1_role {
+                                    class: "text-xs text-gray-500"
+                                }
+                                class: "gap-0"
+                            }
+                            class: "gap-3 items-center"
+                        }
+                        row {
+                            col {
+                                span "Posts"
+                                span .member1_posts {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            col {
+                                span "Followers"
+                                span .member1_followers {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            col {
+                                span "Engagement"
+                                span .member1_engagement {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            class: "gap-4 mt-3"
+                        }
+                        class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    }
+                    col {
+                        row {
+                            avatar {
+                                class: "w-10 h-10 rounded-full bg-green-100"
+                            }
+                            col {
+                                span .member2_name {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                span .member2_role {
+                                    class: "text-xs text-gray-500"
+                                }
+                                class: "gap-0"
+                            }
+                            class: "gap-3 items-center"
+                        }
+                        row {
+                            col {
+                                span "Posts"
+                                span .member2_posts {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            col {
+                                span "Followers"
+                                span .member2_followers {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            col {
+                                span "Engagement"
+                                span .member2_engagement {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            class: "gap-4 mt-3"
+                        }
+                        class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    }
+                    col {
+                        row {
+                            avatar {
+                                class: "w-10 h-10 rounded-full bg-purple-100"
+                            }
+                            col {
+                                span .member3_name {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                span .member3_role {
+                                    class: "text-xs text-gray-500"
+                                }
+                                class: "gap-0"
+                            }
+                            class: "gap-3 items-center"
+                        }
+                        row {
+                            col {
+                                span "Posts"
+                                span .member3_posts {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            col {
+                                span "Followers"
+                                span .member3_followers {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            col {
+                                span "Engagement"
+                                span .member3_engagement {
+                                    class: "font-semibold text-gray-900 text-sm"
+                                }
+                                class: "gap-0 items-center"
+                            }
+                            class: "gap-4 mt-3"
+                        }
+                        class: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    }
+                    class: "gap-4"
+                }
+                class: "w-full gap-4"
+            }
+
+            class: "w-full p-6 gap-6 bg-gray-50 min-h-screen"
         }
     }
 }
