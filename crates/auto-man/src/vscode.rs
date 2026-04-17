@@ -530,52 +530,21 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         }
     }
 
-    // Step 6: Link Vue dist into extension directory for webview access
+    // Step 6: Copy Vue dist into extension directory for webview access
     // VSCode webviews cannot load resources from outside the extension dir,
-    // so we symlink gen/vue/dist/ → gen/vscode/webview/ at build time.
-    // Using "webview/" to avoid conflicting with webpack's "dist/" output.
+    // so we copy gen/vue/dist/ → gen/vscode/webview/ at build time.
+    // Symlinks/junctions don't work — the service worker resolves the real
+    // path and rejects it as outside the extension.
     let vue_dist_src = root_dir.join("gen").join("vue").join("dist");
     let vscode_webview_dst = vscode_dir.join("webview");
 
     if vue_dist_src.exists() {
-        // Remove existing link/dir if present
-        if vscode_webview_dst.exists() || vscode_webview_dst.is_symlink() {
+        // Remove existing copy if present
+        if vscode_webview_dst.exists() {
             let _ = fs::remove_dir_all(&vscode_webview_dst);
         }
-
-        #[cfg(windows)]
-        {
-            // On Windows, use a junction (directory symlink) which works without admin
-            let src_str = vue_dist_src.to_string_lossy().to_string();
-            let dst_str = vscode_webview_dst.to_string_lossy().to_string();
-            let result = std::process::Command::new("cmd")
-                .args(&["/C", "mklink", "/J", &dst_str, &src_str])
-                .status();
-            match result {
-                Ok(status) if status.success() => {
-                    println!("  {} Vue dist linked into extension", "OK".bright_green());
-                }
-                _ => {
-                    // Fallback to copy if junction fails
-                    copy_dir_recursive(&vue_dist_src, &vscode_webview_dst)?;
-                    println!("  {} Vue dist copied into extension", "OK".bright_green());
-                }
-            }
-        }
-
-        #[cfg(not(windows))]
-        {
-            match std::os::unix::fs::symlink(&vue_dist_src, &vscode_webview_dst) {
-                Ok(_) => {
-                    println!("  {} Vue dist linked into extension", "OK".bright_green());
-                }
-                Err(_) => {
-                    // Fallback to copy if symlink fails
-                    copy_dir_recursive(&vue_dist_src, &vscode_webview_dst)?;
-                    println!("  {} Vue dist copied into extension", "OK".bright_green());
-                }
-            }
-        }
+        copy_dir_recursive(&vue_dist_src, &vscode_webview_dst)?;
+        println!("  {} Vue dist copied into extension", "OK".bright_green());
     }
 
     Ok(())
