@@ -1365,7 +1365,7 @@ fn compile_at_to_vue(at_path: &Path) -> AutoResult<(String, Vec<String>)> {
     }
 
     let mut generator = VueGenerator::new()
-        .with_mode(auto_lang::ui_gen::VueMode::Shadcn);
+        .with_mode(auto_lang::ui_gen::VueMode::Plain);
     let vue_code = generator
         .generate(&widgets[0])
         .map_err(|e| e.to_string())?;
