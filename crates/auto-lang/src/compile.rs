@@ -19,6 +19,7 @@ use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::types::TypeStore;
 use crate::symbols::SymbolLocation;
 use crate::use_scanner::{scan_use_statements, UseStatement};
+use crate::util::find_std_lib;
 use auto_cache::{Sandbox, CrateMetadata, CrateSource};
 use auto_val::AutoStr;
 use std::rc::Rc;
@@ -353,26 +354,25 @@ impl CompileSession {
         let extensions = [".at", ".auto"];
         let mut found_path: Option<std::path::PathBuf> = None;
 
+        // Resolve stdlib root via find_std_lib (searches CARGO_MANIFEST_DIR, ~/.auto/libs/, system paths)
+        let stdlib_base = find_std_lib()
+            .map(|s| std::path::PathBuf::from(s.as_str()))
+            .unwrap_or_else(|_| std::path::PathBuf::from("stdlib/auto"));
+
         for ext in &extensions {
+            // 1. Try relative to current working directory (local modules)
             let path = std::path::Path::new(&module_path).with_extension(&ext[1..]);
             if path.exists() {
                 found_path = Some(path);
                 break;
             }
-            // 也尝试 stdlib/auto 路径
-            // For "auto.io", module_path is "auto/io", but stdlib file is "stdlib/auto/io.at"
+            // 2. Try stdlib path
+            // For "auto.io", module_path is "auto/io", but stdlib file is time.at
             // Strip the "auto/" prefix when building stdlib path
             let stdlib_relative = if module_path.starts_with("auto/") {
                 &module_path[5..] // strip "auto/"
             } else {
                 &module_path
-            };
-            // Use CARGO_MANIFEST_DIR to find project root for stdlib lookup
-            let stdlib_base = if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-                // CARGO_MANIFEST_DIR is crates/auto-lang, go up to project root (../../), then stdlib/auto
-                std::path::PathBuf::from(manifest_dir).join("../../stdlib/auto")
-            } else {
-                std::path::PathBuf::from("stdlib/auto")
             };
             let stdlib_path = stdlib_base.join(stdlib_relative).with_extension(&ext[1..]);
             if stdlib_path.exists() {

@@ -710,8 +710,18 @@ impl VueProject {
 
         // Parse workspace paths (Plan 129: app("front") syntax)
         let front_rel_path = parse_workspace_path(&pac_content, "front")
-            .unwrap_or_else(|| "front".to_string());
-        let front_dir = root_dir.join(&front_rel_path);
+            .unwrap_or_else(|| "src/front".to_string());
+
+        // Try the parsed path, then src/front, source/front, front
+        let front_dir = if root_dir.join(&front_rel_path).exists() {
+            root_dir.join(&front_rel_path)
+        } else if root_dir.join("src").join("front").exists() {
+            root_dir.join("src").join("front")
+        } else if root_dir.join("source").join("front").exists() {
+            root_dir.join("source").join("front")
+        } else {
+            root_dir.join("src").join("front")
+        };
 
         // Check if front directory exists
         if !front_dir.exists() {
@@ -729,7 +739,7 @@ impl VueProject {
             .unwrap_or_else(|| "aura-app".to_string());
 
         // Output directory (Plan 129: vue/ instead of dist/)
-        let output_dir = root_dir.join("vue");
+        let output_dir = root_dir.join("gen").join("vue");
         let public_dir = front_dir.join("public");
 
         // Compile .at files

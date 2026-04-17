@@ -35,12 +35,14 @@ pub fn generate_rust_ui(
     println!("{}", "Generating Rust UI code".bright_cyan());
 
     // Determine the front/ source directory
-    let front_dir = if project_dir.join("source").join("front").exists() {
+    let front_dir = if project_dir.join("src").join("front").exists() {
+        project_dir.join("src").join("front")
+    } else if project_dir.join("source").join("front").exists() {
         project_dir.join("source").join("front")
     } else if project_dir.join("front").exists() {
         project_dir.join("front")
     } else {
-        project_dir.join("front")
+        project_dir.join("src").join("front")
     };
 
     if !front_dir.exists() {
@@ -65,7 +67,7 @@ pub fn generate_rust_ui(
     );
 
     // Determine output directory
-    let default_output = project_dir.join("rust");
+    let default_output = project_dir.join("gen").join("rust");
     let output = output_dir
         .map(|p| p.to_path_buf())
         .unwrap_or(default_output);
@@ -352,7 +354,7 @@ fn find_auto_lang_path(project_dir: &Path) -> String {
     ];
 
     for candidate in &candidates {
-        let full = project_dir.join("rust").join(candidate);
+        let full = project_dir.join("gen").join("rust").join(candidate);
         if full.exists() {
             return candidate.to_string();
         }
@@ -380,7 +382,7 @@ fn find_auto_lang_path(project_dir: &Path) -> String {
 
 /// Run the generated Rust UI project.
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    let rust_dir = project_dir.join("rust");
+    let rust_dir = project_dir.join("gen").join("rust");
 
     if !rust_dir.join("Cargo.toml").exists() {
         // Auto-generate first

@@ -6,7 +6,7 @@ widget App {
     }
 
     view {
-        col {
+        center {
             text `Counter: ${.count}`
             row {
                 button "-" { onclick: .Dec }

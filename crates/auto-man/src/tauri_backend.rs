@@ -56,8 +56,8 @@ use crate::AutoResult;
 /// This is the main entry point for Tauri backend generation.
 /// It transpiles `back/api.at` and `back/db.at` to a complete Rust crate.
 pub fn generate_tauri_backend(root_dir: &Path) -> AutoResult<()> {
-    let back_dir = root_dir.join("back");
-    let rust_dir = root_dir.join("rust");
+    let back_dir = root_dir.join("src").join("back");
+    let rust_dir = root_dir.join("gen").join("rust");
 
     // Check if back/ directory exists
     if !back_dir.exists() {

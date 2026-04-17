@@ -292,15 +292,8 @@ impl Automan {
         if self.pac.has_backend_config() {
             let frontends = self.pac.frontend_types();
 
-            // If multiple frontends, let user select one
-            if frontends.len() > 1 {
-                return self.open_ide_multi_backend(frontends);
-            }
-
-            // Single frontend - open directly
-            if let Some(backend) = frontends.first() {
-                return self.open_ide_for_backend(backend);
-            }
+            let idx = crate::util::select_backend(&frontends, "open")?;
+            return self.open_ide_for_backend(&frontends[idx]);
         }
 
         // Legacy: Check single backend string
@@ -314,30 +307,6 @@ impl Automan {
 
         // Fall back to port builder for embedded IDEs
         self.open_ide_for_port_builder()
-    }
-
-    /// Open IDE for multi-backend configuration (user selects which one)
-    fn open_ide_multi_backend(&self, frontends: Vec<BackendType>) -> AutoResult<()> {
-        use dialoguer::Select;
-
-        let backend_names: Vec<String> = frontends.iter().map(|b| format!("{:?}", b)).collect();
-
-        println!();
-        println!("{}", "Multiple backends configured:".bright_cyan());
-        for (i, name) in backend_names.iter().enumerate() {
-            println!("  {}. {}", i + 1, name);
-        }
-        println!();
-
-        let selection = Select::new()
-            .with_prompt("Select backend to open")
-            .default(0)
-            .items(&backend_names)
-            .interact()
-            .map_err(|e| format!("Failed to select backend: {}", e))?;
-
-        let selected = &frontends[selection];
-        self.open_ide_for_backend(selected)
     }
 
     /// Open IDE for a specific backend
@@ -464,13 +433,13 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
         // Jet project is in the jet/ subdirectory
-        let project_dir = root_dir.join("jet");
+        let project_dir = root_dir.join("gen").join("jet");
 
         // Check if jet directory exists, if not, create it
         if !project_dir.exists() {
             println!("Jet project directory not found, generating...");
             // Generate the jet project first
-            let output_dir = root_dir.join("jet");
+            let output_dir = root_dir.join("gen").join("jet");
             crate::jet::generate_jet_project(&root_dir, Some(&output_dir), true)?;
         }
 
@@ -593,13 +562,13 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
         // Ark project is in the ark/ subdirectory
-        let project_dir = root_dir.join("ark");
+        let project_dir = root_dir.join("gen").join("ark");
 
         // Check if ark directory exists, if not, create it
         if !project_dir.exists() {
             println!("Ark project directory not found, generating...");
             // Generate the ark project first
-            let output_dir = root_dir.join("ark");
+            let output_dir = root_dir.join("gen").join("ark");
             crate::ark::generate_ark_project(&root_dir, Some(&output_dir), true)?;
         }
 
@@ -804,12 +773,8 @@ impl Automan {
         // Check backend configuration (supports array form)
         if self.pac.has_backend_config() {
             let frontends = self.pac.frontend_types();
-            if frontends.len() > 1 {
-                return self.build_multi_backend(frontends);
-            }
-            if let Some(backend) = frontends.first() {
-                return self.build_backend(backend);
-            }
+            let idx = crate::util::select_backend(&frontends, "build")?;
+            return self.build_backend(&frontends[idx]);
         }
 
         // Legacy: single backend string
@@ -942,42 +907,6 @@ impl Automan {
     }
 
     /// Build with multiple backends - let user select one
-    fn build_multi_backend(&mut self, frontends: Vec<auto_lang::config::BackendType>) -> AutoResult<()> {
-        use dialoguer::Select;
-
-        let backend_names: Vec<&'static str> = frontends.iter()
-            .map(|t| t.as_str())
-            .collect();
-
-        println!("{}", "Multiple backends configured:".bright_cyan());
-        for (i, name) in backend_names.iter().enumerate() {
-            println!("  {}. {}", i + 1, name);
-        }
-        println!();
-
-        // Check for AUTO_BACKEND environment variable (for non-interactive mode)
-        if let Ok(backend_env) = std::env::var("AUTO_BACKEND") {
-            let backend_lower = backend_env.to_lowercase();
-            for (i, name) in backend_names.iter().enumerate() {
-                if name.to_lowercase() == backend_lower {
-                    println!("{} Using backend from AUTO_BACKEND: {}", "→".bright_green(), name.bright_cyan());
-                    return self.build_backend(&frontends[i]);
-                }
-            }
-            eprintln!("Warning: AUTO_BACKEND='{}' not found in available backends, falling back to interactive selection", backend_env);
-        }
-
-        let selection = Select::new()
-            .with_prompt("Select backend to build")
-            .default(0)
-            .items(&backend_names)
-            .interact()
-            .map_err(|e| format!("Failed to select backend: {}", e))?;
-
-        let selected = &frontends[selection];
-        self.build_backend(selected)
-    }
-
     /// Build a specific backend
     fn build_backend(&mut self, backend: &auto_lang::config::BackendType) -> AutoResult<()> {
         match backend {
@@ -1134,8 +1063,8 @@ impl Automan {
                             println!("  Generating Kotlin (backend: jet)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("jet")
-                                }).or_else(|| Some(member_dir.join("jet")))
+                                    std::path::PathBuf::from(o).join("gen").join("jet")
+                                }).or_else(|| Some(member_dir.join("gen").join("jet")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1149,8 +1078,8 @@ impl Automan {
                             println!("  Generating ArkTS (backend: ark)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("ark")
-                                }).or_else(|| Some(member_dir.join("ark")))
+                                    std::path::PathBuf::from(o).join("gen").join("ark")
+                                }).or_else(|| Some(member_dir.join("gen").join("ark")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1164,8 +1093,8 @@ impl Automan {
                             println!("  Generating Rust UI (backend: rust)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("rust")
-                                }).or_else(|| Some(member_dir.join("rust")))
+                                    std::path::PathBuf::from(o).join("gen").join("rust")
+                                }).or_else(|| Some(member_dir.join("gen").join("rust")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1179,8 +1108,8 @@ impl Automan {
                             println!("  Generating VSCode extension (backend: vscode)");
                             let output_path = if frontends.len() > 1 {
                                 output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("vscode")
-                                }).or_else(|| Some(member_dir.join("vscode")))
+                                    std::path::PathBuf::from(o).join("gen").join("vscode")
+                                }).or_else(|| Some(member_dir.join("gen").join("vscode")))
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
@@ -1214,8 +1143,12 @@ impl Automan {
             return Err("No frontend backend configured in pac.at".into());
         }
 
-        // Generate for all configured frontends
-        for backend in &frontends {
+        // Select backend (auto-select if only one)
+        let idx = crate::util::select_backend(&frontends, "generate")?;
+        let selected_backends = vec![frontends[idx].clone()];
+
+        // Generate for selected backend only
+        for backend in &selected_backends {
             match backend {
                 BackendType::Jet => {
                     println!("Generating Kotlin code (backend: jet)");
@@ -1225,8 +1158,8 @@ impl Automan {
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("jet")
-                        }).or_else(|| Some(root_dir.join("jet")))
+                            std::path::PathBuf::from(o).join("gen").join("jet")
+                        }).or_else(|| Some(root_dir.join("gen").join("jet")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1245,8 +1178,8 @@ impl Automan {
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("ark")
-                        }).or_else(|| Some(root_dir.join("ark")))
+                            std::path::PathBuf::from(o).join("gen").join("ark")
+                        }).or_else(|| Some(root_dir.join("gen").join("ark")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1287,8 +1220,8 @@ impl Automan {
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("rust")
-                        }).or_else(|| Some(root_dir.join("rust")))
+                            std::path::PathBuf::from(o).join("gen").join("rust")
+                        }).or_else(|| Some(root_dir.join("gen").join("rust")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1306,8 +1239,8 @@ impl Automan {
 
                     let output_path = if frontends.len() > 1 {
                         output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("vscode")
-                        }).or_else(|| Some(root_dir.join("vscode")))
+                            std::path::PathBuf::from(o).join("gen").join("vscode")
+                        }).or_else(|| Some(root_dir.join("gen").join("vscode")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
@@ -1336,16 +1269,8 @@ impl Automan {
         // Check backend configuration (Plan 130: support array form)
         if self.pac.has_backend_config() {
             let frontends = self.pac.frontend_types();
-
-            // If multiple backends, let user select one
-            if frontends.len() > 1 {
-                return self.run_multi_backend(frontends, args);
-            }
-
-            // Single backend
-            if let Some(backend) = frontends.first() {
-                return self.run_backend(backend, args);
-            }
+            let idx = crate::util::select_backend(&frontends, "run")?;
+            return self.run_backend(&frontends[idx], args);
         }
 
         // Legacy: use backend string
@@ -1368,42 +1293,6 @@ impl Automan {
     }
 
     /// Run with multiple backends - let user select one
-    fn run_multi_backend(&mut self, frontends: Vec<auto_lang::config::BackendType>, args: Vec<String>) -> AutoResult<()> {
-        use dialoguer::Select;
-
-        let backend_names: Vec<&'static str> = frontends.iter()
-            .map(|t| t.as_str())
-            .collect();
-
-        println!("{}", "Multiple backends configured:".bright_cyan());
-        for (i, name) in backend_names.iter().enumerate() {
-            println!("  {}. {}", i + 1, name);
-        }
-        println!();
-
-        // Check for AUTO_BACKEND environment variable (for non-interactive mode)
-        if let Ok(backend_env) = std::env::var("AUTO_BACKEND") {
-            let backend_lower = backend_env.to_lowercase();
-            for (i, name) in backend_names.iter().enumerate() {
-                if name.to_lowercase() == backend_lower {
-                    println!("{} Using backend from AUTO_BACKEND: {}", "→".bright_green(), name.bright_cyan());
-                    return self.run_backend(&frontends[i], args);
-                }
-            }
-            eprintln!("Warning: AUTO_BACKEND='{}' not found in available backends, falling back to interactive selection", backend_env);
-        }
-
-        let selection = Select::new()
-            .with_prompt("Select backend to run")
-            .default(0)
-            .items(&backend_names)
-            .interact()
-            .map_err(|e| format!("Failed to select backend: {}", e))?;
-
-        let selected = &frontends[selection];
-        self.run_backend(selected, args)
-    }
-
     /// Run a specific backend
     fn run_backend(&mut self, backend: &auto_lang::config::BackendType, args: Vec<String>) -> AutoResult<()> {
         use auto_lang::database::UICache;
@@ -1442,7 +1331,7 @@ impl Automan {
             }
             auto_lang::config::BackendType::Rust => {
                 // Check if this is a UI project (has front/ dir)
-                if root_dir.join("front").exists() {
+                if root_dir.join("src").join("front").exists() {
                     crate::rust_ui::run_rust_ui(&root_dir, args)
                 } else {
                     println!("Running Rust project (backend: rust)");
@@ -1625,7 +1514,7 @@ impl Automan {
         println!("{} Build complete", "✓".bright_green());
 
         // Plan 132: Check if there's a generated Rust server to run
-        let rust_dir = root_dir.join("rust");
+        let rust_dir = root_dir.join("gen").join("rust");
         let rust_server_path = rust_dir.join("Cargo.toml");
         let mut rust_server_handle: Option<std::process::Child> = None;
 

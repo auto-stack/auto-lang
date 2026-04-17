@@ -106,7 +106,9 @@ impl ArkProject {
         // 3. pages/ or widgets/ directly in root (quickstart tutorials)
         // 4. aura/ subdirectory (alternative quickstart)
         // 5. app.at directly in root (simple single-file projects)
-        let front_dir = if root_dir.join("source").join("front").exists() {
+        let front_dir = if root_dir.join("src").join("front").exists() {
+            root_dir.join("src").join("front")
+        } else if root_dir.join("source").join("front").exists() {
             root_dir.join("source").join("front")
         } else if root_dir.join("front").exists() {
             root_dir.join("front")
@@ -119,11 +121,11 @@ impl ArkProject {
             // Simple single-file project: app.at directly in root
             root_dir.to_path_buf()
         } else {
-            root_dir.join("source").join("front")
+            root_dir.join("src").join("front")
         };
 
         // Output directory
-        let output_dir = root_dir.join("ark");
+        let output_dir = root_dir.join("gen").join("ark");
 
         // Compile .at files to ArkTS
         let mut arkts_files: Vec<(String, String)> = Vec::new();

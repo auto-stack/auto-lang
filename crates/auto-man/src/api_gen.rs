@@ -30,7 +30,7 @@ use auto_lang::api::{ApiModule, ApiType, ApiField, ApiEndpoint, ApiParam, ApiAtt
 /// - Backend: Tauri commands or Axum routes
 /// - Frontend: TypeScript types and API client
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
-    let back_dir = root_dir.join("back");
+    let back_dir = root_dir.join("src").join("back");
 
     // Check if back/api.at exists
     let api_file = back_dir.join("api.at");
@@ -105,7 +105,7 @@ fn try_full_parse(api_content: &str) -> Option<ApiModule> {
 fn generate_tauri_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
     use auto_lang::api::Target;
 
-    let vue_dir = root_dir.join("vue");
+    let vue_dir = root_dir.join("gen").join("vue");
     let tauri_src_dir = vue_dir.join("src-tauri").join("src");
 
     // Ensure directories exist
@@ -152,8 +152,8 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
         .map_err(|e| format!("Failed to write api.ts: {}", e))?;
 
     // Also write to vue/src/lib/ for Vue project imports
-    let vue_lib_dir = root_dir.join("vue").join("src").join("lib");
-    if vue_lib_dir.exists() || root_dir.join("vue").exists() {
+    let vue_lib_dir = root_dir.join("gen").join("vue").join("src").join("lib");
+    if vue_lib_dir.exists() || root_dir.join("gen").join("vue").exists() {
         std::fs::create_dir_all(&vue_lib_dir)
             .map_err(|e| format!("Failed to create vue lib directory: {}", e))?;
         std::fs::write(vue_lib_dir.join("api.ts"), &ts_code)
@@ -163,7 +163,7 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
     println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
     // Generate Rust server if back/ exists
-    let back_dir = root_dir.join("back");
+    let back_dir = root_dir.join("src").join("back");
     if back_dir.exists() {
         generate_rust_server(api_module, root_dir)?;
     }

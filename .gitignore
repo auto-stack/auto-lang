@@ -46,12 +46,7 @@ test*.pdb
 tmp/*.at
 
 examples/**/dist/*
-examples/**/vue/*
-examples/**/jet/*
-examples/**/tauri/*
-examples/**/rust/
-examples/**/ark/
-examples/**/vscode/*
+examples/**/gen/
 
 # Vue project output at root
 /dist/

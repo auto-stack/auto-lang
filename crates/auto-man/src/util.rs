@@ -1,5 +1,10 @@
 use std::fs;
+use std::io::{self, Write};
 use std::path::Path;
+
+use colored::Colorize;
+
+use crate::AutoResult;
 
 /// Compute BLAKE3 hash of a file's contents
 /// Returns the first 64 bits as u64 for compact storage
@@ -69,6 +74,83 @@ pub fn select_or_default_port(
         }
     };
     Ok(port)
+}
+
+
+/// Select a backend from available frontends.
+///
+/// Returns the index into `frontends` for the selected backend.
+///
+/// Logic:
+/// 1. Only 1 option → auto-select
+/// 2. `AUTO_BACKEND` env var → match (case-insensitive)
+/// 3. Non-TTY → auto-select first
+/// 4. Print numbered list, read number input from user
+pub fn select_backend(
+    frontends: &[auto_lang::config::BackendType],
+    action: &str,
+) -> AutoResult<usize> {
+    // 1. Auto-select if only one option
+    if frontends.len() == 1 {
+        return Ok(0);
+    }
+
+    let backend_names: Vec<&str> = frontends.iter()
+        .map(|t| t.as_str())
+        .collect();
+
+    // 2. Check AUTO_BACKEND environment variable
+    if let Ok(backend_env) = std::env::var("AUTO_BACKEND") {
+        let backend_lower = backend_env.to_lowercase();
+        for (i, name) in backend_names.iter().enumerate() {
+            if name.to_lowercase() == backend_lower {
+                println!("{} Using backend from AUTO_BACKEND: {}",
+                    "→".bright_green(), name.bright_cyan());
+                return Ok(i);
+            }
+        }
+        eprintln!("Warning: AUTO_BACKEND='{}' not found, falling back to selection", backend_env);
+    }
+
+    // 3. Non-TTY fallback
+    if !atty_check() {
+        println!("{} Auto-selecting backend: {}",
+            "→".bright_green(), backend_names[0].bright_cyan());
+        return Ok(0);
+    }
+
+    // 4. Interactive number selection
+    println!("{}", format!("Select backend to {}:", action).bright_cyan());
+    for (i, name) in backend_names.iter().enumerate() {
+        println!("  {}. {}", i + 1, name);
+    }
+
+    loop {
+        print!("{}", "  Enter number: ".bright_cyan());
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        match input.parse::<usize>() {
+            Ok(n) if n >= 1 && n <= frontends.len() => {
+                println!("{} Selected: {}",
+                    "→".bright_green(), backend_names[n - 1].bright_cyan());
+                return Ok(n - 1);
+            }
+            _ => {
+                println!("  {} Please enter a number between 1 and {}",
+                    "Invalid.".bright_yellow(), frontends.len());
+            }
+        }
+    }
+}
+
+/// Check if stdin is a TTY (terminal).
+fn atty_check() -> bool {
+    use std::io::IsTerminal;
+    io::stdin().is_terminal()
 }
 
 

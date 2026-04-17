@@ -137,15 +137,17 @@ impl VscodeProject {
         let config = VscodeConfig::parse_from_pac(&pac_content, &name);
 
         // Determine front directory
-        let front_dir = if root_dir.join("source").join("front").exists() {
+        let front_dir = if root_dir.join("src").join("front").exists() {
+            root_dir.join("src").join("front")
+        } else if root_dir.join("source").join("front").exists() {
             root_dir.join("source").join("front")
         } else if root_dir.join("front").exists() {
             root_dir.join("front")
         } else {
-            root_dir.join("front")
+            root_dir.join("src").join("front")
         };
 
-        let output_dir = root_dir.join("vscode");
+        let output_dir = root_dir.join("gen").join("vscode");
 
         // Compile .at files to Vue using the existing VueGenerator
         let mut all_components: Vec<(String, String, String, String)> = Vec::new();

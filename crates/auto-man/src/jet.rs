@@ -139,17 +139,18 @@ impl JetProject {
             .unwrap_or_else(|| "MyApp".to_string());
 
         // Determine front directory - check multiple locations
-        let front_dir = if root_dir.join("source").join("front").exists() {
+        let front_dir = if root_dir.join("src").join("front").exists() {
+            root_dir.join("src").join("front")
+        } else if root_dir.join("source").join("front").exists() {
             root_dir.join("source").join("front")
         } else if root_dir.join("front").exists() {
             root_dir.join("front")
         } else {
-            // Default to source/front (will be created if needed)
-            root_dir.join("source").join("front")
+            root_dir.join("src").join("front")
         };
 
-        // Output directory (Plan 129: jet/ instead of dist/)
-        let output_dir = root_dir.join("jet");
+        // Output directory
+        let output_dir = root_dir.join("gen").join("jet");
 
         // Compile .at files to Kotlin
         let mut kotlin_files: Vec<(String, String)> = Vec::new();

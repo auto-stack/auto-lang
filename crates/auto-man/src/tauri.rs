@@ -34,7 +34,7 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     let project = crate::vue::VueProject::from_workspace(root_dir)?;
 
     // Check if Tauri is already initialized
-    let vue_dir = root_dir.join("vue");
+    let vue_dir = root_dir.join("gen").join("vue");
     let tauri_dir = vue_dir.join("src-tauri");
     let tauri_exists = tauri_dir.exists();
 
@@ -63,7 +63,7 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     }
 
     // Plan 151: Step 2.5 - Generate Rust backend crate (if backend: { front: "tauri", back: "rust" })
-    let rust_dir = root_dir.join("rust");
+    let rust_dir = root_dir.join("gen").join("rust");
     if rust_dir.exists() {
         current_step += 1;
         println!();
@@ -100,7 +100,7 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         init_tauri(&vue_dir)?;
 
         // Plan 151: Update src-tauri/Cargo.toml to depend on ../../rust
-        let rust_dir = root_dir.join("rust");
+        let rust_dir = root_dir.join("gen").join("rust");
         if rust_dir.exists() {
             update_tauri_cargo_toml(&tauri_dir)?;
         }
@@ -311,7 +311,7 @@ fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> 
 
 /// Run npx tauri dev
 fn run_tauri_dev(root_dir: &Path) -> AutoResult<()> {
-    let vue_dir = root_dir.join("vue");
+    let vue_dir = root_dir.join("gen").join("vue");
 
     if !vue_dir.exists() {
         return Err("Vue project directory not found. Please run 'auto gen' first.".into());
