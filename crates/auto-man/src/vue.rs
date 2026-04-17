@@ -2,14 +2,13 @@
 //!
 //! This module provides the complete Vue + shadcn-vue project workflow:
 //! 1. Generate project structure (package.json, vite.config.ts, etc.)
-//! 2. npm install
+//! 2. bun install (or npm install as fallback)
 //! 3. Install shadcn-vue components
-//! 4. Build (npm run build) or Run dev server (npm run dev)
+//! 4. Build (bun run build) or Run dev server (bun run dev)
 
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use colored::Colorize;
 use auto_lang::aura::AuraRoute;
@@ -37,53 +36,6 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     }
 
     Ok(())
-}
-
-/// Check if a command exists
-fn command_exists(cmd: &str) -> bool {
-    #[cfg(windows)]
-    let check = Command::new("where").arg(cmd).output();
-    #[cfg(not(windows))]
-    let check = Command::new("which").arg(cmd).output();
-
-    check.map(|o| o.status.success()).unwrap_or(false)
-}
-
-/// Run a command with live output (inherits stdout/stderr)
-/// On Windows, uses cmd.exe /C to properly resolve commands in PATH
-fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
-    use std::process::Stdio;
-
-    #[cfg(windows)]
-    let status = {
-        // On Windows, use cmd.exe /C to properly resolve npm/npx from PATH
-        let mut full_args = vec!["/C", cmd];
-        full_args.extend(args);
-        Command::new("cmd")
-            .args(&full_args)
-            .current_dir(cwd)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
-    };
-
-    #[cfg(not(windows))]
-    let status = {
-        Command::new(cmd)
-            .args(args)
-            .current_dir(cwd)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
-    };
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{} exited with code {:?}", cmd, status.code()))
-    }
 }
 
 /// Check if shadcn-vue components are already installed
@@ -1034,25 +986,26 @@ impl VueProject {
         Ok(())
     }
 
-    /// Run npm install
+    /// Run package manager install
     pub fn npm_install(&self) -> AutoResult<()> {
-        if !command_exists("npm") {
-            println!("{}", "⚠ npm not found. Please install Node.js from https://nodejs.org/".bright_yellow());
-            return Err("npm not found".into());
+        let pm = crate::pkg::display_name();
+        if !crate::pkg::command_exists(crate::pkg::install_cmd()) {
+            println!("{}", format!("⚠ {} not found. Please install it or Node.js.", pm).bright_yellow());
+            return Err(format!("{} not found", pm).into());
         }
 
         println!();
         println!("{} {}", "▶".bright_cyan(), "Installing dependencies...".bright_white());
-        println!("{}", "  Running: npm install".bright_black());
+        println!("{}", format!("  Running: {} install", pm).bright_black());
 
-        match run_command_live("npm", &["install"], &self.output_dir) {
+        match crate::pkg::install(&self.output_dir) {
             Ok(_) => {
                 println!("{}", "  ✓ Dependencies installed".bright_green());
                 Ok(())
             }
             Err(e) => {
                 println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                Err(format!("npm install failed: {}", e).into())
+                Err(format!("{} install failed: {}", pm, e).into())
             }
         }
     }
@@ -1073,21 +1026,19 @@ impl VueProject {
         println!();
         println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
 
-        // npx --yes (skip npx install prompt) shadcn-vue@latest add <components> --yes (skip shadcn prompts)
-        let mut args = vec!["--yes", "shadcn-vue@latest", "add"];
-        args.extend(self.shadcn_components.iter().map(|s| s.as_str()));
-        args.push("-y");  // shadcn-vue uses -y for yes
+        let mut pkg_args: Vec<&str> = self.shadcn_components.iter().map(|s| s.as_str()).collect();
+        pkg_args.push("-y");  // shadcn-vue uses -y for yes
 
-        println!("{}", format!("  Running: npx {}", args.join(" ")).bright_black());
+        println!("{}", format!("  Running: {} shadcn-vue@latest add {}", crate::pkg::exec_cmd(), self.shadcn_components.join(" ")).bright_black());
 
-        match run_command_live("npx", &args, &self.output_dir) {
+        match crate::pkg::exec("shadcn-vue@latest", &pkg_args, &self.output_dir) {
             Ok(_) => {
                 println!("{}", "  ✓ shadcn-vue components added".bright_green());
                 Ok(())
             }
             Err(e) => {
                 println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                println!("  You may need to run 'npx shadcn-vue@latest add {} -y' manually.", self.shadcn_components.join(" "));
+                println!("  You may need to run '{} shadcn-vue@latest add {} -y' manually.", crate::pkg::exec_cmd(), self.shadcn_components.join(" "));
                 // Don't fail - user can install manually
                 Ok(())
             }
@@ -1117,13 +1068,14 @@ impl VueProject {
         Ok(())
     }
 
-    /// Run npm run build
+    /// Run package manager build
     pub fn npm_build(&self) -> AutoResult<()> {
+        let pm = crate::pkg::display_name();
         println!();
         println!("{} {}", "▶".bright_cyan(), "Building Vue project...".bright_white());
-        println!("{}", "  Running: npm run build".bright_black());
+        println!("{}", format!("  Running: {} run build", pm).bright_black());
 
-        match run_command_live("npm", &["run", "build"], &self.output_dir) {
+        match crate::pkg::run_script("build", &[], &self.output_dir) {
             Ok(_) => {
                 println!();
                 println!("═════════════════════════════════");
@@ -1132,13 +1084,14 @@ impl VueProject {
                 Ok(())
             }
             Err(e) => {
-                Err(format!("npm run build failed: {}", e).into())
+                Err(format!("{} run build failed: {}", pm, e).into())
             }
         }
     }
 
-    /// Run npm run dev
+    /// Run package manager dev server
     pub fn npm_run_dev(&self, args: Vec<String>) -> AutoResult<()> {
+        let pm = crate::pkg::display_name();
         println!();
         println!("{} {}", "▶".bright_cyan(), "Starting dev server...".bright_white());
         println!();
@@ -1147,14 +1100,11 @@ impl VueProject {
         println!("═════════════════════════════════");
         println!();
 
-        // Build args for npm run dev
-        let mut npm_args = vec!["run", "dev"];
         let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        npm_args.extend(&args_str);
 
-        match run_command_live("npm", &npm_args, &self.output_dir) {
+        match crate::pkg::run_script("dev", &args_str, &self.output_dir) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("npm run dev failed: {}", e).into())
+            Err(e) => Err(format!("{} run dev failed: {}", pm, e).into())
         }
     }
 }

@@ -53,6 +53,22 @@ fn command_exists(cmd: &str) -> bool {
     check.map(|o| o.status.success()).unwrap_or(false)
 }
 
+/// Detect the JS package manager command. Prefers bun > pnpm > npm.
+fn pkg_cmd() -> &'static str {
+    if command_exists("bun") { "bun" }
+    else if command_exists("pnpm") { "pnpm" }
+    else { "npm" }
+}
+
+/// The one-off exec command: bunx / pnpm dlx / npx.
+fn pkg_exec_cmd() -> &'static str {
+    match pkg_cmd() {
+        "bun" => "bunx",
+        "pnpm" => "pnpm",
+        _ => "npx",
+    }
+}
+
 /// Run a command with live output (inherits stdout/stderr)
 /// On Windows, uses cmd.exe /C to properly resolve commands in PATH
 fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
@@ -405,11 +421,11 @@ fn generate_workspace_project(
         println!();
         println!("Next steps:");
         println!("  cd {}", output);
-        println!("  npm install");
+        println!("  {} install", pkg_cmd());
         if !shadcn_components.is_empty() {
-            println!("  npx shadcn-vue@latest add {} --yes", shadcn_components.join(" "));
+            println!("  {} shadcn-vue@latest add {} --yes", pkg_exec_cmd(), shadcn_components.join(" "));
         }
-        println!("  npm run dev");
+        println!("  {} run dev", pkg_cmd());
     }
 
     Ok(())
@@ -533,10 +549,10 @@ fn run_install_steps(
     yes: bool,
     public_folder_source: Option<&Path>,
 ) -> Result<(), String> {
-    if !command_exists("npm") {
+    if !command_exists(pkg_cmd()) {
         println!();
-        println!("{}", "⚠ npm not found".bright_yellow());
-        println!("Please install Node.js from https://nodejs.org/");
+        println!("{}", format!("⚠ {} not found", pkg_cmd()).bright_yellow());
+        println!("Please install Node.js or bun.");
         return Ok(());
     }
 
@@ -561,7 +577,7 @@ fn run_install_steps(
         vec!["install"]
     };
 
-    match run_command_live("npm", &npm_install_args, output_path) {
+    match run_command_live(pkg_cmd(), &npm_install_args, output_path) {
         Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
         Err(e) => {
             println!("{} {}", "  ✗ Failed:".bright_red(), e);
@@ -586,7 +602,7 @@ fn run_install_steps(
             args.extend(components.iter().map(|s| s.as_str()));
             args.push("--yes");
 
-            match run_command_live("npx", &args, output_path) {
+            match run_command_live(pkg_exec_cmd(), &args, output_path) {
                 Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
                 Err(e) => {
                     println!("{} {}", "  ✗ Failed:".bright_red(), e);
@@ -636,7 +652,7 @@ fn run_install_steps(
     println!("Starting dev server...");
     println!();
 
-    let _ = run_command_live("npm", &["run", "dev"], output_path);
+    let _ = run_command_live(pkg_cmd(), &["run", "dev"], output_path);
 
     Ok(())
 }
@@ -798,12 +814,12 @@ fn generate_single_file_project(
         println!();
         println!("Next steps:");
         println!("  cd {}", output);
-        println!("  npm install");
-        println!("  npx shadcn-vue@latest add {} --yes", components.join(" "));
-        println!("  npm run dev");
+        println!("  {} install", pkg_cmd());
+        println!("  {} shadcn-vue@latest add {} --yes", pkg_exec_cmd(), components.join(" "));
+        println!("  {} run dev", pkg_cmd());
     } else {
-        // Check if npm exists
-        if !command_exists("npm") {
+        // Check if pm exists
+        if !command_exists(pkg_cmd()) {
             println!();
             println!("{}", "⚠ npm not found".bright_yellow());
             println!("Please install Node.js from https://nodejs.org/");
@@ -836,7 +852,7 @@ fn generate_single_file_project(
             vec!["install"]
         };
 
-        match run_command_live("npm", &npm_install_args, output_path) {
+        match run_command_live(pkg_cmd(), &npm_install_args, output_path) {
             Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
             Err(e) => {
                 println!("{} {}", "  ✗ Failed:".bright_red(), e);
@@ -861,7 +877,7 @@ fn generate_single_file_project(
                 args.extend(components.iter().map(|s| s.as_str()));
                 args.push("--yes");
 
-                match run_command_live("npx", &args, output_path) {
+                match run_command_live(pkg_exec_cmd(), &args, output_path) {
                     Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
                     Err(e) => {
                         println!("{} {}", "  ✗ Failed:".bright_red(), e);
@@ -907,7 +923,7 @@ fn generate_single_file_project(
         println!();
 
         // Run npm run dev
-        let _ = run_command_live("npm", &["run", "dev"], output_path);
+        let _ = run_command_live(pkg_cmd(), &["run", "dev"], output_path);
     }
 
     Ok(())

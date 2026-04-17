@@ -31,22 +31,16 @@ impl Builder for VueBuilder {
         log::info!("Building Vue project: {}", self.path);
 
         if self.memory_output_enabled {
-            log::info!("Memory output enabled, skipping physical npm execution");
+            log::info!("Memory output enabled, skipping physical build execution");
             return Ok(());
         }
 
         let project_dir = self.project_dir();
+        let pm = crate::pkg::display_name();
 
-        // Run npm run build
-        println!("Running npm run build in {}...", project_dir.display());
-        let status = std::process::Command::new("npm")
-            .args(["run", "build"])
-            .current_dir(project_dir)
-            .status()?;
-
-        if !status.success() {
-            return Err(format!("npm run build failed with status: {}", status).into());
-        }
+        println!("Running {} run build in {}...", pm, project_dir.display());
+        crate::pkg::run_script("build", &[], project_dir)
+            .map_err(|e| format!("{} run build failed: {}", pm, e))?;
 
         println!("Vue project built successfully!");
         Ok(())
@@ -54,8 +48,6 @@ impl Builder for VueBuilder {
 
     fn setup(&mut self, _pac: &mut Pac) -> AutoResult<()> {
         log::info!("Setting up Vue builder: {}", self.path);
-        // Vue project setup is handled by `auto vue` command
-        // This builder just runs npm commands
         Ok(())
     }
 
@@ -85,21 +77,12 @@ impl Builder for VueBuilder {
 
         if !self.memory_output_enabled {
             let project_dir = self.project_dir();
+            let pm = crate::pkg::display_name();
 
             println!("Starting Vue dev server...");
-            let mut cmd = std::process::Command::new("npm");
-            cmd.args(["run", "dev"]).current_dir(project_dir);
-
-            // Pass any additional args (like -- --port 3000)
-            for arg in args {
-                cmd.arg(arg);
-            }
-
-            // Run dev server (this will block until manually stopped)
-            let status = cmd.status()?;
-            if !status.success() {
-                return Err(format!("npm run dev failed with status: {}", status).into());
-            }
+            let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            crate::pkg::run_script("dev", &args_str, project_dir)
+                .map_err(|e| format!("{} run dev failed: {}", pm, e))?;
         }
         Ok(())
     }

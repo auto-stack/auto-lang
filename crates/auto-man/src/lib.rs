@@ -61,6 +61,9 @@ pub mod tauri_backend;
 // Phase 11: VSCode extension generator (Plan 181)
 pub mod vscode;
 
+// Phase 12: Package manager abstraction (bun/npm) (Plan 186)
+pub mod pkg;
+
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)

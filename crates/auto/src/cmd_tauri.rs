@@ -28,6 +28,22 @@ fn command_exists(cmd: &str) -> bool {
     check.map(|o| o.status.success()).unwrap_or(false)
 }
 
+/// Detect the JS package manager command. Prefers bun > pnpm > npm.
+fn pkg_cmd() -> &'static str {
+    if command_exists("bun") { "bun" }
+    else if command_exists("pnpm") { "pnpm" }
+    else { "npm" }
+}
+
+/// The one-off exec command: bunx / pnpm dlx / npx.
+fn pkg_exec_cmd() -> &'static str {
+    match pkg_cmd() {
+        "bun" => "bunx",
+        "pnpm" => "pnpm",
+        _ => "npx",
+    }
+}
+
 /// Run a command with live output (inherits stdout/stderr)
 /// On Windows, uses cmd.exe /C to properly resolve commands in PATH
 fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
@@ -95,8 +111,8 @@ pub fn generate_tauri_project(
     println!();
 
     // Check prerequisites
-    if !command_exists("npm") {
-        return Err("npm not found. Please install Node.js from https://nodejs.org/".to_string());
+    if !command_exists(pkg_cmd()) {
+        return Err(format!("{} not found. Please install Node.js or bun.", pkg_cmd()));
     }
     if !command_exists("cargo") {
         return Err("cargo not found. Please install Rust from https://rustup.rs/".to_string());
@@ -178,7 +194,7 @@ pub fn generate_tauri_project(
             vec!["install"]
         };
 
-        match run_command_live("npm", &npm_install_args, output_path) {
+        match run_command_live(pkg_cmd(), &npm_install_args, output_path) {
             Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
             Err(e) => {
                 println!("{} {}", "  ✗ Failed:".bright_red(), e);
@@ -201,7 +217,7 @@ pub fn generate_tauri_project(
             args.extend(components.iter().map(|s| s.as_str()));
             args.push("--yes");
 
-            match run_command_live("npx", &args, output_path) {
+            match run_command_live(pkg_exec_cmd(), &args, output_path) {
                 Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
                 Err(e) => {
                     println!("{} {}", "  ✗ Failed:".bright_red(), e);
@@ -226,7 +242,7 @@ pub fn generate_tauri_project(
         println!();
 
         // Run npm run tauri dev
-        let _ = run_command_live("npm", &["run", "tauri", "dev"], output_path);
+        let _ = run_command_live(pkg_cmd(), &["run", "tauri", "dev"], output_path);
     }
 
     Ok(())

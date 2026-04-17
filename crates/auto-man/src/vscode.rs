@@ -354,23 +354,11 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         crate::vue::build_vue_project(root_dir)?;
 
         // Install Vue dependencies
-        #[cfg(windows)]
-        let npm_install = std::process::Command::new("cmd")
-            .args(&["/C", "npm", "install"])
-            .current_dir(&vue_dir)
-            .status();
-
-        #[cfg(not(windows))]
-        let npm_install = std::process::Command::new("npm")
-            .args(&["install"])
-            .current_dir(&vue_dir)
-            .status();
-
-        match npm_install {
-            Ok(status) if status.success() => {
+        match crate::pkg::install(&vue_dir) {
+            Ok(_) => {
                 println!("  {} Vue dependencies installed", "OK".bright_green());
             }
-            _ => {
+            Err(_) => {
                 println!(
                     "  {} Failed to install Vue dependencies",
                     "Warning:".bright_yellow()
@@ -379,23 +367,11 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         }
 
         // Build Vue project
-        #[cfg(windows)]
-        let npm_build = std::process::Command::new("cmd")
-            .args(&["/C", "npm", "run", "build"])
-            .current_dir(&vue_dir)
-            .status();
-
-        #[cfg(not(windows))]
-        let npm_build = std::process::Command::new("npm")
-            .args(&["run", "build"])
-            .current_dir(&vue_dir)
-            .status();
-
-        match npm_build {
-            Ok(status) if status.success() => {
+        match crate::pkg::run_script("build", &[], &vue_dir) {
+            Ok(_) => {
                 println!("  {} Vue project built", "OK".bright_green());
             }
-            _ => {
+            Err(_) => {
                 return Err("Vue build failed — cannot generate VSCode extension without webview assets".into());
             }
         }
@@ -425,30 +401,16 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     );
 
     let has_npm = {
-        #[cfg(windows)]
-        {
-            std::process::Command::new("cmd")
-                .args(&["/C", "where", "npm"])
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        }
-        #[cfg(not(windows))]
-        {
-            std::process::Command::new("which")
-                .arg("npm")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        }
+        crate::pkg::command_exists(crate::pkg::install_cmd())
     };
 
     if !has_npm {
+        let pm = crate::pkg::display_name();
         println!(
-            "  {} npm not found. Cannot build automatically.",
-            "Warning:".bright_yellow()
+            "  {} {} not found. Cannot build automatically.",
+            "Warning:".bright_yellow(), pm
         );
-        println!("  Please install Node.js from https://nodejs.org/");
+        println!("  Please install Node.js or bun.");
         println!("  Project location: {}", vscode_dir.display());
         return Ok(());
     }
@@ -463,20 +425,8 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
     // Install extension dependencies if needed
     if !vscode_dir.join("node_modules").exists() {
-        #[cfg(windows)]
-        let root_install = std::process::Command::new("cmd")
-            .args(&["/C", "npm", "install"])
-            .current_dir(&vscode_dir)
-            .status();
-
-        #[cfg(not(windows))]
-        let root_install = std::process::Command::new("npm")
-            .args(&["install"])
-            .current_dir(&vscode_dir)
-            .status();
-
-        match root_install {
-            Ok(status) if status.success() => {
+        match crate::pkg::install(&vscode_dir) {
+            Ok(_) => {
                 println!("  {} Root dependencies installed", "OK".bright_green());
             }
             _ => {
@@ -495,35 +445,15 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         "  Step 5: Compiling extension...".bright_cyan()
     );
 
-    #[cfg(windows)]
-    let npm_result = std::process::Command::new("cmd")
-        .args(&["/C", "npm", "run", "build"])
-        .current_dir(&vscode_dir)
-        .status();
-
-    #[cfg(not(windows))]
-    let npm_result = std::process::Command::new("npm")
-        .args(&["run", "build"])
-        .current_dir(&vscode_dir)
-        .status();
+    let npm_result = crate::pkg::run_script("build", &[], &vscode_dir);
 
     match npm_result {
-        Ok(status) if status.success() => {
+        Ok(()) => {
             println!();
             println!(
                 "{}",
                 "  VSCode extension built successfully!".bright_green().bold()
             );
-        }
-        Ok(status) => {
-            println!();
-            println!(
-                "  {} Build exited with code {:?}",
-                "Warning:".bright_yellow(),
-                status.code()
-            );
-            println!("  Try running manually:");
-            println!("    cd {} && npm install && npm run build", vscode_dir.display());
         }
         Err(e) => {
             println!("  {} Build failed: {}", "Error:".bright_red(), e);
