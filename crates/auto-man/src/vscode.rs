@@ -530,6 +530,53 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         }
     }
 
+    // Step 6: Link Vue dist into extension directory for webview access
+    // VSCode webviews cannot load resources from outside the extension dir,
+    // so we symlink gen/vue/dist/ → gen/vscode/dist/ at build time.
+    let vue_dist_src = root_dir.join("gen").join("vue").join("dist");
+    let vscode_dist_dst = vscode_dir.join("dist");
+
+    if vue_dist_src.exists() {
+        // Remove existing link/dir if present
+        if vscode_dist_dst.exists() || vscode_dist_dst.is_symlink() {
+            let _ = fs::remove_dir_all(&vscode_dist_dst);
+        }
+
+        #[cfg(windows)]
+        {
+            // On Windows, use a junction (directory symlink) which works without admin
+            let src_str = vue_dist_src.to_string_lossy().to_string();
+            let dst_str = vscode_dist_dst.to_string_lossy().to_string();
+            let result = std::process::Command::new("cmd")
+                .args(&["/C", "mklink", "/J", &dst_str, &src_str])
+                .status();
+            match result {
+                Ok(status) if status.success() => {
+                    println!("  {} Vue dist linked into extension", "OK".bright_green());
+                }
+                _ => {
+                    // Fallback to copy if junction fails
+                    copy_dir_recursive(&vue_dist_src, &vscode_dist_dst)?;
+                    println!("  {} Vue dist copied into extension", "OK".bright_green());
+                }
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            match std::os::unix::fs::symlink(&vue_dist_src, &vscode_dist_dst) {
+                Ok(_) => {
+                    println!("  {} Vue dist linked into extension", "OK".bright_green());
+                }
+                Err(_) => {
+                    // Fallback to copy if symlink fails
+                    copy_dir_recursive(&vue_dist_src, &vscode_dist_dst)?;
+                    println!("  {} Vue dist copied into extension", "OK".bright_green());
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -775,12 +822,12 @@ export class AppPanel {{
     }}
 
     private _getHtmlForWebview(webview: vscode.Webview): string {{
-        // Get the local path to the shared Vue build output
+        // Get the local path to the shared Vue build output (copied into dist/)
         const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, '..', 'vue', 'dist', 'assets', 'index.js')
+            vscode.Uri.joinPath(this._extensionUri, 'dist', 'assets', 'index.js')
         );
         const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, '..', 'vue', 'dist', 'assets', 'index.css')
+            vscode.Uri.joinPath(this._extensionUri, 'dist', 'assets', 'index.css')
         );
 
         // Use a nonce to only allow specific scripts
@@ -831,7 +878,7 @@ function getWebviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {{
     return {{
         enableScripts: true,
         localResourceRoots: [
-            vscode.Uri.joinPath(extensionUri, '..', 'vue', 'dist'),
+            vscode.Uri.joinPath(extensionUri, 'dist'),
             vscode.Uri.joinPath(extensionUri, 'media'),
         ],
     }};
@@ -923,6 +970,7 @@ tsconfig.json
 webpack.config.js
 **/*.map
 **/*.ts
+!dist/**
 "#
     .to_string()
 }
@@ -968,6 +1016,24 @@ fn generate_tasks_json() -> String {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Recursively copy a directory. Used as fallback when symlink fails.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> AutoResult<()> {
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("Failed to create {}: {}", dst.display(), e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read {}: {}", src.display(), e))? {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
+        }
+    }
+    Ok(())
+}
 
 /// Parse project name from pac.at content.
 fn parse_pac_name(content: &str) -> Option<String> {
