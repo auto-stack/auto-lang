@@ -51,6 +51,7 @@ examples/**/jet/*
 examples/**/tauri/*
 examples/**/rust/
 examples/**/ark/
+examples/**/vscode/*
 
 # Vue project output at root
 /dist/
