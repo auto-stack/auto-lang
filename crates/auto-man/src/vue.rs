@@ -1026,8 +1026,9 @@ impl VueProject {
         println!();
         println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
 
-        let mut pkg_args: Vec<&str> = self.shadcn_components.iter().map(|s| s.as_str()).collect();
-        pkg_args.push("-y");  // shadcn-vue uses -y for yes
+        let mut pkg_args: Vec<&str> = vec!["add"];
+        pkg_args.extend(self.shadcn_components.iter().map(|s| s.as_str()));
+        pkg_args.push("--yes");  // shadcn-vue uses --yes for non-interactive
 
         println!("{}", format!("  Running: {} shadcn-vue@latest add {}", crate::pkg::exec_cmd(), self.shadcn_components.join(" ")).bright_black());
 

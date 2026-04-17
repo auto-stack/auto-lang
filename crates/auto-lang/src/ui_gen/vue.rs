@@ -2717,6 +2717,11 @@ impl VueGenerator {
                     .map(|a| self.expr_to_js(a))
                     .collect::<Result<Vec<_>, _>>()?;
 
+                // print() → console.log() for browser
+                if object.is_empty() && method == "print" {
+                    return Ok(format!("console.log({})", args_js.join(", ")));
+                }
+
                 // Plan 132: Check if this is a standalone API function call
                 // (object is API function name, method is likely empty or 'call')
                 if Self::API_FUNCTIONS.contains(&object.as_str()) && method.is_empty() {

@@ -142,12 +142,16 @@ pub fn install_cmd() -> &'static str {
     }
 }
 
-/// The one-off exec command name: `"bunx"`, `"pnpm dlx"`, or `"npx"`.
+/// The one-off exec command name: `"pnpm"` (dlx) or `"npx"`.
+///
+/// Prefers `pnpm dlx` over `bunx` because bunx re-resolves `@latest` from the
+/// registry on every invocation, while pnpm's content-addressable cache skips
+/// re-downloads for already-resolved versions.
 pub fn exec_cmd() -> &'static str {
-    match resolve() {
-        PkgManagerKind::Bun => "bunx",
-        PkgManagerKind::Pnpm => "pnpm",
-        PkgManagerKind::Npm => "npx",
+    if command_exists("pnpm") {
+        "pnpm"
+    } else {
+        "npx"
     }
 }
 
@@ -168,20 +172,17 @@ pub fn run_script(script: &str, extra_args: &[&str], cwd: &Path) -> Result<(), S
     run_command_live(install_cmd(), &args, cwd)
 }
 
-/// Run a one-off package via bunx / pnpm dlx / npx --yes.
+/// Run a one-off package via `pnpm dlx` or `npx --yes`.
+///
+/// Always uses pnpm or npx for exec (not bunx) because bunx re-downloads
+/// `@latest` packages on every invocation instead of using the cache.
 pub fn exec(package: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
     let cmd = exec_cmd();
     let mut full_args: Vec<&str> = Vec::new();
-    match resolve() {
-        PkgManagerKind::Bun => {
-            // bunx auto-confirms, no extra flags needed
-        }
-        PkgManagerKind::Pnpm => {
-            full_args.push("dlx");
-        }
-        PkgManagerKind::Npm => {
-            full_args.push("--yes");
-        }
+    if cmd == "pnpm" {
+        full_args.push("dlx");
+    } else {
+        full_args.push("--yes");
     }
     full_args.push(package);
     full_args.extend(args);
@@ -253,17 +254,17 @@ mod tests {
         match pm {
             PkgManagerKind::Bun => {
                 assert_eq!(install_cmd(), "bun");
-                assert_eq!(exec_cmd(), "bunx");
+                // exec uses pnpm/npx, not bunx (bunx re-downloads @latest)
             }
             PkgManagerKind::Pnpm => {
                 assert_eq!(install_cmd(), "pnpm");
-                assert_eq!(exec_cmd(), "pnpm");
             }
             PkgManagerKind::Npm => {
                 assert_eq!(install_cmd(), "npm");
-                assert_eq!(exec_cmd(), "npx");
             }
         }
+        // exec_cmd is always pnpm or npx, never bunx
+        assert!(exec_cmd() == "pnpm" || exec_cmd() == "npx");
     }
 
     #[test]

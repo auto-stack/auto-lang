@@ -935,7 +935,10 @@ fn extract_body_stmts(body: &Body) -> ExtractResult<Vec<AuraStmt>> {
 
                 // 2. x = value (expression statement with assignment)
                 Stmt::Expr(expr) => {
-                    extract_assignment_from_expr(expr)
+                    // Try assignment first, then function call
+                    extract_assignment_from_expr(expr).or_else(|| {
+                        extract_fn_call_from_expr(expr)
+                    })
                 }
 
                 _ => None,
@@ -1036,6 +1039,24 @@ fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> 
             }
         }
 
+        _ => None,
+    }
+}
+
+/// Extract a function call statement from expression (e.g., print("hello"))
+fn extract_fn_call_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> {
+    match expr {
+        Expr::Call(call) => {
+            let func_name = call.get_name_text().to_string();
+            let args: Vec<AuraExpr> = call.args.args.iter()
+                .filter_map(|arg| extract_expr(&arg.get_expr()).ok())
+                .collect();
+            Some(Ok(AuraStmt::MethodCall {
+                object: String::new(),
+                method: func_name,
+                args,
+            }))
+        }
         _ => None,
     }
 }
