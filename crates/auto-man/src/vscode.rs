@@ -600,7 +600,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     );
     generate_vscode_project(root_dir, None, false)?;
 
-    let vscode_dir = root_dir.join("vscode");
+    let vscode_dir = root_dir.join("gen").join("vscode");
 
     // Step 2: Check for npm
     println!();
@@ -757,7 +757,7 @@ pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()>
     // Step 1: Build first (generates + installs deps + compiles)
     build_vscode_project(root_dir)?;
 
-    let vscode_dir = root_dir.join("vscode");
+    let vscode_dir = root_dir.join("gen").join("vscode");
 
     // Step 2: Open VSCode with extension loaded
     println!();
