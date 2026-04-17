@@ -47,6 +47,10 @@ tmp/*.at
 
 examples/**/dist/*
 examples/**/gen/
+examples/**/.auto/
+examples/**/ark/
+examples/**/jet/
+examples/**/vue/
 
 # Vue project output at root
 /dist/
