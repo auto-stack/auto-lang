@@ -532,21 +532,22 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
     // Step 6: Link Vue dist into extension directory for webview access
     // VSCode webviews cannot load resources from outside the extension dir,
-    // so we symlink gen/vue/dist/ → gen/vscode/dist/ at build time.
+    // so we symlink gen/vue/dist/ → gen/vscode/webview/ at build time.
+    // Using "webview/" to avoid conflicting with webpack's "dist/" output.
     let vue_dist_src = root_dir.join("gen").join("vue").join("dist");
-    let vscode_dist_dst = vscode_dir.join("dist");
+    let vscode_webview_dst = vscode_dir.join("webview");
 
     if vue_dist_src.exists() {
         // Remove existing link/dir if present
-        if vscode_dist_dst.exists() || vscode_dist_dst.is_symlink() {
-            let _ = fs::remove_dir_all(&vscode_dist_dst);
+        if vscode_webview_dst.exists() || vscode_webview_dst.is_symlink() {
+            let _ = fs::remove_dir_all(&vscode_webview_dst);
         }
 
         #[cfg(windows)]
         {
             // On Windows, use a junction (directory symlink) which works without admin
             let src_str = vue_dist_src.to_string_lossy().to_string();
-            let dst_str = vscode_dist_dst.to_string_lossy().to_string();
+            let dst_str = vscode_webview_dst.to_string_lossy().to_string();
             let result = std::process::Command::new("cmd")
                 .args(&["/C", "mklink", "/J", &dst_str, &src_str])
                 .status();
@@ -556,7 +557,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
                 }
                 _ => {
                     // Fallback to copy if junction fails
-                    copy_dir_recursive(&vue_dist_src, &vscode_dist_dst)?;
+                    copy_dir_recursive(&vue_dist_src, &vscode_webview_dst)?;
                     println!("  {} Vue dist copied into extension", "OK".bright_green());
                 }
             }
@@ -564,13 +565,13 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
         #[cfg(not(windows))]
         {
-            match std::os::unix::fs::symlink(&vue_dist_src, &vscode_dist_dst) {
+            match std::os::unix::fs::symlink(&vue_dist_src, &vscode_webview_dst) {
                 Ok(_) => {
                     println!("  {} Vue dist linked into extension", "OK".bright_green());
                 }
                 Err(_) => {
                     // Fallback to copy if symlink fails
-                    copy_dir_recursive(&vue_dist_src, &vscode_dist_dst)?;
+                    copy_dir_recursive(&vue_dist_src, &vscode_webview_dst)?;
                     println!("  {} Vue dist copied into extension", "OK".bright_green());
                 }
             }
@@ -822,12 +823,12 @@ export class AppPanel {{
     }}
 
     private _getHtmlForWebview(webview: vscode.Webview): string {{
-        // Get the local path to the shared Vue build output (copied into dist/)
+        // Get the local path to the shared Vue build output (linked as webview/)
         const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'dist', 'assets', 'index.js')
+            vscode.Uri.joinPath(this._extensionUri, 'webview', 'assets', 'index.js')
         );
         const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'dist', 'assets', 'index.css')
+            vscode.Uri.joinPath(this._extensionUri, 'webview', 'assets', 'index.css')
         );
 
         // Use a nonce to only allow specific scripts
@@ -878,7 +879,7 @@ function getWebviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {{
     return {{
         enableScripts: true,
         localResourceRoots: [
-            vscode.Uri.joinPath(extensionUri, 'dist'),
+            vscode.Uri.joinPath(extensionUri, 'webview'),
             vscode.Uri.joinPath(extensionUri, 'media'),
         ],
     }};
@@ -970,7 +971,6 @@ tsconfig.json
 webpack.config.js
 **/*.map
 **/*.ts
-!dist/**
 "#
     .to_string()
 }
