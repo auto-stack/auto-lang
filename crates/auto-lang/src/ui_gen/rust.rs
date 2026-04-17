@@ -655,6 +655,9 @@ impl RustGenerator {
                     .collect();
                 bodies.join(";\n                ")
             }
+            LogicPayload::AstStmts(_) => {
+                "// TODO: a2ts delegation not yet supported for Rust backend".to_string()
+            }
             LogicPayload::Bytecode(_) => {
                 "// bytecode handler".to_string()
             }

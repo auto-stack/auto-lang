@@ -435,6 +435,9 @@ pub fn generate_handler_body(payload: &LogicPayload) -> String {
             }
             lines.join("\n")
         }
+        LogicPayload::AstStmts(_) => {
+            "// TODO: a2ts delegation not yet supported for ArkTS backend".to_string()
+        }
         LogicPayload::Bytecode(_) => {
             // Bytecode execution not supported in static generation
             "// Bytecode execution not supported".to_string()

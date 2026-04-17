@@ -12,6 +12,7 @@
 //! All generators take `AuraWidget` as input and produce target-specific code.
 
 pub mod shared;
+pub mod ts_adapter;
 pub mod vue;
 pub mod rust;
 pub mod style;

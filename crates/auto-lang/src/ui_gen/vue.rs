@@ -1288,7 +1288,12 @@ impl VueGenerator {
     /// Generate handler function body from LogicPayload
     fn generate_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
+            LogicPayload::AstStmts(stmts) => {
+                let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect());
+                Ok(crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx))
+            }
             LogicPayload::AstBlock(stmts) => {
+                // Legacy path for other backends that still use AuraStmt IR
                 let body: Vec<String> = stmts.iter()
                     .map(|s| self.stmt_to_js(s))
                     .collect::<Result<Vec<_>, _>>()?;
@@ -2556,6 +2561,7 @@ impl VueGenerator {
     fn payload_has_nav_call(payload: &LogicPayload) -> bool {
         match payload {
             LogicPayload::AstBlock(stmts) => stmts.iter().any(Self::stmt_has_nav_call),
+            LogicPayload::AstStmts(_) => false, // NavCall handled at view tree level
             LogicPayload::Bytecode(_) => false, // Can't analyze bytecode
         }
     }
@@ -2785,6 +2791,9 @@ impl VueGenerator {
                     self.extract_api_calls_from_stmt(stmt);
                 }
             }
+            LogicPayload::AstStmts(_) => {
+                // API calls detected via stmts_contain_api_call in adapter
+            }
             LogicPayload::Bytecode(_) => {
                 // Bytecode not supported for API call detection
             }
@@ -2874,6 +2883,9 @@ impl VueGenerator {
     /// Check if a handler payload contains API calls
     fn handler_has_api_calls(&self, payload: &LogicPayload) -> bool {
         match payload {
+            LogicPayload::AstStmts(stmts) => {
+                crate::ui_gen::ts_adapter::stmts_contain_api_call(stmts)
+            }
             LogicPayload::AstBlock(stmts) => {
                 stmts.iter().any(|s| self.stmt_has_api_calls(s))
             }

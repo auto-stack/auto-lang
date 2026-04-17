@@ -465,9 +465,11 @@ impl AuraNode {
 /// - Executed by AutoVM (GPUI dynamic)
 #[derive(Debug, Clone)]
 pub enum LogicPayload {
-    /// AST block for AOT transpilers (React, Compose)
-    /// Contains the original statement nodes
+    /// AURA IR block (simplified statement types for handlers)
     AstBlock(Vec<AuraStmt>),
+
+    /// Original AutoLang AST statements for a2ts delegation
+    AstStmts(Vec<crate::ast::Stmt>),
 
     /// Bytecode for AutoVM dynamic execution (GPUI)
     /// Pre-compiled bytecode that can be executed at runtime

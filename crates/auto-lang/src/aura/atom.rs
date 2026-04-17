@@ -386,6 +386,9 @@ fn serialize_payload(payload: &LogicPayload, output: &mut String, _indent: usize
         LogicPayload::AstBlock(stmts) => {
             output.push_str(&format!("AstBlock([{} statements])", stmts.len()));
         }
+        LogicPayload::AstStmts(stmts) => {
+            output.push_str(&format!("AstStmts([{} statements])", stmts.len()));
+        }
         LogicPayload::Bytecode(bytes) => {
             output.push_str(&format!("Bytecode({} bytes)", bytes.len()));
         }
