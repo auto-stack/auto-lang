@@ -6,20 +6,116 @@ widget App {
         var email str = ""
         var message str = ""
         var submitted bool = false
+
+        // FAQ data
+        var faq1_q str = "What are your business hours?"
+        var faq1_a str = "Our support team is available Monday through Friday, 9am to 6pm EST. For urgent matters outside these hours, please email urgent@company.com."
+        var faq2_q str = "How long does it take to get a response?"
+        var faq3_q str = "Do you offer phone support?"
+        var faq4_q str = "Can I schedule a demo?"
+        var faq5_q str = "What information should I include in my message?"
     }
 
     view {
-        col {
-            text "Contact Us"
-            text "We'd love to hear from you. Send us a message and we'll respond as soon as possible."
-            input { placeholder: "Your Name", value: .name, oninput: .NameChanged }
-            input { placeholder: "Your Email", value: .email, oninput: .EmailChanged }
-            textarea { placeholder: "Your Message", value: .message, oninput: .MessageChanged }
-            button "Send Message" { onclick: .Submit }
-            if .submitted {
-                text "Thank you! We'll be in touch."
+        center {
+            col {
+                // Header
+                col {
+                    h2 "How can we help?" {
+                        class: "text-3xl font-bold text-gray-900"
+                    }
+                    span "Check our FAQ for quick answers or send us a message." {
+                        class: "text-gray-500"
+                    }
+                    class: "gap-2 items-center"
+                }
+
+                // Two-column layout
+                row {
+                    // Left: FAQ
+                    col {
+                        h3 "Frequently Asked Questions" {
+                            class: "text-lg font-semibold text-gray-900"
+                        }
+                        col {
+                            col {
+                                span .faq1_q {
+                                    class: "font-medium text-gray-900 text-sm"
+                                }
+                                span .faq1_a {
+                                    class: "text-sm text-gray-500 mt-1"
+                                }
+                                class: "py-3 border-b border-gray-200"
+                            }
+                            col {
+                                span .faq2_q {
+                                    class: "font-medium text-gray-900 text-sm"
+                                }
+                                class: "py-3 border-b border-gray-200"
+                            }
+                            col {
+                                span .faq3_q {
+                                    class: "font-medium text-gray-900 text-sm"
+                                }
+                                class: "py-3 border-b border-gray-200"
+                            }
+                            col {
+                                span .faq4_q {
+                                    class: "font-medium text-gray-900 text-sm"
+                                }
+                                class: "py-3 border-b border-gray-200"
+                            }
+                            col {
+                                span .faq5_q {
+                                    class: "font-medium text-gray-900 text-sm"
+                                }
+                                class: "py-3"
+                            }
+                            class: "w-full"
+                        }
+                        class: "flex-1 gap-4"
+                    }
+
+                    // Right: Contact Form
+                    col {
+                        h3 "Still have questions?" {
+                            class: "text-lg font-semibold text-gray-900"
+                        }
+                        col {
+                            col {
+                                span "Name *" {
+                                    class: "text-sm font-medium text-gray-700"
+                                }
+                                input { placeholder: "Your name", value: .name, oninput: .NameChanged }
+                                class: "gap-1"
+                            }
+                            col {
+                                span "Email *" {
+                                    class: "text-sm font-medium text-gray-700"
+                                }
+                                input { placeholder: "you@example.com", value: .email, oninput: .EmailChanged }
+                                class: "gap-1"
+                            }
+                            col {
+                                span "Message *" {
+                                    class: "text-sm font-medium text-gray-700"
+                                }
+                                textarea { placeholder: "How can we help?", value: .message, oninput: .MessageChanged }
+                                class: "gap-1"
+                            }
+                            button "Send Message" {
+                                onclick: .Submit
+                                class: "w-full py-2.5 bg-gray-900 text-white rounded-lg font-semibold mt-4"
+                            }
+                            class: "w-full gap-4"
+                        }
+                        class: "flex-1 gap-4"
+                    }
+                    class: "gap-8"
+                }
+
+                class: "w-full max-w-4xl p-8 gap-6 bg-white min-h-screen"
             }
-            class: "w-full max-w-lg p-8 gap-4"
         }
     }
 

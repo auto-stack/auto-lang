@@ -1,65 +1,134 @@
 widget App {
     model {
-        var title1 str = "Getting Started with AutoLang"
-        var excerpt1 str = "Learn the basics of AutoLang and build your first cross-platform app."
-        var author1 str = "Alice"
-        var date1 str = "Apr 10, 2026"
-        var title2 str = "Cross-Platform UI with AURA"
-        var excerpt2 str = "Build once, deploy everywhere. AURA widgets compile to Vue, Compose, ArkTS, and GPUI."
-        var author2 str = "Bob"
-        var date2 str = "Apr 12, 2026"
-        var title3 str = "Advanced Patterns in AutoLang"
-        var excerpt3 str = "Take your skills to the next level with tasks, specs, and the type system."
-        var author3 str = "Charlie"
-        var date3 str = "Apr 14, 2026"
+        // Header
+        var header_title str = "Blog Posts"
+        var header_subtitle str = "Discover the latest trends, tips, and best practices in modern web development. From UI components to design systems, stay updated with our expert insights."
+
+        // Article 1
+        var art1_tag str = "Tutorial"
+        var art1_author str = "Sarah Chen"
+        var art1_date str = "1 Jan 2024"
+        var art1_title str = "Getting Started with shadcn/ui Components"
+        var art1_excerpt str = "Learn how to quickly integrate and customize shadcn/ui components in your Next.js projects. Covers installation, theming, and best practices for building modern interfaces."
+
+        // Article 2
+        var art2_tag str = "Accessibility"
+        var art2_author str = "Marcus Rodriguez"
+        var art2_date str = "1 Jan 2024"
+        var art2_title str = "Building Accessible Web Applications"
+        var art2_excerpt str = "Explore how to create inclusive web experiences using shadcn/ui accessible components. Discover practical tips for implementing ARIA labels, keyboard navigation, and semantic HTML."
+
+        // Article 3
+        var art3_tag str = "Design Systems"
+        var art3_author str = "Emma Thompson"
+        var art3_date str = "1 Jan 2024"
+        var art3_title str = "Modern Design Systems with Tailwind CSS"
+        var art3_excerpt str = "Dive into creating scalable design systems using Tailwind CSS and shadcn/ui. Learn how to maintain consistency while building flexible and maintainable component libraries."
     }
 
     view {
-        col {
-            text "Latest Articles"
+        center {
             col {
+                // Header
                 col {
-                    col {
-                        text .title1
-                        text .excerpt1
-                        row {
-                            text .author1
-                            text .date1
-                            class: "gap-2 items-center"
-                        }
-                        class: "p-4 gap-2"
+                    h2 .header_title {
+                        class: "text-3xl font-bold text-gray-900"
                     }
-                    class: "bg-white rounded-lg shadow overflow-hidden"
-                }
-                col {
-                    col {
-                        text .title2
-                        text .excerpt2
-                        row {
-                            text .author2
-                            text .date2
-                            class: "gap-2 items-center"
-                        }
-                        class: "p-4 gap-2"
+                    span .header_subtitle {
+                        class: "text-gray-500 text-center max-w-xl"
                     }
-                    class: "bg-white rounded-lg shadow overflow-hidden"
+                    class: "gap-3 items-center"
                 }
-                col {
+
+                // Article 1
+                row {
                     col {
-                        text .title3
-                        text .excerpt3
-                        row {
-                            text .author3
-                            text .date3
-                            class: "gap-2 items-center"
-                        }
-                        class: "p-4 gap-2"
+                        class: "w-32 h-32 rounded-lg bg-gray-100 shrink-0"
                     }
-                    class: "bg-white rounded-lg shadow overflow-hidden"
+                    col {
+                        span .art1_tag {
+                            class: "text-sm text-gray-500"
+                        }
+                        row {
+                            span .art1_author
+                            span "·"
+                            span .art1_date
+                            class: "text-sm text-gray-500 gap-1"
+                        }
+                        h3 .art1_title {
+                            class: "text-lg font-semibold text-gray-900 mt-1"
+                        }
+                        span .art1_excerpt {
+                            class: "text-sm text-gray-600 mt-1"
+                        }
+                        span "Read more →" {
+                            class: "text-sm text-blue-500 font-medium mt-2"
+                        }
+                        class: "gap-1"
+                    }
+                    class: "bg-white rounded-lg border border-gray-200 shadow-sm p-6 gap-6 items-start"
                 }
-                class: "gap-6"
+
+                // Article 2
+                row {
+                    col {
+                        class: "w-32 h-32 rounded-lg bg-gray-100 shrink-0"
+                    }
+                    col {
+                        span .art2_tag {
+                            class: "text-sm text-gray-500"
+                        }
+                        row {
+                            span .art2_author
+                            span "·"
+                            span .art2_date
+                            class: "text-sm text-gray-500 gap-1"
+                        }
+                        h3 .art2_title {
+                            class: "text-lg font-semibold text-gray-900 mt-1"
+                        }
+                        span .art2_excerpt {
+                            class: "text-sm text-gray-600 mt-1"
+                        }
+                        span "Read more →" {
+                            class: "text-sm text-blue-500 font-medium mt-2"
+                        }
+                        class: "gap-1"
+                    }
+                    class: "bg-white rounded-lg border border-gray-200 shadow-sm p-6 gap-6 items-start"
+                }
+
+                // Article 3
+                row {
+                    col {
+                        class: "w-32 h-32 rounded-lg bg-gray-100 shrink-0"
+                    }
+                    col {
+                        span .art3_tag {
+                            class: "text-sm text-gray-500"
+                        }
+                        row {
+                            span .art3_author
+                            span "·"
+                            span .art3_date
+                            class: "text-sm text-gray-500 gap-1"
+                        }
+                        h3 .art3_title {
+                            class: "text-lg font-semibold text-gray-900 mt-1"
+                        }
+                        span .art3_excerpt {
+                            class: "text-sm text-gray-600 mt-1"
+                        }
+                        span "Read more →" {
+                            class: "text-sm text-blue-500 font-medium mt-2"
+                        }
+                        class: "gap-1"
+                    }
+                    class: "bg-white rounded-lg border border-gray-200 shadow-sm p-6 gap-6 items-start"
+                }
+
+                class: "w-full max-w-3xl p-8 gap-6 bg-gray-50 min-h-screen"
             }
-            class: "w-full max-w-2xl p-8 gap-6"
         }
     }
 }

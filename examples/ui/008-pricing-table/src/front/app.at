@@ -1,48 +1,239 @@
 widget App {
-    msg Msg { ToggleYearly }
-
     model {
-        var is_yearly bool = false
-        var plan1_name str = "Basic"
-        var plan1_price str = "$9/mo"
-        var plan2_name str = "Premium"
-        var plan2_price str = "$29/mo"
+        // Single Developer
+        var plan1_name str = "Single Developer"
+        var plan1_subtitle str = "For individual developers"
+        var plan1_price str = "$39"
+        var plan1_devs str = "1 Developer"
+        var plan1_btn str = "Buy Now"
+
+        // Team
+        var plan2_name str = "Team"
+        var plan2_subtitle str = "For small teams"
+        var plan2_price str = "$99"
+        var plan2_devs str = "Up to 5 Developers"
+        var plan2_btn str = "Buy Now"
+
+        // Enterprise
         var plan3_name str = "Enterprise"
-        var plan3_price str = "$99/mo"
+        var plan3_subtitle str = "For larger teams"
+        var plan3_deal str = "Exclusive Deals"
+        var plan3_devs str = "Unlimited Developers"
+        var plan3_btn str = "Contact Us"
+
+        // Shared features
+        var feat1 str = "All Marketing + Application UI Blocks"
+        var feat2 str = "Figma UI Kit"
+        var feat3 str = "Lifetime Support"
+        var feat4 str = "Unlimited Updates"
+        var feat5 str = "Use on Unlimited Projects"
     }
 
     view {
         col {
-            text "Pricing Plans"
-            text "Choose the plan that fits your needs"
-            switch { value: .is_yearly, label: "Yearly", onchange: .ToggleYearly }
+            col {
+                h2 "Pricing Plans"
+                span "Choose the plan that fits your needs"
+                class: "gap-2 items-center"
+            }
             row {
+                // Single Developer
                 col {
-                    text .plan1_name
-                    text .plan1_price
-                    button "Choose Plan"
-                    class: "bg-white rounded-lg shadow p-6 flex-1"
+                    col {
+                        h3 .plan1_name {
+                            class: "text-lg font-bold text-gray-900"
+                        }
+                        span .plan1_subtitle {
+                            class: "text-sm text-gray-500"
+                        }
+                        span .plan1_price {
+                            class: "text-4xl font-bold text-gray-900 mt-2"
+                        }
+                        class: "gap-1 items-center"
+                    }
+                    col {
+                        row {
+                            span "✓" {
+                                class: "text-blue-500 font-bold"
+                            }
+                            span .plan1_devs
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-blue-500 font-bold"
+                            }
+                            span .feat1
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-blue-500 font-bold"
+                            }
+                            span .feat2
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-blue-500 font-bold"
+                            }
+                            span .feat3
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-blue-500 font-bold"
+                            }
+                            span .feat4
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-blue-500 font-bold"
+                            }
+                            span .feat5
+                            class: "gap-2 items-center"
+                        }
+                        class: "gap-3 mt-6"
+                    }
+                    button .plan1_btn {
+                        class: "w-full py-2.5 bg-blue-500 text-white rounded-lg font-semibold mt-6"
+                    }
+                    class: "bg-white rounded-xl border-2 border-blue-500 p-6 flex-1"
                 }
+
+                // Team
                 col {
-                    text .plan2_name
-                    text .plan2_price
-                    text "Most Popular"
-                    button "Choose Plan"
-                    class: "bg-white rounded-lg shadow p-6 flex-1"
+                    col {
+                        h3 .plan2_name {
+                            class: "text-lg font-bold text-gray-900"
+                        }
+                        span .plan2_subtitle {
+                            class: "text-sm text-gray-500"
+                        }
+                        span .plan2_price {
+                            class: "text-4xl font-bold text-gray-900 mt-2"
+                        }
+                        class: "gap-1 items-center"
+                    }
+                    col {
+                        row {
+                            span "✓" {
+                                class: "text-orange-500 font-bold"
+                            }
+                            span .plan2_devs
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-orange-500 font-bold"
+                            }
+                            span .feat1
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-orange-500 font-bold"
+                            }
+                            span .feat2
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-orange-500 font-bold"
+                            }
+                            span .feat3
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-orange-500 font-bold"
+                            }
+                            span .feat4
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-orange-500 font-bold"
+                            }
+                            span .feat5
+                            class: "gap-2 items-center"
+                        }
+                        class: "gap-3 mt-6"
+                    }
+                    button .plan2_btn {
+                        class: "w-full py-2.5 bg-orange-500 text-white rounded-lg font-semibold mt-6"
+                    }
+                    class: "bg-white rounded-xl border-2 border-orange-500 p-6 flex-1"
                 }
+
+                // Enterprise
                 col {
-                    text .plan3_name
-                    text .plan3_price
-                    button "Choose Plan"
-                    class: "bg-white rounded-lg shadow p-6 flex-1"
+                    col {
+                        h3 .plan3_name {
+                            class: "text-lg font-bold text-gray-900"
+                        }
+                        span .plan3_subtitle {
+                            class: "text-sm text-gray-500"
+                        }
+                        span .plan3_deal {
+                            class: "text-4xl font-bold text-gray-900 mt-2"
+                        }
+                        class: "gap-1 items-center"
+                    }
+                    col {
+                        row {
+                            span "✓" {
+                                class: "text-gray-400 font-bold"
+                            }
+                            span .plan3_devs
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-gray-400 font-bold"
+                            }
+                            span .feat1
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-gray-400 font-bold"
+                            }
+                            span .feat2
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-gray-400 font-bold"
+                            }
+                            span .feat3
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-gray-400 font-bold"
+                            }
+                            span .feat4
+                            class: "gap-2 items-center"
+                        }
+                        row {
+                            span "✓" {
+                                class: "text-gray-400 font-bold"
+                            }
+                            span .feat5
+                            class: "gap-2 items-center"
+                        }
+                        class: "gap-3 mt-6"
+                    }
+                    button .plan3_btn {
+                        class: "w-full py-2.5 bg-gray-500 text-white rounded-lg font-semibold mt-6"
+                    }
+                    class: "bg-white rounded-xl border-2 border-gray-400 p-6 flex-1"
                 }
                 class: "gap-6"
             }
-            class: "w-full p-8 gap-6 items-center"
+            class: "w-full p-8 gap-8 bg-gray-50 min-h-screen items-center"
         }
-    }
-
-    on {
-        .ToggleYearly -> { .is_yearly = !.is_yearly }
     }
 }
