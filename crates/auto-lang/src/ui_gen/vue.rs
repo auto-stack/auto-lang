@@ -1306,9 +1306,9 @@ impl VueGenerator {
 
         // Wrapper div with Tailwind classes
         let classes = if self.wrapper_classes.is_empty() {
-            "flex flex-col".to_string()
+            "flex flex-col h-screen".to_string()
         } else {
-            format!("flex flex-col {}", self.wrapper_classes)
+            format!("flex flex-col h-screen {}", self.wrapper_classes)
         };
 
         template.push_str(&format!("  <div class=\"{}\">\n", classes));

@@ -505,19 +505,19 @@ impl VscodeProject {
 
     fn write_tailwind_config(&self) -> AutoResult<()> {
         let content = generate_tailwind_config();
-        let path = self.output_dir.join("webview-ui").join("tailwind.config.cjs");
+        let path = self.output_dir.join("webview-ui").join("tailwind.config.js");
         fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/tailwind.config.cjs: {}", e))?;
-        println!("  {} webview-ui/tailwind.config.cjs", "Generated".bright_green());
+            .map_err(|e| format!("Failed to write webview-ui/tailwind.config.js: {}", e))?;
+        println!("  {} webview-ui/tailwind.config.js", "Generated".bright_green());
         Ok(())
     }
 
     fn write_postcss_config(&self) -> AutoResult<()> {
         let content = generate_postcss_config();
-        let path = self.output_dir.join("webview-ui").join("postcss.config.cjs");
+        let path = self.output_dir.join("webview-ui").join("postcss.config.js");
         fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/postcss.config.cjs: {}", e))?;
-        println!("  {} webview-ui/postcss.config.cjs", "Generated".bright_green());
+            .map_err(|e| format!("Failed to write webview-ui/postcss.config.js: {}", e))?;
+        println!("  {} webview-ui/postcss.config.js", "Generated".bright_green());
         Ok(())
     }
 
@@ -752,43 +752,50 @@ pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()>
         "Running VSCode extension project".bright_cyan()
     );
 
-    // Step 1: Generate code
-    println!();
-    println!(
-        "{}",
-        "  Step 1: Generating VSCode extension code...".bright_cyan()
-    );
-    generate_vscode_project(root_dir, None, false)?;
+    // Step 1: Build first (generates + installs deps + compiles)
+    build_vscode_project(root_dir)?;
 
     let vscode_dir = root_dir.join("vscode");
 
+    // Step 2: Open VSCode with extension loaded
     println!();
     println!(
         "{}",
-        "===================================".bright_green()
+        "  Opening VSCode with extension loaded...".bright_cyan()
     );
-    println!(
-        "{}",
-        "  VSCode Extension ready!".bright_green().bold()
-    );
-    println!(
-        "{}",
-        "===================================".bright_green()
-    );
-    println!();
-    println!("To run the extension in development mode:");
-    println!();
-    println!(
-        "  {}",
-        format!(
-            "code --extensionDevelopmentPath={}",
-            vscode_dir.display()
-        )
-        .bright_cyan()
-    );
-    println!();
-    println!("Or open VSCode and use F5 to launch the Extension Development Host.");
-    println!("  Project location: {}", vscode_dir.display());
+
+    let vscode_path = vscode_dir.to_string_lossy().to_string();
+
+    // On Windows, `code` is a .cmd script so must be invoked via cmd /C
+    #[cfg(windows)]
+    let result = std::process::Command::new("cmd")
+        .args(&["/C", "code", "--extensionDevelopmentPath", &vscode_path])
+        .status();
+
+    #[cfg(not(windows))]
+    let result = std::process::Command::new("code")
+        .args(&["--extensionDevelopmentPath", &vscode_path])
+        .status();
+
+    match result {
+        Ok(status) if status.success() => {
+            println!(
+                "  {} VSCode opened. Click the globe icon or run command to open the panel.",
+                "OK".bright_green()
+            );
+        }
+        _ => {
+            println!(
+                "  {} Could not auto-open VSCode. Run manually:",
+                "Warning:".bright_yellow()
+            );
+            println!(
+                "  {}",
+                format!("code --extensionDevelopmentPath={}", vscode_dir.display())
+                    .bright_cyan()
+            );
+        }
+    }
 
     Ok(())
 }
@@ -828,9 +835,18 @@ fn generate_package_json(name: &str, config: &VscodeConfig) -> String {
         "commands": [
             {{
                 "command": "{command}",
-                "title": "Open {title}"
+                "title": "Open {title}",
+                "icon": "$(globe)"
             }}
-        ]
+        ],
+        "menus": {{
+            "editor/title": [
+                {{
+                    "command": "{command}",
+                    "group": "navigation"
+                }}
+            ]
+        }}
     }},
     "scripts": {{
         "vscode:prepublish": "npm run compile",
@@ -998,8 +1014,7 @@ export class AppPanel {{
     <title>{title}</title>
     <style>
         html, body {{ margin: 0; padding: 0; height: 100%; overflow: hidden; }}
-        #app {{ height: 100%; display: flex; flex-direction: column; }}
-        #app > div {{ flex: 1; min-height: 0; }}
+        #app {{ height: 100%; }}
     </style>
 </head>
 <body>
@@ -1261,7 +1276,7 @@ fn generate_tailwind_config() -> String {
 }
 
 fn generate_postcss_config() -> String {
-    r#"module.exports = {
+    r#"export default {
   plugins: {
     tailwindcss: {},
     autoprefixer: {},

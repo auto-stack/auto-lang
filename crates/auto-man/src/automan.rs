@@ -801,6 +801,18 @@ impl Automan {
             return self.build_workspace();
         }
 
+        // Check backend configuration (supports array form)
+        if self.pac.has_backend_config() {
+            let frontends = self.pac.frontend_types();
+            if frontends.len() > 1 {
+                return self.build_multi_backend(frontends);
+            }
+            if let Some(backend) = frontends.first() {
+                return self.build_backend(backend);
+            }
+        }
+
+        // Legacy: single backend string
         let backend = self.pac.backend.as_str();
 
         match backend {
@@ -927,6 +939,92 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         crate::vscode::build_vscode_project(&root_dir)
+    }
+
+    /// Build with multiple backends - let user select one
+    fn build_multi_backend(&mut self, frontends: Vec<auto_lang::config::BackendType>) -> AutoResult<()> {
+        use dialoguer::Select;
+
+        let backend_names: Vec<&'static str> = frontends.iter()
+            .map(|t| t.as_str())
+            .collect();
+
+        println!("{}", "Multiple backends configured:".bright_cyan());
+        for (i, name) in backend_names.iter().enumerate() {
+            println!("  {}. {}", i + 1, name);
+        }
+        println!();
+
+        // Check for AUTO_BACKEND environment variable (for non-interactive mode)
+        if let Ok(backend_env) = std::env::var("AUTO_BACKEND") {
+            let backend_lower = backend_env.to_lowercase();
+            for (i, name) in backend_names.iter().enumerate() {
+                if name.to_lowercase() == backend_lower {
+                    println!("{} Using backend from AUTO_BACKEND: {}", "→".bright_green(), name.bright_cyan());
+                    return self.build_backend(&frontends[i]);
+                }
+            }
+            eprintln!("Warning: AUTO_BACKEND='{}' not found in available backends, falling back to interactive selection", backend_env);
+        }
+
+        let selection = Select::new()
+            .with_prompt("Select backend to build")
+            .default(0)
+            .items(&backend_names)
+            .interact()
+            .map_err(|e| format!("Failed to select backend: {}", e))?;
+
+        let selected = &frontends[selection];
+        self.build_backend(selected)
+    }
+
+    /// Build a specific backend
+    fn build_backend(&mut self, backend: &auto_lang::config::BackendType) -> AutoResult<()> {
+        match backend {
+            auto_lang::config::BackendType::Vue => {
+                println!("Building Vue project (backend: vue)");
+                self.build_vue()?;
+            }
+            auto_lang::config::BackendType::Tauri => {
+                println!("Building Tauri project (backend: tauri)");
+                // Tauri uses Vue as base
+                self.build_vue()?;
+            }
+            auto_lang::config::BackendType::Jet => {
+                println!("Building Jetpack Compose project (backend: jet)");
+                self.build_jet()?;
+            }
+            auto_lang::config::BackendType::Arkts => {
+                println!("Building ArkTS/HarmonyOS project (backend: ark)");
+                self.build_ark()?;
+            }
+            auto_lang::config::BackendType::Rust => {
+                println!("Transpiling Auto code to Rust (backend: rust)");
+                self.transpile_auto()?;
+                self.pac.build()?;
+            }
+            auto_lang::config::BackendType::Vscode => {
+                println!("Building VSCode extension project (backend: vscode)");
+                self.build_vscode()?;
+            }
+            _ => {
+                // Default C backend
+                println!("Transpiling auto code to c code");
+                self.transpile_auto()?;
+                self.pac.build()?;
+            }
+        }
+
+        // Run garbage collection if needed
+        if let Some(ref cache) = self.cache {
+            if cache.should_gc() {
+                println!("Running cache garbage collection...");
+                let freed_mb = cache.run_gc()? / (1024 * 1024);
+                println!("Cache GC: freed {} MB", freed_mb);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn export(&mut self, port_name: String, format: String) -> AutoResult<()> {
