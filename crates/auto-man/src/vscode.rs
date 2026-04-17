@@ -1,12 +1,12 @@
 //! VSCode Extension project generation utilities
 //!
-//! This module generates a complete VSCode extension project from AURA widgets.
-//! The extension renders the app widget in a sidebar webview panel using
-//! a2vue-generated Vue 3 content.
+//! This module generates a VSCode extension scaffold from AURA widgets.
+//! The extension loads its webview UI from the sibling `gen/vue/dist/` directory,
+//! reusing the Vue build output instead of maintaining a separate webview project.
 //!
 //! Architecture:
 //! - pac.at config -> vscode.rs -> package.json, extension.ts, AppPanel.ts
-//! - AURA widgets -> VueGenerator -> webview-ui/ (Vue app)
+//! - gen/vue/dist/ -> shared webview assets (built by vue.rs)
 //!
 //! The generated extension uses the VSCode Webview API to display the Vue app
 //! in a sidebar or editor panel.
@@ -15,7 +15,6 @@ use std::fs;
 use std::path::Path;
 
 use colored::Colorize;
-use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
 
 use crate::AutoResult;
 
@@ -112,10 +111,6 @@ pub struct VscodeProject {
     pub front_dir: std::path::PathBuf,
     /// VSCode-specific configuration.
     pub config: VscodeConfig,
-    /// Generated Vue app code (App.vue content).
-    pub app_vue_code: String,
-    /// All sub-widget components (relative_dir, name, code, widget_name).
-    pub components: Vec<(String, String, String, String)>,
 }
 
 impl VscodeProject {
@@ -149,132 +144,12 @@ impl VscodeProject {
 
         let output_dir = root_dir.join("gen").join("vscode");
 
-        // Compile .at files to Vue using the existing VueGenerator
-        let mut all_components: Vec<(String, String, String, String)> = Vec::new();
-
-        // Process app.at
-        let app_at = front_dir.join("app.at");
-        let root_app_at = root_dir.join("app.at");
-        let app_at_path = if app_at.exists() {
-            app_at
-        } else if root_app_at.exists() {
-            root_app_at
-        } else {
-            app_at
-        };
-
-        if app_at_path.exists() {
-            match compile_at_to_vue(&app_at_path) {
-                Ok((vue_code, widget_names)) => {
-                    let widget_name = widget_names.first()
-                        .map(|s| s.as_str())
-                        .unwrap_or("App");
-                    all_components.push((
-                        "".to_string(),
-                        "app".to_string(),
-                        vue_code,
-                        widget_name.to_string(),
-                    ));
-                }
-                Err(e) => {
-                    println!(
-                        "{} Failed to compile {}: {}",
-                        "Warning:".bright_yellow(),
-                        app_at_path.display(),
-                        e
-                    );
-                }
-            }
-        }
-
-        // Process widgets/ directory
-        let widgets_dir = front_dir.join("widgets");
-        if widgets_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&widgets_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "at").unwrap_or(false) {
-                        match compile_at_to_vue(&path) {
-                            Ok((vue_code, widget_names)) => {
-                                let widget_name = widget_names.first()
-                                    .cloned()
-                                    .unwrap_or_else(|| {
-                                        path.file_stem()
-                                            .and_then(|s| s.to_str())
-                                            .unwrap_or("Widget")
-                                            .to_string()
-                                    });
-                                all_components.push((
-                                    "components".to_string(),
-                                    widget_name.to_string(),
-                                    vue_code,
-                                    widget_name.clone(),
-                                ));
-                            }
-                            Err(e) => {
-                                println!(
-                                    "{} Failed to compile {}: {}",
-                                    "Warning:".bright_yellow(),
-                                    path.display(),
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Process pages/ directory
-        let pages_dir = front_dir.join("pages");
-        if pages_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&pages_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "at").unwrap_or(false) {
-                        let file_stem = path.file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("page");
-                        match compile_at_to_vue(&path) {
-                            Ok((vue_code, widget_names)) => {
-                                let widget_name = widget_names.first()
-                                    .cloned()
-                                    .unwrap_or_else(|| file_stem.to_string());
-                                all_components.push((
-                                    "pages".to_string(),
-                                    file_stem.to_string(),
-                                    vue_code,
-                                    widget_name,
-                                ));
-                            }
-                            Err(e) => {
-                                println!(
-                                    "{} Failed to compile {}: {}",
-                                    "Warning:".bright_yellow(),
-                                    path.display(),
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Get App.vue code
-        let app_vue_code = all_components.iter()
-            .find(|(_, name, _, _)| name == "app")
-            .map(|(_, _, code, _)| code.clone())
-            .unwrap_or_default();
-
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,
             name,
             front_dir,
             config,
-            app_vue_code,
-            components: all_components,
         })
     }
 
@@ -307,15 +182,11 @@ impl VscodeProject {
 
         // Create output directories
         let src_dir = self.output_dir.join("src").join("panels");
-        let webview_src_dir = self.output_dir.join("webview-ui").join("src");
-        let webview_components_dir = webview_src_dir.join("components");
         let media_dir = self.output_dir.join("media");
         let vscode_dir = self.output_dir.join(".vscode");
 
         fs::create_dir_all(&src_dir)
             .map_err(|e| format!("Failed to create src/panels: {}", e))?;
-        fs::create_dir_all(&webview_components_dir)
-            .map_err(|e| format!("Failed to create webview-ui/src/components: {}", e))?;
         fs::create_dir_all(&media_dir)
             .map_err(|e| format!("Failed to create media: {}", e))?;
         fs::create_dir_all(&vscode_dir)
@@ -327,43 +198,11 @@ impl VscodeProject {
         self.write_package_json()?;
         self.write_extension_ts()?;
         self.write_app_panel_ts()?;
-        self.write_webview_index_html()?;
-        self.write_webview_main_ts()?;
-        self.write_webview_app_vue()?;
-        self.write_webview_package_json()?;
-        self.write_webview_vite_config()?;
-        self.write_webview_tsconfig()?;
-        self.write_webview_env_dts()?;
-        self.write_tailwind_config()?;
-        self.write_postcss_config()?;
-        self.write_base_css()?;
         self.write_tsconfig()?;
         self.write_webpack_config()?;
         self.write_vscodeignore()?;
         self.write_launch_json()?;
         self.write_tasks_json()?;
-
-        // Write sub-widget components
-        for (relative_dir, name, code, widget_name) in &self.components {
-            if name != "app" {
-                let comp_dir = if relative_dir == "components" || relative_dir.is_empty() {
-                    webview_components_dir.clone()
-                } else if relative_dir == "pages" {
-                    webview_src_dir.join("pages")
-                } else {
-                    webview_components_dir.join(relative_dir)
-                };
-
-                fs::create_dir_all(&comp_dir)
-                    .map_err(|e| format!("Failed to create {}: {}", comp_dir.display(), e))?;
-
-                let file_name = format!("{}.vue", widget_name);
-                let file_path = comp_dir.join(&file_name);
-                fs::write(&file_path, code)
-                    .map_err(|e| format!("Failed to write {}: {}", file_path.display(), e))?;
-                println!("  {} {}", "Generated".bright_green(), file_name);
-            }
-        }
 
         // Copy icon if specified
         if let Some(ref icon_rel) = self.config.icon {
@@ -416,41 +255,6 @@ impl VscodeProject {
         Ok(())
     }
 
-    fn write_webview_index_html(&self) -> AutoResult<()> {
-        let content = generate_webview_index_html(&self.config);
-        let path = self.output_dir.join("webview-ui").join("index.html");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/index.html: {}", e))?;
-        println!("  {} webview-ui/index.html", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_webview_main_ts(&self) -> AutoResult<()> {
-        let content = generate_webview_main_ts();
-        let path = self.output_dir.join("webview-ui").join("src").join("main.ts");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/src/main.ts: {}", e))?;
-        println!("  {} webview-ui/src/main.ts", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_webview_app_vue(&self) -> AutoResult<()> {
-        let path = self.output_dir.join("webview-ui").join("src").join("App.vue");
-        fs::write(&path, &self.app_vue_code)
-            .map_err(|e| format!("Failed to write App.vue: {}", e))?;
-        println!("  {} webview-ui/src/App.vue", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_webview_package_json(&self) -> AutoResult<()> {
-        let content = generate_webview_package_json(&self.name);
-        let path = self.output_dir.join("webview-ui").join("package.json");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/package.json: {}", e))?;
-        println!("  {} webview-ui/package.json", "Generated".bright_green());
-        Ok(())
-    }
-
     fn write_tsconfig(&self) -> AutoResult<()> {
         let content = generate_tsconfig();
         let path = self.output_dir.join("tsconfig.json");
@@ -475,63 +279,6 @@ impl VscodeProject {
         fs::write(&path, content)
             .map_err(|e| format!("Failed to write .vscodeignore: {}", e))?;
         println!("  {} .vscodeignore", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_webview_vite_config(&self) -> AutoResult<()> {
-        let content = generate_webview_vite_config();
-        let path = self.output_dir.join("webview-ui").join("vite.config.ts");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/vite.config.ts: {}", e))?;
-        println!("  {} webview-ui/vite.config.ts", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_webview_tsconfig(&self) -> AutoResult<()> {
-        let content = generate_webview_tsconfig();
-        let path = self.output_dir.join("webview-ui").join("tsconfig.json");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/tsconfig.json: {}", e))?;
-        println!("  {} webview-ui/tsconfig.json", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_webview_env_dts(&self) -> AutoResult<()> {
-        let content = generate_webview_env_dts();
-        let path = self.output_dir.join("webview-ui").join("src").join("env.d.ts");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/src/env.d.ts: {}", e))?;
-        println!("  {} webview-ui/src/env.d.ts", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_tailwind_config(&self) -> AutoResult<()> {
-        let content = generate_tailwind_config();
-        let path = self.output_dir.join("webview-ui").join("tailwind.config.js");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/tailwind.config.js: {}", e))?;
-        println!("  {} webview-ui/tailwind.config.js", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_postcss_config(&self) -> AutoResult<()> {
-        let content = generate_postcss_config();
-        let path = self.output_dir.join("webview-ui").join("postcss.config.js");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/postcss.config.js: {}", e))?;
-        println!("  {} webview-ui/postcss.config.js", "Generated".bright_green());
-        Ok(())
-    }
-
-    fn write_base_css(&self) -> AutoResult<()> {
-        let content = generate_base_css();
-        let assets_dir = self.output_dir.join("webview-ui").join("src").join("assets");
-        fs::create_dir_all(&assets_dir)
-            .map_err(|e| format!("Failed to create webview-ui/src/assets: {}", e))?;
-        let path = assets_dir.join("index.css");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write webview-ui/src/assets/index.css: {}", e))?;
-        println!("  {} webview-ui/src/assets/index.css", "Generated".bright_green());
         Ok(())
     }
 
@@ -592,21 +339,89 @@ pub fn generate_vscode_project(
 pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building VSCode extension project".bright_cyan());
 
-    // Step 1: Generate code
+    // Step 1: Ensure gen/vue is built (webview prerequisite)
+    let vue_dir = root_dir.join("gen").join("vue");
+    let vue_dist = vue_dir.join("dist");
+
+    if !vue_dist.join("assets").join("index.js").exists() {
+        println!();
+        println!(
+            "{}",
+            "  Step 1: Building Vue project (webview dependency)...".bright_cyan()
+        );
+
+        // Generate Vue project first
+        crate::vue::build_vue_project(root_dir)?;
+
+        // Install Vue dependencies
+        #[cfg(windows)]
+        let npm_install = std::process::Command::new("cmd")
+            .args(&["/C", "npm", "install"])
+            .current_dir(&vue_dir)
+            .status();
+
+        #[cfg(not(windows))]
+        let npm_install = std::process::Command::new("npm")
+            .args(&["install"])
+            .current_dir(&vue_dir)
+            .status();
+
+        match npm_install {
+            Ok(status) if status.success() => {
+                println!("  {} Vue dependencies installed", "OK".bright_green());
+            }
+            _ => {
+                println!(
+                    "  {} Failed to install Vue dependencies",
+                    "Warning:".bright_yellow()
+                );
+            }
+        }
+
+        // Build Vue project
+        #[cfg(windows)]
+        let npm_build = std::process::Command::new("cmd")
+            .args(&["/C", "npm", "run", "build"])
+            .current_dir(&vue_dir)
+            .status();
+
+        #[cfg(not(windows))]
+        let npm_build = std::process::Command::new("npm")
+            .args(&["run", "build"])
+            .current_dir(&vue_dir)
+            .status();
+
+        match npm_build {
+            Ok(status) if status.success() => {
+                println!("  {} Vue project built", "OK".bright_green());
+            }
+            _ => {
+                return Err("Vue build failed — cannot generate VSCode extension without webview assets".into());
+            }
+        }
+    } else {
+        println!();
+        println!(
+            "  {} Vue dist already exists, skipping Vue build",
+            "OK".bright_green()
+        );
+    }
+
+    // Step 2: Generate extension scaffold
     println!();
     println!(
         "{}",
-        "  Step 1: Generating VSCode extension code...".bright_cyan()
+        "  Step 2: Generating VSCode extension code...".bright_cyan()
     );
     generate_vscode_project(root_dir, None, false)?;
 
     let vscode_dir = root_dir.join("gen").join("vscode");
 
-    // Step 2: Check for npm
+    // Step 3: Check for npm
     println!();
     println!(
         "{}",
-        "  Step 2: Checking build tools...".bright_cyan()
+        "  Step 3: Checking build tools...".bright_cyan()
     );
 
     let has_npm = {
@@ -638,44 +453,15 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         return Ok(());
     }
 
-    // Step 3: Install webview dependencies
+    // Step 4: Install extension dependencies
     println!("  {} npm found", "OK".bright_green());
     println!();
     println!(
         "{}",
-        "  Step 3: Installing dependencies...".bright_cyan()
+        "  Step 4: Installing dependencies...".bright_cyan()
     );
 
-    let webview_dir = vscode_dir.join("webview-ui");
-
-    // Install webview-ui dependencies if needed
-    if webview_dir.exists() && !webview_dir.join("node_modules").exists() {
-        #[cfg(windows)]
-        let webview_install = std::process::Command::new("cmd")
-            .args(&["/C", "npm", "install"])
-            .current_dir(&webview_dir)
-            .status();
-
-        #[cfg(not(windows))]
-        let webview_install = std::process::Command::new("npm")
-            .args(&["install"])
-            .current_dir(&webview_dir)
-            .status();
-
-        match webview_install {
-            Ok(status) if status.success() => {
-                println!("  {} webview-ui dependencies installed", "OK".bright_green());
-            }
-            _ => {
-                println!(
-                    "  {} Failed to install webview-ui dependencies",
-                    "Warning:".bright_yellow()
-                );
-            }
-        }
-    }
-
-    // Install root dependencies if needed
+    // Install extension dependencies if needed
     if !vscode_dir.join("node_modules").exists() {
         #[cfg(windows)]
         let root_install = std::process::Command::new("cmd")
@@ -702,11 +488,11 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         }
     }
 
-    // Step 4: Build (webview + extension)
+    // Step 5: Compile extension
     println!();
     println!(
         "{}",
-        "  Step 4: Building project...".bright_cyan()
+        "  Step 5: Compiling extension...".bright_cyan()
     );
 
     #[cfg(windows)]
@@ -852,11 +638,9 @@ fn generate_package_json(name: &str, config: &VscodeConfig) -> String {
     }},
     "scripts": {{
         "vscode:prepublish": "npm run compile",
-        "build": "npm run webview:install && npm run webview:build && npm install && npm run compile",
+        "build": "npm install && npm run compile",
         "compile": "webpack --mode production",
-        "watch": "webpack --mode development --watch",
-        "webview:install": "cd webview-ui && npm install",
-        "webview:build": "cd webview-ui && npm run build"
+        "watch": "webpack --mode development --watch"
     }},
     "devDependencies": {{
         "@types/vscode": "^1.85.0",
@@ -991,12 +775,12 @@ export class AppPanel {{
     }}
 
     private _getHtmlForWebview(webview: vscode.Webview): string {{
-        // Get the local path to the webview-ui build output
+        // Get the local path to the shared Vue build output
         const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'webview-ui', 'dist', 'assets', 'index.js')
+            vscode.Uri.joinPath(this._extensionUri, '..', 'vue', 'dist', 'assets', 'index.js')
         );
         const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'webview-ui', 'dist', 'assets', 'index.css')
+            vscode.Uri.joinPath(this._extensionUri, '..', 'vue', 'dist', 'assets', 'index.css')
         );
 
         // Use a nonce to only allow specific scripts
@@ -1047,7 +831,7 @@ function getWebviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {{
     return {{
         enableScripts: true,
         localResourceRoots: [
-            vscode.Uri.joinPath(extensionUri, 'webview-ui'),
+            vscode.Uri.joinPath(extensionUri, '..', 'vue', 'dist'),
             vscode.Uri.joinPath(extensionUri, 'media'),
         ],
     }};
@@ -1060,77 +844,6 @@ function getNonce(): string {{
         text += possible.charAt(Math.floor(Math.random() * possible.length));
     }}
     return text;
-}}
-"#
-    )
-}
-
-fn generate_webview_index_html(config: &VscodeConfig) -> String {
-    let title = &config.title;
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-</head>
-<body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-</body>
-</html>
-"#
-    )
-}
-
-fn generate_webview_main_ts() -> String {
-    r#"import { createApp } from 'vue';
-import App from './App.vue';
-import './assets/index.css';
-
-// VSCode webview API bridge
-declare global {
-    interface Window {
-        auraPostMessage(type: string, data?: any): void;
-        auraOnMessage(handler: (type: string, data: any) => void): void;
-    }
-}
-
-const app = createApp(App);
-app.mount('#app');
-"#.to_string()
-}
-
-fn generate_webview_package_json(name: &str) -> String {
-    let kebab = to_kebab_case(name);
-    format!(
-        r#"{{
-    "name": "{kebab}-webview",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "scripts": {{
-        "dev": "vite",
-        "build": "vite build",
-        "preview": "vite preview"
-    }},
-    "dependencies": {{
-        "vue": "^3.4.0",
-        "clsx": "^2.1.0",
-        "tailwind-merge": "^2.2.0",
-        "class-variance-authority": "^0.7.0"
-    }},
-    "devDependencies": {{
-        "@vitejs/plugin-vue": "^5.0.0",
-        "vite": "^5.0.0",
-        "typescript": "^5.3.0",
-        "vue-tsc": "^2.0.0",
-        "tailwindcss": "^3.4.0",
-        "tailwindcss-animate": "^1.0.7",
-        "autoprefixer": "^10.4.0",
-        "postcss": "^8.4.0"
-    }}
 }}
 "#
     )
@@ -1150,7 +863,7 @@ fn generate_tsconfig() -> String {
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true
     },
-    "exclude": ["node_modules", ".vscode-test", "webview-ui"]
+    "exclude": ["node_modules", ".vscode-test"]
 }
 "#.to_string()
 }
@@ -1204,9 +917,6 @@ fn generate_vscodeignore() -> String {
     r#".vscode/**
 .vscode-test/**
 src/**
-webview-ui/src/**
-webview-ui/node_modules/**
-webview-ui/index.html**
 node_modules/**
 .gitignore
 tsconfig.json
@@ -1215,80 +925,6 @@ webpack.config.js
 **/*.ts
 "#
     .to_string()
-}
-
-fn generate_webview_vite_config() -> String {
-    r#"import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
-
-export default defineConfig({
-    plugins: [vue()],
-    build: {
-        outDir: 'dist',
-        assetsDir: 'assets',
-        rollupOptions: {
-            output: {
-                entryFileNames: 'assets/index.js',
-                chunkFileNames: 'assets/[name].js',
-                assetFileNames: 'assets/[name].[ext]',
-            },
-        },
-    },
-});
-"#.to_string()
-}
-
-fn generate_webview_tsconfig() -> String {
-    r#"{
-    "compilerOptions": {
-        "target": "ES2020",
-        "module": "ESNext",
-        "moduleResolution": "bundler",
-        "strict": true,
-        "jsx": "preserve",
-        "resolveJsonModule": true,
-        "isolatedModules": true,
-        "esModuleInterop": true,
-        "lib": ["ES2020", "DOM"],
-        "skipLibCheck": true,
-        "noEmit": true,
-        "paths": {
-            "@/*": ["./src/*"]
-        }
-    },
-    "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"],
-    "exclude": ["node_modules"]
-}
-"#.to_string()
-}
-
-fn generate_webview_env_dts() -> String {
-    r#"/// <reference types="vite/client" />
-
-declare module '*.vue' {
-    import type { DefineComponent } from 'vue';
-    const component: DefineComponent<{}, {}, any>;
-    export default component;
-}
-"#.to_string()
-}
-
-fn generate_tailwind_config() -> String {
-    VueGenerator::generate_tailwind_config()
-}
-
-fn generate_postcss_config() -> String {
-    r#"export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}
-"#.to_string()
-}
-
-fn generate_base_css() -> String {
-    VueGenerator::generate_base_css()
 }
 
 fn generate_launch_json() -> String {
@@ -1332,47 +968,6 @@ fn generate_tasks_json() -> String {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Compile a .at file to Vue component code.
-/// Returns (vue_code, widget_names).
-fn compile_at_to_vue(at_path: &Path) -> AutoResult<(String, Vec<String>)> {
-    use auto_lang::Parser;
-    use auto_lang::aura::extract_widget_from_decl;
-    use auto_lang::session::CompilerSession;
-
-    let code = fs::read_to_string(at_path)
-        .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
-
-    let session = CompilerSession::ui().with_backend("vue");
-    let mut parser = Parser::from(code.as_str());
-    parser = parser.with_session(session);
-
-    let ast = parser
-        .parse()
-        .map_err(|e| format!("Parse error: {:?}", e))?;
-
-    let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() {
-        return Err("No widgets found".to_string().into());
-    }
-
-    let mut generator = VueGenerator::new()
-        .with_mode(auto_lang::ui_gen::VueMode::Plain);
-    let vue_code = generator
-        .generate(&widgets[0])
-        .map_err(|e| e.to_string())?;
-
-    let names: Vec<String> = widgets.iter().map(|w| w.name.clone()).collect();
-    Ok((vue_code, names))
-}
 
 /// Parse project name from pac.at content.
 fn parse_pac_name(content: &str) -> Option<String> {
@@ -1520,7 +1115,8 @@ backend: ["vscode"]
         let json = generate_package_json("MyTool", &config);
         assert!(json.contains(r#""command": "my-tool.open""#));
         assert!(json.contains(r#""build""#));
-        assert!(json.contains(r#"webview:build"#));
+        assert!(json.contains(r#"npm install && npm run compile"#));
+        assert!(!json.contains(r#"webview"#)); // no webview scripts
         assert!(!json.contains(r#""dependencies""#)); // no vscode npm dep
     }
 }
