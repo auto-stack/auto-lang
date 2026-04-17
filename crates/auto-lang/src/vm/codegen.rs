@@ -420,6 +420,9 @@ impl Codegen {
                 }
             }
             Stmt::Fn(fn_decl) => {
+                // Reset last_expr_type for each function to avoid stale type from previous compilation
+                self.last_expr_type = ObjectType::Void;
+
                 // 1. Jump over function body (so it's not executed during definition flow)
                 self.emit(OpCode::JMP);
                 let jump_over = self.emit_placeholder_i16();
@@ -2636,6 +2639,7 @@ impl Codegen {
                 // Plan 118: Check variable type for result formatting
                 if let Some(var_type) = self.var_types.get(&name_str) {
                     self.last_expr_type = match var_type {
+                        Type::Str(_) | Type::StrSlice | Type::String => ObjectType::String,
                         Type::Byte => ObjectType::Byte,
                         Type::Uint | Type::U64 => ObjectType::Uint,
                         Type::Float => ObjectType::Float,

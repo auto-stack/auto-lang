@@ -1,0 +1,6 @@
+use auto.test_mod: greet, add
+
+pub fn main() {
+    greet("world")
+    print(add(1, 2))
+}

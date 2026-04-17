@@ -258,3 +258,6 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_16_option_result_014_is_none_match() { test_vm("16_option_result/014_is_none_match").unwrap(); }
 #[test] fn test_16_option_result_015_is_ok_binding() { test_vm("16_option_result/015_is_ok_binding").unwrap(); }
 #[test] fn test_16_option_result_016_is_err_match() { test_vm("16_option_result/016_is_err_match").unwrap(); }
+
+// === 17_modules ===
+#[test] fn test_17_modules_001_use_fn() { test_vm("17_modules/001_use_fn").unwrap(); }

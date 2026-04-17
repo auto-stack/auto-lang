@@ -52,6 +52,8 @@ pub struct CompileSession {
     declared_crates: HashSet<String>,
     /// Plan 167: Tracks modules currently being loaded (for circular dependency detection)
     loading_stack: Vec<String>,
+    /// Cross-module function calls: compiled dependency modules
+    compiled_modules: Vec<crate::vm::loader::Module>,
 }
 
 impl Clone for CompileSession {
@@ -64,6 +66,7 @@ impl Clone for CompileSession {
             sandbox: None, // Sandbox is recreated on-demand
             declared_crates: self.declared_crates.clone(),
             loading_stack: Vec::new(),
+            compiled_modules: Vec::new(),
         }
     }
 }
@@ -81,6 +84,7 @@ impl CompileSession {
             sandbox: None,
             declared_crates: HashSet::new(),
             loading_stack: Vec::new(),
+            compiled_modules: Vec::new(),
         }
     }
 
@@ -95,6 +99,11 @@ impl CompileSession {
     }
 
     /// Get number of cached modules (Plan 085 Phase 5)
+    /// Take all compiled dependency modules (for cross-module linking)
+    pub fn take_compiled_modules(&mut self) -> Vec<crate::vm::loader::Module> {
+        std::mem::take(&mut self.compiled_modules)
+    }
+
     pub fn cached_module_count(&self) -> usize {
         self.auto_cache.len()
     }
@@ -423,6 +432,12 @@ impl CompileSession {
         // 解析合并后的模块获取 type_store
         let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
 
+        // Cross-module function calls: compile module to bytecode
+        let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
+        if !module_code.exports.is_empty() {
+            self.compiled_modules.push(module_code);
+        }
+
         // Phase 5: 存入 AutoCache
         let cache_entry = ModuleCache::with_file(
             &use_stmt.module,
@@ -479,6 +494,44 @@ impl CompileSession {
         }
 
         Ok(type_store)
+    }
+
+    /// Compile a module's source code to bytecode (for cross-module function calls)
+    fn compile_module_to_bytecode(
+        &self,
+        source: &str,
+        path: &str,
+    ) -> AutoResult<crate::vm::loader::Module> {
+        use crate::vm::codegen::Codegen;
+        use crate::vm::opcode::OpCode;
+
+        let mut parser = Parser::from(source);
+        let ast = parser.parse()
+            .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
+
+        let mut codegen = Codegen::new();
+
+        for stmt in &ast.stmts {
+            match stmt {
+                crate::ast::Stmt::Fn(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                crate::ast::Stmt::TypeDecl(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                _ => {}
+            }
+        }
+
+        codegen.code.push(OpCode::HALT as u8);
+
+        let module_name = path.replace('\\', "/")
+            .rsplit('/').next().unwrap_or("unknown")
+            .trim_end_matches(".at")
+            .trim_end_matches(".auto")
+            .to_string();
+
+        Ok(codegen.finish(module_name))
     }
 
     /// Compile source code and index it into the database

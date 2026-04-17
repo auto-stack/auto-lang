@@ -264,12 +264,40 @@ pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
     rt.block_on(async { execute_autovm(code, true).await })
 }
 
+/// Find the source span of a `use ... : symbol` statement in source code
+fn find_use_symbol_span(source: &str, error_msg: &str) -> miette::SourceSpan {
+    let symbol = error_msg
+        .strip_prefix("Undefined symbol: ")
+        .and_then(|s| s.split(" in ").next())
+        .unwrap_or("");
+
+    for (line_num, line) in source.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("use ") && trimmed.contains(symbol) {
+            let line_start = source[..]
+                .split('\n')
+                .take(line_num)
+                .map(|l| l.len() + 1)
+                .sum::<usize>();
+            return miette::SourceSpan::new(line_start.into(), line.len().into());
+        }
+    }
+    miette::SourceSpan::new(0usize.into(), source.len().min(40).into())
+}
+
+fn extract_undefined_symbol(error_msg: &str) -> Option<&str> {
+    error_msg
+        .strip_prefix("Undefined symbol: ")
+        .and_then(|s| s.split(" in ").next())
+}
+
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
 async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String)> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
+    use crate::vm::loader::Linker;
     use crate::vm::virt_memory::VirtualFlash;
 
     // Plan 085: Pre-process use statements to load dependencies
@@ -338,53 +366,54 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     }
     vm_debug!("DEBUG: === End of bytecode ===");
 
-    // 3. Perform linking (resolve function calls)
+    // 3. Perform multi-module linking
     let strings = codegen.strings.clone();
-    vm_debug!("DEBUG: === Performing relocation for {} entries ===",
-        codegen.relocs.len()
-    );
-    vm_debug!("DEBUG: Available exports: {:?}",
-        codegen.exports.keys().collect::<Vec<_>>()
-    );
-    vm_debug!("DEBUG: exports map: {:?}", codegen.exports);
-    for reloc in &codegen.relocs {
-        vm_debug!("DEBUG: Relocating '{}' at offset 0x{:04x}",
-            reloc.symbol_name, reloc.offset
-        );
-        vm_debug!("DEBUG:   Looking up symbol '{}' (len={}, bytes={:?})",
-            reloc.symbol_name,
-            reloc.symbol_name.len(),
-            reloc.symbol_name.as_bytes()
-        );
-        if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
-            vm_debug!("DEBUG:   Found '{}' at address 0x{:04x}",
-                reloc.symbol_name, addr
-            );
-            let bytes = addr.to_le_bytes();
-            let offset = reloc.offset as usize;
-            for (i, b) in bytes.iter().enumerate() {
-                vm_debug!("DEBUG:   code[{}] = {} (was {})",
-                    offset + i,
-                    *b,
-                    codegen.code[offset + i]
-                );
-                codegen.code[offset + i] = *b;
-            }
-        } else {
-            return Err(crate::error::AutoError::Msg(format!(
-                "Undefined symbol: {}",
-                reloc.symbol_name
-            )));
-        }
+
+    let mut linker = Linker::new();
+    let dep_modules = session.take_compiled_modules();
+    for module in dep_modules {
+        linker.add_module(module);
     }
+
+    let object_keys = codegen.object_keys.clone();
+    let object_types = codegen.object_types.clone();
+    let result_type = codegen.last_expr_type.clone();
+    let main_module = codegen.finish("<main>".to_string());
+    vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
+    linker.add_module(main_module);
+
+    let (linked_code, global_symbols) = linker.link().map_err(|e| {
+        crate::error::AutoError::MsgWithSource(crate::error::MsgWithSource {
+            source: miette::NamedSource::new("<script>", code.to_string()),
+            message: e.clone(),
+            span: find_use_symbol_span(code, &e),
+            help: extract_undefined_symbol(&e).map(|s| format!("Check if '{}' is defined and exported in the module", s)),
+        })
+    })?;
+
+    // Use global_symbols to find main's absolute address in linked code
+    // (main module is laid out after all dependency modules, so its offset is adjusted)
+    let main_entry = if let Some(&addr) = global_symbols.get("main").or_else(|| global_symbols.get("test")) {
+        addr as usize
+    } else {
+        // No main/test function — start from beginning of main module's code
+        // (which is after all dependency modules)
+        let dep_size: usize = linker.modules.iter().take(linker.modules.len() - 1)
+            .map(|m| m.code.len())
+            .sum();
+        dep_size
+    };
+
+    vm_debug!("DEBUG: Linked code size: {} bytes", linked_code.len());
+    vm_debug!("DEBUG: Global symbols: {:?}", global_symbols);
 
     // 4. Load into VM
     // Plan 073: Include object_keys and object_types for object literal support
     // Plan 177: Use new_with_capture when capture mode is enabled
     let flash = VirtualFlash::new_with_code_and_keys(
-        codegen.code,
-        codegen.object_keys,
-        codegen.object_types,
+        linked_code,
+        object_keys,
+        object_types,
     );
     let (mut vm, output_buffer) = if capture {
         let (vm, buf) = AutoVM::new_with_capture(flash, 1024);
@@ -404,17 +433,9 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     };
 
     // Plan 118: Store the codegen's result type for formatting
-    let result_type = codegen.last_expr_type.clone();
 
     // 5. Execute - Find main/test entry point
-    let entry_point = codegen
-        .exports
-        .get("main")
-        .or_else(|| codegen.exports.get("test"))
-        .copied()
-        .unwrap_or(0) as usize; // Default to address 0 for scripts without main/test
-
-    let task_id = vm.spawn_task(entry_point, 1024);
+    let task_id = vm.spawn_task(main_entry, 1024);
     vm.run_task_loop().await;
 
     // 6. Get result from stack

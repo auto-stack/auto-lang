@@ -210,6 +210,55 @@ impl Diagnostic for LexerErrorWithSource {
     }
 }
 
+/// Generic message error with attached source code for displaying code snippets
+#[derive(Debug, Clone)]
+pub struct MsgWithSource {
+    pub source: NamedSource<String>,
+    pub message: String,
+    pub span: SourceSpan,
+    pub help: Option<String>,
+}
+
+impl std::fmt::Display for MsgWithSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for MsgWithSource {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+impl Diagnostic for MsgWithSource {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new("auto_link_E0401"))
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(miette::Severity::Error)
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.help.as_ref().map(|h| Box::new(h.clone()) as Box<dyn std::fmt::Display>)
+    }
+
+    fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
+        let offset = self.span.offset();
+        let len = self.span.len();
+        Some(Box::new(std::iter::once(miette::LabeledSpan::new(
+            Some(self.message.clone()),
+            offset,
+            len,
+        ))))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.source)
+    }
+}
+
 /// Alias for Result type with AutoLang errors
 pub type AutoResult<T> = std::result::Result<T, AutoError>;
 
@@ -270,6 +319,10 @@ pub enum AutoError {
     /// Generic error message (for converting from other error types)
     #[error("{0}")]
     Msg(String),
+
+    /// Generic error message with source context (for linker errors, etc.)
+    #[error("{0}")]
+    MsgWithSource(#[from] MsgWithSource),
 }
 
 // Manual implementation of Diagnostic for AutoError to properly delegate
@@ -288,6 +341,7 @@ impl Diagnostic for AutoError {
             AutoError::Warning(e) => e.code(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+            AutoError::MsgWithSource(e) => e.code(),
         }
     }
 
@@ -305,6 +359,7 @@ impl Diagnostic for AutoError {
             AutoError::Warning(e) => e.severity(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+            AutoError::MsgWithSource(e) => e.severity(),
         }
     }
 
@@ -324,6 +379,7 @@ impl Diagnostic for AutoError {
             AutoError::Warning(e) => e.help(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+            AutoError::MsgWithSource(e) => e.help(),
         }
     }
 
@@ -341,6 +397,7 @@ impl Diagnostic for AutoError {
             AutoError::Warning(e) => e.url(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+            AutoError::MsgWithSource(e) => e.url(),
         }
     }
 
@@ -361,6 +418,7 @@ impl Diagnostic for AutoError {
             AutoError::Warning(e) => e.labels(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+            AutoError::MsgWithSource(e) => e.labels(),
         }
     }
 
@@ -390,6 +448,7 @@ impl Diagnostic for AutoError {
             AutoError::Warning(e) => e.source_code(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+            AutoError::MsgWithSource(e) => e.source_code(),
         }
     }
 }
@@ -1154,11 +1213,13 @@ pub fn attach_source(err: AutoError, name: String, code: String) -> AutoError {
                 errors,
             }
         }
-        _ => {
-            // For other error types (Name, Type, Runtime), we can't attach source
-            // Return the error as-is
-            err
-        }
+        AutoError::Msg(msg) => AutoError::MsgWithSource(MsgWithSource {
+            source: NamedSource::new(name, code),
+            message: msg,
+            span: SourceSpan::new(0usize.into(), 0usize.into()),
+            help: None,
+        }),
+        _ => err,
     }
 }
 
