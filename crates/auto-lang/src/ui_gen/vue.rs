@@ -826,6 +826,9 @@ pub struct VueGenerator {
 
     /// Handler names actually referenced in the template
     used_handlers: HashSet<String>,
+
+    /// Whether the widget has an isDark state var (dark mode toggle)
+    has_dark_mode: bool,
 }
 
 /// Data for generating interactive preview cards
@@ -875,6 +878,7 @@ impl VueGenerator {
             needs_router: false,
             api_functions_used: HashSet::new(),
             used_handlers: HashSet::new(),
+            has_dark_mode: false,
         }
     }
 
@@ -927,12 +931,16 @@ impl VueGenerator {
         self.needs_router = false;
         self.api_functions_used.clear();
         self.used_handlers.clear();
+        self.has_dark_mode = false;
     }
 
     /// Generate complete Vue3 SFC
     pub fn generate_sfc(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.current_widget = Some(widget.name.clone());
         self.reset();
+
+        // Detect dark mode: check if widget has an isDark bool state variable
+        self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark");
 
         // Generate template first to collect shadcn components used and detect Outlet/Link
         let template = self.generate_template(&widget.view_tree)?;
@@ -1000,6 +1008,12 @@ impl VueGenerator {
             }
             imports.push("onUnmounted");
         }
+        // Dark mode: needs onMounted for system preference detection
+        if self.has_dark_mode {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+        }
         if !imports.is_empty() {
             script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
         }
@@ -1049,6 +1063,13 @@ impl VueGenerator {
 
         if !widget.state_vars.is_empty() {
             script.push('\n');
+        }
+
+        // Dark mode: detect system preference on mount
+        if self.has_dark_mode {
+            script.push_str("onMounted(() => {\n");
+            script.push_str("  isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches\n");
+            script.push_str("})\n\n");
         }
 
         // Generate computed properties
@@ -1345,7 +1366,12 @@ impl VueGenerator {
             format!("flex flex-col h-screen {}", self.wrapper_classes)
         };
 
-        template.push_str(&format!("  <div class=\"{}\">\n", classes));
+        // Dark mode: add :class binding for isDark state
+        if self.has_dark_mode {
+            template.push_str(&format!("  <div :class=\"{{ dark: isDark }}\" class=\"{}\">\n", classes));
+        } else {
+            template.push_str(&format!("  <div class=\"{}\">\n", classes));
+        }
         template.push_str(&self.node_to_html(root, 2)?);
         template.push_str("  </div>\n");
 
