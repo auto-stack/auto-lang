@@ -1644,7 +1644,8 @@ impl<'a> Parser<'a> {
                 | TokenKind::RBrace
                 | TokenKind::Comma
                 | TokenKind::Arrow
-                | TokenKind::DoubleArrow => break,
+                | TokenKind::DoubleArrow
+                | TokenKind::VBar => break,
                 TokenKind::Add
                 | TokenKind::Sub
                 | TokenKind::Star
@@ -5181,7 +5182,15 @@ impl<'a> Parser<'a> {
                 return Ok(branch);
             }
             _ => {
-                let expr = self.is_branch_cond_expr()?;
+                let mut patterns = vec![self.is_branch_cond_expr()?];
+                // Collect additional patterns separated by |
+                while self.is_kind(TokenKind::VBar) {
+                    self.next(); // skip |
+                    self.skip_empty_lines();
+                    patterns.push(self.is_branch_cond_expr()?);
+                    self.skip_empty_lines();
+                }
+                let expr = patterns.swap_remove(0); // take first for compatibility
                 self.expect(TokenKind::Arrow)?;
 
                 // Check for pattern binding cases
@@ -5295,7 +5304,9 @@ impl<'a> Parser<'a> {
                     self.parse_expr_or_body()?
                 };
 
-                let branch = IsBranch::EqBranch(expr, body);
+                let mut all_patterns = vec![expr];
+                all_patterns.extend(patterns);
+                let branch = IsBranch::EqBranch(all_patterns, body);
                 self.skip_empty_lines();
                 return Ok(branch);
             }

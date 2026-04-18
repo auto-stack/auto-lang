@@ -1,0 +1,6 @@
+var n = 2
+is n {
+    1 | 2 | 3 -> print("small")
+    5 -> print("five")
+    else -> print("other")
+}

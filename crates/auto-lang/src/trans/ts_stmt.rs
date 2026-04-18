@@ -309,10 +309,12 @@ impl TypeScriptTrans {
 
         for branch in &is_stmt.branches {
             match branch {
-                IsBranch::EqBranch(expr, body) => {
-                    out.write(b"\n        case ")?;
-                    self.expr(expr, out)?;
-                    out.write(b":")?;
+                IsBranch::EqBranch(patterns, body) => {
+                    for pat in patterns.iter() {
+                        out.write(b"\n        case ")?;
+                        self.expr(pat, out)?;
+                        out.write(b":")?;
+                    }
                     self.switch_case_body(body, out)?;
                     out.write(b"\n            break;")?;
                 }

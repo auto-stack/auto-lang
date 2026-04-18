@@ -99,6 +99,8 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_04_control_flow_005_if_in_array() { test_vm("04_control_flow/005_if_in_array").unwrap(); }
 #[test] fn test_04_control_flow_006_is_stmt() { test_vm("04_control_flow/006_is_stmt").unwrap(); }
 #[test] fn test_04_control_flow_007_asn_upper() { test_vm("04_control_flow/007_asn_upper").unwrap(); }
+#[test] fn test_04_control_flow_008_is_or_pattern() { test_vm("04_control_flow/008_is_or_pattern").unwrap(); }
+#[test] fn test_04_control_flow_009_is_or_groups() { test_vm("04_control_flow/009_is_or_groups").unwrap(); }
 
 // === 05_loops ===
 #[test] fn test_05_loops_001_for_range() { test_vm("05_loops/001_for_range").unwrap(); }

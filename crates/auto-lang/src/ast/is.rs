@@ -11,7 +11,7 @@ pub struct Is {
 
 #[derive(Debug, Clone)]
 pub enum IsBranch {
-    EqBranch(Expr, Body),
+    EqBranch(Vec<Expr>, Body),
     IfBranch(Expr, Body),
     ElseBranch(Body),
 }
@@ -21,9 +21,12 @@ impl fmt::Display for Is {
         write!(f, "(is {} ", self.target)?;
         for (i, b) in self.branches.iter().enumerate() {
             match b {
-                IsBranch::EqBranch(expr, body) => {
+                IsBranch::EqBranch(patterns, body) => {
                     write!(f, "(eq ")?;
-                    write!(f, "{} ", expr)?;
+                    for (i, p) in patterns.iter().enumerate() {
+                        if i > 0 { write!(f, "| ")?; }
+                        write!(f, "{} ", p)?;
+                    }
                     write!(f, "{}", body)?;
                     write!(f, ")")?;
                 }
@@ -85,8 +88,9 @@ impl ToAtom for Is {
 impl AtomWriter for IsBranch {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
-            IsBranch::EqBranch(expr, body) => {
-                write!(f, "eq({}) {{ {} }}", expr.to_atom_str(), body.to_atom_str())?;
+            IsBranch::EqBranch(patterns, body) => {
+                let pats: Vec<String> = patterns.iter().map(|p| p.to_atom_str().to_string()).collect();
+                write!(f, "eq({}) {{ {} }}", pats.join(" | "), body.to_atom_str())?;
             }
             IsBranch::IfBranch(expr, body) => {
                 write!(f, "if({}) {{ {} }}", expr.to_atom_str(), body.to_atom_str())?;
@@ -102,9 +106,11 @@ impl AtomWriter for IsBranch {
 impl ToNode for IsBranch {
     fn to_node(&self) -> AutoNode {
         match self {
-            IsBranch::EqBranch(expr, body) => {
+            IsBranch::EqBranch(patterns, body) => {
                 let mut node = AutoNode::new("eq");
-                node.add_kid(expr.to_node()); // Changed from expr.to_atom().to_node()
+                for p in patterns {
+                    node.add_kid(p.to_node());
+                }
                 node.add_kid(body.to_node());
                 node
             }

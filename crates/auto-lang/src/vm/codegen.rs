@@ -1819,13 +1819,15 @@ impl Codegen {
                 // Evaluate target expression once and keep on stack
                 self.compile_expr(&is_stmt.target)?;
 
-                let mut branch_jumps = Vec::new();
+                let mut end_jumps = Vec::new();
 
                 // Process each branch
                 for branch in &is_stmt.branches {
                     match branch {
-                        crate::ast::IsBranch::EqBranch(pattern, body) => {
+                        crate::ast::IsBranch::EqBranch(patterns, body) => {
                             // Plan 120: Check for Option/Result pattern matching
+                            // Use first pattern for special pattern types (Option/Result/Cover)
+                            let pattern = &patterns[0];
                             match pattern {
                                 // Legacy: None as expression (for backward compatibility)
                                 crate::ast::Expr::None => {
@@ -1846,8 +1848,6 @@ impl Codegen {
                                             // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
-                                            branch_jumps.push(jump_to_next);
-
                                             // If we have a binding, extract the value and store it
                                             if let Some(binding) = &opt_cover.binding {
                                                 // The target is still on stack (from DUP)
@@ -1868,7 +1868,7 @@ impl Codegen {
                                             // Jump to end of is statement
                                             self.emit(OpCode::JMP);
                                             let jump_to_end = self.emit_placeholder_i16();
-                                            branch_jumps.push(jump_to_end);
+                                            end_jumps.push(jump_to_end);
 
                                             // Patch jump to next branch
                                             self.patch_jump(jump_to_next);
@@ -1894,8 +1894,6 @@ impl Codegen {
                                             // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
-                                            branch_jumps.push(jump_to_next);
-
                                             // If we have a binding, extract the value and store it
                                             if let Some(binding) = &res_cover.binding {
                                                 // The target is still on stack (from DUP)
@@ -1916,7 +1914,7 @@ impl Codegen {
                                             // Jump to end of is statement
                                             self.emit(OpCode::JMP);
                                             let jump_to_end = self.emit_placeholder_i16();
-                                            branch_jumps.push(jump_to_end);
+                                            end_jumps.push(jump_to_end);
 
                                             // Patch jump to next branch
                                             self.patch_jump(jump_to_next);
@@ -1936,8 +1934,6 @@ impl Codegen {
                                             // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
-                                            branch_jumps.push(jump_to_next);
-
                                             // If we have a binding, extract the error and store it
                                             if let Some(binding) = &res_cover.binding {
                                                 // The target is still on stack (from DUP)
@@ -1958,7 +1954,7 @@ impl Codegen {
                                             // Jump to end of is statement
                                             self.emit(OpCode::JMP);
                                             let jump_to_end = self.emit_placeholder_i16();
-                                            branch_jumps.push(jump_to_end);
+                                            end_jumps.push(jump_to_end);
 
                                             // Patch jump to next branch
                                             self.patch_jump(jump_to_next);
@@ -1995,22 +1991,80 @@ impl Codegen {
                                     let _ = msg; // Suppress unused warning
                                 }
                                 _ => {
-                                    // Standard equality comparison for other patterns
-                                    // Duplicate target for comparison
-                                    self.emit(OpCode::DUP);
+                                    // Standard equality comparison for patterns
+                                    // For multi-pattern (OR): compare each, OR results together
+                                    if patterns.len() == 1 {
+                                        // Single pattern: existing behavior
+                                        self.emit(OpCode::DUP);
+                                        self.compile_expr(pattern)?;
+                                        self.emit(OpCode::EQ);
+                                    } else {
+                                        // Multi-pattern: save target, compare each with short-circuit OR
+                                        // If any pattern matches, jump to matched label; otherwise fall through to next branch
+                                        let target_slot = self.add_var("_is_target");
+                                        self.emit(OpCode::STORE_LOCAL);
+                                        self.emit_u16(target_slot as u16);
 
-                                    // Evaluate pattern expression
-                                    self.compile_expr(pattern)?;
+                                        let mut match_jumps = Vec::new();
 
-                                    // Compare target with pattern
-                                    self.emit(OpCode::EQ);
+                                        // First pattern
+                                        self.emit(OpCode::LOAD_LOCAL);
+                                        self.emit_u16(target_slot as u16);
+                                        self.compile_expr(&patterns[0])?;
+                                        self.emit(OpCode::EQ);
+                                        self.emit(OpCode::JMP_IF_NZ);
+                                        match_jumps.push(self.emit_placeholder_i16());
+
+                                        // Subsequent patterns: if previous didn't match, try this one
+                                        for pat in &patterns[1..] {
+                                            self.emit(OpCode::LOAD_LOCAL);
+                                            self.emit_u16(target_slot as u16);
+                                            self.compile_expr(pat)?;
+                                            self.emit(OpCode::EQ);
+                                            self.emit(OpCode::JMP_IF_NZ);
+                                            match_jumps.push(self.emit_placeholder_i16());
+                                        }
+
+                                        // No pattern matched — restore target and jump to next branch
+                                        self.emit(OpCode::LOAD_LOCAL);
+                                        self.emit_u16(target_slot as u16);
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_next = self.emit_placeholder_i16();
+
+                                        // === Matched label ===
+                                        // Patch all JMP_IF_NZ to jump here
+                                        let matched_pos = self.code.len();
+                                        for j in &match_jumps {
+                                            let anchor = *j + 2;
+                                            let offset = (matched_pos as isize) - (anchor as isize);
+                                            let bytes = (offset as i16).to_le_bytes();
+                                            self.code[*j] = bytes[0];
+                                            self.code[*j + 1] = bytes[1];
+                                        }
+
+                                        // Restore target on stack for body execution
+                                        self.emit(OpCode::LOAD_LOCAL);
+                                        self.emit_u16(target_slot as u16);
+
+                                        // Compile branch body
+                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                        // Jump to end of is statement
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_end = self.emit_placeholder_i16();
+                                        end_jumps.push(jump_to_end);
+
+                                        // Patch jump to next branch (the fall-through JMP)
+                                        self.patch_jump(jump_to_next);
+
+                                        continue; // Skip the default handling below
+                                    }
                                 }
                             }
 
                             // Jump to next branch if not matched
                             self.emit(OpCode::JMP_IF_Z);
                             let jump_to_next = self.emit_placeholder_i16();
-                            branch_jumps.push(jump_to_next);
 
                             // Compile branch body
                             self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
@@ -2018,7 +2072,7 @@ impl Codegen {
                             // Jump to end of is statement
                             self.emit(OpCode::JMP);
                             let jump_to_end = self.emit_placeholder_i16();
-                            branch_jumps.push(jump_to_end);
+                            end_jumps.push(jump_to_end);
 
                             // Patch jump to next branch
                             self.patch_jump(jump_to_next);
@@ -2030,7 +2084,6 @@ impl Codegen {
                             // Jump to next branch if condition is false (zero)
                             self.emit(OpCode::JMP_IF_Z);
                             let jump_to_next = self.emit_placeholder_i16();
-                            branch_jumps.push(jump_to_next);
 
                             // Compile branch body
                             self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
@@ -2038,7 +2091,7 @@ impl Codegen {
                             // Jump to end of is statement
                             self.emit(OpCode::JMP);
                             let jump_to_end = self.emit_placeholder_i16();
-                            branch_jumps.push(jump_to_end);
+                            end_jumps.push(jump_to_end);
 
                             // Patch jump to next branch
                             self.patch_jump(jump_to_next);
@@ -2050,7 +2103,7 @@ impl Codegen {
                             // Jump to end (in case there are more branches after else)
                             self.emit(OpCode::JMP);
                             let jump_to_end = self.emit_placeholder_i16();
-                            branch_jumps.push(jump_to_end);
+                            end_jumps.push(jump_to_end);
                         }
                     }
                 }
@@ -2059,7 +2112,7 @@ impl Codegen {
                 self.emit(OpCode::POP);
 
                 // Patch all jump_to_end placeholders
-                for jump_to_end in branch_jumps {
+                for jump_to_end in end_jumps {
                     self.patch_jump(jump_to_end);
                 }
             }

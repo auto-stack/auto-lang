@@ -2617,8 +2617,12 @@ impl RustTrans {
             self.print_indent(&mut sink.body)?;
 
             match branch {
-                IsBranch::EqBranch(expr, body) => {
-                    self.expr(expr, &mut sink.body)?;
+                IsBranch::EqBranch(patterns, body) => {
+                    // Multi-pattern: 1 | 2 | 3 => ...
+                    for (i, pat) in patterns.iter().enumerate() {
+                        if i > 0 { sink.body.write(b" | ")?; }
+                        self.expr(pat, &mut sink.body)?;
+                    }
                     sink.body.write(b" => ")?;
                     self.write_match_arm_body(body, sink)?;
                     sink.body.write(b",\n")?;

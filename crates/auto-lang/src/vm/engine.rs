@@ -2975,6 +2975,23 @@ impl AutoVM {
                         .push_i32(if a >= b { -2147483648 } else { -2147483647 });
                 }
 
+                // === Logical ===
+                OpCode::AND => {
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a & b);
+                }
+                OpCode::OR => {
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a | b);
+                }
+                OpCode::XOR => {
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a ^ b);
+                }
+
                 // === Control Flow ===
                 OpCode::JMP => {
                     let offset = self.flash.read_i16(task.ip) as isize;

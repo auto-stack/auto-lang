@@ -1,0 +1,6 @@
+var n = 3
+is n {
+    1 | 2 -> print("low")
+    3 | 4 -> print("high")
+    else -> print("other")
+}

@@ -395,9 +395,12 @@ impl PythonTrans {
         for branch in &is_stmt.branches {
             self.print_indent(out)?;
             match branch {
-                IsBranch::EqBranch(expr, body) => {
-                    out.write(b"case ")?;
-                    self.expr(expr, out)?;
+                IsBranch::EqBranch(patterns, body) => {
+                    for (i, pat) in patterns.iter().enumerate() {
+                        if i == 0 { out.write(b"case ")?; }
+                        else { out.write(b" | ")?; }
+                        self.expr(pat, out)?;
+                    }
                     out.write(b":\n")?;
                     self.indent();
                     self.body(body, out)?;

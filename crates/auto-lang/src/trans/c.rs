@@ -2785,9 +2785,11 @@ impl CTrans {
         for case in &is_stmt.branches {
             self.print_indent(&mut sink.body)?;
             match case {
-                IsBranch::EqBranch(expr, body) => {
+                IsBranch::EqBranch(patterns, body) => {
                     // Check if this is a tag/enum cover pattern like Atom.Int(i)
-                    if let Expr::Cover(Cover::Tag(tag_cover)) = expr {
+                    let first = &patterns[0];
+                    if let Expr::Cover(Cover::Tag(tag_cover)) = first {
+                        let expr = first;
                         // Generate: case ENUM_VARIANT:
                         let enum_const = format!("{}_{}",
                             tag_cover.kind.to_uppercase(),
@@ -2836,9 +2838,12 @@ impl CTrans {
                         self.local_var_uncovers.remove(&tag_cover.elem);
                     } else {
                         // Regular EqBranch - non-cover pattern
-                        sink.body.write(b"case ")?;
-                        self.expr(expr, &mut sink.body)?;
-                        sink.body.write(b":\n")?;
+                        // Multi-pattern: case 1: case 2: case 3: ... body
+                        for pat in patterns.iter() {
+                            sink.body.write(b"case ")?;
+                            self.expr(pat, &mut sink.body)?;
+                            sink.body.write(b":\n")?;
+                        }
                         self.indent();
                         self.print_indent(&mut sink.body)?;
                         self.body(body, sink, &return_type, "", "")?;
