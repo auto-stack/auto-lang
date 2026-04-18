@@ -1,0 +1,1 @@
+Json.has_key("{\"name\":\"auto\"}", "name")

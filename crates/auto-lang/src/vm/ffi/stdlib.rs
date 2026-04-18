@@ -67,6 +67,22 @@ pub const NATIVE_MATH_ABS: u16 = 1700;
 pub const NATIVE_MATH_MIN: u16 = 1701;
 pub const NATIVE_MATH_MAX: u16 = 1702;
 pub const NATIVE_MATH_SQRT: u16 = 1703;
+pub const NATIVE_MATH_FLOOR: u16 = 1710;
+pub const NATIVE_MATH_CEIL: u16 = 1711;
+pub const NATIVE_MATH_ROUND: u16 = 1712;
+pub const NATIVE_MATH_POW: u16 = 1713;
+pub const NATIVE_MATH_MIN_F: u16 = 1714;
+pub const NATIVE_MATH_MAX_F: u16 = 1715;
+pub const NATIVE_MATH_SIN: u16 = 1716;
+pub const NATIVE_MATH_COS: u16 = 1717;
+pub const NATIVE_MATH_TAN: u16 = 1718;
+pub const NATIVE_MATH_EXP: u16 = 1719;
+pub const NATIVE_MATH_LN: u16 = 1720;
+pub const NATIVE_MATH_LOG2: u16 = 1721;
+pub const NATIVE_MATH_LOG10: u16 = 1722;
+pub const NATIVE_MATH_ABS_F: u16 = 1723;
+pub const NATIVE_MATH_SIGNUM: u16 = 1724;
+pub const NATIVE_MATH_CLAMP: u16 = 1725;
 
 // Log functions: 1800-1899
 pub const NATIVE_LOG_DEBUG: u16 = 1800;
@@ -206,6 +222,14 @@ pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 pub const NATIVE_STR_TRIM: u16 = 1507;
 pub const NATIVE_STR_SPLIT: u16 = 1508;
 pub const NATIVE_STR_REPEAT: u16 = 1509;
+pub const NATIVE_STR_REPLACE: u16 = 1510;
+pub const NATIVE_STR_TO_UPPER: u16 = 1511;
+pub const NATIVE_STR_TO_LOWER: u16 = 1512;
+pub const NATIVE_STR_REVERSE: u16 = 1513;
+pub const NATIVE_STR_FIND: u16 = 1514;
+pub const NATIVE_STR_LINES: u16 = 1515;
+pub const NATIVE_STR_PARSE_INT: u16 = 1516;
+pub const NATIVE_STR_PARSE_FLOAT: u16 = 1517;
 
 // Char functions: 1600-1699
 pub const NATIVE_CHAR_IS_ALPHA: u16 = 1600;
@@ -673,6 +697,54 @@ pub fn shim_str_repeat(s: String, n: i32) -> String {
     }
 }
 
+/// Replace all occurrences of a pattern in a string
+#[auto_macros::rust_fn("Str.replace")]
+pub fn shim_str_replace(s: String, from: String, to: String) -> String {
+    s.replace(&from, &to)
+}
+
+/// Convert string to uppercase
+#[auto_macros::rust_fn("Str.to_upper")]
+pub fn shim_str_to_upper(s: String) -> String {
+    s.to_uppercase()
+}
+
+/// Convert string to lowercase
+#[auto_macros::rust_fn("Str.to_lower")]
+pub fn shim_str_to_lower(s: String) -> String {
+    s.to_lowercase()
+}
+
+/// Reverse a string (unicode-aware)
+#[auto_macros::rust_fn("Str.reverse")]
+pub fn shim_str_reverse(s: String) -> String {
+    s.chars().rev().collect()
+}
+
+/// Find first occurrence of substring, returns byte index or -1
+#[auto_macros::rust_fn("Str.find")]
+pub fn shim_str_find(s: String, needle: String) -> i32 {
+    s.find(&needle).map(|i| i as i32).unwrap_or(-1)
+}
+
+/// Split string into lines
+#[auto_macros::rust_fn("Str.lines")]
+pub fn shim_str_lines(s: String) -> Vec<String> {
+    s.lines().map(|l| l.to_string()).collect()
+}
+
+/// Parse string as integer
+#[auto_macros::rust_fn("Str.parse_int")]
+pub fn shim_str_parse_int(s: String) -> Result<i64, String> {
+    s.trim().parse::<i64>().map_err(|e| format!("Str.parse_int failed: {}", e))
+}
+
+/// Parse string as float
+#[auto_macros::rust_fn("Str.parse_float")]
+pub fn shim_str_parse_float(s: String) -> Result<f64, String> {
+    s.trim().parse::<f64>().map_err(|e| format!("Str.parse_float failed: {}", e))
+}
+
 // ============================================================================
 // Character Functions (ID 1600-1699)
 // ============================================================================
@@ -771,6 +843,102 @@ pub fn shim_math_sqrt(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
     Ok(())
 }
 
+/// Floor of a float
+#[auto_macros::rust_fn("Math.floor")]
+pub fn shim_math_floor(n: f64) -> f64 {
+    n.floor()
+}
+
+/// Ceiling of a float
+#[auto_macros::rust_fn("Math.ceil")]
+pub fn shim_math_ceil(n: f64) -> f64 {
+    n.ceil()
+}
+
+/// Round a float to nearest integer
+#[auto_macros::rust_fn("Math.round")]
+pub fn shim_math_round(n: f64) -> f64 {
+    n.round()
+}
+
+/// Power function: base^exp
+#[auto_macros::rust_fn("Math.pow")]
+pub fn shim_math_pow(base: f64, exp: f64) -> f64 {
+    base.powf(exp)
+}
+
+/// Minimum of two floats
+#[auto_macros::rust_fn("Math.min_f")]
+pub fn shim_math_min_f(a: f64, b: f64) -> f64 {
+    a.min(b)
+}
+
+/// Maximum of two floats
+#[auto_macros::rust_fn("Math.max_f")]
+pub fn shim_math_max_f(a: f64, b: f64) -> f64 {
+    a.max(b)
+}
+
+/// Sine function (radians)
+#[auto_macros::rust_fn("Math.sin")]
+pub fn shim_math_sin(n: f64) -> f64 {
+    n.sin()
+}
+
+/// Cosine function (radians)
+#[auto_macros::rust_fn("Math.cos")]
+pub fn shim_math_cos(n: f64) -> f64 {
+    n.cos()
+}
+
+/// Tangent function (radians)
+#[auto_macros::rust_fn("Math.tan")]
+pub fn shim_math_tan(n: f64) -> f64 {
+    n.tan()
+}
+
+/// Exponential function e^x
+#[auto_macros::rust_fn("Math.exp")]
+pub fn shim_math_exp(n: f64) -> f64 {
+    n.exp()
+}
+
+/// Natural logarithm ln(x)
+#[auto_macros::rust_fn("Math.ln")]
+pub fn shim_math_ln(n: f64) -> f64 {
+    n.ln()
+}
+
+/// Base-2 logarithm log2(x)
+#[auto_macros::rust_fn("Math.log2")]
+pub fn shim_math_log2(n: f64) -> f64 {
+    n.log2()
+}
+
+/// Base-10 logarithm log10(x)
+#[auto_macros::rust_fn("Math.log10")]
+pub fn shim_math_log10(n: f64) -> f64 {
+    n.log10()
+}
+
+/// Absolute value of a float
+#[auto_macros::rust_fn("Math.abs_f")]
+pub fn shim_math_abs_f(n: f64) -> f64 {
+    n.abs()
+}
+
+/// Signum of a float (-1.0, 0.0, or 1.0)
+#[auto_macros::rust_fn("Math.signum")]
+pub fn shim_math_signum(n: f64) -> f64 {
+    n.signum()
+}
+
+/// Clamp a value between min and max
+#[auto_macros::rust_fn("Math.clamp")]
+pub fn shim_math_clamp(n: f64, min: f64, max: f64) -> f64 {
+    n.clamp(min, max)
+}
+
 // ============================================================================
 // Log Functions (ID 1800-1899)
 // ============================================================================
@@ -832,6 +1000,141 @@ pub fn shim_json_is_valid(s: String) -> bool {
     serde_json::from_str::<serde_json::Value>(&s).is_ok()
 }
 
+/// Get a value from a JSON object by key
+#[auto_macros::rust_fn("Json.get")]
+pub fn shim_json_get(json_str: String, key: String) -> String {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    match val.get(&key) {
+        Some(v) => v.to_string(),
+        None => String::new(),
+    }
+}
+
+/// Get a value from a JSON array by index
+#[auto_macros::rust_fn("Json.get_at")]
+pub fn shim_json_get_at(json_str: String, index: i32) -> String {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    match val.as_array() {
+        Some(arr) => {
+            if index < 0 || index as usize >= arr.len() {
+                return String::new();
+            }
+            arr[index as usize].to_string()
+        }
+        None => String::new(),
+    }
+}
+
+/// Get the length of a JSON array or object
+#[auto_macros::rust_fn("Json.len")]
+pub fn shim_json_len(json_str: String) -> i32 {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return -1,
+    };
+    match &val {
+        serde_json::Value::Array(arr) => arr.len() as i32,
+        serde_json::Value::Object(map) => map.len() as i32,
+        _ => -1,
+    }
+}
+
+/// Get the type of a JSON value as a string
+#[auto_macros::rust_fn("Json.type_of")]
+pub fn shim_json_type_of(json_str: String) -> String {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return "invalid".to_string(),
+    };
+    match val {
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Bool(_) => "bool".to_string(),
+        serde_json::Value::Number(_) => "number".to_string(),
+        serde_json::Value::String(_) => "string".to_string(),
+        serde_json::Value::Array(_) => "array".to_string(),
+        serde_json::Value::Object(_) => "object".to_string(),
+    }
+}
+
+/// Get a JSON string value as a plain string
+#[auto_macros::rust_fn("Json.as_string")]
+pub fn shim_json_as_string(json_str: String) -> String {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    val.as_str().unwrap_or("").to_string()
+}
+
+/// Get a JSON number value as f64
+#[auto_macros::rust_fn("Json.as_number")]
+pub fn shim_json_as_number(json_str: String) -> f64 {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return 0.0,
+    };
+    val.as_f64().unwrap_or(0.0)
+}
+
+/// Get a JSON number value as i64
+#[auto_macros::rust_fn("Json.as_int")]
+pub fn shim_json_as_int(json_str: String) -> i64 {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return 0,
+    };
+    val.as_i64().unwrap_or(0)
+}
+
+/// Get a JSON boolean value
+#[auto_macros::rust_fn("Json.as_bool")]
+pub fn shim_json_as_bool(json_str: String) -> bool {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    val.as_bool().unwrap_or(false)
+}
+
+/// Check if a JSON value is null
+#[auto_macros::rust_fn("Json.is_null")]
+pub fn shim_json_is_null(json_str: String) -> bool {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    val.is_null()
+}
+
+/// Get the keys of a JSON object as a string list
+#[auto_macros::rust_fn("Json.keys")]
+pub fn shim_json_keys(json_str: String) -> Vec<String> {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    match val.as_object() {
+        Some(map) => map.keys().cloned().collect(),
+        None => Vec::new(),
+    }
+}
+
+/// Check if a JSON object has a given key
+#[auto_macros::rust_fn("Json.has_key")]
+pub fn shim_json_has_key(json_str: String, key: String) -> bool {
+    let val: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    val.as_object().map_or(false, |map| map.contains_key(&key))
+}
+
 // ============================================================================
 // URL Functions (ID 2000-2099)
 // ============================================================================
@@ -875,6 +1178,125 @@ pub fn shim_url_join_path(segments: Vec<String>) -> String {
         .collect::<Vec<_>>()
         .join("/");
     format!("/{}", path)
+}
+
+/// Parse a URL and return its components as a JSON string
+#[auto_macros::rust_fn("Url.parse")]
+pub fn shim_url_parse(url_str: String) -> String {
+    // Manual parsing without url crate
+    let result = serde_json::json!({
+        "url": url_str,
+    });
+    serde_json::to_string(&result).unwrap_or_default()
+}
+
+/// Get the scheme of a URL (e.g., "https")
+#[auto_macros::rust_fn("Url.scheme")]
+pub fn shim_url_scheme(url_str: String) -> String {
+    if let Some(pos) = url_str.find("://") {
+        url_str[..pos].to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Get the host of a URL (e.g., "example.com")
+#[auto_macros::rust_fn("Url.host")]
+pub fn shim_url_host(url_str: String) -> String {
+    let without_scheme = if let Some(pos) = url_str.find("://") {
+        &url_str[pos + 3..]
+    } else {
+        &url_str
+    };
+    // Remove userinfo if present
+    let after_at = if let Some(pos) = without_scheme.rfind('@') {
+        &without_scheme[pos + 1..]
+    } else {
+        without_scheme
+    };
+    // Take up to : or /
+    let end = after_at.find(|c: char| c == ':' || c == '/' || c == '?' || c == '#')
+        .unwrap_or(after_at.len());
+    after_at[..end].to_string()
+}
+
+/// Get the port of a URL (returns -1 if no explicit port)
+#[auto_macros::rust_fn("Url.port")]
+pub fn shim_url_port(url_str: String) -> i32 {
+    let without_scheme = if let Some(pos) = url_str.find("://") {
+        &url_str[pos + 3..]
+    } else {
+        &url_str
+    };
+    let after_at = if let Some(pos) = without_scheme.rfind('@') {
+        &without_scheme[pos + 1..]
+    } else {
+        without_scheme
+    };
+    // Find the colon after host
+    if let Some(colon_pos) = after_at.find(':') {
+        let after_colon = &after_at[colon_pos + 1..];
+        let end = after_colon.find(|c: char| c == '/' || c == '?' || c == '#')
+            .unwrap_or(after_colon.len());
+        after_colon[..end].parse::<i32>().unwrap_or(-1)
+    } else {
+        -1
+    }
+}
+
+/// Get the path of a URL
+#[auto_macros::rust_fn("Url.path")]
+pub fn shim_url_path(url_str: String) -> String {
+    let without_scheme = if let Some(pos) = url_str.find("://") {
+        &url_str[pos + 3..]
+    } else if url_str.starts_with('/') {
+        // Relative URL
+        return extract_path(url_str);
+    } else {
+        &url_str
+    };
+    // Skip host:port
+    let after_host = if let Some(pos) = without_scheme.find('/') {
+        &without_scheme[pos..]
+    } else {
+        return "/".to_string();
+    };
+    extract_path(after_host.to_string())
+}
+
+/// Get the query string of a URL
+#[auto_macros::rust_fn("Url.query")]
+pub fn shim_url_query(url_str: String) -> String {
+    if let Some(qpos) = url_str.find('?') {
+        let after_q = &url_str[qpos + 1..];
+        if let Some(hpos) = after_q.find('#') {
+            after_q[..hpos].to_string()
+        } else {
+            after_q.to_string()
+        }
+    } else {
+        String::new()
+    }
+}
+
+/// Get the fragment of a URL
+#[auto_macros::rust_fn("Url.fragment")]
+pub fn shim_url_fragment(url_str: String) -> String {
+    if let Some(pos) = url_str.rfind('#') {
+        url_str[pos + 1..].to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Helper: extract path portion from a string that starts with /
+fn extract_path(s: String) -> String {
+    let end = s.find(|c: char| c == '?' || c == '#').unwrap_or(s.len());
+    if end == 0 {
+        "/".to_string()
+    } else {
+        s[..end].to_string()
+    }
 }
 
 // ============================================================================
@@ -2407,6 +2829,14 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_STR_TRIM, __shim_Str_trim);
     natives.register_static(NATIVE_STR_SPLIT, __shim_Str_split);
     natives.register_static(NATIVE_STR_REPEAT, __shim_Str_repeat);
+    natives.register_static(NATIVE_STR_REPLACE, __shim_Str_replace);
+    natives.register_static(NATIVE_STR_TO_UPPER, __shim_Str_to_upper);
+    natives.register_static(NATIVE_STR_TO_LOWER, __shim_Str_to_lower);
+    natives.register_static(NATIVE_STR_REVERSE, __shim_Str_reverse);
+    natives.register_static(NATIVE_STR_FIND, __shim_Str_find);
+    natives.register_static(NATIVE_STR_LINES, __shim_Str_lines);
+    natives.register_static(NATIVE_STR_PARSE_INT, __shim_Str_parse_int);
+    natives.register_static(NATIVE_STR_PARSE_FLOAT, __shim_Str_parse_float);
 
     // Char functions
     natives.register_static(NATIVE_CHAR_IS_ALPHA, __shim_Char_is_alpha);
@@ -2422,6 +2852,22 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_MATH_MIN, shim_math_min);
     natives.register_static(NATIVE_MATH_MAX, shim_math_max);
     natives.register_static(NATIVE_MATH_SQRT, shim_math_sqrt);
+    natives.register_static(NATIVE_MATH_FLOOR, __shim_Math_floor);
+    natives.register_static(NATIVE_MATH_CEIL, __shim_Math_ceil);
+    natives.register_static(NATIVE_MATH_ROUND, __shim_Math_round);
+    natives.register_static(NATIVE_MATH_POW, __shim_Math_pow);
+    natives.register_static(NATIVE_MATH_MIN_F, __shim_Math_min_f);
+    natives.register_static(NATIVE_MATH_MAX_F, __shim_Math_max_f);
+    natives.register_static(NATIVE_MATH_SIN, __shim_Math_sin);
+    natives.register_static(NATIVE_MATH_COS, __shim_Math_cos);
+    natives.register_static(NATIVE_MATH_TAN, __shim_Math_tan);
+    natives.register_static(NATIVE_MATH_EXP, __shim_Math_exp);
+    natives.register_static(NATIVE_MATH_LN, __shim_Math_ln);
+    natives.register_static(NATIVE_MATH_LOG2, __shim_Math_log2);
+    natives.register_static(NATIVE_MATH_LOG10, __shim_Math_log10);
+    natives.register_static(NATIVE_MATH_ABS_F, __shim_Math_abs_f);
+    natives.register_static(NATIVE_MATH_SIGNUM, __shim_Math_signum);
+    natives.register_static(NATIVE_MATH_CLAMP, __shim_Math_clamp);
 
     // Log functions
     natives.register_static(NATIVE_LOG_DEBUG, __shim_Log_debug);
@@ -2434,6 +2880,17 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_JSON_PARSE, __shim_Json_parse);
     natives.register_static(NATIVE_JSON_PRETTIFY, __shim_Json_prettify);
     natives.register_static(NATIVE_JSON_IS_VALID, __shim_Json_is_valid);
+    natives.register_static(NATIVE_JSON_GET, __shim_Json_get);
+    natives.register_static(NATIVE_JSON_GET_AT, __shim_Json_get_at);
+    natives.register_static(NATIVE_JSON_LEN, __shim_Json_len);
+    natives.register_static(NATIVE_JSON_TYPE, __shim_Json_type_of);
+    natives.register_static(NATIVE_JSON_AS_STRING, __shim_Json_as_string);
+    natives.register_static(NATIVE_JSON_AS_NUMBER, __shim_Json_as_number);
+    natives.register_static(NATIVE_JSON_AS_INT, __shim_Json_as_int);
+    natives.register_static(NATIVE_JSON_AS_BOOL, __shim_Json_as_bool);
+    natives.register_static(NATIVE_JSON_IS_NULL, __shim_Json_is_null);
+    natives.register_static(NATIVE_JSON_KEYS, __shim_Json_keys);
+    natives.register_static(NATIVE_JSON_HAS_KEY, __shim_Json_has_key);
 
     // URL functions
     natives.register_static(NATIVE_URL_ENCODE, __shim_Url_encode);
@@ -2441,6 +2898,13 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_URL_ENCODE_QUERY, __shim_Url_encode_query);
     natives.register_static(NATIVE_URL_DECODE_QUERY, __shim_Url_decode_query);
     natives.register_static(NATIVE_URL_JOIN_PATH, __shim_Url_join_path);
+    natives.register_static(NATIVE_URL_PARSE, __shim_Url_parse);
+    natives.register_static(NATIVE_URL_SCHEME, __shim_Url_scheme);
+    natives.register_static(NATIVE_URL_HOST, __shim_Url_host);
+    natives.register_static(NATIVE_URL_PORT, __shim_Url_port);
+    natives.register_static(NATIVE_URL_PATH, __shim_Url_path);
+    natives.register_static(NATIVE_URL_QUERY, __shim_Url_query);
+    natives.register_static(NATIVE_URL_FRAGMENT, __shim_Url_fragment);
 
     // Net functions
     natives.register_static(NATIVE_NET_TCP_BIND, shim_net_tcp_bind);

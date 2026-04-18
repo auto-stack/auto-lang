@@ -244,6 +244,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Option(inner) => format!("?{}", type_to_string(inner)),  // Plan 120
         Type::Result(inner) => format!("!{}", type_to_string(inner)),  // Plan 120
         Type::Handle { task_type } => format!("Handle<{}>", type_to_string(task_type)),  // Plan 121
+        Type::Rust(source) => source.full_path.clone(),  // Plan 190
     }
 }
 

@@ -261,3 +261,19 @@ fn test_vm(case: &str) -> AutoResult<()> {
 
 // === 17_modules ===
 #[test] fn test_17_modules_001_use_fn() { test_vm("17_modules/001_use_fn").unwrap(); }
+
+// === 18_ffi ===
+#[test] fn test_18_ffi_001_file_exists() { test_vm("18_ffi/001_file_exists").unwrap(); }
+#[test] fn test_18_ffi_003_file_is_dir() { test_vm("18_ffi/003_file_is_dir").unwrap(); }
+#[test] fn test_18_ffi_006_string_len() { test_vm("18_ffi/006_string_len").unwrap(); }
+#[test] fn test_18_ffi_007_string_is_empty() { test_vm("18_ffi/007_string_is_empty").unwrap(); }
+#[test] fn test_18_ffi_008_string_contains() { test_vm("18_ffi/008_string_contains").unwrap(); }
+#[test] fn test_18_ffi_009_string_starts_with() { test_vm("18_ffi/009_string_starts_with").unwrap(); }
+#[test] fn test_18_ffi_010_string_ends_with() { test_vm("18_ffi/010_string_ends_with").unwrap(); }
+#[test] fn test_18_ffi_012_char_is_alpha() { test_vm("18_ffi/012_char_is_alpha").unwrap(); }
+#[test] fn test_18_ffi_013_char_is_digit() { test_vm("18_ffi/013_char_is_digit").unwrap(); }
+#[test] fn test_18_ffi_014_json_is_valid() { test_vm("18_ffi/014_json_is_valid").unwrap(); }
+#[test] fn test_18_ffi_015_json_len() { test_vm("18_ffi/015_json_len").unwrap(); }
+#[test] fn test_18_ffi_016_json_is_null() { test_vm("18_ffi/016_json_is_null").unwrap(); }
+#[test] fn test_18_ffi_017_json_as_bool() { test_vm("18_ffi/017_json_as_bool").unwrap(); }
+#[test] fn test_18_ffi_018_json_has_key() { test_vm("18_ffi/018_json_has_key").unwrap(); }

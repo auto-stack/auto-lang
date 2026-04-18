@@ -8,8 +8,6 @@ pub mod rust;
 pub mod python;
 pub mod javascript;
 pub mod typescript;
-// Plan 173: r2a (Rust to AutoLang transpiler)
-pub mod r2a;
 
 pub struct Sink {
     pub name: AutoStr,

@@ -2040,6 +2040,22 @@ impl BackendGenerator for JetGenerator {
             code.push_str("\n\n");
         }
 
+        // Tick timer (setInterval equivalent via LaunchedEffect + delay)
+        if let Some(interval) = widget.tick_interval {
+            self.add_import("kotlinx.coroutines.delay");
+            self.add_import("kotlinx.coroutines.launch");
+            self.add_import("androidx.compose.runtime.LaunchedEffect");
+            self.add_import("androidx.compose.runtime.rememberCoroutineScope");
+            self.add_import("kotlinx.coroutines.CoroutineScope");
+            code.push_str("    val tickScope = rememberCoroutineScope()\n");
+            code.push_str("    LaunchedEffect(Unit) {\n");
+            code.push_str("        while (true) {\n");
+            code.push_str(&format!("            delay({}L)\n", interval));
+            code.push_str("            dispatch(Msg.Tick)\n");
+            code.push_str("        }\n");
+            code.push_str("    }\n\n");
+        }
+
         // View body
         code.push_str(&view_body);
         code.push_str("}\n\n");

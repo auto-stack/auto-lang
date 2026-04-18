@@ -304,7 +304,13 @@ impl RustTrans {
             Type::GenericInstance(inst) => {
                 // Generic instances: MyType<int> -> MyType<int>
                 let args: Vec<String> = inst.args.iter().map(|t| self.rust_type_name(t)).collect();
-                format!("{}<{}>", inst.base_name, args.join(", "))
+                // Plan 190: Use short_name from RustSource if available
+                let base = if let Some(ref source) = inst.source {
+                    source.short_name().to_string()
+                } else {
+                    inst.base_name.to_string()
+                };
+                format!("{}<{}>", base, args.join(", "))
             }
             Type::Storage(storage) => {
                 // Storage types are marker types, just use the name
@@ -317,6 +323,7 @@ impl RustTrans {
             Type::Result(inner) => format!("Result<{}, String>", self.rust_type_name(inner)),
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
+            Type::Rust(source) => source.short_name().to_string(),
         }
     }
 
@@ -4127,12 +4134,15 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
         // Scan parsed ASTs for external Rust crate imports (.rust use kind)
         let mut deps: Vec<String> = Vec::new();
+        // Plan 190: Rust built-in crates are always available, don't add to Cargo.toml
+        let built_in_crates = ["std", "core", "alloc", "proc_macro"];
         for (_, ast) in &parsed_modules {
             for stmt in &ast.stmts {
                 if let Stmt::Use(u) = stmt {
                     if matches!(u.kind, UseKind::Rust) && !u.paths.is_empty() {
                         let crate_name = u.paths[0].as_str();
-                        if !deps.contains(&crate_name.to_string()) {
+                        if !deps.contains(&crate_name.to_string())
+                            && !built_in_crates.contains(&crate_name) {
                             deps.push(crate_name.to_string());
                         }
                     }

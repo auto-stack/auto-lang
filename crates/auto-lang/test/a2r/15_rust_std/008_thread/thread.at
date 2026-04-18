@@ -1,0 +1,6 @@
+use.rust std::thread
+use.rust std::time::Duration
+
+fn main() {
+    thread.sleep(Duration.from_millis(100))
+}

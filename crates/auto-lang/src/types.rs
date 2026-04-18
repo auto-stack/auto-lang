@@ -76,7 +76,7 @@
 //! - `infer::expr` - 表达式类型推导（使用 type_registry）
 //! - `infer::registry` - 类型注册表（将被替换）
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use auto_val::AutoStr;
@@ -140,6 +140,12 @@ pub struct TypeStore {
     /// Spec 声明：spec 名 -> spec 声明
     spec_decls: HashMap<AutoStr, SpecDecl>,
 
+    /// Plan 190: Names of types imported via use.rust
+    rust_types: HashSet<String>,
+
+    /// Plan 190: Maps short name -> full Rust path
+    rust_type_paths: HashMap<String, String>,
+
     /// 泛型模板：类型名 -> 泛型模板（用于类型参数替换）
     generic_templates: HashMap<String, GenericTemplate>,
 
@@ -160,6 +166,8 @@ impl TypeStore {
             generic_templates: HashMap::new(),
             type_aliases: HashMap::new(),
             enum_decls: HashMap::new(),
+            rust_types: HashSet::new(),
+            rust_type_paths: HashMap::new(),
         }
     }
 
@@ -192,6 +200,44 @@ impl TypeStore {
     /// 注册泛型模板
     pub fn register_generic_template(&mut self, template: GenericTemplate) {
         self.generic_templates.insert(template.name().to_string(), template);
+    }
+
+    /// Plan 190: Register a Rust type imported via use.rust
+    pub fn register_rust_type(&mut self, name: impl Into<AutoStr>, full_path: impl Into<String>) {
+        use crate::ast::RustSource;
+        use crate::ast::{Name, TypeDecl, TypeDeclKind};
+
+        let type_name = name.into();
+        let path = full_path.into();
+        self.rust_types.insert(type_name.to_string());
+        self.rust_type_paths.insert(type_name.to_string(), path.clone());
+
+        let decl = TypeDecl {
+            name: Name::from(type_name.clone()),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            spec_impls: Vec::new(),
+            generic_params: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+            attrs: vec![],
+            doc: None,
+            is_pub: false,
+        };
+        self.type_decls.insert(type_name, Rc::new(decl));
+    }
+
+    /// Plan 190: Check if a type name was imported via use.rust
+    pub fn is_rust_type(&self, name: &str) -> bool {
+        self.rust_types.contains(name)
+    }
+
+    /// Plan 190: Get the full Rust path for a use.rust imported type
+    pub fn get_rust_type_path(&self, name: &str) -> Option<String> {
+        self.rust_type_paths.get(name).cloned()
     }
 
     /// 查找类型声明
@@ -340,6 +386,7 @@ impl TypeStore {
             Type::GenericInstance(GenericInstance {
                 base_name: Name::from(type_name),
                 args: type_args.to_vec(),
+                source: None,
             })
         } else {
             Type::Unknown

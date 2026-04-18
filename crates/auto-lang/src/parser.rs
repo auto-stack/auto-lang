@@ -807,9 +807,13 @@ impl<'a> Parser<'a> {
             _ => {}
         }
 
-        // Plan 091: 首先从 TypeStore 查找类型声明
+        // Plan 091/190: 首先从 TypeStore 查找类型声明
         if let Ok(store) = self.type_store.read() {
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                // Plan 190: Return Type::Rust for use.rust imports
+                if let Some(full_path) = store.get_rust_type_path(name) {
+                    return shared(Type::Rust(RustSource::new(full_path)));
+                }
                 return shared(Type::User(type_decl.as_ref().clone()));
             }
             // Also check enum declarations (for heterogeneous enum pattern matching)
@@ -7710,12 +7714,20 @@ impl<'a> Parser<'a> {
 
                 return Ok(Type::Tag(shared(substituted_tag)));
             }
+            // Plan 190: Rust type with generic params (e.g., HashMap<str, int>)
+            Type::Rust(rust_source) => {
+                return Ok(Type::GenericInstance(GenericInstance {
+                    base_name: base_name.clone(),
+                    args,
+                    source: Some(rust_source.clone()),
+                }));
+            }
             Type::User(type_decl) if !type_decl.generic_params.is_empty() => {
                 // User-defined generic TypeDecl with type parameters
                 // TODO: Implement TypeDecl substitution (similar to Tag substitution)
                 // For now, return GenericInstance
                 drop(base_type_ref);
-                return Ok(Type::GenericInstance(GenericInstance { base_name, args }));
+                return Ok(Type::GenericInstance(GenericInstance { base_name, args, source: None }));
             }
             _ => {
                 // Either built-in type or non-generic user-defined type
@@ -7736,7 +7748,7 @@ impl<'a> Parser<'a> {
                 } else if args.len() == 2 {
                     // List<int, Heap> → Return GenericInstance for full type
                     // This allows the transpiler to see both parameters
-                    Ok(Type::GenericInstance(GenericInstance { base_name, args }))
+                    Ok(Type::GenericInstance(GenericInstance { base_name, args, source: None }))
                 } else {
                     Err(SyntaxError::Generic {
                         message: format!(
@@ -7794,7 +7806,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // User-defined generic instance (including May<T> from stdlib)
-                Ok(Type::GenericInstance(GenericInstance { base_name, args }))
+                Ok(Type::GenericInstance(GenericInstance { base_name, args, source: None }))
             }
         }
     }
@@ -7892,6 +7904,7 @@ impl<'a> Parser<'a> {
                 Ok(Type::GenericInstance(GenericInstance {
                     base_name: "Future".into(),
                     args: vec![inner_type],
+                    source: None,
                 }))
             }
             TokenKind::Ident => self.parse_ident_or_generic_type(),

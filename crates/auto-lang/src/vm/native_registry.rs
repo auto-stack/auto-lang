@@ -290,16 +290,38 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.file.size", 1008);
     registry.register_with_id("auto.file.is_dir", 1009);
 
+    // File function aliases (codegen uses File.method names)
+    registry.register_with_id("File.read_text", 1000);
+    registry.register_with_id("File.write_text", 1001);
+    registry.register_with_id("File.exists", 1002);
+    registry.register_with_id("File.delete", 1003);
+    registry.register_with_id("File.create_dir", 1004);
+    registry.register_with_id("File.read_bytes", 1005);
+    registry.register_with_id("File.write_bytes", 1006);
+    registry.register_with_id("File.copy", 1007);
+    registry.register_with_id("File.size", 1008);
+    registry.register_with_id("File.is_dir", 1009);
+
     // Env functions (1100-1102)
     registry.register_with_id("auto.env.get", 1100);
     registry.register_with_id("auto.env.set", 1101);
     registry.register_with_id("auto.env.remove", 1102);
+
+    // Env function aliases
+    registry.register_with_id("Env.get", 1100);
+    registry.register_with_id("Env.set", 1101);
+    registry.register_with_id("Env.remove", 1102);
 
     // Time functions (1200-1202)
     registry.register_with_id("auto.time.now_ms", 1200);
     registry.register_with_id("auto.time.now_sec", 1201);
     registry.register_with_id("auto.time.sleep_ms", 1202);
     registry.register_with_id("sleep", 1202); // Alias for auto.time.sleep_ms
+
+    // Time function aliases
+    registry.register_with_id("Time.now_ms", 1200);
+    registry.register_with_id("Time.now_sec", 1201);
+    registry.register_with_id("Time.sleep_ms", 1202);
 
     // Process functions (1300-1304)
     registry.register_with_id("auto.process.exit", 1300);
@@ -308,12 +330,20 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.process.set_current_dir", 1303);
     registry.register_with_id("auto.process.spawn", 1304);
 
+    // Process function aliases
+    registry.register_with_id("Process.current_dir", 1302);
+
     // Path functions (1400-1404)
     registry.register_with_id("auto.path.join", 1400);
     registry.register_with_id("auto.path.parent", 1401);
     registry.register_with_id("auto.path.extension", 1402);
     registry.register_with_id("auto.path.filename", 1403);
     registry.register_with_id("auto.path.canonicalize", 1404);
+
+    // Path function aliases
+    registry.register_with_id("Path.parent", 1401);
+    registry.register_with_id("Path.extension", 1402);
+    registry.register_with_id("Path.filename", 1403);
 
     // String functions (1500-1509)
     registry.register_with_id("auto.str.len", 1500);
@@ -326,6 +356,34 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.str.trim", 1507);
     registry.register_with_id("auto.str.split", 1508);
     registry.register_with_id("auto.str.repeat", 1509);
+    registry.register_with_id("auto.str.replace", 1510);
+    registry.register_with_id("auto.str.to_upper", 1511);
+    registry.register_with_id("auto.str.to_lower", 1512);
+    registry.register_with_id("auto.str.reverse", 1513);
+    registry.register_with_id("auto.str.find", 1514);
+    registry.register_with_id("auto.str.lines", 1515);
+    registry.register_with_id("auto.str.parse_int", 1516);
+    registry.register_with_id("auto.str.parse_float", 1517);
+
+    // String function aliases (codegen uses Str.method names)
+    registry.register_with_id("Str.len", 1500);
+    registry.register_with_id("Str.is_empty", 1501);
+    registry.register_with_id("Str.char_at", 1502);
+    registry.register_with_id("Str.substr", 1503);
+    registry.register_with_id("Str.contains", 1504);
+    registry.register_with_id("Str.starts_with", 1505);
+    registry.register_with_id("Str.ends_with", 1506);
+    registry.register_with_id("Str.trim", 1507);
+    registry.register_with_id("Str.split", 1508);
+    registry.register_with_id("Str.repeat", 1509);
+    registry.register_with_id("Str.replace", 1510);
+    registry.register_with_id("Str.to_upper", 1511);
+    registry.register_with_id("Str.to_lower", 1512);
+    registry.register_with_id("Str.reverse", 1513);
+    registry.register_with_id("Str.find", 1514);
+    registry.register_with_id("Str.lines", 1515);
+    registry.register_with_id("Str.parse_int", 1516);
+    registry.register_with_id("Str.parse_float", 1517);
 
     // Char functions (1600-1606)
     registry.register_with_id("auto.char.is_alpha", 1600);
@@ -336,11 +394,121 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.char.to_lower", 1605);
     registry.register_with_id("auto.char.to_upper", 1606);
 
-    // Math functions (1700-1703)
+    // Char function aliases
+    registry.register_with_id("Char.is_alpha", 1600);
+    registry.register_with_id("Char.is_digit", 1601);
+    registry.register_with_id("Char.is_alphanum", 1602);
+    registry.register_with_id("Char.is_whitespace", 1603);
+    registry.register_with_id("Char.to_lower", 1605);
+    registry.register_with_id("Char.to_upper", 1606);
+
+    // Math functions (1700-1703, 1710-1725)
     registry.register_with_id("auto.math.abs", 1700);
     registry.register_with_id("auto.math.min", 1701);
     registry.register_with_id("auto.math.max", 1702);
     registry.register_with_id("auto.math.sqrt", 1703);
+    registry.register_with_id("auto.math.floor", 1710);
+    registry.register_with_id("auto.math.ceil", 1711);
+    registry.register_with_id("auto.math.round", 1712);
+    registry.register_with_id("auto.math.pow", 1713);
+    registry.register_with_id("auto.math.min_f", 1714);
+    registry.register_with_id("auto.math.max_f", 1715);
+    registry.register_with_id("auto.math.sin", 1716);
+    registry.register_with_id("auto.math.cos", 1717);
+    registry.register_with_id("auto.math.tan", 1718);
+    registry.register_with_id("auto.math.exp", 1719);
+    registry.register_with_id("auto.math.ln", 1720);
+    registry.register_with_id("auto.math.log2", 1721);
+    registry.register_with_id("auto.math.log10", 1722);
+    registry.register_with_id("auto.math.abs_f", 1723);
+    registry.register_with_id("auto.math.signum", 1724);
+    registry.register_with_id("auto.math.clamp", 1725);
+
+    // Math function aliases (codegen uses Math.method names)
+    registry.register_with_id("Math.floor", 1710);
+    registry.register_with_id("Math.ceil", 1711);
+    registry.register_with_id("Math.round", 1712);
+    registry.register_with_id("Math.pow", 1713);
+    registry.register_with_id("Math.min_f", 1714);
+    registry.register_with_id("Math.max_f", 1715);
+    registry.register_with_id("Math.sin", 1716);
+    registry.register_with_id("Math.cos", 1717);
+    registry.register_with_id("Math.tan", 1718);
+    registry.register_with_id("Math.exp", 1719);
+    registry.register_with_id("Math.ln", 1720);
+    registry.register_with_id("Math.log2", 1721);
+    registry.register_with_id("Math.log10", 1722);
+    registry.register_with_id("Math.abs_f", 1723);
+    registry.register_with_id("Math.signum", 1724);
+    registry.register_with_id("Math.clamp", 1725);
+
+    // JSON functions (1900-1917)
+    registry.register_with_id("auto.json.encode", 1900);
+    registry.register_with_id("auto.json.decode", 1901);
+    registry.register_with_id("auto.json.parse", 1902);
+    registry.register_with_id("auto.json.prettify", 1903);
+    registry.register_with_id("auto.json.minify", 1904);
+    registry.register_with_id("auto.json.is_valid", 1905);
+    registry.register_with_id("auto.json.get", 1906);
+    registry.register_with_id("auto.json.get_at", 1907);
+    registry.register_with_id("auto.json.len", 1908);
+    registry.register_with_id("auto.json.type_of", 1909);
+    registry.register_with_id("auto.json.as_string", 1910);
+    registry.register_with_id("auto.json.as_number", 1911);
+    registry.register_with_id("auto.json.as_int", 1912);
+    registry.register_with_id("auto.json.as_bool", 1913);
+    registry.register_with_id("auto.json.is_null", 1914);
+    registry.register_with_id("auto.json.keys", 1915);
+    registry.register_with_id("auto.json.has_key", 1917);
+
+    // JSON function aliases (codegen uses Json.method names)
+    registry.register_with_id("Json.encode", 1900);
+    registry.register_with_id("Json.decode", 1901);
+    registry.register_with_id("Json.parse", 1902);
+    registry.register_with_id("Json.prettify", 1903);
+    registry.register_with_id("Json.minify", 1904);
+    registry.register_with_id("Json.is_valid", 1905);
+    registry.register_with_id("Json.get", 1906);
+    registry.register_with_id("Json.get_at", 1907);
+    registry.register_with_id("Json.len", 1908);
+    registry.register_with_id("Json.type_of", 1909);
+    registry.register_with_id("Json.as_string", 1910);
+    registry.register_with_id("Json.as_number", 1911);
+    registry.register_with_id("Json.as_int", 1912);
+    registry.register_with_id("Json.as_bool", 1913);
+    registry.register_with_id("Json.is_null", 1914);
+    registry.register_with_id("Json.keys", 1915);
+    registry.register_with_id("Json.has_key", 1917);
+
+    // URL functions (2000-2015)
+    registry.register_with_id("auto.url.encode", 2000);
+    registry.register_with_id("auto.url.decode", 2001);
+    registry.register_with_id("auto.url.parse", 2006);
+    registry.register_with_id("auto.url.scheme", 2007);
+    registry.register_with_id("auto.url.host", 2008);
+    registry.register_with_id("auto.url.port", 2009);
+    registry.register_with_id("auto.url.path", 2010);
+    registry.register_with_id("auto.url.query", 2011);
+    registry.register_with_id("auto.url.fragment", 2012);
+
+    // URL function aliases
+    registry.register_with_id("Url.encode", 2000);
+    registry.register_with_id("Url.decode", 2001);
+    registry.register_with_id("Url.scheme", 2007);
+    registry.register_with_id("Url.host", 2008);
+    registry.register_with_id("Url.port", 2009);
+    registry.register_with_id("Url.path", 2010);
+    registry.register_with_id("Url.query", 2011);
+    registry.register_with_id("Url.fragment", 2012);
+
+    // URL function aliases (codegen uses Url.method names)
+    registry.register_with_id("Url.parse", 2006);
+    registry.register_with_id("Url.scheme", 2007);
+    registry.register_with_id("Url.host", 2008);
+    registry.register_with_id("Url.port", 2009);
+    registry.register_with_id("Url.path", 2010);
+    registry.register_with_id("Url.query", 2011);
+    registry.register_with_id("Url.fragment", 2012);
 
     // Task/Msg functions (Plan 121) - 2300-2304
     registry.register_with_id("auto.task.spawn", 2300);

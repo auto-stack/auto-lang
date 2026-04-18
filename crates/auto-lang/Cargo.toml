@@ -24,9 +24,8 @@ streaming-http = ["tokio-util", "futures"]
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []
-ui-headless = ["ui"]
 ui-interpreter = ["ui"]
-ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
+ui-gpui = ["ui", "dep:gpui-lib"]
 ui-iced = ["ui", "dep:iced"]
 
 [dependencies]
@@ -67,13 +66,9 @@ futures = { version = "0.3", optional = true }
 
 # Plan 015: UI Backend dependencies (optional)
 gpui-lib = { version = "0.2.2", package = "gpui", optional = true }
-gpui-component = { version = "0.5.0", optional = true }
-anyhow = { version = "1.0", optional = true }
 iced = { version = "0.14.0", features = ["tokio", "debug", "image", "svg", "advanced"], optional = true }
 notify = { workspace = true }
 trans = "0.4.0"
-# Plan 173: r2a (Rust to AutoLang transpiler)
-syn = { version = "2", features = ["full", "parsing", "extra-traits"] }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -310,85 +305,4 @@ path = "test/a2r/15_type_conversion/002_to_convert/to_convert.expected.rs"
 name = "async_fn"
 path = "test/a2r/16_interop/001_async_fn/async_fn.expected.rs"
 
-# ============================================================================
-# UI Examples (Plan 175: migrated from auto-ui, require --features ui-iced or ui-gpui)
-# Run: cargo run -p auto-lang --example ui_counter --features ui-iced
-# ============================================================================
-
-[[example]]
-name = "ui_accordion"
-path = "examples/ui_accordion.rs"
-
-[[example]]
-name = "ui_container"
-path = "examples/ui_container.rs"
-
-[[example]]
-name = "ui_counter"
-path = "examples/ui_counter.rs"
-
-[[example]]
-name = "ui_gallery"
-path = "examples/ui_gallery.rs"
-
-[[example]]
-name = "ui_hello_loader"
-path = "examples/ui_hello_loader.rs"
-
-[[example]]
-name = "ui_input"
-path = "examples/ui_input.rs"
-
-[[example]]
-name = "ui_layout"
-path = "examples/ui_layout.rs"
-
-[[example]]
-name = "ui_list"
-path = "examples/ui_list.rs"
-
-[[example]]
-name = "ui_navigation_rail"
-path = "examples/ui_navigation_rail.rs"
-
-[[example]]
-name = "ui_progress"
-path = "examples/ui_progress.rs"
-
-[[example]]
-name = "ui_radio"
-path = "examples/ui_radio.rs"
-
-[[example]]
-name = "ui_scroll"
-path = "examples/ui_scroll.rs"
-
-[[example]]
-name = "ui_select"
-path = "examples/ui_select.rs"
-
-[[example]]
-name = "ui_sidebar"
-path = "examples/ui_sidebar.rs"
-
-[[example]]
-name = "ui_slider"
-path = "examples/ui_slider.rs"
-
-[[example]]
-name = "ui_table"
-path = "examples/ui_table.rs"
-
-[[example]]
-name = "ui_tabs"
-path = "examples/ui_tabs.rs"
-
-[[example]]
-name = "ui_todo"
-path = "examples/ui_todo.rs"
-
-[[example]]
-name = "ui_todos"
-path = "examples/ui_todos.rs"
-
-# Total: 55 examples (73 disabled - not standalone-compilable) + 19 UI examples
+# Total: 55 examples (73 disabled - not standalone-compilable)

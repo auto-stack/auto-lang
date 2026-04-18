@@ -1,0 +1,283 @@
+widget App {
+    model {
+        var current_tab str = "button"
+
+        // Button demo
+        var btn_text str = "Click me"
+
+        // Input demo
+        var input_val str = ""
+        var email_val str = "hello@example.com"
+
+        // Toggle demo
+        var toggle_on bool = false
+        var dark_mode bool = false
+
+        // Select demo
+        var selected str = "Option 1"
+
+        // Progress demo
+        var progress_val int = 65
+
+        // Table demo
+        var t1_name str = "Alice"
+        var t1_role str = "Engineer"
+        var t1_status str = "Active"
+        var t2_name str = "Bob"
+        var t2_role str = "Designer"
+        var t2_status str = "Active"
+        var t3_name str = "Carol"
+        var t3_role str = "Manager"
+        var t3_status str = "Away"
+
+        // Badge demo
+        var badge1 str = "Default"
+        var badge2 str = "Secondary"
+        var badge3 str = "Outline"
+        var badge4 str = "Destructive"
+
+        // Card demo
+        var card_title str = "Card Title"
+        var card_desc str = "This is a card component with a description and action button."
+    }
+
+    view {
+        row {
+            // Sidebar
+            col {
+                h3 "Widgets"
+                col {
+                    span "Button"
+                    span "Input"
+                    span "Textarea"
+                    span "Toggle"
+                    span "Select"
+                    span "Progress"
+                    span "Table"
+                    span "Badge"
+                    span "Card"
+                    span "Avatar"
+                    span "Tabs"
+                    span "Divider"
+                    class: "gap-1 text-sm"
+                }
+                class: "w-48 bg-gray-50 p-4 border-r border-gray-200 h-full gap-4"
+            }
+
+            // Content area
+            col {
+                if .current_tab == "button" {
+                    col {
+                        h2 "Button"
+                        span "Clickable button components with variants."
+                        row {
+                            button .btn_text
+                            button "Primary" {
+                                class: "px-4 py-2 bg-blue-500 text-white rounded-lg"
+                            }
+                            button "Secondary" {
+                                class: "px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
+                            }
+                            button "Danger" {
+                                class: "px-4 py-2 bg-red-500 text-white rounded-lg"
+                            }
+                            button "Outline" {
+                                class: "px-4 py-2 border border-gray-300 rounded-lg"
+                            }
+                            class: "gap-3 items-center mt-4"
+                        }
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "input" {
+                    col {
+                        h2 "Input"
+                        span "Text input fields for user data entry."
+                        col {
+                            span "Name"
+                            input { placeholder: "Enter your name", value: .input_val }
+                            class: "gap-1"
+                        }
+                        col {
+                            span "Email"
+                            input { placeholder: "you@example.com", value: .email_val }
+                            class: "gap-1"
+                        }
+                        class: "p-6 gap-4"
+                    }
+                }
+
+                if .current_tab == "textarea" {
+                    col {
+                        h2 "Textarea"
+                        span "Multi-line text input for longer content."
+                        textarea { placeholder: "Enter your message here..." }
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "toggle" {
+                    col {
+                        h2 "Toggle"
+                        span "Switch between two states."
+                        row {
+                            col {
+                                span "Notifications"
+                                toggle { value: .toggle_on, onchange: .ToggleNotif }
+                                class: "gap-1"
+                            }
+                            col {
+                                span "Dark Mode"
+                                toggle { value: .dark_mode, onchange: .ToggleDark }
+                                class: "gap-1"
+                            }
+                            class: "gap-6"
+                        }
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "select" {
+                    col {
+                        h2 "Select"
+                        span "Dropdown selection component."
+                        select { value: .selected }
+                        span "Selected: "
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "progress" {
+                    col {
+                        h2 "Progress"
+                        span "Progress bar indicator."
+                        progress (value: .progress_val, max: 100)
+                        span "65%"
+                        class: "p-6 gap-4"
+                    }
+                }
+
+                if .current_tab == "table" {
+                    col {
+                        h2 "Table"
+                        span "Data display in tabular format."
+                        row {
+                            span "Name"
+                            span "Role"
+                            span "Status"
+                            class: "font-semibold text-sm"
+                        }
+                        row {
+                            span .t1_name
+                            span .t1_role
+                            span .t1_status
+                            class: "text-sm border-b border-gray-100 py-2"
+                        }
+                        row {
+                            span .t2_name
+                            span .t2_role
+                            span .t2_status
+                            class: "text-sm border-b border-gray-100 py-2"
+                        }
+                        row {
+                            span .t3_name
+                            span .t3_role
+                            span .t3_status
+                            class: "text-sm py-2"
+                        }
+                        class: "p-6 gap-4"
+                    }
+                }
+
+                if .current_tab == "badge" {
+                    col {
+                        h2 "Badge"
+                        span "Small status indicator component."
+                        row {
+                            span .badge1
+                            span .badge2
+                            span .badge3
+                            span .badge4
+                            class: "gap-3 items-center mt-4"
+                        }
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "card" {
+                    col {
+                        h2 "Card"
+                        span "Container for grouping related content."
+                        col {
+                            h3 .card_title
+                            span .card_desc
+                            button "Learn More"
+                            class: "bg-white rounded-xl border border-gray-200 p-6 gap-3"
+                        }
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "avatar" {
+                    col {
+                        h2 "Avatar"
+                        span "User profile image component."
+                        row {
+                            avatar {
+                                class: "w-8 h-8 rounded-full bg-blue-100"
+                            }
+                            avatar {
+                                class: "w-10 h-10 rounded-full bg-green-100"
+                            }
+                            avatar {
+                                class: "w-12 h-12 rounded-full bg-purple-100"
+                            }
+                            avatar {
+                                class: "w-16 h-16 rounded-full bg-orange-100"
+                            }
+                            class: "gap-4 items-center mt-4"
+                        }
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "tabs" {
+                    col {
+                        h2 "Tabs"
+                        span "Tabbed content navigation."
+                        col {
+                            span "Tab 1"
+                            span "Tab 2"
+                            span "Tab 3"
+                            class: "gap-2 text-sm border-b border-gray-200 pb-2"
+                        }
+                        span "Content for Tab 1 goes here."
+                        class: "p-6 gap-2"
+                    }
+                }
+
+                if .current_tab == "divider" {
+                    col {
+                        h2 "Divider"
+                        span "Visual separator between content sections."
+                        span "Section One"
+                        divider
+                        span "Section Two"
+                        divider
+                        span "Section Three"
+                        class: "p-6 gap-4"
+                    }
+                }
+
+                class: "flex-1 p-6"
+            }
+            class: "flex flex-row w-full h-screen"
+        }
+    }
+
+    on {
+        .ToggleNotif -> { .toggle_on = !.toggle_on }
+        .ToggleDark -> { .dark_mode = !.dark_mode }
+    }
+}

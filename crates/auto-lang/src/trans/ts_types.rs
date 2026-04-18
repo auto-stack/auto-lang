@@ -95,6 +95,8 @@ impl TypeScriptTrans {
             Type::Result(inner) => format!("{} | Error", Self::type_to_ts(inner)),
             // Plan 121: Handle type - maps to TaskHandle<T> interface
             Type::Handle { task_type } => format!("TaskHandle<{}>", Self::type_to_ts(task_type)),
+            // Plan 190: Rust types → any (opaque in TS)
+            Type::Rust(source) => source.short_name().to_string(),
         }
     }
 }

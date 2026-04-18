@@ -1063,6 +1063,7 @@ impl Codegen {
                             let generic_inst = GenericInstance {
                                 base_name: crate::ast::Name::from(type_name),
                                 args: vec![],
+                                source: None,
                             };
                             self.var_types.insert(
                                 store.name.to_string(),

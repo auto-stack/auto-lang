@@ -643,6 +643,24 @@ impl ArkGenerator {
             lines.push("".to_string());
         }
 
+        // Tick timer: setInterval in aboutToAppear, clearInterval in aboutToDisappear
+        if let Some(interval) = widget.tick_interval {
+            lines.push(format!("{}private timerId: number = -1", self.indent()));
+            lines.push("".to_string());
+            lines.push(format!("{}aboutToAppear(): void {{", self.indent()));
+            lines.push(format!("{}  this.timerId = setInterval(() => {{", self.indent()));
+            lines.push(format!("{}    this.dispatch(new Msg.Tick());", self.indent()));
+            lines.push(format!("{}, {});", self.indent(), interval));
+            lines.push(format!("{}}}", self.indent()));
+            lines.push("".to_string());
+            lines.push(format!("{}aboutToDisappear(): void {{", self.indent()));
+            lines.push(format!("{}  if (this.timerId !== -1) {{", self.indent()));
+            lines.push(format!("{}    clearInterval(this.timerId);", self.indent()));
+            lines.push(format!("{}  }}", self.indent()));
+            lines.push(format!("{}}}", self.indent()));
+            lines.push("".to_string());
+        }
+
         // Check if widget contains Tabs - add controller and index state
         let has_tabs = Self::widget_has_tabs(&widget.view_tree);
         if has_tabs {

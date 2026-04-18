@@ -171,6 +171,7 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::Option(_) => hasher.update(b"Option"),  // Plan 120
         Type::Result(_) => hasher.update(b"Result"),  // Plan 120
         Type::Handle { .. } => hasher.update(b"Handle"),  // Plan 121
+        Type::Rust(source) => hasher.update(source.full_path.as_bytes()),  // Plan 190
     };
 }
 

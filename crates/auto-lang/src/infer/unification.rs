@@ -186,6 +186,8 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
 
         // Plan 121: Handle 类型 - 递归检查内部类型
         Type::Handle { task_type } => occurs_in(var_name, task_type),
+        // Plan 190: Rust types don't contain type variables
+        Type::Rust(_) => false,
     }
 }
 
@@ -285,6 +287,18 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
             }
         }
 
+        // Plan 190: Rust types match by full path
+        (Type::Rust(s1), Type::Rust(s2)) => {
+            if s1.full_path == s2.full_path {
+                Ok(ty1.clone())
+            } else {
+                Err(UnificationError::Mismatch {
+                    expected: ty1.clone(),
+                    found: ty2.clone(),
+                })
+            }
+        }
+
         // 10. GenericInstance：必须基础名称和所有类型参数都匹配
         (Type::GenericInstance(inst1), Type::GenericInstance(inst2)) => {
             if inst1.base_name != inst2.base_name || inst1.args.len() != inst2.args.len() {
@@ -301,6 +315,7 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
             Ok(Type::GenericInstance(GenericInstance {
                 base_name: inst1.base_name.clone(),
                 args: unified_args,
+                source: inst1.source.clone(),
             }))
         }
 

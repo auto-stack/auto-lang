@@ -1,0 +1,7 @@
+dep regex
+use.rust regex::Regex
+
+fn main() {
+    let re = Regex.new(r"\d+")
+    let is_match = re.is_match("abc123")
+}

@@ -6,6 +6,7 @@ use crate::error::attach_source;
 use crate::parser::Parser;
 use crate::scope::Meta;
 use crate::AutoResult;
+use crate::error::AutoError;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::StrExt;
@@ -1319,7 +1320,9 @@ impl CTrans {
                 }
             }
             UseKind::Rust => {
-                // do nothing
+                return Err(AutoError::Msg(
+                    "use.rust imports are not supported in C target".to_string()
+                ));
             }
         }
         Ok(())

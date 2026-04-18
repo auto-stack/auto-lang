@@ -172,7 +172,7 @@ impl CompileSession {
                 continue;
             }
 
-            // Plan 092: Check Rust imports
+            // Plan 092/190: Handle Rust imports
             if use_stmt.is_rust_import {
                 // Extract crate name from module path (first segment)
                 let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module);
@@ -184,13 +184,22 @@ impl CompileSession {
                     )));
                 }
 
-                log::info!(
-                    "Rust import validated: {} (crate: {})",
-                    use_stmt.module,
-                    crate_name
-                );
+                // Plan 190: Register imported Rust types in TypeStore
+                if let Ok(mut store) = self.type_store.write() {
+                    if use_stmt.is_wildcard {
+                        log::info!("Rust wildcard import: {}", use_stmt.module);
+                    } else if !use_stmt.items.is_empty() {
+                        for item in &use_stmt.items {
+                            let full_path = format!("{}::{}", use_stmt.module, item);
+                            store.register_rust_type(item.as_str(), full_path);
+                        }
+                    } else {
+                        if let Some(short_name) = use_stmt.module.rsplit("::").next() {
+                            store.register_rust_type(short_name, use_stmt.module.as_str());
+                        }
+                    }
+                }
 
-                // Skip loading - Rust imports are handled by FFI bridge at runtime
                 loaded_count += 1;
                 continue;
             }
@@ -281,7 +290,11 @@ impl CompileSession {
     ///
     /// Returns true if the crate was declared in a `dep` statement.
     pub fn is_dep_declared(&self, crate_name: &str) -> bool {
-        self.declared_crates.contains(crate_name)
+        if self.declared_crates.contains(crate_name) {
+            return true;
+        }
+        // Plan 190: Rust built-in crates are always available
+        matches!(crate_name, "std" | "core" | "alloc" | "proc_macro")
     }
 
     /// Plan 092: Get the sandbox (for FFI bridge integration)

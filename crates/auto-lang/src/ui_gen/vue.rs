@@ -1342,12 +1342,8 @@ impl VueGenerator {
                 let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect());
                 Ok(crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx))
             }
-            LogicPayload::AstBlock(stmts) => {
-                // Legacy path for other backends that still use AuraStmt IR
-                let body: Vec<String> = stmts.iter()
-                    .map(|s| self.stmt_to_js(s))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(body.join("\n  "))
+            LogicPayload::AstBlock(_) => {
+                Err(GenError::UnsupportedStmt("AstBlock legacy path removed — use AstStmts".to_string()))
             }
             LogicPayload::Bytecode(_) => {
                 Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))

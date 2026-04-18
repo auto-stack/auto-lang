@@ -1,0 +1,1 @@
+File.is_dir("nonexistent_dir_xyz_12345")

@@ -4,6 +4,22 @@ use super::{Expr, Fn, Name, Tag, Union};
 use auto_val::{AutoStr, Shared};
 use std::{fmt, io as stdio};
 
+/// Source of a Rust type imported via use.rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RustSource {
+    pub full_path: String,
+}
+
+impl RustSource {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { full_path: path.into() }
+    }
+
+    pub fn short_name(&self) -> &str {
+        self.full_path.rsplit("::").next().unwrap_or(&self.full_path)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Type {
     Byte,
@@ -48,6 +64,8 @@ pub enum Type {
     Handle {
         task_type: Box<Type>,  // The task type this handle references
     },
+    // Plan 190: Rust type imported via use.rust
+    Rust(RustSource),
 }
 
 impl Type {
@@ -107,6 +125,7 @@ impl Type {
             Type::Option(inner) => format!("?{}", inner.unique_name()).into(),
             Type::Result(inner) => format!("!{}", inner.unique_name()).into(),
             Type::Handle { task_type } => format!("Handle<{}>", task_type.unique_name()).into(),
+            Type::Rust(source) => source.short_name().into(),
             Type::Union(u) => u.name.clone(),
             Type::Tag(t) => t.borrow().name.clone(),
         }
@@ -151,6 +170,7 @@ impl Type {
             Type::Option(_) => "None".into(),  // Plan 120: Option default is None
             Type::Result(_) => "Err(\"default error\")".into(),  // Plan 120: Result default is Err
             Type::Handle { .. } => "Handle.null()".into(),  // Plan 121: Handle default is null handle
+            Type::Rust(_) => "null".into(),
         }
     }
 
@@ -242,6 +262,7 @@ impl Type {
                 Type::GenericInstance(GenericInstance {
                     base_name: inst.base_name.clone(),
                     args: inst.args.iter().map(|t| t.substitute(params, args)).collect(),
+                    source: inst.source.clone(),
                 })
             }
 
@@ -257,6 +278,7 @@ impl Type {
             Type::Handle { task_type } => Type::Handle {
                 task_type: Box::new(task_type.substitute(params, args)),
             },
+            Type::Rust(source) => Type::Rust(source.clone()),
         }
     }
 
@@ -312,6 +334,8 @@ impl Type {
 
             // Plan 121: Handle is small (just an ID + sender), use value passing
             Type::Handle { .. } => true,
+            // Plan 190: Rust types use reference passing (opaque)
+            Type::Rust(_) => false,
         }
     }
 
@@ -377,6 +401,8 @@ impl fmt::Display for ConstParam {
 pub struct GenericInstance {
     pub base_name: Name,       // Base type name (e.g., "List", "May", "Map")
     pub args: Vec<Type>,        // Type arguments (e.g., [int], [str, int])
+    /// Plan 190: Rust provenance for types imported via use.rust
+    pub source: Option<RustSource>,
 }
 
 impl fmt::Display for GenericInstance {
@@ -520,6 +546,7 @@ impl fmt::Display for Type {
             Type::Option(inner) => write!(f, "?{}", inner),
             Type::Result(inner) => write!(f, "!{}", inner),
             Type::Handle { task_type } => write!(f, "Handle<{}>", task_type),
+            Type::Rust(source) => write!(f, "{}", source.full_path),
         }
     }
 }
@@ -564,6 +591,7 @@ impl From<Type> for auto_val::Type {
             Type::Option(inner) => (*inner).into(),  // Option<T> maps to T's auto_val type
             Type::Result(inner) => (*inner).into(),  // Result<T> maps to T's auto_val type
             Type::Handle { .. } => auto_val::Type::Ptr,  // Plan 121: Handle maps to Ptr (internal reference)
+            Type::Rust(source) => auto_val::Type::User(source.short_name().into()),
         }
     }
 }
@@ -915,6 +943,9 @@ impl AtomWriter for Type {
             }
             Type::Handle { task_type } => {
                 write!(f, "handle({})", task_type.to_atom_str())?;
+            }
+            Type::Rust(source) => {
+                write!(f, "rust({})", source.full_path)?;
             }
         }
         Ok(())

@@ -327,7 +327,7 @@ fn is_image_source_prop(name: &str, ty: &Type) -> bool {
 
 /// Generate dispatch function from widget messages and handlers
 pub fn generate_dispatch_function(widget: &AuraWidget) -> String {
-    if widget.messages.is_empty() {
+    if widget.messages.is_empty() && widget.tick_interval.is_none() {
         return String::new();
     }
 
@@ -357,6 +357,21 @@ pub fn generate_dispatch_function(widget: &AuraWidget) -> String {
             lines.push("        break;".to_string());
             lines.push("      }".to_string());
         }
+    }
+
+    // Add Tick case if tick_interval is set
+    if widget.tick_interval.is_some() {
+        lines.push("      case Msg.Tick: {".to_string());
+        if let Some(payload) = widget.handlers.get(".Tick") {
+            let body = generate_handler_body(payload);
+            for line in body.lines() {
+                lines.push(format!("        {}", line));
+            }
+        } else {
+            lines.push("        // tick handler".to_string());
+        }
+        lines.push("        break;".to_string());
+        lines.push("      }".to_string());
     }
 
     lines.push("    }".to_string());

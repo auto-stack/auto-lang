@@ -1,0 +1,7 @@
+use.rust std::sync::{Arc, Mutex}
+
+fn main() {
+    let data = Arc.new(Mutex.new(0))
+    let mut guard = data.lock()
+    guard = guard + 1
+}

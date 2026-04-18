@@ -1,0 +1,9 @@
+use.rust std::fs::{File, read_to_string}
+use.rust std::io::{BufRead, BufReader}
+
+fn main() {
+    let content = read_to_string("test.txt")
+    let file = File.open("test.txt")
+    let reader = BufReader.new(file)
+    let line = reader.lines().next()
+}
