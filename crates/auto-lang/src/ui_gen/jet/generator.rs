@@ -2157,6 +2157,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2207,6 +2208,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2237,6 +2239,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2340,6 +2343,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2395,6 +2399,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2829,6 +2834,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2869,6 +2875,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2905,6 +2912,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3046,6 +3054,7 @@ widget TestCardVariant {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3102,6 +3111,7 @@ fn test_text_with_flex_style() {
         props: vec![],
         routes: None,
         lifecycle: vec![],
+            tick_interval: None,
     };
 
     let mut gen = JetGenerator::new();

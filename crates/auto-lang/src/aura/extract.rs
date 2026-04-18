@@ -666,7 +666,7 @@ use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, MsgDecl, PropDecl, 
 /// Extract AuraWidget from parsed WidgetDecl
 pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> {
     // Extract state variables from model
-    let state_vars = if let Some(model) = &decl.model {
+    let mut state_vars = if let Some(model) = &decl.model {
         extract_model_fields(model)?
     } else {
         Vec::new()
@@ -689,6 +689,26 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         extract_on_block(on)?
     } else {
         HashMap::new()
+    };
+
+    // Detect .Tick handler and extract interval from model vars
+    let tick_interval = if handlers.keys().any(|k| k == ".Tick") {
+        // Look for a model var named "interval" (default 1000ms)
+        let interval_val = state_vars.iter()
+            .find(|v| v.name == "interval")
+            .and_then(|v| {
+                if let AuraExpr::Int(n) = &v.initial {
+                    Some(*n as u32)
+                } else {
+                    None
+                }
+            })
+            .or(Some(1000));
+        // Remove "interval" from state_vars so it doesn't become a ref()
+        state_vars.retain(|v| v.name != "interval");
+        interval_val
+    } else {
+        None
     };
 
     // Extract props
@@ -727,6 +747,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         props,
         routes,
         lifecycle: vec![],  // TODO: Extract lifecycle methods from WidgetDecl
+        tick_interval,
     })
 }
 

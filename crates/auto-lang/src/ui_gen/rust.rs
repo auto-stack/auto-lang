@@ -1002,6 +1002,7 @@ mod tests {
             computed: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = RustGenerator::new();

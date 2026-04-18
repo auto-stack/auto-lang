@@ -50,6 +50,7 @@ fn create_test_widget() -> AuraWidget {
         props: vec![],
         routes: None,
         lifecycle: vec![],
+            tick_interval: None,
     }
 }
 
@@ -150,6 +151,7 @@ fn test_tailwind_classes_converted_for_each_backend() {
         props: vec![],
         routes: None,
         lifecycle: vec![],
+            tick_interval: None,
     };
 
     // Generate Vue code - should keep Tailwind classes as-is

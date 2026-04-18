@@ -51,6 +51,9 @@ pub struct AuraWidget {
 
     /// Lifecycle methods (e.g., aboutToAppear) - Plan 05-Nav
     pub lifecycle: Vec<AuraLifecycle>,
+
+    /// Tick interval in ms — when set, the runtime emits .Tick events at this interval
+    pub tick_interval: Option<u32>,
 }
 
 // ============================================================================
@@ -824,6 +827,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         assert_eq!(widget.name, "Counter");

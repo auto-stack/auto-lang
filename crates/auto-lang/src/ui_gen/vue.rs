@@ -993,6 +993,13 @@ impl VueGenerator {
             imports.push("nextTick");
             imports.push("onMounted");
         }
+        // Timer/tick mechanism needs onMounted + onUnmounted
+        if widget.tick_interval.is_some() {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+            imports.push("onUnmounted");
+        }
         if !imports.is_empty() {
             script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
         }
@@ -1105,6 +1112,21 @@ impl VueGenerator {
             } else {
                 script.push_str(&format!("{}function {}(){} {{\n  {}\n}}\n\n", async_kw, handler_name, return_type, handler_body));
             }
+        }
+
+        // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
+        if let Some(interval) = widget.tick_interval {
+            if self.use_typescript {
+                script.push_str(&format!("const tickTimer = ref<number | null>(null)\n\n"));
+            } else {
+                script.push_str(&format!("const tickTimer = ref(null)\n\n"));
+            }
+            // Find the .Tick handler body
+            let tick_body = widget.handlers.get(".Tick")
+                .map(|payload| self.generate_handler_body(payload).unwrap_or_default())
+                .unwrap_or_default();
+            script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(() => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
+            script.push_str("onUnmounted(() => {\n  if (tickTimer.value !== null) {\n    clearInterval(tickTimer.value)\n  }\n})\n\n");
         }
 
         // Generate previewcard state variables and copyCode function
@@ -6273,6 +6295,7 @@ mod tests {
             computed: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = VueGenerator::new();
@@ -6885,6 +6908,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = VueGenerator::new_shadcn();

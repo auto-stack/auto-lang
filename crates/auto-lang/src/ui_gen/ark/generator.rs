@@ -2117,6 +2117,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2155,6 +2156,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2199,6 +2201,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2244,6 +2247,7 @@ mod tests {
                 }],
             }),
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2298,6 +2302,7 @@ mod tests {
             props: vec![],
             routes: None, // No routes - simple entry page
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2352,6 +2357,7 @@ mod tests {
             props: vec![],
             routes: None, // No routes - this is a child page
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2409,6 +2415,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();
@@ -2450,6 +2457,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let mut gen = ArkGenerator::new();

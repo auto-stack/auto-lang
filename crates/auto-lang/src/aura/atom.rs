@@ -452,6 +452,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let atom = to_atom(&widget);
@@ -475,6 +476,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let atom = to_atom(&widget);
@@ -512,6 +514,7 @@ mod tests {
                 props: vec![],
                 routes: None,
                 lifecycle: vec![],
+            tick_interval: None,
             }],
             messages: vec![],
             app: Some(AuraApp {

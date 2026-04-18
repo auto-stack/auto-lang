@@ -612,6 +612,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            tick_interval: None,
         };
 
         let result = generate_msg_enum(&widget);
