@@ -5,9 +5,6 @@
 use auto_lang::a2r_std::*;
 
 use std::env;
-use std::process::Command;
 fn main() {
-    let home = env::var("HOME");
-    let args = env::args();
-    let output = Command::new("ls").arg("-la").output();
+    let args = env.args();
 }

@@ -6,6 +6,6 @@ use auto_lang::a2r_std::*;
 
 use regex::Regex;
 fn main() {
-    let re = Regex::new(r"\d+");
+    let re = Regex::new("\\d+");
     let is_match = re.is_match("abc123");
 }

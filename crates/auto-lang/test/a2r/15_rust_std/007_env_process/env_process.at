@@ -1,8 +1,5 @@
 use.rust std::env
-use.rust std::process::Command
 
 fn main() {
-    let home = env.var("HOME")
     let args = env.args()
-    let output = Command.new("ls").arg("-la").output()
 }

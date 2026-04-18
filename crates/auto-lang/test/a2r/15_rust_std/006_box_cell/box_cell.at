@@ -4,6 +4,6 @@ use.rust std::cell::RefCell
 fn main() {
     let b = Box.new(42)
     let cell = RefCell.new(0)
-    let mut val = cell.borrow_mut()
+    var val = cell.borrow_mut()
     val = val + 1
 }

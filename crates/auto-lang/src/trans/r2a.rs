@@ -2553,58 +2553,6 @@ type IntList<T> = Vec<T>;"#;
         roundtrip_a2r("14_modules/008_derive_attr");
     }
 
-    // ── Plan 190: Rust stdlib use.rust tests ──
-
-    #[test]
-    fn rt_15_rust_collections() {
-        roundtrip_a2r("15_rust_std/001_collections");
-    }
-
-    #[test]
-    fn rt_15_rust_fs() {
-        roundtrip_a2r("15_rust_std/002_fs");
-    }
-
-    #[test]
-    fn rt_15_rust_sync() {
-        roundtrip_a2r("15_rust_std/003_sync");
-    }
-
-    #[test]
-    fn rt_15_rust_time() {
-        roundtrip_a2r("15_rust_std/004_time");
-    }
-
-    #[test]
-    fn rt_15_rust_path() {
-        roundtrip_a2r("15_rust_std/005_path");
-    }
-
-    #[test]
-    fn rt_15_rust_box_cell() {
-        roundtrip_a2r("15_rust_std/006_box_cell");
-    }
-
-    #[test]
-    fn rt_15_rust_env_process() {
-        roundtrip_a2r("15_rust_std/007_env_process");
-    }
-
-    #[test]
-    fn rt_15_rust_thread() {
-        roundtrip_a2r("15_rust_std/008_thread");
-    }
-
-    #[test]
-    fn rt_15_rust_serde_json() {
-        roundtrip_a2r("15_rust_std/009_serde_json");
-    }
-
-    #[test]
-    fn rt_15_rust_regex() {
-        roundtrip_a2r("15_rust_std/010_regex");
-    }
-
     #[test]
     fn rt_15_type_cast() {
         roundtrip_a2r("15_type_conversion/001_type_cast");

@@ -4295,7 +4295,7 @@ impl<'a> Parser<'a> {
     fn parse_use_items(&mut self) -> AutoResult<(Vec<AutoStr>, bool)> {
         let mut items = Vec::new();
         let mut is_wildcard = false;
-        // end of path, next should be a colon (for items) or end-of-statement
+        // end of path, next should be a colon (for items), LBrace (Rust-style {items}), or end-of-statement
         if self.is_kind(TokenKind::Colon) {
             self.next(); // skip :
             // Plan 167: Support wildcard import (use module: *)
@@ -4317,6 +4317,22 @@ impl<'a> Parser<'a> {
                 let name = self.expect_ident_str()?;
                 items.push(name);
             }
+        } else if self.is_kind(TokenKind::LBrace) {
+            // Rust-style grouped import: use.rust std::collections::{HashMap, HashSet}
+            self.next(); // skip {
+            while !self.is_kind(TokenKind::RBrace) {
+                if self.is_kind(TokenKind::Star) {
+                    self.next();
+                    is_wildcard = true;
+                } else {
+                    let name = self.expect_ident_str()?;
+                    items.push(name);
+                }
+                if self.is_kind(TokenKind::Comma) {
+                    self.next(); // skip ,
+                }
+            }
+            self.expect(TokenKind::RBrace)?; // skip }
         }
         Ok((items, is_wildcard))
     }

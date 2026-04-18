@@ -238,6 +238,18 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_16_interop_002_tokio_main() { test_a2r("16_interop/002_tokio_main").unwrap(); }
 #[test] fn test_16_interop_003_field_attrs() { test_a2r("16_interop/003_field_attrs").unwrap(); }
 
+// === 18_rust_std ===
+#[test] fn test_18_rust_std_001_collections() { test_a2r("15_rust_std/001_collections").unwrap(); }
+#[test] fn test_18_rust_std_002_fs() { test_a2r("15_rust_std/002_fs").unwrap(); }
+#[test] fn test_18_rust_std_003_sync() { test_a2r("15_rust_std/003_sync").unwrap(); }
+#[test] fn test_18_rust_std_004_time() { test_a2r("15_rust_std/004_time").unwrap(); }
+#[test] fn test_18_rust_std_005_path() { test_a2r("15_rust_std/005_path").unwrap(); }
+#[test] fn test_18_rust_std_006_box_cell() { test_a2r("15_rust_std/006_box_cell").unwrap(); }
+#[test] fn test_18_rust_std_007_env_process() { test_a2r("15_rust_std/007_env_process").unwrap(); }
+#[test] fn test_18_rust_std_008_thread() { test_a2r("15_rust_std/008_thread").unwrap(); }
+#[test] fn test_18_rust_std_009_serde_json() { test_a2r("15_rust_std/009_serde_json").unwrap(); }
+#[test] fn test_18_rust_std_010_regex() { test_a2r("15_rust_std/010_regex").unwrap(); }
+
 // === 17_autocode: Real-world integration tests ===
 
 fn autocode_src(name: &str) -> String {

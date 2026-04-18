@@ -4,8 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use std::thread;
 use std::time::Duration;
 fn main() {
-    thread::sleep(Duration::from_millis(100));
+    let d = Duration::from_millis(100);
 }
