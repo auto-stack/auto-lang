@@ -923,6 +923,26 @@ impl VueProject {
             .map_err(|e| format!("Failed to write App.vue: {}", e))?;
         println!("{}", "  ✓ Regenerated App.vue".bright_green());
 
+        // Regenerate main.ts
+        let main_ts_content = generate_main_ts(self.has_routes);
+        let main_ts_path = src_dir.join("main.ts");
+        fs::write(&main_ts_path, &main_ts_content)
+            .map_err(|e| format!("Failed to write main.ts: {}", e))?;
+        println!("{}", "  ✓ Regenerated main.ts".bright_green());
+
+        // Regenerate package.json if outdated (e.g., missing @types/prismjs)
+        let pkg_path = self.output_dir.join("package.json");
+        if pkg_path.exists() {
+            let existing_pkg = fs::read_to_string(&pkg_path)
+                .map_err(|e| format!("Failed to read package.json: {}", e))?;
+            if !existing_pkg.contains("@types/prismjs") {
+                let new_pkg = generate_package_json(&self.name, self.has_routes);
+                fs::write(&pkg_path, &new_pkg)
+                    .map_err(|e| format!("Failed to write package.json: {}", e))?;
+                println!("{}", "  ✓ Updated package.json".bright_green());
+            }
+        }
+
         // Regenerate router if routes exist
         if self.has_routes {
             let router_dir = self.output_dir.join("src/router");
