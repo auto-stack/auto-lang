@@ -1,0 +1,189 @@
+widget App {
+    msg Msg { Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Add, Sub, Mul, Div, Equals, Clear, Dot, Percent }
+
+    model {
+        var display str = "0"
+        var prev_value double = 0.0
+        var operator str = ""
+        var new_number bool = true
+    }
+
+    view {
+        center {
+            col {
+                // Display
+                col {
+                    text .display {
+                        class: "text-5xl font-light text-gray-800 text-right w-full"
+                    }
+                    text .operator {
+                        class: "text-sm text-gray-400 text-right w-full"
+                    }
+                    class: "w-full p-6 bg-gray-900 rounded-t-2xl"
+                }
+
+                // Button grid: 4 columns
+                col {
+                    // Row 1: C, %, /, *
+                    row {
+                        button "C" { onclick: .Clear, class: "calc-btn-func" }
+                        button "%" { onclick: .Percent, class: "calc-btn-func" }
+                        button "/" { onclick: .Div, class: "calc-btn-op" }
+                        button "*" { onclick: .Mul, class: "calc-btn-op" }
+                        class: "w-full"
+                    }
+                    // Row 2: 7, 8, 9, -
+                    row {
+                        button "7" { onclick: .Digit7, class: "calc-btn-num" }
+                        button "8" { onclick: .Digit8, class: "calc-btn-num" }
+                        button "9" { onclick: .Digit9, class: "calc-btn-num" }
+                        button "-" { onclick: .Sub, class: "calc-btn-op" }
+                        class: "w-full"
+                    }
+                    // Row 3: 4, 5, 6, +
+                    row {
+                        button "4" { onclick: .Digit4, class: "calc-btn-num" }
+                        button "5" { onclick: .Digit5, class: "calc-btn-num" }
+                        button "6" { onclick: .Digit6, class: "calc-btn-num" }
+                        button "+" { onclick: .Add, class: "calc-btn-op" }
+                        class: "w-full"
+                    }
+                    // Row 4: 1, 2, 3, =
+                    row {
+                        button "1" { onclick: .Digit1, class: "calc-btn-num" }
+                        button "2" { onclick: .Digit2, class: "calc-btn-num" }
+                        button "3" { onclick: .Digit3, class: "calc-btn-num" }
+                        button "=" { onclick: .Equals, class: "calc-btn-eq" }
+                        class: "w-full"
+                    }
+                    // Row 5: 0 (wide), ., =
+                    row {
+                        button "0" { onclick: .Digit0, class: "calc-btn-num calc-btn-wide" }
+                        button "." { onclick: .Dot, class: "calc-btn-num" }
+                        class: "w-full"
+                    }
+                    class: "w-full p-2 bg-gray-800 rounded-b-2xl gap-1"
+                }
+
+                class: "w-80 bg-gray-900 rounded-2xl overflow-hidden shadow-xl"
+            }
+        }
+    }
+
+    on {
+        .Clear -> {
+            .display = "0"
+            .prev_value = 0.0
+            .operator = ""
+            .new_number = true
+        }
+        .Dot -> {
+            .display = .display + "."
+            .new_number = false
+        }
+        .Percent -> {
+            .display = "0"
+        }
+        .Digit0 -> {
+            if .new_number {
+                .display = "0"
+            } else {
+                .display = .display + "0"
+            }
+            .new_number = false
+        }
+        .Digit1 -> {
+            if .new_number {
+                .display = "1"
+            } else {
+                .display = .display + "1"
+            }
+            .new_number = false
+        }
+        .Digit2 -> {
+            if .new_number {
+                .display = "2"
+            } else {
+                .display = .display + "2"
+            }
+            .new_number = false
+        }
+        .Digit3 -> {
+            if .new_number {
+                .display = "3"
+            } else {
+                .display = .display + "3"
+            }
+            .new_number = false
+        }
+        .Digit4 -> {
+            if .new_number {
+                .display = "4"
+            } else {
+                .display = .display + "4"
+            }
+            .new_number = false
+        }
+        .Digit5 -> {
+            if .new_number {
+                .display = "5"
+            } else {
+                .display = .display + "5"
+            }
+            .new_number = false
+        }
+        .Digit6 -> {
+            if .new_number {
+                .display = "6"
+            } else {
+                .display = .display + "6"
+            }
+            .new_number = false
+        }
+        .Digit7 -> {
+            if .new_number {
+                .display = "7"
+            } else {
+                .display = .display + "7"
+            }
+            .new_number = false
+        }
+        .Digit8 -> {
+            if .new_number {
+                .display = "8"
+            } else {
+                .display = .display + "8"
+            }
+            .new_number = false
+        }
+        .Digit9 -> {
+            if .new_number {
+                .display = "9"
+            } else {
+                .display = .display + "9"
+            }
+            .new_number = false
+        }
+        .Add -> {
+            .operator = "+"
+            .new_number = true
+        }
+        .Sub -> {
+            .operator = "-"
+            .new_number = true
+        }
+        .Mul -> {
+            .operator = "*"
+            .new_number = true
+        }
+        .Div -> {
+            .operator = "/"
+            .new_number = true
+        }
+        .Equals -> {
+            .display = "0"
+            .operator = ""
+            .new_number = true
+        }
+    }
+}

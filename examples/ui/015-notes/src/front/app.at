@@ -1,0 +1,63 @@
+widget App {
+    msg Msg { NewNote, SearchChanged }
+
+    model {
+        var search str = ""
+        var note_count str = "3 notes"
+        var note1_title str = "Welcome"
+        var note1_body str = "This is your notes app."
+        var note1_time str = "Just now"
+        var note2_title str = "Shopping List"
+        var note2_body str = "Milk, Eggs, Bread"
+        var note2_time str = "2 hours ago"
+        var note3_title str = "Meeting Notes"
+        var note3_body str = "Q3 roadmap discussion"
+        var note3_time str = "Yesterday"
+    }
+
+    view {
+        col {
+            row {
+                h2 "Notes" { class: "text-xl font-bold text-gray-800" }
+                button "+ New Note" { onclick: .NewNote, class: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
+                class: "w-full items-center p-4 border-b border-gray-200"
+            }
+            row {
+                col {
+                    input { placeholder: "Search...", value: .search, oninput: .SearchChanged, class: "w-full px-3 py-2 text-sm border rounded-lg" }
+                    col {
+                        text .note1_title { class: "text-sm font-semibold text-blue-600" }
+                        text .note1_time { class: "text-xs text-gray-400" }
+                        class: "p-3 hover:bg-gray-50 rounded-lg"
+                    }
+                    col {
+                        text .note2_title { class: "text-sm font-medium text-gray-700" }
+                        text .note2_time { class: "text-xs text-gray-400" }
+                        class: "p-3 hover:bg-gray-50 rounded-lg"
+                    }
+                    col {
+                        text .note3_title { class: "text-sm font-medium text-gray-700" }
+                        text .note3_time { class: "text-xs text-gray-400" }
+                        class: "p-3 hover:bg-gray-50 rounded-lg"
+                    }
+                    class: "w-64 border-r border-gray-200 p-3 flex-shrink-0 gap-1"
+                }
+                col {
+                    text .note1_title { class: "text-lg font-semibold p-6" }
+                    text .note1_body { class: "text-gray-700 px-6" }
+                    text .note2_body { class: "text-gray-500 px-6 text-xs" }
+                    text .note3_body { class: "text-gray-500 px-6 text-xs" }
+                    text .note_count { class: "text-xs text-gray-400 p-2 border-t border-gray-100" }
+                    class: "flex-1"
+                }
+                class: "flex-1"
+            }
+            class: "w-full h-screen bg-white flex-col"
+        }
+    }
+
+    on {
+        .NewNote -> { }
+        .SearchChanged -> { .search = .search }
+    }
+}
