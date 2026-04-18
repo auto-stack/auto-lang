@@ -9217,19 +9217,6 @@ impl<'a> Parser<'a> {
             return Ok(ViewNode::text(tag));
         }
 
-        // Check for "text f"content"" syntax: text node with inline f-string
-        // This creates an actual text node (ViewNode::Text), not an element with text prop
-        if tag == "text" && self.is_kind(TokenKind::FStrStart) {
-            let fstr_expr = self.fstr()?;
-            let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
-
-            // If there are bindings, it's interpolated; otherwise literal
-            if bindings.is_empty() {
-                return Ok(ViewNode::text(template));
-            } else {
-                return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
-            }
-        }
 
         // Check for string literal or f-string as primary property shorthand:
         // tag "value" → tag (primary_prop: "value")
