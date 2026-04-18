@@ -3239,6 +3239,40 @@ impl VueGenerator {
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
             }
 
+            "grid" => {
+                let mut classes = vec!["grid".to_string()];
+                // cols prop → grid-template-columns
+                if let Some(value) = props.get("cols") {
+                    if let Some(n) = self.extract_int_value(value) {
+                        classes.push(format!("grid-cols-{}", n));
+                    }
+                }
+                // gap prop
+                if let Some(value) = props.get("gap") {
+                    if let Some(n) = self.extract_int_value(value) {
+                        classes.push(format!("gap-{}", n));
+                    } else {
+                        classes.push("gap-4".to_string());
+                    }
+                }
+                if let Some(value) = self.get_style_class(props) {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        classes.push(user_class.to_string());
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
+            "grid-item" | "grid_item" => {
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
+            }
+
             // === Link (Navigation Link) ===
             "link" => {
                 // Text becomes slot content
