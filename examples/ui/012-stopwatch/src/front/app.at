@@ -3,14 +3,12 @@ widget App {
 
     model {
         var running str = "false"
-        var ticks str = "0"
         var time_display str = "00:00"
         var ms_display str = ".00"
         var lap_count str = "0"
         var lap1 str = ""
         var lap2 str = ""
         var lap3 str = ""
-        var interval int = 10
     }
 
     view {
@@ -47,12 +45,10 @@ widget App {
     }
 
     on {
-        .Tick -> { .ticks = .ticks + 1 }
         .Start -> { .running = "true" }
         .Stop -> { .running = "false" }
         .Reset -> {
             .running = "false"
-            .ticks = "0"
             .lap_count = "0"
             .lap1 = ""
             .lap2 = ""
