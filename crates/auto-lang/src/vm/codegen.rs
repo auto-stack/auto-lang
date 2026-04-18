@@ -3,6 +3,7 @@ use crate::error::SyntaxError;
 use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
+use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
 use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
@@ -3946,6 +3947,29 @@ impl Codegen {
                                 _ => {
                                     unimplemented!("Named arguments not supported in AutoVM yet")
                                 }
+                            }
+                        }
+                    }
+
+                    // Plan 192: Inject implicit type_name and method for Rust stdlib dispatch
+                    // Push AFTER user args so type_name/method are on top of stack.
+                    // Handler pops method first (top), then type_name (next).
+                    if id == NATIVE_RUST_STDLIB_DISPATCH {
+                        if let Expr::Dot(obj, method_name) = call.name.as_ref() {
+                            if let Expr::Ident(type_name_ident) = obj.as_ref() {
+                                let type_str = type_name_ident.to_string();
+                                let type_bytes = type_str.as_bytes().to_vec();
+                                let type_idx = self.strings.len() as u16;
+                                self.strings.push(type_bytes);
+                                self.emit(OpCode::LOAD_STR);
+                                self.code.extend_from_slice(&type_idx.to_le_bytes());
+
+                                let method_str = method_name.to_string();
+                                let method_bytes = method_str.as_bytes().to_vec();
+                                let method_idx = self.strings.len() as u16;
+                                self.strings.push(method_bytes);
+                                self.emit(OpCode::LOAD_STR);
+                                self.code.extend_from_slice(&method_idx.to_le_bytes());
                             }
                         }
                     }

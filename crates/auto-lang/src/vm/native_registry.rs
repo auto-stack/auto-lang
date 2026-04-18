@@ -539,6 +539,44 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Task.spawn", 2300);
     registry.register_with_id("TaskHandle.send", 2301);
     registry.register_with_id("Task.send", 2311); // For singleton tasks like MonitorTask.send() - uses NATIVE_TASK_SINGLETON_SEND
+
+    // Plan 192: Method table for Rust stdlib dynamic dispatch
+    // When use.rust imports a type, its methods are registered here pointing to NATIVE_RUST_STDLIB_DISPATCH
+}
+
+/// Known methods for each Rust stdlib type.
+/// Used by resolve_uses() to auto-register methods when use.rust imports a type.
+pub const RUST_STDLIB_METHODS: &[(&str, &[&str])] = &[
+    ("Instant", &["now"]),
+    ("Duration", &["from_secs", "from_millis", "from_secs_f64"]),
+    ("PathBuf", &["from", "join"]),
+    ("Arc", &["new"]),
+    ("Mutex", &["new"]),
+    ("Box", &["new"]),
+    ("RefCell", &["new"]),
+];
+
+impl AutoVMNativeRegistry {
+    /// Plan 192: Register all known methods for a Rust stdlib type in the native registry.
+    /// All methods point to NATIVE_RUST_STDLIB_DISPATCH for dynamic dispatch.
+    pub fn register_rust_type_methods(&mut self, type_name: &str) {
+        let dispatch_id = match type_name {
+            "Instant" => 3000,
+            "Duration" => 3000,
+            "PathBuf" => 3000,
+            "Arc" => 3000,
+            "Mutex" => 3000,
+            "Box" => 3000,
+            "RefCell" => 3000,
+            _ => return,
+        };
+        if let Some((_, methods)) = RUST_STDLIB_METHODS.iter().find(|(name, _)| *name == type_name) {
+            for method in *methods {
+                let full_name = format!("{}.{}", type_name, method);
+                self.register_with_id(&full_name, dispatch_id);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

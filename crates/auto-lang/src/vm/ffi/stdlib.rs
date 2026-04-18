@@ -5,13 +5,16 @@
 //!
 //! These functions use the VMConvertible trait for automatic type conversion.
 
+use std::any::Any;
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
 use crate::vm::ffi::convert::VMConvertible;
+use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
 use std::path::Path;
+use std::path::PathBuf as StdPathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -239,6 +242,9 @@ pub const NATIVE_CHAR_IS_WHITESPACE: u16 = 1603;
 pub const NATIVE_CHAR_IS_IDENT: u16 = 1604;
 pub const NATIVE_CHAR_TO_LOWER: u16 = 1605;
 pub const NATIVE_CHAR_TO_UPPER: u16 = 1606;
+
+// Rust stdlib dynamic dispatch: 3000-3099 (Plan 192)
+pub const NATIVE_RUST_STDLIB_DISPATCH: u16 = 3000;
 
 // ============================================================================
 // File Functions
@@ -2974,6 +2980,129 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_TASK_ASK, __shim_TaskHandle_ask); // Plan 124 Phase 2.3
     natives.register_static(NATIVE_CTX_REPLY, __shim_ctx_reply); // Plan 127: ctx.reply()
     natives.register_static(NATIVE_TASK_SINGLETON_SEND, __shim_Task_singleton_send); // Plan 127: Task.send for singleton tasks
+
+    // Plan 192: Rust stdlib dynamic dispatch
+    natives.register_static(NATIVE_RUST_STDLIB_DISPATCH, shim_rust_stdlib_dispatch);
+}
+
+// ============================================================================
+// Plan 192: Rust stdlib Dynamic Dispatch Handler
+// ============================================================================
+
+/// Push a Rust stdlib object onto the VM heap and push its handle as i64.
+fn push_rust_obj<T: Any + Send + Sync + 'static>(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    type_name: &str,
+    value: T,
+) -> Result<(), VMError> {
+    let obj = RustStdlibObject::new(type_name, value);
+    let handle = vm.insert_heap_object(obj) as i32;
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// Pop a heap handle and return a reference to the RustStdlibObject.
+fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, VMError> {
+    let handle = task.ram.pop_i32() as u64;
+    if vm.get_heap_object(handle).is_none() {
+        return Err(VMError::RuntimeError(format!(
+            "Invalid Rust stdlib handle in {} (handle={})", context, handle
+        )));
+    }
+    Ok(handle)
+}
+
+/// Generic dispatch handler for Rust stdlib calls.
+///
+/// Stack layout (popped in reverse order):
+///   ... user args ... | method: String | type_name: String
+fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let method: String = String::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
+    let type_name: String = String::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
+
+    match (type_name.as_str(), method.as_str()) {
+        // std::time::Instant
+        ("Instant", "now") => {
+            let instant = std::time::Instant::now();
+            push_rust_obj(task, vm, "Instant", instant)?;
+        }
+
+        // std::time::Duration
+        ("Duration", "from_secs") => {
+            let secs: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Duration.from_secs: {}", e)))?;
+            push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs(secs as u64))?;
+        }
+        ("Duration", "from_millis") => {
+            let ms: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Duration.from_millis: {}", e)))?;
+            push_rust_obj(task, vm, "Duration", std::time::Duration::from_millis(ms as u64))?;
+        }
+        ("Duration", "from_secs_f64") => {
+            let secs: f64 = f64::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Duration.from_secs_f64: {}", e)))?;
+            push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs_f64(secs))?;
+        }
+
+        // std::path::PathBuf
+        ("PathBuf", "from") => {
+            let s: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("PathBuf.from: {}", e)))?;
+            push_rust_obj(task, vm, "PathBuf", StdPathBuf::from(s))?;
+        }
+        ("PathBuf", "join") => {
+            let other: String = String::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("PathBuf.join: {}", e)))?;
+            let self_handle = pop_rust_obj(task, vm, "PathBuf.join")?;
+            let obj = vm.get_heap_object(self_handle).unwrap();
+            let mut guard = obj.write().unwrap();
+            if let Some(path) = guard.as_any_mut().downcast_mut::<StdPathBuf>() {
+                path.push(&other);
+                // Return same handle
+                task.ram.push_i32(self_handle as i32);
+            } else {
+                return Err(VMError::RuntimeError(format!("PathBuf.join: invalid object at handle {}", self_handle)));
+            }
+        }
+
+        // std::boxed::Box
+        ("Box", "new") => {
+            let val: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Box.new: {}", e)))?;
+            push_rust_obj(task, vm, "Box", val)?;
+        }
+
+        // std::cell::RefCell
+        ("RefCell", "new") => {
+            let val: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("RefCell.new: {}", e)))?;
+            push_rust_obj(task, vm, "RefCell", val)?;
+        }
+
+        // std::sync::Arc
+        ("Arc", "new") => {
+            let val: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Arc.new: {}", e)))?;
+            push_rust_obj(task, vm, "Arc", val)?;
+        }
+
+        // std::sync::Mutex
+        ("Mutex", "new") => {
+            let val: i32 = i32::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Mutex.new: {}", e)))?;
+            push_rust_obj(task, vm, "Mutex", val)?;
+        }
+
+        _ => {
+            return Err(VMError::RuntimeError(format!(
+                "Unknown Rust stdlib call: {}.{}", type_name, method
+            )));
+        }
+    }
+    Ok(())
 }
 
 // ============================================================================

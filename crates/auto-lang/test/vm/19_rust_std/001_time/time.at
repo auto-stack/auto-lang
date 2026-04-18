@@ -1,0 +1,5 @@
+use.rust std::time::Instant
+fn main() {
+    let t = Instant.now()
+    print("ok")
+}

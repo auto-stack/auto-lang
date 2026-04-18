@@ -34,6 +34,7 @@
 mod convert;
 mod error;
 pub mod stdlib;
+pub mod rust_stdlib;
 
 pub use convert::VMConvertible;
 pub use error::FFIError;

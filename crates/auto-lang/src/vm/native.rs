@@ -1,5 +1,6 @@
 use crate::vm::collections::{SpecializedHashMap, SpecializedHashSet};
 use crate::vm::engine::{AutoVM, VMError};
+use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 use crate::vm::task::AutoTask;
 use auto_val::Value;
 use std::collections::HashMap;
@@ -611,6 +612,15 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
+    // Check if it's a Rust stdlib heap handle
+    let handle = val as u64;
+    if let Some(obj) = vm.get_heap_object(handle) {
+        let guard = obj.read().unwrap();
+        if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+            return Ok(());
+        }
+    }
     vm_print(vm, &val.to_string());
     Ok(())
 }
@@ -620,6 +630,32 @@ pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = f32::from_bits(val_bits);
     vm_print(vm, &val.to_string());
     Ok(())
+}
+
+/// Format a RustStdlibObject for display.
+fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
+    match obj.type_name.as_str() {
+        "Instant" => "<Instant>".to_string(),
+        "Duration" => {
+            if let Some(dur) = obj.downcast_ref::<std::time::Duration>() {
+                format!("{}ms", dur.as_millis())
+            } else {
+                "<Duration>".to_string()
+            }
+        }
+        "PathBuf" => {
+            if let Some(p) = obj.downcast_ref::<std::path::PathBuf>() {
+                format!("{}", p.display())
+            } else {
+                "<PathBuf>".to_string()
+            }
+        }
+        "Arc" => "<Arc>".to_string(),
+        "Mutex" => "<Mutex>".to_string(),
+        "Box" => "<Box>".to_string(),
+        "RefCell" => "<RefCell>".to_string(),
+        other => format!("<{}>", other),
+    }
 }
 
 /// Print a string from the string constant pool, or an integer if not a string.
@@ -642,8 +678,18 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             vm_print(vm, &format!("<invalid string index: {}>", str_index));
         }
     } else {
-        // Non-tagged value - print as integer
-        vm_print(vm, &tagged.to_string());
+        // Non-tagged value - check if it's a Rust stdlib heap handle
+        let handle = tagged as u64;
+        if let Some(obj) = vm.get_heap_object(handle) {
+            let guard = obj.read().unwrap();
+            if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+            } else {
+                vm_print(vm, &tagged.to_string());
+            }
+        } else {
+            vm_print(vm, &tagged.to_string());
+        }
     }
     Ok(())
 }

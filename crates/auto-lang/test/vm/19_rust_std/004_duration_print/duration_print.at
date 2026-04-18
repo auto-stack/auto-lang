@@ -1,0 +1,5 @@
+use.rust std::time::Duration
+fn main() {
+    let d = Duration.from_millis(500)
+    print(d)
+}

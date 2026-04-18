@@ -119,6 +119,11 @@ pub enum TypeTag {
     // Future types
     /// User-defined or custom types
     CustomType,
+
+    // Rust stdlib types (Plan 192)
+    /// Opaque Rust stdlib type wrapper (Instant, Duration, PathBuf, etc.)
+    /// String stores the Rust type name for dynamic dispatch
+    RustStdlib(String),
 }
 
 impl TypeTag {
@@ -144,6 +149,7 @@ impl TypeTag {
             TypeTag::GenericInstance(name) => format!("<{}>", name).into(),
             TypeTag::SpecializedPair(name) => format!("[Specialized:{}]", name).into(),
             TypeTag::CustomType => "CustomType".into(),
+            TypeTag::RustStdlib(name) => name.clone().into(),
         }
     }
 

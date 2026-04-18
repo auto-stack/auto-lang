@@ -1,0 +1,5 @@
+use.rust std::path::PathBuf
+fn main() {
+    let p = PathBuf.from("src/main.rs")
+    print("ok")
+}

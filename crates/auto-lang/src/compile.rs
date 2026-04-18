@@ -192,10 +192,17 @@ impl CompileSession {
                         for item in &use_stmt.items {
                             let full_path = format!("{}::{}", use_stmt.module, item);
                             store.register_rust_type(item.as_str(), full_path);
+                            // Plan 192: Register methods in VM native registry for runtime dispatch
+                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                                registry.register_rust_type_methods(item.as_str());
+                            }
                         }
                     } else {
                         if let Some(short_name) = use_stmt.module.rsplit("::").next() {
                             store.register_rust_type(short_name, use_stmt.module.as_str());
+                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                                registry.register_rust_type_methods(short_name);
+                            }
                         }
                     }
                 }

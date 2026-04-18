@@ -9,4 +9,5 @@ fn main() {
     let start = Instant::now();
     let d = Duration::from_secs(5);
     let d2 = Duration::from_millis(500);
+    println!("{}", d2);
 }

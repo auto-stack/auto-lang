@@ -277,3 +277,9 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_18_ffi_016_json_is_null() { test_vm("18_ffi/016_json_is_null").unwrap(); }
 #[test] fn test_18_ffi_017_json_as_bool() { test_vm("18_ffi/017_json_as_bool").unwrap(); }
 #[test] fn test_18_ffi_018_json_has_key() { test_vm("18_ffi/018_json_has_key").unwrap(); }
+
+// === 19_rust_std ===
+#[test] fn test_19_rust_std_001_time() { test_vm("19_rust_std/001_time").unwrap(); }
+#[test] fn test_19_rust_std_002_duration() { test_vm("19_rust_std/002_duration").unwrap(); }
+#[test] fn test_19_rust_std_003_pathbuf() { test_vm("19_rust_std/003_pathbuf").unwrap(); }
+#[test] fn test_19_rust_std_004_duration_print() { test_vm("19_rust_std/004_duration_print").unwrap(); }
