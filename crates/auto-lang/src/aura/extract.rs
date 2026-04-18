@@ -685,10 +685,10 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     };
 
     // Extract handlers
-    let handlers = if let Some(on) = &decl.on {
+    let (handlers, handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
-        HashMap::new()
+        (HashMap::new(), HashMap::new())
     };
 
     // Detect .Tick handler and extract interval from model vars
@@ -748,6 +748,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         routes,
         lifecycle: vec![],  // TODO: Extract lifecycle methods from WidgetDecl
         tick_interval,
+        handler_params,
     })
 }
 
@@ -929,17 +930,21 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
 }
 
 /// Extract handlers from on block
-fn extract_on_block(on: &OnBlock) -> ExtractResult<HashMap<String, LogicPayload>> {
+fn extract_on_block(on: &OnBlock) -> ExtractResult<(HashMap<String, LogicPayload>, HashMap<String, Vec<String>>)> {
     let mut handlers = HashMap::new();
+    let mut handler_params = HashMap::new();
 
     for handler in &on.handlers {
         let pattern = handler.pattern.clone();
         // Keep original AST stmts for a2ts delegation
         let original_stmts: Vec<crate::ast::Stmt> = handler.body.stmts.clone();
-        handlers.insert(pattern, LogicPayload::AstStmts(original_stmts));
+        handlers.insert(pattern.clone(), LogicPayload::AstStmts(original_stmts));
+        if !handler.params.is_empty() {
+            handler_params.insert(pattern, handler.params.clone());
+        }
     }
 
-    Ok(handlers)
+    Ok((handlers, handler_params))
 }
 
 /// Extract prop declaration

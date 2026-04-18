@@ -9957,15 +9957,32 @@ impl<'a> Parser<'a> {
 
             // Parse pattern (e.g., .Inc or Msg::Inc)
             // Plan 130: Support dot-prefixed patterns like .Inc
-            let pattern = if self.is_kind(TokenKind::Dot) {
+            // Plan 188 B4: Support parameterized patterns like .AddItem(text)
+            let (pattern, params) = if self.is_kind(TokenKind::Dot) {
                 self.next(); // consume the dot
                 let name = self.cur.text.to_string();
                 self.next();
-                format!(".{}", name)
+                // Check for params: .Name(param1, param2)
+                let params = if self.is_kind(TokenKind::LParen) {
+                    self.next();
+                    let mut p = Vec::new();
+                    while !self.is_kind(TokenKind::RParen) {
+                        p.push(self.cur.text.to_string());
+                        self.next();
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next();
+                        }
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    p
+                } else {
+                    Vec::new()
+                };
+                (format!(".{}", name), params)
             } else {
                 let name = self.cur.text.to_string();
                 self.next();
-                name
+                (name, Vec::new())
             };
 
             // Expect -> (might be Arrow, or Asn followed by Gt)
@@ -9982,7 +9999,7 @@ impl<'a> Parser<'a> {
             // Parse body
             let body = self.body()?;
 
-            handlers.push(OnHandler { pattern, body });
+            handlers.push(OnHandler { pattern, params, body });
             self.skip_empty_lines();
         }
 

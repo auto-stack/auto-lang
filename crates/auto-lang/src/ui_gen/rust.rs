@@ -1003,6 +1003,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = RustGenerator::new();

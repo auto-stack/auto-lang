@@ -2158,6 +2158,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2209,6 +2210,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2240,6 +2242,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2344,6 +2347,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2400,6 +2404,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2835,6 +2840,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2876,6 +2882,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2913,6 +2920,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3055,6 +3063,7 @@ widget TestCardVariant {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3112,6 +3121,7 @@ fn test_text_with_flex_style() {
         routes: None,
         lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
     };
 
     let mut gen = JetGenerator::new();

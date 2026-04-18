@@ -2118,6 +2118,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2157,6 +2158,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2202,6 +2204,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2248,6 +2251,7 @@ mod tests {
             }),
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2303,6 +2307,7 @@ mod tests {
             routes: None, // No routes - simple entry page
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2358,6 +2363,7 @@ mod tests {
             routes: None, // No routes - this is a child page
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2416,6 +2422,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();
@@ -2458,6 +2465,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = ArkGenerator::new();

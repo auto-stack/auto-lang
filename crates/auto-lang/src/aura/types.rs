@@ -54,6 +54,10 @@ pub struct AuraWidget {
 
     /// Tick interval in ms — when set, the runtime emits .Tick events at this interval
     pub tick_interval: Option<u32>,
+
+    /// Handler parameter names: maps handler pattern to parameter list
+    /// e.g., ".AddItem" -> ["text"] for .AddItem(text) -> { ... }
+    pub handler_params: HashMap<String, Vec<String>>,
 }
 
 // ============================================================================
@@ -828,6 +832,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         assert_eq!(widget.name, "Counter");

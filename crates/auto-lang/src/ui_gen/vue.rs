@@ -1101,6 +1101,13 @@ impl VueGenerator {
             if !self.used_handlers.contains(handler_name) {
                 continue;
             }
+            // Check if this handler has typed params
+            let pattern_key = format!(".{}", handler_name.trim_start_matches("on"));
+            let params_str = widget.handler_params.get(&pattern_key)
+                .map(|params| params.join(": any, "))
+                .map(|p| if p.is_empty() { String::new() } else { format!("{}: any", p) })
+                .unwrap_or_default();
+
             let async_kw = if *is_async { "async " } else { "" };
             let return_type = if self.use_typescript {
                 if *is_async { ": Promise<void>" } else { ": void" }
@@ -1108,9 +1115,9 @@ impl VueGenerator {
                 ""
             };
             if handler_body.is_empty() {
-                script.push_str(&format!("{}function {}(){} {{\n  // TODO\n}}\n\n", async_kw, handler_name, return_type));
+                script.push_str(&format!("{}function {}({}){} {{\n  // TODO\n}}\n\n", async_kw, handler_name, params_str, return_type));
             } else {
-                script.push_str(&format!("{}function {}(){} {{\n  {}\n}}\n\n", async_kw, handler_name, return_type, handler_body));
+                script.push_str(&format!("{}function {}({}){} {{\n  {}\n}}\n\n", async_kw, handler_name, params_str, return_type, handler_body));
             }
         }
 
@@ -6296,6 +6303,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -6909,6 +6917,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let mut gen = VueGenerator::new_shadcn();

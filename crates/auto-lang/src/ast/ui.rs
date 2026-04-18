@@ -391,6 +391,9 @@ pub struct OnHandler {
     /// Pattern to match (e.g., ".Inc", "Msg::Dec")
     pub pattern: String,
 
+    /// Parameter names for the handler (e.g., ["text"] for .AddItem(text))
+    pub params: Vec<String>,
+
     /// Handler body
     pub body: Body,
 }

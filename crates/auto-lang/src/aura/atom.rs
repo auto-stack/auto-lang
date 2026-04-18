@@ -453,6 +453,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let atom = to_atom(&widget);
@@ -477,6 +478,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
         };
 
         let atom = to_atom(&widget);
@@ -515,6 +517,7 @@ mod tests {
                 routes: None,
                 lifecycle: vec![],
             tick_interval: None,
+            handler_params: HashMap::new(),
             }],
             messages: vec![],
             app: Some(AuraApp {
