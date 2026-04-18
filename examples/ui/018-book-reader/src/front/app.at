@@ -1,0 +1,63 @@
+widget App {
+    msg Msg { ToggleDark, NextChapter, PrevChapter }
+
+    model {
+        var isDark bool = false
+        var chapter_title str = "Chapter 1: The Beginning"
+        var chapter_body str = "It was a dark and stormy night. The wind howled through the empty streets as the last light faded from the western sky. A solitary figure emerged from the shadows, walking purposefully toward the old library at the end of the lane."
+        var progress str = "33%"
+        var page_info str = "Page 1 of 3"
+        var ch1 str = "Chapter 1"
+        var ch2 str = "Chapter 2"
+        var ch3 str = "Chapter 3"
+    }
+
+    view {
+        row {
+            col {
+                text "My Books" { class: "text-lg font-bold text-gray-800 p-4 border-b" }
+                col {
+                    text .ch1 { class: "p-3 text-sm font-medium bg-blue-50 text-blue-700 rounded-lg" }
+                    text .ch2 { class: "p-3 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer" }
+                    text .ch3 { class: "p-3 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer" }
+                    class: "flex-1 p-3 gap-1"
+                }
+                class: "w-56 border-r border-gray-200 bg-gray-50"
+            }
+            col {
+                row {
+                    button "Back" { onclick: .PrevChapter, class: "px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded" }
+                    text .chapter_title { class: "text-lg font-semibold text-gray-800 flex-1 text-center" }
+                    button "Dark" { onclick: .ToggleDark, class: "px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded" }
+                    class: "w-full items-center p-4 border-b"
+                }
+                col {
+                    text .chapter_body { class: "text-base leading-relaxed text-gray-700 px-8 py-6" }
+                    class: "flex-1 overflow-y-auto"
+                }
+                row {
+                    text .page_info { class: "text-sm text-gray-500" }
+                    progress { value: 33, max: 100, class: "flex-1 mx-4" }
+                    text .progress { class: "text-sm text-gray-500" }
+                    class: "w-full items-center p-4 border-t"
+                }
+                class: "flex-1"
+            }
+            class: "w-full h-screen bg-white"
+        }
+    }
+
+    on {
+        .ToggleDark -> { .isDark = .isDark == false }
+        .NextChapter -> {
+            .chapter_title = "Chapter 2: The Journey"
+            .chapter_body = "The road stretched endlessly before them, winding through hills and valleys. Each step brought new discoveries and challenges that tested their resolve."
+            .progress = "66%"
+        }
+        .PrevChapter -> {
+            .chapter_title = "Chapter 1: The Beginning"
+            .chapter_body = "It was a dark and stormy night. The wind howled through the empty streets as the last light faded from the western sky."
+            .progress = "33%"
+        }
+    }
+}

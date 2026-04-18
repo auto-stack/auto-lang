@@ -1,0 +1,89 @@
+widget App {
+    msg Msg { SelectArticle, BackToList }
+
+    model {
+        var view_mode str = "list"
+        var blog1_title str = "Getting Started with Rust"
+        var blog1_author str = "Alice Chen"
+        var blog1_date str = "Apr 15, 2026"
+        var blog1_summary str = "An introduction to Rust programming language and its unique features for systems programming."
+        var blog1_body str = "Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety. It has been voted the most loved programming language for years. In this article, we explore ownership, borrowing, and lifetimes."
+        var blog2_title str = "Building UIs with Auto Language"
+        var blog2_author str = "Bob Wang"
+        var blog2_date str = "Apr 12, 2026"
+        var blog2_summary str = "How Auto Language simplifies UI development with its declarative widget system."
+        var blog2_body str = "The Auto Language widget system allows developers to describe UIs declaratively using a simple syntax. With the AURA framework, you can build cross-platform applications that compile to Vue, ArkTS, and Jetpack Compose."
+        var blog3_title str = "WebAssembly in 2026"
+        var blog3_author str = "Carol Li"
+        var blog3_date str = "Apr 10, 2026"
+        var blog3_summary str = "The state of WebAssembly ecosystem and what is new this year."
+        var blog3_body str = "WebAssembly has matured significantly. With component model support and garbage collection, WASM is now viable for complex applications. This article covers the latest developments and practical use cases."
+        var blog_count str = "3 articles"
+    }
+
+    view {
+        col {
+            row {
+                text "My Blog" { class: "text-xl font-bold text-gray-800" }
+                text .blog_count { class: "text-sm text-gray-400 ml-auto" }
+                class: "w-full items-center p-4 border-b"
+            }
+            row {
+                col {
+                    col {
+                        text .blog1_title { class: "text-base font-semibold text-gray-800" }
+                        row {
+                            text .blog1_author { class: "text-xs text-gray-500" }
+                            text .blog1_date { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        text .blog1_summary { class: "text-sm text-gray-600 mt-1" }
+                        button "Read More" { onclick: .SelectArticle, class: "text-sm text-blue-500 mt-2" }
+                        class: "p-4 border-b hover:bg-gray-50 cursor-pointer"
+                    }
+                    col {
+                        text .blog2_title { class: "text-base font-semibold text-gray-800" }
+                        row {
+                            text .blog2_author { class: "text-xs text-gray-500" }
+                            text .blog2_date { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        text .blog2_summary { class: "text-sm text-gray-600 mt-1" }
+                        class: "p-4 border-b hover:bg-gray-50 cursor-pointer"
+                    }
+                    col {
+                        text .blog3_title { class: "text-base font-semibold text-gray-800" }
+                        row {
+                            text .blog3_author { class: "text-xs text-gray-500" }
+                            text .blog3_date { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        text .blog3_summary { class: "text-sm text-gray-600 mt-1" }
+                        class: "p-4 border-b hover:bg-gray-50 cursor-pointer"
+                    }
+                    class: "w-96 border-r border-gray-200 overflow-y-auto"
+                }
+                col {
+                    text .blog1_title { class: "text-2xl font-bold text-gray-900 p-6" }
+                    row {
+                        text .blog1_author { class: "text-sm text-gray-600" }
+                        text .blog1_date { class: "text-sm text-gray-400" }
+                        class: "gap-3 px-6"
+                    }
+                    text .blog1_body { class: "text-base leading-relaxed text-gray-700 px-6 py-4" }
+                    text .blog2_body { class: "text-sm text-gray-500 px-6 py-2" }
+                    text .blog3_body { class: "text-sm text-gray-400 px-6 py-2" }
+                    button "Back to List" { onclick: .BackToList, class: "mx-6 mt-4 text-sm text-blue-500" }
+                    class: "flex-1 overflow-y-auto"
+                }
+                class: "flex-1"
+            }
+            class: "w-full h-screen bg-white"
+        }
+    }
+
+    on {
+        .SelectArticle -> { .view_mode = "detail" }
+        .BackToList -> { .view_mode = "list" }
+    }
+}

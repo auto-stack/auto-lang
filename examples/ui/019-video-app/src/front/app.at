@@ -1,0 +1,135 @@
+widget App {
+    msg Msg { TabChanged, CategoryChanged }
+
+    model {
+        var chip1 str = "All"
+        var chip2 str = "Gaming"
+        var chip3 str = "Music"
+        var chip4 str = "Tech"
+        var chip5 str = "Food"
+        var vid1_title str = "Amazing Sunset Timelapse"
+        var vid1_author str = "NatureCam"
+        var vid1_views str = "1.2M views"
+        var vid2_title str = "Learn Rust in 10 Minutes"
+        var vid2_author str = "CodeMaster"
+        var vid2_views str = "856K views"
+        var vid3_title str = "Street Food Tour Tokyo"
+        var vid3_author str = "FoodieTravel"
+        var vid3_views str = "2.1M views"
+        var vid4_title str = "Piano Cover - Moonlight"
+        var vid4_author str = "MusicLover"
+        var vid4_views str = "430K views"
+        var vid5_title str = "Building a PC 2026"
+        var vid5_author str = "TechGuru"
+        var vid5_views str = "1.5M views"
+        var vid6_title str = "Epic Mountain Biking"
+        var vid6_author str = "ExtremeSports"
+        var vid6_views str = "3.2M views"
+    }
+
+    view {
+        col {
+            row {
+                text "VideoApp" { class: "text-xl font-bold text-pink-500 px-4" }
+                input { placeholder: "Search videos...", class: "flex-1 px-4 py-2 border rounded-full text-sm mx-4" }
+                text "User" { class: "text-sm text-gray-600 px-4" }
+                class: "w-full items-center py-3 border-b"
+            }
+            row {
+                text .chip1 { class: "px-4 py-1 text-sm bg-pink-500 text-white rounded-full" }
+                text .chip2 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                text .chip3 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                text .chip4 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                text .chip5 { class: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
+                class: "w-full gap-2 px-4 py-3 overflow-x-auto"
+            }
+            tabs {
+                tab "Recommend" { }
+                tab "Trending" { }
+                tab "Following" { }
+                class: "px-4"
+            }
+            grid {
+                grid-item {
+                    col {
+                        row {
+                            text "12:34" { class: "text-xs text-white bg-black bg-opacity-70 px-1 rounded" }
+                            class: "absolute bottom-2 right-2"
+                        }
+                        text .vid1_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        row {
+                            text .vid1_author { class: "text-xs text-gray-500" }
+                            text .vid1_views { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                    }
+                }
+                grid-item {
+                    col {
+                        text .vid2_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        row {
+                            text .vid2_author { class: "text-xs text-gray-500" }
+                            text .vid2_views { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                    }
+                }
+                grid-item {
+                    col {
+                        text .vid3_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        row {
+                            text .vid3_author { class: "text-xs text-gray-500" }
+                            text .vid3_views { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                    }
+                }
+                grid-item {
+                    col {
+                        text .vid4_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        row {
+                            text .vid4_author { class: "text-xs text-gray-500" }
+                            text .vid4_views { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                    }
+                }
+                grid-item {
+                    col {
+                        text .vid5_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        row {
+                            text .vid5_author { class: "text-xs text-gray-500" }
+                            text .vid5_views { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                    }
+                }
+                grid-item {
+                    col {
+                        text .vid6_title { class: "text-sm font-medium text-gray-800 mt-2" }
+                        row {
+                            text .vid6_author { class: "text-xs text-gray-500" }
+                            text .vid6_views { class: "text-xs text-gray-400" }
+                            class: "gap-2"
+                        }
+                        class: "bg-gray-100 rounded-xl overflow-hidden p-2"
+                    }
+                }
+                cols: 3
+                gap: 4
+                class: "w-full p-4"
+            }
+            class: "w-full h-screen bg-white"
+        }
+    }
+
+    on {
+        .TabChanged -> { }
+        .CategoryChanged -> { .chip1 = .chip1 }
+    }
+}

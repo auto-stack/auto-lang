@@ -1,0 +1,4 @@
+name: "video-app"
+version: "1.0.0"
+scene: "ui"
+backend: ["vue", "jet", "arkts", "rust"]

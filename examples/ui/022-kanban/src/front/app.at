@@ -1,0 +1,121 @@
+widget App {
+    msg Msg { MoveToInProgress, MoveToDone, AddCard }
+
+    model {
+        var todo1 str = "Design landing page"
+        var todo2 str = "Write API docs"
+        var todo3 str = "Fix login bug"
+        var todo4 str = "Setup CI/CD"
+        var prog1 str = "Implement auth flow"
+        var prog2 str = "Build dashboard"
+        var done1 str = "Setup database"
+        var done2 str = "Create user model"
+        var done3 str = "Design logo"
+        var todo_count str = "4"
+        var prog_count str = "2"
+        var done_count str = "3"
+        var new_card str = "New task"
+    }
+
+    view {
+        col {
+            row {
+                text "Project Board" { class: "text-xl font-bold text-gray-800" }
+                text "Kanban" { class: "text-sm text-gray-400 ml-2" }
+                button "+ Add Card" { onclick: .AddCard, class: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
+                text .new_card { class: "text-sm text-gray-400" }
+                class: "w-full items-center p-4 border-b"
+            }
+            row {
+                col {
+                    row {
+                        text "To Do" { class: "text-sm font-semibold text-gray-700" }
+                        text .todo_count { class: "text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full ml-2" }
+                        class: "items-center px-3 py-2"
+                    }
+                    col {
+                        row {
+                            text .todo1 { class: "text-sm font-medium text-gray-800" }
+                            button ">" { onclick: .MoveToInProgress, class: "ml-auto text-xs text-gray-400" }
+                            class: "w-full items-center"
+                        }
+                        row {
+                            text .todo2 { class: "text-sm font-medium text-gray-800" }
+                            button ">" { onclick: .MoveToInProgress, class: "ml-auto text-xs text-gray-400" }
+                            class: "w-full items-center"
+                        }
+                        row {
+                            text .todo3 { class: "text-sm font-medium text-gray-800" }
+                            button ">" { onclick: .MoveToInProgress, class: "ml-auto text-xs text-gray-400" }
+                            class: "w-full items-center"
+                        }
+                        row {
+                            text .todo4 { class: "text-sm font-medium text-gray-800" }
+                            button ">" { onclick: .MoveToInProgress, class: "ml-auto text-xs text-gray-400" }
+                            class: "w-full items-center"
+                        }
+                        class: "px-3 gap-2"
+                    }
+                    class: "w-80 bg-gray-50 rounded-xl flex-shrink-0"
+                }
+                col {
+                    row {
+                        text "In Progress" { class: "text-sm font-semibold text-orange-600" }
+                        text .prog_count { class: "text-xs text-orange-400 bg-orange-50 px-2 py-0.5 rounded-full ml-2" }
+                        class: "items-center px-3 py-2"
+                    }
+                    col {
+                        row {
+                            text .prog1 { class: "text-sm font-medium text-gray-800" }
+                            button ">" { onclick: .MoveToDone, class: "ml-auto text-xs text-gray-400" }
+                            class: "w-full items-center"
+                        }
+                        row {
+                            text .prog2 { class: "text-sm font-medium text-gray-800" }
+                            button ">" { onclick: .MoveToDone, class: "ml-auto text-xs text-gray-400" }
+                            class: "w-full items-center"
+                        }
+                        class: "px-3 gap-2"
+                    }
+                    class: "w-80 bg-orange-50 rounded-xl flex-shrink-0"
+                }
+                col {
+                    row {
+                        text "Done" { class: "text-sm font-semibold text-green-600" }
+                        text .done_count { class: "text-xs text-green-400 bg-green-50 px-2 py-0.5 rounded-full ml-2" }
+                        class: "items-center px-3 py-2"
+                    }
+                    col {
+                        text .done1 { class: "text-sm font-medium text-gray-800" }
+                        text .done2 { class: "text-sm font-medium text-gray-800" }
+                        text .done3 { class: "text-sm font-medium text-gray-800" }
+                        class: "px-3 gap-2"
+                    }
+                    class: "w-80 bg-green-50 rounded-xl flex-shrink-0"
+                }
+                class: "w-full gap-4 p-4 overflow-x-auto flex-1"
+            }
+            class: "w-full h-screen bg-white"
+        }
+    }
+
+    on {
+        .MoveToInProgress -> {
+            .prog1 = .todo1
+            .todo1 = .todo2
+            .todo2 = .todo3
+            .todo3 = .todo4
+            .todo4 = ""
+            .todo_count = "3"
+            .prog_count = "3"
+        }
+        .MoveToDone -> {
+            .done1 = .prog1
+            .prog1 = .prog2
+            .prog2 = ""
+            .prog_count = "1"
+            .done_count = "4"
+        }
+        .AddCard -> { }
+    }
+}
