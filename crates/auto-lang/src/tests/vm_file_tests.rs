@@ -283,3 +283,8 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_19_rust_std_002_duration() { test_vm("19_rust_std/002_duration").unwrap(); }
 #[test] fn test_19_rust_std_003_pathbuf() { test_vm("19_rust_std/003_pathbuf").unwrap(); }
 #[test] fn test_19_rust_std_004_duration_print() { test_vm("19_rust_std/004_duration_print").unwrap(); }
+#[test] fn test_19_rust_std_005_instant_duration() { test_vm("19_rust_std/005_instant_duration").unwrap(); }
+#[test] fn test_19_rust_std_006_sync() { test_vm("19_rust_std/006_sync").unwrap(); }
+#[test] fn test_19_rust_std_007_pathbuf() { test_vm("19_rust_std/007_pathbuf").unwrap(); }
+#[test] fn test_19_rust_std_008_box_cell() { test_vm("19_rust_std/008_box_cell").unwrap(); }
+#[test] fn test_19_rust_std_009_duration_f64() { test_vm("19_rust_std/009_duration_f64").unwrap(); }

@@ -1,0 +1,9 @@
+use.rust std::time::{Instant, Duration}
+fn main() {
+    let start = Instant.now()
+    print(start)
+    let d = Duration.from_secs(5)
+    print(d)
+    let d2 = Duration.from_millis(500)
+    print(d2)
+}

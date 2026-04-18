@@ -1,0 +1,8 @@
+use.rust std::boxed::Box
+use.rust std::cell::RefCell
+fn main() {
+    let b = Box.new(42)
+    print(b)
+    let cell = RefCell.new(0)
+    print(cell)
+}

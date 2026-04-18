@@ -1,0 +1,5 @@
+use.rust std::sync::{Arc, Mutex}
+fn main() {
+    let data = Arc.new(Mutex.new(0))
+    print(data)
+}

@@ -3042,9 +3042,9 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             push_rust_obj(task, vm, "Duration", std::time::Duration::from_millis(ms as u64))?;
         }
         ("Duration", "from_secs_f64") => {
-            let secs: f64 = f64::pop_from_stack(task, vm)
+            let secs: f32 = f32::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("Duration.from_secs_f64: {}", e)))?;
-            push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs_f64(secs))?;
+            push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs_f64(secs as f64))?;
         }
 
         // std::path::PathBuf

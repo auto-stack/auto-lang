@@ -1,0 +1,5 @@
+use.rust std::time::Duration
+fn main() {
+    let d = Duration.from_secs_f64(1.5)
+    print(d)
+}
