@@ -875,6 +875,14 @@ impl Codegen {
                     self.compile_expr(&store.expr)?;
                 }
 
+                // Promote i32 to u64 if variable type is u64/i64 but expression is not 64-bit
+                let stored_type = self.var_types.get(&name_str).cloned();
+                if matches!(stored_type, Some(Type::U64 | Type::I64))
+                    && !self.contains_u64(&store.expr)
+                {
+                    self.emit(OpCode::TYPE_CAST_U64);
+                }
+
                 // Plan 080: Track variable type for instance method support
                 // If the expression is a call like List.new(), track that the variable has type List
                 if let Expr::Call(call) = &store.expr {
@@ -1210,11 +1218,14 @@ impl Codegen {
                 };
 
                 // Store the value into the local variable
-                self.emit_store_loc(var_index);
-                // u64/i64 variables occupy two consecutive slots
                 let stored_type = self.var_types.get(&name_str).cloned();
                 if matches!(stored_type, Some(Type::U64 | Type::I64)) {
+                    // u64/i64 on stack: [low, high] (high on top)
+                    // pop high first → var_index+1, then pop low → var_index
                     self.emit_store_loc(var_index + 1);
+                    self.emit_store_loc(var_index);
+                } else {
+                    self.emit_store_loc(var_index);
                 }
 
                 // Plan 080: DON'T load the value back to stack
@@ -3219,8 +3230,19 @@ impl Codegen {
                                 }
                             }
                             // Variable is mutable - store value to it
-                            self.emit(OpCode::DUP); // Keep value for expression result
-                            self.emit_store_loc(var_index);
+                            let asn_stored_type = self.var_types.get(&name_str).cloned();
+                            if matches!(asn_stored_type, Some(Type::U64 | Type::I64)) {
+                                // u64/i64 on stack: [low, high] (high on top)
+                                // Store high→var_index+1, then low→var_index
+                                self.emit_store_loc(var_index + 1);
+                                self.emit_store_loc(var_index);
+                                // Reload for expression result
+                                self.emit_load_loc(var_index);
+                                self.emit_load_loc(var_index + 1);
+                            } else {
+                                self.emit(OpCode::DUP); // Keep value for expression result
+                                self.emit_store_loc(var_index);
+                            }
                         } else {
                             // Variable not found - this is an error
                             // For now, emit STORE_LOC_0 as a fallback
@@ -3488,6 +3510,7 @@ impl Codegen {
                     let is_float = self.is_float_operation(lhs, rhs);
                     let is_double = self.is_double_operation(lhs, rhs);
                     let is_string = self.is_string_operation(lhs, rhs);
+                    let is_u64 = self.is_u64_operation(lhs, rhs);
 
                     // Normal binary operation: compile both operands, then apply operator
                     // Plan 117: Emit type coercion for mixed int/float arithmetic
@@ -3500,9 +3523,9 @@ impl Codegen {
                         } else {
                             self.emit(OpCode::I64_TO_F64);
                         }
-                    } else if is_float && !is_double && self.needs_double_coercion(lhs) {
-                        // u64/i64 stored as i32 in locals — convert i32 to f32 for f32 arithmetic
-                        self.emit(OpCode::I32_TO_F32);
+                    } else if is_u64 && !self.contains_u64(lhs) {
+                        // Promote i32 operand to u64 for u64 arithmetic
+                        self.emit(OpCode::TYPE_CAST_U64);
                     }
 
                     self.compile_expr(rhs)?;
@@ -3514,9 +3537,9 @@ impl Codegen {
                         } else {
                             self.emit(OpCode::I64_TO_F64);
                         }
-                    } else if is_float && !is_double && self.needs_double_coercion(rhs) {
-                        // u64/i64 stored as i32 in locals — convert i32 to f32 for f32 arithmetic
-                        self.emit(OpCode::I32_TO_F32);
+                    } else if is_u64 && !self.contains_u64(rhs) {
+                        // Promote i32 operand to u64 for u64 arithmetic
+                        self.emit(OpCode::TYPE_CAST_U64);
                     }
 
                     // For arithmetic operations, use float/double opcodes if operands are floats
@@ -3528,6 +3551,8 @@ impl Codegen {
                                 self.emit(OpCode::ADD_D);
                             } else if is_float {
                                 self.emit(OpCode::ADD_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::ADD_U64);
                             } else {
                                 self.emit(OpCode::ADD);
                             }
@@ -3537,6 +3562,8 @@ impl Codegen {
                                 self.emit(OpCode::SUB_D);
                             } else if is_float {
                                 self.emit(OpCode::SUB_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::SUB_U64);
                             } else {
                                 self.emit(OpCode::SUB);
                             }
@@ -3546,6 +3573,8 @@ impl Codegen {
                                 self.emit(OpCode::MUL_D);
                             } else if is_float {
                                 self.emit(OpCode::MUL_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::MUL_U64);
                             } else {
                                 self.emit(OpCode::MUL);
                             }
@@ -3555,6 +3584,8 @@ impl Codegen {
                                 self.emit(OpCode::DIV_D);
                             } else if is_float {
                                 self.emit(OpCode::DIV_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::DIV_U64);
                             } else {
                                 self.emit(OpCode::DIV);
                             }
@@ -3564,6 +3595,8 @@ impl Codegen {
                                 self.emit(OpCode::MOD_D);
                             } else if is_float {
                                 self.emit(OpCode::MOD_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::MOD_U64);
                             } else {
                                 self.emit(OpCode::MOD);
                             }
@@ -4924,6 +4957,23 @@ impl Codegen {
     // Used to emit STR_CAT instead of ADD for string concatenation
     fn is_string_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
         self.is_string_expr(lhs) || self.is_string_expr(rhs)
+    }
+
+    fn is_u64_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
+        self.contains_u64(lhs) || self.contains_u64(rhs)
+    }
+
+    fn contains_u64(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::U64(_) | Expr::I64(_) => true,
+            Expr::Cast { target_type, .. } => matches!(target_type,
+                Type::U64 | Type::I64 | Type::USize | Type::Uint),
+            Expr::Ident(name) => self.var_types.get(name.as_ref())
+                .map(|t| matches!(t, Type::U64 | Type::I64)).unwrap_or(false),
+            Expr::Bina(lhs, _, rhs) => self.contains_u64(lhs) || self.contains_u64(rhs),
+            Expr::Unary(_, inner) => self.contains_u64(inner),
+            _ => false,
+        }
     }
 
     // Type hint for f-string parts to guide BUILD_FSTR value popping

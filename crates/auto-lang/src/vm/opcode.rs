@@ -98,10 +98,19 @@ pub enum OpCode {
     DIV_D = 0x3E,     // f64 / f64 -> f64
     NEG_D = 0x3F,     // -f64 -> f64
 
+    // 64-bit integer arithmetic (u64 stored as two i32 slots: low, high)
+    MOD_U64 = 0xEF,     // u64 % u64 -> u64
+
     // Plan 117: Type coercion for mixed arithmetic
     I32_TO_F32 = 0x46,  // Convert i32 to f32
     I64_TO_F64 = 0x47,  // Convert i64 to f64
     U64_TO_F64 = 0x4B,  // Convert u64 to f64 (unsigned, avoids sign extension)
+
+    // 64-bit integer arithmetic (u64 stored as two i32 slots: low, high)
+    ADD_U64 = 0x4C,     // u64 + u64 -> u64 (wrapping)
+    SUB_U64 = 0x4D,     // u64 - u64 -> u64 (wrapping)
+    MUL_U64 = 0x4E,     // u64 * u64 -> u64 (wrapping)
+    DIV_U64 = 0x4F,     // u64 / u64 -> u64
 
     AND = 0x40,
     OR = 0x41,

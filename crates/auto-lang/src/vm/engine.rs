@@ -1133,8 +1133,9 @@ impl AutoVM {
                     } else {
                         task.ram.pop_i32()
                     };
-                    task.ram.push_i32(v);
-                    task.last_result_type = ResultType::Int;
+                    // Zero-extend i32 to u64 (two slots: low, high)
+                    task.ram.push_i32(v);   // low 32 bits
+                    task.ram.push_i32(0);   // high 32 bits = 0
                 }
                 OpCode::TYPE_CAST_F64 => {
                     let v = if task.last_result_type == ResultType::Float {
@@ -2258,6 +2259,39 @@ impl AutoVM {
                 OpCode::NEG_D => {
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(-a);
+                }
+
+                // 64-bit integer arithmetic (u64 stored as two i32 slots)
+                OpCode::ADD_U64 => {
+                    let b = task.ram.pop_u64();
+                    let a = task.ram.pop_u64();
+                    task.ram.push_u64(a.wrapping_add(b));
+                }
+                OpCode::SUB_U64 => {
+                    let b = task.ram.pop_u64();
+                    let a = task.ram.pop_u64();
+                    task.ram.push_u64(a.wrapping_sub(b));
+                }
+                OpCode::MUL_U64 => {
+                    let b = task.ram.pop_u64();
+                    let a = task.ram.pop_u64();
+                    task.ram.push_u64(a.wrapping_mul(b));
+                }
+                OpCode::DIV_U64 => {
+                    let b = task.ram.pop_u64();
+                    let a = task.ram.pop_u64();
+                    if b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    task.ram.push_u64(a / b);
+                }
+                OpCode::MOD_U64 => {
+                    let b = task.ram.pop_u64();
+                    let a = task.ram.pop_u64();
+                    if b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    task.ram.push_u64(a % b);
                 }
 
                 // Plan 117: Type coercion for mixed arithmetic
