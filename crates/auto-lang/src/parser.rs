@@ -900,6 +900,11 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Break)
     }
 
+    fn continue_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next();
+        Ok(Stmt::Continue)
+    }
+
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
         let expr = self.parse_expr()?;
@@ -970,6 +975,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::For
                 | TokenKind::If
                 | TokenKind::Break
+                | TokenKind::Continue
                 | TokenKind::Use
                 | TokenKind::Type
                 | TokenKind::Union
@@ -3196,6 +3202,7 @@ impl<'a> Parser<'a> {
     fn parse_stmt_inner(&mut self) -> AutoResult<Stmt> {
         let stmt = match self.kind() {
             TokenKind::Break => self.break_stmt()?,
+            TokenKind::Continue => self.continue_stmt()?,
             TokenKind::Return => self.return_stmt()?,
             TokenKind::Reply => self.reply_stmt()?,  // Plan 124 Phase 2.3: reply statement
             TokenKind::Use => self.use_stmt()?,

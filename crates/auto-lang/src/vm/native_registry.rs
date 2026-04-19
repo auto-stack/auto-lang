@@ -331,7 +331,11 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.process.spawn", 1304);
 
     // Process function aliases
+    registry.register_with_id("Process.exit", 1300);
+    registry.register_with_id("Process.args", 1301);
     registry.register_with_id("Process.current_dir", 1302);
+    registry.register_with_id("Process.set_current_dir", 1303);
+    registry.register_with_id("Process.spawn", 1304);
 
     // Path functions (1400-1404)
     registry.register_with_id("auto.path.join", 1400);
@@ -509,6 +513,22 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Url.path", 2010);
     registry.register_with_id("Url.query", 2011);
     registry.register_with_id("Url.fragment", 2012);
+
+    // Net/TCP functions (2100-2113)
+    registry.register_with_id("Net.tcp_bind", 2100);
+    registry.register_with_id("Net.tcp_listener_accept", 2101);
+    registry.register_with_id("Net.tcp_listener_local_addr", 2102);
+    registry.register_with_id("Net.tcp_listener_close", 2103);
+    registry.register_with_id("Net.tcp_connect", 2104);
+    registry.register_with_id("Net.tcp_stream_read", 2105);
+    registry.register_with_id("Net.tcp_stream_write", 2106);
+    registry.register_with_id("Net.tcp_stream_read_all", 2107);
+    registry.register_with_id("Net.tcp_stream_read_line", 2108);
+    registry.register_with_id("Net.tcp_stream_write_str", 2109);
+    registry.register_with_id("Net.tcp_stream_close", 2110);
+    registry.register_with_id("Net.tcp_stream_peer_addr", 2111);
+    registry.register_with_id("Net.tcp_stream_set_read_timeout", 2112);
+    registry.register_with_id("Net.tcp_stream_set_write_timeout", 2113);
 
     // Task/Msg functions (Plan 121) - 2300-2304
     registry.register_with_id("auto.task.spawn", 2300);

@@ -91,6 +91,7 @@ pub enum TokenKind {
     Else,
     For,
     Break,
+    Continue,
     Return, // ADDED: return keyword for early returns
     Is,
     Var,
@@ -365,6 +366,7 @@ impl Token {
             "grid" => Some(TokenKind::Grid),
             "alias" => Some(TokenKind::Alias),
             "break" => Some(TokenKind::Break),
+            "continue" => Some(TokenKind::Continue),
             "return" => Some(TokenKind::Return),
             "ext" => Some(TokenKind::Ext),
             "static" => Some(TokenKind::Static),

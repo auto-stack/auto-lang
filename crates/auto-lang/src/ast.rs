@@ -188,6 +188,7 @@ pub enum Stmt {
     TypeAlias(TypeAlias),  // Type alias: type List<T> = List<T, DefaultStorage>
     EmptyLine(usize),
     Break,
+    Continue,
     Return(Box<Expr>),  // Return statement with value
     Reply(Box<Expr>),   // Plan 124 Phase 2.3: reply statement for ask/reply RPC
     Ext(Ext),  // Type extension (like Rust's impl)
@@ -260,6 +261,7 @@ impl fmt::Display for Stmt {
             Stmt::Tag(tag) => write!(f, "{}", tag),
             Stmt::SpecDecl(spec_decl) => write!(f, "{}", spec_decl),
             Stmt::Break => write!(f, "(break)"),
+            Stmt::Continue => write!(f, "(continue)"),
             Stmt::Return(expr) => write!(f, "(return {})", expr),
             Stmt::Reply(expr) => write!(f, "(reply {})", expr),  // Plan 124 Phase 2.3
             Stmt::Ext(ext) => write!(f, "{}", ext),
@@ -1040,6 +1042,7 @@ impl ToNode for Stmt {
                 node
             }
             Stmt::Break => AutoNode::new("break"),
+            Stmt::Continue => AutoNode::new("continue"),
             Stmt::Return(_) => AutoNode::new("return"),
             Stmt::Ext(ext) => ext.to_node(),
             Stmt::Dep(dep) => dep.to_node(),
@@ -1108,6 +1111,7 @@ impl ToAtom for Stmt {
             Stmt::TypeAlias(type_alias) => type_alias.to_atom(),
             Stmt::EmptyLine(n) => format!("(nl (count {}))", n).into(),
             Stmt::Break => "(break)".into(),
+            Stmt::Continue => "(continue)".into(),
             Stmt::Return(expr) => format!("(return {})", expr.to_atom()).into(),
             Stmt::Ext(ext) => ext.to_atom(),
             Stmt::Dep(dep) => dep.to_atom(),

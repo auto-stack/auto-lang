@@ -104,6 +104,11 @@ pub struct Codegen {
     /// when the loop exits
     pub loop_exits: Vec<Vec<usize>>,
 
+    /// Continue target tracking: stack of byte offsets to jump to on `continue`
+    /// For range-based loops, this points to the increment step
+    /// For iterator/collection loops, this points to the next-iteration check
+    pub loop_continue_positions: Vec<usize>,
+
     /// Plan 073: Type registry for TypeDecl support
     /// Maps type name -> TypeInfo (member names, etc.)
     pub types: HashMap<String, TypeInfo>,
@@ -211,6 +216,7 @@ impl Codegen {
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
+            loop_continue_positions: Vec::new(),
             types: HashMap::new(),
             generics: GenericTable::new(), // Plan 076 Phase 1
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
@@ -267,6 +273,7 @@ impl Codegen {
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
+            loop_continue_positions: Vec::new(),
             types: HashMap::new(),
             generics: GenericTable::new(),
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
@@ -1252,6 +1259,7 @@ impl Codegen {
                 vm_debug!("DEBUG FOR: Compiling for loop");
                 // Push new loop exit tracking
                 self.loop_exits.push(Vec::new());
+                self.loop_continue_positions.push(0); // placeholder, will be set per variant
 
                 // Handle range-based for loops: for x in start..end { ... }
                 // Only support simple range iteration for now
@@ -1302,7 +1310,11 @@ impl Codegen {
                             // Compile loop body
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
 
-                            // Increment loop variable
+                            // Continue target: increment loop variable
+                            let continue_pos = self.code.len();
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = continue_pos;
+                            }
                             self.emit_load_loc(var_index);
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(1);
@@ -1329,6 +1341,7 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                            self.loop_continue_positions.pop();
                         } else if let Expr::Call(_call) = &for_stmt.range {
                             // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
                             // Compile the iterator call to get the iterator object
@@ -1373,6 +1386,11 @@ impl Codegen {
                             let var_index = self.add_var(&var_str);
                             self.emit_store_loc(var_index);
 
+                            // Continue target: loop_start (re-check iterator.next())
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = loop_start as usize;
+                            }
+
                             // Compile loop body
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
 
@@ -1396,6 +1414,7 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                            self.loop_continue_positions.pop();
                         } else if let Expr::Ident(_) = &for_stmt.range {
                             // Plan 089: Array-based for loop: for x in array_var { ... }
                             // Load the array variable
@@ -1463,7 +1482,11 @@ impl Codegen {
                             // Compile loop body
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
 
-                            // Increment counter
+                            // Continue target: increment counter
+                            let continue_pos = self.code.len();
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = continue_pos;
+                            }
                             self.emit_load_loc(counter_index);
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(1);
@@ -1489,9 +1512,11 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                            self.loop_continue_positions.pop();
                         } else {
                             // For now, only support range, iterator, and array identifier expressions
                             self.loop_exits.pop();
+                            self.loop_continue_positions.pop();
                             return Err(AutoError::Msg("For loops with non-range/non-iterator/non-array expressions not supported yet".to_string()));
                         }
                     }
@@ -1538,7 +1563,11 @@ impl Codegen {
                             // Compile loop body
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
 
-                            // Increment both loop variables
+                            // Continue target: increment both loop variables
+                            let continue_pos = self.code.len();
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = continue_pos;
+                            }
                             self.emit_load_loc(index_index);
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(1);
@@ -1569,6 +1598,7 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                            self.loop_continue_positions.pop();
                         } else if let Expr::Ident(_) = &for_stmt.range {
                             // Plan 089: Indexed array iteration: for i, x in array_var { ... }
                             let index_str = index_name.to_string();
@@ -1645,7 +1675,11 @@ impl Codegen {
                             // Compile loop body
                             self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
 
-                            // Increment counter
+                            // Continue target: increment counter
+                            let continue_pos = self.code.len();
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = continue_pos;
+                            }
                             self.emit_load_loc(counter_index);
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(1);
@@ -1671,9 +1705,11 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                            self.loop_continue_positions.pop();
                         } else {
                             // For now, only support range and array identifier expressions
                             self.loop_exits.pop();
+                            self.loop_continue_positions.pop();
                             return Err(AutoError::Msg(
                                 "Indexed for loops with non-range/non-array expressions not supported yet"
                                     .to_string(),
@@ -1683,7 +1719,12 @@ impl Codegen {
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
                         // Loop start label
-                        let loop_start = self.code.len() as i16;
+                        let loop_start = self.code.len();
+
+                        // Set continue position: loop_start (re-evaluate condition)
+                        if let Some(pos) = self.loop_continue_positions.last_mut() {
+                            *pos = loop_start;
+                        }
 
                         // Compile condition
                         self.compile_expr(&for_stmt.range)?;
@@ -1698,7 +1739,7 @@ impl Codegen {
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start - current_pos);
+                        self.emit_i16(loop_start as i16 - current_pos);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -1711,10 +1752,16 @@ impl Codegen {
                         for exit_placeholder in exits {
                             self.patch_jump(exit_placeholder);
                         }
+                        self.loop_continue_positions.pop();
                     }
                     Iter::Ever => {
                         // Infinite loop: for ever { ... }
-                        let loop_start = self.code.len() as i16;
+                        let loop_start = self.code.len();
+
+                        // Set continue position: loop_start
+                        if let Some(pos) = self.loop_continue_positions.last_mut() {
+                            *pos = loop_start;
+                        }
 
                         // Compile loop body
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
@@ -1722,7 +1769,7 @@ impl Codegen {
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start - current_pos);
+                        self.emit_i16(loop_start as i16 - current_pos);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -1732,6 +1779,7 @@ impl Codegen {
                         for exit_placeholder in exits {
                             self.patch_jump(exit_placeholder);
                         }
+                        self.loop_continue_positions.pop();
                     }
                     Iter::Call(call) => {
                         // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
@@ -1780,6 +1828,11 @@ impl Codegen {
                         let var_index = self.add_var(var_str);
                         self.emit_store_loc(var_index);
 
+                        // Continue target: loop_start (re-check iterator.next())
+                        if let Some(pos) = self.loop_continue_positions.last_mut() {
+                            *pos = loop_start as usize;
+                        }
+
                         // Compile loop body
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
 
@@ -1802,6 +1855,7 @@ impl Codegen {
                         for exit_placeholder in exits {
                             self.patch_jump(exit_placeholder);
                         }
+                        self.loop_continue_positions.pop();
                     }
                 }
             }
@@ -1817,6 +1871,19 @@ impl Codegen {
                 } else {
                     return Err(AutoError::Msg(
                         "Break statement outside of loop".to_string(),
+                    ));
+                }
+            }
+            Stmt::Continue => {
+                // Continue statement: jump to loop continue target
+                if let Some(&continue_pos) = self.loop_continue_positions.last() {
+                    self.emit(OpCode::JMP);
+                    let current_pos = self.code.len() as i16;
+                    let offset = continue_pos as i16 - current_pos - 2;
+                    self.emit_i16(offset);
+                } else {
+                    return Err(AutoError::Msg(
+                        "Continue statement outside of loop".to_string(),
                     ));
                 }
             }

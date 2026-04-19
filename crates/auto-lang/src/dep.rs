@@ -104,6 +104,7 @@ impl<'db> DepScanner<'db> {
 
             // Other statements - skip for now
             Stmt::Break => {}
+            Stmt::Continue => {}
             Stmt::Is(_) => {}
             Stmt::Fn(_) => {}
             Stmt::Union(_) => {}

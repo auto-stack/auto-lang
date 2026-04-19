@@ -1,0 +1,126 @@
+/// Simple HTTP Server - like python -m SimpleHTTPServer
+/// Serves static files from the current directory.
+///
+/// Usage: auto server.at [port]
+/// Default port: 8080
+
+fn main() {
+    let args = Process.args()
+    let port = if args.len() > 1 { args[1] } else { "8080" }
+    let addr = "127.0.0.1:" + port
+
+    let listener = Net.tcp_bind(addr)
+    if listener == 0 {
+        print("Failed to bind to " + addr)
+        Process.exit(1)
+    }
+
+    let local = Net.tcp_listener_local_addr(listener)
+    print("Serving HTTP on " + local + "/")
+    print("Press Ctrl+C to stop")
+
+    loop {
+        handle_request(listener)
+    }
+}
+
+fn handle_request(listener i64) void {
+    let stream = Net.tcp_listener_accept(listener)
+    if stream == 0 {
+        return
+    }
+
+    Net.tcp_stream_set_read_timeout(stream, 5000)
+
+    let request_line = Net.tcp_stream_read_line(stream)
+
+    if request_line == "" {
+        Net.tcp_stream_close(stream)
+        return
+    }
+
+    let path = parse_http_path(request_line)
+    print(request_line)
+
+    let full_path = Path.join(Process.current_dir(), path)
+    let response = build_response(path, full_path)
+    Net.tcp_stream_write_str(stream, response)
+    Net.tcp_stream_close(stream)
+}
+
+fn build_response(path str, full_path str) str {
+    if File.is_dir(full_path) {
+        if Str.ends_with(path, "/") == false {
+            return http_redirect(path + "/")
+        }
+        let index = full_path + "/index.html"
+        if File.exists(index) {
+            let content = File.read_text(index)
+            return http_ok_html(content)
+        }
+        let entries = File.walk(full_path)
+        let html = dir_listing(path, entries)
+        return http_ok_html(html)
+    }
+
+    if File.exists(full_path) {
+        let content = File.read_text(full_path)
+        let ctype = guess_type(full_path)
+        return http_ok(content, ctype)
+    }
+
+    return http_not_found(path)
+}
+
+fn parse_http_path(line str) str {
+    let parts = Str.split(line, " ")
+    if parts.len() > 1 {
+        return parts[1]
+    }
+    return "/"
+}
+
+fn http_ok(content str, ctype str) str {
+    let n = content.len().to_string()
+    let header = "HTTP/1.1 200 OK\r\nContent-Type: " + ctype + "\r\nContent-Length: " + n + "\r\nConnection: close\r\n\r\n"
+    return header + content
+}
+
+fn http_ok_html(content str) str {
+    return http_ok(content, "text/html; charset=utf-8")
+}
+
+fn http_not_found(path str) str {
+    let body = "<html><body><h1>404 Not Found</h1><p>File not found: " + path + "</p></body></html>"
+    let n = body.len().to_string()
+    return "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: " + n + "\r\nConnection: close\r\n\r\n" + body
+}
+
+fn http_redirect(path str) str {
+    let body = "<html><body><h1>Redirecting</h1></body></html>"
+    let n = body.len().to_string()
+    return "HTTP/1.1 301 Moved\r\nLocation: " + path + "\r\nContent-Length: " + n + "\r\nConnection: close\r\n\r\n" + body
+}
+
+fn guess_type(filepath str) str {
+    let file_ext = Path.extension(filepath)
+    if file_ext == "html" { return "text/html; charset=utf-8" }
+    if file_ext == "css" { return "text/css" }
+    if file_ext == "js" { return "application/javascript" }
+    if file_ext == "json" { return "application/json" }
+    if file_ext == "png" { return "image/png" }
+    if file_ext == "jpg" { return "image/jpeg" }
+    if file_ext == "svg" { return "image/svg+xml" }
+    if file_ext == "txt" { return "text/plain" }
+    return "application/octet-stream"
+}
+
+fn dir_listing(path str, entries List) str {
+    var body = "<html><head><title>Index of " + path + "</title></head><body>"
+    body = body + "<h1>Index of " + path + "</h1><hr><ul>"
+    for entry in entries {
+        let name = Path.filename(entry)
+        body = body + "<li><a href=" + name + ">" + name + "</a></li>"
+    }
+    return body + "</ul><hr></body></html>"
+}
