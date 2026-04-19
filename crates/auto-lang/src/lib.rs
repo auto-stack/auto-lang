@@ -445,7 +445,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Plan 118: Store the codegen's result type for formatting
 
     // 5. Execute - Find main/test entry point
-    let task_id = vm.spawn_task(main_entry, 1024);
+    let task_id = vm.spawn_task(main_entry, 16384);
     vm.run_task_loop().await;
 
     // 6. Get result from stack

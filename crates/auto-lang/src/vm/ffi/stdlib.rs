@@ -1329,13 +1329,11 @@ pub fn shim_net_tcp_bind(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
     let listener = match StdTcpListener::bind(&addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[NET] tcp_bind failed: {} - {}", addr, e);
-            task.ram.push_i64(0); // Return 0 on failure
+            task.ram.push_i32(0); // Return 0 on failure
             return Ok(());
         }
     };
 
-    // Set non-blocking mode for accept
     listener.set_nonblocking(false).ok();
 
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -1343,14 +1341,14 @@ pub fn shim_net_tcp_bind(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
         listeners.borrow_mut().insert(handle, listener);
     });
 
-    task.ram.push_i64(handle as i64);
+    task.ram.push_i32(handle as i32);
     Ok(())
 }
 
 /// Accept a new connection from listener
 /// Returns stream handle (positive) on success, 0 on failure
 pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let listener_handle: i64 = task.ram.pop_i64();
+    let listener_handle: i32 = task.ram.pop_i32();
 
     let stream = TCP_LISTENERS.with(|listeners| {
         let mut listeners = listeners.borrow_mut();
@@ -1364,10 +1362,10 @@ pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result
             TCP_STREAMS.with(|streams| {
                 streams.borrow_mut().insert(handle, stream);
             });
-            task.ram.push_i64(handle as i64);
+            task.ram.push_i32(handle as i32);
         }
         None => {
-            task.ram.push_i64(0); // Return 0 on failure
+            task.ram.push_i32(0); // Return 0 on failure
         }
     }
     Ok(())
@@ -1375,7 +1373,7 @@ pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result
 
 /// Get local address of listener
 #[auto_macros::rust_fn("Net.tcp_listener_local_addr")]
-pub fn shim_net_tcp_listener_local_addr(listener_handle: i64) -> String {
+pub fn shim_net_tcp_listener_local_addr(listener_handle: i32) -> String {
     TCP_LISTENERS.with(|listeners| {
         let listeners = listeners.borrow();
         listeners
@@ -1387,7 +1385,7 @@ pub fn shim_net_tcp_listener_local_addr(listener_handle: i64) -> String {
 
 /// Close listener
 pub fn shim_net_tcp_listener_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let listener_handle: i64 = task.ram.pop_i64();
+    let listener_handle: i32 = task.ram.pop_i32();
     TCP_LISTENERS.with(|listeners| {
         listeners.borrow_mut().remove(&(listener_handle as u64));
     });
@@ -1402,9 +1400,8 @@ pub fn shim_net_tcp_connect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
     let stream = match StdTcpStream::connect(&addr) {
         Ok(s) => s,
-        Err(e) => {
-            eprintln!("[NET] tcp_connect failed: {} - {}", addr, e);
-            task.ram.push_i64(0);
+        Err(_) => {
+            task.ram.push_i32(0);
             return Ok(());
         }
     };
@@ -1414,7 +1411,7 @@ pub fn shim_net_tcp_connect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
         streams.borrow_mut().insert(handle, stream);
     });
 
-    task.ram.push_i64(handle as i64);
+    task.ram.push_i32(handle as i32);
     Ok(())
 }
 
@@ -1422,7 +1419,7 @@ pub fn shim_net_tcp_connect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 /// Returns number of bytes read, or -1 on error
 pub fn shim_net_tcp_stream_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let buf_size: i32 = task.ram.pop_i32();
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
 
     let result = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -1454,7 +1451,7 @@ pub fn shim_net_tcp_stream_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
 pub fn shim_net_tcp_stream_write(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
 
     let bytes: Vec<u8> = data.into_iter().map(|b| b as u8).collect();
 
@@ -1472,7 +1469,7 @@ pub fn shim_net_tcp_stream_write(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 
 /// Read all data until EOF
 pub fn shim_net_tcp_stream_read_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
 
     let bytes = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -1494,7 +1491,7 @@ pub fn shim_net_tcp_stream_read_all(task: &mut AutoTask, _vm: &AutoVM) -> Result
 
 /// Read a line from stream
 #[auto_macros::rust_fn("Net.tcp_stream_read_line")]
-pub fn shim_net_tcp_stream_read_line(stream_handle: i64) -> String {
+pub fn shim_net_tcp_stream_read_line(stream_handle: i32) -> String {
     TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
         match streams.get_mut(&(stream_handle as u64)) {
@@ -1514,7 +1511,7 @@ pub fn shim_net_tcp_stream_read_line(stream_handle: i64) -> String {
 pub fn shim_net_tcp_stream_write_str(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let s: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
 
     let result = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -1530,7 +1527,7 @@ pub fn shim_net_tcp_stream_write_str(task: &mut AutoTask, _vm: &AutoVM) -> Resul
 
 /// Close stream
 pub fn shim_net_tcp_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
     TCP_STREAMS.with(|streams| {
         streams.borrow_mut().remove(&(stream_handle as u64));
     });
@@ -1539,7 +1536,7 @@ pub fn shim_net_tcp_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 
 /// Get peer address
 #[auto_macros::rust_fn("Net.tcp_stream_peer_addr")]
-pub fn shim_net_tcp_stream_peer_addr(stream_handle: i64) -> String {
+pub fn shim_net_tcp_stream_peer_addr(stream_handle: i32) -> String {
     TCP_STREAMS.with(|streams| {
         let streams = streams.borrow();
         streams
@@ -1552,7 +1549,7 @@ pub fn shim_net_tcp_stream_peer_addr(stream_handle: i64) -> String {
 /// Set read timeout
 pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let ms: i32 = task.ram.pop_i32();
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
 
     TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -1571,7 +1568,7 @@ pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, _vm: &AutoVM) -
 /// Set write timeout
 pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let ms: i32 = task.ram.pop_i32();
-    let stream_handle: i64 = task.ram.pop_i64();
+    let stream_handle: i32 = task.ram.pop_i32();
 
     TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();

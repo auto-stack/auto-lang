@@ -167,8 +167,8 @@ impl VMConvertible for String {
             strings.push(self.as_bytes().to_vec());
         }
 
-        // Push the index as the string reference
-        task.ram.push_i32(len as i32);
+        // Push the index as a tagged string reference (same format as LOAD_STR: -(idx+1))
+        task.ram.push_i32(-((len as i32) + 1));
         Ok(())
     }
 }
@@ -224,18 +224,12 @@ impl<T: VMConvertible, E: std::fmt::Display> VMConvertible for Result<T, E> {
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
         match self {
             Ok(value) => {
-                // Push value, then Ok tag
+                // Only push the inner value (AutoVM expects single return value)
                 value.push_to_stack(task, vm)?;
-                task.ram.push_i32(0); // Ok tag
             }
             Err(e) => {
-                // Push error as string representation
-                let err_str = e.to_string();
-                err_str.push_to_stack(task, vm)?;
-                task.ram.push_i32(1); // Err tag
-
-                // Also return an FFI error for the caller to handle
-                return Err(FFIError::RuntimeError(e.to_string()));
+                // Push 0 as error indicator (Auto code checks for 0/false/null)
+                task.ram.push_i32(0);
             }
         }
         Ok(())
