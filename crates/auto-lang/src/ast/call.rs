@@ -1,5 +1,6 @@
 use super::{Expr, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
+use crate::token::Pos;
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
 
@@ -11,6 +12,8 @@ pub struct Call {
     /// Plan 061: Type argument bindings (generic param name -> concrete type)
     /// E.g., for `duplicate(42)`, this might contain [("T", Int)]
     pub type_args: Vec<(Name, Type)>,
+    /// Source position of the call site (the opening parenthesis)
+    pub pos: Option<Pos>,
 }
 
 impl Call {
@@ -384,6 +387,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Unknown,
             type_args: Vec::new(),
+            pos: None,
         };
         let atom = call.to_atom();
         assert_eq!(atom, "call print ()");
@@ -396,6 +400,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Int,
             type_args: Vec::new(),
+            pos: None,
         };
         let atom = call.to_atom();
         // Call atom doesn't include return type (only in function signature)
@@ -412,6 +417,7 @@ mod tests {
             args,
             ret: Type::Unknown,
             type_args: Vec::new(),
+            pos: None,
         };
         let atom = call.to_atom();
         assert_eq!(atom, "call print (42)");

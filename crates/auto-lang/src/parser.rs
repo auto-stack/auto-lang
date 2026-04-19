@@ -1765,6 +1765,7 @@ impl<'a> Parser<'a> {
                             args: crate::ast::Args::new(),
                             ret: crate::ast::Type::Unknown,
                             type_args: Vec::new(),
+                            pos: Some(self.prev.pos),
                         });
                         continue;
                     }
@@ -1889,6 +1890,7 @@ impl<'a> Parser<'a> {
                                 args,
                                 ret: Type::Unknown,
                                 type_args: Vec::new(),
+                                pos: Some(self.prev.pos),
                             });
                         } else {
                             // Just field access: MayInt.Err (no args)
@@ -1943,6 +1945,7 @@ impl<'a> Parser<'a> {
                                         args: call.args,
                                         ret: call.ret,
                                         type_args: Vec::new(), // Plan 061: No type args for method calls yet
+                                        pos: call.pos,
                                     });
                                 }
                                 _ => {
@@ -8608,11 +8611,13 @@ impl<'a> Parser<'a> {
         }
 
         let ret_type = self.return_type(&ident)?;
+        let call_pos = self.prev.pos;
         let expr = Expr::Call(Call {
             name: Box::new(ident),
             args,
             ret: ret_type,
             type_args: Vec::new(), // Plan 061: Will be filled in during type inference
+            pos: Some(call_pos),
         });
         self.check_symbol(expr)
     }

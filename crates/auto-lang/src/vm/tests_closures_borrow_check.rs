@@ -192,6 +192,7 @@ mod borrow_check_tests {
                 },
                 ret: Type::Unknown,
                 type_args: vec![],
+                pos: None,
             })),
         };
 

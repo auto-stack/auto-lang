@@ -1052,6 +1052,7 @@ mod tests {
             args,
             ret: Type::Unknown,
             type_args: vec![],
+            pos: None,
         };
 
         // Get immutable reference to call (as would happen during type inference)

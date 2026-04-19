@@ -138,6 +138,11 @@ impl NativeInterface {
         self.register(NATIVE_PRINT_F32, shim_print_f32);
         self.register(NATIVE_PRINT_STR, shim_print_str);
 
+        // Assert functions
+        self.register(NATIVE_ASSERT, shim_assert);
+        self.register(NATIVE_ASSERT_EQ, shim_assert_eq);
+        self.register(NATIVE_ASSERT_NE, shim_assert_ne);
+
         // List functions
         self.register(NATIVE_LIST_NEW, shim_list_new);
         self.register(NATIVE_LIST_PUSH, shim_list_push);
@@ -282,6 +287,9 @@ impl NativeInterface {
 pub const NATIVE_PRINT_I32: u16 = 1;
 pub const NATIVE_PRINT_F32: u16 = 2;
 pub const NATIVE_PRINT_STR: u16 = 3;
+pub const NATIVE_ASSERT: u16 = 4;
+pub const NATIVE_ASSERT_EQ: u16 = 5;
+pub const NATIVE_ASSERT_NE: u16 = 6;
 
 // ============================================================================
 // Plan 178: Bit Operation Shims
@@ -690,6 +698,36 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         } else {
             vm_print(vm, &tagged.to_string());
         }
+    }
+    Ok(())
+}
+
+pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let cond = task.ram.pop_i32();
+    if cond == 0 {
+        return Err(VMError::RuntimeError("Assertion failed".to_string()));
+    }
+    Ok(())
+}
+
+pub fn shim_assert_eq(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let right = task.ram.pop_i32();
+    let left = task.ram.pop_i32();
+    if left != right {
+        return Err(VMError::RuntimeError(
+            format!("Assertion failed: {} != {}", left, right)
+        ));
+    }
+    Ok(())
+}
+
+pub fn shim_assert_ne(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let right = task.ram.pop_i32();
+    let left = task.ram.pop_i32();
+    if left == right {
+        return Err(VMError::RuntimeError(
+            format!("Assertion failed: {} == {}", left, right)
+        ));
     }
     Ok(())
 }

@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 // Plan 076 Phase 1: Generic type support
@@ -188,6 +188,9 @@ impl Codegen {
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
+        intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
+        intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
+        intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
         // Create global scope
         let locals = HashMap::new();
@@ -241,6 +244,9 @@ impl Codegen {
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
+        intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
+        intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
+        intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
         // Create global scope
         let locals = HashMap::new();
@@ -4049,7 +4055,7 @@ impl Codegen {
                     // Plan 118: Mark print functions as void (they don't push return values)
                     // This tells run() to return empty string instead of trying to pop a value
                     if let Some(ref name) = func_name {
-                        if name.starts_with("print") || name == "say" {
+                        if name.starts_with("print") || name == "say" || name.starts_with("assert") {
                             self.last_expr_type = ObjectType::Void;
                         }
                     }
@@ -4215,6 +4221,7 @@ impl Codegen {
                     offset: placeholder_idx as u32,
                     symbol_name: reloc_name.clone(),
                     reloc_type: RelocType::FuncCall,
+                    source_pos: call.pos,
                 });
 
                 // Plan 118 Phase 4: Function return type inference
@@ -5586,6 +5593,7 @@ impl Codegen {
             offset: func_addr_offset,
             symbol_name: closure_symbol.clone(),
             reloc_type: crate::vm::loader::RelocType::FuncCall,
+            source_pos: None,
         });
 
         // Export the closure function address
@@ -5940,6 +5948,7 @@ mod tests {
             },
             ret: crate::ast::Type::Unknown,
             type_args: vec![],
+            pos: None,
         });
 
         codegen.compile_expr(&call_expr).unwrap();

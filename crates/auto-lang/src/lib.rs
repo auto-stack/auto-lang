@@ -383,11 +383,21 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     linker.add_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
+        let span = if let Some(pos) = e.source_pos {
+            crate::error::pos_to_span(pos)
+        } else {
+            find_use_symbol_span(code, &e.message)
+        };
+        let help = if e.source_pos.is_some() {
+            Some(format!("Use a `use` statement to import '{}' from a module, or check for typos", e.symbol))
+        } else {
+            extract_undefined_symbol(&e.message).map(|s| format!("Check if '{}' is defined and exported in the module", s))
+        };
         crate::error::AutoError::MsgWithSource(crate::error::MsgWithSource {
             source: miette::NamedSource::new("<script>", code.to_string()),
-            message: e.clone(),
-            span: find_use_symbol_span(code, &e),
-            help: extract_undefined_symbol(&e).map(|s| format!("Check if '{}' is defined and exported in the module", s)),
+            message: e.message.clone(),
+            span,
+            help,
         })
     })?;
 

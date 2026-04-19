@@ -182,6 +182,8 @@ pub struct RelocEntry {
     pub offset: u32,         // Offset in code
     pub symbol_name: String, // Resolving by name for now (sid logic can be added later)
     pub reloc_type: RelocType,
+    /// Source position of the call site that generated this relocation
+    pub source_pos: Option<crate::token::Pos>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -205,6 +207,23 @@ pub struct Module {
     pub object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
 }
 
+/// Structured linker error with source position info
+#[derive(Debug, Clone)]
+pub struct LinkError {
+    pub message: String,
+    pub symbol: String,
+    pub module: String,
+    pub source_pos: Option<crate::token::Pos>,
+}
+
+impl std::fmt::Display for LinkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for LinkError {}
+
 pub struct Linker {
     pub modules: Vec<Module>,
 }
@@ -220,7 +239,7 @@ impl Linker {
         self.modules.push(module);
     }
 
-    pub fn link(&self) -> Result<(Vec<u8>, HashMap<String, u32>), String> {
+    pub fn link(&self) -> Result<(Vec<u8>, HashMap<String, u32>), LinkError> {
         let mut final_code = Vec::new();
         let mut global_symbols = HashMap::new(); // Name -> Absolute Address in final_code
 
@@ -235,7 +254,12 @@ impl Linker {
             // Register exports
             for (sym_name, sym_offset) in &module.exports {
                 if global_symbols.contains_key(sym_name) {
-                    return Err(format!("Duplicate symbol: {}", sym_name));
+                    return Err(LinkError {
+                        message: format!("Duplicate symbol: {}", sym_name),
+                        symbol: sym_name.clone(),
+                        module: module.name.clone(),
+                        source_pos: None,
+                    });
                 }
                 global_symbols.insert(sym_name.clone(), current_offset + sym_offset);
             }
@@ -251,10 +275,15 @@ impl Linker {
             for reloc in &module.relocs {
                 // Find symbol
                 let target_addr = global_symbols.get(&reloc.symbol_name).ok_or_else(|| {
-                    format!(
-                        "Undefined symbol: {} in module {}",
-                        reloc.symbol_name, module.name
-                    )
+                    LinkError {
+                        message: format!(
+                            "Undefined symbol: {} in module {}",
+                            reloc.symbol_name, module.name
+                        ),
+                        symbol: reloc.symbol_name.clone(),
+                        module: module.name.clone(),
+                        source_pos: reloc.source_pos,
+                    }
                 })?;
 
                 // Patch code
@@ -265,7 +294,12 @@ impl Linker {
                         let bytes = target_addr.to_le_bytes();
                         let off = reloc.offset as usize;
                         if off + 4 > mod_code.len() {
-                            return Err(format!("Reloc offset out of bounds in {}", module.name));
+                            return Err(LinkError {
+                                message: format!("Reloc offset out of bounds in {}", module.name),
+                                symbol: String::new(),
+                                module: module.name.clone(),
+                                source_pos: None,
+                            });
                         }
                         mod_code[off] = bytes[0];
                         mod_code[off + 1] = bytes[1];
