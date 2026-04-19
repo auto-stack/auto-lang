@@ -5155,6 +5155,11 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::RBrace) {
             let branch = self.parse_is_branch(&target)?;
             branches.push(branch);
+            // Skip optional comma separator between branches
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+                self.skip_empty_lines();
+            }
         }
         self.expect(TokenKind::RBrace)?;
 
