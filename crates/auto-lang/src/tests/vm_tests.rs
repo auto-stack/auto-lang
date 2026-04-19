@@ -430,3 +430,19 @@ v
     let result = run(code);
     assert!(result.is_ok(), "str_slice type lookup should work: {:?}", result);
 }
+#[test]
+fn test_str_bytes_iterator() {
+    let code = r#"
+fn main() {
+    let s = "AB"
+    let it = s.bytes()
+    let v1 = Iterator.next(it)
+    let v2 = Iterator.next(it)
+    let v3 = Iterator.next(it)
+    v1 + v2 + v3
+}
+"#;
+    let result = crate::run(code).unwrap();
+    // 65 + 66 + (-1) = 130
+    assert_eq!(result, "130");
+}

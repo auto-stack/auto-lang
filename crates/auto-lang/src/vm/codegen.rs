@@ -205,6 +205,20 @@ impl Codegen {
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
+        // Register return types for native functions (used for type inference in let bindings)
+        let mut fn_return_types = HashMap::new();
+        fn_return_types.insert("int.to_str".to_string(), Type::String);
+        fn_return_types.insert("int_str".to_string(), Type::String);
+        fn_return_types.insert("uint.to_hex".to_string(), Type::String);
+        fn_return_types.insert("str.upper".to_string(), Type::String);
+        fn_return_types.insert("str.lower".to_string(), Type::String);
+        fn_return_types.insert("str.trim".to_string(), Type::String);
+        fn_return_types.insert("str.replace".to_string(), Type::String);
+        fn_return_types.insert("str.slice".to_string(), Type::String);
+        fn_return_types.insert("str.split".to_string(), Type::String);
+        fn_return_types.insert("str.chars".to_string(), Type::String);
+        fn_return_types.insert("List.join".to_string(), Type::String);
+
         // Create global scope
         let locals = HashMap::new();
         let mut scope_stack = Vec::new();
@@ -262,6 +276,20 @@ impl Codegen {
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
+        // Register return types for native functions (used for type inference in let bindings)
+        let mut fn_return_types = HashMap::new();
+        fn_return_types.insert("int.to_str".to_string(), Type::String);
+        fn_return_types.insert("int_str".to_string(), Type::String);
+        fn_return_types.insert("uint.to_hex".to_string(), Type::String);
+        fn_return_types.insert("str.upper".to_string(), Type::String);
+        fn_return_types.insert("str.lower".to_string(), Type::String);
+        fn_return_types.insert("str.trim".to_string(), Type::String);
+        fn_return_types.insert("str.replace".to_string(), Type::String);
+        fn_return_types.insert("str.slice".to_string(), Type::String);
+        fn_return_types.insert("str.split".to_string(), Type::String);
+        fn_return_types.insert("str.chars".to_string(), Type::String);
+        fn_return_types.insert("List.join".to_string(), Type::String);
+
         // Create global scope
         let locals = HashMap::new();
         let mut scope_stack = Vec::new();
@@ -286,7 +314,7 @@ impl Codegen {
             generics: GenericTable::new(),
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
             fn_params: HashMap::new(),
-            fn_return_types: HashMap::new(),
+            fn_return_types,
             current_fn_n_args: 0,
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
@@ -795,9 +823,16 @@ impl Codegen {
                                         // Instance method: try to infer from var_types + method return type
                                         if let Expr::Ident(obj_name) = obj.as_ref() {
                                             let full_name = format!("{}.{}", obj_name, method);
-                                            self.fn_return_types.get(&full_name)
-                                                .cloned()
-                                                .unwrap_or(Type::Unknown)
+                                            if let Some(ty) = self.fn_return_types.get(&full_name) {
+                                                ty.clone()
+                                            } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                                let type_method = format!("{}.{}", type_name, method);
+                                                self.fn_return_types.get(&type_method)
+                                                    .cloned()
+                                                    .unwrap_or(Type::Unknown)
+                                            } else {
+                                                Type::Unknown
+                                            }
                                         } else {
                                             Type::Unknown
                                         }
@@ -1176,6 +1211,11 @@ impl Codegen {
 
                 // Store the value into the local variable
                 self.emit_store_loc(var_index);
+                // u64/i64 variables occupy two consecutive slots
+                let stored_type = self.var_types.get(&name_str).cloned();
+                if matches!(stored_type, Some(Type::U64 | Type::I64)) {
+                    self.emit_store_loc(var_index + 1);
+                }
 
                 // Plan 080: DON'T load the value back to stack
                 // This avoids overlapping variable storage and stack
@@ -1383,14 +1423,17 @@ impl Codegen {
 
                             // Check if result is nil (end of iteration)
                             // Nil is represented as -1 in our VM
+                            // DUP the result so we can both check for nil AND store to loop variable
+                            self.emit(OpCode::DUP);
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(-1);
                             self.emit(OpCode::EQ);
-                            self.emit(OpCode::JMP_IF_Z);
+                            self.emit(OpCode::JMP_IF_NZ);
                             let jump_to_end = self.emit_placeholder_i16();
 
                             // Store the element to the loop variable
                             let var_str = var_name.to_string();
+                            self.var_types.insert(var_str.clone(), Type::Int);
                             let var_index = self.add_var(&var_str);
                             self.emit_store_loc(var_index);
 
@@ -2807,6 +2850,10 @@ impl Codegen {
                     // Variable found in local scope - load it
                     vm_debug!("DEBUG: Variable {} found at index {}", name_str, var_index);
                     self.emit_load_loc(var_index);
+                    // u64/i64 variables occupy two consecutive slots
+                    if matches!(self.var_types.get(&name_str), Some(Type::U64 | Type::I64)) {
+                        self.emit_load_loc(var_index + 1);
+                    }
                 } else {
                     // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
                     let enum_variant_value = self.type_store.read().unwrap()
@@ -3900,7 +3947,8 @@ impl Codegen {
                                 // Plan 118 Phase 4: Handle literal method calls
                                 let inferred_type = self.infer_object_type(obj.as_ref());
                                 let type_name = match inferred_type {
-                                    ObjectType::Int | ObjectType::Uint | ObjectType::Byte => "int",
+                                    ObjectType::Int | ObjectType::Byte => "int",
+                                    ObjectType::Uint => "uint",
                                     ObjectType::Float | ObjectType::Double => "float",
                                     ObjectType::String => "str",
                                     ObjectType::Char => "char",
@@ -4093,7 +4141,17 @@ impl Codegen {
                     if !call.args.is_empty() {
                         let func_name_for_params =
                             func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
+                        let is_assert_msg = func_name_for_params == "assert_eq"
+                            || func_name_for_params == "assert_ne";
+                        let max_args = if is_assert_msg && call.args.args.len() > 2 {
+                            2 // Skip the 3rd arg (message string) for assert_eq/ne
+                        } else {
+                            call.args.args.len()
+                        };
                         for (i, arg) in call.args.args.iter().enumerate() {
+                            if i >= max_args {
+                                break; // Skip extra args (e.g., assert_eq message)
+                            }
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
                                     // Use smart parameter passing if we have function info
@@ -4155,11 +4213,13 @@ impl Codegen {
                     self.emit(OpCode::CALL_NAT);
                     self.code.extend_from_slice(&resolved_id.to_le_bytes());
 
-                    // Plan 118: Mark print functions as void (they don't push return values)
-                    // This tells run() to return empty string instead of trying to pop a value
+                    // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
                     if let Some(ref name) = func_name {
                         if name.starts_with("print") || name == "say" || name.starts_with("assert") {
                             self.last_expr_type = ObjectType::Void;
+                        } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
+                            || name.ends_with(".str") || name == "int_str" {
+                            self.last_expr_type = ObjectType::String;
                         }
                     }
 
@@ -4945,6 +5005,19 @@ impl Codegen {
                 }
             }
             // For other expressions, default to Int
+            Expr::Cast { target_type, .. } => {
+                match target_type {
+                    Type::Int | Type::I64 => ObjectType::Int,
+                    Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                    Type::Float => ObjectType::Float,
+                    Type::Double => ObjectType::Double,
+                    Type::Byte => ObjectType::Byte,
+                    Type::Bool => ObjectType::Bool,
+                    Type::Str(_) | Type::String => ObjectType::String,
+                    Type::Char => ObjectType::Char,
+                    _ => ObjectType::Int,
+                }
+            }
             _ => ObjectType::Int,
         }
     }
@@ -5021,14 +5094,22 @@ impl Codegen {
         // Calculate total index across all scopes
         let total_len: usize = self.scope_stack.iter().map(|s| s.len()).sum();
 
+        // Check if this variable is u64/i64 (occupies two slots)
+        let is_64bit = matches!(self.var_types.get(name), Some(Type::U64 | Type::I64));
+        let slot_count = if is_64bit { 2 } else { 1 };
+
         // Update max_locals to reflect the high-water mark of variables (including parameters)
-        self.max_locals = self.max_locals.max(total_len + 1);
+        self.max_locals = self.max_locals.max(total_len + slot_count);
 
         let scope = self
             .scope_stack
             .last_mut()
             .expect("Scope stack should never be empty");
         scope.insert(name.to_string(), total_len);
+        // Reserve the second slot for u64/i64 variables
+        if is_64bit {
+            scope.insert(format!("__{}_high", name), total_len + 1);
+        }
         total_len
     }
 

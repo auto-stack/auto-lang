@@ -1071,7 +1071,9 @@ fn main() -> int {
     assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
     // Should contain loop control opcodes
     assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
-    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    assert!(bytecode.contains(&0x62), "Expected JMP_IF_NZ opcode (0x62) for iterator sentinel check");
+    // Should contain DUP to preserve iterator value for both sentinel check and variable store
+    assert!(bytecode.contains(&0x03), "Expected DUP opcode (0x03)");
 }
 
 #[test]

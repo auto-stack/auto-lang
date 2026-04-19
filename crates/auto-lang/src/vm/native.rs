@@ -232,6 +232,10 @@ impl NativeInterface {
         self.register(NATIVE_STR_UPPER, shim_str_upper);
         self.register(NATIVE_STRING_FROM, shim_string_from);
 
+        // String/Uint extension functions (235-236)
+        self.register(NATIVE_STR_BYTES, shim_str_bytes);
+        self.register(NATIVE_UINT_TO_HEX, shim_uint_to_hex);
+
         // Mutable String functions (177-186)
         self.register(NATIVE_STRING_NEW, shim_string_new);
         self.register(NATIVE_STRING_PUSH, shim_string_push);
@@ -583,6 +587,10 @@ pub const NATIVE_INT_BIT_ON: u16 = 232;     // .bit(n).on() → val | (1 << n)
 pub const NATIVE_INT_BIT_OFF: u16 = 233;    // .bit(n).off() → val & !(1 << n)
 pub const NATIVE_INT_BIT_FLIP: u16 = 234;   // .bit(n).flip() → val ^ (1 << n)
 
+// === String/Uint Extension Native IDs (235+) ===
+pub const NATIVE_STR_BYTES: u16 = 235;    // str.bytes() → iterator of byte values
+pub const NATIVE_UINT_TO_HEX: u16 = 236; // uint.to_hex(pad) → hex string
+
 // === Standard Shims ===
 
 /// Plan 177: Helper to print output, captures to buffer if present
@@ -710,10 +718,22 @@ pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-pub fn shim_assert_eq(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let right = task.ram.pop_i32();
     let left = task.ram.pop_i32();
-    if left != right {
+
+    let equal = if left < 0 && right < 0 {
+        // Both are tagged string indices — compare actual string contents
+        let left_str = vm.get_string(decode_str_idx(left) as u16)
+            .map(|b| String::from_utf8_lossy(&b).to_string());
+        let right_str = vm.get_string(decode_str_idx(right) as u16)
+            .map(|b| String::from_utf8_lossy(&b).to_string());
+        left_str.as_deref() == right_str.as_deref()
+    } else {
+        left == right
+    };
+
+    if !equal {
         return Err(VMError::RuntimeError(
             format!("Assertion failed: {} != {}", left, right)
         ));
@@ -721,10 +741,21 @@ pub fn shim_assert_eq(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
     Ok(())
 }
 
-pub fn shim_assert_ne(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let right = task.ram.pop_i32();
     let left = task.ram.pop_i32();
-    if left == right {
+
+    let equal = if left < 0 && right < 0 {
+        let left_str = vm.get_string(decode_str_idx(left) as u16)
+            .map(|b| String::from_utf8_lossy(&b).to_string());
+        let right_str = vm.get_string(decode_str_idx(right) as u16)
+            .map(|b| String::from_utf8_lossy(&b).to_string());
+        left_str.as_deref() == right_str.as_deref()
+    } else {
+        left == right
+    };
+
+    if equal {
         return Err(VMError::RuntimeError(
             format!("Assertion failed: {} == {}", left, right)
         ));
@@ -2526,6 +2557,59 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Return tagged string index
     let tagged = encode_str_idx(new_idx as i32);
     task.ram.push_i32(tagged);
+    Ok(())
+}
+
+/// str.bytes() -> iterator of byte values
+/// Creates a list of i32 byte values from a string and returns a ListIterator.
+/// Stack: str_idx (tagged) -> iterator_id
+pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+    use crate::vm::engine::{Iterator, ListIterator};
+    use crate::vm::types::ListData;
+
+    let str_bits = task.ram.pop_i32();
+    let str_idx = decode_str_idx(str_bits) as u16;
+
+    // Get string bytes
+    let bytes: Vec<i32> = if let Some(str_bytes) = vm.get_string(str_idx) {
+        str_bytes.iter().map(|&b| b as i32).collect()
+    } else {
+        Vec::new()
+    };
+
+    // Create a ListData<i32> with byte values
+    let mut list_data: ListData<i32> = ListData::new();
+    for b in bytes {
+        list_data.push(b);
+    }
+    let list_id = vm.insert_heap_object(list_data);
+
+    // Create iterator
+    let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+    let iterator = Iterator::List(ListIterator {
+        list_id,
+        current_index: 0,
+    });
+    vm.iterators.insert(iterator_id, iterator);
+
+    task.ram.push_i32(iterator_id as i32);
+    Ok(())
+}
+
+/// uint.to_hex(pad) -> hex string
+/// Formats a u64 value as a zero-padded lowercase hex string.
+/// Stack: pad_width (i32), val_lo (i32), val_hi (i32) -> str_idx (tagged)
+pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // u64 is stored as two i32 slots: low pushed first, high pushed second (on top)
+    let pad_width = task.ram.pop_i32() as usize;
+    let val = task.ram.pop_u64();
+
+    let hex_str = format!("{:0width$x}", val, width = pad_width);
+    let bytes = hex_str.into_bytes();
+    let str_idx = vm.add_string(bytes);
+
+    task.ram.push_i32(encode_str_idx(str_idx as i32));
     Ok(())
 }
 

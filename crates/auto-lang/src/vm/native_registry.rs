@@ -273,6 +273,10 @@ pub fn register_builtin_natives() {
     registry.register_with_id("int.bit_off", 233);
     registry.register_with_id("int.bit_flip", 234);
 
+    // String/Uint extension functions
+    registry.register_with_id("str.bytes", 235);    // str.bytes() → iterator
+    registry.register_with_id("uint.to_hex", 236); // uint.to_hex(pad) → hex string
+
     // =========================================================================
     // FFI Shim Registrations (Plan 094)
     // These map Auto function names to their native IDs
