@@ -1,0 +1,11 @@
+fn simple_hash() {
+    var hash = 5381
+    for i in 0..5 {
+        hash = hash + 1
+    }
+}
+
+fn main() {
+    simple_hash()
+    print("hello")
+}

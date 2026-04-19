@@ -7,7 +7,8 @@ static GLOBAL_RT: OnceLock<Arc<tokio::runtime::Runtime>> = OnceLock::new();
 pub(crate) fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     GLOBAL_RT.get_or_init(|| {
         Arc::new(
-            tokio::runtime::Builder::new_current_thread()
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
                 .enable_all()
                 .build()
                 .expect("Failed to create tokio runtime")
@@ -253,15 +254,30 @@ pub fn run_with_capture(code: &str) -> AutoResult<(String, String)> {
 /// let result = run_autovm("1 + 2").unwrap();  // Returns "3"
 /// ```
 pub fn run_autovm(code: &str) -> AutoResult<String> {
-    // Use global tokio runtime for async execution
-    let rt = get_global_runtime();
-    rt.block_on(async { execute_autovm(code, false).await.map(|(r, _)| r) })
+    // Use a dedicated thread with 4MB stack to avoid stack overflow on Windows
+    // (default main thread stack is only 1MB on Windows)
+    let code = code.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let rt = get_global_runtime();
+            rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _)| r) })
+        })
+        .expect("Failed to spawn execution thread");
+    handle.join().unwrap()
 }
 
 /// Plan 177: Run AutoVM with stdout capture for testing
 pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
-    let rt = get_global_runtime();
-    rt.block_on(async { execute_autovm(code, true).await })
+    let code = code.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            let rt = get_global_runtime();
+            rt.block_on(async { execute_autovm(&code, true).await })
+        })
+        .expect("Failed to spawn execution thread");
+    handle.join().unwrap()
 }
 
 /// Find the source span of a `use ... : symbol` statement in source code

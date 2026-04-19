@@ -369,6 +369,57 @@ fn test_atom_query() {
 }
 
 #[test]
+fn test_for_loop_outer_var_assignment_no_overflow() {
+    // Regression test: hash = hash + 1 inside for loop should not stack overflow
+    let code = r#"
+fn simple_hash() {
+    var hash = 5381
+    for i in 0..5 {
+        hash = hash + 1
+    }
+}
+
+fn main() {
+    simple_hash()
+    print("hello")
+}
+"#;
+    let result = run(code);
+    assert!(result.is_ok(), "for loop outer var assignment should work: {:?}", result);
+}
+
+#[test]
+fn test_for_loop_outer_var_on_small_stack() {
+    // Regression test: for loop with outer var assignment must not stack overflow
+    // even on small stacks (1MB, the Windows default main thread stack size).
+    use std::thread;
+    let code = r#"
+fn simple_hash() {
+    var hash = 5381
+    for i in 0..5 {
+        hash = hash + 1
+    }
+}
+
+fn main() {
+    simple_hash()
+    print("hello")
+}
+"#.to_string();
+
+    let handle = thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(move || crate::run(&code))
+        .expect("Failed to spawn thread");
+
+    match handle.join() {
+        Ok(Ok(_)) => {},
+        Ok(Err(e)) => panic!("run() failed on 1MB stack: {:?}", e),
+        Err(_) => panic!("thread panicked on 1MB stack (stack overflow?)"),
+    }
+}
+
+#[test]
 #[ignore = "str_slice type removed"]
 fn test_str_slice_type_lookup() {
     let code = r#"
