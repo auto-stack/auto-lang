@@ -19,7 +19,7 @@ fn main() {
     print("Serving HTTP on " + local + "/")
     print("Press Ctrl+C to stop")
 
-    loop {
+    for {
         handle_request(listener)
     }
 }
