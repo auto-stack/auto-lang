@@ -68,6 +68,7 @@ enum FStrPartType {
     String,  // tagged string index (4 bytes)
     Float32, // f32 on stack (4 bytes)
     Float64, // f64 on stack (8 bytes)
+    Uint64,  // u64 on stack (8 bytes, 2 slots)
 }
 
 /// Codegen: Compiles AST directly to AutoVM Bytecode
@@ -141,6 +142,9 @@ pub struct Codegen {
     /// Plan 087 Phase 3: Current function parameter count (for correct local/param indexing)
     /// Used during compilation to distinguish parameters (before BP) from locals (after BP)
     pub current_fn_n_args: usize,
+
+    /// Current function return type (for RET vs RET_D emission)
+    pub current_fn_ret_type: Type,
 
     /// Plan 087 Phase 3: Starting index for function scope variables
     /// When outer scope has variables, function parameters don't start at index 0
@@ -218,6 +222,8 @@ impl Codegen {
         fn_return_types.insert("str.split".to_string(), Type::String);
         fn_return_types.insert("str.chars".to_string(), Type::String);
         fn_return_types.insert("List.join".to_string(), Type::String);
+        fn_return_types.insert("now_ms".to_string(), Type::I64);
+        fn_return_types.insert("now_sec".to_string(), Type::I64);
 
         // Create global scope
         let locals = HashMap::new();
@@ -245,6 +251,7 @@ impl Codegen {
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
             fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
+            current_fn_ret_type: Type::Void,
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
@@ -289,6 +296,8 @@ impl Codegen {
         fn_return_types.insert("str.split".to_string(), Type::String);
         fn_return_types.insert("str.chars".to_string(), Type::String);
         fn_return_types.insert("List.join".to_string(), Type::String);
+        fn_return_types.insert("now_ms".to_string(), Type::I64);
+        fn_return_types.insert("now_sec".to_string(), Type::I64);
 
         // Create global scope
         let locals = HashMap::new();
@@ -316,6 +325,7 @@ impl Codegen {
             fn_params: HashMap::new(),
             fn_return_types,
             current_fn_n_args: 0,
+            current_fn_ret_type: Type::Void,
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
@@ -410,7 +420,12 @@ impl Codegen {
                 // of a block or script. This keeps the stack clean for subsequent ops.
                 // Plan 118 Phase 7: Don't pop if expression is void (no value on stack)
                 if self.should_pop_expr_result && self.last_expr_type != ObjectType::Void {
-                    self.emit(OpCode::POP);
+                    if matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint) {
+                        self.emit(OpCode::POP_N);
+                        self.code.push(2);
+                    } else {
+                        self.emit(OpCode::POP);
+                    }
                 }
             }
             Stmt::Block(body) => {
@@ -509,6 +524,7 @@ impl Codegen {
 
                 // Plan 087 Phase 3: Set current function parameter count
                 self.current_fn_n_args = fn_decl.params.len();
+                self.current_fn_ret_type = fn_decl.ret.clone();
 
                 // Plan 087 Phase 3: Record starting index for function scope
                 // This is needed because outer scope variables affect parameter indices
@@ -572,6 +588,9 @@ impl Codegen {
                         // Use Unknown to indicate "has value but type unknown"
                         self.fn_return_types.insert(fn_decl.name.to_string(), Type::Unknown);
                     }
+                } else {
+                    // Function has explicit return type — record it for callers
+                    self.fn_return_types.insert(fn_decl.name.to_string(), fn_decl.ret.clone());
                 }
 
                 // 6. Get number of locals and INSERT stack reservation at function entry
@@ -699,16 +718,29 @@ impl Codegen {
                 // Restore max_locals
                 self.max_locals = old_max_locals;
 
-                // 7. Emit RET at end of body
+                // 7. Emit RET (or RET_D for 2-slot return types) at end of body
                 let n_args = fn_decl.params.len() as u8;
-                self.emit(OpCode::RET);
-                self.code.push(n_args);
+                let ret_is_two_slot = matches!(self.current_fn_ret_type,
+                    Type::Double | Type::U64 | Type::I64 | Type::USize);
+                if ret_is_two_slot {
+                    if matches!(self.current_fn_ret_type, Type::Double)
+                        && !matches!(self.last_expr_type, ObjectType::Double)
+                        && matches!(self.last_expr_type, ObjectType::Float) {
+                        self.emit(OpCode::PROMOTE_F64);
+                    }
+                    self.emit(OpCode::RET_D);
+                    self.code.push(n_args);
+                } else {
+                    self.emit(OpCode::RET);
+                    self.code.push(n_args);
+                }
 
                 // 8. Pop function scope
                 self.pop_scope();
 
                 // Plan 087 Phase 3: Reset current function parameter count and scope start
                 self.current_fn_n_args = 0;
+                self.current_fn_ret_type = Type::Void;
                 self.fn_scope_start = 0;
 
                 // 9. Patch jump to skip body
@@ -873,6 +905,19 @@ impl Codegen {
                 } else {
                     // Compile the RHS expression (pushes result on stack)
                     self.compile_expr(&store.expr)?;
+
+                    // Infer 2-slot type from last_expr_type when store.ty is Unknown or narrower
+                    // Double expression result overrides Float/Unknown store type
+                    // Uint expression result overrides Int/Unknown store type
+                    if matches!(self.last_expr_type, ObjectType::Double) {
+                        if matches!(store.ty, Type::Unknown) || matches!(store.ty, Type::Float) {
+                            self.var_types.insert(name_str.clone(), Type::Double);
+                        }
+                    } else if matches!(self.last_expr_type, ObjectType::Uint) {
+                        if matches!(store.ty, Type::Unknown) || matches!(store.ty, Type::Int) {
+                            self.var_types.insert(name_str.clone(), Type::U64);
+                        }
+                    }
                 }
 
                 // Promote i32 to u64 if variable type is u64/i64 but expression is not 64-bit
@@ -881,6 +926,24 @@ impl Codegen {
                     && !self.contains_u64(&store.expr)
                 {
                     self.emit(OpCode::TYPE_CAST_U64);
+                } else if matches!(stored_type, Some(Type::Double))
+                    && self.last_expr_type != ObjectType::Double
+                {
+                    match self.last_expr_type {
+                        ObjectType::Float => {
+                            self.emit(OpCode::PROMOTE_F64);
+                        }
+                        ObjectType::Int | ObjectType::Byte | ObjectType::Bool => {
+                            self.emit(OpCode::I32_TO_F32);
+                            self.emit(OpCode::PROMOTE_F64);
+                        }
+                        ObjectType::Uint => {
+                            self.emit(OpCode::U64_TO_F64);
+                        }
+                        _ => {
+                            self.emit(OpCode::PROMOTE_F64);
+                        }
+                    }
                 }
 
                 // Plan 080: Track variable type for instance method support
@@ -1219,7 +1282,9 @@ impl Codegen {
 
                 // Store the value into the local variable
                 let stored_type = self.var_types.get(&name_str).cloned();
-                if matches!(stored_type, Some(Type::U64 | Type::I64)) {
+                let is_two_slot = matches!(stored_type, Some(Type::U64 | Type::I64 | Type::Double))
+                    || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
+                if is_two_slot {
                     // u64/i64 on stack: [low, high] (high on top)
                     // pop high first → var_index+1, then pop low → var_index
                     self.emit_store_loc(var_index + 1);
@@ -1233,18 +1298,26 @@ impl Codegen {
                 // REPL will display the value from the expression result on stack
             }
             Stmt::Return(expr) => {
-                // Compile expression to leave result on stack
                 self.compile_expr(expr)?;
-                // FIXME: We need to know `n_args` here to emit correct RET.
-                // Codegen struct doesn't track "current function context" yet.
-                // TODO: Add `current_fn_args_count` to Codegen state.
-                // For now, hardcode 0 or implement context tracking.
-                // This is a limitation. I will mark TODO.
-                // Assuming 0 for now might break things if used inside args func.
-                // WORKAROUND: For this iteration, I'll allow simple returns, but `RET` instruction REQUIRES n_args.
-                // I'll emit RET 0 and file a task to fix context.
-                self.emit(OpCode::RET);
-                self.code.push(0); // TODO: Fix this
+                let n_args = self.current_fn_n_args as u8;
+                let ret_is_two_slot = matches!(self.current_fn_ret_type,
+                    Type::Double | Type::U64 | Type::I64 | Type::USize);
+                if ret_is_two_slot {
+                    // Promote 1-slot value to 2-slot if needed
+                    if matches!(self.current_fn_ret_type, Type::Double) {
+                        if !matches!(self.last_expr_type, ObjectType::Double) {
+                            if matches!(self.last_expr_type, ObjectType::Float) {
+                                self.emit(OpCode::PROMOTE_F64);
+                            }
+                            // For other types (int, etc.), I64_TO_F64 will be used by the caller
+                        }
+                    }
+                    self.emit(OpCode::RET_D);
+                    self.code.push(n_args);
+                } else {
+                    self.emit(OpCode::RET);
+                    self.code.push(n_args);
+                }
             }
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC
             // reply expr -> compile expr, then send to oneshot channel
@@ -2509,6 +2582,7 @@ impl Codegen {
                         FStrPartType::String => 1,
                         FStrPartType::Float64 => 2,
                         FStrPartType::Float32 => 3,
+                        FStrPartType::Uint64 => 4,
                     }
                 }).collect();
 
@@ -2859,10 +2933,8 @@ impl Codegen {
                     self.emit_load_captured(&name_str);
                 } else if let Some(var_index) = self.lookup_var(&name_str) {
                     // Variable found in local scope - load it
-                    vm_debug!("DEBUG: Variable {} found at index {}", name_str, var_index);
                     self.emit_load_loc(var_index);
-                    // u64/i64 variables occupy two consecutive slots
-                    if matches!(self.var_types.get(&name_str), Some(Type::U64 | Type::I64)) {
+                    if matches!(self.var_types.get(&name_str), Some(Type::U64 | Type::I64 | Type::Double)) {
                         self.emit_load_loc(var_index + 1);
                     }
                 } else {
@@ -3213,6 +3285,20 @@ impl Codegen {
                     if let Expr::Ident(name) = lhs.as_ref() {
                         let name_str = name.to_string();
 
+                        // Coerce RHS to match LHS type if needed
+                        let asn_stored_type = self.var_types.get(&name_str).cloned();
+                        if matches!(asn_stored_type, Some(Type::U64 | Type::I64))
+                            && !self.contains_u64(rhs.as_ref())
+                        {
+                            self.emit(OpCode::TYPE_CAST_U64);
+                        } else if matches!(asn_stored_type, Some(Type::Double))
+                            && self.last_expr_type != ObjectType::Double
+                        {
+                            if matches!(self.last_expr_type, ObjectType::Float) {
+                                self.emit(OpCode::PROMOTE_F64);
+                            }
+                        }
+
                         // Check if this is a captured variable (Plan 071)
                         if self.current_captured_vars().contains_key(&name_str) {
                             // Variable is captured - emit STORE_CAPTURED
@@ -3230,8 +3316,9 @@ impl Codegen {
                                 }
                             }
                             // Variable is mutable - store value to it
-                            let asn_stored_type = self.var_types.get(&name_str).cloned();
-                            if matches!(asn_stored_type, Some(Type::U64 | Type::I64)) {
+                            let asn_is_two_slot = matches!(asn_stored_type, Some(Type::U64 | Type::I64 | Type::Double))
+                                || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
+                            if asn_is_two_slot {
                                 // u64/i64 on stack: [low, high] (high on top)
                                 // Store high→var_index+1, then low→var_index
                                 self.emit_store_loc(var_index + 1);
@@ -3507,10 +3594,16 @@ impl Codegen {
                     }
                 } else {
                     // Plan 073 Stage A.5: Check if this is a float/double operation
-                    let is_float = self.is_float_operation(lhs, rhs);
-                    let is_double = self.is_double_operation(lhs, rhs);
+                    let mut is_float = self.is_float_operation(lhs, rhs);
+                    let mut is_double = self.is_double_operation(lhs, rhs);
                     let is_string = self.is_string_operation(lhs, rhs);
                     let is_u64 = self.is_u64_operation(lhs, rhs);
+
+                    // Mixed u64 + float arithmetic: promote to double (f64 can hold all u64 values)
+                    if is_u64 && is_float && !is_double {
+                        is_double = true;
+                        is_float = false;
+                    }
 
                     // Normal binary operation: compile both operands, then apply operator
                     // Plan 117: Emit type coercion for mixed int/float arithmetic
@@ -3518,7 +3611,9 @@ impl Codegen {
                     if is_float && !is_double && self.needs_float_coercion(lhs) {
                         self.emit(OpCode::I32_TO_F32);
                     } else if is_double && self.needs_double_coercion(lhs) {
-                        if self.is_u64_expr(lhs) {
+                        if matches!(lhs.as_ref(), Expr::Float(_, _)) {
+                            self.emit(OpCode::PROMOTE_F64);
+                        } else if self.is_u64_expr(lhs) {
                             self.emit(OpCode::U64_TO_F64);
                         } else {
                             self.emit(OpCode::I64_TO_F64);
@@ -3532,7 +3627,9 @@ impl Codegen {
                     if is_float && !is_double && self.needs_float_coercion(rhs) {
                         self.emit(OpCode::I32_TO_F32);
                     } else if is_double && self.needs_double_coercion(rhs) {
-                        if self.is_u64_expr(rhs) {
+                        if matches!(rhs.as_ref(), Expr::Float(_, _)) {
+                            self.emit(OpCode::PROMOTE_F64);
+                        } else if self.is_u64_expr(rhs) {
                             self.emit(OpCode::U64_TO_F64);
                         } else {
                             self.emit(OpCode::I64_TO_F64);
@@ -3601,12 +3698,30 @@ impl Codegen {
                                 self.emit(OpCode::MOD);
                             }
                         }
-                        Op::Eq => self.emit(OpCode::EQ),
-                        Op::Neq => self.emit(OpCode::NE),
-                        Op::Lt => self.emit(OpCode::LT),
-                        Op::Le => self.emit(OpCode::LE),
-                        Op::Gt => self.emit(OpCode::GT),
-                        Op::Ge => self.emit(OpCode::GE),
+                        Op::Eq => {
+                            if is_double { self.emit(OpCode::EQ_D); }
+                            else { self.emit(OpCode::EQ); }
+                        }
+                        Op::Neq => {
+                            if is_double { self.emit(OpCode::NE_D); }
+                            else { self.emit(OpCode::NE); }
+                        }
+                        Op::Lt => {
+                            if is_double { self.emit(OpCode::LT_D); }
+                            else { self.emit(OpCode::LT); }
+                        }
+                        Op::Le => {
+                            if is_double { self.emit(OpCode::LE_D); }
+                            else { self.emit(OpCode::LE); }
+                        }
+                        Op::Gt => {
+                            if is_double { self.emit(OpCode::GT_D); }
+                            else { self.emit(OpCode::GT); }
+                        }
+                        Op::Ge => {
+                            if is_double { self.emit(OpCode::GE_D); }
+                            else { self.emit(OpCode::GE); }
+                        }
                         Op::And => self.emit(OpCode::AND),
                         Op::Or => self.emit(OpCode::OR),
                         Op::Not => self.emit(OpCode::NOT),
@@ -3625,6 +3740,8 @@ impl Codegen {
                             self.last_expr_type = ObjectType::Double;
                         } else if is_float {
                             self.last_expr_type = ObjectType::Float;
+                        } else if is_u64 {
+                            self.last_expr_type = ObjectType::Uint;
                         } else {
                             // For integer types, check if operands are Uint/Byte/U8/I8
                             // by looking at the expression types
@@ -4426,14 +4543,23 @@ impl Codegen {
                 // - Type::Unknown: has implicit return value (body ends with non-void expression)
                 // - Other: explicit return type
                 if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
-                    if matches!(ret_ty, Type::Void) {
-                        self.last_expr_type = ObjectType::Void;
-                    }
+                    self.last_expr_type = match ret_ty {
+                        Type::Void => ObjectType::Void,
+                        Type::Float => ObjectType::Float,
+                        Type::Double => ObjectType::Double,
+                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                        Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                        Type::Byte => ObjectType::Byte,
+                        Type::Bool => ObjectType::Bool,
+                        Type::Int | Type::I64 => ObjectType::Int,
+                        _ => ObjectType::NestedObject,
+                    };
                 }
             }
             Expr::If(if_expr) => {
                 // If expression: each branch must leave a value on the stack
                 let mut jumps_to_end = Vec::new();
+                let mut body_is_two_slot = false;
 
                 for branch in &if_expr.branches {
                     // Compile condition
@@ -4450,6 +4576,24 @@ impl Codegen {
                     let body_block = Stmt::Block(branch.body.clone());
                     self.compile_stmt(&body_block)?;
 
+                    // Check if body left a 2-slot result by inspecting the last statement
+                    // (reassignment of u64/f64/double vars leaves 2 slots from reload)
+                    if let Some(last_stmt) = branch.body.stmts.last() {
+                        if let Stmt::Expr(expr) = last_stmt {
+                            if let Expr::Bina(lhs, op, _) = expr {
+                                if *op == Op::Asn {
+                                    if let Expr::Ident(name) = lhs.as_ref() {
+                                        if let Some(ty) = self.var_types.get(name.as_str()) {
+                                            if matches!(ty, Type::U64 | Type::I64 | Type::Double) {
+                                                body_is_two_slot = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Jump to end
                     self.emit(OpCode::JMP);
                     let jump_to_end = self.emit_placeholder_i16();
@@ -4465,11 +4609,17 @@ impl Codegen {
                     let else_block = Stmt::Block(else_body.clone());
                     self.compile_stmt(&else_block)?;
                 } else {
-                    // No else branch - push nil marker as default value
-                    // This ensures JMP to end has a valid target and if expression always has a value
-                    // Nil is represented as i32::MIN + 1 = -2147483647, which CREATE_ARRAY will filter out
-                    self.emit(OpCode::CONST_I32);
-                    self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
+                    // No else branch - push nil marker(s) to match body stack height
+                    if body_is_two_slot {
+                        // Body leaves 2 slots, push 2 nil markers
+                        self.emit(OpCode::CONST_I32);
+                        self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
+                        self.emit(OpCode::CONST_I32);
+                        self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
+                    } else {
+                        self.emit(OpCode::CONST_I32);
+                        self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
+                    }
                 }
 
                 // Patch all jumps to end
@@ -4478,10 +4628,10 @@ impl Codegen {
                 }
 
                 // Plan 118 Phase 7: If expression produces a value
-                // Set last_expr_type to indicate the result is not void
-                // For now, assume Int as a generic result type
-                // TODO: Proper type inference for if expressions
-                self.last_expr_type = ObjectType::Int;
+                self.last_expr_type = ObjectType::Int; // default
+                if body_is_two_slot {
+                    self.last_expr_type = ObjectType::Double; // 2-slot result
+                }
             }
             Expr::Closure(closure) => {
                 // Plan 071: Compile closure with captured environment
@@ -4514,19 +4664,23 @@ impl Codegen {
                 // Compile inner expression
                 self.compile_expr(expr)?;
                 // Emit appropriate cast opcode based on target type
-                let opcode = match target_type {
-                    Type::Int => OpCode::TYPE_CAST_I32,
-                    Type::Uint => OpCode::TYPE_CAST_U32,
-                    Type::I64 => OpCode::TYPE_CAST_I64,
-                    Type::U64 => OpCode::TYPE_CAST_U64,
-                    Type::Float | Type::Double => OpCode::TYPE_CAST_F64,
-                    Type::Ptr(_) => OpCode::TYPE_CAST_PTR,
+                match target_type {
+                    Type::Int => self.emit(OpCode::TYPE_CAST_I32),
+                    Type::Uint => self.emit(OpCode::TYPE_CAST_U32),
+                    Type::I64 => self.emit(OpCode::TYPE_CAST_I64),
+                    Type::U64 => self.emit(OpCode::TYPE_CAST_U64),
+                    Type::Float => self.emit(OpCode::TYPE_CAST_F64),
+                    Type::Double => {
+                        // i32 -> f32 -> f64 (2 slots)
+                        self.emit(OpCode::TYPE_CAST_F64);
+                        self.emit(OpCode::PROMOTE_F64);
+                    }
+                    Type::Ptr(_) => self.emit(OpCode::TYPE_CAST_PTR),
                     _ => {
                         // For unknown/unsupported types, just leave the value as-is
                         return Ok(());
                     }
                 };
-                self.emit(opcode);
                 self.last_expr_type = match target_type {
                     Type::Int | Type::I64 | Type::Ptr(_) => ObjectType::Int,
                     Type::Uint | Type::USize | Type::U64 => ObjectType::Uint,
@@ -4891,6 +5045,12 @@ impl Codegen {
     fn contains_double(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Double(_, _) => true,
+            Expr::Ident(name) => {
+                self.var_types
+                    .get(name.as_ref())
+                    .map(|t| matches!(t, Type::Double))
+                    .unwrap_or(false)
+            }
             Expr::Bina(lhs, _, rhs) => {
                 self.contains_double(lhs) || self.contains_double(rhs)
             }
@@ -4929,11 +5089,12 @@ impl Codegen {
     // Plan 117: Check if expression is an i64/u64 type that needs coercion to f64
     fn needs_double_coercion(&self, expr: &Expr) -> bool {
         match expr {
-            Expr::I64(_) | Expr::U64(_) => true,
+            Expr::I64(_) | Expr::U64(_) | Expr::Int(_) | Expr::I8(_) | Expr::U8(_) | Expr::Byte(_) | Expr::Uint(_) => true,
+            Expr::Float(_, _) => true, // f32 needs promotion to f64
             Expr::Ident(name) => {
                 self.var_types
                     .get(name.as_ref())
-                    .map(|t| matches!(t, Type::I64 | Type::U64))
+                    .map(|t| matches!(t, Type::I64 | Type::U64 | Type::Int | Type::Float | Type::Uint | Type::USize))
                     .unwrap_or(false)
             }
             _ => false,
@@ -4970,6 +5131,15 @@ impl Codegen {
                 Type::U64 | Type::I64 | Type::USize | Type::Uint),
             Expr::Ident(name) => self.var_types.get(name.as_ref())
                 .map(|t| matches!(t, Type::U64 | Type::I64)).unwrap_or(false),
+            Expr::Call(call) => {
+                if let Expr::Ident(fn_name) = call.name.as_ref() {
+                    self.fn_return_types.get(fn_name.as_ref())
+                        .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            }
             Expr::Bina(lhs, _, rhs) => self.contains_u64(lhs) || self.contains_u64(rhs),
             Expr::Unary(_, inner) => self.contains_u64(inner),
             _ => false,
@@ -4985,12 +5155,16 @@ impl Codegen {
             Expr::Float(_, _) => FStrPartType::Float32,
             // Double compiles to CONST_F64 (8 bytes, 2 slots)
             Expr::Double(_, _) => FStrPartType::Float64,
+            // u64/i64 literals compile to 2-slot values
+            Expr::U64(_) | Expr::I64(_) => FStrPartType::Uint64,
             Expr::Ident(name) => {
                 let name_str = name.to_string();
                 if let Some(ty) = self.var_types.get(&name_str) {
                     match ty {
                         Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => FStrPartType::String,
-                        Type::Float | Type::Double => FStrPartType::Float32,
+                        Type::Float => FStrPartType::Float32,
+                        Type::Double => FStrPartType::Float64,
+                        Type::U64 | Type::I64 | Type::Uint | Type::USize => FStrPartType::Uint64,
                         // All other locals are stored as i32 (1 slot)
                         _ => FStrPartType::Int,
                     }
@@ -4998,10 +5172,35 @@ impl Codegen {
                     FStrPartType::Int
                 }
             }
-            Expr::Bina(_, _, _) => {
-                // Check if binary result is a float operation
-                // For now, treat as int — binary float ops still push 4-byte f32 result
-                FStrPartType::Int
+            Expr::Bina(lhs, _, rhs) => {
+                // Check if binary result is a u64 or f64 operation (2 slots)
+                if self.is_u64_operation(lhs, rhs) {
+                    FStrPartType::Uint64
+                } else if self.is_double_operation(lhs, rhs) {
+                    FStrPartType::Float64
+                } else if self.is_float_operation(lhs, rhs) {
+                    FStrPartType::Float32
+                } else {
+                    FStrPartType::Int
+                }
+            }
+            Expr::Call(call) => {
+                // Check fn_return_types for the called function
+                if let Expr::Ident(fn_name) = call.name.as_ref() {
+                    if let Some(ret_ty) = self.fn_return_types.get(fn_name.as_ref()) {
+                        match ret_ty {
+                            Type::Double => FStrPartType::Float64,
+                            Type::U64 | Type::I64 | Type::USize | Type::Uint => FStrPartType::Uint64,
+                            Type::Float => FStrPartType::Float32,
+                            Type::Str(_) | Type::String => FStrPartType::String,
+                            _ => FStrPartType::Int,
+                        }
+                    } else {
+                        FStrPartType::Int
+                    }
+                } else {
+                    FStrPartType::Int
+                }
             }
             _ => FStrPartType::Int,
         }
@@ -5141,26 +5340,32 @@ impl Codegen {
 
     /// Add variable to current scope and return its index
     fn add_var(&mut self, name: &str) -> usize {
-        // Calculate total index across all scopes
-        let total_len: usize = self.scope_stack.iter().map(|s| s.len()).sum();
+        // Calculate next available slot offset (accounts for 2-slot variables)
+        let mut next_offset: usize = 0;
+        for scope in &self.scope_stack {
+            for (var_name, &existing_index) in scope {
+                let sc = if matches!(self.var_types.get(var_name), Some(Type::U64 | Type::I64 | Type::Double)) { 2 } else { 1 };
+                next_offset = next_offset.max(existing_index + sc);
+            }
+        }
 
         // Check if this variable is u64/i64 (occupies two slots)
-        let is_64bit = matches!(self.var_types.get(name), Some(Type::U64 | Type::I64));
+        let is_64bit = matches!(self.var_types.get(name), Some(Type::U64 | Type::I64 | Type::Double));
         let slot_count = if is_64bit { 2 } else { 1 };
 
         // Update max_locals to reflect the high-water mark of variables (including parameters)
-        self.max_locals = self.max_locals.max(total_len + slot_count);
+        self.max_locals = self.max_locals.max(next_offset + slot_count);
 
         let scope = self
             .scope_stack
             .last_mut()
             .expect("Scope stack should never be empty");
-        scope.insert(name.to_string(), total_len);
+        scope.insert(name.to_string(), next_offset);
         // Reserve the second slot for u64/i64 variables
         if is_64bit {
-            scope.insert(format!("__{}_high", name), total_len + 1);
+            scope.insert(format!("__{}_high", name), next_offset + 1);
         }
-        total_len
+        next_offset
     }
 
     /// Push a new scope (for function entry, blocks, etc.)
@@ -6510,9 +6715,12 @@ mod tests {
         codegen.compile_expr(&expr).unwrap();
 
         // Should use double precision when either operand is double
+        // Layout: CONST_F32(5) + PROMOTE_F64(1) + CONST_F64(9) + ADD_D(1) = 16 bytes
+        assert_eq!(codegen.code.len(), 16);
         assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
-        assert_eq!(codegen.code[5], OpCode::CONST_F64 as u8);
-        assert_eq!(codegen.code[14], OpCode::ADD_D as u8);
+        assert_eq!(codegen.code[5], OpCode::PROMOTE_F64 as u8);
+        assert_eq!(codegen.code[6], OpCode::CONST_F64 as u8);
+        assert_eq!(codegen.code[15], OpCode::ADD_D as u8);
     }
 
     #[test]

@@ -679,7 +679,6 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::CONST_F64 => {
-                    // Plan 073: Double precision constant
                     let val = self.flash.read_f64(task.ip);
                     task.ip += 8;
                     task.ram.push_f64(val);
@@ -991,7 +990,7 @@ impl AutoVM {
                     let part_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
 
-                    // Read type tags for each part: 0=i32, 1=string, 2=f64, 3=f32
+                    // Read type tags for each part: 0=i32, 1=string, 2=f64, 3=f32, 4=u64
                     let mut type_tags = Vec::with_capacity(part_count as usize);
                     for _ in 0..part_count {
                         type_tags.push(self.flash.read_u8(task.ip));
@@ -1005,17 +1004,18 @@ impl AutoVM {
                         let tag = type_tags[i];
                         let s = match tag {
                             2 => {
-                                // f64: pop 8 bytes
                                 let val = task.ram.pop_f64();
                                 format!("{}", val)
                             }
                             3 => {
-                                // f32: pop 4 bytes
                                 let val = task.ram.pop_f32();
                                 format!("{}", val)
                             }
+                            4 => {
+                                let val = task.ram.pop_u64();
+                                format!("{}", val)
+                            }
                             1 => {
-                                // String: tagged string index
                                 let bits = task.ram.pop_i32();
                                 if bits < 0 {
                                     let idx = (-bits - 1) as usize;
@@ -1029,7 +1029,6 @@ impl AutoVM {
                                 }
                             }
                             _ => {
-                                // i32: could be integer or tagged string index (negative)
                                 let bits = task.ram.pop_i32();
                                 if bits < 0 {
                                     let idx = (-bits - 1) as usize;
@@ -1117,34 +1116,25 @@ impl AutoVM {
                     task.last_result_type = ResultType::Uint;
                 }
                 OpCode::TYPE_CAST_I64 => {
-                    let v = if task.last_result_type == ResultType::Float {
-                        let f = task.ram.pop_f32();
-                        f as i32
-                    } else {
-                        task.ram.pop_i32()
-                    };
+                    let v = task.ram.pop_i32();
                     task.ram.push_i32(v);
                     task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_CAST_U64 => {
-                    let v = if task.last_result_type == ResultType::Float {
-                        let f = task.ram.pop_f32();
-                        f as i32
-                    } else {
-                        task.ram.pop_i32()
-                    };
+                    let v = task.ram.pop_i32();
                     // Zero-extend i32 to u64 (two slots: low, high)
                     task.ram.push_i32(v);   // low 32 bits
                     task.ram.push_i32(0);   // high 32 bits = 0
                 }
+                OpCode::PROMOTE_F64 => {
+                    // Widen f32 (4 bytes, 1 slot) to f64 (8 bytes, 2 slots)
+                    let val_f32 = task.ram.pop_f32();
+                    task.ram.push_f64(val_f32 as f64);
+                }
                 OpCode::TYPE_CAST_F64 => {
-                    let v = if task.last_result_type == ResultType::Float {
-                        task.ram.pop_f32()
-                    } else {
-                        let v = task.ram.pop_i32();
-                        v as f32
-                    };
-                    task.ram.push_f32(v);
+                    // Always pop i32 and push f32 (1 slot → 1 slot)
+                    let v = task.ram.pop_i32();
+                    task.ram.push_f32(v as f32);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::TYPE_CAST_PTR => {
@@ -2306,9 +2296,7 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::U64_TO_F64 => {
-                    // u64 values stored in locals are i32 (single slot).
-                    // Zero-extend i32 to u32, then convert to f64.
-                    let val = task.ram.pop_i32() as u32 as u64;
+                    let val = task.ram.pop_u64();
                     task.ram.push_f64(val as f64);
                     task.last_result_type = ResultType::Float;
                 }
@@ -2397,6 +2385,37 @@ impl AutoVM {
                     task.ip = ret_ip;
                     task.ram.sp = new_sp;
                     task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
+                }
+                // RET_D: Return with 2-slot value (f64, u64, i64)
+                OpCode::RET_D => {
+                    let n_args = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    if task.bp == 0 {
+                        return Ok(TaskStatus::Terminated);
+                    }
+
+                    // Pop 2 slots: high (top) then low
+                    let result_high = task.ram.pop_i32();
+                    let result_low = task.ram.pop_i32();
+
+                    let old_bp = task.ram.read_i32(task.bp) as usize;
+                    let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
+
+                    task.current_closure_id = task.saved_closure_id;
+
+                    let new_sp = task.bp - n_args;
+
+                    // Restore frame, then write 2-slot result.
+                    // Must write at new_sp-1/new_sp (replacing ret_addr/old_bp slots)
+                    // rather than pushing after new_sp, to avoid leaving ret_addr on stack.
+                    // This mirrors how 1-slot RET writes at new_sp-1.
+                    task.ram.write_i32(new_sp - 1, result_low);
+                    task.ram.write_i32(new_sp, result_high);
+
+                    task.bp = old_bp;
+                    task.ip = ret_ip;
+                    task.ram.sp = new_sp + 1;
                 }
 
                 // === Closures (Plan 071: Direct Capture) ===
@@ -2997,14 +3016,11 @@ impl AutoVM {
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
-                    // Load from bp+1 (first local variable)
                     let addr = task.bp + 1;
-                    vm_debug!("DEBUG LOAD_LOC_0: bp={}, addr={}, sp={}", task.bp, addr, task.ram.sp);
                     let val = task.ram.read_i32(addr);
                     task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_1 => {
-                    // Load from bp+2 (second local variable)
                     let val = task.ram.read_i32(task.bp + 2);
                     task.ram.push_i32(val);
                 }
@@ -3014,12 +3030,10 @@ impl AutoVM {
                     task.ram.push_i32(val);
                 }
                 OpCode::STORE_LOC_0 => {
-                    // Store to bp+1 (first local variable)
                     let val = task.ram.pop_i32();
                     task.ram.write_i32(task.bp + 1, val);
                 }
                 OpCode::STORE_LOC_1 => {
-                    // Store to bp+2 (second local variable)
                     let val = task.ram.pop_i32();
                     task.ram.write_i32(task.bp + 2, val);
                 }
@@ -3104,6 +3118,38 @@ impl AutoVM {
                     let a = task.ram.pop_i32();
                     task.ram
                         .push_i32(if a >= b { -2147483648 } else { -2147483647 });
+                }
+
+                // f64 comparison opcodes (each pops 2+2 slots, pushes 1 bool)
+                OpCode::EQ_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_i32(if a == b { -2147483648 } else { -2147483647 });
+                }
+                OpCode::NE_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_i32(if a != b { -2147483648 } else { -2147483647 });
+                }
+                OpCode::LT_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_i32(if a < b { -2147483648 } else { -2147483647 });
+                }
+                OpCode::GT_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_i32(if a > b { -2147483648 } else { -2147483647 });
+                }
+                OpCode::LE_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_i32(if a <= b { -2147483648 } else { -2147483647 });
+                }
+                OpCode::GE_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_i32(if a >= b { -2147483648 } else { -2147483647 });
                 }
 
                 // === Logical ===

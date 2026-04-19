@@ -35,6 +35,9 @@ pub enum OpCode {
     ARRAY_LEN = 0x48,      // Plan 089: Get array length (array_id) -> length
     MOD_F = 0x49,          // f32 % f32 -> f32
     MOD_D = 0x4A,          // f64 % f64 -> f64
+    PROMOTE_F64 = 0xF1, // Plan 073: Widen f32 to f64 (1 slot -> 2 slots)
+    RET_D = 0xF2,       // RET for 2-slot return values (f64, u64, i64): pops 2 slots, writes 2 slots
+
     CREATE_RANGE = 0x75,  // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
     CREATE_RANGE_EQ = 0x76, // Plan 073: Create inclusive range (0..=10) from (start, end) -> range_value
     BUILD_FSTR = 0x77,    // Plan 073: Build f-string from part_count -> string
@@ -126,6 +129,14 @@ pub enum OpCode {
     GT = 0x53,
     LE = 0x54,
     GE = 0x55,
+
+    // f64 comparison (each pops 2+2 slots, pushes 1 bool)
+    EQ_D = 0x56,
+    NE_D = 0x57,
+    LT_D = 0x58,
+    GT_D = 0x59,
+    LE_D = 0x5A,
+    GE_D = 0x5B,
 
     // === Control Flow ===
     JMP = 0x60,
