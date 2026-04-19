@@ -8365,7 +8365,20 @@ impl<'a> Parser<'a> {
         };
 
         // Plan 056: Use Expr::Dot for semantic clarity
+        let mut broke_for_cast = false;
         while self.is_kind(TokenKind::Dot) {
+            // Plan 162: Don't consume .as(Type) / .to(Type) — delegate to Pratt parser
+            let next_is_as_or_to = if let Ok(tok) = self.lexer.next() {
+                let is_special = matches!(tok.kind, TokenKind::As | TokenKind::To);
+                self.lexer.push_token(tok);
+                is_special
+            } else {
+                false
+            };
+            if next_is_as_or_to {
+                broke_for_cast = true;
+                break;
+            }
             self.next(); // skip dot
                          // Allow @, * as special field names for pointer operations
                          // Allow numeric literals for integer-keyed objects: a.1, a.2
@@ -8404,6 +8417,12 @@ impl<'a> Parser<'a> {
                 .into());
             };
             ident = Expr::Dot(Box::new(ident), field_name);
+        }
+
+        // Plan 162: If we broke the dot loop for .as/.to, delegate to Pratt parser
+        // so it can handle the type cast/conversion properly
+        if broke_for_cast {
+            return self.expr_pratt_with_left(ident, 0);
         }
 
         let is_constructor = match &ident {

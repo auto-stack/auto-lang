@@ -4324,6 +4324,15 @@ impl Codegen {
                     }
                 };
                 self.emit(opcode);
+                self.last_expr_type = match target_type {
+                    Type::Int | Type::I64 | Type::Ptr(_) => ObjectType::Int,
+                    Type::Uint | Type::USize | Type::U64 => ObjectType::Uint,
+                    Type::Float => ObjectType::Float,
+                    Type::Double => ObjectType::Double,
+                    Type::Byte => ObjectType::Byte,
+                    Type::Bool => ObjectType::Bool,
+                    _ => ObjectType::Int,
+                };
             }
             // Plan 162: Explicit type conversion: expr.to(Type)
             Expr::To { expr, target_type } => {
@@ -4344,6 +4353,13 @@ impl Codegen {
                     }
                 };
                 self.emit(opcode);
+                self.last_expr_type = match target_type {
+                    Type::Str(_) | Type::String | Type::StrSlice => ObjectType::String,
+                    Type::Int | Type::I64 => ObjectType::Int,
+                    Type::Float | Type::Double => ObjectType::Float,
+                    Type::Uint | Type::USize | Type::U64 => ObjectType::Uint,
+                    _ => ObjectType::Int,
+                };
             }
             // Plan 120: Option type constructor - Some(value)
             Expr::Some(inner) => {

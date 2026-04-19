@@ -109,6 +109,34 @@ impl PythonTrans {
                 out.write(b"}").to()
             }
 
+            // Type cast / conversion
+            Expr::Cast { expr, target_type } | Expr::To { expr, target_type } => {
+                match target_type {
+                    Type::Int | Type::Uint | Type::USize
+                    | Type::I64 | Type::U64 | Type::Byte => {
+                        write!(out, "int(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                    Type::Float | Type::Double => {
+                        write!(out, "float(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                    Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => {
+                        write!(out, "str(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                    _ => {
+                        out.write(b"(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                }
+                Ok(())
+            }
+
             // Unsupported - return error for now
             _ => Err(format!("Python Transpiler: unsupported expression: {:?}", expr).into()),
         }

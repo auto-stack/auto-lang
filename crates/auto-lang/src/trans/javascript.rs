@@ -81,6 +81,30 @@ impl JavaScriptTrans {
                 Ok(())
             }
 
+            // Type cast / conversion
+            Expr::Cast { expr, target_type } | Expr::To { expr, target_type } => {
+                match target_type {
+                    Type::Int | Type::Uint | Type::USize
+                    | Type::I64 | Type::U64 | Type::Byte
+                    | Type::Float | Type::Double => {
+                        write!(out, "Number(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                    Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => {
+                        write!(out, "String(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                    _ => {
+                        out.write(b"(")?;
+                        self.expr(expr, out)?;
+                        out.write(b")")?;
+                    }
+                }
+                Ok(())
+            }
+
             // Unsupported expressions
             _ => Err(format!("JavaScript Transpiler: unsupported expression: {}", expr).into()),
         }

@@ -101,6 +101,10 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_04_control_flow_007_asn_upper() { test_vm("04_control_flow/007_asn_upper").unwrap(); }
 #[test] fn test_04_control_flow_008_is_or_pattern() { test_vm("04_control_flow/008_is_or_pattern").unwrap(); }
 #[test] fn test_04_control_flow_009_is_or_groups() { test_vm("04_control_flow/009_is_or_groups").unwrap(); }
+#[test] fn test_04_control_flow_010_as_int_to_float() { test_vm("04_control_flow/010_as_int_to_float").unwrap(); }
+#[test] fn test_04_control_flow_011_as_float_to_int() { test_vm("04_control_flow/011_as_float_to_int").unwrap(); }
+#[test] fn test_04_control_flow_012_to_str() { test_vm("04_control_flow/012_to_str").unwrap(); }
+#[test] fn test_04_control_flow_013_to_int_from_str() { test_vm("04_control_flow/013_to_int_from_str").unwrap(); }
 
 // === 05_loops ===
 #[test] fn test_05_loops_001_for_range() { test_vm("05_loops/001_for_range").unwrap(); }

@@ -12,7 +12,7 @@ pub enum TaskStatus {
 }
 
 /// Plan 118: Track result type for proper output formatting
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResultType {
     #[default]
     Int,

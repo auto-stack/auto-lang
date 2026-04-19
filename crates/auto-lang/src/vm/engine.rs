@@ -1063,45 +1063,102 @@ impl AutoVM {
                 }
                 // Plan 162: Type cast opcodes — runtime type conversion
                 OpCode::TYPE_CAST_I32 => {
-                    let v = task.ram.pop_i32();
+                    let v = if task.last_result_type == ResultType::Float {
+                        let f = task.ram.pop_f32();
+                        f as i32
+                    } else {
+                        task.ram.pop_i32()
+                    };
                     task.ram.push_i32(v);
+                    task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_CAST_U32 => {
-                    let v = task.ram.pop_i32();
-                    task.ram.push_i32(v); // u32 has same bit width as i32
+                    let v = if task.last_result_type == ResultType::Float {
+                        let f = task.ram.pop_f32();
+                        f as u32 as i32
+                    } else {
+                        let v = task.ram.pop_i32();
+                        v as u32 as i32
+                    };
+                    task.ram.push_i32(v);
+                    task.last_result_type = ResultType::Uint;
                 }
                 OpCode::TYPE_CAST_I64 => {
-                    let v = task.ram.pop_i32();
-                    task.ram.push_i32(v); // TODO: i64 support needs wider stack
+                    let v = if task.last_result_type == ResultType::Float {
+                        let f = task.ram.pop_f32();
+                        f as i32
+                    } else {
+                        task.ram.pop_i32()
+                    };
+                    task.ram.push_i32(v);
+                    task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_CAST_U64 => {
-                    let v = task.ram.pop_i32();
-                    task.ram.push_i32(v); // TODO: u64 support needs wider stack
+                    let v = if task.last_result_type == ResultType::Float {
+                        let f = task.ram.pop_f32();
+                        f as i32
+                    } else {
+                        task.ram.pop_i32()
+                    };
+                    task.ram.push_i32(v);
+                    task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_CAST_F64 => {
-                    // int -> float conversion
-                    let v = task.ram.pop_i32();
-                    task.ram.push_i32(v); // TODO: proper float stack support
+                    let v = if task.last_result_type == ResultType::Float {
+                        task.ram.pop_f32()
+                    } else {
+                        let v = task.ram.pop_i32();
+                        v as f32
+                    };
+                    task.ram.push_f32(v);
+                    task.last_result_type = ResultType::Float;
                 }
                 OpCode::TYPE_CAST_PTR => {
-                    // Pointer cast — no-op at runtime
+                    // Pointer cast — no-op at runtime (same bits)
                 }
                 // Plan 162: Explicit type conversion (.to) opcodes
                 OpCode::TYPE_TO_STR => {
-                    // Convert value to string — reuse existing TO_STR logic
                     let value_bits = task.ram.pop_i32();
-                    // For now, just push the value back (TODO: proper string conversion)
-                    task.ram.push_i32(value_bits);
+                    if value_bits < 0 {
+                        task.ram.push_i32(value_bits);
+                    } else {
+                        let string_value = format!("{}", value_bits);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        task.ram.push_i32(-(str_idx as i32) - 1);
+                    }
                 }
                 OpCode::TYPE_TO_I32 => {
-                    // Convert value to i32 (parse string or truncate)
                     let v = task.ram.pop_i32();
-                    task.ram.push_i32(v); // TODO: parse from string when string stack is supported
+                    if v < 0 {
+                        let str_idx = ((-v) - 1) as usize;
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(str_idx)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
+                            .unwrap_or(0);
+                        drop(strings);
+                        task.ram.push_i32(parsed);
+                    } else {
+                        task.ram.push_i32(v);
+                    }
+                    task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_TO_F64 => {
-                    // Convert value to f64
                     let v = task.ram.pop_i32();
-                    task.ram.push_i32(v); // TODO: proper float conversion
+                    if v < 0 {
+                        let str_idx = ((-v) - 1) as usize;
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(str_idx)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
+                            .unwrap_or(0.0);
+                        drop(strings);
+                        task.ram.push_f32(parsed);
+                    } else {
+                        task.ram.push_f32(v as f32);
+                    }
+                    task.last_result_type = ResultType::Float;
                 }
                 // Plan 075: Convert any value to string
                 OpCode::TO_STR => {
