@@ -1739,7 +1739,7 @@ impl Codegen {
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start as i16 - current_pos);
+                        self.emit_i16(loop_start as i16 - current_pos - 2);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -1769,7 +1769,7 @@ impl Codegen {
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start as i16 - current_pos);
+                        self.emit_i16(loop_start as i16 - current_pos - 2);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -1839,7 +1839,7 @@ impl Codegen {
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start - current_pos);
+                        self.emit_i16(loop_start - current_pos - 2);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
