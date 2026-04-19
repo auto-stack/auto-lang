@@ -62,6 +62,14 @@ pub struct ParamInfo {
     pub mode: ParamMode,
 }
 
+/// Type hint for f-string parts
+enum FStrPartType {
+    Int,     // i32 on stack (4 bytes)
+    String,  // tagged string index (4 bytes)
+    Float32, // f32 on stack (4 bytes)
+    Float64, // f64 on stack (8 bytes)
+}
+
 /// Codegen: Compiles AST directly to AutoVM Bytecode
 pub struct Codegen {
     pub code: Vec<u8>,
@@ -2440,15 +2448,29 @@ impl Codegen {
             }
             // Plan 073: F-string support (f"hello $name")
             Expr::FStr(fstr) => {
+                // Determine type tag for each part: 0=i32, 1=string, 2=f64, 3=f32
+                let type_tags: Vec<u8> = fstr.parts.iter().map(|part| {
+                    match self.expr_type_hint(part) {
+                        FStrPartType::Int => 0,
+                        FStrPartType::String => 1,
+                        FStrPartType::Float64 => 2,
+                        FStrPartType::Float32 => 3,
+                    }
+                }).collect();
+
                 // Compile each part expression (pushes values onto stack)
                 for part in &fstr.parts {
                     self.compile_expr(part)?;
                 }
 
-                // Emit BUILD_FSTR with part count
+                // Emit BUILD_FSTR with part count and type tags
                 let part_count = fstr.parts.len() as u8;
                 self.emit(OpCode::BUILD_FSTR);
                 self.code.push(part_count);
+                for &tag in &type_tags {
+                    self.code.push(tag);
+                }
+                self.last_expr_type = ObjectType::String;
             }
             // Plan 073: Node support (for type instances like Point(10, 20))
             Expr::Node(node) => {
@@ -3426,14 +3448,28 @@ impl Codegen {
                     if is_float && !is_double && self.needs_float_coercion(lhs) {
                         self.emit(OpCode::I32_TO_F32);
                     } else if is_double && self.needs_double_coercion(lhs) {
-                        self.emit(OpCode::I64_TO_F64);
+                        if self.is_u64_expr(lhs) {
+                            self.emit(OpCode::U64_TO_F64);
+                        } else {
+                            self.emit(OpCode::I64_TO_F64);
+                        }
+                    } else if is_float && !is_double && self.needs_double_coercion(lhs) {
+                        // u64/i64 stored as i32 in locals — convert i32 to f32 for f32 arithmetic
+                        self.emit(OpCode::I32_TO_F32);
                     }
 
                     self.compile_expr(rhs)?;
                     if is_float && !is_double && self.needs_float_coercion(rhs) {
                         self.emit(OpCode::I32_TO_F32);
                     } else if is_double && self.needs_double_coercion(rhs) {
-                        self.emit(OpCode::I64_TO_F64);
+                        if self.is_u64_expr(rhs) {
+                            self.emit(OpCode::U64_TO_F64);
+                        } else {
+                            self.emit(OpCode::I64_TO_F64);
+                        }
+                    } else if is_float && !is_double && self.needs_double_coercion(rhs) {
+                        // u64/i64 stored as i32 in locals — convert i32 to f32 for f32 arithmetic
+                        self.emit(OpCode::I32_TO_F32);
                     }
 
                     // For arithmetic operations, use float/double opcodes if operands are floats
@@ -4723,16 +4759,21 @@ impl Codegen {
         self.contains_float(lhs) || self.contains_float(rhs)
     }
 
-    // Plan 117: Recursively check if expression contains float/double literals
+    // Plan 117: Recursively check if expression contains float/double literals or variables
     fn contains_float(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Float(_, _) | Expr::Double(_, _) => true,
+            Expr::Ident(name) => {
+                self.var_types
+                    .get(name.as_ref())
+                    .map(|t| matches!(t, Type::Float | Type::Double))
+                    .unwrap_or(false)
+            }
             Expr::Bina(lhs, _, rhs) => {
                 self.contains_float(lhs) || self.contains_float(rhs)
             }
             Expr::Unary(_, inner) => self.contains_float(inner),
             Expr::Block(body) => {
-                // Check if any statement in the block contains float
                 body.stmts.iter().any(|s| self.stmt_contains_float(s))
             }
             _ => false,
@@ -4750,7 +4791,6 @@ impl Codegen {
 
     // Plan 073 Stage A.5: Check if we should use double precision (f64) vs float (f32)
     fn is_double_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
-        // If either operand is double or contains one recursively, use double precision
         self.contains_double(lhs) || self.contains_double(rhs)
     }
 
@@ -4763,7 +4803,6 @@ impl Codegen {
             }
             Expr::Unary(_, inner) => self.contains_double(inner),
             Expr::Block(body) => {
-                // Check if any statement in the block contains double
                 body.stmts.iter().any(|s| self.stmt_contains_double(s))
             }
             _ => false,
@@ -4794,16 +4833,29 @@ impl Codegen {
         }
     }
 
-    // Plan 117: Check if expression is an i64 type that needs coercion to f64
+    // Plan 117: Check if expression is an i64/u64 type that needs coercion to f64
     fn needs_double_coercion(&self, expr: &Expr) -> bool {
         match expr {
-            Expr::I64(_) => true,
+            Expr::I64(_) | Expr::U64(_) => true,
             Expr::Ident(name) => {
                 self.var_types
                     .get(name.as_ref())
-                    .map(|t| matches!(t, Type::I64))
+                    .map(|t| matches!(t, Type::I64 | Type::U64))
                     .unwrap_or(false)
             }
+            _ => false,
+        }
+    }
+
+    // Check if expression is specifically u64 (vs i64) for choosing the right coercion opcode
+    fn is_u64_expr(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::U64(_) => true,
+            Expr::Ident(name) => self
+                .var_types
+                .get(name.as_ref())
+                .map(|t| matches!(t, Type::U64))
+                .unwrap_or(false),
             _ => false,
         }
     }
@@ -4812,6 +4864,37 @@ impl Codegen {
     // Used to emit STR_CAT instead of ADD for string concatenation
     fn is_string_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
         self.is_string_expr(lhs) || self.is_string_expr(rhs)
+    }
+
+    // Type hint for f-string parts to guide BUILD_FSTR value popping
+    // Reflects the ACTUAL stack representation, not the logical type
+    fn expr_type_hint(&self, expr: &Expr) -> FStrPartType {
+        match expr {
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => FStrPartType::String,
+            // Float compiles to CONST_F32 (4 bytes, 1 slot)
+            Expr::Float(_, _) => FStrPartType::Float32,
+            // Double compiles to CONST_F64 (8 bytes, 2 slots)
+            Expr::Double(_, _) => FStrPartType::Float64,
+            Expr::Ident(name) => {
+                let name_str = name.to_string();
+                if let Some(ty) = self.var_types.get(&name_str) {
+                    match ty {
+                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => FStrPartType::String,
+                        Type::Float | Type::Double => FStrPartType::Float32,
+                        // All other locals are stored as i32 (1 slot)
+                        _ => FStrPartType::Int,
+                    }
+                } else {
+                    FStrPartType::Int
+                }
+            }
+            Expr::Bina(_, _, _) => {
+                // Check if binary result is a float operation
+                // For now, treat as int — binary float ops still push 4-byte f32 result
+                FStrPartType::Int
+            }
+            _ => FStrPartType::Int,
+        }
     }
 
     fn is_string_expr(&self, expr: &Expr) -> bool {

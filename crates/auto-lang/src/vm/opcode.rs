@@ -101,6 +101,7 @@ pub enum OpCode {
     // Plan 117: Type coercion for mixed arithmetic
     I32_TO_F32 = 0x46,  // Convert i32 to f32
     I64_TO_F64 = 0x47,  // Convert i64 to f64
+    U64_TO_F64 = 0x4B,  // Convert u64 to f64 (unsigned, avoids sign extension)
 
     AND = 0x40,
     OR = 0x41,

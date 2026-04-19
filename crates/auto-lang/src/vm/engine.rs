@@ -991,23 +991,57 @@ impl AutoVM {
                     let part_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
 
+                    // Read type tags for each part: 0=i32, 1=string, 2=f64, 3=f32
+                    let mut type_tags = Vec::with_capacity(part_count as usize);
+                    for _ in 0..part_count {
+                        type_tags.push(self.flash.read_u8(task.ip));
+                        task.ip += 1;
+                    }
+
                     // Pop parts from stack (in reverse order)
                     let mut parts = Vec::with_capacity(part_count as usize);
                     let strings = self.strings.read().unwrap();
-                    for _i in 0..part_count {
-                        let bits = task.ram.pop_i32();
-
-                        // Negative values are tagged string indices: actual index = -(bits+1)
-                        // Non-negative values are integers/booleans: convert to string
-                        let s = if bits < 0 {
-                            let idx = (-bits - 1) as usize;
-                            if idx < strings.len() {
-                                String::from_utf8_lossy(&strings[idx]).to_string()
-                            } else {
-                                format!("<invalid_str_idx:{}>", idx)
+                    for i in (0..part_count as usize).rev() {
+                        let tag = type_tags[i];
+                        let s = match tag {
+                            2 => {
+                                // f64: pop 8 bytes
+                                let val = task.ram.pop_f64();
+                                format!("{}", val)
                             }
-                        } else {
-                            bits.to_string()
+                            3 => {
+                                // f32: pop 4 bytes
+                                let val = task.ram.pop_f32();
+                                format!("{}", val)
+                            }
+                            1 => {
+                                // String: tagged string index
+                                let bits = task.ram.pop_i32();
+                                if bits < 0 {
+                                    let idx = (-bits - 1) as usize;
+                                    if idx < strings.len() {
+                                        String::from_utf8_lossy(&strings[idx]).to_string()
+                                    } else {
+                                        format!("<invalid_str_idx:{}>", idx)
+                                    }
+                                } else {
+                                    bits.to_string()
+                                }
+                            }
+                            _ => {
+                                // i32: could be integer or tagged string index (negative)
+                                let bits = task.ram.pop_i32();
+                                if bits < 0 {
+                                    let idx = (-bits - 1) as usize;
+                                    if idx < strings.len() {
+                                        String::from_utf8_lossy(&strings[idx]).to_string()
+                                    } else {
+                                        format!("<invalid_str_idx:{}>", idx)
+                                    }
+                                } else {
+                                    bits.to_string()
+                                }
+                            }
                         };
                         parts.push(s);
                     }
@@ -1025,7 +1059,6 @@ impl AutoVM {
 
                     task.ram.push_i32(-(result_idx as i32) - 1);
                 }
-                // Plan 073: May<T> null coalesce operator: left ?? right
                 OpCode::NULL_COALESCE => {
                     // Pop right expression (default value)
                     let default_bits = task.ram.pop_i32();
@@ -2236,7 +2269,14 @@ impl AutoVM {
                 OpCode::I64_TO_F64 => {
                     let val = task.ram.pop_i64();
                     task.ram.push_f64(val as f64);
-                    task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+                    task.last_result_type = ResultType::Float;
+                }
+                OpCode::U64_TO_F64 => {
+                    // u64 values stored in locals are i32 (single slot).
+                    // Zero-extend i32 to u32, then convert to f64.
+                    let val = task.ram.pop_i32() as u32 as u64;
+                    task.ram.push_f64(val as f64);
+                    task.last_result_type = ResultType::Float;
                 }
 
                 OpCode::NOT => {
