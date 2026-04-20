@@ -716,7 +716,9 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let cond = task.ram.pop_i32();
-    if cond == 0 {
+    // Plan 091: Boolean false = i32::MIN + 1 (-2147483647)
+    // Also treat 0 as false for backward compatibility
+    if cond == 0 || cond == -2147483647 {
         return Err(VMError::RuntimeError("Assertion failed".to_string()));
     }
     Ok(())

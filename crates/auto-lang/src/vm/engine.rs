@@ -362,6 +362,91 @@ impl AutoVM {
         ram.pop_f64()
     }
 
+    /// Plan 197 Task 7: Structural equality for heap objects (struct instances)
+    ///
+    /// Compares two heap objects by their structural content rather than by ID.
+    /// Both operands are expected to be >= 4000000 (heap object IDs).
+    fn struct_eq(&self, a: i32, b: i32) -> bool {
+        use crate::vm::generic_registry::GenericInstanceData;
+        use crate::vm::heap_object::TypeTag;
+
+        let id_a = a as u64;
+        let id_b = b as u64;
+
+        // Quick pointer equality check
+        if id_a == id_b {
+            return true;
+        }
+
+        // Look up both instances
+        let obj_a = match self.get_heap_object(id_a) {
+            Some(obj) => obj,
+            None => return false,
+        };
+        let obj_b = match self.get_heap_object(id_b) {
+            Some(obj) => obj,
+            None => return false,
+        };
+
+        let guard_a = obj_a.read().unwrap();
+        let guard_b = obj_b.read().unwrap();
+
+        // Check both are GenericInstance
+        if !matches!(guard_a.type_tag(), TypeTag::GenericInstance(_)) {
+            return false;
+        }
+        if !matches!(guard_b.type_tag(), TypeTag::GenericInstance(_)) {
+            return false;
+        }
+
+        let inst_a = match guard_a.as_any().downcast_ref::<GenericInstanceData>() {
+            Some(inst) => inst,
+            None => return false,
+        };
+        let inst_b = match guard_b.as_any().downcast_ref::<GenericInstanceData>() {
+            Some(inst) => inst,
+            None => return false,
+        };
+
+        // Different types are never equal
+        if inst_a.mono_name != inst_b.mono_name {
+            return false;
+        }
+
+        // Must have same number of fields
+        if inst_a.fields.len() != inst_b.fields.len() {
+            return false;
+        }
+
+        // Compare each field pairwise
+        for (fa, fb) in inst_a.fields.iter().zip(inst_b.fields.iter()) {
+            if !self.values_equal(fa, fb) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Compare two Value instances for structural equality
+    fn values_equal(&self, a: &Value, b: &Value) -> bool {
+        match (a, b) {
+            (Value::Int(x), Value::Int(y)) => x == y,
+            (Value::Uint(x), Value::Uint(y)) => x == y,
+            (Value::Bool(x), Value::Bool(y)) => x == y,
+            (Value::Float(x), Value::Float(y)) => x.to_bits() == y.to_bits(),
+            (Value::Double(x), Value::Double(y)) => x.to_bits() == y.to_bits(),
+            (Value::Char(x), Value::Char(y)) => x == y,
+            (Value::Nil, Value::Nil) => true,
+            (Value::Str(x), Value::Str(y)) => x.as_bytes() == y.as_bytes(),
+            (Value::VmRef(ref_a), Value::VmRef(ref_b)) => {
+                // Nested heap object — recursive structural equality
+                self.struct_eq(ref_a.id as i32, ref_b.id as i32)
+            }
+            _ => false,
+        }
+    }
+
     /// Pop a string value from the stack (returns string index)
     #[allow(dead_code)]
     fn pop_value_as_string_index(ram: &mut VirtualRAM) -> i32 {
@@ -3153,8 +3238,12 @@ impl AutoVM {
                     // Plan 091: Use special values for boolean results
                     // i32::MIN = true, i32::MIN+1 = false
                     // Plan 197 Task 2: Content-aware string comparison
+                    // Plan 197 Task 7: Structural equality for heap objects
                     let result = if a == b {
                         true
+                    } else if a >= 4000000 && b >= 4000000 {
+                        // Heap objects — structural equality
+                        self.struct_eq(a, b)
                     } else if a < 0 && b < 0 {
                         // Both are tagged strings — compare content
                         let strings = self.strings.read().unwrap();
@@ -3174,8 +3263,12 @@ impl AutoVM {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     // Plan 197 Task 2: Content-aware string comparison
+                    // Plan 197 Task 7: Structural equality for heap objects
                     let result = if a == b {
                         false
+                    } else if a >= 4000000 && b >= 4000000 {
+                        // Heap objects — structural inequality
+                        !self.struct_eq(a, b)
                     } else if a < 0 && b < 0 {
                         // Both are tagged strings — compare content
                         let strings = self.strings.read().unwrap();
