@@ -1,0 +1,12 @@
+type Foo { kind int, name str }
+
+fn get_kind(event Foo) int {
+    return event.kind
+}
+
+fn main() {
+    let m = Foo { kind: 42, name: "test" }
+    let k = get_kind(m)
+    assert_eq(k, 42)
+    print("struct_param: passed")
+}

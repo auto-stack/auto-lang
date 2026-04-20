@@ -5805,24 +5805,17 @@ impl Codegen {
                         match param_mode {
                             ParamMode::View => {
                                 // View mode: immutable reference
-                                if param_ty.is_optimized_by_value() {
-                                    // Small object: optimize to value passing (LOAD_LOC)
-                                    self.emit_load_loc(var_index);
-                                } else {
-                                    // Large object: reference passing (LOAD_REF)
-                                    self.emit_load_ref(var_index);
-                                }
+                                // TODO: Once LOAD_REF/STORE_REF are fully supported on the callee side,
+                                // restore the reference passing optimization for large objects.
+                                // Currently all parameters are passed by value (the instance ID / heap object ID).
+                                self.emit_load_loc(var_index);
                             }
                             ParamMode::Mut => {
                                 // Mut mode: mutable reference
-                                if param_ty.is_optimized_by_value() {
-                                    // Small object + Mut: value passing (LOAD_LOC)
-                                    // Note: Mut semantic not enforced for small types (they're copies anyway)
-                                    self.emit_load_loc(var_index);
-                                } else {
-                                    // Large object + Mut: mutable reference (LOAD_MUT_REF)
-                                    self.emit_load_mut_ref(var_index);
-                                }
+                                // TODO: Once LOAD_MUT_REF is fully supported on the callee side,
+                                // restore the reference passing optimization for large objects.
+                                // Currently all parameters are passed by value (the instance ID / heap object ID).
+                                self.emit_load_loc(var_index);
                             }
                             ParamMode::Copy => {
                                 // Copy mode: explicit value passing
