@@ -1,0 +1,3 @@
+let text = "hello"
+let n = text.len
+print(n)

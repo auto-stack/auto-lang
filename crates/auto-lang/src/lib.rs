@@ -344,7 +344,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     for stmt in &type_decls {
         codegen.compile_stmt(stmt)?;
     }
-    
+
     // Then, compile other statements with proper local variable setup
     if !other_stmts.is_empty() {
         if is_vm_debug() {

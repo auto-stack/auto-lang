@@ -3497,6 +3497,43 @@ impl Codegen {
                         }
                     }
                 } else {
+                    // Check if this is a built-in type method access (e.g., text.len, arr.len)
+                    // Compiled as zero-arg native calls instead of GET_FIELD
+                    let builtin_native_id = if let Expr::Ident(var_name) = obj.as_ref() {
+                        if let Some(type_name) = self.infer_type_from_var(var_name.as_ref()) {
+                            let native_name = format!("{}.{}", type_name, field);
+                            BIGVM_NATIVES.lock().unwrap().get_id(&native_name)
+                        } else {
+                            None
+                        }
+                    } else {
+                        let inferred_type = self.infer_object_type(obj.as_ref());
+                        let type_name = match inferred_type {
+                            ObjectType::String => "str",
+                            ObjectType::Array => "List",
+                            ObjectType::Int => "int",
+                            ObjectType::Float | ObjectType::Double => "float",
+                            ObjectType::Bool => "bool",
+                            ObjectType::Char => "char",
+                            _ => "",
+                        };
+                        if type_name.is_empty() {
+                            None
+                        } else {
+                            let native_name = format!("{}.{}", type_name, field);
+                            BIGVM_NATIVES.lock().unwrap().get_id(&native_name)
+                        }
+                    };
+
+                    if let Some(native_id) = builtin_native_id {
+                        // Compile object expression, then call the native method with zero args
+                        self.compile_expr(obj)?;
+                        self.emit(OpCode::CALL_NAT);
+                        self.emit_u16(native_id);
+                        self.last_expr_type = ObjectType::Int;
+                        return Ok(());
+                    }
+
                     // Regular field access (Plan 073)
                     // Or nested field access on user type (Plan 118 Phase 7)
                     // Compile object expression (should push object_id onto stack)

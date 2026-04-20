@@ -506,7 +506,9 @@ pub fn register_builtin_natives() {
 
     // String function aliases (codegen infer_type_from_var returns lowercase "str")
     // These also carry return type info for codegen type inference
-    registry.register_with_id_and_type("str.len", 1500, NativeRetType::Int);
+    // NOTE: Use IDs from native.rs (170+), NOT FFI IDs (1500+), because FFI shims
+    // are not registered in native_interface. Only override if not already registered.
+    registry.register_with_id_and_type("str.len", 170, NativeRetType::Int);
     registry.register_with_id_and_type("str.is_empty", 1501, NativeRetType::Bool);
     registry.register_with_id_and_type("str.char_at", 1502, NativeRetType::String);
     registry.register_with_id_and_type("str.substr", 1503, NativeRetType::String);
