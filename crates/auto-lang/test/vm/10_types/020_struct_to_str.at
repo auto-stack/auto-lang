@@ -1,0 +1,9 @@
+type Point { x int, y int }
+
+fn main() {
+    let p = Point { x: 3, y: 4 }
+    let s = p.to(str)
+    print(s)
+    assert(s == "Point { x: 3, y: 4 }")
+    print("struct_to_str: passed")
+}

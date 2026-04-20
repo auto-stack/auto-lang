@@ -4849,7 +4849,7 @@ impl Codegen {
                 let src_precise_type = self.infer_expr_type_for_conv(expr.as_ref(), src_type);
                 // Emit appropriate conversion opcode based on source + target type
                 let opcode = match target_type {
-                    Type::Str(_) | Type::String => {
+                    Type::Str(_) | Type::String | Type::StrSlice => {
                         match src_precise_type {
                             ConvSrcType::F32 => OpCode::TYPE_F32_TO_STR,
                             ConvSrcType::F64 => OpCode::TYPE_F64_TO_STR,

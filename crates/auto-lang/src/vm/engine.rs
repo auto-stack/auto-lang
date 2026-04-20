@@ -1239,10 +1239,62 @@ impl AutoVM {
                     // Pointer cast — no-op at runtime (same bits)
                 }
                 // Plan 162: Explicit type conversion (.to) opcodes
+                // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
                 OpCode::TYPE_TO_STR => {
                     let value_bits = task.ram.pop_i32();
                     if value_bits < 0 {
                         task.ram.push_i32(value_bits);
+                    } else if value_bits >= 4000000 {
+                        // Plan 197 Task 10: Heap object — format struct instance
+                        use crate::vm::generic_registry::GenericInstanceData;
+                        use crate::vm::heap_object::TypeTag;
+
+                        let obj_id = value_bits as u64;
+                        let string_value = match self.get_heap_object(obj_id) {
+                            Some(obj) => {
+                                let guard = obj.read().unwrap();
+                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                        let type_name = self.generic_registry
+                                            .get_type(&inst.mono_name)
+                                            .map(|ct| ct.base_name().to_string())
+                                            .unwrap_or_else(|| inst.mono_name.clone());
+
+                                        let field_strs: Vec<String> = inst.field_names.iter()
+                                            .zip(inst.fields.iter())
+                                            .map(|(name, val)| {
+                                                let val_str = match val {
+                                                    Value::Int(i) => i.to_string(),
+                                                    Value::Uint(u) => u.to_string(),
+                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                    Value::Float(f) => f.to_string(),
+                                                    Value::Double(d) => d.to_string(),
+                                                    Value::Char(c) => format!("'{}'", c),
+                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                    Value::Nil => "nil".to_string(),
+                                                    _ => format!("{:?}", val),
+                                                };
+                                                format!("{}: {}", name, val_str)
+                                            })
+                                            .collect();
+
+                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                    } else {
+                                        format!("<heap:{}>", value_bits)
+                                    }
+                                } else {
+                                    format!("<heap:{}>", value_bits)
+                                }
+                            }
+                            None => format!("<heap:{}>", value_bits),
+                        };
+
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        task.ram.push_i32(-(str_idx as i32) - 1);
                     } else {
                         let string_value = format!("{}", value_bits);
                         let mut strings = self.strings.write().unwrap();
@@ -1360,6 +1412,7 @@ impl AutoVM {
                     task.last_result_type = ResultType::Int;
                 }
                 // Plan 075: Convert any value to string
+                // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
                 OpCode::TO_STR => {
                     // Pop value from stack
                     let value_bits = task.ram.pop_i32();
@@ -1367,6 +1420,66 @@ impl AutoVM {
                     // If already a tagged string, just push it back
                     if value_bits < 0 {
                         task.ram.push_i32(value_bits);
+                    } else if value_bits >= 4000000 {
+                        // Plan 197 Task 10: Heap object — format struct instance
+                        use crate::vm::generic_registry::GenericInstanceData;
+                        use crate::vm::heap_object::TypeTag;
+
+                        let obj_id = value_bits as u64;
+                        let string_value = match self.get_heap_object(obj_id) {
+                            Some(obj) => {
+                                let guard = obj.read().unwrap();
+                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                        // Extract the base type name from mono_name
+                                        // mono_name is like "Point" or "Pair_int_str"
+                                        // We want just the base name before the first '_' that
+                                        // starts a type parameter, but for non-generic types
+                                        // the mono_name IS the base name.
+                                        // Use base_name from generic_registry if available.
+                                        let type_name = self.generic_registry
+                                            .get_type(&inst.mono_name)
+                                            .map(|ct| ct.base_name().to_string())
+                                            .unwrap_or_else(|| inst.mono_name.clone());
+
+                                        // Format each field
+                                        let field_strs: Vec<String> = inst.field_names.iter()
+                                            .zip(inst.fields.iter())
+                                            .map(|(name, val)| {
+                                                let val_str = match val {
+                                                    Value::Int(i) => i.to_string(),
+                                                    Value::Uint(u) => u.to_string(),
+                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                    Value::Float(f) => f.to_string(),
+                                                    Value::Double(d) => d.to_string(),
+                                                    Value::Char(c) => format!("'{}'", c),
+                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                    Value::Nil => "nil".to_string(),
+                                                    _ => format!("{:?}", val),
+                                                };
+                                                format!("{}: {}", name, val_str)
+                                            })
+                                            .collect();
+
+                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                    } else {
+                                        format!("<heap:{}>", value_bits)
+                                    }
+                                } else {
+                                    format!("<heap:{}>", value_bits)
+                                }
+                            }
+                            None => format!("<heap:{}>", value_bits),
+                        };
+
+                        // Add to strings pool and push tagged index
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+
+                        task.ram.push_i32(-(str_idx as i32) - 1);
                     } else {
                         // Convert integer to its string representation
                         let string_value = format!("{}", value_bits);
