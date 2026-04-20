@@ -3898,11 +3898,17 @@ impl Codegen {
             }
             Expr::Call(call) => {
                 // Plan 087 Phase 2: Check if this is a generic constructor call (e.g., Pair.new(1, "a"))
+                // IMPORTANT: Skip inline construction if the type has a user-defined new() method
                 let is_generic_constructor = if let Expr::Dot(obj, method) = call.name.as_ref() {
                     if method == "new" {
                         if let Expr::Ident(type_name) = obj.as_ref() {
-                            // Check if this type is registered in generic_registry
-                            self.generic_registry.has_template(type_name.as_ref())
+                            // Check if a user-defined TypeName.new method exists
+                            let mangled = format!("{}.new", type_name.as_ref());
+                            if self.exports.contains_key(&mangled) {
+                                false // User defined their own new() — use regular CALL
+                            } else {
+                                self.generic_registry.has_template(type_name.as_ref())
+                            }
                         } else {
                             false
                         }
