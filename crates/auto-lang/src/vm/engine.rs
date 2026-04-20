@@ -1829,6 +1829,47 @@ impl AutoVM {
                         task.ram.sp
                     );
                 }
+                OpCode::IS_VARIANT => {
+                    // Plan 197 Task 15: Check if heap object is a GenericInstanceData with matching mono_name
+                    // Code layout: [opcode, name_len:u16, name_bytes...]
+                    // Stack layout: [..., instance_id]
+                    // Stack after: [..., bool] (instance_id consumed, bool pushed)
+                    use crate::vm::generic_registry::GenericInstanceData;
+
+                    // Read name_len from code stream
+                    let name_len = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
+
+                    // Read name bytes from code stream
+                    let mut name_bytes = vec![0u8; name_len];
+                    for i in 0..name_len {
+                        name_bytes[i] = self.flash.read_u8(task.ip);
+                        task.ip += 1;
+                    }
+                    let expected_name = String::from_utf8_lossy(&name_bytes).to_string();
+
+                    // Read instance_id from stack
+                    let instance_id = task.ram.pop_i32() as u64;
+
+                    vm_debug!("DEBUG: IS_VARIANT: instance_id={}, expected_name='{}'",
+                        instance_id, expected_name
+                    );
+
+                    // Check if it's a GenericInstanceData with matching mono_name
+                    let result = if let Some(obj) = self.get_heap_object(instance_id) {
+                        let guard = obj.read().unwrap();
+                        if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                            instance.mono_name == expected_name
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                    // Push boolean result (true = i32::MIN, false = i32::MIN+1)
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                }
                 OpCode::GET_GENERIC_FIELD => {
                     // Plan 087 Phase 2: Get field value from generic instance
                     // Code layout: [opcode, field_index:u32]

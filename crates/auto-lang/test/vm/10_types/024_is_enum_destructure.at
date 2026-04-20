@@ -1,0 +1,19 @@
+enum Atom {
+    Int int
+    Str str
+}
+
+fn main() {
+    let a = Atom.Int(42)
+    is a {
+        Atom.Int(n) -> {
+            assert_eq(n, 42)
+            print(f"matched Int: $n")
+        },
+        Atom.Str(s) -> {
+            print("wrong branch")
+        },
+        else -> print("no match")
+    }
+    print("is_enum_destructure: passed")
+}

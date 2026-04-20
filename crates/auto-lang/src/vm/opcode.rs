@@ -231,6 +231,11 @@ pub enum OpCode {
                              // Function prologue: record argument and local count
                              // Used by LOAD_LOCAL/STORE_LOCAL to calculate stack offsets
 
+    // === Plan 197 Task 15: Enum Variant Pattern Matching ===
+    IS_VARIANT = 0xB9,       // instance_id, name_len:u16, name_bytes... -> bool
+                             // Check if heap object is a GenericInstanceData with matching mono_name
+                             // Returns true (-2147483648) or false (-2147483647)
+
     // === Plan 124: Async/Future/Await Opcodes ===
     // Future type operations for async system
     CREATE_FUTURE = 0xC0,    // body_code_offset: u32 -> future_id
@@ -289,8 +294,8 @@ impl OpCode {
         0xA0, 0xA1, 0xA2, 0xA3,
         // Iterators
         0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5,
-        // FN_PROLOG
-        0xB8,
+        // FN_PROLOG + IS_VARIANT
+        0xB8, 0xB9,
         // Async
         0xC0, 0xC1, 0xC2,
         // Error/Option

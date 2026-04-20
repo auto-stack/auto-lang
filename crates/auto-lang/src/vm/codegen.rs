@@ -2406,6 +2406,78 @@ impl Codegen {
 
                                     let _ = msg; // Suppress unused warning
                                 }
+                                // Plan 197 Task 15: Enum variant destructuring (e.g., Atom.Int(n))
+                                crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
+                                    let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+
+                                    // Check if this is a heterogeneous enum variant with a binding
+                                    if tag_cover.elem.as_str() != "_" {
+                                        // Binding destructuring pattern: Atom.Int(n) -> ...
+                                        // Duplicate target for variant check
+                                        self.emit(OpCode::DUP);
+                                        // Emit IS_VARIANT with the expected mono_name
+                                        self.emit(OpCode::IS_VARIANT);
+                                        let name_bytes = variant_mono.as_bytes();
+                                        self.emit_u16(name_bytes.len() as u16);
+                                        for &byte in name_bytes {
+                                            self.code.push(byte);
+                                        }
+
+                                        // Jump to next branch if variant doesn't match
+                                        self.emit(OpCode::JMP_IF_Z);
+                                        let jump_to_next = self.emit_placeholder_i16();
+
+                                        // Variant matched — extract the payload fields and bind them
+                                        // The target is still on stack (from the DUP above consumed by IS_VARIANT,
+                                        // but IS_VARIANT popped it and pushed bool; the original target is below)
+                                        // Actually: IS_VARIANT pops the dup'd instance_id and pushes bool.
+                                        // JMP_IF_Z pops the bool. So the original target is still on stack.
+
+                                        // Determine field count from the generic registry
+                                        let field_count = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
+                                            template.fields.len()
+                                        } else {
+                                            1 // Default: single payload field
+                                        };
+
+                                        // Extract each field and bind to variables
+                                        // For Atom.Int(n) with 1 field: extract field 0 into variable "n"
+                                        // The binding name is tag_cover.elem
+                                        // For single-field variants, we only have one binding
+                                        // TODO: multi-field destructuring when supported by parser
+                                        if field_count >= 1 {
+                                            // Duplicate the target (instance_id) for field extraction
+                                            self.emit(OpCode::DUP);
+                                            self.emit(OpCode::GET_GENERIC_FIELD);
+                                            self.emit_u32(0); // field index 0 (_0)
+                                            // Store in local variable
+                                            let var_idx = self.add_var(tag_cover.elem.as_str());
+                                            self.emit(OpCode::STORE_LOCAL);
+                                            self.emit_u16(var_idx as u16);
+                                        }
+
+                                        // Compile branch body with bindings in scope
+                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                        // Jump to end of is statement
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_end = self.emit_placeholder_i16();
+                                        end_jumps.push(jump_to_end);
+
+                                        // Patch jump to next branch
+                                        self.patch_jump(jump_to_next);
+                                        continue; // Skip the default handling
+                                    } else {
+                                        // Empty variant pattern (no binding): just check variant type
+                                        self.emit(OpCode::DUP);
+                                        self.emit(OpCode::IS_VARIANT);
+                                        let name_bytes = variant_mono.as_bytes();
+                                        self.emit_u16(name_bytes.len() as u16);
+                                        for &byte in name_bytes {
+                                            self.code.push(byte);
+                                        }
+                                    }
+                                }
                                 _ => {
                                     // Standard equality comparison for patterns
                                     // For multi-pattern (OR): compare each, OR results together
