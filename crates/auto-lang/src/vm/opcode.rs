@@ -62,9 +62,18 @@ pub enum OpCode {
     TYPE_CAST_F64 = 0xEA,   // value -> f64 (convert to f64)
     TYPE_CAST_PTR = 0xEB,   // value -> pointer (no-op, just type change)
     // Plan 162: Explicit type conversion: expr.to(Type) — may allocate/parse
-    TYPE_TO_STR = 0xEC,     // value -> string (via .to_string())
+    TYPE_TO_STR = 0xEC,     // i32 -> string (via .to_string())
     TYPE_TO_I32 = 0xED,     // value -> i32 (parse string or truncate)
     TYPE_TO_F64 = 0xEE,     // value -> f64 (parse string or convert)
+    // Plan 193: Extended type conversions
+    TYPE_F64_TO_STR = 0xF3, // f64 -> string
+    TYPE_I64_TO_STR = 0xF4, // i64 -> string
+    TYPE_U64_TO_STR = 0xF5, // u64 -> string (hex)
+    TYPE_BOOL_TO_STR = 0xF6, // bool -> string
+    TYPE_F64_TO_I32 = 0xF7, // f64 -> i32 (truncate)
+    TYPE_STR_TO_I64 = 0xF8, // string -> i64
+    TYPE_F32_TO_STR = 0xF9, // f32 -> string
+    TYPE_F32_TO_I32 = 0xFA, // f32 -> i32 (truncate)
     // Plan 075: Template string opcodes
     TO_STR = 0x7A,        // Convert any value to string
     IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)
@@ -285,6 +294,8 @@ impl OpCode {
         0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5,
         // Type casts
         0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE,
+        // Extended type conversions (Plan 193)
+        0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
         // Debug/Misc
         0xF0, 0xF1, 0xF2, 0xFF,
     ];

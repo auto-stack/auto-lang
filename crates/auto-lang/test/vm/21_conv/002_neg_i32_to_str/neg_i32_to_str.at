@@ -1,0 +1,17 @@
+// BUG: negative integer .to(String) fails
+//
+// Root cause: TYPE_TO_STR opcode checks `value_bits < 0` to detect tagged string
+// pointers (negative indices into the string pool). But negative integers also
+// have `value_bits < 0`, so they are treated as string indices instead of being
+// converted to their string representation.
+//
+// In engine.rs TYPE_TO_STR handler:
+//   if value_bits < 0 { push_i32(value_bits) } // treated as existing string!
+//   else { format!("{}", value_bits); ... }     // actual conversion
+//
+// Expected: -1
+// Actual:   (tagged string index, prints as garbage or wrong string)
+
+fn main() {
+    print((-1).to(String))
+}

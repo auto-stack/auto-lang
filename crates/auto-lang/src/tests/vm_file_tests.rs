@@ -306,3 +306,8 @@ fn test_vm(case: &str) -> AutoResult<()> {
 // === 20_permission ===
 #[test] fn test_20_permission_001_scalar_mode() { test_vm("20_permission/001_scalar_mode").unwrap(); }
 #[test] fn test_20_permission_002_ext_policy() { test_vm("20_permission/002_ext_policy").unwrap(); }
+
+// === 21_conv (Plan 193: type conversion bugs) ===
+// BUG: negative integer .to(String) — TYPE_TO_STR treats negative i32 as tagged string pointer
+#[test] #[ignore = "BUG: (-1).to(String) outputs '<invalid string index: 0>' — TYPE_TO_STR misidentifies negative integers as string pool indices"]
+fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unwrap(); }

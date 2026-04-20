@@ -1187,6 +1187,83 @@ impl AutoVM {
                     }
                     task.last_result_type = ResultType::Float;
                 }
+                // Plan 193: f64 -> String
+                OpCode::TYPE_F64_TO_STR => {
+                    let val = task.ram.pop_f64();
+                    let string_value = format!("{}", val);
+                    let mut strings = self.strings.write().unwrap();
+                    let str_idx = strings.len();
+                    strings.push(string_value.into_bytes());
+                    drop(strings);
+                    task.ram.push_i32(-(str_idx as i32) - 1);
+                }
+                // Plan 193: i64 -> String
+                OpCode::TYPE_I64_TO_STR => {
+                    let val = task.ram.pop_i64();
+                    let string_value = format!("{}", val);
+                    let mut strings = self.strings.write().unwrap();
+                    let str_idx = strings.len();
+                    strings.push(string_value.into_bytes());
+                    drop(strings);
+                    task.ram.push_i32(-(str_idx as i32) - 1);
+                }
+                // Plan 193: u64 -> String (hex)
+                OpCode::TYPE_U64_TO_STR => {
+                    let val = task.ram.pop_u64();
+                    let string_value = format!("{:08x}", val);
+                    let mut strings = self.strings.write().unwrap();
+                    let str_idx = strings.len();
+                    strings.push(string_value.into_bytes());
+                    drop(strings);
+                    task.ram.push_i32(-(str_idx as i32) - 1);
+                }
+                // Plan 193: bool -> String
+                OpCode::TYPE_BOOL_TO_STR => {
+                    let val = task.ram.pop_i32();
+                    let string_value = if val != 0 { "true" } else { "false" };
+                    let mut strings = self.strings.write().unwrap();
+                    let str_idx = strings.len();
+                    strings.push(string_value.as_bytes().to_vec());
+                    drop(strings);
+                    task.ram.push_i32(-(str_idx as i32) - 1);
+                }
+                // Plan 193: f64 -> i32 (truncate)
+                OpCode::TYPE_F64_TO_I32 => {
+                    let val = task.ram.pop_f64();
+                    task.ram.push_i32(val as i32);
+                    task.last_result_type = ResultType::Int;
+                }
+                // Plan 193: String -> i64
+                OpCode::TYPE_STR_TO_I64 => {
+                    let v = task.ram.pop_i32();
+                    if v < 0 {
+                        let str_idx = ((-v) - 1) as usize;
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(str_idx)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i64>().ok())
+                            .unwrap_or(0i64);
+                        drop(strings);
+                        task.ram.push_i64(parsed);
+                    } else {
+                        task.ram.push_i64(v as i64);
+                    }
+                }
+                // Plan 193: f32 -> String
+                OpCode::TYPE_F32_TO_STR => {
+                    let val = task.ram.pop_f32();
+                    let string_value = format!("{}", val);
+                    let mut strings = self.strings.write().unwrap();
+                    let str_idx = strings.len();
+                    strings.push(string_value.into_bytes());
+                    drop(strings);
+                    task.ram.push_i32(-(str_idx as i32) - 1);
+                }
+                // Plan 193: f32 -> i32 (truncate)
+                OpCode::TYPE_F32_TO_I32 => {
+                    let val = task.ram.pop_f32();
+                    task.ram.push_i32(val as i32);
+                    task.last_result_type = ResultType::Int;
+                }
                 // Plan 075: Convert any value to string
                 OpCode::TO_STR => {
                     // Pop value from stack

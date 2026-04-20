@@ -1,0 +1,8 @@
+/// VM-implemented conversion functions - Plan 193
+///
+/// Core type conversions are implemented as VM opcodes for maximum performance.
+/// This file reserves IDs for future conv-related native functions.
+
+// Plan 193: String -> i64 (for TryConv, returns May<i64>)
+#[vm]
+fn string_try_to_i64(s str) ?i64

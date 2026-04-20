@@ -46,6 +46,19 @@ pub enum ObjectType {
     Array,
 }
 
+/// Plan 193: Precise source type for .to() conversion opcode selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConvSrcType {
+    I32,
+    I64,
+    U64,
+    F32,
+    F64,
+    Bool,
+    Str,
+    Other,
+}
+
 /// Plan 073: Type information for TypeDecl
 /// Stores type metadata needed for instance construction
 #[derive(Debug, Clone)]
@@ -4754,18 +4767,42 @@ impl Codegen {
                     _ => ObjectType::Int,
                 };
             }
-            // Plan 162: Explicit type conversion: expr.to(Type)
+            // Plan 162/193: Explicit type conversion: expr.to(Type)
             Expr::To { expr, target_type } => {
                 // Compile inner expression
                 self.compile_expr(expr)?;
-                // Emit appropriate conversion opcode based on target type
+                let src_type = self.last_expr_type;
+                // Determine precise source Type for opcode selection
+                let src_precise_type = self.infer_expr_type_for_conv(expr.as_ref(), src_type);
+                // Emit appropriate conversion opcode based on source + target type
                 let opcode = match target_type {
-                    Type::Str(_) | Type::String => OpCode::TYPE_TO_STR,
-                    Type::Int => OpCode::TYPE_TO_I32,
+                    Type::Str(_) | Type::String => {
+                        match src_precise_type {
+                            ConvSrcType::F32 => OpCode::TYPE_F32_TO_STR,
+                            ConvSrcType::F64 => OpCode::TYPE_F64_TO_STR,
+                            ConvSrcType::I64 => OpCode::TYPE_I64_TO_STR,
+                            ConvSrcType::U64 => OpCode::TYPE_U64_TO_STR,
+                            ConvSrcType::Bool => OpCode::TYPE_BOOL_TO_STR,
+                            ConvSrcType::Str | ConvSrcType::I32 | ConvSrcType::Other => OpCode::TYPE_TO_STR,
+                        }
+                    }
+                    Type::Int => {
+                        match src_precise_type {
+                            ConvSrcType::F32 => OpCode::TYPE_F32_TO_I32,
+                            ConvSrcType::F64 => OpCode::TYPE_F64_TO_I32,
+                            ConvSrcType::Str => OpCode::TYPE_TO_I32,
+                            _ => OpCode::TYPE_TO_I32,
+                        }
+                    }
+                    Type::I64 => {
+                        match src_precise_type {
+                            ConvSrcType::Str => OpCode::TYPE_STR_TO_I64,
+                            _ => OpCode::TYPE_CAST_I64,
+                        }
+                    }
                     Type::Float | Type::Double => OpCode::TYPE_TO_F64,
                     // For numeric-to-numeric, reuse cast opcodes (no allocation needed)
                     Type::Uint => OpCode::TYPE_CAST_U32,
-                    Type::I64 => OpCode::TYPE_CAST_I64,
                     Type::U64 => OpCode::TYPE_CAST_U64,
                     _ => {
                         // For unknown/unsupported types, just leave the value as-is
@@ -6177,6 +6214,61 @@ impl Codegen {
     /// Infer type name from a variable name (Plan 080: with explicit type tracking)
     ///
     /// First checks the var_types map (tracked during let declarations)
+    /// Plan 193: Infer precise source type for .to() conversion opcode selection.
+    /// Uses var_types for identifiers, AST node type for literals.
+    fn infer_expr_type_for_conv(&self, expr: &Expr, runtime_type: ObjectType) -> ConvSrcType {
+        match expr {
+            Expr::I64(_) => ConvSrcType::I64,
+            Expr::U64(_) => ConvSrcType::U64,
+            Expr::Float(_, _) => ConvSrcType::F32,
+            Expr::Double(_, _) => ConvSrcType::F64,
+            Expr::Bool(_) => ConvSrcType::Bool,
+            Expr::Str(_) | Expr::FStr(_) => ConvSrcType::Str,
+            Expr::Ident(name) => {
+                if let Some(ty) = self.var_types.get(name.as_str()) {
+                    match ty {
+                        Type::I64 => ConvSrcType::I64,
+                        Type::U64 => ConvSrcType::U64,
+                        Type::Float => ConvSrcType::F32,
+                        Type::Double => ConvSrcType::F64,
+                        Type::Bool => ConvSrcType::Bool,
+                        Type::Str(_) | Type::String | Type::StrSlice => ConvSrcType::Str,
+                        _ => ConvSrcType::I32,
+                    }
+                } else {
+                    match runtime_type {
+                        ObjectType::Float => ConvSrcType::F32,
+                        ObjectType::Double => ConvSrcType::F64,
+                        ObjectType::Uint => ConvSrcType::U64,
+                        ObjectType::Bool => ConvSrcType::Bool,
+                        ObjectType::String => ConvSrcType::Str,
+                        _ => ConvSrcType::I32,
+                    }
+                }
+            }
+            Expr::Dot(_, _) => {
+                match runtime_type {
+                    ObjectType::Float => ConvSrcType::F32,
+                    ObjectType::Double => ConvSrcType::F64,
+                    ObjectType::Uint => ConvSrcType::U64,
+                    ObjectType::Bool => ConvSrcType::Bool,
+                    ObjectType::String => ConvSrcType::Str,
+                    _ => ConvSrcType::I32,
+                }
+            }
+            _ => {
+                match runtime_type {
+                    ObjectType::Float => ConvSrcType::F32,
+                    ObjectType::Double => ConvSrcType::F64,
+                    ObjectType::Uint => ConvSrcType::U64,
+                    ObjectType::Bool => ConvSrcType::Bool,
+                    ObjectType::String => ConvSrcType::Str,
+                    _ => ConvSrcType::I32,
+                }
+            }
+        }
+    }
+
     /// Falls back to a heuristic based on common naming patterns
     ///
     /// For standard library types, we can map variable names to types:

@@ -1,0 +1,22 @@
+/// Type Conversion Module - Plan 193
+///
+/// Provides the Conv<From, To> spec for type-safe conversions.
+/// Use .to(TargetType) to convert between types.
+///
+/// Supported conversions:
+///   i32 -> String, f64, int
+///   i64 -> String, int
+///   f64 -> String, int
+///   String -> int, i64
+///   u64 -> String (hex)
+///   bool -> String
+
+/// Core conversion spec — implement to support type conversion
+spec Conv<From, To> {
+    fn convert() To
+}
+
+/// Fallible conversion spec — implement for conversions that may fail
+spec TryConv<From, To> {
+    fn try_convert() ?To
+}
