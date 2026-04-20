@@ -219,6 +219,10 @@ pub fn register_builtin_natives() {
     registry.register_with_id("HashMap.clear", 127);
     registry.register_with_id("HashMap.drop", 128);
 
+    // HashMap unified generic methods (Plan 194 Task 4)
+    registry.register_with_id("HashMap.insert", 120);  // reuse insert_str
+    registry.register_with_id("HashMap.get", 122);     // reuse get_str
+
     // HashMap monomorphic aliases (Plan 194 Task 2)
     // float/bool reuse the int native (float stored as int bits, bool as 0/1)
     registry.register_with_id("HashMap.insert_float", 121);  // reuse insert_int

@@ -55,19 +55,36 @@ type HashMap<K, V> {
     #[vm, pub]
     fn get_int(key int) V
 
-    /// Check if key exists in the map
-    /// Example: let has_key = map.contains("name")
+    // ========================================================================
+    // Instance Methods - Unified Generic (Plan 194)
+    // Key/value types determined by generic params K and V
+    // ========================================================================
+
+    /// Insert a key-value pair (type determined by generic params K, V)
+    /// Dispatches to insert_str/insert_int based on key type at compile time
+    /// Example: map.insert("name", "Alice") or map.insert(0, "first")
     #[vm, pub]
-    fn contains(key str) bool
+    fn insert(key K, value V)
+
+    /// Get value by key (type determined by generic param K), returns nil if not found
+    /// Dispatches to get_str/get_int based on key type at compile time
+    /// Example: let name = map.get("name") or let first = map.get(0)
+    #[vm, pub]
+    fn get(key K) V
+
+    /// Check if key exists in the map (type determined by generic param K)
+    /// Example: let has_key = map.contains("name") or map.contains(42)
+    #[vm, pub]
+    fn contains(key K) bool
+
+    /// Remove a key-value pair from the map (type determined by generic param K)
+    /// Example: map.remove("age") or map.remove(0)
+    #[vm, pub]
+    fn remove(key K)
 
     // ========================================================================
     // Instance Methods - Modification
     // ========================================================================
-
-    /// Remove a key-value pair from the map
-    /// Example: map.remove("age")
-    #[vm, pub]
-    fn remove(key str)
 
     /// Clear all entries from the map
     /// Example: map.clear()
