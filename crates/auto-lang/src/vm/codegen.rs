@@ -866,7 +866,33 @@ impl Codegen {
                         }
                     } else if !matches!(store.ty, Type::Unknown) {
                         // Plan 118: Store the explicit type annotation for proper output formatting
-                        self.var_types.insert(name_str.clone(), store.ty.clone());
+                        // Plan 197 Task 14: For arrays with Unknown element type, try to refine from actual elements
+                        if let Type::Array(ref arr) = store.ty {
+                            if matches!(arr.elem.as_ref(), Type::Unknown) {
+                                if let Expr::Array(elems) = &store.expr {
+                                    if !elems.is_empty() {
+                                        let elem_ty = self.infer_expr_type(&elems[0]);
+                                        if !matches!(elem_ty, Type::Unknown) {
+                                            let refined = Type::Array(crate::ast::ArrayType {
+                                                elem: Box::new(elem_ty),
+                                                len: elems.len(),
+                                            });
+                                            self.var_types.insert(name_str.clone(), refined);
+                                        } else {
+                                            self.var_types.insert(name_str.clone(), store.ty.clone());
+                                        }
+                                    } else {
+                                        self.var_types.insert(name_str.clone(), store.ty.clone());
+                                    }
+                                } else {
+                                    self.var_types.insert(name_str.clone(), store.ty.clone());
+                                }
+                            } else {
+                                self.var_types.insert(name_str.clone(), store.ty.clone());
+                            }
+                        } else {
+                            self.var_types.insert(name_str.clone(), store.ty.clone());
+                        }
                     } else {
                         // Plan 118 Phase 4: Infer type from expression when annotation is Unknown
                         // Plan 118 Phase 7: Add closure type inference
@@ -936,6 +962,22 @@ impl Codegen {
                                 // Plan 197 Task 4: Infer type from field access (e.g., let v = r.value)
                                 Expr::Dot(_, _) => {
                                     self.infer_expr_type(&store.expr)
+                                }
+                                // Plan 197 Task 14: Infer type from array indexing (e.g., let first = list[0])
+                                Expr::Index(_, _) => {
+                                    self.infer_expr_type(&store.expr)
+                                }
+                                // Plan 197 Task 14: Infer type from array literal (e.g., let list = [a, b])
+                                Expr::Array(elems) => {
+                                    if elems.is_empty() {
+                                        store.ty.clone()
+                                    } else {
+                                        let elem_ty = self.infer_expr_type(&elems[0]);
+                                        Type::Array(crate::ast::ArrayType {
+                                            elem: Box::new(elem_ty),
+                                            len: elems.len(),
+                                        })
+                                    }
                                 }
                                 _ => store.ty.clone(),
                         };
@@ -3396,9 +3438,39 @@ impl Codegen {
                     let arr_type = self.infer_object_type(arr);
                     match arr_type {
                         ObjectType::Array => {
-                            // Could enhance this to track array element types
-                            // For now, default to Int
-                            self.last_expr_type = ObjectType::Int;
+                            // Use infer_expr_type to get the actual element type
+                            let elem_type = self.infer_expr_type(expr);
+                            match &elem_type {
+                                Type::User(type_decl) => {
+                                    self.last_expr_type = ObjectType::NestedObject;
+                                    let mono_name = type_decl.name.to_string();
+                                    self.last_enum_variant_mono = Some(mono_name);
+                                }
+                                Type::GenericInstance(_) => {
+                                    self.last_expr_type = ObjectType::NestedObject;
+                                }
+                                Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => {
+                                    self.last_expr_type = ObjectType::String;
+                                }
+                                Type::Char => {
+                                    self.last_expr_type = ObjectType::Char;
+                                }
+                                Type::Float => {
+                                    self.last_expr_type = ObjectType::Float;
+                                }
+                                Type::Double => {
+                                    self.last_expr_type = ObjectType::Double;
+                                }
+                                Type::Bool => {
+                                    self.last_expr_type = ObjectType::Bool;
+                                }
+                                Type::Uint | Type::U64 | Type::USize => {
+                                    self.last_expr_type = ObjectType::Uint;
+                                }
+                                _ => {
+                                    self.last_expr_type = ObjectType::Int;
+                                }
+                            }
                         }
                         ObjectType::String => {
                             // String indexing returns char

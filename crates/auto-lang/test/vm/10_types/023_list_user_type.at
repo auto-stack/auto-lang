@@ -1,0 +1,14 @@
+enum Atom {
+    Int int
+}
+
+fn main() {
+    let a = Atom.Int(1)
+    let b = Atom.Int(2)
+    let list = [a, b]
+    let first = list[0]
+    assert_eq(first._0, 1)
+    let second = list[1]
+    assert_eq(second._0, 2)
+    print("list_user_type: passed")
+}
