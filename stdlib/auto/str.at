@@ -13,10 +13,10 @@ ext str {
     #[vm]
     fn len() int
 
-    /// Append another string to this string
-    /// Example: "hello".append(" world")  // returns "hello world"
+    /// Check if string is empty
+    /// Example: "".is_empty()  // returns true
     #[vm]
-    fn append(other str) str
+    fn is_empty() bool
 
     /// Convert string to uppercase
     /// Example: "hello".upper()  // returns "HELLO"
@@ -66,34 +66,15 @@ ext str {
     #[vm]
     fn trim() str
 
-    /// Trim whitespace from the left side
-    /// Example: "  hello  ".trim_left()  // returns "hello  "
-    #[vm]
-    fn trim_left() str
-
-    /// Trim whitespace from the right side
-    /// Example: "  hello  ".trim_right()  // returns "  hello"
-    #[vm]
-    fn trim_right() str
-
     /// Replace all occurrences of a pattern
     /// Example: "hello world".replace("world", "rust")  // returns "hello rust"
     #[vm]
-    fn replace(from str, to str) str
+    fn replace(from str, with str) str
 
-    // ============================================================================
-    // Compare Methods
-    // ============================================================================
-
-    /// Compare two strings (returns 0 if equal, < 0 if self < other, > 0 if self > other)
-    /// Example: "apple".compare("banana")  // returns negative number
+    /// Reverse the string
+    /// Example: "hello".reverse()  // returns "olleh"
     #[vm]
-    fn compare(other str) int
-
-    /// Check if two strings are equal (case-insensitive)
-    /// Example: "HELLO".eq_ignore_case("hello")  // returns true
-    #[vm]
-    fn eq_ignore_case(other str) bool
+    fn reverse() str
 
     // ============================================================================
     // Utility Methods
@@ -104,31 +85,10 @@ ext str {
     #[vm]
     fn repeat(n int) str
 
-    /// Get the character at a specific index
-    /// Example: "hello".char_at(1)  // returns "e"
+    /// Get the character code at a specific index
+    /// Example: "hello".char_at(1)  // returns 101 (code point of 'e')
     #[vm]
-    fn char_at(index int) str
-
-    // ============================================================================
-    // C FFI Methods (for interoperability with C code)
-    // ============================================================================
-
-    /// Convert to C-compatible null-terminated string
-    /// Example: "hello".to_cstr()  // returns cstr value
-    #[vm]
-    fn to_cstr() cstr
-
-    // ============================================================================
-    // Auto-Implemented Methods (Phase 4 - Plan 036)
-    // ============================================================================
-    // These methods are implemented in AutoLang itself, not in VM/C
-    // They demonstrate AutoLang's expressiveness and capabilities
-
-    /// Get the size/length of the string
-    /// Example: "hello".char_count()  // returns 5
-    fn char_count() int {
-        .size
-    }
+    fn char_at(index int) int
 
     /// Split string by delimiter into array of strings
     /// Example: "hello world".split(" ")  // returns ["hello", "world"]
@@ -139,9 +99,4 @@ ext str {
     /// Example: "hello\nworld".lines()  // returns ["hello", "world"]
     #[vm]
     fn lines() []str
-
-    /// Split string into words (split by whitespace)
-    /// Example: "hello world".words()  // returns ["hello", "world"]
-    #[vm]
-    fn words() []str
 }

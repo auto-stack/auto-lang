@@ -393,6 +393,11 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Str.parse_int", 1516);
     registry.register_with_id("Str.parse_float", 1517);
 
+    // String function aliases matching str.at method names
+    registry.register_with_id("auto.str.upper", 1511);  // alias for to_upper
+    registry.register_with_id("auto.str.lower", 1512);  // alias for to_lower
+    registry.register_with_id("auto.str.sub", 1503);    // alias for substr
+
     // Char functions (1600-1606)
     registry.register_with_id("auto.char.is_alpha", 1600);
     registry.register_with_id("auto.char.is_digit", 1601);

@@ -477,6 +477,7 @@ impl CompileSession {
             module_source.push_str(&context_source);
         }
 
+        // DEBUG: Print module source being parsed
         // 解析合并后的模块获取 type_store
         let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
 
@@ -537,6 +538,13 @@ impl CompileSession {
                 crate::ast::Stmt::SpecDecl(spec_decl) => {
                     type_store.register_spec_decl(spec_decl);
                 }
+                crate::ast::Stmt::Ext(ext) => {
+                    // Register ext methods as fn_decls so they can be found
+                    // by import_items (e.g., `use auto.str: split`)
+                    for method in &ext.methods {
+                        type_store.register_fn_decl(method);
+                    }
+                }
                 _ => {}
             }
         }
@@ -565,6 +573,9 @@ impl CompileSession {
                     codegen.compile_stmt(stmt)?;
                 }
                 crate::ast::Stmt::TypeDecl(_) => {
+                    codegen.compile_stmt(stmt)?;
+                }
+                crate::ast::Stmt::Ext(_) => {
                     codegen.compile_stmt(stmt)?;
                 }
                 _ => {}

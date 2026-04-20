@@ -199,43 +199,55 @@ impl AutovmReplSession {
 
         // Extract #[vm] function declarations and register them
         for stmt in &ast.stmts {
-            if let crate::ast::Stmt::Fn(fn_decl) = stmt {
-                // Check if this function is a VM function (has #[vm] attribute)
-                let is_vm = matches!(fn_decl.kind, crate::ast::FnKind::VmFunction);
-
-                if is_vm {
-                    let fn_name: &str = fn_decl.name.as_str();
-
-                    // Build the full path (e.g., "auto.math.sqrt")
-                    let full_path = format!("{}.{}", use_stmt.module, fn_name);
-
-                    // Check if this function is in the import list (if selective import)
-                    let should_import = if use_stmt.is_wildcard {
-                        true
-                    } else if use_stmt.items.is_empty() {
-                        true
+            let vm_fns: Vec<&crate::ast::Fn> = match stmt {
+                crate::ast::Stmt::Fn(fn_decl) => {
+                    if matches!(fn_decl.kind, crate::ast::FnKind::VmFunction) {
+                        vec![fn_decl]
                     } else {
-                        use_stmt.items.iter().any(|item| item == fn_name)
-                    };
+                        vec![]
+                    }
+                }
+                crate::ast::Stmt::Ext(ext) => {
+                    // Extract #[vm] methods from ext blocks (e.g., ext str { #[vm] fn split ... })
+                    ext.methods.iter()
+                        .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
+                        .collect()
+                }
+                _ => vec![],
+            };
 
-                    if should_import {
-                        // Look up the full path in BIGVM_NATIVES to get the native ID
-                        if let Some(native_id) =
-                            BIGVM_NATIVES.lock().unwrap().get_id(&full_path)
-                        {
-                            // Register with short name for easy access
-                            BIGVM_NATIVES
-                                .lock()
-                                .unwrap()
-                                .register_with_id(fn_name, native_id);
-                            vm_debug!("DEBUG: Registered '{}' -> {} (ID: {})",
-                                fn_name, full_path, native_id
-                            );
-                        } else {
-                            vm_debug!("DEBUG: Warning: '{}' not found in native registry (path: {})",
-                                fn_name, full_path
-                            );
-                        }
+            for fn_decl in vm_fns {
+                let fn_name: &str = fn_decl.name.as_str();
+
+                // Build the full path (e.g., "auto.str.split")
+                let full_path = format!("{}.{}", use_stmt.module, fn_name);
+
+                // Check if this function is in the import list (if selective import)
+                let should_import = if use_stmt.is_wildcard {
+                    true
+                } else if use_stmt.items.is_empty() {
+                    true
+                } else {
+                    use_stmt.items.iter().any(|item| item == fn_name)
+                };
+
+                if should_import {
+                    // Look up the full path in BIGVM_NATIVES to get the native ID
+                    if let Some(native_id) =
+                        BIGVM_NATIVES.lock().unwrap().get_id(&full_path)
+                    {
+                        // Register with short name for easy access
+                        BIGVM_NATIVES
+                            .lock()
+                            .unwrap()
+                            .register_with_id(fn_name, native_id);
+                        vm_debug!("DEBUG: Registered '{}' -> {} (ID: {})",
+                            fn_name, full_path, native_id
+                        );
+                    } else {
+                        vm_debug!("DEBUG: Warning: '{}' not found in native registry (path: {})",
+                            fn_name, full_path
+                        );
                     }
                 }
             }

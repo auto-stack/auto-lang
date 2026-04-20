@@ -1412,6 +1412,14 @@ impl Codegen {
                     // Set member names for implicit .field access resolution
                     self.current_type_members = Some(member_names.clone());
                     self.compile_stmt(&Stmt::Fn(method_fn))?;
+
+                    // Also register short name (e.g., "upper") as export alias
+                    // so `use auto.str: upper` can resolve via linker
+                    let mangled_entry = self.exports.get(&mangled_name).copied();
+                    if let Some(addr) = mangled_entry {
+                        self.exports.insert(method.name.to_string(), addr);
+                    }
+
                     self.current_type_members = None;
                 }
             }
