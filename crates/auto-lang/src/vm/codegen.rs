@@ -4037,6 +4037,83 @@ impl Codegen {
                     // Fallback to regular call if something went wrong
                 }
 
+                // Plan 197 Task 12: Check if this is an enum variant construction (e.g., Atom.Int(42))
+                // Pattern: Expr::Dot(Expr::Ident(type_name), variant_name) where
+                // "TypeName.VariantName" is a registered template in the generic registry.
+                let is_enum_variant = if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if let Expr::Ident(type_name) = obj.as_ref() {
+                        let variant_mono = format!("{}.{}", type_name.as_ref(), method.as_ref());
+                        self.generic_registry.has_template(&variant_mono)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if is_enum_variant {
+                    // Generate: NEW_INSTANCE + CONSTRUCT_INSTANCE (same pattern as generic constructor)
+                    if let Expr::Dot(obj, method) = call.name.as_ref() {
+                        if let Expr::Ident(type_name) = obj.as_ref() {
+                            let variant_mono = format!("{}.{}", type_name.as_ref(), method.as_ref());
+
+                            // Get the ClassType to determine field count
+                            let type_args = Vec::new();
+                            if let Ok(class_type) = self
+                                .generic_registry
+                                .get_or_create_type(&variant_mono, type_args)
+                            {
+                                let field_count = class_type.template.fields.len();
+
+                                // Compile arguments (push values onto stack)
+                                if !call.args.args.is_empty() {
+                                    for arg in &call.args.args {
+                                        match arg {
+                                            crate::ast::Arg::Pos(expr) => {
+                                                self.compile_expr(expr)?;
+                                            }
+                                            crate::ast::Arg::Pair(_key, expr) => {
+                                                self.compile_expr(expr)?;
+                                            }
+                                            crate::ast::Arg::Name(name) => {
+                                                self.emit(OpCode::LOAD_STR);
+                                                let s_bytes = name.to_string().as_bytes().to_vec();
+                                                let s_idx = self.strings.len() as u16;
+                                                self.strings.push(s_bytes);
+                                                self.code.extend_from_slice(&s_idx.to_le_bytes());
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Emit NEW_INSTANCE instruction
+                                let mono_name = class_type.mono_name.clone();
+                                let name_bytes = mono_name.as_bytes();
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(name_bytes.len() as i32);
+
+                                self.emit(OpCode::NEW_INSTANCE);
+                                for &byte in name_bytes {
+                                    self.code.push(byte);
+                                }
+
+                                // Emit CONSTRUCT_INSTANCE
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(field_count as i32);
+                                self.emit(OpCode::CONSTRUCT_INSTANCE);
+
+                                return Ok(());
+                            } else {
+                                eprintln!(
+                                    "Warning: Failed to get/create enum variant type '{}'",
+                                    variant_mono
+                                );
+                                // Fallback to regular call
+                            }
+                        }
+                    }
+                }
+
                 // Plan 118 Phase 2: Check if this is a type constructor call (e.g., Inner(x: 10))
                 // If the call name is a registered type, treat it as a type instance creation
                 if let Expr::Ident(type_name) = call.name.as_ref() {

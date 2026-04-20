@@ -1,0 +1,10 @@
+enum Atom {
+    Int int
+    Str str
+}
+
+fn main() {
+    let a = Atom.Int(42)
+    print(f"variant: ${a}")
+    print("enum_variant_data: passed")
+}
