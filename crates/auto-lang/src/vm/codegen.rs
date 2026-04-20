@@ -84,6 +84,21 @@ enum FStrPartType {
     Uint64,  // u64 on stack (8 bytes, 2 slots)
 }
 
+/// Plan 194 Task 1: Map Auto types to native function name suffixes.
+///
+/// Used by monomorphic dispatch to resolve `m.insert("k", 42)` to
+/// `HashMap.insert_int` based on the generic type parameter.
+fn type_to_native_suffix(ty: &Type) -> &'static str {
+    match ty {
+        Type::Int | Type::I64 => "_int",
+        Type::Uint | Type::U64 | Type::USize | Type::Byte => "_uint",
+        Type::Float | Type::Double => "_float",
+        Type::Bool => "_bool",
+        Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => "_str",
+        _ => "",
+    }
+}
+
 /// Codegen: Compiles AST directly to AutoVM Bytecode
 pub struct Codegen {
     pub code: Vec<u8>,
@@ -4531,25 +4546,77 @@ impl Codegen {
                                             Some(format!("{}.{}", mono_name, method))
                                         } else {
                                             // Not a generic instance, use regular inference
-                                            vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
-                                            if let Some(type_name) =
-                                                self.infer_type_from_var(obj_name.as_ref())
-                                            {
-                                                vm_debug!("DEBUG: Inferred type name: {}",
-                                                    type_name
-                                                );
-                                                Some(format!("{}.{}", type_name, method))
-                                            } else {
-                                                // Plan 127: Handle TaskHandle.send() when type is Unknown
-                                                // If the method is "send", assume it's a task handle
-                                                if method.as_str() == "send" {
-                                                    vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
-                                                    Some("TaskHandle.send".to_string())
+                                            // Plan 194 Task 1: Try monomorphic dispatch first
+                                            // Extract base type name and generic params for typed natives
+                                            let (base_name, type_args) = match ty {
+                                                Type::Map(k, v) => ("Map".to_string(), vec![*k.clone(), *v.clone()]),
+                                                Type::List(elem) => ("List".to_string(), vec![*elem.clone()]),
+                                                Type::User(td) => {
+                                                    let name = td.name.to_string();
+                                                    (name, vec![])
+                                                }
+                                                other => {
+                                                    // Extract name via infer_type_from_var logic for other types
+                                                    let name = match other {
+                                                        Type::Int | Type::I64 => "int".to_string(),
+                                                        Type::Uint | Type::U64 | Type::Byte | Type::USize => "uint".to_string(),
+                                                        Type::Float | Type::Double => "float".to_string(),
+                                                        Type::Bool => "bool".to_string(),
+                                                        Type::Char => "char".to_string(),
+                                                        Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => "str".to_string(),
+                                                        Type::Array(_) => "Array".to_string(),
+                                                        _ => String::new(),
+                                                    };
+                                                    (name, vec![])
+                                                }
+                                            };
+
+                                            // Try monomorphic dispatch for collections with type params
+                                            if !type_args.is_empty() {
+                                                if let Some(mono_name) = self.try_mono_dispatch(&base_name, method.as_ref(), &type_args) {
+                                                    Some(mono_name)
                                                 } else {
-                                                    vm_debug!("DEBUG: Failed to infer type for {}",
-                                                        obj_name
+                                                    // Mono dispatch didn't resolve -- fall back to regular native name
+                                                    vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
+                                                    if let Some(type_name) =
+                                                        self.infer_type_from_var(obj_name.as_ref())
+                                                    {
+                                                        vm_debug!("DEBUG: Inferred type name: {}",
+                                                            type_name
+                                                        );
+                                                        Some(format!("{}.{}", type_name, method))
+                                                    } else {
+                                                        if method.as_str() == "send" {
+                                                            vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                            Some("TaskHandle.send".to_string())
+                                                        } else {
+                                                            vm_debug!("DEBUG: Failed to infer type for {}",
+                                                                obj_name
+                                                            );
+                                                            Some(format!("{}.{}", obj_name, method))
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                // No type args -- regular inference
+                                                vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
+                                                if let Some(type_name) =
+                                                    self.infer_type_from_var(obj_name.as_ref())
+                                                {
+                                                    vm_debug!("DEBUG: Inferred type name: {}",
+                                                        type_name
                                                     );
-                                                    Some(format!("{}.{}", obj_name, method))
+                                                    Some(format!("{}.{}", type_name, method))
+                                                } else {
+                                                    if method.as_str() == "send" {
+                                                        vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                        Some("TaskHandle.send".to_string())
+                                                    } else {
+                                                        vm_debug!("DEBUG: Failed to infer type for {}",
+                                                            obj_name
+                                                        );
+                                                        Some(format!("{}.{}", obj_name, method))
+                                                    }
                                                 }
                                             }
                                         }
@@ -6889,6 +6956,56 @@ impl Codegen {
                 "bmap" | "treemap" => Some("BTreeMap".to_string()),
                 _ => None,
             }
+        }
+    }
+
+    // ========== Plan 194: Monomorphic dispatch for generic method calls ==========
+
+    /// Try to resolve a method call on a collection variable to a typed native function.
+    ///
+    /// When a variable has known generic type parameters (e.g., `Map<str, int>`),
+    /// this resolves `m.insert("k", 42)` to `HashMap.insert_int` by picking the
+    /// correct suffix based on the value type.
+    ///
+    /// Returns `None` if:
+    /// - The base type is not a supported collection
+    /// - The method does not have a typed variant
+    /// - The type parameter index is out of bounds
+    /// - The resolved native name does not exist in the registry
+    fn try_mono_dispatch(&self, base_type: &str, method: &str, type_args: &[Type]) -> Option<String> {
+        // Map Auto base type names to their native registry equivalents
+        let native_base = match base_type {
+            "Map" => "HashMap",  // Map<K,V> -> HashMap natives
+            other => other,
+        };
+
+        // Determine which generic param to use for the suffix based on collection type + method
+        let suffix_param_idx: Option<usize> = match native_base {
+            "HashMap" => match method {
+                "insert" | "get" => Some(1),       // value type (2nd generic param)
+                "contains" | "remove" => Some(0),  // key type (1st generic param)
+                _ => None,
+            },
+            "HashSet" => Some(0),   // element type
+            "List" | "Vec" => Some(0),  // element type
+            _ => None,
+        };
+
+        let idx = suffix_param_idx?;
+        if idx >= type_args.len() { return None; }
+        let suffix = type_to_native_suffix(&type_args[idx]);
+        if suffix.is_empty() { return None; }
+
+        // Build the candidate native name with suffix
+        let mono_name = format!("{}.{}{}", native_base, method, suffix);
+
+        // Verify this native exists in the registry before returning it
+        if BIGVM_NATIVES.lock().unwrap().contains(&mono_name) {
+            vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, mono_name);
+            Some(mono_name)
+        } else {
+            vm_debug!("DEBUG: Mono dispatch candidate {} not found in registry", mono_name);
+            None
         }
     }
 
