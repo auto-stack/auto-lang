@@ -238,7 +238,7 @@ impl Codegen {
         let mut scope_stack = Vec::new();
         scope_stack.push(locals);
 
-        Self {
+        let mut codegen = Self {
             code: Vec::new(),
             exports: HashMap::new(),
             relocs: Vec::new(),
@@ -272,7 +272,33 @@ impl Codegen {
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
-        }
+        };
+        // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
+        codegen.register_builtin_option_variants();
+        codegen
+    }
+
+    /// Plan 197 Task 16: Register built-in Option.Some and Option.None as enum variant templates
+    fn register_builtin_option_variants(&mut self) {
+        use crate::vm::generic_registry::{ClassTemplate, FieldDef};
+
+        // Option.Some has 1 field: _0 (the wrapped value)
+        let some_template = ClassTemplate::new(
+            "Option.Some",
+            vec![],
+            vec![FieldDef::new("_0", Type::Unknown)],
+            vec![],
+        );
+        let _ = self.generic_registry.register_template(some_template);
+
+        // Option.None has 0 fields
+        let none_template = ClassTemplate::new(
+            "Option.None",
+            vec![],
+            vec![],
+            vec![],
+        );
+        let _ = self.generic_registry.register_template(none_template);
     }
 
     /// Plan 084 Phase 3: Create Codegen with custom TypeStore
@@ -301,7 +327,7 @@ impl Codegen {
         let mut scope_stack = Vec::new();
         scope_stack.push(locals);
 
-        Self {
+        let mut codegen = Self {
             code: Vec::new(),
             exports: HashMap::new(),
             relocs: Vec::new(),
@@ -335,7 +361,10 @@ impl Codegen {
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
-        }
+        };
+        // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
+        codegen.register_builtin_option_variants();
+        codegen
     }
 
     // Plan 076 Phase 1: Generic type tracking methods
@@ -1026,25 +1055,30 @@ impl Codegen {
                         }
                     } else if matches!(self.last_expr_type, ObjectType::NestedObject) {
                         // Plan 197 Task 13: Track enum variant instance types for field access
+                        // Plan 197 Task 16: Only override if type wasn't already inferred (e.g., from fn_return_types)
                         if let Some(ref variant_mono) = self.last_enum_variant_mono {
-                            let type_decl = crate::ast::TypeDecl {
-                                name: crate::ast::Name::from(variant_mono.clone()),
-                                kind: crate::ast::TypeDeclKind::UserType,
-                                parent: None,
-                                has: vec![],
-                                specs: vec![],
-                                spec_impls: vec![],
-                                generic_params: vec![],
-                                members: vec![],
-                                delegations: vec![],
-                                methods: vec![],
-                                attrs: vec![],
-                                doc: None,
-                                is_pub: false,
-                            };
-                            self.var_types.insert(name_str.clone(), Type::User(type_decl));
-                            vm_debug!("DEBUG: Stored enum variant type '{}' for variable '{}'",
-                                variant_mono, name_str);
+                            let existing_type = self.var_types.get(&name_str);
+                            let should_override = matches!(existing_type, Some(Type::Unknown) | Some(Type::Int) | None);
+                            if should_override {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from(variant_mono.clone()),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                    attrs: vec![],
+                                    doc: None,
+                                    is_pub: false,
+                                };
+                                self.var_types.insert(name_str.clone(), Type::User(type_decl));
+                                vm_debug!("DEBUG: Stored enum variant type '{}' for variable '{}'",
+                                    variant_mono, name_str);
+                            }
                             self.last_enum_variant_mono = None;
                         }
                     }
@@ -2245,36 +2279,60 @@ impl Codegen {
                             // Use first pattern for special pattern types (Option/Result/Cover)
                             let pattern = &patterns[0];
                             match pattern {
-                                // Legacy: None as expression (for backward compatibility)
+                                // Plan 197 Task 16: None as expression (backward compatibility)
                                 crate::ast::Expr::None => {
                                     // Duplicate target for comparison
                                     self.emit(OpCode::DUP);
-                                    // Check if value is None (-1)
-                                    self.emit(OpCode::IS_NIL);
+                                    // Check if value is Option.None using IS_VARIANT
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let variant_name = "Option.None";
+                                    let name_bytes = variant_name.as_bytes();
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
                                 }
-                                // Plan 120: OptionPattern - Some(x) or None in is statement
+                                // Plan 197 Task 16: OptionPattern - Some(x) or None in is statement
+                                // Uses IS_VARIANT("Option.Some"/"Option.None") + GET_GENERIC_FIELD
                                 crate::ast::Expr::OptionPattern(opt_cover) => {
                                     match opt_cover.variant {
                                         crate::ast::OptionVariant::Some => {
                                             // Duplicate target for checking
                                             self.emit(OpCode::DUP);
-                                            // Check if value is Some (not None)
-                                            self.emit(OpCode::IS_SOME);
+                                            // Check if value is Option.Some using IS_VARIANT
+                                            self.emit(OpCode::IS_VARIANT);
+                                            let variant_name = "Option.Some";
+                                            let name_bytes = variant_name.as_bytes();
+                                            self.emit_u16(name_bytes.len() as u16);
+                                            for &byte in name_bytes {
+                                                self.code.push(byte);
+                                            }
 
                                             // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
+
                                             // If we have a binding, extract the value and store it
                                             if let Some(binding) = &opt_cover.binding {
-                                                // The target is still on stack (from DUP)
-                                                // Unwrap the Some value
-                                                self.emit(OpCode::UNWRAP_SOME);
+                                                // The target is still on stack (IS_VARIANT consumed the DUP'd copy)
+                                                // Extract field _0 (index 0) from the Option.Some instance
+                                                self.emit(OpCode::DUP);
+                                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                                self.emit_u32(0); // field index 0 (_0)
+
                                                 // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit(OpCode::STORE_LOCAL);
                                                 self.emit_u16(var_idx as u16);
+
+                                                // Plan 197 Task 16: Track the binding's type in var_types
+                                                // Infer the inner type from the is target variable
+                                                if binding.as_str() != "_" {
+                                                    let inner_type = self.infer_option_inner_type(&is_stmt.target);
+                                                    self.var_types.insert(binding.to_string(), inner_type);
+                                                }
                                             } else {
-                                                // Pop the duplicated target
+                                                // Pop the duplicated target (no binding needed)
                                                 self.emit(OpCode::POP);
                                             }
 
@@ -2291,10 +2349,16 @@ impl Codegen {
                                             continue; // Skip the default handling
                                         }
                                         crate::ast::OptionVariant::None => {
-                                            // Duplicate target for comparison
+                                            // Duplicate target for checking
                                             self.emit(OpCode::DUP);
-                                            // Check if value is None (-1)
-                                            self.emit(OpCode::IS_NIL);
+                                            // Check if value is Option.None using IS_VARIANT
+                                            self.emit(OpCode::IS_VARIANT);
+                                            let variant_name = "Option.None";
+                                            let name_bytes = variant_name.as_bytes();
+                                            self.emit_u16(name_bytes.len() as u16);
+                                            for &byte in name_bytes {
+                                                self.code.push(byte);
+                                            }
                                         }
                                     }
                                 }
@@ -2378,12 +2442,19 @@ impl Codegen {
                                         }
                                     }
                                 }
-                                // Legacy: Some/Ok/Err as expressions (for backward compatibility)
+                                // Plan 197 Task 16: Legacy Some as expression pattern (backward compatibility)
+                                // Uses IS_VARIANT("Option.Some") instead of IS_SOME
                                 crate::ast::Expr::Some(inner) => {
                                     // Duplicate target for checking
                                     self.emit(OpCode::DUP);
-                                    // Check if value is Some (not None)
-                                    self.emit(OpCode::IS_SOME);
+                                    // Check if value is Option.Some using IS_VARIANT
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let variant_name = "Option.Some";
+                                    let name_bytes = variant_name.as_bytes();
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
 
                                     let _ = inner; // Suppress unused warning
                                 }
@@ -5181,17 +5252,50 @@ impl Codegen {
                     _ => ObjectType::Int,
                 };
             }
-            // Plan 120: Option type constructor - Some(value)
+            // Plan 197 Task 16: Option type constructor - Some(value)
+            // Uses NEW_INSTANCE("Option.Some") + CONSTRUCT_INSTANCE with 1 field
             Expr::Some(inner) => {
                 // Compile inner expression (pushes value onto stack)
                 self.compile_expr(inner)?;
-                // Emit CREATE_SOME (wraps value in Some)
-                self.emit(OpCode::CREATE_SOME);
+
+                // Emit NEW_INSTANCE instruction for Option.Some
+                let mono_name = "Option.Some";
+                let name_bytes = mono_name.as_bytes();
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(name_bytes.len() as i32);
+                self.emit(OpCode::NEW_INSTANCE);
+                for &byte in name_bytes {
+                    self.code.push(byte);
+                }
+
+                // Emit CONSTRUCT_INSTANCE with field_count = 1
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(1);
+                self.emit(OpCode::CONSTRUCT_INSTANCE);
+
+                self.last_expr_type = ObjectType::NestedObject;
+                self.last_enum_variant_mono = Some(mono_name.to_string());
             }
-            // Plan 120: Option type constructor - None
+            // Plan 197 Task 16: Option type constructor - None
+            // Uses NEW_INSTANCE("Option.None") + CONSTRUCT_INSTANCE with 0 fields
             Expr::None => {
-                // Emit CREATE_NONE (pushes None onto stack)
-                self.emit(OpCode::CREATE_NONE);
+                // Emit NEW_INSTANCE instruction for Option.None
+                let mono_name = "Option.None";
+                let name_bytes = mono_name.as_bytes();
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(name_bytes.len() as i32);
+                self.emit(OpCode::NEW_INSTANCE);
+                for &byte in name_bytes {
+                    self.code.push(byte);
+                }
+
+                // Emit CONSTRUCT_INSTANCE with field_count = 0
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(0);
+                self.emit(OpCode::CONSTRUCT_INSTANCE);
+
+                self.last_expr_type = ObjectType::NestedObject;
+                self.last_enum_variant_mono = Some(mono_name.to_string());
             }
             // Plan 120: Result type constructor - Ok(value)
             Expr::Ok(inner) => {
@@ -6636,6 +6740,24 @@ impl Codegen {
     }
 
     /// Infer type name from a variable name (Plan 080: with explicit type tracking)
+    /// Plan 197 Task 16: Infer the inner type of an Option value from the is target
+    ///
+    /// Given the is target expression, look up its type (e.g., ?str -> Option<str>)
+    /// and return the inner type (e.g., str).
+    fn infer_option_inner_type(&self, target: &Expr) -> Type {
+        if let Expr::Ident(name) = target {
+            if let Some(ty) = self.var_types.get(name.as_ref()) {
+                if let Type::Option(inner) = ty {
+                    return (**inner).clone();
+                }
+                // If the type is not Option, still return it as a best guess
+                return ty.clone();
+            }
+        }
+        // Default: unknown type
+        Type::Unknown
+    }
+
     ///
     /// First checks the var_types map (tracked during let declarations)
     /// Plan 193: Infer precise source type for .to() conversion opcode selection.

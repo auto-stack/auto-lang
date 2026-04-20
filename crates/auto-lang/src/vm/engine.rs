@@ -438,6 +438,44 @@ impl AutoVM {
         true
     }
 
+    /// Plan 197 Task 16: Check if a heap object is an Option.None instance
+    fn is_option_none(&self, instance_id: u64) -> bool {
+        use crate::vm::generic_registry::GenericInstanceData;
+        if let Some(obj) = self.get_heap_object(instance_id) {
+            let guard = obj.read().unwrap();
+            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                return instance.mono_name == "Option.None";
+            }
+        }
+        false
+    }
+
+    /// Plan 197 Task 16: Check if a heap object is an Option.Some instance
+    fn is_option_some(&self, instance_id: u64) -> bool {
+        use crate::vm::generic_registry::GenericInstanceData;
+        if let Some(obj) = self.get_heap_object(instance_id) {
+            let guard = obj.read().unwrap();
+            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                return instance.mono_name == "Option.Some";
+            }
+        }
+        false
+    }
+
+    /// Plan 197 Task 16: Get the inner value from an Option.Some instance
+    fn get_option_inner(&self, instance_id: u64) -> Option<Value> {
+        use crate::vm::generic_registry::GenericInstanceData;
+        if let Some(obj) = self.get_heap_object(instance_id) {
+            let guard = obj.read().unwrap();
+            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                if instance.mono_name == "Option.Some" {
+                    return instance.get_field(0).cloned();
+                }
+            }
+        }
+        None
+    }
+
     /// Compare two Value instances for structural equality
     fn values_equal(&self, a: &Value, b: &Value) -> bool {
         match (a, b) {
@@ -1162,16 +1200,31 @@ impl AutoVM {
                     // Pop left expression (May<T> value)
                     let may_bits = task.ram.pop_i32();
 
-                    // Check if May<T> is Nil (represented as -1)
-                    // If May value is Nil (-1), push default value
-                    // Otherwise, push the May value itself
-                    if may_bits == -1 {
+                    // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
+                    let is_none = if may_bits == -1 {
+                        true
+                    } else if may_bits >= 4000000 {
+                        // Check if it's an Option.None heap object
+                        self.is_option_none(may_bits as u64)
+                    } else {
+                        false
+                    };
+
+                    if is_none {
                         // Nil case: return default value
                         task.ram.push_i32(default_bits);
                     } else {
                         // Val case: return the unwrapped value
-                        // TODO: When stack supports proper May<T> types, extract the actual value
-                        task.ram.push_i32(may_bits);
+                        // Plan 197 Task 16: If it's an Option.Some, unwrap to get the inner value
+                        if may_bits >= 4000000 && self.is_option_some(may_bits as u64) {
+                            if let Some(field_val) = self.get_option_inner(may_bits as u64) {
+                                Self::push_value(&mut task.ram, &field_val, &self.strings);
+                            } else {
+                                task.ram.push_i32(may_bits);
+                            }
+                        } else {
+                            task.ram.push_i32(may_bits);
+                        }
                     }
                 }
                 // Plan 073: May<T> error propagate operator: expression.?
@@ -1179,16 +1232,33 @@ impl AutoVM {
                     // Pop May<T> value from stack
                     let may_bits = task.ram.pop_i32();
 
-                    // Check if May<T> is Nil
-                    if may_bits == -1 {
+                    // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
+                    let is_none = if may_bits == -1 {
+                        true
+                    } else if may_bits >= 4000000 {
+                        // Check if it's an Option.None heap object
+                        self.is_option_none(may_bits as u64)
+                    } else {
+                        false
+                    };
+
+                    if is_none {
                         // Nil case: early return (error propagation)
-                        // For now, we just return Nil as the function result
-                        // TODO: Implement proper early return mechanism
+                        // Push an Option.None heap object for the caller
+                        // For backward compat, also handle old -1 callers
                         task.ram.push_i32(-1);
                     } else {
                         // Val case: push the unwrapped value
-                        // TODO: When stack supports proper May<T> types, extract the actual value
-                        task.ram.push_i32(may_bits);
+                        // Plan 197 Task 16: If it's an Option.Some, unwrap to get the inner value
+                        if may_bits >= 4000000 && self.is_option_some(may_bits as u64) {
+                            if let Some(field_val) = self.get_option_inner(may_bits as u64) {
+                                Self::push_value(&mut task.ram, &field_val, &self.strings);
+                            } else {
+                                task.ram.push_i32(may_bits);
+                            }
+                        } else {
+                            task.ram.push_i32(may_bits);
+                        }
                     }
                 }
                 // Plan 162: Type cast opcodes — runtime type conversion
@@ -1758,11 +1828,25 @@ impl AutoVM {
                         let val_i32 = task.ram.pop_i32();
                         vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
 
-                        // Check if this looks like a heap object ID (>= 4000000)
-                        // Heap objects start at 4000000
+                        // Plan 197 Task 16: Detect string, heap object, or basic integer
+                        // Strings are encoded as -(idx+1) (negative)
+                        // Heap objects are >= 4000000
+                        // Integers are everything else
                         let value = if val_i32 >= 4000000 {
                             // This is likely a heap object reference
                             Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
+                        } else if val_i32 < 0 {
+                            // Tagged string index: -(idx+1)
+                            let idx = (-val_i32 - 1) as usize;
+                            let strings_guard = self.strings.read().unwrap();
+                            if idx < strings_guard.len() {
+                                let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
+                                drop(strings_guard);
+                                Value::Str(auto_val::AutoStr::from(s))
+                            } else {
+                                drop(strings_guard);
+                                Value::Int(val_i32)
+                            }
                         } else {
                             // Basic integer type
                             Value::Int(val_i32)

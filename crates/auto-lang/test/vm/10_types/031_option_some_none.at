@@ -1,0 +1,28 @@
+fn maybe_greet(name str) ?str {
+    if name == "" {
+        return None
+    }
+    return Some(f"Hello, $name!")
+}
+
+fn main() {
+    let a = maybe_greet("Auto")
+    is a {
+        Some(msg) -> assert(msg.contains("Auto")),
+        None -> assert(false)
+    }
+
+    let b = maybe_greet("")
+    is b {
+        Some(_) -> assert(false),
+        None -> print("got None as expected")
+    }
+
+    let c = Some(42)
+    is c {
+        Some(n) -> assert_eq(n, 42),
+        None -> assert(false)
+    }
+
+    print("option_some_none: passed")
+}
