@@ -1386,6 +1386,11 @@ impl Codegen {
                     .map(|td| Type::User(td))
                     .unwrap_or(Type::Unknown);
 
+                // Store member names for implicit .field resolution
+                let member_names: Vec<String> = self.get_type(&type_name)
+                    .map(|ti| ti.member_names.clone())
+                    .unwrap_or_default();
+
                 for method in &ext_block.methods {
                     let mangled_name = format!("{}.{}", type_name, method.name);
                     let mut method_fn = method.clone();
@@ -1404,7 +1409,10 @@ impl Codegen {
                         }
                     }
 
+                    // Set member names for implicit .field access resolution
+                    self.current_type_members = Some(member_names.clone());
                     self.compile_stmt(&Stmt::Fn(method_fn))?;
+                    self.current_type_members = None;
                 }
             }
             Stmt::EnumDecl(enum_decl) => {
@@ -2999,7 +3007,22 @@ impl Codegen {
                                 if let Some(self_index) = self.lookup_var("self") {
                                     vm_debug!("DEBUG: Variable {} resolved as implicit self.{} access", name_str, name_str);
                                     self.emit_load_loc(self_index);
-                                    // Emit GET_FIELD with field name
+                                    // Determine type name from var_types["self"]
+                                    let type_name = self.var_types.get("self")
+                                        .and_then(|t| if let Type::User(td) = t { Some(td.name.to_string()) } else { None });
+                                    if let Some(ref tn) = type_name {
+                                        if self.generic_registry.has_template(tn) {
+                                            if let Ok(class_type) = self.generic_registry.get_or_create_type(tn, vec![]) {
+                                                if let Some(field_idx) = class_type.template.field_index(&name_str) {
+                                                    self.emit(OpCode::GET_GENERIC_FIELD);
+                                                    self.code.extend_from_slice(&(field_idx as u32).to_le_bytes());
+                                                    self.last_expr_type = ObjectType::Int;
+                                                    return Ok(());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // Fallback: use GET_FIELD (name-based)
                                     let field_bytes = name_str.as_bytes().to_vec();
                                     let field_idx = self.strings.len() as u16;
                                     self.strings.push(field_bytes);
@@ -4460,24 +4483,11 @@ impl Codegen {
                             } else {
                                 // Plan 088 Phase 4: Smart parameter passing for receiver
                                 // Use compile_call_arg to support Copy/View/Mut/Take modes
-                                vm_debug!("DEBUG: Checking fn_params for '{}': found={}",
-                                    method_name,
-                                    self.fn_params.contains_key(method_name)
-                                );
-                                vm_debug!("DEBUG: Available fn_params: {:?}",
-                                    self.fn_params.keys().collect::<Vec<_>>()
-                                );
 
-                                if self.fn_params.contains_key(method_name) {
-                                    vm_debug!("DEBUG:   Receiver (arg 0): smart param passing for '{}'",
-                                        method_name
-                                    );
-                                    self.compile_call_arg(obj, method_name, 0)?;
-                                } else {
-                                    vm_debug!("DEBUG:   Receiver (arg 0): normal compile (no param info)"
-                                    );
-                                    self.compile_expr(obj)?;
-                                }
+                                // Receiver (arg 0) is always an object ID (i32 value),
+                                // so always use direct compile_expr instead of smart param passing
+                                // (LOAD_REF would push var_index instead of the actual object ID)
+                                self.compile_expr(obj)?;
                             }
                         }
                     } else {

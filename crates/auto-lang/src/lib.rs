@@ -334,10 +334,10 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
     
-    // Separate type declarations from other statements
-    // Type declarations stay at global level, other code goes into script wrapper
+    // Separate type/ext declarations from other statements
+    // Type declarations and ext blocks stay at global level, other code goes into script wrapper
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_))
+        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_))
     });
     
     // First, compile type declarations at global level
