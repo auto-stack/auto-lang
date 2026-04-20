@@ -219,6 +219,21 @@ pub fn register_builtin_natives() {
     registry.register_with_id("HashMap.clear", 127);
     registry.register_with_id("HashMap.drop", 128);
 
+    // HashMap monomorphic aliases (Plan 194 Task 2)
+    // float/bool reuse the int native (float stored as int bits, bool as 0/1)
+    registry.register_with_id("HashMap.insert_float", 121);  // reuse insert_int
+    registry.register_with_id("HashMap.insert_bool", 121);   // reuse insert_int
+    registry.register_with_id("HashMap.get_float", 123);     // reuse get_int
+    registry.register_with_id("HashMap.get_bool", 123);      // reuse get_int
+    registry.register_with_id("HashMap.contains_str", 124);  // reuse contains
+    registry.register_with_id("HashMap.contains_int", 124);  // reuse contains
+    registry.register_with_id("HashMap.contains_float", 124); // reuse contains
+    registry.register_with_id("HashMap.contains_bool", 124);  // reuse contains
+    registry.register_with_id("HashMap.remove_str", 125);    // reuse remove
+    registry.register_with_id("HashMap.remove_int", 125);    // reuse remove
+    registry.register_with_id("HashMap.remove_float", 125);  // reuse remove
+    registry.register_with_id("HashMap.remove_bool", 125);   // reuse remove
+
     // HashSet functions (129-135)
     registry.register_with_id("HashSet.new", 129);
     registry.register_with_id("HashSet.insert", 130);
@@ -227,6 +242,21 @@ pub fn register_builtin_natives() {
     registry.register_with_id("HashSet.size", 133);
     registry.register_with_id("HashSet.clear", 134);
     registry.register_with_id("HashSet.drop", 135);
+
+    // HashSet monomorphic aliases (Plan 194 Task 2)
+    // str/int/float/bool type-suffixed names all map to the same native
+    registry.register_with_id("HashSet.insert_str", 130);
+    registry.register_with_id("HashSet.insert_int", 130);
+    registry.register_with_id("HashSet.insert_float", 130);  // reuse int
+    registry.register_with_id("HashSet.insert_bool", 130);   // reuse int
+    registry.register_with_id("HashSet.contains_str", 131);
+    registry.register_with_id("HashSet.contains_int", 131);
+    registry.register_with_id("HashSet.contains_float", 131); // reuse int
+    registry.register_with_id("HashSet.contains_bool", 131);  // reuse int
+    registry.register_with_id("HashSet.remove_str", 132);
+    registry.register_with_id("HashSet.remove_int", 132);
+    registry.register_with_id("HashSet.remove_float", 132);   // reuse int
+    registry.register_with_id("HashSet.remove_bool", 132);    // reuse int
 
     // VecDeque functions (Plan 085) - 136-146
     registry.register_with_id("VecDeque.new", 136);
