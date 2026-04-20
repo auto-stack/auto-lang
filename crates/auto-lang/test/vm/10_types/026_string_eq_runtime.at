@@ -1,0 +1,17 @@
+fn greet() str {
+    "hello"
+}
+
+fn main() {
+    // Same literal from same function — already works after Task 1
+    assert("hello" == "hello")
+
+    // String from function vs literal — tests content-aware EQ
+    let a = greet()
+    assert(a == "hello")
+
+    // NE on strings
+    assert(a != "world")
+
+    print("string_eq_runtime: passed")
+}

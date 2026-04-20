@@ -3152,14 +3152,44 @@ impl AutoVM {
                     let a = task.ram.pop_i32();
                     // Plan 091: Use special values for boolean results
                     // i32::MIN = true, i32::MIN+1 = false
-                    task.ram
-                        .push_i32(if a == b { -2147483648 } else { -2147483647 });
+                    // Plan 197 Task 2: Content-aware string comparison
+                    let result = if a == b {
+                        true
+                    } else if a < 0 && b < 0 {
+                        // Both are tagged strings — compare content
+                        let strings = self.strings.read().unwrap();
+                        let idx_a = (-a - 1) as usize;
+                        let idx_b = (-b - 1) as usize;
+                        if idx_a < strings.len() && idx_b < strings.len() {
+                            strings[idx_a] == strings[idx_b]
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                 }
                 OpCode::NE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram
-                        .push_i32(if a != b { -2147483648 } else { -2147483647 });
+                    // Plan 197 Task 2: Content-aware string comparison
+                    let result = if a == b {
+                        false
+                    } else if a < 0 && b < 0 {
+                        // Both are tagged strings — compare content
+                        let strings = self.strings.read().unwrap();
+                        let idx_a = (-a - 1) as usize;
+                        let idx_b = (-b - 1) as usize;
+                        if idx_a < strings.len() && idx_b < strings.len() {
+                            strings[idx_a] != strings[idx_b]
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                 }
                 OpCode::LT => {
                     let b = task.ram.pop_i32();
