@@ -133,6 +133,9 @@ pub struct AutoVM {
     pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
     pub future_id_gen: AtomicU32,
 
+    // Plan 197 Task 9: Generic registry for field name lookup at runtime
+    pub generic_registry: crate::vm::generic_registry::GenericRegistry,
+
     // Plan 177: Optional stdout capture buffer for testing
     pub output_buffer: Option<Arc<RwLock<String>>>,
 }
@@ -198,6 +201,8 @@ impl AutoVM {
             // Plan 124: Future registry for async/await
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
+            // Plan 197 Task 9: Generic registry for runtime field name lookup
+            generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
             // Plan 177: stdout capture (None = normal println)
             output_buffer: None,
         }
@@ -214,6 +219,11 @@ impl AutoVM {
     /// Load strings from a module's string constant pool
     pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
         self.strings = Arc::new(RwLock::new(strings));
+    }
+
+    /// Plan 197 Task 9: Load generic registry from codegen
+    pub fn load_generic_registry(&mut self, registry: crate::vm::generic_registry::GenericRegistry) {
+        self.generic_registry = registry;
     }
 
     /// Plan 118 Phase 4: Add a new string to the string pool
@@ -1667,6 +1677,14 @@ impl AutoVM {
                             {
                                 let field_count = field_values.len();
                                 instance.fields = field_values;
+
+                                // Plan 197 Task 9: Populate field_names from generic registry
+                                let field_names = self.generic_registry
+                                    .get_type(&instance.mono_name)
+                                    .map(|ct| ct.template.fields.iter().map(|f| f.name.clone()).collect())
+                                    .unwrap_or_else(|| vec!["_unknown".to_string(); field_count]);
+                                instance.field_names = field_names;
+
                                 vm_debug!("DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields",
                                     field_count
                                 );

@@ -575,6 +575,9 @@ impl AutovmReplSession {
         self.vm.flash = Arc::new(flash);
         self.vm.strings = Arc::new(std::sync::RwLock::new(codegen.strings.clone()));
 
+        // Plan 197 Task 9: Sync generic registry to VM for runtime field name lookup
+        self.vm.generic_registry = codegen.generic_registry.clone();
+
         // 9. Put Codegen back (preserves locals, exports, strings, etc.)
         self.codegen = Some(codegen);
 

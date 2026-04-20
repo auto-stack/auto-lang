@@ -394,6 +394,8 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
     let result_type = codegen.last_expr_type.clone();
+    // Plan 197 Task 9: Extract generic registry before finish() consumes the codegen
+    let generic_registry = std::mem::take(&mut codegen.generic_registry);
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
     linker.add_module(main_module);
@@ -449,6 +451,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
         (vm, None)
     };
     vm.load_strings(strings);
+    vm.load_generic_registry(generic_registry);
 
     // Helper to extract stdout from capture buffer
     let get_stdout = || {
@@ -902,12 +905,15 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
     let bytecode = configgen.base().code.clone();
     let object_keys = configgen.base().object_keys.clone();
     let object_types = configgen.base().object_types.clone();
+    // Plan 197 Task 9: Extract generic registry for VM
+    let generic_registry = std::mem::take(&mut configgen.base().generic_registry);
 
     let rt = get_global_runtime();
     rt.block_on(async {
         let flash = VirtualFlash::new_with_code_and_keys(bytecode, object_keys, object_types);
         let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config
         vm.load_strings(strings);
+        vm.load_generic_registry(generic_registry);
 
         // 5. Execute from entry point (default to 0 for config)
         let entry_point = exports.get("main").copied().unwrap_or(0) as usize;

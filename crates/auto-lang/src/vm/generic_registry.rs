@@ -275,6 +275,11 @@ impl ClassType {
     pub fn is_generic(&self) -> bool {
         !self.type_args.is_empty()
     }
+
+    /// Plan 197 Task 9: Get field names from the template
+    pub fn field_names(&self) -> Vec<String> {
+        self.template.fields.iter().map(|f| f.name.clone()).collect()
+    }
 }
 
 impl fmt::Display for ClassType {
@@ -608,6 +613,7 @@ impl Clone for GenericInstanceData {
 ///
 /// # Thread Safety
 /// Uses RwLock for concurrent read access during compilation.
+#[derive(Clone)]
 pub struct GenericRegistry {
     templates: HashMap<String, Arc<ClassTemplate>>,
     types: HashMap<String, Arc<ClassType>>,  // mono_name → ClassType

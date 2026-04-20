@@ -99,11 +99,15 @@ impl VmInterpreter {
         let strings = codegen.strings;
         let exports = codegen.exports;
 
+        // Plan 197 Task 9: Transfer generic registry to VM for runtime field name lookup
+        let generic_registry = std::mem::take(&mut codegen.generic_registry);
+
         // Use global runtime to avoid creating/dropping runtimes in async context
         let rt = crate::get_global_runtime();
         let final_result = rt.block_on(async move {
             let mut vm = AutoVM::new(flash, 4096);
             vm.load_strings(strings);
+            vm.load_generic_registry(generic_registry);
 
             let entry_point = exports.get("main").copied().unwrap_or(0) as usize;
             let task_id = vm.spawn_task(entry_point, 4096);
