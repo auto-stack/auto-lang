@@ -1380,6 +1380,12 @@ impl Codegen {
             Stmt::Ext(ext_block) => {
                 // Compile ext methods as standalone functions (same pattern as TypeDecl methods)
                 let type_name = ext_block.target.to_string();
+
+                // Look up the TypeDecl for self parameter typing
+                let self_type = self.infer_ctx.lookup_type_decl(&ext_block.target)
+                    .map(|td| Type::User(td))
+                    .unwrap_or(Type::Unknown);
+
                 for method in &ext_block.methods {
                     let mangled_name = format!("{}.{}", type_name, method.name);
                     let mut method_fn = method.clone();
@@ -1391,7 +1397,7 @@ impl Codegen {
                         if !has_self {
                             method_fn.params.insert(0, crate::ast::Param {
                                 name: crate::ast::Name::from("self"),
-                                ty: Type::Unknown,
+                                ty: self_type.clone(),
                                 default: None,
                                 mode: crate::ast::ParamMode::View,
                             });
@@ -3884,12 +3890,13 @@ impl Codegen {
                                 self.emit(OpCode::CONST_I32);
                                 self.emit_i32(name_bytes.len() as i32);
 
-                                // Emit mono_name bytes directly into code
+                                // Emit NEW_INSTANCE opcode first
+                                self.emit(OpCode::NEW_INSTANCE);
+
+                                // Then emit mono_name bytes directly into code (after opcode)
                                 for &byte in name_bytes {
                                     self.code.push(byte);
                                 }
-
-                                self.emit(OpCode::NEW_INSTANCE);
 
                                 // Emit CONSTRUCT_INSTANCE
                                 // Stack layout should be: ..., instance_id, field_count, arg1, ..., argN

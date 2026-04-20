@@ -646,6 +646,9 @@ impl AutoVM {
 
             let op_byte = self.flash.read_u8(task.ip);
             task.ip += 1;
+            if !OpCode::is_valid(op_byte) {
+                return Err(VMError::RuntimeError(format!("Invalid opcode: 0x{:02x} at ip={}", op_byte, task.ip - 1)));
+            }
             let op: OpCode = op_byte.into();
 
             // 2. Decode & Execute

@@ -301,3 +301,4 @@ fn test_vm(case: &str) -> AutoResult<()> {
 
 // === 20_permission ===
 #[test] fn test_20_permission_001_scalar_mode() { test_vm("20_permission/001_scalar_mode").unwrap(); }
+#[test] fn test_20_permission_002_ext_policy() { test_vm("20_permission/002_ext_policy").unwrap(); }
