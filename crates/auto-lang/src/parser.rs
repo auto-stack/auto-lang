@@ -3003,7 +3003,15 @@ impl<'a> Parser<'a> {
         // identifier, not as the enum type `Binary`.
         if let Some(meta) = self.lookup_meta(&name) {
             match meta.as_ref() {
-                Meta::Store(_) | Meta::Ref(_) => return Ok(Expr::Ident(name)),
+                Meta::Store(_) | Meta::Ref(_) => {
+                    let mut expr = Expr::Ident(name);
+                    while self.is_kind(TokenKind::Dot) {
+                        self.next();
+                        let field = self.parse_name()?;
+                        expr = Expr::Dot(Box::new(expr), field);
+                    }
+                    return Ok(expr);
+                }
                 _ => {}
             }
         }
@@ -3020,7 +3028,15 @@ impl<'a> Parser<'a> {
         if is_enum_or_tag || is_user_enum {
             return self.tag_cover(&name);
         }
-        Ok(Expr::Ident(name))
+
+        // Support dot chains: self.field, obj.field.nested, etc.
+        let mut expr = Expr::Ident(name);
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+            let field = self.parse_name()?;
+            expr = Expr::Dot(Box::new(expr), field);
+        }
+        Ok(expr)
     }
 
     pub fn iterable_expr(&mut self) -> AutoResult<Expr> {
