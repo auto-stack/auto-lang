@@ -157,6 +157,9 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_10_types_007_type_instance_prop() { test_vm("10_types/007_type_instance_prop").unwrap(); }
 #[test] fn test_10_types_008_nested_type_instance() { test_vm("10_types/008_nested_type_instance").unwrap(); }
 #[test] fn test_10_types_009_access_fields_in_method() { test_vm("10_types/009_access_fields_in_method").unwrap(); }
+#[test] fn test_10_types_010_ext_method() { test_vm("10_types/010_ext_method").unwrap(); }
+#[test] fn test_10_types_011_enum_is_match() { test_vm("10_types/011_enum_is_match").unwrap(); }
+#[test] fn test_10_types_012_enum_dot_match() { test_vm("10_types/012_enum_dot_match").unwrap(); }
 
 // === 11_compound_ops ===
 #[test] fn test_11_compound_ops_001_add_eq() { test_vm("11_compound_ops/001_add_eq").unwrap(); }
@@ -294,3 +297,6 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_19_rust_std_007_pathbuf() { test_vm("19_rust_std/007_pathbuf").unwrap(); }
 #[test] fn test_19_rust_std_008_box_cell() { test_vm("19_rust_std/008_box_cell").unwrap(); }
 #[test] fn test_19_rust_std_009_duration_f64() { test_vm("19_rust_std/009_duration_f64").unwrap(); }
+
+// === 20_permission ===
+#[test] fn test_20_permission_001_scalar_mode() { test_vm("20_permission/001_scalar_mode").unwrap(); }

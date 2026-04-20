@@ -1,0 +1,13 @@
+enum Color { Red = 1, Green = 2, Blue = 3 }
+
+fn check(c int) str {
+    is c {
+        Color.Red -> "red"
+        Color.Green -> "green"
+        Color.Blue -> "blue"
+        else -> "unknown"
+    }
+}
+
+print(check(Color.Red))
+print(check(Color.Blue))

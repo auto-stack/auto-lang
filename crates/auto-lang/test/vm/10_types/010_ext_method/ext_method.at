@@ -1,0 +1,15 @@
+type Point { x int }
+
+ext Point {
+    static fn make(val int) int {
+        val
+    }
+
+    fn get_x(self) int {
+        self.x
+    }
+}
+
+let p = Point { x: 42 }
+print(p.get_x())
+print(Point.make(99))

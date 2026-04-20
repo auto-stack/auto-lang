@@ -191,6 +191,9 @@ pub struct Codegen {
     /// Plan 127: Task handler registry for message routing
     /// Stores handler metadata for each task type
     pub task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry,
+
+    /// Enum variant values: maps "EnumName.Variant" -> i32 value
+    pub enum_values: HashMap<String, i32>,
 }
 
 impl Codegen {
@@ -262,6 +265,7 @@ impl Codegen {
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             current_type_members: None, // Plan 087 Phase 3: No type context initially
+            enum_values: HashMap::new(),
         }
     }
 
@@ -336,6 +340,7 @@ impl Codegen {
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             current_type_members: None, // Plan 087 Phase 3: No type context initially
+            enum_values: HashMap::new(),
         }
     }
 
@@ -1372,12 +1377,38 @@ impl Codegen {
                     self.current_type_members = None;
                 }
             }
-            Stmt::EnumDecl(_enum_decl) => {
-                // Plan 073 Phase 8.6: Enum declaration support
-                // Enum declarations don't generate bytecode at compile time
-                // They register metadata for use in pattern matching and type checking
-                // TODO: Register enum in type registry for future use
-                // For now, enums are handled by the Tag system (Plan 073 Phase 8.3.7)
+            Stmt::Ext(ext_block) => {
+                // Compile ext methods as standalone functions (same pattern as TypeDecl methods)
+                let type_name = ext_block.target.to_string();
+                for method in &ext_block.methods {
+                    let mangled_name = format!("{}.{}", type_name, method.name);
+                    let mut method_fn = method.clone();
+                    method_fn.name = crate::ast::Name::from(mangled_name.as_str());
+                    method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
+
+                    if !method.is_static {
+                        let has_self = method_fn.params.first().map(|p| p.name.to_string() == "self").unwrap_or(false);
+                        if !has_self {
+                            method_fn.params.insert(0, crate::ast::Param {
+                                name: crate::ast::Name::from("self"),
+                                ty: Type::Unknown,
+                                default: None,
+                                mode: crate::ast::ParamMode::View,
+                            });
+                        }
+                    }
+
+                    self.compile_stmt(&Stmt::Fn(method_fn))?;
+                }
+            }
+            Stmt::EnumDecl(enum_decl) => {
+                // Register enum variant values for Cover(TagCover) compilation
+                let enum_name = enum_decl.name.to_string();
+                for (i, item) in enum_decl.items.iter().enumerate() {
+                    let value = item.scalar_value.unwrap_or(i as i32);
+                    let key = format!("{}.{}", enum_name, item.name);
+                    self.enum_values.insert(key, value);
+                }
             }
             Stmt::SpecDecl(_spec_decl) => {
                 // Plan 073 Phase 8.6: Spec declaration support
@@ -4831,6 +4862,16 @@ impl Codegen {
             Expr::Null => {
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(-1);
+            }
+            // Cover expression (enum variant pattern like Color.Red)
+            Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
+                let key = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+                if let Some(&value) = self.enum_values.get(&key) {
+                    self.emit(OpCode::CONST_I32);
+                    self.emit_i32(value);
+                } else {
+                    return Err(AutoError::Msg(format!("Unknown enum variant: {}", key)));
+                }
             }
             _ => {
                 unimplemented!("Expression {:?}", expr);
