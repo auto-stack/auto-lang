@@ -4,22 +4,23 @@
 
 **Date:** 2026-04-20
 **Status:** Approved
-**Goal:** Add six runtime features to the Auto VM in dependency order: string equality via `==`, chained method call type resolution, struct debug formatting, enum variants with data, List<UserType>, and pattern destructuring in `is`-expressions.
-**Architecture:** Enum variants reuse the existing `GenericInstanceData` heap object system with a `mono_name` encoding the variant (`"Atom.Int"`). Pattern matching compiles to tag-check + field-extraction using existing opcodes. Debug formatting extends `TO_STR` to handle heap objects. String equality is fixed by interning literals in codegen + content-aware EQ in the engine. Method chaining is fixed by consulting `fn_return_types` in `infer_object_type()`.
+**Goal:** Add seven runtime features to the Auto VM in dependency order: string equality via `==`, chained method call type resolution, struct-as-function-param passing, struct debug formatting, enum variants with data, List<UserType>, and pattern destructuring in `is`-expressions.
+**Architecture:** Enum variants reuse the existing `GenericInstanceData` heap object system with a `mono_name` encoding the variant (`"Atom.Int"`). Pattern matching compiles to tag-check + field-extraction using existing opcodes. Debug formatting extends `TO_STR` to handle heap objects. String equality is fixed by interning literals in codegen + content-aware EQ in the engine. Method chaining is fixed by consulting `fn_return_types` in `infer_object_type()`. Struct param passing is fixed by correcting LOAD_LOCAL offset for heap ID arguments in CALL frames.
 **Tech Stack:** Rust, AutoLang crate (`auto-lang`), existing VM infrastructure (heap objects, generic registry, opcodes).
 
 ---
 
 ## Problem
 
-The Auto VM lacks four runtime features needed for realistic programs:
+The Auto VM lacks seven runtime features needed for realistic programs:
 
 1. **String `==` compares tagged IDs, not content** — Identical string literals get different negative tag IDs because `Expr::Str` bypasses `add_string()` interning. `EQ` opcode compares raw i32 values, so `"http" == "http"` returns false when the two occurrences get different tags.
 2. **Chained method calls fail type resolution** — `infer_object_type()` returns `NestedObject` for all `Expr::Call` (codegen.rs:5386), causing method lookup to generate `Unknown_display` instead of `ApiError.display`. The `fn_return_types` map has the correct return type but is never consulted.
-3. **No debug output for struct types** — `TO_STR` only handles i32 and tagged strings. Struct instances (heap objects) print as garbage integers.
-4. **No enum variants with data** — Only C-style scalar enums (`enum Color { Red = 1 }`) work. Tuple variants like `Atom.Int(42)` have no runtime representation.
-5. **No `List<UserType>`** — `GET_ELEM` only handles `List<int>`, `List<str>`, `List<bool>`. User-defined types in lists are unsupported.
-6. **No pattern destructuring in `is`** — `is expr { Variant(x) -> body }` cannot bind variables from matched values.
+3. **Struct instances can't be passed as function parameters** — Passing a struct (heap object ID ≥ 4000000) to a regular function fails. The CALL frame sets up BP correctly and the argument IS on the stack (debug shows `Stack[1] = 4000000`), but `LOAD_LOCAL param 0` reads 0 from the wrong offset. Methods (`self`) work because they use a different parameter resolution path.
+4. **No debug output for struct types** — `TO_STR` only handles i32 and tagged strings. Struct instances (heap objects) print as garbage integers.
+5. **No enum variants with data** — Only C-style scalar enums (`enum Color { Red = 1 }`) work. Tuple variants like `Atom.Int(42)` have no runtime representation.
+6. **No `List<UserType>`** — `GET_ELEM` only handles `List<int>`, `List<str>`, `List<bool>`. User-defined types in lists are unsupported.
+7. **No pattern destructuring in `is`** — `is expr { Variant(x) -> body }` cannot bind variables from matched values.
 
 ## Current State
 
@@ -27,6 +28,7 @@ The Auto VM lacks four runtime features needed for realistic programs:
 |---------|--------|---------|--------|
 | String `==` | OK | `Expr::Str` bypasses `add_string()` interning (codegen.rs:3000-3006) | `EQ` compares raw i32 (engine.rs:3150-3157) |
 | Method chaining | OK | `infer_object_type()` returns `NestedObject` for all calls (codegen.rs:5386) | Runtime works if bytecode is correct |
+| Struct-as-param | OK | `Arg 0: smart param passing` emits LOAD_LOCAL with wrong offset (codegen.rs) | `LOAD_LOCAL param 0` reads 0 from wrong BP offset (engine.rs) |
 | Struct debug `to_str` | N/A | N/A | `TO_STR` only handles i32 + tagged strings (engine.rs:1268) |
 | Enum data variants | Accepts `enum Foo { Bar(int) }` (enums.rs:53) | Emits `CONST_I32` with discriminant only (codegen.rs:1463) | No runtime representation for data payloads |
 | `List<UserType>` | Accepts `List<T>` syntax | Emits typed CREATE_LIST opcodes | GET_ELEM only handles int/str/bool (engine.rs:1943) |
@@ -60,6 +62,22 @@ The Auto VM lacks four runtime features needed for realistic programs:
 3. Maps the `Type` to the correct `ObjectType`
 
 This is a pure codegen fix — the runtime already handles chained calls correctly when the bytecode is correct.
+
+### Phase 0c: Struct-as-Function-Parameter Passing
+
+**Root cause:** When a struct instance (heap ID ≥ 4000000) is passed as a function argument, the CALL frame setup puts the argument on the stack correctly, but `LOAD_LOCAL` reads the wrong offset.
+
+Debug trace shows:
+```
+CALL: Stack depth before = 4
+CALL: Stack[1] = 4000000        ← argument IS on stack
+CALL: BP = 5
+LOAD_LOCAL param 0: BP-2 = 3 = 0  ← reads 0, not 4000000
+```
+
+The `LOAD_LOCAL` offset calculation (`BP - n_args + param_index`) doesn't account for the CALL frame layout correctly. Methods work because they use a different code path for `self` parameter resolution.
+
+**Fix:** Investigate the CALL frame layout and LOAD_LOCAL offset calculation in `engine.rs`. The parameter should be at `BP - 2` for a 1-arg function, but the value at that offset is 0 instead of the heap ID. Likely the CALL pushes extra words (return address, old BP) between the arguments and the new frame, shifting where parameters end up relative to the new BP.
 
 ### Phase 1: Default `to_str` for Struct Types
 
@@ -105,6 +123,7 @@ No new opcodes — reuses `GET_GENERIC_FIELD` + `EQ` + conditional jumps.
 |-------|---------|------------|------------|
 | 0a | String `==` (interning + content-aware EQ) | None | Small (~30 lines) |
 | 0b | Method chaining type resolution | None | Small (~25 lines) |
+| 0c | Struct-as-function-param passing | None | Medium (debug CALL frame layout) |
 | 1 | Debug `to_str` for structs | None | Small (~50 lines) |
 | 2 | Enum variants with data | Phase 1 (for debugging) | Medium |
 | 3 | `List<UserType>` | Phase 2 (lists of enum variants) | Small (3 opcodes) |
@@ -373,7 +392,68 @@ git commit -m "fix(codegen): resolve method chaining via fn_return_types in infe
 
 ---
 
-### Task 4: Add `field_names` to `GenericInstanceData`
+### Task 4: Fix struct-as-function-parameter passing
+
+**Files:**
+- Modify: `crates/auto-lang/src/vm/engine.rs` (CALL handler + LOAD_LOCAL parameter resolution)
+
+**Step 1: Write the test**
+
+Create `crates/auto-lang/test/vm/10_types/028_struct_param.at`:
+
+```auto
+type Foo { kind int, name str }
+
+fn get_kind(event Foo) int {
+    return event.kind
+}
+
+fn main() {
+    let m = Foo { kind: 42, name: "test" }
+    let k = get_kind(m)
+    assert_eq(k, 42)
+    print("struct_param: passed")
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `cd d:/autostack/auto-lang && target/debug/auto test/vm/10_types/028_struct_param.at`
+Expected: FAIL — `RuntimeError("Invalid instance ID: 0")`
+
+**Step 3: Debug and fix LOAD_LOCAL offset**
+
+Add debug logging to the CALL handler in `engine.rs` to trace:
+1. Stack layout before and after frame setup (all positions, not just [0]-[2])
+2. Where arguments end up relative to the new BP
+3. What LOAD_LOCAL computes for parameter offsets
+
+The fix will be in the LOAD_LOCAL offset calculation or in how CALL sets up the frame. The argument (heap ID 4000000) IS on the stack at the correct position, but LOAD_LOCAL reads from a different position.
+
+Hypothesis: CALL may push return address and/or old BP on top of the arguments, shifting the effective parameter positions. If so, LOAD_LOCAL should use `BP - n_args - frame_overhead + param_index` instead of the current formula.
+
+**Step 4: Run test to verify it passes**
+
+Expected: `struct_param: passed`
+
+**Step 5: Verify methods still work**
+
+Run existing examples to ensure method calls (`self` parameter) are not affected:
+```bash
+auto crates/ac-examples/src/08_usage_struct/main.at
+auto crates/ac-examples/src/10_api_error_enum/main.at
+```
+
+**Step 6: Commit**
+
+```bash
+git add crates/auto-lang/src/vm/engine.rs crates/auto-lang/test/vm/10_types/028_struct_param.at
+git commit -m "fix(engine): correct LOAD_LOCAL offset for struct function parameters"
+```
+
+---
+
+### Task 5: Add `field_names` to `GenericInstanceData`
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/generic_registry.rs:500-524`
@@ -418,7 +498,7 @@ git commit -m "refactor(vm): add field_names to GenericInstanceData"
 
 ---
 
-### Task 5: Populate `field_names` during `CONSTRUCT_INSTANCE`
+### Task 6: Populate `field_names` during `CONSTRUCT_INSTANCE`
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs:1517-1615` (CONSTRUCT_INSTANCE handler)
@@ -460,7 +540,7 @@ git commit -m "feat(vm): populate field_names in CONSTRUCT_INSTANCE"
 
 ---
 
-### Task 6: Extend `TO_STR` to format struct instances
+### Task 7: Extend `TO_STR` to format struct instances
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs:1268-1287` (TO_STR handler)
@@ -517,7 +597,7 @@ git commit -m "feat(vm): TO_STR formats struct instances as Type { field: val }"
 
 ---
 
-### Task 7: Register enum variants in `GenericRegistry`
+### Task 8: Register enum variants in `GenericRegistry`
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs:1463-1470` (EnumDecl handler)
@@ -574,7 +654,7 @@ git commit -m "feat(codegen): register enum data variants in GenericRegistry"
 
 ---
 
-### Task 8: Codegen for enum variant construction
+### Task 9: Codegen for enum variant construction
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (Expr::Call handler, after is_generic_constructor check)
@@ -607,7 +687,7 @@ git commit -m "feat(codegen): compile enum variant construction (Atom.Int(42))"
 
 ---
 
-### Task 9: Access payload fields from enum variants
+### Task 10: Access payload fields from enum variants
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (field access on variant instances)
@@ -656,7 +736,7 @@ git commit -m "feat(vm): field access on enum variant payloads"
 
 ---
 
-### Task 10: `List<UserType>` support
+### Task 11: `List<UserType>` support
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/opcode.rs` (add new opcodes + VALID entries)
@@ -719,7 +799,7 @@ git commit -m "feat(vm): List<UserType> support with heap ref opcodes"
 
 ---
 
-### Task 11: Pattern destructuring in `is`-expressions
+### Task 12: Pattern destructuring in `is`-expressions
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (extend `is` compilation for enum patterns)
@@ -779,7 +859,7 @@ git commit -m "feat(codegen): pattern destructuring for enum variants in is-expr
 
 ---
 
-### Task 12: Integration test — full examples with all features
+### Task 13: Integration test — full examples with all features
 
 **Files:**
 - Modify: `crates/ac-examples/src/09_input_message_builders/main.at`
