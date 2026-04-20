@@ -2464,6 +2464,13 @@ impl Codegen {
                 // The FFI shim_task_spawn function creates a TaskInstance and
                 // registers it in the TaskRegistry.
             }
+            Stmt::Node(node) => {
+                // Stmt::Node wraps an Expr::Node — compile the expression
+                self.compile_expr(&Expr::Node(node.clone()))?;
+                if self.should_pop_expr_result && self.last_expr_type != ObjectType::Void {
+                    self.emit(OpCode::POP);
+                }
+            }
             _ => {
                 // TODO: Implement other statements
             }

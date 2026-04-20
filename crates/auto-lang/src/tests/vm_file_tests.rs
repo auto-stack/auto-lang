@@ -160,6 +160,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_10_types_010_ext_method() { test_vm("10_types/010_ext_method").unwrap(); }
 #[test] fn test_10_types_011_enum_is_match() { test_vm("10_types/011_enum_is_match").unwrap(); }
 #[test] fn test_10_types_012_enum_dot_match() { test_vm("10_types/012_enum_dot_match").unwrap(); }
+#[test] fn test_10_types_013_fn_return_obj() { test_vm("10_types/013_fn_return_obj").unwrap(); }
 
 // === 11_compound_ops ===
 #[test] fn test_11_compound_ops_001_add_eq() { test_vm("11_compound_ops/001_add_eq").unwrap(); }

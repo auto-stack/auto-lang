@@ -1433,14 +1433,6 @@ impl AutoVM {
                     // Push instance ID onto stack
                     vm_debug!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
                     task.ram.push_i32(instance_id as i32);
-                    vm_debug!("DEBUG NEW_INSTANCE: Stack depth after push = {}, top value = {}",
-                        task.ram.sp,
-                        if task.ram.sp > 0 {
-                            task.ram.raw[(task.ram.sp - 1) as usize]
-                        } else {
-                            0
-                        }
-                    );
                 }
                 OpCode::CONSTRUCT_INSTANCE => {
                     // Plan 087 Phase 2: Populate fields of a generic instance

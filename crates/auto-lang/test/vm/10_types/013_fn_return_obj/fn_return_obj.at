@@ -1,0 +1,9 @@
+type Point { x int }
+
+fn make_point(val int) Point {
+    Point { x: val }
+}
+
+let p = make_point(42)
+print(f"p=${p}")
+print(f"p.x=${p.x}")
