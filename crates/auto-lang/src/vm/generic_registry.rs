@@ -494,18 +494,26 @@ impl Clone for SpecializedPair {
 /// let instance = GenericInstanceData {
 ///     mono_name: "Pair_int_str".to_string(),
 ///     fields: vec![Value::Int(1), Value::str("a")],
+///     field_names: vec!["key".to_string(), "val".to_string()],
 /// };
 /// ```
 #[derive(Debug)]
 pub struct GenericInstanceData {
-    pub mono_name: String,  // Monomorphic name (e.g., "Pair_int_str")
-    pub fields: Vec<Value>,   // Type-erased field values
+    pub mono_name: String,       // Monomorphic name (e.g., "Pair_int_str")
+    pub fields: Vec<Value>,      // Type-erased field values
+    pub field_names: Vec<String>, // Field names for debugging/formatting
 }
 
 impl GenericInstanceData {
-    /// Create a new generic instance
+    /// Create a new generic instance with placeholder field names
     pub fn new(mono_name: String, fields: Vec<Value>) -> Self {
-        Self { mono_name, fields }
+        let field_names = vec!["_unknown".to_string(); fields.len()];
+        Self { mono_name, fields, field_names }
+    }
+
+    /// Create a new generic instance with explicit field names
+    pub fn new_with_names(mono_name: String, fields: Vec<Value>, field_names: Vec<String>) -> Self {
+        Self { mono_name, fields, field_names }
     }
 
     /// Get field by index
@@ -584,6 +592,7 @@ impl Clone for GenericInstanceData {
         Self {
             mono_name: self.mono_name.clone(),
             fields: self.fields.clone(),
+            field_names: self.field_names.clone(),
         }
     }
 }
