@@ -4,26 +4,27 @@
 
 **Date:** 2026-04-20
 **Status:** Approved
-**Goal:** Add ten runtime features to the Auto VM in dependency order: string equality via `==`, chained method call type resolution, struct-as-function-param passing, `str.slice()` method, struct equality, `Option<T>` + `Some()`/`None`, struct debug formatting, enum variants with data, List<UserType>, and pattern destructuring in `is`-expressions.
-**Architecture:** Enum variants reuse the existing `GenericInstanceData` heap object system with a `mono_name` encoding the variant (`"Atom.Int"`). Pattern matching compiles to tag-check + field-extraction using existing opcodes. Debug formatting extends `TO_STR` to handle heap objects. String equality is fixed by interning literals in codegen + content-aware EQ in the engine. Method chaining is fixed by consulting `fn_return_types` in `infer_object_type()`. Struct param passing is fixed by correcting LOAD_LOCAL offset for heap ID arguments in CALL frames. `Option<T>` is represented as a built-in enum `Option` with variants `Some(T)` and `None`. Struct equality is a field-by-field comparison in EQ when both operands are heap objects.
+**Goal:** Add eleven runtime features to the Auto VM in dependency order: string equality via `==`, chained method call type resolution, field type inference after GET_GENERIC_FIELD, struct-as-function-param passing, `str.slice()` method, struct equality, `Option<T>` + `Some()`/`None`, struct debug formatting, enum variants with data, List<UserType>, and pattern destructuring in `is`-expressions.
+**Architecture:** Enum variants reuse the existing `GenericInstanceData` heap object system with a `mono_name` encoding the variant (`"Atom.Int"`). Pattern matching compiles to tag-check + field-extraction using existing opcodes. Debug formatting extends `TO_STR` to handle heap objects. String equality is fixed by interning literals in codegen + content-aware EQ in the engine. Method chaining is fixed by consulting `fn_return_types` in `infer_object_type()`. Field type inference is fixed by looking up field types from `GenericTemplate` after `GET_GENERIC_FIELD`. Struct param passing is fixed by correcting LOAD_LOCAL offset for heap ID arguments in CALL frames. `Option<T>` is represented as a built-in enum `Option` with variants `Some(T)` and `None`. Struct equality is a field-by-field comparison in EQ when both operands are heap objects.
 **Tech Stack:** Rust, AutoLang crate (`auto-lang`), existing VM infrastructure (heap objects, generic registry, opcodes).
 
 ---
 
 ## Problem
 
-The Auto VM lacks ten runtime features needed for realistic programs:
+The Auto VM lacks eleven runtime features needed for realistic programs:
 
 1. **String `==` compares tagged IDs, not content** — Identical string literals get different negative tag IDs because `Expr::Str` bypasses `add_string()` interning. `EQ` opcode compares raw i32 values, so `"http" == "http"` returns false when the two occurrences get different tags.
 2. **Chained method calls fail type resolution** — `infer_object_type()` returns `NestedObject` for all `Expr::Call` (codegen.rs:5386), causing method lookup to generate `Unknown_display` instead of `ApiError.display`. The `fn_return_types` map has the correct return type but is never consulted.
-3. **Struct instances can't be passed as function parameters** — Passing a struct (heap object ID ≥ 4000000) to a regular function fails. The CALL frame sets up BP correctly and the argument IS on the stack (debug shows `Stack[1] = 4000000`), but `LOAD_LOCAL param 0` reads 0 from the wrong offset. Methods (`self`) work because they use a different parameter resolution path.
-4. **No `str.slice()` method** — `substr(start, end)` exists but `slice(start)` (one-arg, to end of string) and `slice(start, end)` (two-arg alias) don't. Examples need the one-arg form.
-5. **No struct equality** — `==` on struct instances compares heap IDs (4000000 vs 4000001), not field contents. Two structurally equal instances are always `!=`.
-6. **No `Option<T>` / `?T` / `Some()` / `None`** — The `?str` nullable type syntax and `Some(value)`/`None` constructors have no runtime representation. Pattern matching `is x { Some(v) -> ..., None -> ... }` is hardcoded for limited built-in cases only.
-7. **No debug output for struct types** — `TO_STR` only handles i32 and tagged strings. Struct instances (heap objects) print as garbage integers.
-8. **No enum variants with data** — Only C-style scalar enums (`enum Color { Red = 1 }`) work. Tuple variants like `Atom.Int(42)` have no runtime representation.
-9. **No `List<UserType>`** — `GET_ELEM` only handles `List<int>`, `List<str>`, `List<bool>`. User-defined types in lists are unsupported.
-10. **No pattern destructuring in `is`** — `is expr { Variant(x) -> body }` cannot bind variables from matched values.
+3. **Field type lost after GET_GENERIC_FIELD** — `let v = r1.value` compiles fine, but the compiler doesn't track that `value` is a `str`. Subsequent `v.contains("x")` resolves to `Unknown_contains` because `infer_object_type()` sees `Ident("v")` with no type info in `var_types`. Workaround: explicit `let v str = r1.value`.
+4. **Struct instances can't be passed as function parameters** — Passing a struct (heap object ID ≥ 4000000) to a regular function fails. The CALL frame sets up BP correctly and the argument IS on the stack (debug shows `Stack[1] = 4000000`), but `LOAD_LOCAL param 0` reads 0 from the wrong offset. Methods (`self`) work because they use a different parameter resolution path.
+5. **No `str.slice()` method** — `substr(start, end)` exists but `slice(start)` (one-arg, to end of string) and `slice(start, end)` (two-arg alias) don't. Examples need the one-arg form.
+6. **No struct equality** — `==` on struct instances compares heap IDs (4000000 vs 4000001), not field contents. Two structurally equal instances are always `!=`.
+7. **No `Option<T>` / `?T` / `Some()` / `None`** — The `?str` nullable type syntax and `Some(value)`/`None` constructors have no runtime representation. Pattern matching `is x { Some(v) -> ..., None -> ... }` is hardcoded for limited built-in cases only.
+8. **No debug output for struct types** — `TO_STR` only handles i32 and tagged strings. Struct instances (heap objects) print as garbage integers.
+9. **No enum variants with data** — Only C-style scalar enums (`enum Color { Red = 1 }`) work. Tuple variants like `Atom.Int(42)` have no runtime representation.
+10. **No `List<UserType>`** — `GET_ELEM` only handles `List<int>`, `List<str>`, `List<bool>`. User-defined types in lists are unsupported.
+11. **No pattern destructuring in `is`** — `is expr { Variant(x) -> body }` cannot bind variables from matched values.
 
 ## Current State
 
@@ -31,6 +32,7 @@ The Auto VM lacks ten runtime features needed for realistic programs:
 |---------|--------|---------|--------|
 | String `==` | OK | `Expr::Str` bypasses `add_string()` interning (codegen.rs:3000-3006) | `EQ` compares raw i32 (engine.rs:3150-3157) |
 | Method chaining | OK | `infer_object_type()` returns `NestedObject` for all calls (codegen.rs:5386) | Runtime works if bytecode is correct |
+| Field type inference | OK | `GET_GENERIC_FIELD` result not tracked in `var_types` — `let v = r.value` has no type | N/A (works if bytecode is correct) |
 | Struct-as-param | OK | `Arg 0: smart param passing` emits LOAD_LOCAL with wrong offset (codegen.rs) | `LOAD_LOCAL param 0` reads 0 from wrong BP offset (engine.rs) |
 | `str.slice()` | OK | Not registered as native method | Only `substr(start, end)` exists in BIGVM_NATIVES |
 | Struct equality | OK | OK | `EQ` compares heap IDs, not field contents (engine.rs:3150) |
@@ -68,6 +70,19 @@ The Auto VM lacks ten runtime features needed for realistic programs:
 3. Maps the `Type` to the correct `ObjectType`
 
 This is a pure codegen fix — the runtime already handles chained calls correctly when the bytecode is correct.
+
+### Phase 0b2: Field Type Inference After GET_GENERIC_FIELD
+
+**Root cause:** When `let v = r1.value` is compiled, the codegen emits `LOAD_LOCAL r1` → `GET_GENERIC_FIELD idx` → `STORE_LOCAL v`. The `STORE_LOCAL` stores the value but never records the field's type in `var_types`. So when `v.contains("x")` is compiled next, `infer_object_type(Ident("v"))` looks up `var_types["v"]`, finds nothing, defaults to `ObjectType::Int`, and `.contains()` resolves to `Unknown_contains`.
+
+**Fix:** After emitting `GET_GENERIC_FIELD` for a `let` assignment, look up the field type from `GenericTemplate` and record it in `var_types`:
+
+1. Resolve the variable's struct type (from `var_types` or scope tracking)
+2. Look up the template in `generic_registry`
+3. Find the field index and its `field_type`
+4. Insert `var_types[var_name] = field_type`
+
+This pairs naturally with Task 7 (`field_names`) and Task 8 (populating `field_names` during `CONSTRUCT_INSTANCE`) — once `GenericTemplate` has full field metadata, type lookup is straightforward.
 
 ### Phase 0c: Struct-as-Function-Parameter Passing
 
@@ -164,6 +179,7 @@ No new opcodes — reuses `GET_GENERIC_FIELD` + `EQ` + conditional jumps.
 |-------|---------|------------|------------|
 | 0a | String `==` (interning + content-aware EQ) | None | Small (~30 lines) |
 | 0b | Method chaining type resolution | None | Small (~25 lines) |
+| 0b2 | Field type inference (GET_GENERIC_FIELD → var_types) | Task 7 (field_names in template) | Small (~20 lines) |
 | 0c | Struct-as-function-param passing | None | Medium (debug CALL frame layout) |
 | 0d | `str.slice()` native method | None | Small (~20 lines) |
 | 0e | Struct equality (field-by-field EQ) | Phase 0a (content-aware EQ) | Small (~30 lines) |
@@ -436,7 +452,72 @@ git commit -m "fix(codegen): resolve method chaining via fn_return_types in infe
 
 ---
 
-### Task 4: Fix struct-as-function-parameter passing
+### Task 4: Track field type in var_types after GET_GENERIC_FIELD
+
+**Files:**
+- Modify: `crates/auto-lang/src/vm/codegen.rs` (GET_GENERIC_FIELD emission + var_types update)
+
+**Step 1: Write the test**
+
+Create `crates/auto-lang/test/vm/10_types/032_field_type_inference.at`:
+
+```auto
+type Result {
+    ok bool
+    value str
+    err_kind int
+}
+
+fn main() {
+    let r = Result { ok: true, value: "hello", err_kind: 0 }
+    // These should work WITHOUT explicit type annotations
+    let v = r.value
+    assert(v.contains("hello"))
+
+    let k = r.err_kind
+    assert_eq(k, 0)
+
+    print("field_type_inference: passed")
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Expected: FAIL — `v.contains` resolves to `Unknown_contains` because `var_types["v"]` is empty.
+
+**Step 3: Record field type in var_types after GET_GENERIC_FIELD**
+
+In codegen, when compiling `let v = expr.field`:
+1. After emitting `GET_GENERIC_FIELD`, resolve `expr`'s type from `var_types`
+2. Look up the template in `generic_registry` for that type
+3. Find the field by name → get its `field_type`
+4. Insert `var_types[var_name] = field_type`
+
+This requires that Task 7 (`field_names` in `GenericInstanceData`) and Task 8 (populating field_names in `CONSTRUCT_INSTANCE`) are already done, so the template has full field metadata.
+
+**Step 4: Run test to verify it passes**
+
+Expected: `field_type_inference: passed`
+
+**Step 5: Verify examples no longer need explicit type annotations**
+
+```bash
+cd d:/autostack/auto-code-rs
+auto crates/ac-examples/src/13_tool_trait_def/main.at
+```
+
+Expected: Still passes. Can now remove `let v1 str = r1.value` → `let v1 = r1.value`.
+
+**Step 6: Commit**
+
+```bash
+git add crates/auto-lang/src/vm/codegen.rs crates/auto-lang/test/vm/10_types/032_field_type_inference.at
+git commit -m "fix(codegen): track field type in var_types after GET_GENERIC_FIELD"
+```
+
+---
+
+### Task 5: Fix struct-as-function-parameter passing
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs` (CALL handler + LOAD_LOCAL parameter resolution)
@@ -497,7 +578,7 @@ git commit -m "fix(engine): correct LOAD_LOCAL offset for struct function parame
 
 ---
 
-### Task 5: Add `str.slice()` native method
+### Task 6: Add `str.slice()` native method
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs` (add slice handler in native dispatch)
@@ -547,7 +628,7 @@ git commit -m "feat(engine): add str.slice() native method (1-arg and 2-arg form
 
 ---
 
-### Task 6: Struct equality — field-by-field comparison in EQ
+### Task 7: Struct equality — field-by-field comparison in EQ
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs` (extend EQ handler from Task 2)
@@ -622,7 +703,7 @@ git commit -m "feat(engine): structural equality for struct instances in EQ opco
 
 ---
 
-### Task 7: Add `field_names` to `GenericInstanceData`
+### Task 8: Add `field_names` to `GenericInstanceData`
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/generic_registry.rs:500-524`
@@ -667,7 +748,7 @@ git commit -m "refactor(vm): add field_names to GenericInstanceData"
 
 ---
 
-### Task 8: Populate `field_names` during `CONSTRUCT_INSTANCE`
+### Task 9: Populate `field_names` during `CONSTRUCT_INSTANCE`
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs:1517-1615` (CONSTRUCT_INSTANCE handler)
@@ -709,7 +790,7 @@ git commit -m "feat(vm): populate field_names in CONSTRUCT_INSTANCE"
 
 ---
 
-### Task 9: Extend `TO_STR` to format struct instances
+### Task 10: Extend `TO_STR` to format struct instances
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/engine.rs:1268-1287` (TO_STR handler)
@@ -766,7 +847,7 @@ git commit -m "feat(vm): TO_STR formats struct instances as Type { field: val }"
 
 ---
 
-### Task 10: Register enum variants in `GenericRegistry`
+### Task 11: Register enum variants in `GenericRegistry`
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs:1463-1470` (EnumDecl handler)
@@ -823,7 +904,7 @@ git commit -m "feat(codegen): register enum data variants in GenericRegistry"
 
 ---
 
-### Task 11: Codegen for enum variant construction
+### Task 12: Codegen for enum variant construction
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (Expr::Call handler, after is_generic_constructor check)
@@ -856,7 +937,7 @@ git commit -m "feat(codegen): compile enum variant construction (Atom.Int(42))"
 
 ---
 
-### Task 12: Access payload fields from enum variants
+### Task 13: Access payload fields from enum variants
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (field access on variant instances)
@@ -905,7 +986,7 @@ git commit -m "feat(vm): field access on enum variant payloads"
 
 ---
 
-### Task 13: `List<UserType>` support
+### Task 14: `List<UserType>` support
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/opcode.rs` (add new opcodes + VALID entries)
@@ -968,7 +1049,7 @@ git commit -m "feat(vm): List<UserType> support with heap ref opcodes"
 
 ---
 
-### Task 14: Pattern destructuring in `is`-expressions
+### Task 15: Pattern destructuring in `is`-expressions
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (extend `is` compilation for enum patterns)
@@ -1028,7 +1109,7 @@ git commit -m "feat(codegen): pattern destructuring for enum variants in is-expr
 
 ---
 
-### Task 15: `Option<T>` — built-in Some/None enum
+### Task 16: `Option<T>` — built-in Some/None enum
 
 **Files:**
 - Modify: `crates/auto-lang/src/vm/codegen.rs` (codegen for `Some()` and `None`)
@@ -1103,7 +1184,7 @@ git commit -m "feat(vm): Option<T> with Some()/None construction and pattern mat
 
 ---
 
-### Task 16: Integration — restore all simplified examples to their original form
+### Task 17: Integration — restore all simplified examples to their original form
 
 All VM features are now implemented. This task restores each simplified example to its original idiomatic Auto code, using the features added in Tasks 1-13.
 
@@ -1113,6 +1194,7 @@ All VM features are now implemented. This task restores each simplified example 
 - Modify: `crates/ac-examples/src/09_input_message_builders/main.at`
 - Modify: `crates/ac-examples/src/10_api_error_enum/main.at`
 - Modify: `crates/ac-examples/src/12_stream_event_types/main.at`
+- Modify: `crates/ac-examples/src/13_tool_trait_def/main.at`
 
 #### Example 07: `07_glob_match/main.at`
 
@@ -1302,6 +1384,77 @@ fn main() {
 }
 ```
 
+#### Example 13: `13_tool_trait_def/main.at`
+
+**Simplifications made → what to restore:**
+
+| Simplification (current) | Original intent | Unblocked by |
+|---|---|---|
+| Flat `ToolError` with `kind int` | `enum ToolError { ExecutionFailed(str), InvalidInput(str) }` | Tasks 11-13 (enum data variants + field access) |
+| Flat `ToolResult` with `ok bool` + `err_kind`/`err_msg` fields | `Result<str, ToolError>` with `Ok(value)` / `Err(error)` | Task 16 (Option/Result) |
+| Flat `Tool` struct with `kind int` + `name str` | Trait `spec Tool` with `ext EchoTool has Tool` | Not in plan (trait dispatch is a separate feature) |
+| Numeric dispatch `execute_tool(0, "hello")` | `echo.execute("hello")` with trait dispatch | Not in plan |
+| Inline `if/else` for `run_tool` formatting | `run_tool(name, result)` taking `ToolResult` struct param | Task 5 (struct-as-param) |
+| `let v1 str = r1.value` with explicit type | `let v1 = r1.value` (inferred) | Task 3b (field type inference) |
+| `assert(e2.contains("empty"))` | `is err { ToolError.InvalidInput(msg) -> assert(msg.contains("empty")) }` | Tasks 11-15 (enum variants + pattern destructuring) |
+| Manual tool-by-tool execution | `for tool in tools` over `List<Tool>` | Task 14 (`List<UserType>`) |
+
+**Note:** `spec`/trait dispatch (`ext EchoTool has Tool`) is a language-level feature beyond the VM scope of Plan 197. Even after all 17 tasks, example 13 can use enum variants, Result, and pattern matching, but will still use manual dispatch (if/else on tool kind) rather than true trait-based polymorphism. The restored version would look like:
+
+```auto
+enum ToolError {
+    ExecutionFailed(str)
+    InvalidInput(str)
+}
+
+type Tool {
+    kind int
+    name str
+    description str
+    read_only bool
+}
+
+fn execute_tool(tool_kind int, input str) Result<str, ToolError> {
+    if tool_kind == 0 {
+        if input.len() == 0 {
+            return Err(ToolError.InvalidInput("input cannot be empty"))
+        }
+        Ok(f"echo: ${input}")
+    } else if tool_kind == 1 {
+        Ok(input.to_upper())
+    } else if tool_kind == 2 {
+        Err(ToolError.ExecutionFailed("intentional failure"))
+    } else {
+        Err(ToolError.ExecutionFailed("unknown tool"))
+    }
+}
+
+fn run_tool(name str, result Result<str, ToolError>) str {
+    is result {
+        Ok(out) -> f"${name}: ${out}",
+        Err(e) -> f"${name}: ERROR ${format_error(e)}"
+    }
+}
+
+fn main() {
+    let result = execute_tool(0, "hello")
+    let msg = run_tool("Echo", result)          // struct-as-param now works
+    assert(msg.contains("echo: hello"))
+
+    let err_result = execute_tool(0, "")
+    is err_result {
+        Err(ToolError.InvalidInput(msg)) -> assert(msg.contains("empty")),
+        else -> assert(false)
+    }
+
+    // List of tools
+    let tools = [Tool.echo(), Tool.upper(), Tool.fail()]   // List<UserType>
+    assert_eq(tools.len(), 3)
+    let t0 = tools[0]
+    assert_eq(t0.name, "Echo")                              // field type inference
+}
+```
+
 #### Step 1: Restore examples one at a time
 
 Restore each example following the outlines above. After each restoration, run it to verify:
@@ -1313,6 +1466,7 @@ auto crates/ac-examples/src/08_usage_struct/main.at
 auto crates/ac-examples/src/09_input_message_builders/main.at
 auto crates/ac-examples/src/10_api_error_enum/main.at
 auto crates/ac-examples/src/12_stream_event_types/main.at
+auto crates/ac-examples/src/13_tool_trait_def/main.at
 ```
 
 #### Step 2: Run full example suite
@@ -1325,6 +1479,7 @@ auto crates/ac-examples/src/08_usage_struct/main.at
 auto crates/ac-examples/src/09_input_message_builders/main.at
 auto crates/ac-examples/src/10_api_error_enum/main.at
 auto crates/ac-examples/src/12_stream_event_types/main.at
+auto crates/ac-examples/src/13_tool_trait_def/main.at
 ```
 
 Expected: All pass.
