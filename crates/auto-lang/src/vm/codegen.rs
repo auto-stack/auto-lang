@@ -207,6 +207,11 @@ pub struct Codegen {
 
     /// Enum variant values: maps "EnumName.Variant" -> i32 value
     pub enum_values: HashMap<String, i32>,
+
+    /// Plan 197 Task 13: Track the mono_name of the last constructed enum variant
+    /// Set during enum variant construction codegen, consumed by the let-statement handler
+    /// to record the variable's type in var_types for field access resolution.
+    last_enum_variant_mono: Option<String>,
 }
 
 impl Codegen {
@@ -266,6 +271,7 @@ impl Codegen {
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
+            last_enum_variant_mono: None, // Plan 197 Task 13
         }
     }
 
@@ -328,6 +334,7 @@ impl Codegen {
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
+            last_enum_variant_mono: None, // Plan 197 Task 13
         }
     }
 
@@ -974,6 +981,29 @@ impl Codegen {
                     } else if matches!(self.last_expr_type, ObjectType::Uint) {
                         if matches!(store.ty, Type::Unknown) || matches!(store.ty, Type::Int) {
                             self.var_types.insert(name_str.clone(), Type::U64);
+                        }
+                    } else if matches!(self.last_expr_type, ObjectType::NestedObject) {
+                        // Plan 197 Task 13: Track enum variant instance types for field access
+                        if let Some(ref variant_mono) = self.last_enum_variant_mono {
+                            let type_decl = crate::ast::TypeDecl {
+                                name: crate::ast::Name::from(variant_mono.clone()),
+                                kind: crate::ast::TypeDeclKind::UserType,
+                                parent: None,
+                                has: vec![],
+                                specs: vec![],
+                                spec_impls: vec![],
+                                generic_params: vec![],
+                                members: vec![],
+                                delegations: vec![],
+                                methods: vec![],
+                                attrs: vec![],
+                                doc: None,
+                                is_pub: false,
+                            };
+                            self.var_types.insert(name_str.clone(), Type::User(type_decl));
+                            vm_debug!("DEBUG: Stored enum variant type '{}' for variable '{}'",
+                                variant_mono, name_str);
+                            self.last_enum_variant_mono = None;
                         }
                     }
                 }
@@ -4101,6 +4131,11 @@ impl Codegen {
                                 self.emit(OpCode::CONST_I32);
                                 self.emit_i32(field_count as i32);
                                 self.emit(OpCode::CONSTRUCT_INSTANCE);
+
+                                // Plan 197 Task 13: Mark result as a heap object with variant type info
+                                // This enables field access (e.g., a._0) on enum variant instances
+                                self.last_expr_type = ObjectType::NestedObject;
+                                self.last_enum_variant_mono = Some(variant_mono);
 
                                 return Ok(());
                             } else {

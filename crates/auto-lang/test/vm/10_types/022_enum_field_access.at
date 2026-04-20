@@ -1,0 +1,14 @@
+enum Atom {
+    Int int
+    Str str
+}
+
+fn main() {
+    let a = Atom.Int(42)
+    assert_eq(a._0, 42)
+
+    let b = Atom.Str("hello")
+    assert_eq(b._0, "hello")
+
+    print("enum_field_access: passed")
+}
