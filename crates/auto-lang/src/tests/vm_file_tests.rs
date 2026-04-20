@@ -314,3 +314,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 // BUG: negative integer .to(String) — TYPE_TO_STR treats negative i32 as tagged string pointer
 #[test] #[ignore = "BUG: (-1).to(String) outputs '<invalid string index: 0>' — TYPE_TO_STR misidentifies negative integers as string pool indices"]
 fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unwrap(); }
+
+// === 21_conv (Plan 194: monomorphic dispatch tests) ===
+#[test] fn test_21_conv_003_hashmap_mono_insert() { test_vm("21_conv/003_hashmap_mono_insert").unwrap(); }
+#[test] fn test_21_conv_004_hashset_mono_insert() { test_vm("21_conv/004_hashset_mono_insert").unwrap(); }

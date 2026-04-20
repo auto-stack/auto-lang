@@ -1,0 +1,14 @@
+// Test Plan 194: HashSet unified generic insert/contains API
+// Uses monomorphic dispatch: s.insert() resolves to HashSet.insert_str
+// because HashSet.new() defaults to <str>
+fn main() {
+    var s = HashSet.new()
+    s.insert("apple")
+    s.insert("banana")
+    var has_apple = s.contains("apple")
+    var has_cherry = s.contains("cherry")
+    s.remove("banana")
+    var sz = s.size()
+    s.drop()
+    f"apple=$has_apple cherry=$has_cherry size=$sz"
+}
