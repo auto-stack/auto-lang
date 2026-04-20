@@ -1,0 +1,26 @@
+type Point {
+    x int
+    y int
+}
+
+ext Point {
+    static fn origin() Point {
+        Point { x: 0, y: 0 }
+    }
+
+    fn to_str(self) str {
+        f"(${self.x}, ${self.y})"
+    }
+}
+
+fn main() {
+    let p = Point.origin()
+    let s = p.to_str()
+    assert(s.contains("0"))
+
+    // Chained: origin().to_str() without intermediate let
+    let s2 = Point.origin().to_str()
+    assert(s2.contains("0"))
+
+    print("method_chaining: passed")
+}

@@ -908,7 +908,19 @@ impl Codegen {
                                                 Type::Unknown
                                             }
                                         } else {
-                                            Type::Unknown
+                                            // Plan 197 Task 3: Chained method call (e.g., Point.origin().to_str())
+                                            // Resolve the type of the inner expression via fn_return_types
+                                            let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
+                                            if let Some(ty) = self.fn_return_types.get(&fn_name) {
+                                                ty.clone()
+                                            } else if let Some(type_name) = self.infer_user_type_name(obj.as_ref()) {
+                                                let type_method = format!("{}.{}", type_name, method.as_ref());
+                                                self.fn_return_types.get(&type_method)
+                                                    .cloned()
+                                                    .unwrap_or(Type::Unknown)
+                                            } else {
+                                                Type::Unknown
+                                            }
                                         }
                                     } else {
                                         Type::Unknown
@@ -4214,20 +4226,28 @@ impl Codegen {
                                 // Or literal expressions (e.g., 1.str(), "hello".upper())
                                 // Plan 118 Phase 4: Handle literal method calls
                                 let inferred_type = self.infer_object_type(obj.as_ref());
-                                let type_name = match inferred_type {
-                                    ObjectType::Int | ObjectType::Byte => "int",
-                                    ObjectType::Uint => "uint",
-                                    ObjectType::Float | ObjectType::Double => "float",
-                                    ObjectType::String => "str",
-                                    ObjectType::Char => "char",
-                                    ObjectType::Bool => "bool",
-                                    _ => "Unknown",
+                                let type_name: String = match inferred_type {
+                                    ObjectType::Int | ObjectType::Byte => "int".to_string(),
+                                    ObjectType::Uint => "uint".to_string(),
+                                    ObjectType::Float | ObjectType::Double => "float".to_string(),
+                                    ObjectType::String => "str".to_string(),
+                                    ObjectType::Char => "char".to_string(),
+                                    ObjectType::Bool => "bool".to_string(),
+                                    _ => {
+                                        // Plan 197 Task 3: Try to resolve user-defined type name
+                                        // from fn_return_types for chained method calls
+                                        self.infer_user_type_name(obj.as_ref())
+                                            .unwrap_or_else(|| "Unknown".to_string())
+                                    }
                                 };
                                 let native_name = format!("{}.{}", type_name, method);
 
                                 // Check if this native exists
                                 if BIGVM_NATIVES.lock().unwrap().get_id(&native_name).is_some() {
                                     Some(native_name)
+                                } else if self.exports.contains_key(&format!("{}.{}", type_name, method.as_ref())) {
+                                    // Plan 197 Task 3: User-defined method on chained result
+                                    Some(format!("{}.{}", type_name, method.as_ref()))
                                 } else if method.as_str() == "len" {
                                     // Fallback for len() - most common
                                     Some("str.len".to_string())
@@ -5381,8 +5401,28 @@ impl Codegen {
             Expr::Str(_) | Expr::CStr(_) => ObjectType::String,
             Expr::Char(_) => ObjectType::Char,
             Expr::Bool(_) => ObjectType::Bool,
+            // Plan 197 Task 3: Method chaining — resolve return type from fn_return_types
+            Expr::Call(call) => {
+                // Try to resolve return type from fn_return_types
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
+                    if let Some(ret_ty) = self.fn_return_types.get(&fn_name) {
+                        self.type_to_object_type(ret_ty)
+                    } else {
+                        ObjectType::NestedObject
+                    }
+                } else if let Expr::Ident(name) = call.name.as_ref() {
+                    if let Some(ret_ty) = self.fn_return_types.get(name.as_ref()) {
+                        self.type_to_object_type(ret_ty)
+                    } else {
+                        ObjectType::NestedObject
+                    }
+                } else {
+                    ObjectType::NestedObject
+                }
+            }
             // Plan 073: Nested object, node, pair and array types
-            Expr::Object(_) | Expr::Node(_) | Expr::Call(_) | Expr::Bina(_, _, _) | Expr::If(_) | Expr::Lambda(_) | Expr::Closure(_) | Expr::Pair(_) => ObjectType::NestedObject,
+            Expr::Object(_) | Expr::Node(_) | Expr::Bina(_, _, _) | Expr::If(_) | Expr::Lambda(_) | Expr::Closure(_) | Expr::Pair(_) => ObjectType::NestedObject,
             Expr::Array(_) => ObjectType::Array,
             // Plan 118 Phase 4: Check variable types for identifier expressions
             Expr::Ident(name) => {
@@ -5419,6 +5459,54 @@ impl Codegen {
                 }
             }
             _ => ObjectType::Int,
+        }
+    }
+
+    /// Plan 197 Task 3: Try to infer a user-defined type name from an expression
+    /// by looking up its return type in fn_return_types.
+    /// Returns the type name (e.g., "Point") if found, or None.
+    fn infer_user_type_name(&self, expr: &Expr) -> Option<String> {
+        if let Expr::Call(call) = expr {
+            let fn_name = if let Expr::Dot(obj, method) = call.name.as_ref() {
+                format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref())
+            } else if let Expr::Ident(name) = call.name.as_ref() {
+                name.to_string()
+            } else {
+                return None;
+            };
+            if let Some(ret_ty) = self.fn_return_types.get(&fn_name) {
+                match ret_ty {
+                    Type::User(td) => return Some(td.name.to_string()),
+                    Type::Enum(ed) => return Some(ed.borrow().name.to_string()),
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
+    /// Plan 197 Task 3: Convert an expression to its dot-separated name for fn_return_types lookup
+    fn expr_to_name(&self, expr: &Expr) -> String {
+        match expr {
+            Expr::Ident(name) => name.to_string(),
+            Expr::Dot(obj, method) => format!("{}.{}", self.expr_to_name(obj), method),
+            _ => "Unknown".to_string(),
+        }
+    }
+
+    /// Plan 197 Task 3: Map a Type to ObjectType for object field tracking
+    fn type_to_object_type(&self, ty: &Type) -> ObjectType {
+        match ty {
+            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+            Type::Char => ObjectType::Char,
+            Type::Int | Type::I64 => ObjectType::Int,
+            Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+            Type::Byte => ObjectType::Byte,
+            Type::Float => ObjectType::Float,
+            Type::Double => ObjectType::Double,
+            Type::Bool => ObjectType::Bool,
+            Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
+            _ => ObjectType::NestedObject,
         }
     }
 
