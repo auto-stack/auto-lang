@@ -171,6 +171,41 @@ pub fn register_builtin_natives() {
     registry.register_with_id("List.reserve", 118);  // No hardcoded shim, but reserved ID
     registry.register_with_id("List.capacity", 205);
 
+    // List monomorphic aliases (Plan 194 Task 6)
+    // All current List natives operate on ListData<i32>, so all type-suffixed
+    // aliases route to the same native. When string/float/bool List shims are
+    // added later, these can be redirected to type-specific natives.
+    registry.register_with_id("List.push_int", 101);    // reuse List.push
+    registry.register_with_id("List.push_uint", 101);
+    registry.register_with_id("List.push_float", 101);
+    registry.register_with_id("List.push_bool", 101);
+    registry.register_with_id("List.push_str", 101);
+    registry.register_with_id("List.pop_int", 102);     // reuse List.pop
+    registry.register_with_id("List.pop_uint", 102);
+    registry.register_with_id("List.pop_float", 102);
+    registry.register_with_id("List.pop_bool", 102);
+    registry.register_with_id("List.pop_str", 102);
+    registry.register_with_id("List.get_int", 106);     // reuse List.get
+    registry.register_with_id("List.get_uint", 106);
+    registry.register_with_id("List.get_float", 106);
+    registry.register_with_id("List.get_bool", 106);
+    registry.register_with_id("List.get_str", 106);
+    registry.register_with_id("List.set_int", 107);     // reuse List.set
+    registry.register_with_id("List.set_uint", 107);
+    registry.register_with_id("List.set_float", 107);
+    registry.register_with_id("List.set_bool", 107);
+    registry.register_with_id("List.set_str", 107);
+    registry.register_with_id("List.insert_int", 108);  // reuse List.insert
+    registry.register_with_id("List.insert_uint", 108);
+    registry.register_with_id("List.insert_float", 108);
+    registry.register_with_id("List.insert_bool", 108);
+    registry.register_with_id("List.insert_str", 108);
+    registry.register_with_id("List.remove_int", 109);  // reuse List.remove
+    registry.register_with_id("List.remove_uint", 109);
+    registry.register_with_id("List.remove_float", 109);
+    registry.register_with_id("List.remove_bool", 109);
+    registry.register_with_id("List.remove_str", 109);
+
     // Memory allocation functions (Plan 052 Phase 2)
     registry.register_with_id("alloc_array", 190);
     registry.register_with_id("realloc_array", 191);

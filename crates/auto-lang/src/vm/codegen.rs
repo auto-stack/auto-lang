@@ -1132,11 +1132,15 @@ impl Codegen {
                         if let Expr::Ident(type_name) = obj.as_ref() {
                             // Check if this is a known type (List, HashMap, etc.)
                             if type_name == "List" && method == "new" {
-                                // Variable is being assigned a List
-                                self.var_types.insert(
-                                    store.name.to_string(),
-                                    Type::List(Box::new(Type::Int)),
-                                );
+                                // Plan 194 Task 6: Track List with default generic param <int>
+                                // as GenericInstance so monomorphic dispatch works like HashMap/HashSet
+                                let inst = crate::ast::GenericInstance {
+                                    base_name: crate::ast::Name::from("List"),
+                                    args: vec![Type::Int],
+                                    source: None,
+                                };
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
                             }
                             // Plan 086: Add collection type constructors
                             else if type_name == "HashMap" && method == "new" {
