@@ -2341,10 +2341,7 @@ impl AutoVM {
                     task.ip += 2;
 
                     // Execute Native Shim
-                    let shim = self.native_interface.get(native_id).cloned();
-
-                    if let Some(shim) = shim {
-                        // Pass task and vm
+                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         shim(task, self)?;
                     } else {
                         return Err(VMError::MissingNative(native_id));
@@ -2987,7 +2984,6 @@ impl AutoVM {
                     } else {
                         // Local variable: load from bp+1+idx (bp+1 is first local variable)
                         let val = task.ram.read_i32(task.bp + 1 + idx);
-                        vm_debug!("DEBUG: LOAD_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
                         task.ram.push_i32(val);
                     }
                 }
@@ -3012,7 +3008,6 @@ impl AutoVM {
                     } else {
                         // Local variable: store to bp+1+idx (bp+1 is first local variable)
                         task.ram.write_i32(task.bp + 1 + idx, val);
-                        vm_debug!("DEBUG: STORE_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
@@ -3025,7 +3020,6 @@ impl AutoVM {
                     task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_2 => {
-                    // Load from bp+3 (third local variable)
                     let val = task.ram.read_i32(task.bp + 3);
                     task.ram.push_i32(val);
                 }

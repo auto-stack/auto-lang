@@ -273,7 +273,7 @@ impl VirtualRAM {
     #[inline(always)]
     pub fn pop_f64(&mut self) -> f64 {
         let high = self.pop_i32() as u64;
-        let low = self.pop_i32() as u64;
+        let low = (self.pop_i32() as u32) as u64;
         let bits = (high << 32) | low;
         unsafe { f64::from_bits(bits) }
     }
