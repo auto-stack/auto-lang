@@ -1140,43 +1140,33 @@ impl Codegen {
                             }
                             // Plan 086: Add collection type constructors
                             else if type_name == "HashMap" && method == "new" {
-                                // HashMap<String, i32> - simplified version
-                                // Create a synthetic TypeDecl to represent HashMap
-                                let type_decl = crate::ast::TypeDecl {
-                                    name: crate::ast::Name::from("HashMap"),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
+                                // Plan 194 Task 3: Track HashMap with default generic params <str, int>
+                                // This enables monomorphic dispatch for instance method calls
+                                let inst = crate::ast::GenericInstance {
+                                    base_name: crate::ast::Name::from("HashMap"),
+                                    args: vec![Type::Str(0), Type::Int],
+                                    source: None,
                                 };
                                 self.var_types
-                                    .insert(store.name.to_string(), Type::User(type_decl));
+                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
                             } else if type_name == "HashSet" && method == "new" {
-                                let type_decl = crate::ast::TypeDecl {
-                                    name: crate::ast::Name::from("HashSet"),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
+                                // Plan 194 Task 3: Track HashSet with default generic param <str>
+                                let inst = crate::ast::GenericInstance {
+                                    base_name: crate::ast::Name::from("HashSet"),
+                                    args: vec![Type::Str(0)],
+                                    source: None,
                                 };
                                 self.var_types
-                                    .insert(store.name.to_string(), Type::User(type_decl));
+                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
+                            } else if type_name == "Map" && method == "new" {
+                                // Plan 194 Task 3: Map is an alias for HashMap
+                                let inst = crate::ast::GenericInstance {
+                                    base_name: crate::ast::Name::from("HashMap"),
+                                    args: vec![Type::Str(0), Type::Int],
+                                    source: None,
+                                };
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
                             } else if type_name == "VecDeque" && method == "new" {
                                 let type_decl = crate::ast::TypeDecl {
                                     name: crate::ast::Name::from("VecDeque"),
@@ -4535,15 +4525,30 @@ impl Codegen {
                                             // Generate monomorphic method name for generic instance
                                             // Example: p.get_key() where p: Pair<int, string>
                                             //          → "Pair_int_str.get_key"
-                                            let mono_name = self
+                                            let resolved = if let Some(tmpl) = self
                                                 .generic_registry
                                                 .get_template(&inst.base_name.to_string())
-                                                .map(|t| t.mono_name_from_args(&inst.args))
-                                                .unwrap_or_else(|| {
-                                                    format!("{}_unknown", inst.base_name)
-                                                });
-
-                                            Some(format!("{}.{}", mono_name, method))
+                                            {
+                                                // User-defined generic type
+                                                let mono_name = tmpl.mono_name_from_args(&inst.args);
+                                                format!("{}.{}", mono_name, method)
+                                            } else if let Some(mono) = self
+                                                .try_mono_dispatch(
+                                                    &inst.base_name.to_string(),
+                                                    method.as_ref(),
+                                                    &inst.args,
+                                                )
+                                            {
+                                                // Plan 194 Task 3: Built-in collection type
+                                                // (HashMap, HashSet, etc.) with generic params
+                                                // try_mono_dispatch returns a fully qualified name
+                                                mono
+                                            } else {
+                                                // Fallback: use base_name.method for methods
+                                                // that don't need typed dispatch (new, size, clear, etc.)
+                                                format!("{}.{}", inst.base_name, method)
+                                            };
+                                            Some(resolved)
                                         } else {
                                             // Not a generic instance, use regular inference
                                             // Plan 194 Task 1: Try monomorphic dispatch first
