@@ -1,0 +1,29 @@
+# 12 - Testing
+
+## Overview
+AutoLang's testing infrastructure matured from inline Rust unit tests to a comprehensive file-based test framework covering the VM, transpilers (a2r, a2c, a2ts), and the AutoDown document processor. Major reorganization efforts brought chaotic test suites into categorized, discoverable directory structures, while regression fixes stabilized the codebase across rapid feature development.
+
+## Plan Summary
+
+| Plan | Title | Status | Summary |
+|------|-------|--------|---------|
+| 110 | AutoDown Comprehensive Test Suite | 🔧 | Establish test suite for AutoDown covering lexer, parser, transpilers, math, and edge cases |
+| 158 | Fix Test Regressions (270 Failures) | ✅ | Fix all 270 failing tests introduced by unified enum, Box<Node>, and parser changes |
+| 170 | A2R Test Suite Reorganization | ✅ | Reorganize a2r tests from chaotic numbering into categorized directory structure; 144 tests passing |
+| 171 | A2C Test Suite Reorganization | ✅ | Reorganize a2c tests from 239 directories into categorized structure; 106 tests passing, orphans removed |
+| 172 | A2TS Test Suite Reorganization | ✅ | Reorganize a2ts tests into categorized structure aligned with a2r/a2c; 24 tests passing |
+| 179 | Migrate vm_tests.rs to File-Based vm_file Tests | 🔧 | Migrate ~130 inline VM tests to file-based .at test files; ~167 file-based tests, vm_tests.rs slimmed |
+| 191 | Assert and Precise Linker Errors | ⏳ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
+
+## Status Summary
+- Completed: 4 | Partial: 2 | Planned: 1 | Deprecated: 0
+
+## Key Achievements
+- All three transpiler test suites (a2r, a2c, a2ts) reorganized into consistent categorized directory structures with clear numbering
+- 270 test regressions from unified enum and parser refactoring resolved to 0 failures across 2,533+ tests
+- VM test migration from 3,048-line inline test file to ~167 file-based .at tests with expected output comparison
+
+## Remaining Work
+- Complete AutoDown test suite with snapshot tests for Typst, HTML, and edge-case coverage
+- Finish VM file-based test migration for remaining inline tests that require AST inspection or bytecode-level verification
+- Add assert/assert_eq/assert_ne as native intrinsics and improve linker error spans to point to exact call sites
