@@ -1484,6 +1484,36 @@ impl Codegen {
                     let key = format!("{}.{}", enum_name, item.name);
                     self.enum_values.insert(key, value);
                 }
+
+                // Plan 197 Task 11: Register enum data variants in GenericRegistry
+                // Each variant with a payload type gets registered as a template
+                // so the VM can instantiate them at runtime.
+                use crate::vm::generic_registry::{ClassTemplate, FieldDef};
+
+                // Determine payload type for each item based on enum kind
+                let homogeneous_payload = match &enum_decl.kind {
+                    crate::ast::EnumKind::Homogeneous { payload_type } => Some(payload_type.clone()),
+                    _ => None,
+                };
+
+                for item in &enum_decl.items {
+                    // Get the payload type: item-specific (heterogeneous) or shared (homogeneous)
+                    let payload = item.payload_type.as_ref()
+                        .or(homogeneous_payload.as_ref());
+
+                    if let Some(payload_type) = payload {
+                        let variant_mono = format!("{}.{}", enum_decl.name, item.name);
+                        let fields = vec![FieldDef::new("_0", payload_type.clone())];
+                        let template = ClassTemplate::new(
+                            &variant_mono,
+                            vec![],  // No generic params for enum variants
+                            fields,
+                            vec![],  // No methods for enum variants
+                        );
+                        // Ignore duplicate registration errors (e.g., if already registered)
+                        let _ = self.generic_registry.register_template(template);
+                    }
+                }
             }
             Stmt::SpecDecl(_spec_decl) => {
                 // Plan 073 Phase 8.6: Spec declaration support
