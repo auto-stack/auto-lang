@@ -73,7 +73,7 @@ cargo test -p auto-lang -- trans  # Run transpiler (a2c/a2r) tests
 - **Arrays**: `[1, 2, 3]` with indexing `arr[0]`
   - Static arrays: `[N]T` where N is compile-time size (e.g., `[10]int`)
   - Slices: `[]T` for borrowed slice of array
-  - **Dynamic lists**: `List` type — see [docs/design/data-structures.md](docs/design/data-structures.md)
+  - **Dynamic lists**: `List` type — see [docs/design/07-data-structures.md](docs/design/07-data-structures.md)
 - **Objects**: `{key: value, ...}` with field access `obj.key`
 - **Functions**: `fn add(a int, b int) int { a + b }`
 - **Imports**: `use math::add` or `use c <stdio.h>`
@@ -130,13 +130,18 @@ pub fn public_function() int;
 
 ## Detailed Design Documents
 
-For architecture, implementation details, and API references, see:
-- [docs/design/architecture.md](docs/design/architecture.md) — Compilation pipeline, core components, AIE incremental compilation, test infrastructure
-- [docs/design/data-structures.md](docs/design/data-structures.md) — Node, Obj, ListData, Storage-Based Lists
-- [docs/design/error-system.md](docs/design/error-system.md) — Error types, miette integration, diagnostic display
-- [docs/design/type-inference.md](docs/design/type-inference.md) — Type inference system, unification, usage examples
-- [docs/design/a2jet.md](docs/design/a2jet.md) — Jetpack Compose (Android) code generator
-- [docs/design/a2ark.md](docs/design/a2ark.md) — ArkTS (HarmonyOS) code generator
+Organized as a design reference book (originals preserved in `docs/design/raw/`):
+- [docs/design/01-architecture.md](docs/design/01-architecture.md) — Compiler pipeline, core components, AIE
+- [docs/design/02-type-system.md](docs/design/02-type-system.md) — Types, inference, generics, enums, unions
+- [docs/design/03-error-handling.md](docs/design/03-error-handling.md) — Option/Result/Panic, error messages
+- [docs/design/04-memory-ownership.md](docs/design/04-memory-ownership.md) — Lifetimes, ownership, param passing
+- [docs/design/05-vm-runtime.md](docs/design/05-vm-runtime.md) — Bytecode ISA, AutoVM, BigVM, concurrency
+- [docs/design/06-code-generation.md](docs/design/06-code-generation.md) — a2c, a2ark, a2jet, autogen, C interop
+- [docs/design/07-data-structures.md](docs/design/07-data-structures.md) — Node, Atom format, serialization
+- [docs/design/08-ui-systems.md](docs/design/08-ui-systems.md) — AURA, design tokens, frontend-backend
+- [docs/design/09-compiler.md](docs/design/09-compiler.md) — Incremental compilation, caching, comptime
+- [docs/design/10-language-syntax.md](docs/design/10-language-syntax.md) — Dot notation, functions, OOP, stdlib
+- [docs/design/11-shell-tools.md](docs/design/11-shell-tools.md) — AutoShell, coreutils, SmartCmd
 
 ## Common Development Tasks
 
