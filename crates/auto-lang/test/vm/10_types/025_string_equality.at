@@ -1,0 +1,14 @@
+fn main() {
+    let a = "hello"
+    let b = "hello"
+    assert_eq(a, b)
+
+    let c = "world"
+    assert(a != c)
+
+    // String in struct field vs literal
+    let kind = "http"
+    assert(kind == "http")
+
+    print("string_equality: passed")
+}

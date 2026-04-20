@@ -2998,10 +2998,9 @@ impl Codegen {
                 }
             }
             Expr::Str(s) => {
-                // Add string to constant pool and emit LOAD_STR <index>
-                let bytes = s.as_bytes().to_vec();
-                let idx = self.strings.len() as u16;
-                self.strings.push(bytes);
+                // Intern string literal: reuse existing index for identical strings
+                // so that == compares identical tags
+                let idx = self.add_string(s);
                 self.emit(OpCode::LOAD_STR);
                 self.code.extend_from_slice(&idx.to_le_bytes());
                 // Plan 118 Phase 7: Track expression type for proper result formatting
