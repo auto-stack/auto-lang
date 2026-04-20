@@ -85,10 +85,10 @@ ext str {
     #[vm]
     fn repeat(n int) str
 
-    /// Get the character code at a specific index
-    /// Example: "hello".char_at(1)  // returns 101 (code point of 'e')
+    /// Get the character at a specific index (returns single-char string)
+    /// Example: "hello".char_at(1)  // returns "e"
     #[vm]
-    fn char_at(index int) int
+    fn char_at(index int) str
 
     /// Split string by delimiter into array of strings
     /// Example: "hello world".split(" ")  // returns ["hello", "world"]

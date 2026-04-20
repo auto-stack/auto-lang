@@ -143,6 +143,9 @@ impl NativeInterface {
         self.register(NATIVE_ASSERT_EQ, shim_assert_eq);
         self.register(NATIVE_ASSERT_NE, shim_assert_ne);
 
+        // Runtime panic (for #[vm] stubs when native not found)
+        self.register(NATIVE_RUNTIME_PANIC, shim_runtime_panic);
+
         // List functions
         self.register(NATIVE_LIST_NEW, shim_list_new);
         self.register(NATIVE_LIST_PUSH, shim_list_push);
@@ -294,6 +297,7 @@ pub const NATIVE_PRINT_STR: u16 = 3;
 pub const NATIVE_ASSERT: u16 = 4;
 pub const NATIVE_ASSERT_EQ: u16 = 5;
 pub const NATIVE_ASSERT_NE: u16 = 6;
+pub const NATIVE_RUNTIME_PANIC: u16 = 7;
 
 // ============================================================================
 // Plan 178: Bit Operation Shims
@@ -716,6 +720,21 @@ pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         return Err(VMError::RuntimeError("Assertion failed".to_string()));
     }
     Ok(())
+}
+
+/// Runtime panic: pops a string (tagged index) from stack and returns it as an error.
+/// Used by #[vm] function stubs when no matching native implementation is found.
+pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let tagged = task.ram.pop_i32();
+    let msg = if tagged < 0 {
+        let idx = ((-tagged) - 1) as u16;
+        vm.get_string(idx)
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
+    } else {
+        format!("Runtime panic (unexpected stack value: {})", tagged)
+    };
+    Err(VMError::RuntimeError(msg))
 }
 
 pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

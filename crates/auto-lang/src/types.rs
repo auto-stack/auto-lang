@@ -197,6 +197,51 @@ impl TypeStore {
         self.spec_decls.insert(decl.name.clone(), decl.clone());
     }
 
+    /// 注册 ext 块中的方法到目标类型的 type_decl
+    pub fn register_ext_methods(&mut self, ext: &crate::ast::Ext) {
+        let target_name = ext.target.clone();
+        let target_str = AutoStr::from(target_name.as_str());
+
+        if let Some(decl) = self.type_decls.get(&target_str).cloned() {
+            // TypeDecl already exists, append methods via Rc replacement
+            let mut decl = (*decl).clone();
+            for method in &ext.methods {
+                if !decl.methods.iter().any(|m| m.name == method.name) {
+                    decl.methods.push(method.clone());
+                }
+                // Also register in fn_decls so import_items can find them
+                self.fn_decls.insert(method.name.clone(), method.clone());
+            }
+            self.type_decls.insert(target_str.clone(), Rc::new(decl));
+        } else {
+            // Type not yet registered — create a placeholder TypeDecl with the ext methods
+            use crate::ast::{TypeDecl, TypeDeclKind};
+            let mut placeholder = TypeDecl {
+                name: target_name.clone(),
+                kind: TypeDeclKind::UserType,
+                parent: None,
+                has: Vec::new(),
+                specs: Vec::new(),
+                spec_impls: Vec::new(),
+                generic_params: Vec::new(),
+                members: Vec::new(),
+                delegations: Vec::new(),
+                methods: ext.methods.clone(),
+                attrs: vec![],
+                doc: None,
+                is_pub: false,
+            };
+            // Register methods in fn_decls too
+            for method in &ext.methods {
+                if !placeholder.methods.iter().any(|m| m.name == method.name) {
+                    placeholder.methods.push(method.clone());
+                }
+                self.fn_decls.insert(method.name.clone(), method.clone());
+            }
+            self.type_decls.insert(target_str, Rc::new(placeholder));
+        }
+    }
+
     /// 注册泛型模板
     pub fn register_generic_template(&mut self, template: GenericTemplate) {
         self.generic_templates.insert(template.name().to_string(), template);

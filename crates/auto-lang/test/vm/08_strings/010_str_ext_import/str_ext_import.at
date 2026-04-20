@@ -1,0 +1,9 @@
+use auto.str: char_at
+
+fn main() {
+    let a = "hello"
+    let c0 = a.char_at(0)
+    let c4 = a.char_at(4)
+    print(c0)
+    print(c4)
+}

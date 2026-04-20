@@ -539,11 +539,7 @@ impl CompileSession {
                     type_store.register_spec_decl(spec_decl);
                 }
                 crate::ast::Stmt::Ext(ext) => {
-                    // Register ext methods as fn_decls so they can be found
-                    // by import_items (e.g., `use auto.str: split`)
-                    for method in &ext.methods {
-                        type_store.register_fn_decl(method);
-                    }
+                    type_store.register_ext_methods(ext);
                 }
                 _ => {}
             }

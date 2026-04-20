@@ -1,0 +1,3 @@
+let a = "hello"
+let c0 = a[0]
+print(c0)

@@ -398,6 +398,29 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.str.lower", 1512);  // alias for to_lower
     registry.register_with_id("auto.str.sub", 1503);    // alias for substr
 
+    // String function aliases (codegen infer_type_from_var returns lowercase "str")
+    registry.register_with_id("str.len", 1500);
+    registry.register_with_id("str.is_empty", 1501);
+    registry.register_with_id("str.char_at", 1502);
+    registry.register_with_id("str.substr", 1503);
+    registry.register_with_id("str.contains", 1504);
+    registry.register_with_id("str.starts_with", 1505);
+    registry.register_with_id("str.ends_with", 1506);
+    registry.register_with_id("str.trim", 1507);
+    registry.register_with_id("str.split", 1508);
+    registry.register_with_id("str.repeat", 1509);
+    registry.register_with_id("str.replace", 1510);
+    registry.register_with_id("str.to_upper", 1511);
+    registry.register_with_id("str.to_lower", 1512);
+    registry.register_with_id("str.reverse", 1513);
+    registry.register_with_id("str.find", 1514);
+    registry.register_with_id("str.lines", 1515);
+    registry.register_with_id("str.parse_int", 1516);
+    registry.register_with_id("str.parse_float", 1517);
+    registry.register_with_id("str.upper", 1511);   // alias for to_upper
+    registry.register_with_id("str.lower", 1512);   // alias for to_lower
+    registry.register_with_id("str.sub", 1503);     // alias for substr
+
     // Char functions (1600-1606)
     registry.register_with_id("auto.char.is_alpha", 1600);
     registry.register_with_id("auto.char.is_digit", 1601);

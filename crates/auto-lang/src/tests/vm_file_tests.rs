@@ -139,6 +139,9 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_08_strings_006_str_import_case() { test_vm("08_strings/006_str_import_case").unwrap(); }
 #[test] fn test_08_strings_007_str_import_search() { test_vm("08_strings/007_str_import_search").unwrap(); }
 #[test] fn test_08_strings_008_str_import_transform() { test_vm("08_strings/008_str_import_transform").unwrap(); }
+#[test] fn test_08_strings_009_char_at() { test_vm("08_strings/009_char_at").unwrap(); }
+#[test] fn test_08_strings_010_str_ext_import() { test_vm("08_strings/010_str_ext_import").unwrap(); }
+#[test] fn test_08_strings_011_vm_stub_panic() { test_vm("08_strings/011_vm_stub_panic").unwrap(); }
 
 // === 09_functions ===
 #[test] fn test_09_functions_001_fn_simple() { test_vm("09_functions/001_fn_simple").unwrap(); }

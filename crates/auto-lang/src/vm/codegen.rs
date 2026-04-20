@@ -237,6 +237,17 @@ impl Codegen {
         fn_return_types.insert("str.slice".to_string(), Type::String);
         fn_return_types.insert("str.split".to_string(), Type::String);
         fn_return_types.insert("str.chars".to_string(), Type::String);
+        fn_return_types.insert("str.char_at".to_string(), Type::String);
+        fn_return_types.insert("str.sub".to_string(), Type::String);
+        fn_return_types.insert("str.repeat".to_string(), Type::String);
+        fn_return_types.insert("str.reverse".to_string(), Type::String);
+        fn_return_types.insert("str.len".to_string(), Type::Int);
+        fn_return_types.insert("str.is_empty".to_string(), Type::Bool);
+        fn_return_types.insert("str.contains".to_string(), Type::Bool);
+        fn_return_types.insert("str.starts_with".to_string(), Type::Bool);
+        fn_return_types.insert("str.ends_with".to_string(), Type::Bool);
+        fn_return_types.insert("str.find".to_string(), Type::Int);
+        fn_return_types.insert("str.lines".to_string(), Type::String);
         fn_return_types.insert("List.join".to_string(), Type::String);
         fn_return_types.insert("now_ms".to_string(), Type::I64);
         fn_return_types.insert("now_sec".to_string(), Type::I64);
@@ -312,6 +323,17 @@ impl Codegen {
         fn_return_types.insert("str.slice".to_string(), Type::String);
         fn_return_types.insert("str.split".to_string(), Type::String);
         fn_return_types.insert("str.chars".to_string(), Type::String);
+        fn_return_types.insert("str.char_at".to_string(), Type::String);
+        fn_return_types.insert("str.sub".to_string(), Type::String);
+        fn_return_types.insert("str.repeat".to_string(), Type::String);
+        fn_return_types.insert("str.reverse".to_string(), Type::String);
+        fn_return_types.insert("str.len".to_string(), Type::Int);
+        fn_return_types.insert("str.is_empty".to_string(), Type::Bool);
+        fn_return_types.insert("str.contains".to_string(), Type::Bool);
+        fn_return_types.insert("str.starts_with".to_string(), Type::Bool);
+        fn_return_types.insert("str.ends_with".to_string(), Type::Bool);
+        fn_return_types.insert("str.find".to_string(), Type::Int);
+        fn_return_types.insert("str.lines".to_string(), Type::String);
         fn_return_types.insert("List.join".to_string(), Type::String);
         fn_return_types.insert("now_ms".to_string(), Type::I64);
         fn_return_types.insert("now_sec".to_string(), Type::I64);
@@ -505,6 +527,56 @@ impl Codegen {
             Stmt::Fn(fn_decl) => {
                 // Reset last_expr_type for each function to avoid stale type from previous compilation
                 self.last_expr_type = ObjectType::Void;
+
+                // #[vm] functions are implemented by native Rust shims, not VM bytecode.
+                // If the native registry doesn't have a matching entry, the codegen will
+                // emit a regular CALL to this function. Generate a runtime error stub
+                // so the user gets a clear message instead of silent wrong behavior.
+                if matches!(fn_decl.kind, crate::ast::FnKind::VmFunction) {
+                    let fn_name_str = fn_decl.name.to_string();
+                    vm_debug!("DEBUG: Compiling #[vm] stub for '{}' — will panic at runtime if native not found",
+                        fn_name_str
+                    );
+
+                    // Export the function so linker can resolve it
+                    let entry_point = self.code.len() as u32;
+                    self.exports.insert(fn_name_str.clone(), entry_point);
+
+                    // FN_PROLOG with correct arg count
+                    let n_args = fn_decl.params.len() as u8;
+                    self.emit(OpCode::FN_PROLOG);
+                    self.code.push(n_args);
+                    self.code.push(0); // n_locals = 0
+
+                    // Push error message as string constant
+                    let err_msg = format!(
+                        "Runtime error: #[vm] function '{}' has no native implementation. \
+                        Check that the native registry has a matching entry (e.g., \"str.{}\" or \"Str.{}\").",
+                        fn_name_str,
+                        fn_name_str.split('.').last().unwrap_or(&fn_name_str),
+                        fn_name_str.split('.').last().unwrap_or(&fn_name_str)
+                    );
+                    let msg_idx = self.strings.len() as u16;
+                    self.strings.push(err_msg.as_bytes().to_vec());
+                    self.emit(OpCode::LOAD_STR);
+                    self.code.extend_from_slice(&msg_idx.to_le_bytes());
+
+                    // Call NATIVE_RUNTIME_PANIC — pops the message string and returns VMError
+                    self.emit(OpCode::CALL_NAT);
+                    self.code.extend_from_slice(
+                        &crate::vm::native::NATIVE_RUNTIME_PANIC.to_le_bytes()
+                    );
+
+                    // RET — unreachable but needed for well-formed bytecode
+                    let n_args_i16 = n_args as i16;
+                    self.emit(OpCode::RET);
+                    self.code.extend_from_slice(&n_args_i16.to_le_bytes());
+
+                    // Record return type
+                    self.fn_return_types.insert(fn_name_str.clone(), fn_decl.ret.clone());
+
+                    return Ok(());
+                }
 
                 // 1. Jump over function body (so it's not executed during definition flow)
                 self.emit(OpCode::JMP);
@@ -4459,6 +4531,18 @@ impl Codegen {
                         } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
                             || name.ends_with(".str") || name == "int_str" {
                             self.last_expr_type = ObjectType::String;
+                        } else if let Some(ret_ty) = self.fn_return_types.get(name) {
+                            self.last_expr_type = match ret_ty {
+                                Type::Void => ObjectType::Void,
+                                Type::Float => ObjectType::Float,
+                                Type::Double => ObjectType::Double,
+                                Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                                Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                                Type::Byte => ObjectType::Byte,
+                                Type::Bool => ObjectType::Bool,
+                                Type::Int | Type::I64 => ObjectType::Int,
+                                _ => ObjectType::NestedObject,
+                            };
                         }
                     }
 

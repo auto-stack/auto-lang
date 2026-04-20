@@ -1,0 +1,11 @@
+// Test: calling a #[vm] method that has no native implementation should panic
+ext str {
+    #[vm]
+    fn boom() str
+}
+
+fn main() {
+    let a = "hello"
+    let r = a.boom()
+    print(r)
+}

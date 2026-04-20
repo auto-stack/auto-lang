@@ -642,15 +642,15 @@ pub fn shim_str_is_empty(s: String) -> bool {
     s.is_empty()
 }
 
-/// Get character at byte index (returns unicode codepoint)
+/// Get character at byte index (returns single-char string)
 #[auto_macros::rust_fn("Str.char_at")]
-pub fn shim_str_char_at(s: String, index: i32) -> i32 {
+pub fn shim_str_char_at(s: String, index: i32) -> String {
     if index < 0 || index as usize >= s.len() {
-        return -1;
+        return String::new();
     }
     match s[index as usize..].chars().next() {
-        Some(c) => c as i32,
-        None => -1,
+        Some(c) => c.to_string(),
+        None => String::new(),
     }
 }
 
