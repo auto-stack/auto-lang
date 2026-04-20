@@ -1,0 +1,4 @@
+use auto.str: upper, lower
+
+print(upper("hello"))
+print(lower("HELLO"))

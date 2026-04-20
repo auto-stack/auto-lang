@@ -135,6 +135,10 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_08_strings_002_fstr_expr() { test_vm("08_strings/002_fstr_expr").unwrap(); }
 #[test] fn test_08_strings_003_str_index() { test_vm("08_strings/003_str_index").unwrap(); }
 #[test] fn test_08_strings_004_int_to_str() { test_vm("08_strings/004_int_to_str").unwrap(); }
+#[test] fn test_08_strings_005_str_import_basic() { test_vm("08_strings/005_str_import_basic").unwrap(); }
+#[test] fn test_08_strings_006_str_import_case() { test_vm("08_strings/006_str_import_case").unwrap(); }
+#[test] fn test_08_strings_007_str_import_search() { test_vm("08_strings/007_str_import_search").unwrap(); }
+#[test] fn test_08_strings_008_str_import_transform() { test_vm("08_strings/008_str_import_transform").unwrap(); }
 
 // === 09_functions ===
 #[test] fn test_09_functions_001_fn_simple() { test_vm("09_functions/001_fn_simple").unwrap(); }

@@ -1,0 +1,6 @@
+use auto.str: contains, starts_with, ends_with, find
+
+print(contains("hello world", "world"))
+print(starts_with("hello", "he"))
+print(ends_with("hello", "lo"))
+print(find("hello world", "world"))

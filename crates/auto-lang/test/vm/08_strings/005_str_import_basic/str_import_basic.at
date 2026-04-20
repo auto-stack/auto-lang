@@ -1,0 +1,5 @@
+use auto.str: len, is_empty
+
+print(len("hello"))
+print(is_empty(""))
+print(is_empty("hi"))

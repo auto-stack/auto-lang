@@ -1,0 +1,5 @@
+use auto.str: trim, replace, reverse
+
+print(trim("  hi  "))
+print(replace("hello world", "world", "rust"))
+print(reverse("hello"))
