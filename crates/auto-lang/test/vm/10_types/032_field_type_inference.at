@@ -1,0 +1,17 @@
+type Result {
+    ok bool
+    value str
+    err_kind int
+}
+
+fn main() {
+    let r = Result { ok: true, value: "hello", err_kind: 0 }
+    // These should work WITHOUT explicit type annotations
+    let v = r.value
+    assert(v.contains("hello"))
+
+    let k = r.err_kind
+    assert_eq(k, 0)
+
+    print("field_type_inference: passed")
+}

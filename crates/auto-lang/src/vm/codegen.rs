@@ -926,6 +926,10 @@ impl Codegen {
                                         Type::Unknown
                                     }
                                 }
+                                // Plan 197 Task 4: Infer type from field access (e.g., let v = r.value)
+                                Expr::Dot(_, _) => {
+                                    self.infer_expr_type(&store.expr)
+                                }
                                 _ => store.ty.clone(),
                         };
                         self.var_types.insert(name_str.clone(), inferred_type);
