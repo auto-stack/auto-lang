@@ -4459,6 +4459,18 @@ impl Codegen {
                         }
                     }
 
+                    // Plan 197 Task 6: str.slice(start) with 1 arg needs end = str.len()
+                    // Compile the receiver again and call str.len to push the end arg
+                    if func_name.as_deref() == Some("str.slice") && call.args.args.len() == 1 {
+                        if let Expr::Dot(obj, _method) = call.name.as_ref() {
+                            // Compile receiver again (duplicate of the string on stack)
+                            self.compile_expr(obj)?;
+                            // Call str.len to get the string length as the end index
+                            self.emit(OpCode::CALL_NAT);
+                            self.code.extend_from_slice(&1500u16.to_le_bytes()); // NATIVE_STR_LEN = 1500
+                        }
+                    }
+
                     // Plan 192: Inject implicit type_name and method for Rust stdlib dispatch
                     // Push AFTER user args so type_name/method are on top of stack.
                     // Handler pops method first (top), then type_name (next).

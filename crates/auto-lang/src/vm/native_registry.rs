@@ -432,6 +432,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.str.upper", 1511);  // alias for to_upper
     registry.register_with_id("auto.str.lower", 1512);  // alias for to_lower
     registry.register_with_id("auto.str.sub", 1503);    // alias for substr
+    registry.register_with_id("auto.str.slice", 1503);  // alias for substr (1-arg and 2-arg forms)
+    registry.register_with_id("Str.slice", 1503);        // alias for substr (1-arg and 2-arg forms)
 
     // String function aliases (codegen infer_type_from_var returns lowercase "str")
     // These also carry return type info for codegen type inference
@@ -456,6 +458,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("str.upper", 1511);   // alias for to_upper
     registry.register_with_id("str.lower", 1512);   // alias for to_lower
     registry.register_with_id("str.sub", 1503);     // alias for substr
+    registry.register_with_id_and_type("str.slice", 1503, NativeRetType::String);  // alias for substr
 
     // Char functions (1600-1606)
     registry.register_with_id("auto.char.is_alpha", 1600);

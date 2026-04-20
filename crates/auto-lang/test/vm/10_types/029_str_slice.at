@@ -1,0 +1,13 @@
+fn main() {
+    let s = "hello world"
+    let suffix = s.slice(6)
+    assert_eq(suffix, "world")
+
+    let prefix = s.slice(0, 5)
+    assert_eq(prefix, "hello")
+
+    let skipped = s.slice(1)
+    assert_eq(skipped, "ello world")
+
+    print("str_slice: passed")
+}
