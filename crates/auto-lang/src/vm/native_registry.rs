@@ -24,9 +24,24 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+/// Lightweight return type for native functions (Send + Sync safe).
+/// Codegen converts these to full `Type` values during initialization.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NativeRetType {
+    Void,
+    Int,
+    Float,
+    Bool,
+    String,
+    I64,
+    List,
+}
+
 pub struct AutoVMNativeRegistry {
     // Maps function name ("List.new") -> native ID (100, 101, ...)
     registry: HashMap<String, u16>,
+    // Maps function name -> return type (for codegen type inference)
+    return_types: HashMap<String, NativeRetType>,
     next_id: u16,
 }
 
@@ -34,6 +49,7 @@ impl AutoVMNativeRegistry {
     pub fn new() -> Self {
         Self {
             registry: HashMap::new(),
+            return_types: HashMap::new(),
             // Start at 100 to avoid conflicts with existing print functions (1-3)
             // and allow room for future expansion
             next_id: 100,
@@ -105,6 +121,25 @@ impl AutoVMNativeRegistry {
         if id >= self.next_id {
             self.next_id = id + 1;
         }
+    }
+
+    /// Register a native function with a specific ID and return type.
+    pub fn register_with_id_and_type(&mut self, name: &str, id: u16, ret_type: NativeRetType) {
+        self.registry.insert(name.to_string(), id);
+        self.return_types.insert(name.to_string(), ret_type);
+        if id >= self.next_id {
+            self.next_id = id + 1;
+        }
+    }
+
+    /// Get the return type for a native function.
+    pub fn get_return_type(&self, name: &str) -> Option<NativeRetType> {
+        self.return_types.get(name).copied()
+    }
+
+    /// Get all return types (for bulk import by codegen).
+    pub fn get_all_return_types(&self) -> &HashMap<String, NativeRetType> {
+        &self.return_types
     }
 }
 
@@ -317,9 +352,9 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Env.remove", 1102);
 
     // Time functions (1200-1202)
-    registry.register_with_id("auto.time.now_ms", 1200);
-    registry.register_with_id("auto.time.now_sec", 1201);
-    registry.register_with_id("auto.time.sleep_ms", 1202);
+    registry.register_with_id_and_type("auto.time.now_ms", 1200, NativeRetType::I64);
+    registry.register_with_id_and_type("auto.time.now_sec", 1201, NativeRetType::I64);
+    registry.register_with_id_and_type("auto.time.sleep_ms", 1202, NativeRetType::Void);
     registry.register_with_id("sleep", 1202); // Alias for auto.time.sleep_ms
 
     // Time function aliases
@@ -399,24 +434,25 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.str.sub", 1503);    // alias for substr
 
     // String function aliases (codegen infer_type_from_var returns lowercase "str")
-    registry.register_with_id("str.len", 1500);
-    registry.register_with_id("str.is_empty", 1501);
-    registry.register_with_id("str.char_at", 1502);
-    registry.register_with_id("str.substr", 1503);
-    registry.register_with_id("str.contains", 1504);
-    registry.register_with_id("str.starts_with", 1505);
-    registry.register_with_id("str.ends_with", 1506);
-    registry.register_with_id("str.trim", 1507);
-    registry.register_with_id("str.split", 1508);
-    registry.register_with_id("str.repeat", 1509);
-    registry.register_with_id("str.replace", 1510);
-    registry.register_with_id("str.to_upper", 1511);
-    registry.register_with_id("str.to_lower", 1512);
-    registry.register_with_id("str.reverse", 1513);
-    registry.register_with_id("str.find", 1514);
-    registry.register_with_id("str.lines", 1515);
-    registry.register_with_id("str.parse_int", 1516);
-    registry.register_with_id("str.parse_float", 1517);
+    // These also carry return type info for codegen type inference
+    registry.register_with_id_and_type("str.len", 1500, NativeRetType::Int);
+    registry.register_with_id_and_type("str.is_empty", 1501, NativeRetType::Bool);
+    registry.register_with_id_and_type("str.char_at", 1502, NativeRetType::String);
+    registry.register_with_id_and_type("str.substr", 1503, NativeRetType::String);
+    registry.register_with_id_and_type("str.contains", 1504, NativeRetType::Bool);
+    registry.register_with_id_and_type("str.starts_with", 1505, NativeRetType::Bool);
+    registry.register_with_id_and_type("str.ends_with", 1506, NativeRetType::Bool);
+    registry.register_with_id_and_type("str.trim", 1507, NativeRetType::String);
+    registry.register_with_id_and_type("str.split", 1508, NativeRetType::String);
+    registry.register_with_id_and_type("str.repeat", 1509, NativeRetType::String);
+    registry.register_with_id_and_type("str.replace", 1510, NativeRetType::String);
+    registry.register_with_id_and_type("str.to_upper", 1511, NativeRetType::String);
+    registry.register_with_id_and_type("str.to_lower", 1512, NativeRetType::String);
+    registry.register_with_id_and_type("str.reverse", 1513, NativeRetType::String);
+    registry.register_with_id_and_type("str.find", 1514, NativeRetType::Int);
+    registry.register_with_id_and_type("str.lines", 1515, NativeRetType::String);
+    registry.register_with_id_and_type("str.parse_int", 1516, NativeRetType::Int);
+    registry.register_with_id_and_type("str.parse_float", 1517, NativeRetType::Float);
     registry.register_with_id("str.upper", 1511);   // alias for to_upper
     registry.register_with_id("str.lower", 1512);   // alias for to_lower
     registry.register_with_id("str.sub", 1503);     // alias for substr
@@ -439,10 +475,10 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Char.to_upper", 1606);
 
     // Math functions (1700-1703, 1710-1725)
-    registry.register_with_id("auto.math.abs", 1700);
-    registry.register_with_id("auto.math.min", 1701);
-    registry.register_with_id("auto.math.max", 1702);
-    registry.register_with_id("auto.math.sqrt", 1703);
+    registry.register_with_id_and_type("auto.math.abs", 1700, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.math.min", 1701, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.math.max", 1702, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.math.sqrt", 1703, NativeRetType::Float);
     registry.register_with_id("auto.math.floor", 1710);
     registry.register_with_id("auto.math.ceil", 1711);
     registry.register_with_id("auto.math.round", 1712);

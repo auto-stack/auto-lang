@@ -226,31 +226,7 @@ impl Codegen {
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
         // Register return types for native functions (used for type inference in let bindings)
-        let mut fn_return_types = HashMap::new();
-        fn_return_types.insert("int.to_str".to_string(), Type::String);
-        fn_return_types.insert("int_str".to_string(), Type::String);
-        fn_return_types.insert("uint.to_hex".to_string(), Type::String);
-        fn_return_types.insert("str.upper".to_string(), Type::String);
-        fn_return_types.insert("str.lower".to_string(), Type::String);
-        fn_return_types.insert("str.trim".to_string(), Type::String);
-        fn_return_types.insert("str.replace".to_string(), Type::String);
-        fn_return_types.insert("str.slice".to_string(), Type::String);
-        fn_return_types.insert("str.split".to_string(), Type::String);
-        fn_return_types.insert("str.chars".to_string(), Type::String);
-        fn_return_types.insert("str.char_at".to_string(), Type::String);
-        fn_return_types.insert("str.sub".to_string(), Type::String);
-        fn_return_types.insert("str.repeat".to_string(), Type::String);
-        fn_return_types.insert("str.reverse".to_string(), Type::String);
-        fn_return_types.insert("str.len".to_string(), Type::Int);
-        fn_return_types.insert("str.is_empty".to_string(), Type::Bool);
-        fn_return_types.insert("str.contains".to_string(), Type::Bool);
-        fn_return_types.insert("str.starts_with".to_string(), Type::Bool);
-        fn_return_types.insert("str.ends_with".to_string(), Type::Bool);
-        fn_return_types.insert("str.find".to_string(), Type::Int);
-        fn_return_types.insert("str.lines".to_string(), Type::String);
-        fn_return_types.insert("List.join".to_string(), Type::String);
-        fn_return_types.insert("now_ms".to_string(), Type::I64);
-        fn_return_types.insert("now_sec".to_string(), Type::I64);
+        let fn_return_types = Self::build_fn_return_types();
 
         // Create global scope
         let locals = HashMap::new();
@@ -312,31 +288,7 @@ impl Codegen {
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
         // Register return types for native functions (used for type inference in let bindings)
-        let mut fn_return_types = HashMap::new();
-        fn_return_types.insert("int.to_str".to_string(), Type::String);
-        fn_return_types.insert("int_str".to_string(), Type::String);
-        fn_return_types.insert("uint.to_hex".to_string(), Type::String);
-        fn_return_types.insert("str.upper".to_string(), Type::String);
-        fn_return_types.insert("str.lower".to_string(), Type::String);
-        fn_return_types.insert("str.trim".to_string(), Type::String);
-        fn_return_types.insert("str.replace".to_string(), Type::String);
-        fn_return_types.insert("str.slice".to_string(), Type::String);
-        fn_return_types.insert("str.split".to_string(), Type::String);
-        fn_return_types.insert("str.chars".to_string(), Type::String);
-        fn_return_types.insert("str.char_at".to_string(), Type::String);
-        fn_return_types.insert("str.sub".to_string(), Type::String);
-        fn_return_types.insert("str.repeat".to_string(), Type::String);
-        fn_return_types.insert("str.reverse".to_string(), Type::String);
-        fn_return_types.insert("str.len".to_string(), Type::Int);
-        fn_return_types.insert("str.is_empty".to_string(), Type::Bool);
-        fn_return_types.insert("str.contains".to_string(), Type::Bool);
-        fn_return_types.insert("str.starts_with".to_string(), Type::Bool);
-        fn_return_types.insert("str.ends_with".to_string(), Type::Bool);
-        fn_return_types.insert("str.find".to_string(), Type::Int);
-        fn_return_types.insert("str.lines".to_string(), Type::String);
-        fn_return_types.insert("List.join".to_string(), Type::String);
-        fn_return_types.insert("now_ms".to_string(), Type::I64);
-        fn_return_types.insert("now_sec".to_string(), Type::I64);
+        let fn_return_types = Self::build_fn_return_types();
 
         // Create global scope
         let locals = HashMap::new();
@@ -6358,6 +6310,41 @@ impl Codegen {
     /// For standard library types, we can map variable names to types:
     /// - "list", "arr" -> "List"
     /// - "str", "s" -> "String"
+    /// Build fn_return_types from the native registry + intrinsic extras.
+    ///
+    /// The native registry (`BIGVM_NATIVES`) carries return types for registered
+    /// native functions.  We import those here and add a handful of intrinsics
+    /// that don't go through the registry (e.g. `int.to_str`, `List.join`).
+    fn build_fn_return_types() -> HashMap<String, Type> {
+        use crate::vm::native_registry::NativeRetType;
+
+        let mut map = HashMap::new();
+
+        // 1. Bulk-import from the native registry
+        let registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+        for (name, ret) in registry.get_all_return_types() {
+            let ty = match ret {
+                NativeRetType::Void => Type::Void,
+                NativeRetType::Int => Type::Int,
+                NativeRetType::Float => Type::Float,
+                NativeRetType::Bool => Type::Bool,
+                NativeRetType::String => Type::String,
+                NativeRetType::I64 => Type::I64,
+                NativeRetType::List => Type::Unknown, // list types need more context
+            };
+            map.insert(name.clone(), ty);
+        }
+        drop(registry);
+
+        // 2. Intrinsics that aren't in the registry but codegen needs type info for
+        map.insert("int.to_str".to_string(), Type::String);
+        map.insert("int_str".to_string(), Type::String);
+        map.insert("uint.to_hex".to_string(), Type::String);
+        map.insert("List.join".to_string(), Type::String);
+
+        map
+    }
+
     /// - "map", "dict" -> "Map"
     /// This is a fallback for when type information is not available
     fn infer_type_from_var(&self, var_name: &str) -> Option<String> {
