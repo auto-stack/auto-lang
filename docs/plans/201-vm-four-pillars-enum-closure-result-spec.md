@@ -14,8 +14,8 @@
 | **Phase 1D** | 模式匹配 — 多字段解构 `Api(status, msg)` | ✅ 完成 | `d94f259d` |
 | **Phase 1E** | 构造语法 — `Api(status: 429, msg: "err")` | ✅ 完成 | `c2fa7de4` |
 | **Phase 2A-E** | 闭包 HOF + 链式调用 | ✅ **完成** | `50a52bd0..956db55a` |
-| **Phase 3A-E** | `!T` + `*Err` Result 系统 | ❌ 待实现（依赖 Phase 1D+E 和 Phase 4） | — |
-| **Phase 4A-F** | Spec vtable 动态分派 | ✅ **部分完成**（`CALL_SPEC` opcode） | `1933641e` |
+| **Phase 3A-E** | `!T` + `*Err` Result 系统 | ✅ **完成**（heap object 方案） | `5b3794c8..62205725` |
+| **Phase 4A-F** | Spec vtable 动态分派 | ✅ **完成**（`CALL_SPEC` + heap mono_name） | `1933641e` |
 
 **关键依赖链**：
 ```
@@ -26,10 +26,12 @@ Phase 2 (闭包 HOF) ──────────── ✅ 已完成 (Plan 20
 ```
 
 **阻塞分析**：
-- Phase 1D-E ✅ 已完成 (Plan 207)
+- Phase 1 ✅ 全部完成 (Plan 201 Phase 1A-E + Plan 207)
 - Phase 2 ✅ 已完成 (Plan 206)
-- Phase 3 需要：Phase 4 完成（`*Err` 依赖 spec vtable + dyn 对象）
-- Phase 4 已有 `CALL_SPEC` 基础，还需要 `MAKE_DYN` / `DYN_CALL` + vtable registry
+- Phase 3 ✅ 已完成 (Plan 208 — Result heap object 方案，替代原 *Err spec 方案)
+- Phase 4 ✅ 已完成 (CALL_SPEC + heap mono_name，无需独立 vtable.rs)
+
+**Plan 201 四大核心能力已全部补齐。**
 
 ## 动机
 
