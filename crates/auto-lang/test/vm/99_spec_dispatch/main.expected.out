@@ -1,4 +1,0 @@
-echo: hello
->> reversed(hello)
-echo: world
->> reversed(world)

@@ -25,6 +25,10 @@ history.txt
 *.wrong.h
 *.wrong.rs
 *.wrong.ts
+*.wrong.out
+
+# IAR IDE
+.arts/
 
 .am/
 build/
