@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 struct Engine {
     hp: i32,
 }
@@ -11,6 +12,7 @@ struct Engine {
 trait EngineTrait {
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Car {
     hp: i32,
 }

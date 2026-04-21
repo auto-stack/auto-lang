@@ -4,11 +4,13 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 struct Point {
     x: i32,
     y: i32,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Circle {
     radius: f64,
     border: u32,
@@ -18,8 +20,8 @@ struct Circle {
 fn main() {
     let mut p = Point { x: 1, y: 2 };
     p.x = 3;
-    println!("P: {}, {}", p.x, p.y);
+    println!("P: ${p.x}, ${p.y}");
 
     let circle = Circle { radius: 5.0, border: 1, center: Point { x: 50, y: 50 } };
-    println!("C: {}, {}, {}", circle.center.x, circle.center.y, circle.radius);
+    println!("C: ${circle.center.x}, ${circle.center.y}, ${circle.radius}");
 }

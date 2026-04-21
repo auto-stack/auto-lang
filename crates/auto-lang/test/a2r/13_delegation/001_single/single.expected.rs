@@ -9,6 +9,7 @@ trait Engine {
 }
 
 
+#[derive(Clone, Debug, PartialEq)]
 struct WarpDrive {}
 
 impl WarpDrive {
@@ -17,6 +18,7 @@ impl WarpDrive {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Starship {
     core: WarpDrive,
 }

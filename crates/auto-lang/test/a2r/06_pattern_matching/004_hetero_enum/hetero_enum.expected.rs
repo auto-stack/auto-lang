@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 enum Atom {
     Int(i32),
     Char(char),

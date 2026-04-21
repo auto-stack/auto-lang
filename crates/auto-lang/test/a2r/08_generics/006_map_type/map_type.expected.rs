@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 struct Config {
     env: std::collections::HashMap<&str, &str>,
     ports: Vec<i32>,

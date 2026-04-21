@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 enum Color {
     RED = 1,
     GREEN = 2,
@@ -22,5 +23,5 @@ impl std::fmt::Display for Color {
 
 fn main() {
     let color: Color = Color::BLUE;
-    println!("The color is {}", color);
+    println!("The color is ${color}");
 }

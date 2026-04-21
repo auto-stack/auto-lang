@@ -4,15 +4,17 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 struct Point {
     x: i32,
     y: i32,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 enum Shape {
     Circle(i32),
     Rect(Point),
-    None(()),
+    None,
 }
 
 

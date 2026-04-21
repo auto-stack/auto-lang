@@ -2831,8 +2831,13 @@ impl RustTrans {
         }
 
         // Plan 159 Phase 6B-2: Output derive/serde attributes
-        for attr in &type_decl.attrs {
-            write!(sink.body, "#[{}]\n", attr)?;
+        // Plan 204 Phase 2A: Add default #[derive(Clone, Debug, PartialEq)] if no attrs specified
+        if type_decl.attrs.is_empty() {
+            writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
+        } else {
+            for attr in &type_decl.attrs {
+                write!(sink.body, "#[{}]\n", attr)?;
+            }
         }
 
         // Plan 163: Output pub prefix
@@ -3389,6 +3394,15 @@ impl RustTrans {
             }
         }
 
+        // Plan 204 Phase 2C: Add #[derive(Clone, Debug, PartialEq)] to enums
+        // Scalar enums with repr type also need Copy
+        let derive_attrs = match &enum_decl.kind {
+            EnumKind::Scalar { repr_type: Some(_) } => "#[derive(Clone, Debug, PartialEq, Copy)]",
+            EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Debug, PartialEq)]",
+            _ => "#[derive(Clone, Debug, PartialEq)]",
+        };
+        writeln!(sink.body, "{}", derive_attrs)?;
+
         // Plan 163: Output pub prefix
         if enum_decl.is_pub {
             sink.body.write(b"pub ")?;
@@ -3463,10 +3477,56 @@ impl RustTrans {
                 writeln!(sink.body, "}}")?;
                 sink.body.write(b"\n")?;
             }
-            EnumKind::Heterogeneous { .. } => {
-                // Reuse tag code generation: convert EnumDecl to Tag
-                let tag = Self::enum_decl_to_tag(enum_decl);
-                self.tag_decl(&tag, sink)?;
+            EnumKind::Heterogeneous { generic_params, .. } => {
+                // Plan 204 Phase 2C: Generate heterogeneous enum directly
+                // Supports both single-payload tuple variants and multi-field struct variants
+                write!(sink.body, "enum {}", enum_decl.name)?;
+
+                // Add generic parameters if present
+                if !generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                writeln!(sink.body, " {{")?;
+                self.indent();
+
+                for item in &enum_decl.items {
+                    self.print_indent(&mut sink.body)?;
+                    if item.has_fields() {
+                        // Multi-field struct variant: Name { field1: Type1, field2: Type2 }
+                        write!(sink.body, "{} {{ ", item.name)?;
+                        for (j, field) in item.fields.iter().enumerate() {
+                            if j > 0 {
+                                write!(sink.body, ", ")?;
+                            }
+                            write!(sink.body, "{}: {}", field.name, self.rust_type_name(&field.field_type))?;
+                        }
+                        writeln!(sink.body, " }},")?;
+                    } else if let Some(ref payload) = item.payload_type {
+                        // Single-payload tuple variant: Name(Type)
+                        writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload))?;
+                    } else {
+                        // Unit variant (no data): Name
+                        writeln!(sink.body, "{},", item.name)?;
+                    }
+                }
+
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "}}")?;
+                sink.body.write(b"\n")?;
             }
         }
 

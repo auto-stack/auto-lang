@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 struct Wing {}
 
 impl Wing {
@@ -16,6 +17,7 @@ trait WingTrait {
     fn fly(&self);
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Duck {}
 
 impl WingTrait for Duck {

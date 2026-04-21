@@ -9,6 +9,7 @@ trait Flyer {
 }
 
 
+#[derive(Clone, Debug, PartialEq)]
 struct Pigeon {}
 
 impl Flyer for Pigeon {

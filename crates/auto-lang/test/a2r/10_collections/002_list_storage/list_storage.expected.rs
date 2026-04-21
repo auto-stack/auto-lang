@@ -11,15 +11,18 @@ trait Storage<T> {
 }
 
 
+#[derive(Clone, Debug, PartialEq)]
 struct Heap<T> {
     ptr: *mut T,
     cap: u32,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct InlineInt64 {
     buffer: [i32; 64],
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct List<T, S> {
     len: u32,
     store: S,

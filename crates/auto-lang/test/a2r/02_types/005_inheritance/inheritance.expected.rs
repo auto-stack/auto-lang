@@ -4,6 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+#[derive(Clone, Debug, PartialEq)]
 struct Animal {
     name: &str,
 }
@@ -14,6 +15,7 @@ impl Animal {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Dog {
     name: &str,
     breed: &str,
