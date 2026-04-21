@@ -4,6 +4,33 @@
 > 目标：让 AutoVM 的 enum、闭包、Result、spec 四大能力达到 Rust 对等水平，
 > 使 r2a 转译输出的代码能直接在 AutoVM 上运行。
 
+## 完成状态总结（2026-04-21）
+
+| Phase | 描述 | 状态 | 提交 |
+|-------|------|------|------|
+| **Phase 1A** | AST 扩展 — EnumItem 多字段 (`fields: Vec<FieldDef>`) | ✅ 完成 | `d4c53082` |
+| **Phase 1B** | Parser — `{ field Type, ... }` 语法 | ✅ 完成 | `d4c53082` |
+| **Phase 1C** | Codegen — 多字段 ClassTemplate 注册 | ✅ 完成 | `d4c53082` |
+| **Phase 1D** | 模式匹配 — 多字段解构 `Api(status, msg)` | ✅ 完成 | `d94f259d` |
+| **Phase 1E** | 构造语法 — `Api(status: 429, msg: "err")` | ✅ 完成 | `c2fa7de4` |
+| **Phase 2A-E** | 闭包 HOF + 链式调用 | ✅ **完成** | `50a52bd0..956db55a` |
+| **Phase 3A-E** | `!T` + `*Err` Result 系统 | ❌ 待实现（依赖 Phase 1D+E 和 Phase 4） | — |
+| **Phase 4A-F** | Spec vtable 动态分派 | ✅ **部分完成**（`CALL_SPEC` opcode） | `1933641e` |
+
+**关键依赖链**：
+```
+Phase 1D-E (多字段解构+构造) ──┐
+                                ├──> Phase 3 (Result 系统)
+Phase 4A-F (vtable 完善)    ──┘
+Phase 2 (闭包 HOF) ──────────── ✅ 已完成 (Plan 206)
+```
+
+**阻塞分析**：
+- Phase 1D-E ✅ 已完成 (Plan 207)
+- Phase 2 ✅ 已完成 (Plan 206)
+- Phase 3 需要：Phase 4 完成（`*Err` 依赖 spec vtable + dyn 对象）
+- Phase 4 已有 `CALL_SPEC` 基础，还需要 `MAKE_DYN` / `DYN_CALL` + vtable registry
+
 ## 动机
 
 通过对比 13 个已验证可运行的 ac-examples，发现两大代码版本的根本分歧：

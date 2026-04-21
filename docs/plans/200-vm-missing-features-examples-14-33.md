@@ -1,7 +1,7 @@
 # Plan 200: 补足 AutoVM 缺失特性（Examples 14-33）
 
 > 日期：2026-04-21
-> 状态：设计阶段
+> 状态：Phase 1-2 已完成，Phase 3.1 spec 分发已提前完成，剩余 Phase 3.3/.map_err() 闭包待实现
 > 范围：使 AutoVM 能够运行 ac-examples 14~33
 
 ## 背景
@@ -10,7 +10,29 @@
 
 ---
 
-## Phase 1：低成本高回报（可直接改写示例绕过）
+## 完成状态总结（2026-04-21）
+
+| Task | 描述 | 状态 | 提交 |
+|------|------|------|------|
+| 1.1 loop 关键字 | `loop { ... break }` 语法 | ✅ 完成 | `ff3781a3` |
+| 1.2 next→continue | `next` 关键字别名 | ✅ 完成 | `ff3781a3` |
+| 1.3 if let 语法糖 | `if let Pattern = expr` 反糖 | ✅ 完成 | `a2ba627f` |
+| 2.1 元组类型 | `Type::Tuple` + CREATE_TUPLE | ✅ 完成 | `739af4bb` |
+| 2.2 字符串 natives | split_once, match_count, replace_first | ✅ 完成 | `a2ba627f` |
+| 2.3 范围切片 | `buffer[..pos]` / `SLICE_RANGE` | ✅ 完成 | `101e4440` |
+| 2.4 Option .or()/.unwrap_or() | Option 链式操作 | ✅ 完成 | `eaafc805` |
+| 2.5 Map 类型化访问器 | 改写示例用 Json.get() + as_*() | ✅ 改写即可 | — |
+| 2.6 内联 Map 字面量 | `{key: value}` 语法 | ✅ 完成 | `bd23f2d6` |
+| 2.7 Backtick 原始字符串 | `` `raw string` `` | ✅ 完成 | `a2ba627f` |
+| 2.8 命名统一 | has→contains, append→push | ✅ 改写即可 | — |
+| 3.1 spec 动态分发 | CALL_SPEC opcode | ✅ **提前完成** | `1933641e` |
+| 3.2 enumerate() | EnumerateIterator | ✅ 完成 | `e8314053` |
+| 3.3 .map_err() 闭包 | native→闭包回调 | ❌ **待实现** | — |
+| 3.4 fs 模块别名 | 已归入 Phase 4 | ⏭️ 低优先 | — |
+
+**剩余工作**：Phase 3.3 `.map_err()` 闭包 — 需要原生→自动虚拟机闭包回调 API（与 Plan 201 Phase 2 共享同一基础设施）。
+
+---
 
 这些特性可以通过重写示例以 VM 已支持的语法来绕过，同时也应考虑在语言层面直接支持。
 
