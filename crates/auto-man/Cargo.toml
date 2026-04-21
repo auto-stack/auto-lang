@@ -27,9 +27,7 @@ dialoguer = { workspace = true }
 glob = { workspace = true }
 dirs = { workspace = true }
 reqwest = { workspace = true }
-version-compare = { workspace = true }
 colored = { workspace = true }
-zip = { workspace = true }
 glob-match = { workspace = true }
 encoding_rs = { workspace = true }
 is_executable = { workspace = true }
@@ -49,7 +47,3 @@ tempfile = { workspace = true }
 name = "auto_man"
 path = "src/lib.rs"
 
-# Binary target (Phase 5: CLI & Binary)
-[[bin]]
-name = "auto-man"
-path = "src/main.rs"

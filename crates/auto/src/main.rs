@@ -289,8 +289,8 @@ enum Commands {
     Open,
 
     // ========== Environment ==========
-    #[command(about = "Upgrade auto.exe toolchain to the latest version")]
-    Upgrade,
+    // #[command(about = "Upgrade auto.exe toolchain to the latest version")]
+    // Upgrade,  // NOTE: disabled — zip dependency removed
     #[command(about = "Manage global AutoMan configurations and cache")]
     Env {
         #[command(subcommand)]
@@ -726,22 +726,23 @@ fn main() -> Result<()> {
         }
 
         // ========== Environment ==========
-        Some(Commands::Upgrade) => {
-            if !ai_mode {
-                init_logger();
-                println_logo();
-            }
-            auto_man::upgrade().map_err(|e| {
-                if ai_mode {
-                    eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
-                    std::process::exit(1);
-                }
-                miette::miette!("{}", e)
-            })?;
-            if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Upgrade completed"})));
-            }
-        }
+        // NOTE: Upgrade disabled — zip dependency removed
+        // Some(Commands::Upgrade) => {
+        //     if !ai_mode {
+        //         init_logger();
+        //         println_logo();
+        //     }
+        //     auto_man::upgrade().map_err(|e| {
+        //         if ai_mode {
+        //             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+        //             std::process::exit(1);
+        //         }
+        //         miette::miette!("{}", e)
+        //     })?;
+        //     if ai_mode {
+        //         println!("{}", format_success_json(json!({"message": "Upgrade completed"})));
+        //     }
+        // }
         Some(Commands::Env { action }) => {
             if !ai_mode {
                 init_logger();

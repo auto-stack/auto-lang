@@ -15,7 +15,7 @@ pub mod group;
 pub mod node_ext;
 pub mod port;
 pub mod pull;
-pub mod up;
+// pub mod up;  // NOTE: upgrade functionality disabled — zip dependency removed
 pub mod util;
 pub mod version;
 
@@ -75,7 +75,7 @@ pub use node_ext::*;
 pub use port::*;
 pub use resolver::AutoManResolver;
 
-pub use up::*;
+// pub use up::*;  // NOTE: upgrade functionality disabled
 pub use util::*;
 pub use version::*;
 
