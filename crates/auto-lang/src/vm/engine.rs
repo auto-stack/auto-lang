@@ -439,7 +439,7 @@ impl AutoVM {
     }
 
     /// Plan 197 Task 16: Check if a heap object is an Option.None instance
-    fn is_option_none(&self, instance_id: u64) -> bool {
+    pub fn is_option_none(&self, instance_id: u64) -> bool {
         use crate::vm::generic_registry::GenericInstanceData;
         if let Some(obj) = self.get_heap_object(instance_id) {
             let guard = obj.read().unwrap();
@@ -451,7 +451,7 @@ impl AutoVM {
     }
 
     /// Plan 197 Task 16: Check if a heap object is an Option.Some instance
-    fn is_option_some(&self, instance_id: u64) -> bool {
+    pub fn is_option_some(&self, instance_id: u64) -> bool {
         use crate::vm::generic_registry::GenericInstanceData;
         if let Some(obj) = self.get_heap_object(instance_id) {
             let guard = obj.read().unwrap();
@@ -463,7 +463,7 @@ impl AutoVM {
     }
 
     /// Plan 197 Task 16: Get the inner value from an Option.Some instance
-    fn get_option_inner(&self, instance_id: u64) -> Option<Value> {
+    pub fn get_option_inner(&self, instance_id: u64) -> Option<Value> {
         use crate::vm::generic_registry::GenericInstanceData;
         if let Some(obj) = self.get_heap_object(instance_id) {
             let guard = obj.read().unwrap();

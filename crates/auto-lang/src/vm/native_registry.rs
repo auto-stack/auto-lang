@@ -537,6 +537,10 @@ pub fn register_builtin_natives() {
     registry.register_with_id("str.sub", 1503);     // alias for substr
     registry.register_with_id_and_type("str.slice", 1503, NativeRetType::String);  // alias for substr
 
+    // Option functions (1550-1551) — Plan 200 Task 2.4
+    registry.register_with_id("Option.or", 1550);
+    registry.register_with_id("Option.unwrap_or", 1551);
+
     // Char functions (1600-1606)
     registry.register_with_id("auto.char.is_alpha", 1600);
     registry.register_with_id("auto.char.is_digit", 1601);

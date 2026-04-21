@@ -246,6 +246,10 @@ pub const NATIVE_CHAR_IS_IDENT: u16 = 1604;
 pub const NATIVE_CHAR_TO_LOWER: u16 = 1605;
 pub const NATIVE_CHAR_TO_UPPER: u16 = 1606;
 
+// Option functions: 1550-1559 (Plan 200 Task 2.4)
+pub const NATIVE_OPTION_OR: u16 = 1550;
+pub const NATIVE_OPTION_UNWRAP_OR: u16 = 1551;
+
 // Rust stdlib dynamic dispatch: 3000-3099 (Plan 192)
 pub const NATIVE_RUST_STDLIB_DISPATCH: u16 = 3000;
 
@@ -829,6 +833,49 @@ pub fn shim_char_to_upper(codepoint: i32) -> i32 {
         }
     }
     codepoint
+}
+
+// ============================================================================
+// Option Functions (ID 1550-1559) — Plan 200 Task 2.4
+// ============================================================================
+
+/// Option.or(default) / Option.unwrap_or(default) — returns default if None, unwraps Some
+pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let default_val = task.ram.pop_i32();
+    let opt_val = task.ram.pop_i32();
+
+    // Check if it's Option.None (heap object or legacy sentinel)
+    if opt_val == -1 {
+        task.ram.push_i32(default_val);
+        return Ok(());
+    }
+
+    if opt_val > 0 {
+        let instance_id = opt_val as u64;
+        if vm.is_option_none(instance_id) {
+            task.ram.push_i32(default_val);
+            return Ok(());
+        }
+        if vm.is_option_some(instance_id) {
+            // Unwrap: push the inner value (field _0) as i32
+            if let Some(inner) = vm.get_option_inner(instance_id) {
+                match inner {
+                    auto_val::Value::Int(n) => task.ram.push_i32(n),
+                    auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
+                    other => {
+                        // For non-i32 values, push the heap_id of the inner value
+                        // (strings, floats etc are heap-stored)
+                        task.ram.push_i32(opt_val);
+                    }
+                }
+                return Ok(());
+            }
+        }
+    }
+
+    // Not an Option — return as-is
+    task.ram.push_i32(opt_val);
+    Ok(())
 }
 
 // ============================================================================
@@ -2876,6 +2923,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_CHAR_IS_IDENT, __shim_Char_is_ident);
     natives.register_static(NATIVE_CHAR_TO_LOWER, __shim_Char_to_lower);
     natives.register_static(NATIVE_CHAR_TO_UPPER, __shim_Char_to_upper);
+
+    // Option functions (Plan 200 Task 2.4)
+    natives.register_static(NATIVE_OPTION_OR, shim_option_or);
+    natives.register_static(NATIVE_OPTION_UNWRAP_OR, shim_option_or);
 
     // Math functions
     natives.register_static(NATIVE_MATH_ABS, shim_math_abs);

@@ -1,0 +1,9 @@
+fn main() {
+    let a = Some(42)
+    let b = a.or(0)
+    print(b)
+
+    let c = None
+    let d = c.or(99)
+    print(d)
+}
