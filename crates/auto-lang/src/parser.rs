@@ -3954,9 +3954,21 @@ impl<'a> Parser<'a> {
                 let value = self.get_int_expr(&value);
                 scalar_value = Some(value as i32);
                 last_val = value as i32 + 1;
+            } else if self.is_kind(TokenKind::LBrace) {
+                // Plan 201 Phase 1B: Struct-like variant: Name { field1 Type, field2 Type, ... }
+                let fields = self.parse_enum_variant_fields()?;
+                has_any_payload = true;
+                items.push(EnumItem {
+                    name: item_name,
+                    scalar_value: None,
+                    payload_type: None,
+                    fields,
+                });
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
+                continue;
             } else if self.is_kind(TokenKind::Ident)
                 || self.is_kind(TokenKind::LParen)
-                || self.is_kind(TokenKind::LBrace)
             {
                 // Variant followed by a type (Heterogeneous form)
                 payload_type = Some(self.parse_type()?);
@@ -3971,6 +3983,7 @@ impl<'a> Parser<'a> {
                 name: item_name,
                 scalar_value,
                 payload_type,
+                fields: vec![],
             });
             self.expect_eos(false)?;
             self.skip_empty_lines();
@@ -4005,6 +4018,7 @@ impl<'a> Parser<'a> {
                 name: self.cur.text.clone().into(),
                 scalar_value: None,
                 payload_type: None,
+                fields: vec![],
             };
             self.next();
             if self.is_kind(TokenKind::Asn) {
@@ -4045,12 +4059,34 @@ impl<'a> Parser<'a> {
                 name: item_name,
                 scalar_value: None,
                 payload_type: None,
+                fields: vec![],
             });
             self.expect_eos(false)?;
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
         Ok(items)
+    }
+
+    /// Plan 201 Phase 1B: Parse struct-like enum variant fields.
+    /// Syntax: { name Type, name Type, ... }
+    fn parse_enum_variant_fields(&mut self) -> AutoResult<Vec<crate::ast::EnumField>> {
+        use crate::ast::EnumField;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut fields = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            let name: AutoStr = self.cur.text.clone().into();
+            self.next();
+            let field_type = self.parse_type()?;
+            fields.push(EnumField { name, field_type });
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(fields)
     }
 
     /// Register an enum declaration in the parser's scope and type store.

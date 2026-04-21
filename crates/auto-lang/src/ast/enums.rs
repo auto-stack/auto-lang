@@ -4,6 +4,14 @@ use super::{Fn, Type};
 use crate::ast::{AtomWriter, GenericParam, ToAtomStr};
 use auto_val::AutoStr;
 
+/// A field definition inside an enum variant (Plan 201 Phase 1).
+/// Example: `status uint` in `Api { status uint, message str }`
+#[derive(Debug, Clone)]
+pub struct EnumField {
+    pub name: AutoStr,
+    pub field_type: Type,
+}
+
 /// The kind of enum, determining its semantics.
 ///
 /// - **Scalar**: C-style enumerations with optional integer values and optional repr type.
@@ -56,12 +64,32 @@ pub struct EnumItem {
     pub scalar_value: Option<i32>,
     /// Heterogeneous form: the payload type for this variant (e.g., `Point` in `Move Point`).
     pub payload_type: Option<Type>,
+    /// Plan 201 Phase 1: Multi-field struct-like variant.
+    /// Example: `Api { status uint, message str }` has fields [EnumField("status", uint), EnumField("message", str)]
+    /// When non-empty, `payload_type` should be None.
+    pub fields: Vec<EnumField>,
 }
 
 impl EnumItem {
     /// Backward-compatible helper: returns the scalar value or 0 if not set.
     pub fn value(&self) -> i32 {
         self.scalar_value.unwrap_or(0)
+    }
+
+    /// Returns true if this variant has struct-like fields.
+    pub fn has_fields(&self) -> bool {
+        !self.fields.is_empty()
+    }
+
+    /// Returns the number of data fields (either struct fields or single payload).
+    pub fn field_count(&self) -> usize {
+        if self.has_fields() {
+            self.fields.len()
+        } else if self.payload_type.is_some() {
+            1
+        } else {
+            0
+        }
     }
 }
 

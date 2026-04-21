@@ -171,6 +171,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_10_types_008_nested_type_instance() { test_vm("10_types/008_nested_type_instance").unwrap(); }
 #[test] fn test_10_types_009_access_fields_in_method() { test_vm("10_types/009_access_fields_in_method").unwrap(); }
 #[test] fn test_10_types_010_ext_method() { test_vm("10_types/010_ext_method").unwrap(); }
+#[test] fn test_10_types_011_enum_multi_field() { test_vm("10_types/011_enum_multi_field").unwrap(); }
 #[test] fn test_10_types_011_enum_is_match() { test_vm("10_types/011_enum_is_match").unwrap(); }
 #[test] fn test_10_types_012_enum_dot_match() { test_vm("10_types/012_enum_dot_match").unwrap(); }
 #[test] fn test_10_types_013_fn_return_obj() { test_vm("10_types/013_fn_return_obj").unwrap(); }

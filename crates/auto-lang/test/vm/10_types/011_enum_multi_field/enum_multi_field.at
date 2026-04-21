@@ -1,0 +1,17 @@
+fn main() {
+    // Multi-field enum variant
+    enum ApiError {
+        Http { status int, message str }
+        Timeout int
+        None
+    }
+
+    // Construct multi-field variant
+    let err = ApiError.Http(status: 429, message: "rate limited")
+
+    // Access fields
+    assert_eq(err.status, 429)
+    assert_eq(err.message, "rate limited")
+
+    print("enum_multi_field: all assertions passed")
+}

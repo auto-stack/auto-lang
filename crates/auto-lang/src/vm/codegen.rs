@@ -1616,12 +1616,28 @@ impl Codegen {
                 };
 
                 for item in &enum_decl.items {
-                    // Get the payload type: item-specific (heterogeneous) or shared (homogeneous)
+                    let variant_mono = format!("{}.{}", enum_decl.name, item.name);
+
+                    // Plan 201 Phase 1C: Multi-field struct-like variant
+                    if item.has_fields() {
+                        let fields: Vec<FieldDef> = item.fields.iter()
+                            .map(|f| FieldDef::new(f.name.as_str(), f.field_type.clone()))
+                            .collect();
+                        let template = ClassTemplate::new(
+                            &variant_mono,
+                            vec![],
+                            fields,
+                            vec![],
+                        );
+                        let _ = self.generic_registry.register_template(template);
+                        continue;
+                    }
+
+                    // Single-field payload variant (existing code)
                     let payload = item.payload_type.as_ref()
                         .or(homogeneous_payload.as_ref());
 
                     if let Some(payload_type) = payload {
-                        let variant_mono = format!("{}.{}", enum_decl.name, item.name);
                         let fields = vec![FieldDef::new("_0", payload_type.clone())];
                         let template = ClassTemplate::new(
                             &variant_mono,
