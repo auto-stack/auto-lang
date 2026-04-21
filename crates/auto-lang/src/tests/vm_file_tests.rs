@@ -123,6 +123,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 
 // === 07_objects ===
 #[test] fn test_07_objects_001_object_field() { test_vm("07_objects/001_object_field").unwrap(); }
+#[test] fn test_07_objects_006_inline_map() { test_vm("07_objects/006_inline_map").unwrap(); }
 #[test] fn test_07_objects_002_object_field_int_key() { test_vm("07_objects/002_object_field_int_key").unwrap(); }
 #[test] fn test_07_objects_003_object_field_bool_key() { test_vm("07_objects/003_object_field_bool_key").unwrap(); }
 #[test] fn test_07_objects_004_obj_set() { test_vm("07_objects/004_obj_set").unwrap(); }

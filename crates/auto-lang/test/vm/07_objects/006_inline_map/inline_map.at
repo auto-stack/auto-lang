@@ -1,0 +1,13 @@
+fn main() {
+    // Inline map/object literal
+    let m = {name: "Alice", age: 30}
+
+    assert_eq(m.name, "Alice")
+    assert_eq(m.age, 30)
+
+    // Nested inline map
+    let data = {user: "Bob", info: {x: 1, y: 2}}
+    assert_eq(data.user, "Bob")
+
+    print("inline_map: all assertions passed")
+}
