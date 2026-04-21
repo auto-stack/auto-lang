@@ -31,11 +31,14 @@
 //! - Uses AuraViewBuilder to produce View<DynamicMessage>
 
 use std::fmt;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::aura::AuraWidget;
 use crate::ui::aura_view_builder::AuraViewBuilder;
 use crate::ui::component::Component;
 use crate::ui::interpreter::DynamicMessage;
+use crate::ui::state_migration::{self, MigrationReport};
 use crate::ui::view::View;
 use crate::ui::vm_bridge::VmBridge;
 
@@ -90,6 +93,12 @@ pub struct DynamicComponent {
 
     /// Dirty flag -- set when state changes via `on()`, cleared after `view()`.
     dirty: bool,
+
+    /// Optional source file path for hot-reload tracking.
+    source_path: Option<PathBuf>,
+
+    /// Last known modification time of the source file.
+    last_modified: Option<SystemTime>,
 }
 
 impl fmt::Debug for DynamicComponent {
@@ -132,6 +141,8 @@ impl DynamicComponent {
             view_template,
             widget_name,
             dirty: true, // Initially dirty so first view() builds the tree
+            source_path: None,
+            last_modified: None,
         })
     }
 
@@ -158,6 +169,8 @@ impl DynamicComponent {
             view_template,
             widget_name,
             dirty: true,
+            source_path: None,
+            last_modified: None,
         })
     }
 
@@ -212,6 +225,134 @@ impl DynamicComponent {
     /// Get a mutable reference to the underlying VmBridge.
     pub fn bridge_mut(&mut self) -> &mut VmBridge {
         &mut self.bridge
+    }
+
+    // ========================================================================
+    // Hot Reload (Plan 205 Phase 4)
+    // ========================================================================
+
+    /// Set the source file path for hot-reload tracking.
+    ///
+    /// After calling this, `check_reload()` can be used to detect file changes.
+    /// The current modification time of the file is recorded as the baseline.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the `.at` source file
+    pub fn set_source_path(&mut self, path: impl Into<PathBuf>) {
+        let path = path.into();
+        self.last_modified = std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok());
+        self.source_path = Some(path);
+    }
+
+    /// Get the source file path (if set).
+    pub fn source_path(&self) -> Option<&Path> {
+        self.source_path.as_deref()
+    }
+
+    /// Read all state fields as a name-to-value map.
+    ///
+    /// Delegates to [`VmBridge::read_all_state`].
+    pub fn read_all_state(&self) -> std::collections::HashMap<String, auto_val::Value> {
+        self.bridge.read_all_state()
+    }
+
+    /// Reload the component from a new widget definition, preserving state.
+    ///
+    /// This is the core hot-reload mechanism:
+    /// 1. Reads all current state from the VmBridge
+    /// 2. Creates a new VmBridge from the new widget definition
+    /// 3. Migrates state (preserves compatible fields, adds defaults for new ones)
+    /// 4. Replaces the old bridge and view template
+    ///
+    /// Note: since runtime state values do not carry type information, type
+    /// compatibility is checked by matching old field names against the new
+    /// definition. If a field name exists in both and the new type is the same
+    /// simple scalar kind, the old value is preserved. Otherwise the new default
+    /// is used.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_widget` - The updated AuraWidget definition
+    ///
+    /// # Returns
+    ///
+    /// A [`MigrationReport`] describing what was preserved, added, and dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns a string describing the error if the new VmBridge cannot be created.
+    pub fn reload(&mut self, new_widget: &AuraWidget) -> Result<MigrationReport, String> {
+        // 1. Snapshot current state
+        let old_state = self.bridge.read_all_state();
+
+        // We don't have the old AuraStateDef types at runtime, so we pass
+        // an empty slice. The migrate_state function will treat all old fields
+        // as type-unknown, preserving values for matching field names.
+        let old_field_defs: Vec<crate::aura::AuraStateDef> = vec![];
+
+        // 2. Create a new VmBridge from the new widget
+        let new_bridge = VmBridge::new(new_widget)
+            .map_err(|e| format!("Failed to create new VmBridge for '{}': {}", new_widget.name, e))?;
+
+        // 3. Migrate state
+        let (migrated_state, report) = state_migration::migrate_state(
+            &old_state,
+            &old_field_defs,
+            &new_widget.state_vars,
+        );
+
+        // 4. Apply migrated state to the new bridge
+        let mut new_bridge = new_bridge;
+        for (name, value) in &migrated_state {
+            let _ = new_bridge.write_state(name, value.clone());
+        }
+
+        // 5. Update self
+        self.bridge = new_bridge;
+        self.view_template = new_widget.view_tree.clone();
+        self.widget_name = new_widget.name.clone();
+        self.dirty = true;
+
+        Ok(report)
+    }
+
+    /// Check if the source file has changed and provide the new modification time.
+    ///
+    /// This does **not** perform the reload itself -- it only detects whether the
+    /// file has been modified since the last check. The caller is responsible for
+    /// re-parsing the file and calling [`Self::reload()`].
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(new_modified_time))` - File has changed
+    /// * `Ok(None)` - File has not changed or no source path is set
+    /// * `Err(...)` - Could not read file metadata
+    pub fn check_file_changed(&mut self) -> Result<Option<SystemTime>, String> {
+        let path = match &self.source_path {
+            Some(p) => p.clone(),
+            None => return Ok(None),
+        };
+
+        let metadata = std::fs::metadata(&path)
+            .map_err(|e| format!("Cannot read metadata for '{}': {}", path.display(), e))?;
+
+        let current_modified = metadata.modified()
+            .map_err(|e| format!("Cannot read modification time for '{}': {}", path.display(), e))?;
+
+        let changed = match self.last_modified {
+            Some(last) => current_modified > last,
+            None => true, // First check always reports as changed
+        };
+
+        if changed {
+            self.last_modified = Some(current_modified);
+            Ok(Some(current_modified))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -678,5 +819,243 @@ mod tests {
             View::Text { content, .. } => assert_eq!(content, "99"),
             _ => panic!("Expected View::Text"),
         }
+    }
+
+    // ========================================================================
+    // Hot Reload tests (Plan 205 Phase 4)
+    // ========================================================================
+
+    #[test]
+    fn test_reload_preserves_state() {
+        let old_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+
+        let mut comp = DynamicComponent::new(&old_widget).unwrap();
+
+        // Modify state
+        comp.write_state("count", auto_val::Value::Int(42)).unwrap();
+        assert_eq!(comp.read_state("count").unwrap(), auto_val::Value::Int(42));
+
+        // Reload with same widget definition (state should be preserved)
+        let new_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+
+        let report = comp.reload(&new_widget).unwrap();
+
+        // State should be preserved
+        assert_eq!(comp.read_state("count").unwrap(), auto_val::Value::Int(42));
+        assert!(comp.is_dirty());
+        assert_eq!(report.preserved, 1);
+        assert_eq!(report.added, 0);
+    }
+
+    #[test]
+    fn test_reload_adds_new_fields() {
+        let old_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+
+        let mut comp = DynamicComponent::new(&old_widget).unwrap();
+        comp.write_state("count", auto_val::Value::Int(99)).unwrap();
+
+        // Reload with additional field
+        let new_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "enabled".to_string(),
+                type_info: Type::Bool,
+                initial: AuraExpr::Bool(true),
+                decorators: vec![],
+            },
+        ]);
+
+        let report = comp.reload(&new_widget).unwrap();
+
+        // Old field preserved, new field has default
+        assert_eq!(comp.read_state("count").unwrap(), auto_val::Value::Int(99));
+        assert_eq!(comp.read_state("enabled").unwrap(), auto_val::Value::Bool(true));
+        assert_eq!(report.preserved, 1);
+        assert_eq!(report.added, 1);
+    }
+
+    #[test]
+    fn test_reload_drops_removed_fields() {
+        let old_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(5),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "legacy".to_string(),
+                type_info: Type::Str(0),
+                initial: AuraExpr::Literal("old".to_string()),
+                decorators: vec![],
+            },
+        ]);
+
+        let mut comp = DynamicComponent::new(&old_widget).unwrap();
+        comp.write_state("count", auto_val::Value::Int(10)).unwrap();
+
+        // Reload without the "legacy" field
+        let new_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+
+        let report = comp.reload(&new_widget).unwrap();
+
+        assert_eq!(comp.read_state("count").unwrap(), auto_val::Value::Int(10));
+        assert!(comp.read_state("legacy").is_err());
+        assert_eq!(report.preserved, 1);
+        assert_eq!(report.dropped, 1);
+        assert!(report.dropped_names.contains(&"legacy".to_string()));
+    }
+
+    #[test]
+    fn test_reload_updates_view_template() {
+        let old_widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+
+        let mut comp = DynamicComponent::new(&old_widget).unwrap();
+
+        // Initial view: empty column
+        let view = comp.view();
+        assert!(matches!(view, View::Column { .. }));
+
+        // Reload with a different view template
+        let new_widget = AuraWidget {
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            }],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::Element {
+                tag: "text".to_string(),
+                props: HashMap::from([
+                    ("text".to_string(), crate::aura::AuraPropValue::Expr(
+                        AuraExpr::StateRef("count".to_string()),
+                    )),
+                ]),
+                events: HashMap::new(),
+                children: vec![],
+            },
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+        };
+
+        comp.reload(&new_widget).unwrap();
+
+        // View should now be Text, not Column
+        let view = comp.view();
+        match view {
+            View::Text { content, .. } => {
+                assert_eq!(content, "0");
+            }
+            other => panic!("Expected View::Text after reload, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_reload_marks_dirty() {
+        let widget = make_test_widget("Counter", vec![
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+                decorators: vec![],
+            },
+        ]);
+
+        // Component starts dirty from creation
+        let mut comp = DynamicComponent::new(&widget).unwrap();
+        assert!(comp.is_dirty());
+
+        // Reload should also mark as dirty
+        comp.reload(&widget).unwrap();
+        assert!(comp.is_dirty());
+    }
+
+    #[test]
+    fn test_source_path_tracking() {
+        let widget = make_test_widget("Counter", vec![]);
+        let mut comp = DynamicComponent::new(&widget).unwrap();
+
+        // No source path initially
+        assert!(comp.source_path().is_none());
+
+        // Setting a non-existent path should not panic (mod time will be None)
+        comp.set_source_path("/tmp/nonexistent_test_file.at");
+        assert_eq!(comp.source_path().unwrap().to_str().unwrap(), "/tmp/nonexistent_test_file.at");
+
+        // check_file_changed should return Ok(None) since file doesn't exist metadata
+        // Actually it will error since the file doesn't exist.
+        // But source_path is set. This is fine.
+    }
+
+    #[test]
+    fn test_read_all_state() {
+        let widget = make_test_widget("Multi", vec![
+            AuraStateDef {
+                name: "x".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(1),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "y".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(2),
+                decorators: vec![],
+            },
+        ]);
+
+        let comp = DynamicComponent::new(&widget).unwrap();
+        let state = comp.read_all_state();
+
+        assert_eq!(state.len(), 2);
+        assert_eq!(state.get("x"), Some(&auto_val::Value::Int(1)));
+        assert_eq!(state.get("y"), Some(&auto_val::Value::Int(2)));
     }
 }

@@ -31,6 +31,9 @@ pub mod hot_reload;
 #[cfg(feature = "ui-interpreter")]
 pub mod dynamic;
 
+#[cfg(feature = "ui-interpreter")]
+pub mod state_migration;
+
 #[cfg(feature = "ui-headless")]
 pub mod headless;
 
