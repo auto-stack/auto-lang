@@ -1337,11 +1337,19 @@ impl AutoVM {
                     }
                 }
                 // Plan 073: May<T> error propagate operator: expression.?
-                // Plan 208: Also handles Result.Ok / Result.Err heap objects
+                // Plan 208: Also handles Result.Ok / Result.Err heap objects with early return
                 OpCode::ERROR_PROPAGATE => {
                     use crate::vm::generic_registry::GenericInstanceData;
+                    // Read n_args for potential early return
+                    let n_args = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
                     // Pop May<T> value from stack
                     let may_bits = task.ram.pop_i32();
+
+                    // Determine if this is an error case that should propagate
+                    let mut should_propagate = false;
+                    let mut propagate_value = 0;
 
                     // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
                     let is_none = if may_bits == -1 {
@@ -1356,7 +1364,8 @@ impl AutoVM {
                     if is_none {
                         // Nil case: early return (error propagation)
                         // Push an Option.None sentinel for the caller
-                        task.ram.push_i32(-1);
+                        should_propagate = true;
+                        propagate_value = -1;
                     } else if may_bits > 0 {
                         // Positive value: could be heap object (Option.Some, Result.Ok, Result.Err)
                         // or legacy plain positive integer
@@ -1365,11 +1374,13 @@ impl AutoVM {
                             if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                                 match inst.mono_name.as_str() {
                                     "Result.Err" => {
-                                        // Error case: propagate the Result.Err object to caller
-                                        task.ram.push_i32(may_bits);
+                                        // Error case: propagate the Result.Err object to caller via early return
+                                        should_propagate = true;
+                                        propagate_value = may_bits;
                                     }
                                     "Result.Ok" => {
-                                        // Ok case: unwrap the inner value
+                                        // Ok case: unwrap the inner value (continue execution)
+                                        should_propagate = false;
                                         if let Some(field) = inst.fields.first() {
                                             Self::push_value(&mut task.ram, field, &self.strings);
                                         } else {
@@ -1377,7 +1388,8 @@ impl AutoVM {
                                         }
                                     }
                                     "Option.Some" => {
-                                        // Option.Some: unwrap the inner value
+                                        // Option.Some: unwrap the inner value (continue execution)
+                                        should_propagate = false;
                                         if let Some(field) = inst.fields.first() {
                                             Self::push_value(&mut task.ram, field, &self.strings);
                                         } else {
@@ -1386,20 +1398,43 @@ impl AutoVM {
                                     }
                                     _ => {
                                         // Other heap object: pass through
+                                        should_propagate = false;
                                         task.ram.push_i32(may_bits);
                                     }
                                 }
                             } else {
                                 // Non-generic heap object: pass through
+                                should_propagate = false;
                                 task.ram.push_i32(may_bits);
                             }
                         } else {
                             // Legacy: plain positive value (not a heap object)
+                            should_propagate = false;
                             task.ram.push_i32(may_bits);
                         }
                     } else {
                         // Negative value: legacy Err sentinel or other
+                        should_propagate = false;
                         task.ram.push_i32(may_bits);
+                    }
+
+                    // Perform early return if propagating error
+                    if should_propagate {
+                        if task.bp == 0 {
+                            // Main task: just push the error value and terminate
+                            task.ram.push_i32(propagate_value);
+                            return Ok(StepResult::Terminated);
+                        }
+                        // Perform RET-like frame unwinding
+                        let old_bp = task.ram.read_i32(task.bp) as usize;
+                        let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
+                        task.current_closure_id = task.saved_closure_id;
+                        let new_sp = task.bp - n_args;
+                        task.ram.write_i32(new_sp - 1, propagate_value);
+                        task.bp = old_bp;
+                        task.ip = ret_ip;
+                        task.ram.sp = new_sp;
+                        task.ram.write_i32(new_sp - 1, propagate_value);
                     }
                 }
                 // Plan 162: Type cast opcodes — runtime type conversion

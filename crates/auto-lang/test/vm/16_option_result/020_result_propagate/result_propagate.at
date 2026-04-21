@@ -1,0 +1,18 @@
+fn try_parse(s str) !int {
+    if s == "" {
+        return Err("empty string")
+    }
+    Ok(42)
+}
+
+fn chain() !int {
+    let a = try_parse("hello").?
+    let b = try_parse("").?
+    Ok(a + b)
+}
+
+let result = chain()
+is result {
+    Ok(n) -> print(n)
+    Err(e) -> print("propagated error")
+}

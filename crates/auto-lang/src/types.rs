@@ -340,8 +340,9 @@ impl TypeStore {
     pub fn get_enum_variant_value(&self, enum_name: &str, variant_name: &str) -> Option<i32> {
         self.enum_decls.get(&AutoStr::from(enum_name))
             .and_then(|decl| decl.items.iter()
-                .find(|item| item.name.as_ref() == variant_name)
-                .map(|item| item.value()))
+                .enumerate()
+                .find(|(_, item)| item.name.as_ref() == variant_name)
+                .map(|(i, item)| item.scalar_value.unwrap_or(i as i32)))
     }
 
     /// Plan 127: 查找枚举变体的值（通过变体名称）
@@ -350,8 +351,8 @@ impl TypeStore {
     /// 用于支持直接使用变体名称（如 `Red`）而不需要枚举名称（如 `Color.Red`）。
     pub fn find_enum_variant_by_name(&self, variant_name: &str) -> Option<(AutoStr, i32)> {
         for (enum_name, decl) in &self.enum_decls {
-            if let Some(item) = decl.items.iter().find(|item| item.name.as_ref() == variant_name) {
-                return Some((enum_name.clone(), item.value()));
+            if let Some((i, item)) = decl.items.iter().enumerate().find(|(_, item)| item.name.as_ref() == variant_name) {
+                return Some((enum_name.clone(), item.scalar_value.unwrap_or(i as i32)));
             }
         }
         None

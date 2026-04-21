@@ -1,0 +1,18 @@
+fn try_divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    Ok(a / b)
+}
+
+let r1 = try_divide(10, 3)
+is r1 {
+    Ok(n) -> print(n)
+    Err(e) -> print("error")
+}
+
+let r2 = try_divide(10, 0)
+is r2 {
+    Ok(n) -> print(n)
+    Err(e) -> print("error")
+}

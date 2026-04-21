@@ -1,0 +1,42 @@
+enum ApiError {
+    Http { code int, msg str }
+    Timeout
+}
+
+fn fetch(url str) !int {
+    if url == "" {
+        return Err(ApiError.Http(code: 404, msg: "not found"))
+    }
+    if url == "slow" {
+        return Err(ApiError.Timeout)
+    }
+    Ok(200)
+}
+
+let r1 = fetch("")
+is r1 {
+    Ok(data) -> print(data)
+    Err(e) -> {
+        is e {
+            ApiError.Http(code, msg) -> print(code)
+            ApiError.Timeout -> print("timeout")
+        }
+    }
+}
+
+let r2 = fetch("slow")
+is r2 {
+    Ok(data) -> print(data)
+    Err(e) -> {
+        is e {
+            ApiError.Http(code, msg) -> print(code)
+            ApiError.Timeout -> print("timeout")
+        }
+    }
+}
+
+let r3 = fetch("ok")
+is r3 {
+    Ok(data) -> print(data)
+    Err(e) -> print("error")
+}

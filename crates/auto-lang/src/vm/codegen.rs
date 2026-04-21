@@ -5475,11 +5475,13 @@ impl Codegen {
                 self.emit(OpCode::NULL_COALESCE);
             }
             // Plan 073: May<T> error propagate operator: expression.?
+            // Plan 208: Emit n_args so engine can do early return on Err/None
             Expr::ErrorPropagate(expr) => {
                 // Compile expression (pushes May<T> value onto stack)
                 self.compile_expr(expr)?;
-                // Emit ERROR_PROPAGATE (pops May<T>, pushes unwrapped value or early returns)
+                // Emit ERROR_PROPAGATE n_args (pops May<T>, pushes unwrapped value or early returns)
                 self.emit(OpCode::ERROR_PROPAGATE);
+                self.code.push(self.current_fn_n_args as u8);
             }
             // Plan 162: Type cast: expr.as(Type) — runtime type conversion
             Expr::Cast { expr, target_type } => {

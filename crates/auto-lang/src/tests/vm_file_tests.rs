@@ -293,6 +293,10 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_16_option_result_016_is_err_match() { test_vm("16_option_result/016_is_err_match").unwrap(); }
 #[test] fn test_16_option_result_017_unwrap_or() { test_vm("16_option_result/017_unwrap_or").unwrap(); }
 #[test] fn test_16_option_result_018_option_or() { test_vm("16_option_result/018_option_or").unwrap(); }
+#[test] fn test_16_option_result_019_result_heap() { test_vm("16_option_result/019_result_heap").unwrap(); }
+#[test] fn test_16_option_result_020_result_propagate() { test_vm("16_option_result/020_result_propagate").unwrap(); }
+#[test] fn test_16_option_result_021_result_enum_error() { test_vm("16_option_result/021_result_enum_error").unwrap(); }
+#[test] fn test_16_option_result_022_result_multi_error() { test_vm("16_option_result/022_result_multi_error").unwrap(); }
 
 // === 17_modules ===
 #[test] fn test_17_modules_001_use_fn() { test_vm("17_modules/001_use_fn").unwrap(); }
