@@ -1,0 +1,25 @@
+// Test: wildcard and edge cases
+fn main() {
+    enum Color {
+        RGB { r int, g int, b int }
+        Gray { v int }
+    }
+
+    // No bindings — just match
+    let c1 = Color.RGB(100, 150, 200)
+    is c1 {
+        Color.RGB -> print("rgb")
+    }
+
+    // Single field
+    let c2 = Color.Gray(128)
+    is c2 {
+        Color.Gray(v) -> print(v)
+    }
+
+    // Multi-field with arithmetic
+    let c3 = Color.RGB(255, 128, 0)
+    is c3 {
+        Color.RGB(r, g, b) -> print(r + g + b)
+    }
+}

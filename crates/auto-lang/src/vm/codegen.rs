@@ -4348,26 +4348,42 @@ impl Codegen {
                             {
                                 let field_count = class_type.template.fields.len();
 
+                                // Plan 207 Task 4: Compile arguments, reordering named args by field index
+                                let has_named_args = call.args.args.iter().any(|a| matches!(a, crate::ast::Arg::Pair(_, _)));
+                                let args_to_compile: Vec<&crate::ast::Arg> = if has_named_args && !class_type.template.fields.is_empty() {
+                                    let mut indexed: Vec<(usize, &crate::ast::Arg)> = call.args.args.iter().enumerate().collect();
+                                    indexed.sort_by_key(|(_, arg)| {
+                                        if let crate::ast::Arg::Pair(name, _) = arg {
+                                            class_type.template.fields.iter()
+                                                .position(|f| f.name == name.as_ref())
+                                                .unwrap_or(0)
+                                        } else {
+                                            0
+                                        }
+                                    });
+                                    indexed.into_iter().map(|(_, a)| a).collect()
+                                } else {
+                                    call.args.args.iter().collect()
+                                };
+
                                 // Compile arguments (push values onto stack)
                                 // Stack: ..., arg1, arg2, ..., argN
-                                if !call.args.args.is_empty() {
-                                    for arg in &call.args.args {
-                                        match arg {
-                                            crate::ast::Arg::Pos(expr) => {
-                                                self.compile_expr(expr)?;
-                                            }
-                                            crate::ast::Arg::Pair(_key, expr) => {
-                                                // Named argument: compile value only
-                                                self.compile_expr(expr)?;
-                                            }
-                                            crate::ast::Arg::Name(name) => {
-                                                // Named argument without value - treat as string
-                                                self.emit(OpCode::LOAD_STR);
-                                                let s_bytes = name.to_string().as_bytes().to_vec();
-                                                let s_idx = self.strings.len() as u16;
-                                                self.strings.push(s_bytes);
-                                                self.code.extend_from_slice(&s_idx.to_le_bytes());
-                                            }
+                                for arg in &args_to_compile {
+                                    match arg {
+                                        crate::ast::Arg::Pos(expr) => {
+                                            self.compile_expr(expr)?;
+                                        }
+                                        crate::ast::Arg::Pair(_key, expr) => {
+                                            // Named argument: compile value only
+                                            self.compile_expr(expr)?;
+                                        }
+                                        crate::ast::Arg::Name(name) => {
+                                            // Named argument without value - treat as string
+                                            self.emit(OpCode::LOAD_STR);
+                                            let s_bytes = name.to_string().as_bytes().to_vec();
+                                            let s_idx = self.strings.len() as u16;
+                                            self.strings.push(s_bytes);
+                                            self.code.extend_from_slice(&s_idx.to_le_bytes());
                                         }
                                     }
                                 }
@@ -4435,23 +4451,39 @@ impl Codegen {
                             {
                                 let field_count = class_type.template.fields.len();
 
+                                // Plan 207 Task 4: Compile arguments, reordering named args by field index
+                                let has_named_args = call.args.args.iter().any(|a| matches!(a, crate::ast::Arg::Pair(_, _)));
+                                let args_to_compile: Vec<&crate::ast::Arg> = if has_named_args && !class_type.template.fields.is_empty() {
+                                    let mut indexed: Vec<(usize, &crate::ast::Arg)> = call.args.args.iter().enumerate().collect();
+                                    indexed.sort_by_key(|(_, arg)| {
+                                        if let crate::ast::Arg::Pair(name, _) = arg {
+                                            class_type.template.fields.iter()
+                                                .position(|f| f.name == name.as_ref())
+                                                .unwrap_or(0)
+                                        } else {
+                                            0
+                                        }
+                                    });
+                                    indexed.into_iter().map(|(_, a)| a).collect()
+                                } else {
+                                    call.args.args.iter().collect()
+                                };
+
                                 // Compile arguments (push values onto stack)
-                                if !call.args.args.is_empty() {
-                                    for arg in &call.args.args {
-                                        match arg {
-                                            crate::ast::Arg::Pos(expr) => {
-                                                self.compile_expr(expr)?;
-                                            }
-                                            crate::ast::Arg::Pair(_key, expr) => {
-                                                self.compile_expr(expr)?;
-                                            }
-                                            crate::ast::Arg::Name(name) => {
-                                                self.emit(OpCode::LOAD_STR);
-                                                let s_bytes = name.to_string().as_bytes().to_vec();
-                                                let s_idx = self.strings.len() as u16;
-                                                self.strings.push(s_bytes);
-                                                self.code.extend_from_slice(&s_idx.to_le_bytes());
-                                            }
+                                for arg in &args_to_compile {
+                                    match arg {
+                                        crate::ast::Arg::Pos(expr) => {
+                                            self.compile_expr(expr)?;
+                                        }
+                                        crate::ast::Arg::Pair(_key, expr) => {
+                                            self.compile_expr(expr)?;
+                                        }
+                                        crate::ast::Arg::Name(name) => {
+                                            self.emit(OpCode::LOAD_STR);
+                                            let s_bytes = name.to_string().as_bytes().to_vec();
+                                            let s_idx = self.strings.len() as u16;
+                                            self.strings.push(s_bytes);
+                                            self.code.extend_from_slice(&s_idx.to_le_bytes());
                                         }
                                     }
                                 }

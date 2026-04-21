@@ -165,6 +165,9 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_09_functions_013_closure_capture_hof() { test_vm("09_functions/013_closure_capture_hof").unwrap(); }
 #[test] fn test_09_functions_014_list_for_each_edge() { test_vm("09_functions/014_list_for_each_edge").unwrap(); }
 #[test] fn test_09_functions_015_list_chain_pipeline() { test_vm("09_functions/015_list_chain_pipeline").unwrap(); }
+#[test] fn test_09_functions_016_enum_multi_destruct() { test_vm("09_functions/016_enum_multi_destruct").unwrap(); }
+#[test] fn test_09_functions_017_enum_named_construct() { test_vm("09_functions/017_enum_named_construct").unwrap(); }
+#[test] fn test_09_functions_018_enum_destruct_edge() { test_vm("09_functions/018_enum_destruct_edge").unwrap(); }
 
 // === 10_types ===
 #[test] fn test_10_types_001_type_compose() { test_vm("10_types/001_type_compose").unwrap(); }
