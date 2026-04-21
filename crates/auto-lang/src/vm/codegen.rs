@@ -2410,27 +2410,37 @@ impl Codegen {
                                     }
                                 }
                                 // Plan 120: ResultPattern - Ok(x) or Err(e) in is statement
+                                // Plan 208: Use IS_VARIANT + GET_GENERIC_FIELD instead of IS_OK + UNWRAP
                                 crate::ast::Expr::ResultPattern(res_cover) => {
                                     match res_cover.variant {
                                         crate::ast::ResultVariant::Ok => {
                                             // Duplicate target for checking
                                             self.emit(OpCode::DUP);
-                                            // Check if value is Ok
-                                            self.emit(OpCode::IS_OK);
+                                            // Check if value is Result.Ok using IS_VARIANT
+                                            self.emit(OpCode::IS_VARIANT);
+                                            let variant_name = "Result.Ok";
+                                            let name_bytes = variant_name.as_bytes();
+                                            self.emit_u16(name_bytes.len() as u16);
+                                            for &byte in name_bytes {
+                                                self.code.push(byte);
+                                            }
 
                                             // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
                                             // If we have a binding, extract the value and store it
                                             if let Some(binding) = &res_cover.binding {
-                                                // The target is still on stack (from DUP)
-                                                // Unwrap the Ok value
-                                                self.emit(OpCode::UNWRAP_OK);
+                                                // The target is still on stack (IS_VARIANT consumed the DUP'd copy)
+                                                // DUP again for GET_GENERIC_FIELD
+                                                self.emit(OpCode::DUP);
+                                                // Extract field 0 (inner value) from Result.Ok instance
+                                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                                self.emit_u32(0); // field index 0
                                                 // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
                                             } else {
-                                                // Pop the duplicated target
+                                                // Pop the remaining target
                                                 self.emit(OpCode::POP);
                                             }
 
@@ -2449,27 +2459,31 @@ impl Codegen {
                                         crate::ast::ResultVariant::Err => {
                                             // Duplicate target for checking
                                             self.emit(OpCode::DUP);
-                                            // Check if value is Err (not Ok)
-                                            // IS_OK returns 1 if Ok, 0 if Err
-                                            self.emit(OpCode::IS_OK);
-                                            // Invert: 0 = Err (match), 1 = Ok (no match)
-                                            self.emit(OpCode::CONST_I32);
-                                            self.emit_i32(1);
-                                            self.emit(OpCode::XOR);
+                                            // Check if value is Result.Err using IS_VARIANT
+                                            self.emit(OpCode::IS_VARIANT);
+                                            let variant_name = "Result.Err";
+                                            let name_bytes = variant_name.as_bytes();
+                                            self.emit_u16(name_bytes.len() as u16);
+                                            for &byte in name_bytes {
+                                                self.code.push(byte);
+                                            }
 
                                             // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
-                                            // If we have a binding, extract the error and store it
+                                            // If we have a binding, extract the error value and store it
                                             if let Some(binding) = &res_cover.binding {
-                                                // The target is still on stack (from DUP)
-                                                // Unwrap the Err value (error message)
-                                                self.emit(OpCode::UNWRAP_ERR);
+                                                // The target is still on stack (IS_VARIANT consumed the DUP'd copy)
+                                                // DUP again for GET_GENERIC_FIELD
+                                                self.emit(OpCode::DUP);
+                                                // Extract field 0 (error value) from Result.Err instance
+                                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                                self.emit_u32(0); // field index 0
                                                 // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
                                             } else {
-                                                // Pop the duplicated target
+                                                // Pop the remaining target
                                                 self.emit(OpCode::POP);
                                             }
 
@@ -2506,19 +2520,28 @@ impl Codegen {
                                 crate::ast::Expr::Ok(inner) => {
                                     // Duplicate target for checking
                                     self.emit(OpCode::DUP);
-                                    // Check if value is Ok (not Err)
-                                    self.emit(OpCode::IS_OK);
+                                    // Check if value is Result.Ok using IS_VARIANT
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let variant_name = "Result.Ok";
+                                    let name_bytes = variant_name.as_bytes();
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
 
                                     let _ = inner; // Suppress unused warning
                                 }
                                 crate::ast::Expr::Err(msg) => {
                                     // Duplicate target for checking
                                     self.emit(OpCode::DUP);
-                                    // Check if value is Err (not Ok)
-                                    self.emit(OpCode::IS_OK);
-                                    self.emit(OpCode::CONST_I32);
-                                    self.emit_i32(1);
-                                    self.emit(OpCode::XOR);
+                                    // Check if value is Result.Err using IS_VARIANT
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let variant_name = "Result.Err";
+                                    let name_bytes = variant_name.as_bytes();
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
 
                                     let _ = msg; // Suppress unused warning
                                 }

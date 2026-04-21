@@ -1337,14 +1337,16 @@ impl AutoVM {
                     }
                 }
                 // Plan 073: May<T> error propagate operator: expression.?
+                // Plan 208: Also handles Result.Ok / Result.Err heap objects
                 OpCode::ERROR_PROPAGATE => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     // Pop May<T> value from stack
                     let may_bits = task.ram.pop_i32();
 
                     // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
                     let is_none = if may_bits == -1 {
                         true
-                    } else if may_bits >= 4000000 {
+                    } else if may_bits > 0 {
                         // Check if it's an Option.None heap object
                         self.is_option_none(may_bits as u64)
                     } else {
@@ -1353,21 +1355,51 @@ impl AutoVM {
 
                     if is_none {
                         // Nil case: early return (error propagation)
-                        // Push an Option.None heap object for the caller
-                        // For backward compat, also handle old -1 callers
+                        // Push an Option.None sentinel for the caller
                         task.ram.push_i32(-1);
-                    } else {
-                        // Val case: push the unwrapped value
-                        // Plan 197 Task 16: If it's an Option.Some, unwrap to get the inner value
-                        if may_bits >= 4000000 && self.is_option_some(may_bits as u64) {
-                            if let Some(field_val) = self.get_option_inner(may_bits as u64) {
-                                Self::push_value(&mut task.ram, &field_val, &self.strings);
+                    } else if may_bits > 0 {
+                        // Positive value: could be heap object (Option.Some, Result.Ok, Result.Err)
+                        // or legacy plain positive integer
+                        if let Some(obj) = self.get_heap_object(may_bits as u64) {
+                            let guard = obj.read().unwrap();
+                            if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                match inst.mono_name.as_str() {
+                                    "Result.Err" => {
+                                        // Error case: propagate the Result.Err object to caller
+                                        task.ram.push_i32(may_bits);
+                                    }
+                                    "Result.Ok" => {
+                                        // Ok case: unwrap the inner value
+                                        if let Some(field) = inst.fields.first() {
+                                            Self::push_value(&mut task.ram, field, &self.strings);
+                                        } else {
+                                            task.ram.push_i32(may_bits);
+                                        }
+                                    }
+                                    "Option.Some" => {
+                                        // Option.Some: unwrap the inner value
+                                        if let Some(field) = inst.fields.first() {
+                                            Self::push_value(&mut task.ram, field, &self.strings);
+                                        } else {
+                                            task.ram.push_i32(may_bits);
+                                        }
+                                    }
+                                    _ => {
+                                        // Other heap object: pass through
+                                        task.ram.push_i32(may_bits);
+                                    }
+                                }
                             } else {
+                                // Non-generic heap object: pass through
                                 task.ram.push_i32(may_bits);
                             }
                         } else {
+                            // Legacy: plain positive value (not a heap object)
                             task.ram.push_i32(may_bits);
                         }
+                    } else {
+                        // Negative value: legacy Err sentinel or other
+                        task.ram.push_i32(may_bits);
                     }
                 }
                 // Plan 162: Type cast opcodes — runtime type conversion
@@ -1738,23 +1770,22 @@ impl AutoVM {
                     task.ram.push_i32(-1);
                 }
                 // Plan 120: Result type constructor - Ok(value)
+                // Plan 208: Wrap value in a Result.Ok heap object
                 OpCode::CREATE_OK => {
-                    // Value is already on stack, just tag it as Ok
-                    // We use a special encoding: Ok values are positive, Err is negative (< -1)
-                    // The value is already on stack, no change needed for now
-                    // This opcode is a marker for type tracking
-                    // TODO: Implement proper Result<T> type tracking in VM
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    let val = task.ram.pop_i32();
+                    let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![auto_val::Value::Int(val)]);
+                    let instance_id = self.insert_heap_object(instance);
+                    task.ram.push_i32(instance_id as i32);
                 }
                 // Plan 120: Result type constructor - Err(message)
+                // Plan 208: Wrap error value in a Result.Err heap object
                 OpCode::CREATE_ERR => {
-                    // Pop error message string index from stack
-                    let _msg_bits = task.ram.pop_i32();
-
-                    // Encode Err as a special negative value
-                    // For now, we use -2 to distinguish from None (-1)
-                    // The actual error message is stored in strings pool
-                    // TODO: Implement proper Err storage with message tracking
-                    task.ram.push_i32(-2);
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    let err_val = task.ram.pop_i32();
+                    let instance = GenericInstanceData::new("Result.Err".to_string(), vec![auto_val::Value::Int(err_val)]);
+                    let instance_id = self.insert_heap_object(instance);
+                    task.ram.push_i32(instance_id as i32);
                 }
                 // Plan 120: Check if Option is Some
                 OpCode::IS_SOME => {
@@ -1764,11 +1795,28 @@ impl AutoVM {
                     task.ram.push_i32(is_some);
                 }
                 // Plan 120: Check if Result is Ok
+                // Plan 208: Check heap object mono_name instead of sign
                 OpCode::IS_OK => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     let value = task.ram.pop_i32();
-                    // Ok: value >= 0, Err: value < 0
-                    let is_ok = if value >= 0 { 1 } else { 0 };
-                    task.ram.push_i32(is_ok);
+                    let is_ok = if value > 0 {
+                        if let Some(obj) = self.get_heap_object(value as u64) {
+                            let guard = obj.read().unwrap();
+                            if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                inst.mono_name == "Result.Ok"
+                            } else {
+                                // Legacy: plain positive value = Ok
+                                true
+                            }
+                        } else {
+                            // Legacy: plain positive value = Ok
+                            true
+                        }
+                    } else {
+                        false
+                    };
+                    // VM boolean convention: i32::MIN = true, i32::MIN+1 = false
+                    task.ram.push_i32(if is_ok { -2147483648 } else { -2147483647 });
                 }
                 // Plan 120: Unwrap Option (panic if None)
                 OpCode::UNWRAP_SOME => {
@@ -1781,24 +1829,46 @@ impl AutoVM {
                     task.ram.push_i32(value);
                 }
                 // Plan 120: Unwrap Result (panic if Err)
+                // Plan 208: Extract field[0] from Result.Ok heap object
                 OpCode::UNWRAP_OK => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     let value = task.ram.pop_i32();
-                    if value < 0 {
-                        // Panic on Err
+                    if value <= 0 {
                         return Err(VMError::RuntimeError("called unwrap on Err".to_string()));
                     }
-                    // Push the unwrapped value back
+                    if let Some(obj) = self.get_heap_object(value as u64) {
+                        let guard = obj.read().unwrap();
+                        if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                            if inst.mono_name == "Result.Ok" {
+                                if let Some(field) = inst.fields.first() {
+                                    Self::push_value(&mut task.ram, field, &self.strings);
+                                    return Ok(StepResult::Continue);
+                                }
+                            }
+                        }
+                    }
+                    // Legacy fallback: plain positive value
                     task.ram.push_i32(value);
                 }
                 // Plan 120: Unwrap Result error (panic if Ok)
+                // Plan 208: Extract field[0] from Result.Err heap object
                 OpCode::UNWRAP_ERR => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     let value = task.ram.pop_i32();
-                    if value >= 0 {
-                        // Panic on Ok
-                        return Err(VMError::RuntimeError("called unwrap_err on Ok".to_string()));
+                    if value <= 0 {
+                        return Err(VMError::RuntimeError("called unwrap_err on non-heap value".to_string()));
                     }
-                    // Push the error message index back
-                    // Err values are encoded as negative (not -1 which is None)
+                    if let Some(obj) = self.get_heap_object(value as u64) {
+                        let guard = obj.read().unwrap();
+                        if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                            if inst.mono_name == "Result.Err" {
+                                if let Some(field) = inst.fields.first() {
+                                    Self::push_value(&mut task.ram, field, &self.strings);
+                                    return Ok(StepResult::Continue);
+                                }
+                            }
+                        }
+                    }
                     task.ram.push_i32(value);
                 }
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
