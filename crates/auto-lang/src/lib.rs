@@ -337,7 +337,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Separate type/ext declarations from other statements
     // Type declarations and ext blocks stay at global level, other code goes into script wrapper
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_))
+        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
     
     // First, compile type declarations at global level

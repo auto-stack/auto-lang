@@ -1046,7 +1046,13 @@ impl AutoVM {
                         // Filter out nil marker (special value: i32::MIN + 1 = -2147483647)
                         // Note: We do NOT filter 0 because 0 is a valid false value, not nil
                         if bits != -2147483647 {
-                            elems.push(auto_val::Value::Int(bits));
+                            // Plan 197 Bug E: detect heap object references like CONSTRUCT_INSTANCE does
+                            let value = if bits >= 4000000 {
+                                auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
+                            } else {
+                                auto_val::Value::Int(bits)
+                            };
+                            elems.push(value);
                         }
                     }
 
@@ -2349,6 +2355,8 @@ impl AutoVM {
                                     }
                                     auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                     auto_val::Value::Nil => task.ram.push_i32(0),
+                                    // Plan 197 Bug E: heap object references stored in arrays
+                                    auto_val::Value::VmRef(r) => task.ram.push_i32(r.id as i32),
                                     _ => {
                                         // Unsupported type - push 0 as placeholder
                                         task.ram.push_i32(0);

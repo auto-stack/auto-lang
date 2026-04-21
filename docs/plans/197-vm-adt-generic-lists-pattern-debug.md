@@ -175,19 +175,19 @@ No new opcodes — reuses `GET_GENERIC_FIELD` + `EQ` + conditional jumps.
 
 ## Implementation Order
 
-| Phase | Feature | Depends On | Complexity |
-|-------|---------|------------|------------|
-| 0a | String `==` (interning + content-aware EQ) | None | Small (~30 lines) |
-| 0b | Method chaining type resolution | None | Small (~25 lines) |
-| 0b2 | Field type inference (GET_GENERIC_FIELD → var_types) | Task 7 (field_names in template) | Small (~20 lines) |
-| 0c | Struct-as-function-param passing | None | Medium (debug CALL frame layout) |
-| 0d | `str.slice()` native method | None | Small (~20 lines) |
-| 0e | Struct equality (field-by-field EQ) | Phase 0a (content-aware EQ) | Small (~30 lines) |
-| 1 | Debug `to_str` for structs | None | Small (~50 lines) |
-| 2 | Enum variants with data | Phase 1 (for debugging) | Medium |
-| 3 | `List<UserType>` | Phase 2 (lists of enum variants) | Small (3 opcodes) |
-| 4 | Pattern destructuring in `is` | Phase 2 (variant objects) | Medium |
-| 5 | `Option<T>` / `Some()` / `None` | Phase 2 (enum variants) + Phase 4 (pattern destructuring) | Medium |
+| Phase | Feature | Depends On | Complexity | Status |
+|-------|---------|------------|------------|--------|
+| 0a | String `==` (interning + content-aware EQ) | None | Small (~30 lines) | ✅ DONE |
+| 0b | Method chaining type resolution | None | Small (~25 lines) | ✅ DONE |
+| 0b2 | Field type inference (GET_GENERIC_FIELD → var_types) | Task 7 (field_names in template) | Small (~20 lines) | ✅ DONE |
+| 0c | Struct-as-function-param passing | None | Medium (debug CALL frame layout) | ✅ DONE |
+| 0d | `str.slice()` native method | None | Small (~20 lines) | ✅ DONE |
+| 0e | Struct equality (field-by-field EQ) | Phase 0a (content-aware EQ) | Small (~30 lines) | ✅ DONE |
+| 1 | Debug `to_str` for structs | None | Small (~50 lines) | ✅ DONE |
+| 2 | Enum variants with data | Phase 1 (for debugging) | Medium | ✅ DONE |
+| 3 | `List<UserType>` | Phase 2 (lists of enum variants) | Small (no new opcodes needed) | ✅ DONE |
+| 4 | Pattern destructuring in `is` | Phase 2 (variant objects) | Medium | ✅ DONE |
+| 5 | `Option<T>` / `Some()` / `None` | Phase 2 (enum variants) + Phase 4 (pattern destructuring) | Medium | ✅ DONE |
 
 ---
 
@@ -578,53 +578,9 @@ git commit -m "fix(engine): correct LOAD_LOCAL offset for struct function parame
 
 ---
 
-### Task 6: Add `str.slice()` native method
+### Task 6: Add `str.slice()` native method ✅ DONE
 
-**Files:**
-- Modify: `crates/auto-lang/src/vm/engine.rs` (add slice handler in native dispatch)
-
-**Step 1: Write the test**
-
-Create `crates/auto-lang/test/vm/10_types/029_str_slice.at`:
-
-```auto
-fn main() {
-    let s = "hello world"
-    let suffix = s.slice(6)
-    assert_eq(suffix, "world")
-
-    let prefix = s.slice(0, 5)
-    assert_eq(prefix, "hello")
-
-    let skipped = s.slice(1)
-    assert_eq(skipped, "ello world")
-
-    print("str_slice: passed")
-}
-```
-
-**Step 2: Run test to verify it fails**
-
-Expected: FAIL — `str.slice` is not a registered native.
-
-**Step 3: Register `str.slice` as a BIGVM_NATIVE**
-
-In the native method registration (wherever `str.substr`, `str.contains` etc. are registered), add `str.slice` that:
-- With 1 arg: calls `substr(start, string.len())`
-- With 2 args: calls `substr(start, end)`
-
-Alternatively, add it as an alias in the codegen method resolution: when `method == "slice"`, emit the same bytecode as `substr`.
-
-**Step 4: Run test to verify it passes**
-
-Expected: `str_slice: passed`
-
-**Step 5: Commit**
-
-```bash
-git add crates/auto-lang/src/vm/engine.rs crates/auto-lang/test/vm/10_types/029_str_slice.at
-git commit -m "feat(engine): add str.slice() native method (1-arg and 2-arg forms)"
-```
+**Implemented as:** `str.slice` registered as alias for `str.substr` (native ID 1503) in `native_registry.rs`. Codegen (`codegen.rs:4948`) handles 1-arg `str.slice(start)` by injecting implicit `str.len()` call as second argument. No new opcodes needed.
 
 ---
 
@@ -986,66 +942,9 @@ git commit -m "feat(vm): field access on enum variant payloads"
 
 ---
 
-### Task 14: `List<UserType>` support
+### Task 14: `List<UserType>` support ✅ DONE
 
-**Files:**
-- Modify: `crates/auto-lang/src/vm/opcode.rs` (add new opcodes + VALID entries)
-- Modify: `crates/auto-lang/src/vm/engine.rs` (implement handlers)
-- Modify: `crates/auto-lang/src/vm/codegen.rs` (emit LIST_REF opcodes for user-type arrays)
-
-**Step 1: Write the test**
-
-Create `crates/auto-lang/test/vm/10_types/023_list_user_type.at`:
-
-```auto
-enum Atom {
-    Int int
-}
-
-fn main() {
-    let a = Atom.Int(1)
-    let b = Atom.Int(2)
-    let list = [a, b]
-    let first = list[0]
-    assert_eq(first._0, 1)
-    let second = list[1]
-    assert_eq(second._0, 2)
-    print("list_user_type: passed")
-}
-```
-
-**Step 2: Add new opcodes**
-
-In `opcode.rs`, add:
-
-```rust
-CREATE_LIST_REF = 0xA6,
-LIST_PUSH_REF = 0xA7,
-LIST_GET_REF = 0xA8,
-```
-
-Add `0xA6, 0xA7, 0xA8` to the VALID array.
-
-**Step 3: Implement engine handlers**
-
-In `engine.rs`, add handlers. Storage is `Vec<i32>`. `LIST_GET_REF` returns raw i32 — the caller interprets it as a heap object ID.
-
-Extend `GET_ELEM` handler with a fallback for ref lists: when the list doesn't match int/str/bool, try downcasting to `Vec<i32>`.
-
-**Step 4: Update codegen**
-
-When creating an array literal with elements of user-defined type, emit `CREATE_LIST_REF` + `LIST_PUSH_REF`. When accessing elements of user-type arrays, emit `LIST_GET_REF`.
-
-**Step 5: Build and run test**
-
-Expected: Passes.
-
-**Step 6: Commit**
-
-```bash
-git add crates/auto-lang/src/vm/opcode.rs crates/auto-lang/src/vm/engine.rs crates/auto-lang/src/vm/codegen.rs
-git commit -m "feat(vm): List<UserType> support with heap ref opcodes"
-```
+**Implemented as:** No new opcodes needed. User-type instances are heap object IDs (i32 >= 4000000), stored in legacy arrays (`CREATE_ARRAY` + `auto_val::Value::Int`). `GET_ELEM` returns raw i32, which the caller interprets as a heap object ID. `Array.len()` emits `ARRAY_LEN` opcode directly (codegen intercepts before native lookup). Static arrays do not support `push()` — use `List<T>` for dynamic lists.
 
 ---
 
@@ -1490,3 +1389,92 @@ Expected: All pass.
 git add crates/ac-examples/src/
 git commit -m "feat(examples): restore all examples to idiomatic Auto with enum variants, Option, pattern matching, struct equality, and method chaining"
 ```
+
+---
+
+## Post-Implementation Bug Fixes
+
+Five bugs were discovered during example restoration (Task 17). These fixes remove the workarounds currently in the restored examples.
+
+### Bug A: Enum variant construction inside `ext` functions fails with "Undefined symbol"
+
+**Root cause:** `lib.rs:339-340` puts `TypeDecl` + `Ext` in Pass 1 but `EnumDecl` goes to Pass 2. Ext method bodies compile before enum variants are registered.
+
+**Fix:** Add `EnumDecl` to Pass 1 partition:
+
+```rust
+let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+    matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+});
+```
+
+**Files:** `crates/auto-lang/src/lib.rs:340`
+
+### Bug B: Pattern destructuring in `is` binds wrong values
+
+**Root cause:** 6 locations in `codegen.rs` use raw `STORE_LOCAL` + `emit_u16(var_idx)` instead of `emit_store_loc()`/`emit_load_loc()`. Wrong index encoding + wrong byte count.
+
+**Fix:** Replace all 6 raw `STORE_LOCAL`/`LOAD_LOCAL` + `emit_u16()` with `emit_store_loc()`/`emit_load_loc()`.
+
+**Files:** `crates/auto-lang/src/vm/codegen.rs` (6 locations)
+
+### Bug C: 3-level method chain loses type
+
+**Root cause:** `expr_to_name()` (codegen.rs:6028-6033) has no arm for `Expr::Call`. 3rd-level receiver is `Expr::Call` → returns "Unknown".
+
+**Fix:** Add `Expr::Call` arm:
+
+```rust
+Expr::Call(call) => {
+    if let Expr::Dot(obj, method) = call.name.as_ref() {
+        format!("{}.{}", self.expr_to_name(obj), method)
+    } else if let Expr::Ident(name) = call.name.as_ref() {
+        name.to_string()
+    } else {
+        "Unknown".to_string()
+    }
+}
+```
+
+**Files:** `crates/auto-lang/src/vm/codegen.rs:6028-6033`
+
+### Bug D: `infer_expr_type()` misses method call return types
+
+**Root cause:** `codegen.rs:5683-5686` only matches `Expr::Ident` for func_name. `Expr::Dot(obj, method)` returns `None`.
+
+**Fix:** Extend to handle `Expr::Dot`:
+
+```rust
+let func_name = match call.name.as_ref() {
+    Expr::Ident(name) => Some(name.to_string()),
+    Expr::Dot(obj, method) => Some(format!("{}.{}", self.expr_to_name(obj), method)),
+    _ => None,
+};
+```
+
+**Files:** `crates/auto-lang/src/vm/codegen.rs:5683-5686`
+
+### Bug E: `CREATE_ARRAY` loses heap object identity
+
+**Root cause:** `engine.rs:1043-1050` stores all elements as `Value::Int(bits)`. Heap objects (>= 4000000) should be `Value::VmRef`. Also `GET_ELEM` (engine.rs:2352-2355) has no arm for `VmRef`.
+
+**Fix (two parts):**
+
+Part 1 — `CREATE_ARRAY`: detect heap objects:
+
+```rust
+let value = if bits >= 4000000 {
+    auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
+} else {
+    auto_val::Value::Int(bits)
+};
+elems.push(value);
+```
+
+Part 2 — `GET_ELEM`: add `VmRef` arm:
+
+```rust
+auto_val::Value::VmRef(r) => task.ram.push_i32(r.id as i32),
+```
+
+**Files:** `crates/auto-lang/src/vm/engine.rs:1043-1050, 2342-2355`

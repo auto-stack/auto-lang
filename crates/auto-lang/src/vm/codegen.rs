@@ -2331,8 +2331,7 @@ impl Codegen {
 
                                                 // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
-                                                self.emit(OpCode::STORE_LOCAL);
-                                                self.emit_u16(var_idx as u16);
+                                                self.emit_store_loc(var_idx);
 
                                                 // Plan 197 Task 16: Track the binding's type in var_types
                                                 // Infer the inner type from the is target variable
@@ -2390,8 +2389,7 @@ impl Codegen {
                                                 self.emit(OpCode::UNWRAP_OK);
                                                 // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
-                                                self.emit(OpCode::STORE_LOCAL);
-                                                self.emit_u16(var_idx as u16);
+                                                self.emit_store_loc(var_idx);
                                             } else {
                                                 // Pop the duplicated target
                                                 self.emit(OpCode::POP);
@@ -2430,8 +2428,7 @@ impl Codegen {
                                                 self.emit(OpCode::UNWRAP_ERR);
                                                 // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
-                                                self.emit(OpCode::STORE_LOCAL);
-                                                self.emit_u16(var_idx as u16);
+                                                self.emit_store_loc(var_idx);
                                             } else {
                                                 // Pop the duplicated target
                                                 self.emit(OpCode::POP);
@@ -2489,9 +2486,11 @@ impl Codegen {
                                 // Plan 197 Task 15: Enum variant destructuring (e.g., Atom.Int(n))
                                 crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
                                     let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+                                    // Only use IS_VARIANT path for data variants (registered in generic_registry)
+                                    // Scalar enums (C-style, no payload) fall through to EQ comparison
+                                    let has_data_payload = self.generic_registry.has_template(&variant_mono);
 
-                                    // Check if this is a heterogeneous enum variant with a binding
-                                    if tag_cover.elem.as_str() != "_" {
+                                    if has_data_payload && tag_cover.elem.as_str() != "_" {
                                         // Binding destructuring pattern: Atom.Int(n) -> ...
                                         // Duplicate target for variant check
                                         self.emit(OpCode::DUP);
@@ -2532,8 +2531,7 @@ impl Codegen {
                                             self.emit_u32(0); // field index 0 (_0)
                                             // Store in local variable
                                             let var_idx = self.add_var(tag_cover.elem.as_str());
-                                            self.emit(OpCode::STORE_LOCAL);
-                                            self.emit_u16(var_idx as u16);
+                                            self.emit_store_loc(var_idx);
                                         }
 
                                         // Compile branch body with bindings in scope
@@ -2547,7 +2545,7 @@ impl Codegen {
                                         // Patch jump to next branch
                                         self.patch_jump(jump_to_next);
                                         continue; // Skip the default handling
-                                    } else {
+                                    } else if has_data_payload {
                                         // Empty variant pattern (no binding): just check variant type
                                         self.emit(OpCode::DUP);
                                         self.emit(OpCode::IS_VARIANT);
@@ -2556,6 +2554,12 @@ impl Codegen {
                                         for &byte in name_bytes {
                                             self.code.push(byte);
                                         }
+                                    }
+                                    // else: scalar enum without data payload — use EQ comparison
+                                    else {
+                                        self.emit(OpCode::DUP);
+                                        self.compile_expr(pattern)?;
+                                        self.emit(OpCode::EQ);
                                     }
                                 }
                                 _ => {
@@ -2570,14 +2574,12 @@ impl Codegen {
                                         // Multi-pattern: save target, compare each with short-circuit OR
                                         // If any pattern matches, jump to matched label; otherwise fall through to next branch
                                         let target_slot = self.add_var("_is_target");
-                                        self.emit(OpCode::STORE_LOCAL);
-                                        self.emit_u16(target_slot as u16);
+                                        self.emit_store_loc(target_slot);
 
                                         let mut match_jumps = Vec::new();
 
                                         // First pattern
-                                        self.emit(OpCode::LOAD_LOCAL);
-                                        self.emit_u16(target_slot as u16);
+                                        self.emit_load_loc(target_slot);
                                         self.compile_expr(&patterns[0])?;
                                         self.emit(OpCode::EQ);
                                         self.emit(OpCode::JMP_IF_NZ);
@@ -2585,8 +2587,7 @@ impl Codegen {
 
                                         // Subsequent patterns: if previous didn't match, try this one
                                         for pat in &patterns[1..] {
-                                            self.emit(OpCode::LOAD_LOCAL);
-                                            self.emit_u16(target_slot as u16);
+                                            self.emit_load_loc(target_slot);
                                             self.compile_expr(pat)?;
                                             self.emit(OpCode::EQ);
                                             self.emit(OpCode::JMP_IF_NZ);
@@ -2594,8 +2595,7 @@ impl Codegen {
                                         }
 
                                         // No pattern matched — restore target and jump to next branch
-                                        self.emit(OpCode::LOAD_LOCAL);
-                                        self.emit_u16(target_slot as u16);
+                                        self.emit_load_loc(target_slot);
                                         self.emit(OpCode::JMP);
                                         let jump_to_next = self.emit_placeholder_i16();
 
@@ -2611,8 +2611,7 @@ impl Codegen {
                                         }
 
                                         // Restore target on stack for body execution
-                                        self.emit(OpCode::LOAD_LOCAL);
-                                        self.emit_u16(target_slot as u16);
+                                        self.emit_load_loc(target_slot);
 
                                         // Compile branch body
                                         self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
@@ -4700,6 +4699,16 @@ impl Codegen {
                                 // Or literal expressions (e.g., 1.str(), "hello".upper())
                                 // Plan 118 Phase 4: Handle literal method calls
                                 let inferred_type = self.infer_object_type(obj.as_ref());
+
+                                // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly
+                                if inferred_type == ObjectType::Array && method.as_str() == "len" && call.args.args.is_empty() {
+                                    // Compile receiver (array/list id) then emit ARRAY_LEN
+                                    self.compile_expr(obj)?;
+                                    self.emit(OpCode::ARRAY_LEN);
+                                    self.last_expr_type = ObjectType::Int;
+                                    return Ok(());
+                                }
+
                                 let type_name: String = match inferred_type {
                                     ObjectType::Int | ObjectType::Byte => "int".to_string(),
                                     ObjectType::Uint => "uint".to_string(),
@@ -4733,6 +4742,16 @@ impl Codegen {
                     }
                     _ => None,
                 };
+
+                // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly
+                if func_name.as_deref() == Some("Array.len") && call.args.args.is_empty() {
+                    if let Expr::Dot(obj, _) = call.name.as_ref() {
+                        self.compile_expr(obj)?;
+                        self.emit(OpCode::ARRAY_LEN);
+                        self.last_expr_type = ObjectType::Int;
+                        return Ok(());
+                    }
+                }
 
                 // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
                 let native_id = if let Some(name) = &func_name {
@@ -5662,6 +5681,8 @@ impl Codegen {
             // Extract function name from call expression
             let func_name = match call.name.as_ref() {
                 Expr::Ident(name) => Some(name.to_string()),
+                // Plan 197 Bug D: resolve method call return types (e.g., Tool.echo())
+                Expr::Dot(obj, method) => Some(format!("{}.{}", self.expr_to_name(obj), method)),
                 _ => None,
             };
 
@@ -5928,7 +5949,40 @@ impl Codegen {
                     if let Some(ret_ty) = self.fn_return_types.get(&fn_name) {
                         self.type_to_object_type(ret_ty)
                     } else {
-                        ObjectType::NestedObject
+                        // Bug C fix: for chained calls, infer the obj's return type first,
+                        // then look up "{obj_type}.{method}" in fn_return_types
+                        let obj_type = self.infer_object_type(obj.as_ref());
+                        let type_name = match obj_type {
+                            ObjectType::NestedObject => {
+                                // Try to get the actual type name from fn_return_types
+                                if let Expr::Call(inner_call) = obj.as_ref() {
+                                    if let Expr::Dot(inner_obj, inner_method) = inner_call.name.as_ref() {
+                                        let inner_fn = format!("{}.{}", self.expr_to_name(inner_obj.as_ref()), inner_method.as_ref());
+                                        if let Some(inner_ret) = self.fn_return_types.get(&inner_fn) {
+                                            self.type_name_from_type(inner_ret)
+                                        } else {
+                                            return ObjectType::NestedObject;
+                                        }
+                                    } else {
+                                        return ObjectType::NestedObject;
+                                    }
+                                } else {
+                                    return ObjectType::NestedObject;
+                                }
+                            }
+                            ObjectType::String => "str".to_string(),
+                            ObjectType::Int => "int".to_string(),
+                            ObjectType::Uint => "uint".to_string(),
+                            ObjectType::Bool => "bool".to_string(),
+                            ObjectType::Array => "Array".to_string(),
+                            _ => return ObjectType::NestedObject,
+                        };
+                        let qualified = format!("{}.{}", type_name, method.as_ref());
+                        if let Some(ret_ty) = self.fn_return_types.get(&qualified) {
+                            self.type_to_object_type(ret_ty)
+                        } else {
+                            ObjectType::NestedObject
+                        }
                     }
                 } else if let Expr::Ident(name) = call.name.as_ref() {
                     if let Some(ret_ty) = self.fn_return_types.get(name.as_ref()) {
@@ -6009,6 +6063,16 @@ impl Codegen {
         match expr {
             Expr::Ident(name) => name.to_string(),
             Expr::Dot(obj, method) => format!("{}.{}", self.expr_to_name(obj), method),
+            // Plan 197 Bug C: resolve chained call names for 3rd+ level method dispatch
+            Expr::Call(call) => {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    format!("{}.{}", self.expr_to_name(obj), method)
+                } else if let Expr::Ident(name) = call.name.as_ref() {
+                    name.to_string()
+                } else {
+                    "Unknown".to_string()
+                }
+            }
             _ => "Unknown".to_string(),
         }
     }
@@ -6026,6 +6090,22 @@ impl Codegen {
             Type::Bool => ObjectType::Bool,
             Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
             _ => ObjectType::NestedObject,
+        }
+    }
+
+    /// Extract a type name string from a Type for fn_return_types qualified name lookup
+    fn type_name_from_type(&self, ty: &Type) -> String {
+        match ty {
+            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => "str".to_string(),
+            Type::Char => "char".to_string(),
+            Type::Int | Type::I64 => "int".to_string(),
+            Type::Uint | Type::U64 | Type::USize => "uint".to_string(),
+            Type::Byte => "byte".to_string(),
+            Type::Float => "float".to_string(),
+            Type::Double => "double".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::User(name) => name.to_string(),
+            _ => "Unknown".to_string(),
         }
     }
 
