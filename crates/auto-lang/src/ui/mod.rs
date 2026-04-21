@@ -20,6 +20,9 @@ pub mod vm_bridge;
 pub mod interpreter;
 
 #[cfg(feature = "ui-interpreter")]
+pub mod aura_view_builder;
+
+#[cfg(feature = "ui-interpreter")]
 pub mod event_router;
 
 #[cfg(feature = "ui-interpreter")]

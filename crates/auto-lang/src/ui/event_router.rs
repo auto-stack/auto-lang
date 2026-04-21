@@ -40,8 +40,6 @@ use super::interpreter::DynamicMessage;
 #[cfg(not(feature = "ui-interpreter"))]
 #[derive(Debug, Clone)]
 pub enum DynamicMessage {
-#[derive(Debug, Clone)]
-pub enum DynamicMessage {
     String(String),
 }
 

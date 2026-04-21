@@ -18,7 +18,7 @@
 //! GPUI 渲染
 //! ```
 
-use auto_lang::interp::Interpreter;
+use crate::interpreter::AutoInterpreter;
 use auto_val::{Node, Value};
 use std::path::Path;
 use std::collections::HashMap;
@@ -56,7 +56,7 @@ pub enum DynamicMessage {
 /// 解释器桥梁 - 连接 auto-lang 和 auto-ui
 pub struct InterpreterBridge {
     /// auto-lang 解释器
-    interpreter: Interpreter,
+    interpreter: AutoInterpreter,
 
     /// Widget 实例状态（widget_name → state）
     widget_states: HashMap<String, WidgetState>,
@@ -82,7 +82,7 @@ impl InterpreterBridge {
     /// 创建新的解释器桥梁
     pub fn new() -> Self {
         Self {
-            interpreter: Interpreter::new(),
+            interpreter: AutoInterpreter::new(),
             widget_states: HashMap::new(),
             hot_reload: true,
         }
@@ -96,7 +96,7 @@ impl InterpreterBridge {
 
     /// 解释并执行 Auto 代码
     pub fn interpret(&mut self, code: &str) -> Result<()> {
-        self.interpreter.interpret(code)
+        self.interpreter.eval(code)
             .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
         Ok(())
     }
@@ -108,8 +108,11 @@ impl InterpreterBridge {
     /// 2. 或者查找主 Widget 的 `view()` 方法
     /// 3. 返回求值后的 Node
     pub fn get_main_view(&mut self) -> Result<Node> {
-        // 临时：返回解释器的结果
-        if let Value::Node(node) = &self.interpreter.result {
+        // Evaluate main() or the last expression
+        let result = self.interpreter.eval("main()")
+            .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
+
+        if let Value::Node(node) = &result {
             Ok(node.clone())
         } else {
             // 创建一个默认的空节点
