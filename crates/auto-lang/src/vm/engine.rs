@@ -45,12 +45,21 @@ pub struct FilterIterator {
     pub func_addr: u32, // Address of the predicate function
 }
 
+/// Enumerate iterator state - wraps a source iterator, tracking index
+/// Plan 200 Task 3.2: for (i, x) in iter.enumerate()
+#[derive(Debug, Clone)]
+pub struct EnumerateIterator {
+    pub source_iterator_id: u32,
+    pub current_index: u32,
+}
+
 /// Unified iterator type
 #[derive(Debug, Clone)]
 pub enum Iterator {
     List(ListIterator),
     Map(MapIterator),
     Filter(FilterIterator),
+    Enumerate(EnumerateIterator),
 }
 
 // ============================================================================

@@ -241,6 +241,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Iterator.collect", 115);
     registry.register_with_id("Iterator.reduce", 116);
     registry.register_with_id("Iterator.find", 117);
+    registry.register_with_id("Iterator.enumerate", 118);
 
     // HashMap functions (IDs 119-128 aligned with NATIVE_HASHMAP_* in native.rs)
     registry.register_with_id("HashMap.new", 119);

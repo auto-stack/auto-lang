@@ -168,6 +168,7 @@ impl NativeInterface {
         self.register(NATIVE_ITERATOR_COLLECT, shim_iterator_collect);
         self.register(NATIVE_ITERATOR_REDUCE, shim_iterator_reduce);
         self.register(NATIVE_ITERATOR_FIND, shim_iterator_find);
+        self.register(NATIVE_ITERATOR_ENUMERATE, shim_iterator_enumerate);
 
         // HashMap functions
         self.register(NATIVE_HASHMAP_NEW, shim_hashmap_new);
@@ -472,6 +473,7 @@ pub const NATIVE_ITERATOR_FILTER: u16 = 114;
 pub const NATIVE_ITERATOR_COLLECT: u16 = 115;
 pub const NATIVE_ITERATOR_REDUCE: u16 = 116;
 pub const NATIVE_ITERATOR_FIND: u16 = 117;
+pub const NATIVE_ITERATOR_ENUMERATE: u16 = 118;
 
 // === HashMap Native Functions (119+) ===
 pub const NATIVE_HASHMAP_NEW: u16 = 119;
@@ -1176,6 +1178,41 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                             // Filter source not supported yet
                             -1
                         }
+                        Iterator::Enumerate(enumerate_iter) => {
+                            // Get next from source, then push index on top
+                            if let Some(mut source_iter) = vm.iterators.get_mut(&enumerate_iter.source_iterator_id) {
+                                match &mut *source_iter {
+                                    Iterator::List(list_iter) => {
+                                        if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                            let list = obj.read().unwrap();
+                                            if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                                -1
+                                            } else if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                                                if list_iter.current_index >= list_data.len() as u32 {
+                                                    -1
+                                                } else {
+                                                    let elem = list_data.get(list_iter.current_index as usize).copied().unwrap_or(0);
+                                                    list_iter.current_index += 1;
+                                                    let idx = enumerate_iter.current_index as i32;
+                                                    enumerate_iter.current_index += 1;
+                                                    // Push value then index (caller pops index first)
+                                                    task.ram.push_i32(elem);
+                                                    task.ram.push_i32(idx);
+                                                    return Ok(());
+                                                }
+                                            } else {
+                                                -1
+                                            }
+                                        } else {
+                                            -1
+                                        }
+                                    }
+                                    _ => -1,
+                                }
+                            } else {
+                                -1
+                            }
+                        }
                     }
                 } else {
                     -1 // Source iterator not found
@@ -1221,6 +1258,41 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 } else {
                     -1 // Invalid source iterator
+                }
+            }
+            Iterator::Enumerate(enumerate_iter) => {
+                // Plan 200 Task 3.2: Get next from source, push (index, value)
+                if let Some(mut source_iter) = vm.iterators.get_mut(&enumerate_iter.source_iterator_id) {
+                    match &mut *source_iter {
+                        Iterator::List(list_iter) => {
+                            if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                let list = obj.read().unwrap();
+                                if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                    -1
+                                } else if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                                    if list_iter.current_index >= list_data.len() as u32 {
+                                        -1
+                                    } else {
+                                        let elem = list_data.get(list_iter.current_index as usize).copied().unwrap_or(0);
+                                        list_iter.current_index += 1;
+                                        let idx = enumerate_iter.current_index as i32;
+                                        enumerate_iter.current_index += 1;
+                                        // Push value then index (two values on stack)
+                                        task.ram.push_i32(elem);
+                                        task.ram.push_i32(idx);
+                                        return Ok(());
+                                    }
+                                } else {
+                                    -1
+                                }
+                            } else {
+                                -1
+                            }
+                        }
+                        _ => -1,
+                    }
+                } else {
+                    -1
                 }
             }
         }
@@ -1311,6 +1383,32 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+/// Create an enumerate adapter iterator.
+/// Plan 200 Task 3.2: Wraps a source iterator, tracking index.
+/// Stack: iterator_id -> new_iterator_id
+pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+    use crate::vm::engine::{Iterator, EnumerateIterator};
+
+    let source_iterator_id = task.ram.pop_i32() as u32;
+
+    if !vm.iterators.contains_key(&source_iterator_id) {
+        task.ram.push_i32(-1);
+        return Ok(());
+    }
+
+    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    let iterator = Iterator::Enumerate(EnumerateIterator {
+        source_iterator_id,
+        current_index: 0,
+    });
+
+    vm.iterators.insert(new_iterator_id, iterator);
+    task.ram.push_i32(new_iterator_id as i32);
+    Ok(())
+}
+
 // ============================================================================
 // Terminal Operations
 // ============================================================================
@@ -1350,7 +1448,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) => {
                 // For adapters, we'd need to recursively call next()
                 // For MVP, only support direct list iteration
                 return Err(VMError::RuntimeError("Collect from adapters not yet implemented".to_string()));
@@ -1407,7 +1505,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) => {
                 return Err(VMError::RuntimeError("Reduce from adapters not yet implemented".to_string()));
             }
         }
@@ -1453,7 +1551,7 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     }
                 }
             }
-            Iterator::Map(_) | Iterator::Filter(_) => {
+            Iterator::Map(_) | Iterator::Filter(_) | Iterator::Enumerate(_) => {
                 return Err(VMError::RuntimeError("Find from adapters not yet implemented".to_string()));
             }
         }
