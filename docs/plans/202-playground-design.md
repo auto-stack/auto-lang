@@ -166,8 +166,39 @@ List built-in example programs.
 - Keyboard shortcut (Ctrl+Enter to run)
 - Copy code button on output panels
 
+## SourceMap Integration (V2, API预留)
+
+Playground 将在 V2 支持 Auto ↔ 目标代码的行级映射（参考 TypeScript Source Map v3）。
+V1 的 API 预留 SourceMap 字段，前端先忽略。
+
+### API 扩展
+
+```json
+// POST /api/trans — V1 返回
+{ "code": "fn main() { ... }", "target": "rust" }
+
+// POST /api/trans — V2 扩展（向后兼容）
+{ "code": "fn main() { ... }", "target": "rust", "source_map": {
+  "version": 3,
+  "sources": ["input.at"],
+  "mappings": "AAAA;AACA,SAAS..."
+}}
+```
+
+### 前端预留
+
+- CodeEditor 和 CodePreview 组件预留 `highlightLine(n)` 接口
+- V2 实现：点击 Auto 代码某行 → 高亮对应目标代码行（双向联动）
+- 运行错误映射回 Auto 源码行并高亮
+
+### 依赖
+
+- 需要 Plan 032（Source Mapping System）先实现 transpiler 位置追踪
+- C 目标额外支持 `#line` 指令（Plan 032 已设计）
+
 ## V2 Scope (Deferred)
 
+- **SourceMap 行级映射**（上述）
 - UI live preview (render Auto UI code as web components)
 - Shareable URLs (codepen-style)
 - Multiple file support
