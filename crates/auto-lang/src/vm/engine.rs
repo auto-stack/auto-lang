@@ -89,6 +89,17 @@ pub enum VMError {
     FFI(String),
 }
 
+/// Result of executing a single VM instruction (used by `run_one_instruction`)
+#[derive(Debug, Clone, PartialEq)]
+enum StepResult {
+    /// Continue executing more instructions
+    Continue,
+    /// Task has terminated (HALT, RET at bp==0, IP past end)
+    Terminated,
+    /// Task should pause the current batch (YIELD, SLEEP, blocked JOIN/SEND/RECV)
+    Yield,
+}
+
 pub struct AutoVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
@@ -775,23 +786,23 @@ impl AutoVM {
         }
     }
 
-    /// Execute a chunk of opcodes for a specific task
-    fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
-        let budget = 100; // OpCode Budget
-        let mut ops_executed = 0;
+    /// Execute a single instruction from the given task's instruction stream.
+    ///
+    /// Returns `Ok(StepResult::Continue)` if the task should keep running,
+    /// `Ok(StepResult::Terminated)` if the task has finished, or
+    /// `Ok(StepResult::Yield)` if the task should pause the current batch.
+    fn run_one_instruction(&self, task: &mut AutoTask) -> Result<StepResult, VMError> {
+        // 1. Fetch
+        if task.ip >= self.flash.memory.len() {
+            return Ok(StepResult::Terminated);
+        }
 
-        while ops_executed < budget {
-            // 1. Fetch
-            if task.ip >= self.flash.memory.len() {
-                return Ok(TaskStatus::Terminated);
-            }
-
-            let op_byte = self.flash.read_u8(task.ip);
-            task.ip += 1;
-            if !OpCode::is_valid(op_byte) {
-                return Err(VMError::RuntimeError(format!("Invalid opcode: 0x{:02x} at ip={}", op_byte, task.ip - 1)));
-            }
-            let op: OpCode = op_byte.into();
+        let op_byte = self.flash.read_u8(task.ip);
+        task.ip += 1;
+        if !OpCode::is_valid(op_byte) {
+            return Err(VMError::RuntimeError(format!("Invalid opcode: 0x{:02x} at ip={}", op_byte, task.ip - 1)));
+        }
+        let op: OpCode = op_byte.into();
 
             // 2. Decode & Execute
             match op {
@@ -2954,7 +2965,7 @@ impl AutoVM {
                     // Check if we're in the main task (bp == 0 means no caller)
                     if task.bp == 0 {
                         // Main task returning - just terminate
-                        return Ok(TaskStatus::Terminated);
+                        return Ok(StepResult::Terminated);
                     }
 
                     // Expect Result on Top of Stack
@@ -2988,7 +2999,7 @@ impl AutoVM {
                     task.ip += 1;
 
                     if task.bp == 0 {
-                        return Ok(TaskStatus::Terminated);
+                        return Ok(StepResult::Terminated);
                     }
 
                     // Pop 2 slots: high (top) then low
@@ -3239,7 +3250,7 @@ impl AutoVM {
                     task.ram.push_i32(task.id as i32);
                 }
                 OpCode::YIELD => {
-                    return Ok(TaskStatus::Ready);
+                    return Ok(StepResult::Yield);
                 }
                 OpCode::SLEEP => {
                     let ms = self.flash.read_u32(task.ip) as u64;
@@ -3248,7 +3259,7 @@ impl AutoVM {
                     // Set wake time
                     task.wake_time = Some(Instant::now() + std::time::Duration::from_millis(ms));
                     task.status = TaskStatus::Waiting(format!("sleep for {}ms", ms));
-                    return Ok(task.status.clone());
+                    return Ok(StepResult::Yield);
                 }
                 OpCode::JOIN => {
                     let target_task_id = task.ram.pop_i32() as u64;
@@ -3281,7 +3292,7 @@ impl AutoVM {
                             // Task still running or lock failed, yield and retry
                             task.ip -= 1;
                             task.ram.push_i32(target_task_id as i32);
-                            return Ok(TaskStatus::Ready);
+                            return Ok(StepResult::Yield);
                         }
                     }
                 }
@@ -3318,7 +3329,7 @@ impl AutoVM {
                         task.ip -= 1;
                         task.ram.push_i32(chan_id as i32);
                         task.ram.push_i32(data);
-                        return Ok(TaskStatus::Ready);
+                        return Ok(StepResult::Yield);
                     }
                 }
                 OpCode::RECV => {
@@ -3359,7 +3370,7 @@ impl AutoVM {
                         // Empty, Retry
                         task.ip -= 1;
                         task.ram.push_i32(chan_id as i32);
-                        return Ok(TaskStatus::Ready);
+                        return Ok(StepResult::Yield);
                     }
                 }
                 OpCode::TRY_RECV => {
@@ -3848,7 +3859,7 @@ impl AutoVM {
 
                 // === Debug ===
                 OpCode::HALT => {
-                    return Ok(TaskStatus::Terminated);
+                    return Ok(StepResult::Terminated);
                 }
 
                 // === Plan 088 Phase 5: Reference Passing Instructions ===
@@ -4072,9 +4083,25 @@ impl AutoVM {
                 }
             }
 
-            ops_executed += 1;
+            Ok(StepResult::Continue)
         }
 
+    /// Execute a chunk of opcodes for a specific task
+    fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
+        let budget = 100; // OpCode Budget
+        for _ in 0..budget {
+            match self.run_one_instruction(task)? {
+                StepResult::Continue => continue,
+                StepResult::Terminated => return Ok(TaskStatus::Terminated),
+                StepResult::Yield => {
+                    // SLEEP sets task.status to Waiting; YIELD/JOIN/SEND/RECV leave it Ready
+                    if matches!(task.status, TaskStatus::Waiting(_)) {
+                        return Ok(task.status.clone());
+                    }
+                    return Ok(TaskStatus::Ready);
+                }
+            }
+        }
         Ok(TaskStatus::Ready)
     }
 }
