@@ -695,15 +695,20 @@ impl RustTrans {
                     crate::ast::Cover::Tag(tag_cover) => {
                         // **Phase 1.3: Tag Types**
                         // Tag patterns: Atom.Int(i) -> Atom::Int(i)
-                        // Empty variants (elem == "_"): Coin.Penny -> Coin::Penny
-                        if tag_cover.elem.as_str() == "_" {
+                        // Empty variants (all bindings == "_"): Coin.Penny -> Coin::Penny
+                        if tag_cover.bindings.iter().all(|b| b.as_str() == "_") {
                             write!(out, "{}::{}", tag_cover.kind, tag_cover.tag)
                                 .map_err(Into::into)
                         } else {
+                            let binding_str = tag_cover.bindings.iter()
+                                .filter(|b| b.as_str() != "_")
+                                .map(|b| b.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ");
                             write!(
                                 out,
                                 "{}::{}({})",
-                                tag_cover.kind, tag_cover.tag, tag_cover.elem
+                                tag_cover.kind, tag_cover.tag, binding_str
                             )
                             .map_err(Into::into)
                         }

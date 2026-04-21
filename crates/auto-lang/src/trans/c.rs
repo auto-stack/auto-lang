@@ -2807,7 +2807,7 @@ impl CTrans {
                         self.indent();
 
                         // Register the binding variable in local_var_types
-                        // The binding variable (elem) should access: target.as.Tag
+                        // The binding variable(s) should access: target.as.Tag._field_idx
                         let target_name = match &is_stmt.target {
                             Expr::Ident(name) => name.clone(),
                             _ => AutoStr::from("target"),
@@ -2821,15 +2821,19 @@ impl CTrans {
                                 Type::Unknown
                             }
                         };
-                        self.local_var_types.insert(
-                            tag_cover.elem.clone(),
-                            binding_type.clone(),
-                        );
-                        // Also register uncover mapping for ident() to use
-                        self.local_var_uncovers.insert(
-                            tag_cover.elem.clone(),
-                            (target_name.clone(), tag_cover.tag.clone()),
-                        );
+                        for binding in &tag_cover.bindings {
+                            if binding.as_str() != "_" {
+                                self.local_var_types.insert(
+                                    binding.clone(),
+                                    binding_type.clone(),
+                                );
+                                // Also register uncover mapping for ident() to use
+                                self.local_var_uncovers.insert(
+                                    binding.clone(),
+                                    (target_name.clone(), tag_cover.tag.clone()),
+                                );
+                            }
+                        }
 
                         // The uncover mapping (registered above) replaces ident references
                         // with target.as.Tag, so no local binding variable declaration needed.
@@ -2841,8 +2845,12 @@ impl CTrans {
                         self.dedent();
 
                         // Remove binding from local_var_types and local_var_uncovers after branch scope
-                        self.local_var_types.remove(&tag_cover.elem);
-                        self.local_var_uncovers.remove(&tag_cover.elem);
+                        for binding in &tag_cover.bindings {
+                            if binding.as_str() != "_" {
+                                self.local_var_types.remove(binding);
+                                self.local_var_uncovers.remove(binding);
+                            }
+                        }
                     } else {
                         // Regular EqBranch - non-cover pattern
                         // Multi-pattern: case 1: case 2: case 3: ... body

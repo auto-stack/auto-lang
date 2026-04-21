@@ -2529,7 +2529,7 @@ impl Codegen {
                                     // Scalar enums (C-style, no payload) fall through to EQ comparison
                                     let has_data_payload = self.generic_registry.has_template(&variant_mono);
 
-                                    if has_data_payload && tag_cover.elem.as_str() != "_" {
+                                    if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
                                         // Binding destructuring pattern: Atom.Int(n) -> ...
                                         // Duplicate target for variant check
                                         self.emit(OpCode::DUP);
@@ -2560,17 +2560,17 @@ impl Codegen {
 
                                         // Extract each field and bind to variables
                                         // For Atom.Int(n) with 1 field: extract field 0 into variable "n"
-                                        // The binding name is tag_cover.elem
-                                        // For single-field variants, we only have one binding
-                                        // TODO: multi-field destructuring when supported by parser
-                                        if field_count >= 1 {
-                                            // Duplicate the target (instance_id) for field extraction
-                                            self.emit(OpCode::DUP);
-                                            self.emit(OpCode::GET_GENERIC_FIELD);
-                                            self.emit_u32(0); // field index 0 (_0)
-                                            // Store in local variable
-                                            let var_idx = self.add_var(tag_cover.elem.as_str());
-                                            self.emit_store_loc(var_idx);
+                                        // For multi-field: Point.xy(x, y) -> extract field 0 into "x", field 1 into "y"
+                                        let binding_count = tag_cover.bindings.len().min(field_count);
+                                        for i in 0..binding_count {
+                                            let binding = &tag_cover.bindings[i];
+                                            if binding.as_str() != "_" {
+                                                self.emit(OpCode::DUP);
+                                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                                self.emit_u32(i as u32);
+                                                let var_idx = self.add_var(binding.as_str());
+                                                self.emit_store_loc(var_idx);
+                                            }
                                         }
 
                                         // Compile branch body with bindings in scope

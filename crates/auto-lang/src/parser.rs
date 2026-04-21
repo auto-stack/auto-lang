@@ -2933,20 +2933,26 @@ impl<'a> Parser<'a> {
         // or no parentheses (for nil variants like May.nil)
         if self.is_kind(TokenKind::LParen) {
             self.next(); // consume (
-            let elem = self.parse_name()?;
+            let mut bindings = vec![];
+            if !self.is_kind(TokenKind::RParen) {
+                bindings.push(self.parse_name()?);
+                while self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    bindings.push(self.parse_name()?);
+                }
+            }
             self.expect(TokenKind::RParen)?;
-            // define elem
             return Ok(Expr::Cover(Cover::Tag(TagCover {
                 kind: tag_name.clone(),
                 tag: tag_field,
-                elem,
+                bindings,
             })));
         } else {
             // Nil variant without value binding - use underscore as placeholder
             return Ok(Expr::Cover(Cover::Tag(TagCover {
                 kind: tag_name.clone(),
                 tag: tag_field,
-                elem: Name::from("_"),
+                bindings: vec![Name::from("_")],
             })));
         }
     }
@@ -5369,31 +5375,41 @@ impl<'a> Parser<'a> {
                 // Check for pattern binding cases (same as normal is)
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
                     // Tag pattern: Msg.Inc(value) => ...
-                    self.enter_scope();
-                    let tag_typ = self.lookup_type(&cover.kind);
-                    let tag_field_type = match *tag_typ.borrow() {
-                        Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
-                        _ => {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Invalid tag type: {}", cover.kind),
-                                span: pos_to_span(self.cur.pos),
-                            }.into());
+                    // Skip if all bindings are underscore (no-op)
+                    let has_bindings = cover.bindings.iter().any(|b| b.as_str() != "_");
+                    if has_bindings {
+                        self.enter_scope();
+                        let tag_typ = self.lookup_type(&cover.kind);
+                        let tag_field_type = match *tag_typ.borrow() {
+                            Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                            _ => {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Invalid tag type: {}", cover.kind),
+                                    span: pos_to_span(self.cur.pos),
+                                }.into());
+                            }
+                        };
+
+                        for binding in &cover.bindings {
+                            if binding.as_str() != "_" {
+                                self.define(binding.as_str(), Meta::Store(Store {
+                                    name: binding.clone(),
+                                    kind: StoreKind::Let,
+                                    ty: tag_field_type.clone(),
+                                    expr: Expr::Uncover(TagUncover {
+                                        src: tgt.repr(),
+                                        cover: cover.clone(),
+                                    }),
+                                }));
+                            }
                         }
-                    };
 
-                    self.define(cover.elem.as_str(), Meta::Store(Store {
-                        name: cover.elem.clone(),
-                        kind: StoreKind::Let,
-                        ty: tag_field_type,
-                        expr: Expr::Uncover(TagUncover {
-                            src: tgt.repr(),
-                            cover: cover.clone(),
-                        }),
-                    }));
-
-                    let body = self.parse_expr_or_body()?;
-                    self.exit_scope();
-                    body
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else {
+                        self.parse_expr_or_body()?
+                    }
                 } else {
                     self.parse_expr_or_body()?
                 };
@@ -5483,8 +5499,9 @@ impl<'a> Parser<'a> {
 
                 // Check for pattern binding cases
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
-                    // Empty variant (elem == "_"): no binding needed
-                    if cover.elem.as_str() == "_" {
+                    // Empty variant (all bindings == "_"): no binding needed
+                    let has_bindings = cover.bindings.iter().any(|b| b.as_str() != "_");
+                    if !has_bindings {
                         self.parse_expr_or_body()?
                     } else {
                         // Tag pattern with binding: Msg.Inc(value) => ...
@@ -5521,18 +5538,22 @@ impl<'a> Parser<'a> {
                             }
                         };
 
-                        self.define(
-                            cover.elem.as_str(),
-                            Meta::Store(Store {
-                                name: cover.elem.clone(),
-                                kind: StoreKind::Let,
-                                ty: tag_field_type,
-                                expr: Expr::Uncover(TagUncover {
-                                    src: tgt.repr(),
-                                    cover: cover.clone(),
-                                }),
-                            }),
-                        );
+                        for binding in &cover.bindings {
+                            if binding.as_str() != "_" {
+                                self.define(
+                                    binding.as_str(),
+                                    Meta::Store(Store {
+                                        name: binding.clone(),
+                                        kind: StoreKind::Let,
+                                        ty: tag_field_type.clone(),
+                                        expr: Expr::Uncover(TagUncover {
+                                            src: tgt.repr(),
+                                            cover: cover.clone(),
+                                        }),
+                                    }),
+                                );
+                            }
+                        }
                         let body = self.parse_expr_or_body()?;
                         self.exit_scope();
                         body
@@ -11186,8 +11207,8 @@ exe hello {
             code.stmts[4].to_string(),
             format!(
                 "{}{}",
-                "(is (name atom) (eq (tag-cover (kind Atom) (tag Int) (elem i)) (body (name i)))",
-                " (eq (tag-cover (kind Atom) (tag Float) (elem f)) (body (name f))))"
+                "(is (name atom) (eq (tag-cover (kind Atom) (tag Int) (bindings i)) (body (name i)))",
+                " (eq (tag-cover (kind Atom) (tag Float) (bindings f)) (body (name f))))"
             )
         );
     }

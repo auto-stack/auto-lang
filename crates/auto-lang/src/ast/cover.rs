@@ -11,7 +11,7 @@ pub enum Cover {
 pub struct TagCover {
     pub kind: AutoStr,
     pub tag: AutoStr,
-    pub elem: AutoStr,
+    pub bindings: Vec<AutoStr>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,10 +82,11 @@ pub struct ResultUncover {
 
 impl fmt::Display for TagCover {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bindings_str = self.bindings.join(" ");
         write!(
             f,
-            "(tag-cover (kind {}) (tag {}) (elem {}))",
-            self.kind, self.tag, self.elem
+            "(tag-cover (kind {}) (tag {}) (bindings {}))",
+            self.kind, self.tag, bindings_str
         )
     }
 }
@@ -191,9 +192,11 @@ impl ToNode for TagCover {
         tag_node.add_arg(auto_val::Arg::Pos(Value::Str(self.tag.clone())));
         node.add_kid(tag_node);
 
-        let mut elem_node = AutoNode::new("elem");
-        elem_node.add_arg(auto_val::Arg::Pos(Value::Str(self.elem.clone())));
-        node.add_kid(elem_node);
+        let mut bindings_node = AutoNode::new("bindings");
+        for binding in &self.bindings {
+            bindings_node.add_arg(auto_val::Arg::Pos(Value::Str(binding.clone())));
+        }
+        node.add_kid(bindings_node);
 
         node
     }

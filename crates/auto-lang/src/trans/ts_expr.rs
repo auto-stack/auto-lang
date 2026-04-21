@@ -204,7 +204,12 @@ impl TypeScriptTrans {
                         out.write(b".")?;
                         out.write_all(tag_cover.tag.as_bytes())?;
                         out.write(b"(")?;
-                        out.write_all(tag_cover.elem.as_bytes())?;
+                        let binding_str = tag_cover.bindings.iter()
+                            .filter(|b| b.as_str() != "_")
+                            .map(|b| b.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        out.write_all(binding_str.as_bytes())?;
                         out.write(b")")?;
                     }
                 }
