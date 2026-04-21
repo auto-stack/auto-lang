@@ -95,7 +95,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 4. Initialize VM
-    let flash = VirtualFlash::new_with_code(codegen.code);
+    let flash = VirtualFlash::from_vec_with_metadata(
+        codegen.code,
+        codegen.exports.clone(),
+        Vec::new(),
+        Vec::new(),
+    );
     let mut vm = AutoVM::new(flash, args.memory);
     vm.load_strings(codegen.strings);
 

@@ -41,6 +41,8 @@ pub struct VirtualFlash {
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
     // Plan 073: Object field types for runtime value conversion
     pub object_types: Vec<Vec<ObjectType>>,
+    /// Exports by name for CALL_SPEC dynamic dispatch
+    pub exports_by_name: HashMap<String, u32>,
 }
 
 impl VirtualFlash {
@@ -50,6 +52,7 @@ impl VirtualFlash {
             symbol_map: HashMap::new(),
             object_keys: Vec::new(),
             object_types: Vec::new(),
+            exports_by_name: HashMap::new(),
         }
     }
 
@@ -59,6 +62,7 @@ impl VirtualFlash {
             symbol_map: HashMap::new(),
             object_keys: Vec::new(),
             object_types: Vec::new(),
+            exports_by_name: HashMap::new(),
         }
     }
 
@@ -73,6 +77,7 @@ impl VirtualFlash {
             symbol_map: HashMap::new(),
             object_keys,
             object_types,
+            exports_by_name: HashMap::new(),
         }
     }
 
@@ -85,6 +90,9 @@ impl VirtualFlash {
         object_keys: Vec<Vec<auto_val::ValueKey>>,
         object_types: Vec<Vec<ObjectType>>,
     ) -> Self {
+        // Keep exports_by_name for CALL_SPEC dynamic dispatch
+        let exports_by_name = exports.clone();
+
         // Convert string exports to u32 symbol map
         // For now, we use a simple hash-based ID for symbols
         let symbol_map: HashMap<u32, usize> = exports
@@ -101,6 +109,7 @@ impl VirtualFlash {
             symbol_map,
             object_keys,
             object_types,
+            exports_by_name,
         }
     }
 

@@ -158,6 +158,7 @@ pub enum OpCode {
     CALL = 0x70,
     RET = 0x71,
     CALL_NAT = 0x72,
+    CALL_SPEC = 0x73,  // Dynamic dispatch: spec_name_idx:u16, method_name_idx:u16 -> call vtable
 
     // === Concurrency ===
     SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32

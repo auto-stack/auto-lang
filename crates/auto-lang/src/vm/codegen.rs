@@ -5060,8 +5060,9 @@ impl Codegen {
                 // Normal Function Call (user-defined)
                 // Plan 087 Phase 3 + Plan 088 Phase 4: Instance method receiver as first argument
                 let mut is_instance_method_call = false;
+                let mut is_spec_dispatch = false;
 
-                if let Expr::Dot(obj, _method) = call.name.as_ref() {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
                     // Check if it's a static method call (Type.method with capital T)
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
@@ -5073,6 +5074,15 @@ impl Codegen {
                     // For instance methods, treat receiver as first argument
                     if !is_static_method {
                         is_instance_method_call = true;
+
+                        // Check if receiver's declared type is a spec (for dynamic dispatch)
+                        if let Expr::Ident(var_name) = obj.as_ref() {
+                            if let Some(ty) = self.var_types.get(var_name.to_string().as_str()) {
+                                if matches!(ty, Type::Spec(_)) {
+                                    is_spec_dispatch = true;
+                                }
+                            }
+                        }
 
                         // Plan 088 Phase 4: Compile receiver as first argument (index 0)
                         if let Some(ref method_name) = func_name {
@@ -5178,50 +5188,67 @@ impl Codegen {
                         }
                     }
                 }
-                // 2. Emit CALL opcode
-                self.emit(OpCode::CALL);
-
-                // 3. Emit Placeholder for Address (u32)
-                let placeholder_idx = self.code.len();
-                self.code.extend_from_slice(&0u32.to_le_bytes());
-
-                // 4. Create Relocation Entry
-                let reloc_name = func_name.unwrap_or_else(|| match call.name.as_ref() {
-                    Expr::Ident(name) => name.to_string(),
-                    _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
-                });
-
-                vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
-                    reloc_name, placeholder_idx
-                );
-                vm_debug!("DEBUG: Available exports: {:?}",
-                    self.exports.keys().collect::<Vec<_>>()
-                );
-
-                self.relocs.push(RelocEntry {
-                    offset: placeholder_idx as u32,
-                    symbol_name: reloc_name.clone(),
-                    reloc_type: RelocType::FuncCall,
-                    source_pos: call.pos,
-                });
-
-                // Plan 118 Phase 4: Function return type inference
-                // After function body compilation, fn_return_types is updated with actual return type:
-                // - Type::Void: truly void (body ends with void call or no expression)
-                // - Type::Unknown: has implicit return value (body ends with non-void expression)
-                // - Other: explicit return type
-                if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
-                    self.last_expr_type = match ret_ty {
-                        Type::Void => ObjectType::Void,
-                        Type::Float => ObjectType::Float,
-                        Type::Double => ObjectType::Double,
-                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
-                        Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
-                        Type::Byte => ObjectType::Byte,
-                        Type::Bool => ObjectType::Bool,
-                        Type::Int | Type::I64 => ObjectType::Int,
-                        _ => ObjectType::NestedObject,
+                // 2. Emit CALL or CALL_SPEC opcode
+                // Use CALL_SPEC when:
+                // a) The receiver's declared type is a spec, OR
+                // b) The function name (e.g., "tool.fly") doesn't exist in exports — likely dynamic dispatch
+                let resolved_func = func_name.as_ref().and_then(|name| self.exports.get(name).copied());
+                if is_spec_dispatch || (is_instance_method_call && resolved_func.is_none()) {
+                    // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
+                    self.emit(OpCode::CALL_SPEC);
+                    let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
+                        method.to_string()
+                    } else {
+                        func_name.clone().unwrap_or_default()
                     };
+                    let method_bytes = method_str.as_bytes().to_vec();
+                    let method_idx = self.strings.len() as u16;
+                    self.strings.push(method_bytes);
+                    self.code.extend_from_slice(&method_idx.to_le_bytes());
+                    // Arg count (excluding receiver) so engine knows stack layout
+                    let arg_count = call.args.args.len() as u8;
+                    self.code.push(arg_count);
+                } else {
+                    self.emit(OpCode::CALL);
+
+                    // Emit Placeholder for Address (u32)
+                    let placeholder_idx = self.code.len();
+                    self.code.extend_from_slice(&0u32.to_le_bytes());
+
+                    // Create Relocation Entry
+                    let reloc_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
+                        Expr::Ident(name) => name.to_string(),
+                        _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
+                    });
+
+                    vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
+                        reloc_name, placeholder_idx
+                    );
+                    vm_debug!("DEBUG: Available exports: {:?}",
+                        self.exports.keys().collect::<Vec<_>>()
+                    );
+
+                    self.relocs.push(RelocEntry {
+                        offset: placeholder_idx as u32,
+                        symbol_name: reloc_name.clone(),
+                        reloc_type: RelocType::FuncCall,
+                        source_pos: call.pos,
+                    });
+
+                    // Plan 118 Phase 4: Function return type inference
+                    if let Some(ret_ty) = self.fn_return_types.get(&reloc_name) {
+                        self.last_expr_type = match ret_ty {
+                            Type::Void => ObjectType::Void,
+                            Type::Float => ObjectType::Float,
+                            Type::Double => ObjectType::Double,
+                            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                            Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                            Type::Byte => ObjectType::Byte,
+                            Type::Bool => ObjectType::Bool,
+                            Type::Int | Type::I64 => ObjectType::Int,
+                            _ => ObjectType::NestedObject,
+                        };
+                    }
                 }
             }
             Expr::If(if_expr) => {

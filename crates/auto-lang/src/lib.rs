@@ -437,9 +437,10 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 
     // 4. Load into VM
     // Plan 073: Include object_keys and object_types for object literal support
-    // Plan 177: Use new_with_capture when capture mode is enabled
-    let flash = VirtualFlash::new_with_code_and_keys(
+    // Pass global_symbols as exports_by_name for CALL_SPEC dynamic dispatch
+    let flash = VirtualFlash::from_vec_with_metadata(
         linked_code,
+        global_symbols,
         object_keys,
         object_types,
     );

@@ -523,6 +523,7 @@ mod tests {
             symbol_map: HashMap::new(),
             object_keys: Vec::new(),
             object_types: Vec::new(),
+            exports_by_name: HashMap::new(),
         };
 
         let meta = Arc::new(GlobalMeta::from_components(
@@ -547,6 +548,7 @@ mod tests {
             symbol_map: HashMap::new(),
             object_keys: Vec::new(),
             object_types: Vec::new(),
+            exports_by_name: HashMap::new(),
         };
 
         let meta = Arc::new(GlobalMeta::from_components(

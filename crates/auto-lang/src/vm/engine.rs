@@ -2806,6 +2806,62 @@ impl AutoVM {
                     // Jump
                     task.ip = target;
                 }
+                OpCode::CALL_SPEC => {
+                    // Dynamic dispatch via spec vtable
+                    // Reads: method_name string index (u16), arg_count (u8)
+                    // Stack: [..., receiver, arg0, arg1, ..., argN-1]
+                    let method_name_idx = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
+                    let arg_count = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    // Get method name from string pool
+                    let method_name = self.strings.read().unwrap()
+                        .get(method_name_idx)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+
+                    // The receiver is at stack position sp - arg_count - 1
+                    // (args are on top, receiver is below them)
+                    let receiver_pos = task.ram.sp - arg_count - 1;
+                    let receiver = task.ram.read_i32(receiver_pos);
+
+                    // Look up the object's mono_name from heap
+                    let type_name = if receiver > 0 {
+                        let obj_key = receiver as u64;
+                        if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                            let guard = obj_lock.read().unwrap();
+                            if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                                inst.mono_name.split('_').next()
+                                    .unwrap_or(&inst.mono_name).to_string()
+                            } else {
+                                format!("<unknown:{}>", obj_key)
+                            }
+                        } else {
+                            format!("<unknown:{}>", obj_key)
+                        }
+                    } else {
+                        format!("<invalid:{}>", receiver)
+                    };
+
+                    // Construct function name: TypeName.method
+                    let func_name = format!("{}.{}", type_name, method_name);
+
+                    // Look up function address
+                    let target = if let Some(&addr) = self.flash.exports_by_name.get(&func_name) {
+                        addr as usize
+                    } else {
+                        return Err(VMError::RuntimeError(
+                            format!("CALL_SPEC: no function '{}' for type '{}'", func_name, type_name)
+                        ));
+                    };
+
+                    // Standard CALL sequence: push return address, old BP, set new BP, jump
+                    task.ram.push_i32(task.ip as i32);
+                    task.ram.push_i32(task.bp as i32);
+                    task.bp = task.ram.sp - 1;
+                    task.ip = target;
+                }
                 OpCode::CALL_NAT => {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
