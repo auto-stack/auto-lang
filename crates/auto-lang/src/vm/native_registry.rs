@@ -40,6 +40,8 @@ pub enum NativeRetType {
 pub struct AutoVMNativeRegistry {
     // Maps function name ("List.new") -> native ID (100, 101, ...)
     registry: HashMap<String, u16>,
+    // Maps qualified name ("auto.list.new") -> native ID (Plan 203 Phase 1)
+    qualified_registry: HashMap<String, u16>,
     // Maps function name -> return type (for codegen type inference)
     return_types: HashMap<String, NativeRetType>,
     next_id: u16,
@@ -49,6 +51,7 @@ impl AutoVMNativeRegistry {
     pub fn new() -> Self {
         Self {
             registry: HashMap::new(),
+            qualified_registry: HashMap::new(),
             return_types: HashMap::new(),
             // Start at 100 to avoid conflicts with existing print functions (1-3)
             // and allow room for future expansion
@@ -140,6 +143,34 @@ impl AutoVMNativeRegistry {
     /// Get all return types (for bulk import by codegen).
     pub fn get_all_return_types(&self) -> &HashMap<String, NativeRetType> {
         &self.return_types
+    }
+
+    // =========================================================================
+    // Plan 203 Phase 1: Qualified name registry methods
+    // =========================================================================
+
+    /// Register a qualified name (e.g., "auto.list.new") pointing to an existing native ID.
+    ///
+    /// This does NOT create a new ID — it creates an alias from the qualified path
+    /// to an already-registered native ID.
+    pub fn register_qualified(&mut self, path: &str, id: u16) {
+        self.qualified_registry.insert(path.to_string(), id);
+    }
+
+    /// Register a qualified name with return type info.
+    pub fn register_qualified_with_type(&mut self, path: &str, id: u16, ret_type: NativeRetType) {
+        self.register_qualified(path, id);
+        self.return_types.insert(path.to_string(), ret_type);
+    }
+
+    /// Resolve a qualified name to a native ID.
+    ///
+    /// Falls back to the short-name registry if not found in qualified registry.
+    pub fn resolve_qualified(&self, path: &str) -> Option<u16> {
+        self.qualified_registry
+            .get(path)
+            .copied()
+            .or_else(|| self.registry.get(path).copied())
     }
 }
 
@@ -724,6 +755,150 @@ pub fn register_builtin_natives() {
 
     // Plan 192: Method table for Rust stdlib dynamic dispatch
     // When use.rust imports a type, its methods are registered here pointing to NATIVE_RUST_STDLIB_DISPATCH
+
+    // =========================================================================
+    // Plan 203 Phase 1: Qualified name registrations
+    // Canonical qualified names for all commonly-used natives.
+    // These are additive aliases — existing short names remain unchanged.
+    // =========================================================================
+
+    // List operations
+    registry.register_qualified("auto.list.new", 100);
+    registry.register_qualified("auto.list.push", 101);
+    registry.register_qualified("auto.list.pop", 102);
+    registry.register_qualified("auto.list.len", 103);
+    registry.register_qualified("auto.list.is_empty", 104);
+    registry.register_qualified("auto.list.clear", 105);
+    registry.register_qualified("auto.list.get", 106);
+    registry.register_qualified("auto.list.set", 107);
+    registry.register_qualified("auto.list.insert", 108);
+    registry.register_qualified("auto.list.remove", 109);
+    registry.register_qualified("auto.list.drop", 110);
+    registry.register_qualified("auto.list.reserve", 118);
+    registry.register_qualified("auto.list.capacity", 205);
+
+    // List higher-order functions
+    registry.register_qualified("auto.list.map", 2060);
+    registry.register_qualified("auto.list.filter", 2061);
+    registry.register_qualified("auto.list.for_each", 2062);
+    registry.register_qualified("auto.list.find", 2063);
+    registry.register_qualified("auto.list.any", 2064);
+    registry.register_qualified("auto.list.all", 2065);
+    registry.register_qualified("auto.list.reduce", 2066);
+
+    // Iterator operations
+    registry.register_qualified("auto.list.iter", 111);
+    registry.register_qualified("auto.iterator.next", 112);
+    registry.register_qualified("auto.iterator.map", 113);
+    registry.register_qualified("auto.iterator.filter", 114);
+    registry.register_qualified("auto.iterator.collect", 115);
+    registry.register_qualified("auto.iterator.reduce", 116);
+    registry.register_qualified("auto.iterator.find", 117);
+    registry.register_qualified("auto.iterator.enumerate", 118);
+
+    // HashMap operations
+    registry.register_qualified("auto.hashmap.new", 119);
+    registry.register_qualified("auto.hashmap.insert", 120);
+    registry.register_qualified("auto.hashmap.get", 122);
+    registry.register_qualified("auto.hashmap.contains", 124);
+    registry.register_qualified("auto.hashmap.remove", 125);
+    registry.register_qualified("auto.hashmap.size", 126);
+    registry.register_qualified("auto.hashmap.clear", 127);
+    registry.register_qualified("auto.hashmap.drop", 128);
+
+    // HashSet operations
+    registry.register_qualified("auto.hashset.new", 129);
+    registry.register_qualified("auto.hashset.insert", 130);
+    registry.register_qualified("auto.hashset.contains", 131);
+    registry.register_qualified("auto.hashset.remove", 132);
+    registry.register_qualified("auto.hashset.size", 133);
+    registry.register_qualified("auto.hashset.clear", 134);
+    registry.register_qualified("auto.hashset.drop", 135);
+
+    // VecDeque operations
+    registry.register_qualified("auto.vecdeque.new", 136);
+    registry.register_qualified("auto.vecdeque.push_back", 137);
+    registry.register_qualified("auto.vecdeque.push_front", 138);
+    registry.register_qualified("auto.vecdeque.pop_back", 139);
+    registry.register_qualified("auto.vecdeque.pop_front", 140);
+    registry.register_qualified("auto.vecdeque.front", 141);
+    registry.register_qualified("auto.vecdeque.back", 142);
+    registry.register_qualified("auto.vecdeque.size", 143);
+    registry.register_qualified("auto.vecdeque.is_empty", 144);
+    registry.register_qualified("auto.vecdeque.clear", 145);
+    registry.register_qualified("auto.vecdeque.drop", 146);
+
+    // BTreeMap operations
+    registry.register_qualified("auto.btreemap.new", 147);
+    registry.register_qualified("auto.btreemap.insert", 148);
+    registry.register_qualified("auto.btreemap.get", 149);
+    registry.register_qualified("auto.btreemap.contains", 150);
+    registry.register_qualified("auto.btreemap.remove", 151);
+    registry.register_qualified("auto.btreemap.size", 152);
+    registry.register_qualified("auto.btreemap.is_empty", 153);
+    registry.register_qualified("auto.btreemap.clear", 154);
+    registry.register_qualified("auto.btreemap.first_key", 155);
+    registry.register_qualified("auto.btreemap.last_key", 156);
+    registry.register_qualified("auto.btreemap.drop", 157);
+
+    // StringBuilder operations
+    registry.register_qualified("auto.stringbuilder.new", 160);
+    registry.register_qualified("auto.stringbuilder.append", 161);
+    registry.register_qualified("auto.stringbuilder.append_int", 162);
+    registry.register_qualified("auto.stringbuilder.append_char", 163);
+    registry.register_qualified("auto.stringbuilder.len", 164);
+    registry.register_qualified("auto.stringbuilder.clear", 165);
+    registry.register_qualified("auto.stringbuilder.drop", 166);
+    registry.register_qualified("auto.stringbuilder.build", 167);
+
+    // String operations (VM-level, IDs 170-186)
+    registry.register_qualified("auto.str.len", 170);
+    registry.register_qualified("auto.str.upper", 175);
+    registry.register_qualified("auto.str.new", 177);
+    registry.register_qualified("auto.str.push", 178);
+    registry.register_qualified("auto.str.pop", 179);
+    registry.register_qualified("auto.str.get", 180);
+    registry.register_qualified("auto.str.set", 181);
+    registry.register_qualified("auto.str.insert", 182);
+    registry.register_qualified("auto.str.remove", 183);
+    registry.register_qualified("auto.str.clear", 184);
+    registry.register_qualified("auto.str.is_empty", 185);
+    registry.register_qualified("auto.str.reserve", 186);
+
+    // Heap / storage operations
+    registry.register_qualified("auto.heap.new", 195);
+    registry.register_qualified("auto.heap.capacity", 196);
+    registry.register_qualified("auto.heap.try_grow", 197);
+    registry.register_qualified("auto.heap.drop", 198);
+    registry.register_qualified("auto.inline_int64.new", 199);
+    registry.register_qualified("auto.inline_int64.capacity", 200);
+    registry.register_qualified("auto.inline_int64.try_grow", 201);
+    registry.register_qualified("auto.inline_int64.drop", 202);
+
+    // Bit operations
+    registry.register_qualified("auto.int.and", 210);
+    registry.register_qualified("auto.int.or", 211);
+    registry.register_qualified("auto.int.xor", 212);
+    registry.register_qualified("auto.int.not", 213);
+    registry.register_qualified("auto.int.shl", 214);
+    registry.register_qualified("auto.int.shr", 215);
+    registry.register_qualified("auto.int.bit_read", 230);
+    registry.register_qualified("auto.int.bit_test", 231);
+    registry.register_qualified("auto.int.bit_on", 232);
+    registry.register_qualified("auto.int.bit_off", 233);
+    registry.register_qualified("auto.int.bit_flip", 234);
+
+    // Memory allocation
+    registry.register_qualified("auto.alloc.array", 190);
+    registry.register_qualified("auto.realloc.array", 191);
+    registry.register_qualified("auto.free.array", 192);
+
+    // Note: auto.file.*, auto.str.*, auto.env.*, auto.time.*, auto.path.*,
+    // auto.process.*, auto.char.*, auto.math.*, auto.json.*, auto.url.*,
+    // auto.task.*, auto.http_stream.*, and auto.task_system.* are already
+    // registered with their qualified names as the primary registration
+    // in the registry above, so they are resolved via resolve_qualified()'s
+    // fallback to the main registry.
 }
 
 /// Known methods for each Rust stdlib type.

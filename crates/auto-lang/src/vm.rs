@@ -36,6 +36,8 @@ pub mod pattern_matcher;
 pub mod native;
 pub mod native_registry;
 pub mod opcode;
+// Plan 203 Phase 1: Qualified name type for canonical native function identification
+pub mod qualified_name;
 pub mod refs;
 pub mod storage;
 pub mod task;
