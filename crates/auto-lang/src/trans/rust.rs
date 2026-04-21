@@ -1506,6 +1506,21 @@ impl RustTrans {
             }
         }
 
+        // Plan 204 Phase 1A: Rust assert/assert_eq/assert_ne are macros, need ! suffix
+        if let Expr::Ident(name) = call.name.as_ref() {
+            if matches!(name.as_str(), "assert" | "assert_eq" | "assert_ne") {
+                write!(out, "{}!(", name)?;
+                for (i, arg) in call.args.args.iter().enumerate() {
+                    self.arg(arg, out)?;
+                    if i < call.args.args.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, ")")?;
+                return Ok(());
+            }
+        }
+
         // Plan 124 Phase 2.2: Handle TaskHandle.send_await(msg) -> tx.send(msg).await
         // This transforms the method call to use Rust's async send pattern
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
