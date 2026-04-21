@@ -540,6 +540,81 @@ impl AutoVM {
         strings.get(index as usize).cloned()
     }
 
+    /// Call an Auto closure from native code.
+    ///
+    /// # Arguments
+    /// * `task` - Current task (mutable)
+    /// * `closure_id` - ID of closure to call
+    /// * `arg_count` - Number of arguments already on stack
+    ///
+    /// # Stack effect
+    /// Pops `arg_count` args + closure_id from stack, pushes result.
+    /// After return: result is on top of stack.
+    pub fn call_closure(
+        &self,
+        task: &mut AutoTask,
+        closure_id: u32,
+        _arg_count: usize,
+    ) -> Result<(), VMError> {
+        // 1. Clone closure data (can't hold DashMap guard across yields)
+        let closure = match self.closures.get(&closure_id) {
+            Some(guard) => guard.clone(),
+            None => return Err(VMError::RuntimeError(format!("Invalid closure ID: {}", closure_id))),
+        };
+
+        // 2. Save current state
+        let saved_ip = task.ip;
+        let saved_bp = task.bp;
+        let saved_closure_id = task.current_closure_id;
+        let saved_fn_n_args = task.current_fn_n_args;
+        let saved_saved_closure_id = task.saved_closure_id;
+
+        // 3. Setup closure context (mirrors CALL_CLOSURE opcode logic)
+        task.current_closure_id = Some(closure_id);
+        task.current_fn_n_args = closure.n_args;
+        task.saved_closure_id = saved_closure_id;
+
+        // 4. Setup stack frame
+        task.ram.push_i32(saved_ip as i32);  // Return address
+        task.ram.push_i32(saved_bp as i32);  // Old BP
+        task.bp = task.ram.sp - 1;
+
+        // 5. Jump to closure body
+        task.ip = closure.func_addr as usize;
+
+        // 6. Execute until closure returns (BP restored to saved_bp)
+        let budget = 1_000_000;
+        for _ in 0..budget {
+            match self.run_one_instruction(task)? {
+                StepResult::Continue => {
+                    if task.bp == saved_bp {
+                        break;
+                    }
+                    continue;
+                }
+                StepResult::Terminated => {
+                    // Restore state even on error
+                    task.current_closure_id = saved_closure_id;
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return Err(VMError::RuntimeError(
+                        "Closure execution terminated unexpectedly".into()
+                    ));
+                }
+                StepResult::Yield => {
+                    // In call_closure context, Yield just means "continue after pause"
+                    continue;
+                }
+            }
+        }
+
+        // 7. Restore non-stack state
+        task.current_closure_id = saved_closure_id;
+        task.current_fn_n_args = saved_fn_n_args;
+        task.saved_closure_id = saved_saved_closure_id;
+
+        Ok(())
+    }
+
     /// Plan 127: Match a message value against a serialized pattern
     /// Returns true if the message matches the pattern
     fn match_message_pattern_vm(

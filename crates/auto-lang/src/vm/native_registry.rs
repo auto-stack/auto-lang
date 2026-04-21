@@ -206,6 +206,15 @@ pub fn register_builtin_natives() {
     registry.register_with_id("List.remove_bool", 109);
     registry.register_with_id("List.remove_str", 109);
 
+    // List higher-order functions (Plan 206)
+    registry.register_with_id("List.map", 2060);
+    registry.register_with_id("List.filter", 2061);
+    registry.register_with_id("List.for_each", 2062);
+    registry.register_with_id("List.find", 2063);
+    registry.register_with_id("List.any", 2064);
+    registry.register_with_id("List.all", 2065);
+    registry.register_with_id("List.reduce", 2066);
+
     // Memory allocation functions (Plan 052 Phase 2)
     registry.register_with_id("alloc_array", 190);
     registry.register_with_id("realloc_array", 191);

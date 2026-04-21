@@ -160,6 +160,15 @@ impl NativeInterface {
         self.register(NATIVE_LIST_DROP, shim_list_drop);
         self.register(NATIVE_LIST_RESERVE, shim_list_reserve);
 
+        // List higher-order functions (Plan 206)
+        self.register(NATIVE_LIST_MAP, shim_list_map);
+        self.register(NATIVE_LIST_FILTER, shim_list_filter);
+        self.register(NATIVE_LIST_FOREACH, shim_list_for_each);
+        self.register(NATIVE_LIST_FIND, shim_list_find);
+        self.register(NATIVE_LIST_ANY, shim_list_any);
+        self.register(NATIVE_LIST_ALL, shim_list_all);
+        self.register(NATIVE_LIST_REDUCE, shim_list_reduce);
+
         // Iterator functions
         self.register(NATIVE_LIST_ITER, shim_list_iter);
         self.register(NATIVE_ITERATOR_NEXT, shim_iterator_next);
@@ -464,6 +473,15 @@ pub const NATIVE_LIST_INSERT: u16 = 108;
 pub const NATIVE_LIST_REMOVE: u16 = 109;
 pub const NATIVE_LIST_DROP: u16 = 110;
 pub const NATIVE_LIST_RESERVE: u16 = 118;
+
+// List higher-order functions (Plan 206)
+pub const NATIVE_LIST_MAP: u16 = 2060;
+pub const NATIVE_LIST_FILTER: u16 = 2061;
+pub const NATIVE_LIST_FOREACH: u16 = 2062;
+pub const NATIVE_LIST_FIND: u16 = 2063;
+pub const NATIVE_LIST_ANY: u16 = 2064;
+pub const NATIVE_LIST_ALL: u16 = 2065;
+pub const NATIVE_LIST_REDUCE: u16 = 2066;
 
 // === Iterator Native Functions (111+) ===
 pub const NATIVE_LIST_ITER: u16 = 111;
@@ -1059,6 +1077,175 @@ pub fn shim_list_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     }
 
     task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================
+// List Higher-Order Functions (Plan 206: Closure HOF)
+// ============================================================
+
+/// Helper: get list elements as Vec<i32> from a list heap object
+fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError> {
+    use crate::vm::types::ListData;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            return Ok(list.elems.clone());
+        }
+    }
+
+    Err(VMError::RuntimeError(format!("Invalid list ID: {}", list_id)))
+}
+
+/// Helper: create a new list from Vec<i32> elements, return heap ID
+fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
+    use crate::vm::types::ListData;
+
+    let mut list: ListData<i32> = ListData::new();
+    for elem in elems {
+        list.push(elem);
+    }
+    vm.insert_heap_object(list)
+}
+
+/// List.map(closure) -> new List
+/// Stack: closure_id, list_id -> result_list_id
+pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    let mut results = Vec::with_capacity(elements.len());
+
+    for elem in elements {
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 1)?;
+        results.push(task.ram.pop_i32());
+    }
+
+    let new_id = create_list_from_i32(vm, results);
+    task.ram.push_i32(new_id as i32);
+    Ok(())
+}
+
+/// List.filter(closure) -> new List
+/// Stack: closure_id, list_id -> result_list_id
+pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    let mut results = Vec::new();
+
+    for elem in elements {
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let predicate = task.ram.pop_i32();
+        if predicate != 0 {
+            results.push(elem);
+        }
+    }
+
+    let new_id = create_list_from_i32(vm, results);
+    task.ram.push_i32(new_id as i32);
+    Ok(())
+}
+
+/// List.for_each(closure) -> void
+/// Stack: closure_id, list_id -> 0
+pub fn shim_list_for_each(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    for elem in elements {
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 1)?;
+        task.ram.pop_i32(); // Discard result
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// List.find(closure) -> ?T (found value or -1 for None)
+/// Stack: closure_id, list_id -> result
+pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    for elem in elements {
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = task.ram.pop_i32();
+        if found != 0 {
+            task.ram.push_i32(elem);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(-1); // None
+    Ok(())
+}
+
+/// List.any(closure) -> bool
+/// Stack: closure_id, list_id -> bool (1/0)
+pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    for elem in elements {
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let result = task.ram.pop_i32();
+        if result != 0 {
+            task.ram.push_i32(1);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// List.all(closure) -> bool
+/// Stack: closure_id, list_id -> bool (1/0)
+pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    for elem in elements {
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let result = task.ram.pop_i32();
+        if result == 0 {
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(1);
+    Ok(())
+}
+
+/// List.reduce(init, closure) -> accumulated value
+/// Stack: closure_id, init_val, list_id -> result
+pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = task.ram.pop_i32() as u32;
+    let init_val = task.ram.pop_i32();
+    let list_id = task.ram.pop_i32() as u64;
+
+    let elements = get_list_i32_elements(vm, list_id)?;
+    let mut acc = init_val;
+
+    for elem in elements {
+        task.ram.push_i32(acc);
+        task.ram.push_i32(elem);
+        vm.call_closure(task, closure_id, 2)?;
+        acc = task.ram.pop_i32();
+    }
+
+    task.ram.push_i32(acc);
     Ok(())
 }
 
