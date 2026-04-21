@@ -1,0 +1,5 @@
+// Test: closure captures outer variable + HOF
+let factor = 3
+let nums = [1, 2, 3]
+let scaled = nums.map(x => x * factor)
+print(scaled.len())

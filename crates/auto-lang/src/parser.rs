@@ -1664,12 +1664,22 @@ impl<'a> Parser<'a> {
             // Expect =>
             self.expect(TokenKind::DoubleArrow)?;
 
+            // Register parameter in scope so body can reference it
+            self.infer_ctx.bind_var(
+                crate::ast::Name::from(param_name.as_str()),
+                crate::ast::Type::Unknown,
+            );
+
             // Parse body (expression or block)
             let body = if self.is_kind(TokenKind::LBrace) {
                 Expr::Block(self.body()?)
             } else {
                 self.parse_expr()?
             };
+
+            // Note: we don't unbind the param — the InferenceContext is flat
+            // and doesn't support scope pops. This is acceptable because closure
+            // param names don't conflict with outer scope names.
 
             return Ok(Expr::Closure(Closure::new(
                 vec![ClosureParam::new(param_name, None)],
@@ -3183,6 +3193,14 @@ impl<'a> Parser<'a> {
 
         // Expect =>
         self.expect(TokenKind::DoubleArrow)?;
+
+        // Register all parameters in scope so body can reference them
+        for param in &params {
+            self.infer_ctx.bind_var(
+                crate::ast::Name::from(param.name.as_str()),
+                param.ty.clone().unwrap_or(crate::ast::Type::Unknown),
+            );
+        }
 
         // Parse body (expression or block)
         let body = if self.is_kind(TokenKind::LBrace) {

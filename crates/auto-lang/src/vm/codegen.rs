@@ -978,9 +978,20 @@ impl Codegen {
                                                 ty.clone()
                                             } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
                                                 let type_method = format!("{}.{}", type_name, method);
-                                                self.fn_return_types.get(&type_method)
-                                                    .cloned()
-                                                    .unwrap_or(Type::Unknown)
+                                                if let Some(ty) = self.fn_return_types.get(&type_method) {
+                                                    ty.clone()
+                                                } else {
+                                                    // Array HOF methods return arrays
+                                                    let hof_methods = ["map", "filter"];
+                                                    if type_name == "Array" && hof_methods.contains(&method.as_str()) {
+                                                        Type::Array(crate::ast::ArrayType {
+                                                            elem: Box::new(Type::Int),
+                                                            len: 0, // dynamic size
+                                                        })
+                                                    } else {
+                                                        Type::Unknown
+                                                    }
+                                                }
                                             } else {
                                                 Type::Unknown
                                             }
@@ -1014,7 +1025,15 @@ impl Codegen {
                                 // Plan 197 Task 14: Infer type from array literal (e.g., let list = [a, b])
                                 Expr::Array(elems) => {
                                     if elems.is_empty() {
-                                        store.ty.clone()
+                                        // Empty array literal defaults to Array<Int>
+                                        if matches!(store.ty, Type::Unknown) {
+                                            Type::Array(crate::ast::ArrayType {
+                                                elem: Box::new(Type::Int),
+                                                len: 0,
+                                            })
+                                        } else {
+                                            store.ty.clone()
+                                        }
                                     } else {
                                         let elem_ty = self.infer_expr_type(&elems[0]);
                                         Type::Array(crate::ast::ArrayType {
@@ -4657,6 +4676,15 @@ impl Codegen {
                                             let (base_name, type_args) = match ty {
                                                 Type::Map(k, v) => ("Map".to_string(), vec![*k.clone(), *v.clone()]),
                                                 Type::List(elem) => ("List".to_string(), vec![*elem.clone()]),
+                                                Type::Array(_) => {
+                                                    // Array HOF methods (map, filter, etc.) are dispatched as List.* natives
+                                                    let hof_methods = ["map", "filter", "for_each", "find", "any", "all", "reduce"];
+                                                    if hof_methods.contains(&method.as_str()) {
+                                                        ("List".to_string(), vec![])
+                                                    } else {
+                                                        ("Array".to_string(), vec![])
+                                                    }
+                                                }
                                                 Type::User(td) => {
                                                     let name = td.name.to_string();
                                                     (name, vec![])
@@ -4705,23 +4733,28 @@ impl Codegen {
                                                 }
                                             } else {
                                                 // No type args -- regular inference
-                                                vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
-                                                if let Some(type_name) =
-                                                    self.infer_type_from_var(obj_name.as_ref())
-                                                {
-                                                    vm_debug!("DEBUG: Inferred type name: {}",
-                                                        type_name
-                                                    );
-                                                    Some(format!("{}.{}", type_name, method))
+                                                // Special case: base_name was overridden to "List" for Array HOF methods
+                                                if base_name == "List" {
+                                                    Some(format!("List.{}", method))
                                                 } else {
-                                                    if method.as_str() == "send" {
-                                                        vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
-                                                        Some("TaskHandle.send".to_string())
-                                                    } else {
-                                                        vm_debug!("DEBUG: Failed to infer type for {}",
-                                                            obj_name
+                                                    vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
+                                                    if let Some(type_name) =
+                                                        self.infer_type_from_var(obj_name.as_ref())
+                                                    {
+                                                        vm_debug!("DEBUG: Inferred type name: {}",
+                                                            type_name
                                                         );
-                                                        Some(format!("{}.{}", obj_name, method))
+                                                        Some(format!("{}.{}", type_name, method))
+                                                    } else {
+                                                        if method.as_str() == "send" {
+                                                            vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
+                                                            Some("TaskHandle.send".to_string())
+                                                        } else {
+                                                            vm_debug!("DEBUG: Failed to infer type for {}",
+                                                                obj_name
+                                                            );
+                                                            Some(format!("{}.{}", obj_name, method))
+                                                        }
                                                     }
                                                 }
                                             }
@@ -5086,6 +5119,10 @@ impl Codegen {
                                 Type::Int | Type::I64 => ObjectType::Int,
                                 _ => ObjectType::NestedObject,
                             };
+                        }
+                        // List HOF methods return arrays (tracked for type-aware dispatch)
+                        if name == "List.map" || name == "List.filter" {
+                            self.last_expr_type = ObjectType::Array;
                         }
                     }
 

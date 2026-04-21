@@ -1,0 +1,16 @@
+// Test: List.reduce — sum
+let nums = [1, 2, 3, 4, 5]
+let sum = nums.reduce(0, (acc, x) => acc + x)
+print(sum)
+
+// Test: List.find — first > 3
+let found = nums.find(x => x > 3)
+print(found)
+
+// Test: List.any — any negative
+let has_neg = nums.any(x => x < 0)
+print(has_neg)
+
+// Test: List.all — all positive
+let all_pos = nums.all(x => x > 0)
+print(all_pos)

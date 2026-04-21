@@ -1,0 +1,11 @@
+// Test: for_each with side effects
+let nums = [10, 20, 30]
+nums.for_each(x => print(x))
+
+// Test: empty list
+let empty = []
+let mapped = empty.map(x => x * 2)
+print(mapped.len())
+
+let sum = empty.reduce(0, (acc, x) => acc + x)
+print(sum)

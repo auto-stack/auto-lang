@@ -159,6 +159,12 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_09_functions_007_closure() { test_vm("09_functions/007_closure").unwrap(); }
 #[test] fn test_09_functions_008_closure_typed() { test_vm("09_functions/008_closure_typed").unwrap(); }
 #[test] fn test_09_functions_009_forward_decl() { test_vm("09_functions/009_forward_decl").unwrap(); }
+#[test] fn test_09_functions_010_closure_hof_map() { test_vm("09_functions/010_closure_hof_map").unwrap(); }
+#[test] fn test_09_functions_011_list_map_filter() { test_vm("09_functions/011_list_map_filter").unwrap(); }
+#[test] fn test_09_functions_012_list_reduce_find_any_all() { test_vm("09_functions/012_list_reduce_find_any_all").unwrap(); }
+#[test] fn test_09_functions_013_closure_capture_hof() { test_vm("09_functions/013_closure_capture_hof").unwrap(); }
+#[test] fn test_09_functions_014_list_for_each_edge() { test_vm("09_functions/014_list_for_each_edge").unwrap(); }
+#[test] fn test_09_functions_015_list_chain_pipeline() { test_vm("09_functions/015_list_chain_pipeline").unwrap(); }
 
 // === 10_types ===
 #[test] fn test_10_types_001_type_compose() { test_vm("10_types/001_type_compose").unwrap(); }

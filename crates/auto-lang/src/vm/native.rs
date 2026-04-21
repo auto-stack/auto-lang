@@ -1088,6 +1088,7 @@ pub fn shim_list_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError> {
     use crate::vm::types::ListData;
 
+    // First check heap objects (List created via List.new or previous HOF)
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
@@ -1095,18 +1096,46 @@ fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError>
         }
     }
 
+    // Fallback: check vm.arrays (array literals created via CREATE_ARRAY)
+    if let Some(array_ref) = vm.arrays.get(&list_id) {
+        let guard = array_ref.read().unwrap();
+        let elems: Vec<i32> = guard.iter().map(|v| {
+            match v {
+                auto_val::Value::Int(n) => *n,
+                _ => 0,
+            }
+        }).collect();
+        return Ok(elems);
+    }
+
     Err(VMError::RuntimeError(format!("Invalid list ID: {}", list_id)))
 }
 
-/// Helper: create a new list from Vec<i32> elements, return heap ID
+/// Helper: create a new array from Vec<i32> elements, return array ID
+/// Stores in vm.arrays (same as CREATE_ARRAY) so results work with ARRAY_LEN etc.
 fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
-    use crate::vm::types::ListData;
+    use std::sync::atomic::Ordering;
 
-    let mut list: ListData<i32> = ListData::new();
-    for elem in elems {
-        list.push(elem);
-    }
-    vm.insert_heap_object(list)
+    let values: Vec<auto_val::Value> = elems.into_iter()
+        .map(|e| auto_val::Value::Int(e))
+        .collect();
+    let new_id = vm.array_id_gen.fetch_add(1, Ordering::SeqCst);
+    vm.arrays.insert(new_id, Arc::new(RwLock::new(values)));
+    new_id
+}
+
+/// Helper: check if a VM value is truthy (handles both conventions)
+/// True values: 1, i32::MIN (-2147483648), or any non-zero/non-false value
+/// False values: 0, i32::MIN+1 (-2147483647)
+#[inline]
+fn vm_is_truthy(val: i32) -> bool {
+    val != 0 && val != i32::MIN + 1
+}
+
+/// Helper: convert a VM value to a printable boolean (1 or 0)
+#[inline]
+fn vm_to_printable_bool(val: i32) -> i32 {
+    if vm_is_truthy(val) { 1 } else { 0 }
 }
 
 /// List.map(closure) -> new List
@@ -1142,7 +1171,7 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         task.ram.push_i32(elem);
         vm.call_closure(task, closure_id, 1)?;
         let predicate = task.ram.pop_i32();
-        if predicate != 0 {
+        if vm_is_truthy(predicate) {
             results.push(elem);
         }
     }
@@ -1179,7 +1208,7 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         task.ram.push_i32(elem);
         vm.call_closure(task, closure_id, 1)?;
         let found = task.ram.pop_i32();
-        if found != 0 {
+        if vm_is_truthy(found) {
             task.ram.push_i32(elem);
             return Ok(());
         }
@@ -1199,7 +1228,7 @@ pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         task.ram.push_i32(elem);
         vm.call_closure(task, closure_id, 1)?;
         let result = task.ram.pop_i32();
-        if result != 0 {
+        if vm_is_truthy(result) {
             task.ram.push_i32(1);
             return Ok(());
         }
@@ -1219,7 +1248,7 @@ pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         task.ram.push_i32(elem);
         vm.call_closure(task, closure_id, 1)?;
         let result = task.ram.pop_i32();
-        if result == 0 {
+        if !vm_is_truthy(result) {
             task.ram.push_i32(0);
             return Ok(());
         }
