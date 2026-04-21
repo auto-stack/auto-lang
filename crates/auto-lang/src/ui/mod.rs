@@ -28,6 +28,9 @@ pub mod event_router;
 #[cfg(feature = "ui-interpreter")]
 pub mod hot_reload;
 
+#[cfg(feature = "ui-interpreter")]
+pub mod dynamic;
+
 #[cfg(feature = "ui-headless")]
 pub mod headless;
 
