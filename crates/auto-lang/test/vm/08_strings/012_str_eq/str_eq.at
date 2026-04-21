@@ -1,0 +1,7 @@
+let a = "hello"
+let b = "hello"
+let eq = a == b
+print(f"a == b: ${eq}")
+let c = "world"
+let ne = a == c
+print(f"a == c: ${ne}")

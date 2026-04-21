@@ -864,8 +864,8 @@ impl AutoVM {
                         let bits = task.ram.pop_i32();
                         // Inside VM, everything is an i32 bits. We wrap it in VmRef if it's positive,
                         // or decode string index if it's negative.
-                        let val = if bits < 0 {
-                            let str_idx = (-bits - 1) as usize;
+                        let val = if bits < 0 && bits > i32::MIN {
+                            let str_idx = ((-bits) - 1) as usize;
                             let strings = self.strings.read().unwrap();
                             if let Some(bytes) = strings.get(str_idx) {
                                 auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
@@ -1153,8 +1153,12 @@ impl AutoVM {
                             }
                             1 => {
                                 let bits = task.ram.pop_i32();
-                                if bits < 0 {
-                                    let idx = (-bits - 1) as usize;
+                                if bits == i32::MIN {
+                                    "true".to_string()
+                                } else if bits == i32::MIN + 1 {
+                                    "false".to_string()
+                                } else if bits < 0 && bits > i32::MIN {
+                                    let idx = ((-bits) - 1) as usize;
                                     if idx < strings.len() {
                                         String::from_utf8_lossy(&strings[idx]).to_string()
                                     } else {
@@ -1166,8 +1170,12 @@ impl AutoVM {
                             }
                             _ => {
                                 let bits = task.ram.pop_i32();
-                                if bits < 0 {
-                                    let idx = (-bits - 1) as usize;
+                                if bits == i32::MIN {
+                                    "true".to_string()
+                                } else if bits == i32::MIN + 1 {
+                                    "false".to_string()
+                                } else if bits < 0 && bits > i32::MIN {
+                                    let idx = ((-bits) - 1) as usize;
                                     if idx < strings.len() {
                                         String::from_utf8_lossy(&strings[idx]).to_string()
                                     } else {
@@ -3500,15 +3508,15 @@ impl AutoVM {
                     } else if a >= 4000000 && b >= 4000000 {
                         // Heap objects — structural equality
                         self.struct_eq(a, b)
-                    } else if a < 0 && b < 0 {
-                        // Both are tagged strings — compare content
-                        let strings = self.strings.read().unwrap();
-                        let idx_a = (-a - 1) as usize;
-                        let idx_b = (-b - 1) as usize;
-                        if idx_a < strings.len() && idx_b < strings.len() {
-                            strings[idx_a] == strings[idx_b]
-                        } else {
-                            false
+                    } else if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
+                        // Both are tagged string indices — compare actual string contents
+                        let a_idx = ((-a) - 1) as u16;
+                        let b_idx = ((-b) - 1) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => sa == sb,
+                            _ => false,
                         }
                     } else {
                         false
@@ -3525,15 +3533,15 @@ impl AutoVM {
                     } else if a >= 4000000 && b >= 4000000 {
                         // Heap objects — structural inequality
                         !self.struct_eq(a, b)
-                    } else if a < 0 && b < 0 {
-                        // Both are tagged strings — compare content
-                        let strings = self.strings.read().unwrap();
-                        let idx_a = (-a - 1) as usize;
-                        let idx_b = (-b - 1) as usize;
-                        if idx_a < strings.len() && idx_b < strings.len() {
-                            strings[idx_a] != strings[idx_b]
-                        } else {
-                            true
+                    } else if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
+                        // Both are tagged string indices — compare actual string contents
+                        let a_idx = ((-a) - 1) as u16;
+                        let b_idx = ((-b) - 1) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => sa != sb,
+                            _ => true,
                         }
                     } else {
                         true
