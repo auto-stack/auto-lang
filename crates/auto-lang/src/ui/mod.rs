@@ -14,6 +14,7 @@ pub mod app;
 pub mod widget;
 pub mod style;
 pub mod debug;
+pub mod vm_bridge;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod interpreter;
