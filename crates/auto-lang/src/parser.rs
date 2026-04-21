@@ -905,6 +905,20 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Continue)
     }
 
+    /// Plan 200 Task 1.1: loop { body } desugars to for ever { body }
+    fn loop_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `loop`
+        let body = self.body()?;
+        let has_new_line = body.has_new_line;
+        Ok(Stmt::For(For {
+            iter: Iter::Ever,
+            range: Expr::Nil,
+            body,
+            new_line: has_new_line,
+            init: None,
+        }))
+    }
+
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
         let expr = self.parse_expr()?;
@@ -973,6 +987,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::Mut
                 | TokenKind::Hold
                 | TokenKind::For
+                | TokenKind::Loop
                 | TokenKind::If
                 | TokenKind::Break
                 | TokenKind::Continue
@@ -3281,6 +3296,7 @@ impl<'a> Parser<'a> {
             TokenKind::Dep => self.dep_stmt()?, // Plan 092: Dependency declaration
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
+            TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1
             TokenKind::Is => self.is_stmt()?,
             // Plan 095: Compile-time execution statements
             TokenKind::HashIf => self.hash_if_stmt()?,

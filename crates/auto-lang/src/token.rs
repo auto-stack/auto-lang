@@ -90,6 +90,7 @@ pub enum TokenKind {
     If,
     Else,
     For,
+    Loop, // Plan 200: loop { body } desugars to for ever { body }
     Break,
     Continue,
     Return, // ADDED: return keyword for early returns
@@ -219,6 +220,7 @@ impl fmt::Display for Token {
             TokenKind::If => write!(f, "<if>"),
             TokenKind::Else => write!(f, "<else>"),
             TokenKind::For => write!(f, "<for>"),
+            TokenKind::Loop => write!(f, "<loop>"),
             TokenKind::Var => write!(f, "<var>"),
             TokenKind::Let => write!(f, "<let>"),
             TokenKind::Mut => write!(f, "<mut>"),
@@ -341,6 +343,7 @@ impl Token {
             "if" => Some(TokenKind::If),
             "else" => Some(TokenKind::Else),
             "for" => Some(TokenKind::For),
+            "loop" => Some(TokenKind::Loop), // Plan 200 Task 1.1
             "is" => Some(TokenKind::Is),
             "var" => Some(TokenKind::Var),
             "in" => Some(TokenKind::In),
@@ -367,6 +370,7 @@ impl Token {
             "alias" => Some(TokenKind::Alias),
             "break" => Some(TokenKind::Break),
             "continue" => Some(TokenKind::Continue),
+            "next" => Some(TokenKind::Continue), // Plan 200 Task 1.2: next → continue alias
             "return" => Some(TokenKind::Return),
             "ext" => Some(TokenKind::Ext),
             "static" => Some(TokenKind::Static),
@@ -441,5 +445,17 @@ mod tests {
         // Test that "Go" (capitalized) is NOT recognized as a keyword
         let kind = Token::keyword_kind("Go");
         assert_eq!(kind, None);
+    }
+
+    #[test]
+    fn test_loop_keyword() {
+        // Plan 200 Task 1.1: loop keyword
+        assert_eq!(Token::keyword_kind("loop"), Some(TokenKind::Loop));
+    }
+
+    #[test]
+    fn test_next_keyword() {
+        // Plan 200 Task 1.2: next → continue alias
+        assert_eq!(Token::keyword_kind("next"), Some(TokenKind::Continue));
     }
 }

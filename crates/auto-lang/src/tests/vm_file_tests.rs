@@ -111,6 +111,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_05_loops_002_range_inclusive() { test_vm("05_loops/002_range_inclusive").unwrap(); }
 #[test] fn test_05_loops_003_range_literal() { test_vm("05_loops/003_range_literal").unwrap(); }
 #[test] fn test_05_loops_004_for_each_object() { test_vm("05_loops/004_for_each_object").unwrap(); }
+#[test] fn test_05_loops_005_loop_keyword() { test_vm("05_loops/005_loop_keyword").unwrap(); }
 
 // === 06_arrays ===
 #[test] fn test_06_arrays_001_array_literal() { test_vm("06_arrays/001_array_literal").unwrap(); }
