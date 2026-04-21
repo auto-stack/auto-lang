@@ -332,6 +332,12 @@ enum Commands {
     },
     #[command(about = "Transpile Auto to Rust", hide = true)]
     Rust { path: String },
+    #[command(about = "Transpile Rust to AutoLang (r2a)", hide = true)]
+    R2a {
+        path: String,
+        #[arg(short, long, help = "Output file path")]
+        output: Option<String>,
+    },
     #[command(about = "Transpile Auto to Python", hide = true)]
     Python { path: String },
     #[command(about = "Transpile Auto to JavaScript", hide = true)]
@@ -1025,6 +1031,18 @@ fn main() -> Result<()> {
                 } else {
                     output_success(ai_mode, &js);
                 }
+            }
+        }
+        Some(Commands::R2a { path, output }) => {
+            let r = auto_lang::transpile_r2a_file(path.as_str()).map_err(|e| {
+                if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                to_miette_err(e)
+            })?;
+            if let Some(out) = output {
+                std::fs::write(&out, &r).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                println!("[r2a] {} -> {}", path, out);
+            } else {
+                output_success(ai_mode, &r);
             }
         }
         Some(Commands::A2cStdlib) => {

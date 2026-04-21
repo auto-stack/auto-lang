@@ -35,6 +35,7 @@ pub enum OpCode {
     ARRAY_LEN = 0x48,      // Plan 089: Get array length (array_id) -> length
     MOD_F = 0x49,          // f32 % f32 -> f32
     MOD_D = 0x4A,          // f64 % f64 -> f64
+    SLICE = 0x5C,          // Slice: (container, start, end) -> new_container, -1 = from start/end
     PROMOTE_F64 = 0xF1, // Plan 073: Widen f32 to f64 (1 slot -> 2 slots)
     RET_D = 0xF2,       // RET for 2-slot return values (f64, u64, i64): pops 2 slots, writes 2 slots
 
@@ -276,6 +277,7 @@ impl OpCode {
         // Comparison & bitwise
         0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A,
         0x4B, // U64_TO_F64
+        0x5C, // SLICE
         // 64-bit integer arithmetic
         0x4C, 0x4D, 0x4E, 0x4F,
         // Control flow

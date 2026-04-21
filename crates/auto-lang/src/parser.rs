@@ -1723,10 +1723,47 @@ impl<'a> Parser<'a> {
                 }
 
                 match op {
-                    // Index
+                    // Index or slice
                     Op::LSquare => {
                         self.next(); // skip [
-                        let rhs = self.expr_pratt(0)?;
+                        let rhs = if self.is_kind(TokenKind::Range) || self.is_kind(TokenKind::RangeEq) {
+                            // Leading ..: expr[..end] or expr[..=end]
+                            let eq = self.is_kind(TokenKind::RangeEq);
+                            self.next(); // skip .. or ..=
+                            let end_expr = self.expr_pratt(0)?;
+                            Expr::Range(Range {
+                                start: Box::new(Expr::Nil),
+                                end: Box::new(end_expr),
+                                eq,
+                            })
+                        } else if self.is_kind(TokenKind::RSquare) {
+                            Expr::Nil
+                        } else {
+                            // Parse first expr with high priority to stop before consuming ..
+                            let first = self.expr_pratt(18)?;
+                            if self.is_kind(TokenKind::Range) || self.is_kind(TokenKind::RangeEq) {
+                                let eq = self.is_kind(TokenKind::RangeEq);
+                                self.next(); // skip .. or ..=
+                                if self.is_kind(TokenKind::RSquare) {
+                                    // Trailing ..: expr[pos..]
+                                    Expr::Range(Range {
+                                        start: Box::new(first),
+                                        end: Box::new(Expr::Nil),
+                                        eq,
+                                    })
+                                } else {
+                                    // expr[start..end] or expr[start..end..step]
+                                    let rhs_rest = self.expr_pratt(0)?;
+                                    Expr::Range(Range {
+                                        start: Box::new(first),
+                                        end: Box::new(rhs_rest),
+                                        eq,
+                                    })
+                                }
+                            } else {
+                                first
+                            }
+                        };
                         self.expect(TokenKind::RSquare)?;
                         lhs = Expr::Index(Box::new(lhs), Box::new(rhs));
                         continue;
@@ -1822,13 +1859,32 @@ impl<'a> Parser<'a> {
                     continue;
                 }
                 // May type operators (Phase 1b.3): ?. error propagation
+                // ?.       → ErrorPropagate (unwrap + propagate)
                 Op::DotQuestion => {
-                    lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    if self.is_kind(TokenKind::LParen) {
+                        // ?.(default) — safe unwrap with default value
+                        self.next(); // consume (
+                        let default = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::NullCoalesce(Box::new(lhs), Box::new(default));
+                    } else {
+                        lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    }
                     continue;
                 }
                 // Plan 120: .? error propagation (new Option/Result style)
+                // .?       → ErrorPropagate (unwrap + propagate)
+                // .?(expr) → NullCoalesce (unwrap with default)
                 Op::DotQuest => {
-                    lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    if self.is_kind(TokenKind::LParen) {
+                        // .?(default) — safe unwrap with default value
+                        self.next(); // consume (
+                        let default = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::NullCoalesce(Box::new(lhs), Box::new(default));
+                    } else {
+                        lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    }
                     continue;
                 }
                 _ => {
@@ -4803,11 +4859,120 @@ impl<'a> Parser<'a> {
     }
 
     pub fn if_stmt(&mut self) -> AutoResult<Stmt> {
-        let (branches, else_stmt) = self.if_contents()?;
+        // Check for `if let` syntax sugar
+        // if let Some(x) = expr { body }  desugars to  is expr { Some(x) -> body }
+        self.next(); // skip `if`
+        if self.is_kind(TokenKind::Let) {
+            return self.if_let_stmt();
+        }
+
+        // Normal if: we already consumed `if`, handle the rest inline
+        let cond = self.parse_expr()?;
+        let body = self.body()?;
+        let mut branches = vec![Branch { cond, body }];
+
+        let mut else_stmt = None;
+        while self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+            if self.is_kind(TokenKind::If) {
+                self.next(); // skip if
+                if self.is_kind(TokenKind::Let) {
+                    // else if let — wrap in else { is ... }
+                    let is_stmt = self.if_let_stmt_inner()?;
+                    let mut else_body = Body::new();
+                    else_body.stmts.push(is_stmt);
+                    else_stmt = Some(else_body);
+                    break;
+                }
+                let cond = self.parse_expr()?;
+                let body = self.body()?;
+                branches.push(Branch { cond, body });
+            } else {
+                else_stmt = Some(self.body()?);
+            }
+        }
+
         Ok(Stmt::If(If {
             branches,
             else_: else_stmt,
         }))
+    }
+
+    /// Parse `if let Pattern = expr { body } else { ... }`
+    /// `let` has already been consumed by the caller.
+    fn if_let_stmt(&mut self) -> AutoResult<Stmt> {
+        self.if_let_stmt_inner()
+    }
+
+    /// Inner implementation — `let` has NOT been consumed yet.
+    fn if_let_stmt_inner(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `let`
+        let pattern = self.is_branch_cond_expr()?;
+        self.expect(TokenKind::Asn)?;
+        let target = self.parse_expr()?;
+
+        // Bind pattern variables into scope before parsing body
+        let body = self.bind_pattern_and_parse_body(&pattern, &target)?;
+
+        let mut branches = vec![IsBranch::EqBranch(vec![pattern], body)];
+
+        // Optional else clause
+        if self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+            let else_body = self.parse_expr_or_body()?;
+            branches.push(IsBranch::ElseBranch(else_body));
+        }
+
+        Ok(Stmt::Is(Is { target, branches }))
+    }
+
+    /// Bind pattern variables into parser scope and parse the body.
+    /// Mirrors the binding logic in `parse_is_branch`.
+    fn bind_pattern_and_parse_body(&mut self, pattern: &Expr, target: &Expr) -> AutoResult<Body> {
+        if let Expr::OptionPattern(opt_cover) = pattern {
+            if let Some(binding) = &opt_cover.binding {
+                self.enter_scope();
+                self.define(
+                    binding.as_str(),
+                    Meta::Store(Store {
+                        name: binding.clone(),
+                        kind: StoreKind::Let,
+                        ty: Type::Unknown,
+                        expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
+                            src: target.repr(),
+                            variant: opt_cover.variant,
+                            binding: binding.clone(),
+                        }),
+                    }),
+                );
+                let body = self.parse_expr_or_body()?;
+                self.exit_scope();
+                return Ok(body);
+            }
+        }
+        if let Expr::ResultPattern(res_cover) = pattern {
+            if let Some(binding) = &res_cover.binding {
+                self.enter_scope();
+                self.define(
+                    binding.as_str(),
+                    Meta::Store(Store {
+                        name: binding.clone(),
+                        kind: StoreKind::Let,
+                        ty: Type::Unknown,
+                        expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
+                            src: target.repr(),
+                            variant: res_cover.variant,
+                            binding: binding.clone(),
+                        }),
+                    }),
+                );
+                let body = self.parse_expr_or_body()?;
+                self.exit_scope();
+                return Ok(body);
+            }
+        }
+        // Tag pattern or simple pattern — no binding
+        self.parse_expr_or_body()
     }
 
     pub fn for_stmt(&mut self) -> AutoResult<Stmt> {

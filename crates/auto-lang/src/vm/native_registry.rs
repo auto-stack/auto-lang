@@ -496,6 +496,9 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Str.lines", 1515);
     registry.register_with_id("Str.parse_int", 1516);
     registry.register_with_id("Str.parse_float", 1517);
+    registry.register_with_id("Str.split_once", 1518);
+    registry.register_with_id("Str.match_count", 1519);
+    registry.register_with_id("Str.replace_first", 1520);
 
     // String function aliases matching str.at method names
     registry.register_with_id("auto.str.upper", 1511);  // alias for to_upper
@@ -526,6 +529,9 @@ pub fn register_builtin_natives() {
     registry.register_with_id_and_type("str.lines", 1515, NativeRetType::String);
     registry.register_with_id_and_type("str.parse_int", 1516, NativeRetType::Int);
     registry.register_with_id_and_type("str.parse_float", 1517, NativeRetType::Float);
+    registry.register_with_id_and_type("str.split_once", 1518, NativeRetType::List);
+    registry.register_with_id_and_type("str.match_count", 1519, NativeRetType::Int);
+    registry.register_with_id_and_type("str.replace_first", 1520, NativeRetType::String);
     registry.register_with_id("str.upper", 1511);   // alias for to_upper
     registry.register_with_id("str.lower", 1512);   // alias for to_lower
     registry.register_with_id("str.sub", 1503);     // alias for substr

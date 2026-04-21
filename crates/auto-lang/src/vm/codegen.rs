@@ -1064,6 +1064,10 @@ impl Codegen {
                         if matches!(store.ty, Type::Unknown) || matches!(store.ty, Type::Float) {
                             self.var_types.insert(name_str.clone(), Type::Double);
                         }
+                    } else if matches!(self.last_expr_type, ObjectType::String) {
+                        if matches!(store.ty, Type::Unknown) {
+                            self.var_types.insert(name_str.clone(), Type::Str(0));
+                        }
                     } else if matches!(self.last_expr_type, ObjectType::Uint) {
                         if matches!(store.ty, Type::Unknown) || matches!(store.ty, Type::Int) {
                             self.var_types.insert(name_str.clone(), Type::U64);
@@ -3609,7 +3613,29 @@ impl Codegen {
             // Plan 073: Array indexing (arr[index])
             // Plan 118 Phase 4: Also supports string indexing (str[index] -> char)
             Expr::Index(arr, idx) => {
-                // Compile array/string expression (should push array_id or tagged_str_idx onto stack)
+                // Check for range slice: arr[start..end], arr[..end], arr[start..]
+                if let Expr::Range(range) = idx.as_ref() {
+                    // Compile container
+                    self.compile_expr(arr)?;
+                    // Compile start (push -1 if Nil = from beginning)
+                    if matches!(range.start.as_ref(), Expr::Nil) {
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(-1);
+                    } else {
+                        self.compile_expr(&range.start)?;
+                    }
+                    // Compile end (push -1 if Nil = to end)
+                    if matches!(range.end.as_ref(), Expr::Nil) {
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(-1);
+                    } else {
+                        self.compile_expr(&range.end)?;
+                    }
+                    self.emit(OpCode::SLICE);
+                    self.last_expr_type = ObjectType::String; // default: string slice
+                    return Ok(());
+                }
+                // Normal index: compile array/string expression
                 self.compile_expr(arr)?;
                 // Compile index expression (should push index onto stack)
                 self.compile_expr(idx)?;
@@ -7065,7 +7091,16 @@ impl Codegen {
                 Type::Array(_) => Some("Array".to_string()),
                 Type::List(_) => Some("List".to_string()),
                 Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
-                Type::User(type_decl) => Some(type_decl.name.to_string()),
+                Type::Option(_) => Some("Option".to_string()),
+                Type::User(type_decl) => {
+                    let name = type_decl.name.to_string();
+                    // Option.Some/Option.None → "Option" for method dispatch
+                    if name.starts_with("Option.") || name.starts_with("Result.") {
+                        name.split('.').next().map(|s| s.to_string())
+                    } else {
+                        Some(name)
+                    }
+                }
                 Type::GenericInstance(inst) => Some(inst.base_name.to_string()),
                 _ => None,
             }

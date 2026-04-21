@@ -1,0 +1,20 @@
+fn main() {
+    let s = "hello world"
+
+    // Full range
+    let s1 = s[0..5]
+    assert_eq(s1, "hello")
+
+    let s2 = s[6..11]
+    assert_eq(s2, "world")
+
+    // Open-start: [..pos]
+    let s3 = s[..5]
+    assert_eq(s3, "hello")
+
+    // Open-end: [pos..]
+    let s4 = s[6..]
+    assert_eq(s4, "world")
+
+    print("99_slice: all assertions passed")
+}

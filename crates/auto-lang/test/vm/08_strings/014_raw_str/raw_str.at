@@ -1,0 +1,8 @@
+let a = `hello world`
+assert_eq(a, "hello world")
+
+let b = `path\to\file`
+assert_eq(b, "path\\to\\file")
+
+let c = `say "hi"`
+print("raw_str: all passed")

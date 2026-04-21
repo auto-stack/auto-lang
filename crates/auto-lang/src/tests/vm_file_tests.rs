@@ -144,6 +144,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_08_strings_011_vm_stub_panic() { test_vm("08_strings/011_vm_stub_panic").unwrap(); }
 #[test] fn test_08_strings_012_str_eq() { test_vm("08_strings/012_str_eq").unwrap(); }
 #[test] fn test_08_strings_013_str_param() { test_vm("08_strings/013_str_param").unwrap(); }
+#[test] fn test_08_strings_014_raw_str() { test_vm("08_strings/014_raw_str").unwrap(); }
 
 // === 09_functions ===
 #[test] fn test_09_functions_001_fn_simple() { test_vm("09_functions/001_fn_simple").unwrap(); }
@@ -277,6 +278,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_16_option_result_014_is_none_match() { test_vm("16_option_result/014_is_none_match").unwrap(); }
 #[test] fn test_16_option_result_015_is_ok_binding() { test_vm("16_option_result/015_is_ok_binding").unwrap(); }
 #[test] fn test_16_option_result_016_is_err_match() { test_vm("16_option_result/016_is_err_match").unwrap(); }
+#[test] fn test_16_option_result_017_unwrap_or() { test_vm("16_option_result/017_unwrap_or").unwrap(); }
 
 // === 17_modules ===
 #[test] fn test_17_modules_001_use_fn() { test_vm("17_modules/001_use_fn").unwrap(); }

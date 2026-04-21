@@ -1,0 +1,18 @@
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let a = Point { x: 1, y: 2 }
+    let b = Point { x: 3, y: 4 }
+    let list = [a, b]
+    assert_eq(list.len(), 2)
+    let first = list[0]
+    assert_eq(first.x, 1)
+    assert_eq(first.y, 2)
+    let second = list[1]
+    assert_eq(second.x, 3)
+    assert_eq(second.y, 4)
+    print("array_len_user_type: passed")
+}

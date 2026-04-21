@@ -1289,6 +1289,17 @@ pub fn trans_typescript_to(path: &str, output: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, output))
 }
 
+/// Transpile Rust file to AutoLang (Plan 173: r2a)
+pub fn transpile_r2a_file(path: &str) -> AutoResult<String> {
+    let rust_code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let name = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main");
+    crate::trans::r2a::transpile_r2a(name, &rust_code)
+}
+
 // ============================================================================
 // Plan 096: UI Backend Generators
 // ============================================================================

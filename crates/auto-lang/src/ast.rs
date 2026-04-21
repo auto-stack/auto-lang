@@ -684,9 +684,31 @@ impl AtomWriter for Expr {
                 // Check if this is a slice expression (index with range or range with step)
                 match &**index {
                     Expr::Range(range) => {
-                        // Check if start is itself a Range (which means this is a slice with step)
-                        if let Expr::Range(inner_range) = &*range.start {
-                            // Slice with step: arr[0..10..2] parses as Range(Range(0, 10), 2)
+                        // Check if end is a Range (step syntax: arr[0..10..2] → Range(0, Range(10, 2)))
+                        if let Expr::Range(inner_range) = &*range.end {
+                            let start_str = match &*range.start {
+                                Expr::Int(i) => i.to_string(),
+                                Expr::Nil => "0".to_string(),
+                                _ => range.start.to_atom_str().to_string(),
+                            };
+                            let end_str = match &*inner_range.start {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.start.to_atom_str().to_string(),
+                            };
+                            let step_str = match &*inner_range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.end.to_atom_str().to_string(),
+                            };
+                            write!(
+                                f,
+                                "slice({}, {}, {}, {})",
+                                array.to_atom_str(),
+                                start_str,
+                                end_str,
+                                step_str
+                            )?;
+                        } else if let Expr::Range(inner_range) = &*range.start {
+                            // Old format: Range(Range(0, 10), 2) — step in start
                             let start_str = match &*inner_range.start {
                                 Expr::Int(i) => i.to_string(),
                                 _ => inner_range.start.to_atom_str().to_string(),
@@ -708,12 +730,14 @@ impl AtomWriter for Expr {
                                 step_str
                             )?;
                         } else {
-                            // Simple slice: arr[0..10]
+                            // Simple slice: arr[0..10] or arr[..5] or arr[5..]
                             let start_str = match &*range.start {
+                                Expr::Nil => "0".to_string(),
                                 Expr::Int(i) => i.to_string(),
                                 _ => range.start.to_atom_str().to_string(),
                             };
                             let end_str = match &*range.end {
+                                Expr::Nil => "len".to_string(),
                                 Expr::Int(i) => i.to_string(),
                                 _ => range.end.to_atom_str().to_string(),
                             };

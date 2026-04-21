@@ -233,6 +233,9 @@ pub const NATIVE_STR_FIND: u16 = 1514;
 pub const NATIVE_STR_LINES: u16 = 1515;
 pub const NATIVE_STR_PARSE_INT: u16 = 1516;
 pub const NATIVE_STR_PARSE_FLOAT: u16 = 1517;
+pub const NATIVE_STR_SPLIT_ONCE: u16 = 1518;
+pub const NATIVE_STR_MATCH_COUNT: u16 = 1519;
+pub const NATIVE_STR_REPLACE_FIRST: u16 = 1520;
 
 // Char functions: 1600-1699
 pub const NATIVE_CHAR_IS_ALPHA: u16 = 1600;
@@ -749,6 +752,27 @@ pub fn shim_str_parse_int(s: String) -> Result<i64, String> {
 #[auto_macros::rust_fn("Str.parse_float")]
 pub fn shim_str_parse_float(s: String) -> Result<f64, String> {
     s.trim().parse::<f64>().map_err(|e| format!("Str.parse_float failed: {}", e))
+}
+
+/// Split string at first occurrence of delimiter, returns empty list if not found
+#[auto_macros::rust_fn("Str.split_once")]
+pub fn shim_str_split_once(s: String, delimiter: String) -> Vec<String> {
+    match s.split_once(&delimiter) {
+        Some((before, after)) => vec![before.to_string(), after.to_string()],
+        None => vec![],
+    }
+}
+
+/// Count non-overlapping occurrences of pattern in string
+#[auto_macros::rust_fn("Str.match_count")]
+pub fn shim_str_match_count(s: String, pattern: String) -> i32 {
+    s.matches(&pattern).count() as i32
+}
+
+/// Replace first occurrence of from with to
+#[auto_macros::rust_fn("Str.replace_first")]
+pub fn shim_str_replace_first(s: String, from: String, to: String) -> String {
+    s.replacen(&from, &to, 1)
 }
 
 // ============================================================================
@@ -2840,6 +2864,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_STR_LINES, __shim_Str_lines);
     natives.register_static(NATIVE_STR_PARSE_INT, __shim_Str_parse_int);
     natives.register_static(NATIVE_STR_PARSE_FLOAT, __shim_Str_parse_float);
+    natives.register_static(NATIVE_STR_SPLIT_ONCE, __shim_Str_split_once);
+    natives.register_static(NATIVE_STR_MATCH_COUNT, __shim_Str_match_count);
+    natives.register_static(NATIVE_STR_REPLACE_FIRST, __shim_Str_replace_first);
 
     // Char functions
     natives.register_static(NATIVE_CHAR_IS_ALPHA, __shim_Char_is_alpha);

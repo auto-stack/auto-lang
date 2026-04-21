@@ -2234,6 +2234,47 @@ impl AutoVM {
                         )));
                     }
                 }
+                // Slice: stack: container, start, end -> new_container
+                OpCode::SLICE => {
+                    let end = task.ram.pop_i32();
+                    let start = task.ram.pop_i32();
+                    let container = task.ram.pop_i32();
+
+                    // Tagged string slice
+                    if container < 0 && container > -1000000 && container != -2147483648 {
+                        let str_idx = (-container - 1) as usize;
+                        let strings = self.strings.read().unwrap();
+                        if let Some(bytes) = strings.get(str_idx) {
+                            let s = String::from_utf8_lossy(bytes).to_string();
+                            let chars: Vec<char> = s.chars().collect();
+                            let len = chars.len();
+                            let s_start = if start < 0 { 0 } else { (start as usize).min(len) };
+                            let s_end = if end < 0 { len } else { (end as usize).min(len) };
+                            let sliced: String = chars[s_start..s_end].iter().collect();
+                            drop(strings);
+                            let new_idx = self.add_string(sliced.into_bytes());
+                            task.ram.push_i32(-((new_idx as i32) + 1));
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        // Array slice
+                        let arr_key = container as u64;
+                        if let Some(arr_lock) = self.arrays.get(&arr_key) {
+                            let arr = arr_lock.read().unwrap();
+                            let len = arr.len();
+                            let s_start = if start < 0 { 0 } else { (start as usize).min(len) };
+                            let s_end = if end < 0 { len } else { (end as usize).min(len) };
+                            let sliced: Vec<auto_val::Value> = arr[s_start..s_end].to_vec();
+                            drop(arr);
+                            let new_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
+                            self.arrays.insert(new_id, Arc::new(RwLock::new(sliced)));
+                            task.ram.push_i32(new_id as i32);
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    }
+                }
                 // Plan 073: Array element access (arr[index])
                 // Plan 080: Also supports heap objects (lists like List<int>)
                 // Plan 118 Phase 4: Also supports string indexing (str[index])

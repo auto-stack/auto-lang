@@ -1,0 +1,19 @@
+fn main() {
+    // match_count
+    let count = "hello world hello".match_count("hello")
+    assert_eq(count, 2)
+    let count2 = "aaa".match_count("a")
+    assert_eq(count2, 3)
+    let count3 = "hello".match_count("x")
+    assert_eq(count3, 0)
+
+    // replace_first
+    let r1 = "hello world hello".replace_first("hello", "hi")
+    assert_eq(r1, "hi world hello")
+    let r2 = "aaa".replace_first("a", "b")
+    assert_eq(r2, "baa")
+    let r3 = "hello".replace_first("x", "y")
+    assert_eq(r3, "hello")
+
+    print("99_str_natives: all assertions passed")
+}

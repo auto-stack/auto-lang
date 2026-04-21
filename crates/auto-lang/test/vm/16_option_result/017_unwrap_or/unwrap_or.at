@@ -1,0 +1,9 @@
+let a = Some(42)
+let b = a.?(0)
+assert_eq(b, 42)
+
+let c = None
+let d = c.?(99)
+assert_eq(d, 99)
+
+print("dot_quest_default: all passed")

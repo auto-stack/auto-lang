@@ -284,6 +284,22 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text.into())
     }
 
+    /// Parse a backtick raw string: `...`
+    /// No escape sequences are processed — everything between backticks is literal.
+    pub fn raw_str(&mut self) -> Token {
+        let mut text = String::new();
+        self.chars.next(); // skip opening `
+        while let Some(&c) = self.chars.peek() {
+            if c == '`' {
+                self.chars.next();
+                break;
+            }
+            text.push(c);
+            self.chars.next();
+        }
+        Token::str(self.pos(text.len()), text.into())
+    }
+
     /// Plan 168: Parse a triple-quoted multi-line string: """..."""
     /// The LAST three consecutive quotes close the string.
     /// If 4+ quotes appear, extras become content (e.g. """" → " then close).
@@ -738,6 +754,9 @@ impl<'a> Lexer<'a> {
                         return Ok(self.multi_str());
                     }
                     return Ok(self.str());
+                }
+                '`' => {
+                    return Ok(self.raw_str());
                 }
                 '#' => {
                     // Plan 095: Check for comptime keywords (#if, #for, #is, #{)
