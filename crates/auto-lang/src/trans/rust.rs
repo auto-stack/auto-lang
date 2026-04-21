@@ -331,6 +331,55 @@ impl RustTrans {
         }
     }
 
+    /// Plan 204 Phase 1B: Return type mapping for function return positions.
+    /// Auto `str` (parsed as `StrSlice`) should produce Rust `String` in return
+    /// position, while parameters keep `&str` for borrowed semantics.
+    fn rust_return_type_name(&self, ty: &Type) -> String {
+        match ty {
+            // str/CStr in return position -> String (owned, safe default)
+            Type::StrSlice | Type::CStr => "String".to_string(),
+            // Option<str> / Option<cstr> -> Option<String>
+            Type::Option(inner) => {
+                format!("Option<{}>", self.rust_return_type_name(inner))
+            }
+            // Result<str> -> Result<String, String>
+            Type::Result(inner) => {
+                format!("Result<{}, String>", self.rust_return_type_name(inner))
+            }
+            // Fn type: use return type mapping for the return position
+            Type::Fn(params, ret) => {
+                let param_str: Vec<String> =
+                    params.iter().map(|p| self.rust_type_name(p)).collect();
+                format!(
+                    "fn({}) -> {}",
+                    param_str.join(", "),
+                    self.rust_return_type_name(ret)
+                )
+            }
+            // Recurse into generic instances to handle Future<String> etc.
+            Type::GenericInstance(inst) => {
+                let args: Vec<String> = inst.args.iter().map(|t| self.rust_return_type_name(t)).collect();
+                let base = if let Some(ref source) = inst.source {
+                    source.short_name().to_string()
+                } else {
+                    inst.base_name.to_string()
+                };
+                format!("{}<{}>", base, args.join(", "))
+            }
+            // Tuple: recurse in case inner types need mapping
+            Type::Tuple(ts) => {
+                let elems: Vec<String> = ts.iter().map(|t| self.rust_return_type_name(t)).collect();
+                format!("({})", elems.join(", "))
+            }
+            // Handle type: recurse for inner type
+            Type::Handle { task_type } => {
+                format!("std::sync::Arc<TaskHandle<{}>>", self.rust_return_type_name(task_type))
+            }
+            // All other types delegate to rust_type_name
+            _ => self.rust_type_name(ty),
+        }
+    }
+
     /// Emit a2r standard library import
     /// Uses the crate's a2r_std module instead of embedding
     fn emit_a2r_stdlib(&self, out: &mut impl Write) -> AutoResult<()> {
@@ -1559,11 +1608,88 @@ impl RustTrans {
             }
         }
 
-        // Plan 151 Phase 1.3: Method call translations
+        // Plan 151 Phase 1.3 + Plan 204 Phase 5: Method call translations
         // Translate Auto method names to Rust equivalents
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
             if matches!(op, Op::Dot) {
                 if let Expr::Ident(method_name) = rhs.as_ref() {
+                    // Plan 204 Phase 5: Complex method translations requiring
+                    // non-trivial Rust output (not just a name remap).
+                    match method_name.as_str() {
+                        "char_at" => {
+                            // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
+                            self.expr(lhs, out)?;
+                            write!(out, ".chars().nth(")?;
+                            if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                                self.expr(arg, out)?;
+                            }
+                            write!(out, " as usize).unwrap_or('\\0')")?;
+                            return Ok(());
+                        }
+                        "sub" => {
+                            // s.sub(start, end) -> &s[start..end]
+                            write!(out, "&")?;
+                            self.expr(lhs, out)?;
+                            write!(out, "[")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, "..")?;
+                            if call.args.args.len() > 1 {
+                                if let Arg::Pos(a) = &call.args.args[1] {
+                                    self.expr(a, out)?;
+                                }
+                            }
+                            write!(out, "]")?;
+                            return Ok(());
+                        }
+                        "slice" => {
+                            // s.slice(n) -> &s[n..]
+                            write!(out, "&")?;
+                            self.expr(lhs, out)?;
+                            write!(out, "[")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, "..]")?;
+                            return Ok(());
+                        }
+                        "repeat" => {
+                            // s.repeat(n) -> s.repeat(n as usize)
+                            self.expr(lhs, out)?;
+                            write!(out, ".repeat(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                                write!(out, " as usize")?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        "find" => {
+                            // s.find(sub) -> s.find(sub).map(|i| i as i32).unwrap_or(-1)
+                            self.expr(lhs, out)?;
+                            write!(out, ".find(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ").map(|i| i as i32).unwrap_or(-1)")?;
+                            return Ok(());
+                        }
+                        "to_hex" => {
+                            // val.to_hex(width) -> format!("{:0>width$x}", val, width = width)
+                            write!(out, "format!(\"{{:0>width$x}}\", ")?;
+                            self.expr(lhs, out)?;
+                            write!(out, ", width = ")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        _ => {} // fall through to simple name-remap table
+                    }
+
+                    // Simple name-remap table
                     let rust_method = match method_name.as_str() {
                         // String methods
                         "to_lower" => Some("to_lowercase"),
@@ -1628,6 +1754,78 @@ impl RustTrans {
                     write!(out, "(!")?;
                     self.expr(object, out)?;
                     write!(out, ".is_null())")?;
+                    return Ok(());
+                }
+                // Plan 204 Phase 5: Complex method translations requiring
+                // non-trivial Rust output (not just a name remap).
+                "char_at" => {
+                    // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
+                    self.expr(object, out)?;
+                    write!(out, ".chars().nth(")?;
+                    if let Some(Arg::Pos(arg)) = call.args.args.first() {
+                        self.expr(arg, out)?;
+                    }
+                    write!(out, " as usize).unwrap_or('\\0')")?;
+                    return Ok(());
+                }
+                "sub" => {
+                    // s.sub(start, end) -> &s[start..end]
+                    write!(out, "&")?;
+                    self.expr(object, out)?;
+                    write!(out, "[")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, "..")?;
+                    if call.args.args.len() > 1 {
+                        if let Arg::Pos(a) = &call.args.args[1] {
+                            self.expr(a, out)?;
+                        }
+                    }
+                    write!(out, "]")?;
+                    return Ok(());
+                }
+                "slice" => {
+                    // s.slice(n) -> &s[n..]
+                    write!(out, "&")?;
+                    self.expr(object, out)?;
+                    write!(out, "[")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, "..]")?;
+                    return Ok(());
+                }
+                "repeat" => {
+                    // s.repeat(n) -> s.repeat(n as usize)
+                    self.expr(object, out)?;
+                    write!(out, ".repeat(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                        write!(out, " as usize")?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "find" => {
+                    // s.find(sub) -> s.find(sub).map(|i| i as i32).unwrap_or(-1)
+                    self.expr(object, out)?;
+                    write!(out, ".find(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, ").map(|i| i as i32).unwrap_or(-1)")?;
+                    return Ok(());
+                }
+                "to_hex" => {
+                    // val.to_hex(width) -> format!("{:0>width$x}", val, width = width)
+                    write!(out, "format!(\"{{:0>width$x}}\", ")?;
+                    self.expr(object, out)?;
+                    write!(out, ", width = ")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, ")")?;
                     return Ok(());
                 }
                 _ => {} // fall through to regular method handling
@@ -1747,6 +1945,37 @@ impl RustTrans {
             if is_type {
                 // This is a struct construction: Type { field1: value1, ... }
                 return self.struct_init(type_name, &call.args, out);
+            }
+        }
+
+        // Plan 204 Phase 5: Auto stdlib free function -> Rust equivalents
+        if let Expr::Ident(fn_name) = call.name.as_ref() {
+            match fn_name.as_str() {
+                "min" => {
+                    // min(a, b) -> std::cmp::min(a, b)
+                    write!(out, "std::cmp::min(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "max" => {
+                    // max(a, b) -> std::cmp::max(a, b)
+                    write!(out, "std::cmp::max(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                _ => {}
             }
         }
 
@@ -2295,17 +2524,18 @@ impl RustTrans {
         write!(sink.body, ")")?;
 
         // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
+        // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
         if !matches!(fn_decl.ret, Type::Void) {
             let ret_str = if is_async_fn {
                 match &fn_decl.ret {
-                    Type::Handle { task_type } => self.rust_type_name(task_type),
+                    Type::Handle { task_type } => self.rust_return_type_name(task_type),
                     Type::GenericInstance(inst) if inst.base_name == "Future" => {
-                        self.rust_type_name(inst.args.first().unwrap_or(&Type::Unknown))
+                        self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
                     }
-                    other => self.rust_type_name(other),
+                    other => self.rust_return_type_name(other),
                 }
             } else {
-                self.rust_type_name(&fn_decl.ret)
+                self.rust_return_type_name(&fn_decl.ret)
             };
             write!(sink.body, " -> {}", ret_str)?;
         }

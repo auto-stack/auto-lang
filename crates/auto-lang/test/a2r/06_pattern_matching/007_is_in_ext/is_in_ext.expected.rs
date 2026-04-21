@@ -12,7 +12,7 @@ pub enum ToolError {
 
 
 impl ToolError {
-    pub fn to_string(&self) -> &str {
+    pub fn to_string(&self) -> String {
         match self {
             ToolError::ExecutionFailed(msg) => return msg,
             ToolError::InvalidInput(msg) => return msg,

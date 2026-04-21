@@ -11,7 +11,7 @@ pub enum ToolError {
 }
 
 
-pub fn handle(err: ToolError) -> &str {
+pub fn handle(err: ToolError) -> String {
     match err {
         ToolError::ExecutionFailed(msg) => return msg,
         ToolError::InvalidInput(msg) => return msg,

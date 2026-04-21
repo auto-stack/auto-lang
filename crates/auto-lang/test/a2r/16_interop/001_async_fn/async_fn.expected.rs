@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-async fn fetch_data(url: &str) -> &str {
+async fn fetch_data(url: &str) -> String {
     return url;
 }
 

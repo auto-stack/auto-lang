@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-pub fn check(x: i32) -> &str {
+pub fn check(x: i32) -> String {
     match x {
         0 => return "zero",
         1 => return "one",

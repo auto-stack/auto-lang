@@ -1024,7 +1024,8 @@ pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
         .map_err(|e| format!("Failed to read file: {}", e))
         .unwrap();
 
-    let rsname = path.replace(".at", ".rs");
+    // Plan 204 Phase 6A: Use .a2r.rs suffix to avoid overwriting .rs files
+    let rsname = path.replace(".at", ".a2r.rs");
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: Universe removed
@@ -1161,7 +1162,8 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     let results = trans.trans_incremental(session, file_id)?;
 
     // Merge results and write output file
-    let rsname = path.replace(".at", ".rs");
+    // Plan 204 Phase 6A: Use .a2r.rs suffix to avoid overwriting .rs files
+    let rsname = path.replace(".at", ".a2r.rs");
 
     let mut source_content = String::new();
     for (_frag_id, source) in &results {

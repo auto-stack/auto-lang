@@ -4,12 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-fn get_string() -> Option<&str> {
+fn get_string() -> Option<String> {
     let s: String = "hello".to_string();
     s
 }
 
-fn get_nil_string() -> Option<&str> {
+fn get_nil_string() -> Option<String> {
     None;
 }
 

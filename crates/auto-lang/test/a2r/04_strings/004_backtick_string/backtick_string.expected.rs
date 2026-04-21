@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-pub fn test() -> &str {
+pub fn test() -> String {
     let template: String = format!("hello
 world");
     return template;
