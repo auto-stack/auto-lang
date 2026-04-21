@@ -322,3 +322,8 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 // === 21_conv (Plan 194: monomorphic dispatch tests) ===
 #[test] fn test_21_conv_003_hashmap_mono_insert() { test_vm("21_conv/003_hashmap_mono_insert").unwrap(); }
 #[test] fn test_21_conv_004_hashset_mono_insert() { test_vm("21_conv/004_hashset_mono_insert").unwrap(); }
+
+// === 99_spec_dispatch (Plan 200: spec dynamic dispatch) ===
+#[test] fn test_99_spec_dispatch_000_spec_basic() { test_vm("99_spec_dispatch/000_spec_basic").unwrap(); }
+#[test] fn test_99_spec_dispatch_020_tool_registry() { test_vm("99_spec_dispatch/20_tool_registry").unwrap(); }
+#[test] fn test_99_spec_dispatch_031_tool_exec_with_perm() { test_vm("99_spec_dispatch/31_tool_exec_with_perm").unwrap(); }

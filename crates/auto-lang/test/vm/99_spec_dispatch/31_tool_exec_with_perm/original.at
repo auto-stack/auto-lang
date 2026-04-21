@@ -1,0 +1,115 @@
+/// Permission-gated tool execution.
+/// Validates: combining permission policy with tool registry, multi-step dispatch.
+
+enum PermDecision { Allow, Deny(str) }
+
+enum ToolError { PermissionDenied(str), UnknownTool(str), ExecutionFailed(str) }
+
+spec Tool {
+    fn name() str
+    fn execute(input str) !str
+    fn is_read_only() bool
+}
+
+type BashTool {}
+ext BashTool {
+    fn name() str { "Bash" }
+    fn execute(cmd str) !str { Ok(f"ran: ${cmd}") }
+    fn is_read_only() bool { false }
+}
+
+type ReadTool {}
+ext ReadTool {
+    fn name() str { "Read" }
+    fn execute(path str) !str { Ok(f"read: ${path}") }
+    fn is_read_only() bool { true }
+}
+
+type Registry {
+    tools Map<str, Tool>
+}
+
+ext Registry {
+    fn new() Registry {
+        Registry { tools: Map<str, Tool>() }
+    }
+
+    mut fn register(tool Tool) {
+        self.tools.set(tool.name(), tool)
+    }
+
+    fn get(name str) ?Tool {
+        self.tools.get(name)
+    }
+}
+
+fn check_permission(mode str, tool_name str, is_read_only bool) PermDecision {
+    is mode {
+        "allow" -> PermDecision.Allow,
+        "readonly" -> {
+            if is_read_only {
+                PermDecision.Allow
+            } else {
+                PermDecision.Deny(f"${tool_name} blocked: read-only mode")
+            }
+        },
+        "ask" -> PermDecision.Allow,
+        else -> PermDecision.Deny("unknown mode")
+    }
+}
+
+/// Execute a tool with permission check.
+fn execute_with_permission(registry Registry, perm_mode str, tool_name str, input str) !str {
+    let tool = registry.get(tool_name) ?? {
+        return Err(ToolError.UnknownTool(tool_name))
+    }
+
+    is check_permission(perm_mode, tool.name(), tool.is_read_only()) {
+        PermDecision.Allow -> tool.execute(input),
+        PermDecision.Deny(reason) -> Err(ToolError.PermissionDenied(reason))
+    }
+}
+
+fn main() {
+    var reg = Registry.new()
+    reg.register(BashTool())
+    reg.register(ReadTool())
+
+    // Allow mode: everything works
+    assert_eq(execute_with_permission(reg, "allow", "Bash", "ls").unwrap(), "ran: ls")
+    assert_eq(execute_with_permission(reg, "allow", "Read", "file.txt").unwrap(), "read: file.txt")
+
+    // ReadOnly mode: Bash blocked, Read allowed
+    let err = execute_with_permission(reg, "readonly", "Bash", "rm -rf /").unwrap_err()
+    is err {
+        ToolError.PermissionDenied(r) -> assert(r.contains("read-only"))
+        else -> assert(false, "expected PermissionDenied")
+    }
+    assert_eq(execute_with_permission(reg, "readonly", "Read", "file.txt").unwrap(), "read: file.txt")
+
+    // Unknown tool
+    let err = execute_with_permission(reg, "allow", "Missing", "x").unwrap_err()
+    is err {
+        ToolError.UnknownTool(_) -> {}
+        else -> assert(false, "expected UnknownTool")
+    }
+
+    // Batch execute with permission results
+    let calls = [("Bash", "ls"), ("Read", "a.txt"), ("Bash", "rm"), ("Read", "b.txt")]
+    var results = List<!str>()
+    for (name, input) in calls {
+        results.append(
+            execute_with_permission(reg, "readonly", name, input)
+                .map_err(|e| f"${e}")
+        )
+    }
+    assert(results[0].is_err())  // Bash blocked
+    assert(results[1].is_ok())   // Read ok
+    assert(results[2].is_err())  // Bash blocked
+    assert(results[3].is_ok())   // Read ok
+
+    print("31_tool_exec_with_perm: all assertions passed")
+    for (i, r) in results.enumerate() {
+        print(f"  [${i}] ${r}")
+    }
+}

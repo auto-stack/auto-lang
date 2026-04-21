@@ -1,0 +1,7 @@
+echo: hello
+HELLO
+wrote: hello
+echo: world
+WORLD
+wrote: world
+20_tool_registry: all assertions passed

@@ -1,0 +1,76 @@
+/// Permission-gated tool execution — VM-compatible rewrite of ac-examples/31.
+/// Original preserved as original.at
+/// Simplified: no enum with payload, no Result(!str), no Map, no closures
+/// Uses spec dispatch with permission checks
+
+spec Tool {
+    fn execute(input str) str
+    fn is_read_only() bool
+}
+
+type BashTool as Tool {
+    fn execute(input str) str {
+        f"ran: ${input}"
+    }
+    fn is_read_only() bool { false }
+}
+
+type ReadTool as Tool {
+    fn execute(input str) str {
+        f"read: ${input}"
+    }
+    fn is_read_only() bool { true }
+}
+
+fn check_permission(mode str, is_read_only bool) bool {
+    if mode == "allow" {
+        return true
+    }
+    if mode == "readonly" {
+        return is_read_only
+    }
+    false
+}
+
+fn run_tool(t Tool, input str) str {
+    t.execute(input)
+}
+
+fn tool_is_readonly(t Tool) bool {
+    t.is_read_only()
+}
+
+fn main() {
+    let bash = BashTool()
+    let read = ReadTool()
+
+    // Allow mode: everything works
+    assert(check_permission("allow", tool_is_readonly(bash)))
+    assert(check_permission("allow", tool_is_readonly(read)))
+    print(run_tool(bash, "ls"))
+    print(run_tool(read, "file.txt"))
+
+    // ReadOnly mode: Bash blocked, Read allowed
+    assert(check_permission("readonly", tool_is_readonly(bash)) == false)
+    assert(check_permission("readonly", tool_is_readonly(read)))
+
+    // Execute only read tool in readonly mode
+    if check_permission("readonly", tool_is_readonly(read)) {
+        print(run_tool(read, "data.txt"))
+    }
+
+    // Batch execute with permission checks
+    print("--- batch ---")
+    // bash + "ls": blocked (not read-only)
+    if check_permission("readonly", tool_is_readonly(bash)) {
+        print(f"ok: ${run_tool(bash, "ls")}")
+    } else {
+        print("blocked: Bash not read-only")
+    }
+    // read + "a.txt": allowed
+    if check_permission("readonly", tool_is_readonly(read)) {
+        print(f"ok: ${run_tool(read, "a.txt")}")
+    }
+
+    print("31_tool_exec_with_perm: all assertions passed")
+}

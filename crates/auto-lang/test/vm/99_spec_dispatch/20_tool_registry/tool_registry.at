@@ -1,0 +1,47 @@
+/// Tool registry — VM-compatible rewrite of ac-examples/20_tool_registry.
+/// Original preserved as original.at
+/// Tests spec dispatch with multiple tool types and execute method
+/// Note: VM currently only supports single spec method call per function
+
+spec Tool {
+    fn execute(input str) str
+}
+
+type EchoTool as Tool {
+    fn execute(input str) str {
+        f"echo: ${input}"
+    }
+}
+
+type UpperTool as Tool {
+    fn execute(input str) str {
+        input.to_upper()
+    }
+}
+
+type WriteTool as Tool {
+    fn execute(input str) str {
+        f"wrote: ${input}"
+    }
+}
+
+fn use_tool(t Tool, input str) {
+    print(t.execute(input))
+}
+
+fn main() {
+    let e = EchoTool()
+    let u = UpperTool()
+    let w = WriteTool()
+
+    // Dispatch through spec-typed parameter
+    use_tool(e, "hello")
+    use_tool(u, "hello")
+    use_tool(w, "hello")
+
+    use_tool(e, "world")
+    use_tool(u, "world")
+    use_tool(w, "world")
+
+    print("20_tool_registry: all assertions passed")
+}

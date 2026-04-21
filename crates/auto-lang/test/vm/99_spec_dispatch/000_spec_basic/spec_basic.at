@@ -1,0 +1,31 @@
+spec Tool {
+    fn execute(input str) str
+}
+
+type EchoTool as Tool {
+    name str
+    fn execute(input str) str {
+        f"${name}: ${input}"
+    }
+}
+
+type ReverseTool as Tool {
+    prefix str
+    fn execute(input str) str {
+        f"${prefix} reversed(${input})"
+    }
+}
+
+fn use_tool(t Tool, input str) {
+    let result = t.execute(input)
+    print(result)
+}
+
+fn main() {
+    let e = EchoTool(name: "echo")
+    let r = ReverseTool(prefix: ">>")
+    use_tool(e, "hello")
+    use_tool(r, "hello")
+    use_tool(e, "world")
+    use_tool(r, "world")
+}

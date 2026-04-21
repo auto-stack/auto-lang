@@ -1,0 +1,7 @@
+ran: ls
+read: file.txt
+read: data.txt
+--- batch ---
+blocked: Bash not read-only
+ok: read: a.txt
+31_tool_exec_with_perm: all assertions passed

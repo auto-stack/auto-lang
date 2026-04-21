@@ -1,0 +1,149 @@
+/// Tool registry with Map-based dynamic dispatch.
+/// Validates: Map operations, spec-based polymorphism, register/lookup/execute pattern,
+/// sorting, JSON-like output construction.
+
+enum ToolError {
+    UnknownTool(str)
+    ExecutionFailed(str)
+    InvalidInput(str)
+}
+
+fn format_tool_error(err ToolError) str {
+    is err {
+        ToolError.UnknownTool(name) -> f"Unknown tool: ${name}"
+        ToolError.ExecutionFailed(msg) -> f"Failed: ${msg}"
+        ToolError.InvalidInput(msg) -> f"Invalid: ${msg}"
+    }
+}
+
+spec Tool {
+    fn name() str
+    fn execute(input str) !str
+    fn is_read_only() bool {
+        false
+    }
+}
+
+// Concrete tools
+type EchoTool {}
+
+ext EchoTool has Tool {
+    fn name() str { "Echo" }
+    fn execute(input str) !str {
+        Ok(f"echo: ${input}")
+    }
+    fn is_read_only() bool { true }
+}
+
+type UpperTool {}
+
+ext UpperTool has Tool {
+    fn name() str { "Upper" }
+    fn execute(input str) !str {
+        Ok(input.to_upper())
+    }
+    fn is_read_only() bool { true }
+}
+
+type WriteTool {}
+
+ext WriteTool has Tool {
+    fn name() str { "Write" }
+    fn execute(input str) !str {
+        Ok(f"wrote: ${input}")
+    }
+    // not read-only (uses default: false)
+}
+
+// Registry using a Map for tool storage
+type ToolRegistry {
+    tools Map<str, Tool>
+}
+
+ext ToolRegistry {
+    fn new() ToolRegistry {
+        ToolRegistry { tools: Map<str, Tool>{} }
+    }
+
+    mut fn register(self, tool Tool) {
+        self.tools.set(tool.name(), tool)
+    }
+
+    fn get(self, name str) ?Tool {
+        self.tools.get(name)
+    }
+
+    fn execute(self, name str, input str) !str {
+        is self.tools.get(name) {
+            Some(tool) -> tool.execute(input)
+            None -> Err(ToolError.UnknownTool(name))
+        }
+    }
+
+    fn tool_names(self) List<str> {
+        let names = self.tools.keys()
+        names.sort()
+        names
+    }
+
+    fn definitions(self) List<(str, bool)> {
+        let defs = List<(str, bool)>[]
+        let names = self.tool_names()
+        for name in names {
+            let tool = self.tools.get(name)
+            is tool {
+                Some(t) -> defs.push((t.name(), t.is_read_only()))
+                None -> {}
+            }
+        }
+        defs
+    }
+}
+
+fn main() {
+    let reg = ToolRegistry.new()
+
+    // Empty registry
+    assert(reg.get("Missing") == None)
+    assert(reg.tool_names().len() == 0)
+
+    // Register tools
+    reg.register(EchoTool{})
+    reg.register(UpperTool{})
+    reg.register(WriteTool{})
+
+    // Lookup
+    assert(reg.get("Echo").is_some())
+    assert(reg.get("Upper").is_some())
+    assert(reg.get("Write").is_some())
+    assert(reg.get("Missing") == None)
+
+    // Execute
+    assert_eq(reg.execute("Echo", "hi"), Ok("echo: hi"))
+    assert_eq(reg.execute("Upper", "hello"), Ok("HELLO"))
+    assert_eq(reg.execute("Write", "data"), Ok("wrote: data"))
+
+    // Unknown tool
+    let err = reg.execute("Missing", "x")
+    is err {
+        Err(ToolError.UnknownTool(name)) -> assert_eq(name, "Missing")
+        else -> assert(false, "expected UnknownTool error")
+    }
+
+    // Tool names (sorted)
+    assert_eq(reg.tool_names(), ["Echo", "Upper", "Write"])
+
+    // Definitions (sorted)
+    let defs = reg.definitions()
+    assert_eq(defs.len(), 3)
+    assert_eq(defs[0], ("Echo", true))
+    assert_eq(defs[1], ("Upper", true))
+    assert_eq(defs[2], ("Write", false))
+
+    print("20_tool_registry: all assertions passed")
+    print(f"  names: ${reg.tool_names()}")
+    print(f"  defs:  ${reg.definitions()}")
+    for name in reg.tool_names() {
+        print(f"  ${name}: ${reg.execute(name, "test")}")
+    }
+}
