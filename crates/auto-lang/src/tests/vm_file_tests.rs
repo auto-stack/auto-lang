@@ -329,3 +329,6 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_99_spec_dispatch_000_spec_basic() { test_vm("99_spec_dispatch/000_spec_basic").unwrap(); }
 #[test] fn test_99_spec_dispatch_020_tool_registry() { test_vm("99_spec_dispatch/20_tool_registry").unwrap(); }
 #[test] fn test_99_spec_dispatch_031_tool_exec_with_perm() { test_vm("99_spec_dispatch/31_tool_exec_with_perm").unwrap(); }
+
+// === 99_slice ===
+#[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
