@@ -638,8 +638,16 @@ impl RustTrans {
                     Op::Mul => "*", // Unary * for dereference
                     _ => op.op(),
                 };
-                write!(out, "{}", op_str)?;
-                self.expr(expr, out)?;
+                // Plan 204 Phase 1C: Wrap operand in parens for ! to avoid
+                // precedence issues (e.g., !expr <= val should be !(expr <= val))
+                if matches!(op, Op::Not) {
+                    write!(out, "!(",)?;
+                    self.expr(expr, out)?;
+                    write!(out, ")")?;
+                } else {
+                    write!(out, "{}", op_str)?;
+                    self.expr(expr, out)?;
+                }
                 Ok(())
             }
 
@@ -2329,7 +2337,33 @@ impl RustTrans {
         }
 
         // Type inference for Unknown types
-        if matches!(store.ty, Type::Unknown) {
+        // Plan 204 Phase 1E: Also skip type annotation when the rendered type
+        // contains "/* unknown */" (e.g., Option</* unknown */>, [/* unknown */; N])
+        let ty_name = self.rust_type_name(&store.ty);
+        let has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */");
+
+        // Check if the expression is a closure - closures should not have explicit type annotations
+        // because Rust infers closure types automatically
+        let is_closure = matches!(store.expr, Expr::Closure(_));
+
+        // Check if expression is a borrow (&x or &mut x) - type should be a reference
+        let is_borrow = matches!(&store.expr, Expr::View(_))
+            || matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "view");
+        let is_mut_borrow = matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "mut");
+
+        let ty_name = if is_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
+            "&str".to_string()
+        } else if is_mut_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
+            "&mut str".to_string()
+        } else {
+            ty_name
+        };
+
+        // Skip type annotation if: Unknown type, type contains unknown, or closure expression
+        let skip_type_annotation = has_unknown || is_closure;
+
+        if skip_type_annotation {
+            // No type annotation - let Rust infer the type
             match store.kind {
                 StoreKind::Let => {
                     write!(out, "let {} = ", store.name)?;
@@ -2342,48 +2376,16 @@ impl RustTrans {
                 }
             }
         } else {
-            // Check if the expression is a closure - closures should not have explicit type annotations
-            // because Rust infers closure types automatically
-            let is_closure = matches!(store.expr, Expr::Closure(_));
-
-            // Check if expression is a borrow (&x or &mut x) - type should be a reference
-            let is_borrow = matches!(&store.expr, Expr::View(_))
-                || matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "view");
-            let is_mut_borrow = matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "mut");
-
-            let ty_name = if is_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
-                "&str".to_string()
-            } else if is_mut_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
-                "&mut str".to_string()
-            } else {
-                self.rust_type_name(&store.ty)
-            };
-
-            if is_closure {
-                // For closures, don't add type annotation - let Rust infer it
-                match store.kind {
-                    StoreKind::Let => {
-                        write!(out, "let {} = ", store.name)?;
-                    }
-                    StoreKind::Var => {
-                        write!(out, "let mut {} = ", store.name)?;
-                    }
-                    _ => {
-                        write!(out, "let {} = ", store.name)?;
-                    }
+            // Explicit type annotation for non-closure expressions
+            match store.kind {
+                StoreKind::Let => {
+                    write!(out, "let {}: {} = ", store.name, ty_name)?;
                 }
-            } else {
-                // Explicit type annotation for non-closure expressions
-                match store.kind {
-                    StoreKind::Let => {
-                        write!(out, "let {}: {} = ", store.name, ty_name)?;
-                    }
-                    StoreKind::Var => {
-                        write!(out, "let mut {}: {} = ", store.name, ty_name)?;
-                    }
-                    _ => {
-                        write!(out, "let {}: {} = ", store.name, ty_name)?;
-                    }
+                StoreKind::Var => {
+                    write!(out, "let mut {}: {} = ", store.name, ty_name)?;
+                }
+                _ => {
+                    write!(out, "let {}: {} = ", store.name, ty_name)?;
                 }
             }
         }
@@ -2549,6 +2551,38 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Plan 204 Phase 1D: Emit all statements in a loop body.
+    /// Previously, only Stmt::Expr and Stmt::Store were handled, silently
+    /// dropping other statement types (nested loops, if, break, return, etc.)
+    fn emit_loop_body(&mut self, stmts: &[Stmt], sink: &mut Sink) -> AutoResult<()> {
+        for stmt in stmts {
+            self.print_indent(&mut sink.body)?;
+            match stmt {
+                Stmt::Expr(expr) => {
+                    self.expr(expr, &mut sink.body)?;
+                    sink.body.write(b";\n")?;
+                }
+                Stmt::Store(store) => {
+                    self.store(store, &mut sink.body)?;
+                    sink.body.write(b";\n")?;
+                }
+                Stmt::EmptyLine(n) => {
+                    for _ in 0..*n {
+                        sink.body.write(b"\n")?;
+                    }
+                }
+                Stmt::Break => {
+                    sink.body.write(b"break;\n")?;
+                }
+                _ => {
+                    self.stmt(stmt, sink)?;
+                    sink.body.write(b"\n")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     // For loop
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
         match &for_stmt.iter {
@@ -2567,20 +2601,7 @@ impl RustTrans {
 
                     // Body
                     self.indent();
-                    for stmt in &for_stmt.body.stmts {
-                        self.print_indent(&mut sink.body)?;
-                        match stmt {
-                            Stmt::Expr(expr) => {
-                                self.expr(expr, &mut sink.body)?;
-                                sink.body.write(b";\n")?;
-                            }
-                            Stmt::Store(store) => {
-                                self.store(store, &mut sink.body)?;
-                                sink.body.write(b";\n")?;
-                            }
-                            _ => {}
-                        }
-                    }
+                    self.emit_loop_body(&for_stmt.body.stmts, sink)?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
@@ -2591,20 +2612,7 @@ impl RustTrans {
 
                     // Body
                     self.indent();
-                    for stmt in &for_stmt.body.stmts {
-                        self.print_indent(&mut sink.body)?;
-                        match stmt {
-                            Stmt::Expr(expr) => {
-                                self.expr(expr, &mut sink.body)?;
-                                sink.body.write(b";\n")?;
-                            }
-                            Stmt::Store(store) => {
-                                self.store(store, &mut sink.body)?;
-                                sink.body.write(b";\n")?;
-                            }
-                            _ => {}
-                        }
-                    }
+                    self.emit_loop_body(&for_stmt.body.stmts, sink)?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
@@ -2614,20 +2622,7 @@ impl RustTrans {
                 // Infinite loop: loop { body }
                 sink.body.write(b"loop {\n")?;
                 self.indent();
-                for stmt in &for_stmt.body.stmts {
-                    self.print_indent(&mut sink.body)?;
-                    match stmt {
-                        Stmt::Expr(expr) => {
-                            self.expr(expr, &mut sink.body)?;
-                            sink.body.write(b";\n")?;
-                        }
-                        Stmt::Store(store) => {
-                            self.store(store, &mut sink.body)?;
-                            sink.body.write(b";\n")?;
-                        }
-                        _ => {}
-                    }
-                }
+                self.emit_loop_body(&for_stmt.body.stmts, sink)?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;
@@ -2654,20 +2649,7 @@ impl RustTrans {
                 sink.body.write(b" {\n")?;
 
                 self.indent();
-                for stmt in &for_stmt.body.stmts {
-                    self.print_indent(&mut sink.body)?;
-                    match stmt {
-                        Stmt::Expr(expr) => {
-                            self.expr(expr, &mut sink.body)?;
-                            sink.body.write(b";\n")?;
-                        }
-                        Stmt::Store(store) => {
-                            self.store(store, &mut sink.body)?;
-                            sink.body.write(b";\n")?;
-                        }
-                        _ => {}
-                    }
-                }
+                self.emit_loop_body(&for_stmt.body.stmts, sink)?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;

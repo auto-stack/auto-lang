@@ -20,9 +20,9 @@ fn divide(a: i32, b: i32) -> Result<i32, String> {
 
 fn main() {
     let a: Option<i32> = Some(42);
-    let b: Option</* unknown */> = None;
+    let b = None;
     let c: Result<i32, String> = Ok(100);
-    let d: Result</* unknown */, String> = Err("something went wrong");
+    let d = Err("something went wrong");
 
     let result1 = maybe_value(10);
     let result2 = divide(10, 2);
