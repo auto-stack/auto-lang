@@ -1,0 +1,15 @@
+fn main() {
+    // Create tuple
+    let t = (10, 20, 30)
+
+    // Access fields
+    assert_eq(t.0, 10)
+    assert_eq(t.1, 20)
+    assert_eq(t.2, 30)
+
+    // Tuple with mixed values
+    let s = ("hello", 42)
+    assert_eq(s.1, 42)
+
+    print("tuple: all assertions passed")
+}

@@ -324,6 +324,10 @@ impl RustTrans {
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
+            Type::Tuple(ts) => {
+                let elems: Vec<String> = ts.iter().map(|t| self.rust_type_name(t)).collect();
+                format!("({})", elems.join(", "))
+            }
         }
     }
 

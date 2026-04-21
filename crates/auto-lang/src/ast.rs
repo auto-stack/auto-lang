@@ -381,6 +381,8 @@ pub enum Expr {
     /// Plan 095: Compile-time expression #{ expr }
     /// Evaluates expr at compile time and substitutes the result
     Comptime(Box<HashBrace>),
+    /// Plan 200: Tuple expression (expr1, expr2, ...)
+    Tuple(Vec<Expr>),
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -494,8 +496,20 @@ impl fmt::Display for Expr {
             // Plan 126: .go postfix operator for spawning background tasks
             Expr::Go { expr } => write!(f, "({}.go)", expr),
             Expr::Comptime(hash_brace) => write!(f, "{}", hash_brace),
+            Expr::Tuple(elems) => fmt_tuple(f, elems),
         }
     }
+}
+
+fn fmt_tuple(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
+    write!(f, "(tuple ")?;
+    for (i, elem) in elems.iter().enumerate() {
+        write!(f, "{}", elem)?;
+        if i < elems.len() - 1 {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, ")")
 }
 
 impl Expr {
@@ -1031,6 +1045,13 @@ impl ToNode for Expr {
             }
             // Plan 095: Compile-time expression #{ expr }
             Expr::Comptime(hash_brace) => hash_brace.to_node(),
+            Expr::Tuple(elems) => {
+                let mut node = AutoNode::new("tuple");
+                for elem in elems {
+                    node.add_kid(elem.to_node());
+                }
+                node
+            }
         }
     }
 }

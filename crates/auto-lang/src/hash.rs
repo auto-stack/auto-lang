@@ -172,6 +172,13 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::Result(_) => hasher.update(b"Result"),  // Plan 120
         Type::Handle { .. } => hasher.update(b"Handle"),  // Plan 121
         Type::Rust(source) => hasher.update(source.full_path.as_bytes()),  // Plan 190
+        Type::Tuple(ts) => {
+            hasher.update(b"Tuple");
+            for t in ts {
+                hash_type_no_rc(hasher, t);
+            }
+            hasher
+        }
     };
 }
 

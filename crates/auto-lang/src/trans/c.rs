@@ -2410,6 +2410,13 @@ impl CTrans {
                 // Generate C function pointer type: returnType (*)(param1Type, param2Type, ...)
                 format!("{} (*)({})", return_type_str, param_strs.join(", "))
             }
+            // Tuple types - transpile to anonymous struct
+            Type::Tuple(ts) => {
+                let fields: Vec<String> = ts.iter().enumerate()
+                    .map(|(i, t)| format!("{} _{}", self.c_type_name(t), i))
+                    .collect();
+                format!("struct {{ {} }}", fields.join("; "))
+            }
             _ => {
                 // Fallback: return void* for unhandled types
                 "void*".to_string()

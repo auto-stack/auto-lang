@@ -97,6 +97,12 @@ impl TypeScriptTrans {
             Type::Handle { task_type } => format!("TaskHandle<{}>", Self::type_to_ts(task_type)),
             // Plan 190: Rust types → any (opaque in TS)
             Type::Rust(source) => source.short_name().to_string(),
+
+            // Tuple types → TypeScript tuple [T1, T2, ...]
+            Type::Tuple(ts) => {
+                let elems: Vec<String> = ts.iter().map(|t| Self::type_to_ts(t)).collect();
+                format!("[{}]", elems.join(", "))
+            }
         }
     }
 }

@@ -2928,6 +2928,15 @@ impl Codegen {
                 self.emit(OpCode::CREATE_ARRAY);
                 self.code.push(elem_count);
             }
+            // Plan 200: Tuple literal (expr1, expr2, ...)
+            Expr::Tuple(elems) => {
+                for elem in elems {
+                    self.compile_expr(elem)?;
+                }
+                let elem_count = elems.len() as u8;
+                self.emit(OpCode::CREATE_TUPLE);
+                self.code.push(elem_count);
+            }
             // Plan 073: Range expression support (0..10, 0..=10)
             Expr::Range(range) => {
                 // Compile start expression (pushes onto stack)
@@ -3370,6 +3379,16 @@ impl Codegen {
                         self.emit_i32(value);
                         return Ok(());
                     }
+                }
+
+                // Plan 200: Check if this is tuple field access (t.0, t.1, ...)
+                if field.as_str().parse::<usize>().is_ok() {
+                    // Compile the tuple expression (pushes tuple_id onto stack)
+                    self.compile_expr(obj)?;
+                    let field_index: u8 = field.as_str().parse().unwrap();
+                    self.emit(OpCode::GET_TUPLE_FIELD);
+                    self.code.push(field_index);
+                    return Ok(());
                 }
 
                 // Check if this is the .type property - returns type name as string

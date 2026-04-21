@@ -119,6 +119,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_06_arrays_003_array_update() { test_vm("06_arrays/003_array_update").unwrap(); }
 #[test] fn test_06_arrays_004_array_of_objects() { test_vm("06_arrays/004_array_of_objects").unwrap(); }
 #[test] fn test_06_arrays_005_array_multiple_mutations() { test_vm("06_arrays/005_array_multiple_mutations").unwrap(); }
+#[test] fn test_06_arrays_010_tuple() { test_vm("06_arrays/010_tuple").unwrap(); }
 
 // === 07_objects ===
 #[test] fn test_07_objects_001_object_field() { test_vm("07_objects/001_object_field").unwrap(); }

@@ -466,6 +466,12 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::Cast { target_type, .. } => target_type.clone(),
         // Explicit type conversion: expr.to(Type) — the result type is the target type
         Expr::To { target_type, .. } => target_type.clone(),
+
+        // ========== Tuple 表达式 ==========
+        Expr::Tuple(elems) => {
+            let elem_types: Vec<Type> = elems.iter().map(|e| infer_expr(ctx, e)).collect();
+            Type::Tuple(elem_types)
+        }
     }
 }
 

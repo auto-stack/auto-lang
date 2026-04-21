@@ -245,6 +245,10 @@ fn type_to_string(ty: &Type) -> String {
         Type::Result(inner) => format!("!{}", type_to_string(inner)),  // Plan 120
         Type::Handle { task_type } => format!("Handle<{}>", type_to_string(task_type)),  // Plan 121
         Type::Rust(source) => source.full_path.clone(),  // Plan 190
+        Type::Tuple(ts) => {
+            let elems: Vec<String> = ts.iter().map(type_to_string).collect();
+            format!("({})", elems.join(", "))
+        }
     }
 }
 

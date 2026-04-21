@@ -196,6 +196,13 @@ impl<'db> DepScanner<'db> {
                 }
             }
 
+            // Tuple literals - walk elements
+            Expr::Tuple(elems) => {
+                for elem in elems {
+                    self.walk_expr(elem, deps);
+                }
+            }
+
             // Hold expressions - walk held expression
             Expr::Hold(hold) => {
                 self.walk_expr(&hold.path, deps);

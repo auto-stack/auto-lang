@@ -2284,6 +2284,70 @@ impl AutoVM {
                         }
                     }
                 }
+                // Plan 200: Create tuple from stack elements
+                // Stack: elem0, elem1, ..., elemN-1 -> tuple_id
+                OpCode::CREATE_TUPLE => {
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    let elem_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                    let mut fields = Vec::with_capacity(elem_count as usize);
+                    for _ in 0..elem_count {
+                        let val_i32 = task.ram.pop_i32();
+                        // Detect string (negative tagged) or int
+                        let val = if val_i32 < 0 && val_i32 > -1000000 && val_i32 != -2147483648 {
+                            let str_idx = (-val_i32 - 1) as usize;
+                            let strings = self.strings.read().unwrap();
+                            if let Some(bytes) = strings.get(str_idx) {
+                                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+                            } else {
+                                auto_val::Value::Int(val_i32)
+                            }
+                        } else {
+                            auto_val::Value::Int(val_i32)
+                        };
+                        fields.push(val);
+                    }
+                    fields.reverse();
+                    let mut data = GenericInstanceData::new(
+                        format!("tuple_{}", elem_count).into(),
+                        vec![auto_val::Value::Null; fields.len()],
+                    );
+                    for (i, val) in fields.into_iter().enumerate() {
+                        let _ = data.set_field(i, val);
+                    }
+                    let instance_id = self.insert_heap_object(data);
+                    task.ram.push_i32(instance_id as i32);
+                }
+                // Plan 200: Get tuple field by index
+                // Stack: tuple_id -> value (field_index from bytecode)
+                OpCode::GET_TUPLE_FIELD => {
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    let field_index = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                    let tuple_id = task.ram.pop_i32() as u64;
+                    if let Some(lock) = self.get_heap_object(tuple_id) {
+                        let guard = lock.read().unwrap();
+                        if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                            if let Some(val) = instance.get_field(field_index as usize) {
+                                match val {
+                                    auto_val::Value::Int(n) => task.ram.push_i32(*n),
+                                    auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+                                    auto_val::Value::Str(s) => {
+                                        let idx = self.add_string(s.as_bytes().to_vec());
+                                        task.ram.push_i32(-((idx as i32) + 1));
+                                    }
+                                    _ => task.ram.push_i32(0),
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        task.ram.push_i32(0);
+                    }
+                }
                 // Plan 073: Array element access (arr[index])
                 // Plan 080: Also supports heap objects (lists like List<int>)
                 // Plan 118 Phase 4: Also supports string indexing (str[index])

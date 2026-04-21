@@ -188,6 +188,9 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         Type::Handle { task_type } => occurs_in(var_name, task_type),
         // Plan 190: Rust types don't contain type variables
         Type::Rust(_) => false,
+
+        // Tuple types: recursively check element types
+        Type::Tuple(ts) => ts.iter().any(|t| occurs_in(var_name, t)),
     }
 }
 

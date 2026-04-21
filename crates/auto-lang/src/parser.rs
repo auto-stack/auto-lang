@@ -1492,9 +1492,20 @@ impl<'a> Parser<'a> {
                         self.lexer.push_token(token);
                     }
 
-                    let is_closure = found_comma || found_double_arrow;
-
-                    if is_closure {
+                    // Plan 200: Tuple detection — comma found but no => means it's a tuple
+                    let is_closure = found_double_arrow;
+                    if found_comma && !found_double_arrow {
+                        // Tuple expression: (expr1, expr2, ...)
+                        // We already consumed (, parse first expr, then comma-separated rest
+                        let first = self.expr_pratt(0)?;
+                        let mut elems = vec![first];
+                        while self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            elems.push(self.expr_pratt(0)?);
+                        }
+                        self.expect(TokenKind::RParen)?;
+                        Expr::Tuple(elems)
+                    } else if is_closure {
                         // Multi-param closure: (a, b) => expr
                         // Need to restore state so parse_closure sees the ( token
                         // Save current token (identifier)
@@ -1519,10 +1530,21 @@ impl<'a> Parser<'a> {
                         lhs
                     }
                 } else {
-                    // Regular group expression starting with something other than identifier
-                    let lhs = self.expr_pratt(0)?;
-                    self.expect(TokenKind::RParen)?; // skip )
-                    lhs
+                    // Regular group expression or tuple starting with non-identifier
+                    let first = self.expr_pratt(0)?;
+                    if self.is_kind(TokenKind::Comma) {
+                        // Tuple expression: (expr1, expr2, ...)
+                        let mut elems = vec![first];
+                        while self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            elems.push(self.expr_pratt(0)?);
+                        }
+                        self.expect(TokenKind::RParen)?;
+                        Expr::Tuple(elems)
+                    } else {
+                        self.expect(TokenKind::RParen)?; // skip )
+                        first
+                    }
                 }
             }
             // array
@@ -8150,6 +8172,22 @@ impl<'a> Parser<'a> {
             TokenKind::Star => self.parse_ptr_type(),
             TokenKind::LSquare => self.parse_array_type(),
             TokenKind::Fn => self.parse_fn_type(), // Plan 060: function types like fn(int)str
+            TokenKind::LParen => {
+                // Plan 200: Tuple type (T1, T2, ...)
+                self.next(); // skip (
+                let mut types = vec![self.parse_type()?];
+                while self.is_kind(TokenKind::Comma) {
+                    self.next(); // skip ,
+                    types.push(self.parse_type()?);
+                }
+                self.expect(TokenKind::RParen)?;
+                if types.len() == 1 {
+                    // Single-element "tuple" is just a grouped type
+                    Ok(types.remove(0))
+                } else {
+                    Ok(Type::Tuple(types))
+                }
+            }
             // Allow keyword tokens that can also serve as type/ident names (e.g., Link, Path, Type, Color)
             _ if self.cur.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) => {
                 // Keywords that look like type names (PascalCase) should be treated as identifiers

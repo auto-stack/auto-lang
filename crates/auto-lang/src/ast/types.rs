@@ -66,6 +66,8 @@ pub enum Type {
     },
     // Plan 190: Rust type imported via use.rust
     Rust(RustSource),
+    // Plan 200: Tuple type (T1, T2, ...)
+    Tuple(Vec<Type>),
 }
 
 impl Type {
@@ -128,6 +130,10 @@ impl Type {
             Type::Rust(source) => source.short_name().into(),
             Type::Union(u) => u.name.clone(),
             Type::Tag(t) => t.borrow().name.clone(),
+            Type::Tuple(ts) => {
+                let inner: Vec<String> = ts.iter().map(|t| t.unique_name().to_string()).collect();
+                format!("({})", inner.join(", ")).into()
+            }
         }
     }
 
@@ -171,6 +177,7 @@ impl Type {
             Type::Result(_) => "Err(\"default error\")".into(),  // Plan 120: Result default is Err
             Type::Handle { .. } => "Handle.null()".into(),  // Plan 121: Handle default is null handle
             Type::Rust(_) => "null".into(),
+            Type::Tuple(_) => "()".into(),
         }
     }
 
@@ -279,6 +286,7 @@ impl Type {
                 task_type: Box::new(task_type.substitute(params, args)),
             },
             Type::Rust(source) => Type::Rust(source.clone()),
+            Type::Tuple(ts) => Type::Tuple(ts.iter().map(|t| t.substitute(params, args)).collect()),
         }
     }
 
@@ -336,6 +344,8 @@ impl Type {
             Type::Handle { .. } => true,
             // Plan 190: Rust types use reference passing (opaque)
             Type::Rust(_) => false,
+            // Plan 200: Tuples use reference passing (heap-allocated)
+            Type::Tuple(_) => false,
         }
     }
 
@@ -547,6 +557,14 @@ impl fmt::Display for Type {
             Type::Result(inner) => write!(f, "!{}", inner),
             Type::Handle { task_type } => write!(f, "Handle<{}>", task_type),
             Type::Rust(source) => write!(f, "{}", source.full_path),
+            Type::Tuple(ts) => {
+                write!(f, "(")?;
+                for (i, t) in ts.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -592,6 +610,7 @@ impl From<Type> for auto_val::Type {
             Type::Result(inner) => (*inner).into(),  // Result<T> maps to T's auto_val type
             Type::Handle { .. } => auto_val::Type::Ptr,  // Plan 121: Handle maps to Ptr (internal reference)
             Type::Rust(source) => auto_val::Type::User(source.short_name().into()),
+            Type::Tuple(_) => auto_val::Type::Array,  // Tuples map to Array in auto_val
         }
     }
 }
@@ -946,6 +965,14 @@ impl AtomWriter for Type {
             }
             Type::Rust(source) => {
                 write!(f, "rust({})", source.full_path)?;
+            }
+            Type::Tuple(ts) => {
+                write!(f, "tuple(")?;
+                for (i, t) in ts.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", t.to_atom_str())?;
+                }
+                write!(f, ")")?;
             }
         }
         Ok(())
