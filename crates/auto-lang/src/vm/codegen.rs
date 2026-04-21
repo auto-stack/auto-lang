@@ -1790,7 +1790,7 @@ impl Codegen {
                             // Emit CALL_NAT for Iterator.next
                             // Look up the native function ID
                             let native_id = if let Some(id) =
-                                BIGVM_NATIVES.lock().unwrap().get_id("Iterator.next")
+                                BIGVM_NATIVES.lock().unwrap().resolve_qualified("Iterator.next")
                             {
                                 id
                             } else {
@@ -3628,7 +3628,7 @@ impl Codegen {
                     let builtin_native_id = if let Expr::Ident(var_name) = obj.as_ref() {
                         if let Some(type_name) = self.infer_type_from_var(var_name.as_ref()) {
                             let native_name = format!("{}.{}", type_name, field);
-                            BIGVM_NATIVES.lock().unwrap().get_id(&native_name)
+                            BIGVM_NATIVES.lock().unwrap().resolve_qualified(&native_name)
                         } else {
                             None
                         }
@@ -3647,7 +3647,7 @@ impl Codegen {
                             None
                         } else {
                             let native_name = format!("{}.{}", type_name, field);
-                            BIGVM_NATIVES.lock().unwrap().get_id(&native_name)
+                            BIGVM_NATIVES.lock().unwrap().resolve_qualified(&native_name)
                         }
                     };
 
@@ -4921,7 +4921,7 @@ impl Codegen {
                                 let native_name = format!("{}.{}", type_name, method);
 
                                 // Check if this native exists
-                                if BIGVM_NATIVES.lock().unwrap().get_id(&native_name).is_some() {
+                                if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&native_name).is_some() {
                                     Some(native_name)
                                 } else if self.exports.contains_key(&format!("{}.{}", type_name, method.as_ref())) {
                                     // Plan 197 Task 3: User-defined method on chained result
@@ -4955,16 +4955,15 @@ impl Codegen {
                         Some(id)
                     }
                     // Then check BIGVM_NATIVES (List methods, etc.)
-                    else if let Some(id) = BIGVM_NATIVES.lock().unwrap().get_id(name) {
+                    // Plan 203 Phase 3: resolve_qualified checks qualified registry
+                    // first, then falls back to short-name registry internally.
+                    else if let Some(id) = BIGVM_NATIVES.lock().unwrap().resolve_qualified(name) {
                         Some(id)
                     }
                     // Plan 203 Phase 2: Try import scope resolution as fallback
                     // If the bare name isn't found, resolve through the import scope
                     else if let Some(qualified) = self.import_scope.get(name) {
-                        // Try the qualified name in the main registry first (FFI IDs),
-                        // then fall back to the qualified registry (VM method IDs)
-                        BIGVM_NATIVES.lock().unwrap().get_id(qualified)
-                            .or_else(|| BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified))
+                        BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
                     }
                     else {
                         None
@@ -7285,6 +7284,31 @@ impl Codegen {
         map
     }
 
+    /// Resolve a method call: receiver_type + method_name -> qualified name -> native ID.
+    ///
+    /// Plan 203 Phase 3: Provides a centralised lookup path for instance method
+    /// calls, trying qualified names first then falling back to short names.
+    fn resolve_method(&self, receiver_type: &str, method_name: &str) -> Option<u16> {
+        let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+
+        // Try lowercase qualified: "auto.{type_lower}.{method}"
+        let type_lower = receiver_type.to_lowercase();
+        let qualified = format!("auto.{}.{}", type_lower, method_name);
+        if let Some(id) = reg.resolve_qualified(&qualified) {
+            return Some(id);
+        }
+
+        // Try title-case qualified: "auto.{Type}.{method}"
+        let qualified_title = format!("auto.{}.{}", receiver_type, method_name);
+        if let Some(id) = reg.resolve_qualified(&qualified_title) {
+            return Some(id);
+        }
+
+        // Fallback to short-name lookup: "Type.method"
+        let short_name = format!("{}.{}", receiver_type, method_name);
+        reg.resolve_qualified(&short_name)
+    }
+
     /// - "map", "dict" -> "Map"
     /// This is a fallback for when type information is not available
     fn infer_type_from_var(&self, var_name: &str) -> Option<String> {
@@ -7372,7 +7396,8 @@ impl Codegen {
         let mono_name = format!("{}.{}{}", native_base, method, suffix);
 
         // Verify this native exists in the registry before returning it
-        if BIGVM_NATIVES.lock().unwrap().contains(&mono_name) {
+        // Plan 203 Phase 3: use resolve_qualified which checks qualified + short-name registries
+        if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&mono_name).is_some() {
             vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, mono_name);
             Some(mono_name)
         } else {
