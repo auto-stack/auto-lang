@@ -227,6 +227,11 @@ pub struct Codegen {
     /// Set during enum variant construction codegen, consumed by the let-statement handler
     /// to record the variable's type in var_types for field access resolution.
     last_enum_variant_mono: Option<String>,
+
+    /// Plan 203 Phase 2: Import scope for name resolution
+    /// Maps local name → qualified name (e.g., "read_text" → "auto.fs.read_text")
+    /// Populated from use statements with specific imports: `use auto.fs: read_text`
+    import_scope: HashMap<String, String>,
 }
 
 impl Codegen {
@@ -287,6 +292,7 @@ impl Codegen {
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
+            import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -376,6 +382,7 @@ impl Codegen {
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
+            import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -2861,11 +2868,50 @@ impl Codegen {
                     self.emit(OpCode::POP);
                 }
             }
+            // Plan 203 Phase 2: Handle use statements for import scope resolution
+            Stmt::Use(use_stmt) => {
+                self.handle_use_stmt(use_stmt);
+            }
             _ => {
                 // TODO: Implement other statements
             }
         }
         Ok(())
+    }
+
+    /// Plan 203 Phase 2: Process use statement and populate import scope
+    ///
+    /// Handles `use module.path: name1, name2` style imports by mapping
+    /// each imported name to its fully qualified path in `import_scope`.
+    ///
+    /// Examples:
+    /// - `use auto.fs: read_text` → scope["read_text"] = "auto.fs.read_text"
+    /// - `use auto.list: push` → scope["push"] = "auto.list.push"
+    /// - `use auto.fs` (no items) → nothing added (module-level import handled differently)
+    fn handle_use_stmt(&mut self, use_stmt: &crate::ast::Use) {
+        // Only handle Auto imports (not C/Rust use)
+        if !matches!(use_stmt.kind, crate::ast::UseKind::Auto) {
+            return;
+        }
+
+        // Get the module path string
+        let module_path = if let Some(ref mp) = use_stmt.module_path {
+            mp.display()
+        } else if !use_stmt.paths.is_empty() {
+            use_stmt.paths.join(".")
+        } else {
+            return; // No module path, nothing to do
+        };
+
+        // Only populate scope for specific item imports (e.g., use mod: name1, name2)
+        if !use_stmt.items.is_empty() {
+            for item in &use_stmt.items {
+                let local_name = item.as_str();
+                let qualified = format!("{}.{}", module_path, local_name);
+                self.import_scope.insert(local_name.to_string(), qualified);
+            }
+        }
+        // Module imports without specific items (use auto.fs) are not added to scope
     }
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
@@ -4911,7 +4957,16 @@ impl Codegen {
                     // Then check BIGVM_NATIVES (List methods, etc.)
                     else if let Some(id) = BIGVM_NATIVES.lock().unwrap().get_id(name) {
                         Some(id)
-                    } else {
+                    }
+                    // Plan 203 Phase 2: Try import scope resolution as fallback
+                    // If the bare name isn't found, resolve through the import scope
+                    else if let Some(qualified) = self.import_scope.get(name) {
+                        // Try the qualified name in the main registry first (FFI IDs),
+                        // then fall back to the qualified registry (VM method IDs)
+                        BIGVM_NATIVES.lock().unwrap().get_id(qualified)
+                            .or_else(|| BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified))
+                    }
+                    else {
                         None
                     }
                 } else {
