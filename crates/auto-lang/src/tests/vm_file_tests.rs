@@ -398,5 +398,9 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_18_ffi_052_file_copy_append() { test_vm("18_ffi/052_file_copy_append").unwrap(); }
 #[test] fn test_18_ffi_053_file_dir_ops() { test_vm("18_ffi/053_file_dir_ops").unwrap(); }
 
+// === 18_ffi (Plan 211 Task 12: Process stdlib) ===
+#[test] fn test_18_ffi_054_process_current_dir() { test_vm("18_ffi/054_process_current_dir").unwrap(); }
+#[test] fn test_18_ffi_055_process_args() { test_vm("18_ffi/055_process_args").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }

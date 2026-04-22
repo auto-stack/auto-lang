@@ -1,0 +1,4 @@
+let cwd = Process.current_dir()
+if Str.len(cwd) > 0 {
+    print("ok")
+}
