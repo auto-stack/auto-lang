@@ -1,0 +1,4 @@
+Env.set("AUTO_TEST_VAR", "hello")
+let val = Env.get("AUTO_TEST_VAR")
+print(val)
+Env.remove("AUTO_TEST_VAR")

@@ -380,5 +380,8 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_18_ffi_044_path_ext_filename() { test_vm("18_ffi/044_path_ext_filename").unwrap(); }
 #[test] fn test_18_ffi_045_path_join() { test_vm("18_ffi/045_path_join").unwrap(); }
 
+// === 18_ffi (Plan 211 Task 6: Env stdlib) ===
+#[test] fn test_18_ffi_046_env_get_set() { test_vm("18_ffi/046_env_get_set").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
