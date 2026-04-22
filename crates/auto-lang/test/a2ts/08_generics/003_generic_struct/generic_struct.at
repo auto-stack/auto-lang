@@ -1,0 +1,9 @@
+type Pair {
+    first int
+    second int
+}
+
+fn main() {
+    let p = Pair(1, 2)
+    print(p.first)
+}

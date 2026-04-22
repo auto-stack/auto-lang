@@ -1,0 +1,5 @@
+use math
+
+fn main() {
+    print("imported")
+}

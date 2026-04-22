@@ -1,0 +1,5 @@
+fn main() {
+    let a = 3
+    let b = 4
+    print(f"result: ${a + b}")
+}

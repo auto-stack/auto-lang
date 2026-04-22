@@ -1,0 +1,17 @@
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn check_color(c Color) {
+    is c {
+        Color.Red -> print("red")
+        Color.Green -> print("green")
+        Color.Blue -> print("blue")
+    }
+}
+
+fn main() {
+    check_color(Color.Red)
+}

@@ -1,0 +1,7 @@
+fn main() {
+    let s = "hello world"
+    let found = s.find("world")
+    let contains_hello = s.contains("hello")
+    print(found)
+    print(contains_hello)
+}

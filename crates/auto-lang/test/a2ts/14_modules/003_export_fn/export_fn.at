@@ -1,0 +1,7 @@
+pub fn greet(name str) {
+    print(name)
+}
+
+fn main() {
+    greet("World")
+}

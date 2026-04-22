@@ -1,0 +1,8 @@
+fn main() {
+    let x = 42
+    is x {
+        0 -> print("zero")
+        42 -> print("the answer")
+        _ -> print("other")
+    }
+}

@@ -1,0 +1,5 @@
+fn main() {
+    let n = 42
+    let s = n.to(str)
+    print(s)
+}

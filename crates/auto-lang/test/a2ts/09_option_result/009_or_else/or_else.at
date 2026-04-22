@@ -1,0 +1,5 @@
+fn main() {
+    let x = None
+    let val = x.or_else(0)
+    print(val)
+}

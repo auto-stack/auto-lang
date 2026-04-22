@@ -1,0 +1,6 @@
+type Age = int;
+
+fn main() {
+    let a = 25
+    print(a)
+}

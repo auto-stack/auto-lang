@@ -1,0 +1,5 @@
+fn main() {
+    let x = Some(42)
+    let val = x.unwrap()
+    print(val)
+}

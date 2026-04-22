@@ -1,0 +1,5 @@
+fn main() {
+    let nums = [1, 2, 3, 2, 1]
+    let unique = nums.to_set()
+    print(unique)
+}

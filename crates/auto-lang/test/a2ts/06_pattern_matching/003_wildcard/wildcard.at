@@ -1,0 +1,7 @@
+fn main() {
+    let x = 5
+    is x {
+        0 -> print("zero")
+        _ -> print("non-zero")
+    }
+}

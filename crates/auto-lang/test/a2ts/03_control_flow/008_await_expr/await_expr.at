@@ -1,0 +1,8 @@
+fn get_value() ~int {
+    return 42
+}
+
+fn main() {
+    let val = get_value().await
+    print(val)
+}

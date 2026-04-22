@@ -270,6 +270,136 @@ impl TypeScriptTrans {
                 Ok(())
             }
 
+            // Null / Nil
+            Expr::Null | Expr::Nil => {
+                out.write(b"null")?;
+                Ok(())
+            }
+
+            // Plan 120: Option constructors
+            Expr::Some(inner) => {
+                // TypeScript: Some(x) → x (value is just the value, null means absent)
+                self.expr(inner, out)
+            }
+            Expr::None => {
+                out.write(b"null")?;
+                Ok(())
+            }
+
+            // Plan 120: Result constructors
+            Expr::Ok(inner) => {
+                // TypeScript: Ok(x) → x
+                self.expr(inner, out)
+            }
+            Expr::Err(msg) => {
+                // TypeScript: Err(msg) → new Error(msg)
+                out.write(b"new Error(")?;
+                self.expr(msg, out)?;
+                out.write(b")")?;
+                Ok(())
+            }
+
+            // Plan 120: Null coalescing (??)
+            Expr::NullCoalesce(left, right) => {
+                self.expr(left, out)?;
+                out.write(b" ?? ")?;
+                self.expr(right, out)?;
+                Ok(())
+            }
+
+            // Plan 120: Error propagate (?.)
+            Expr::ErrorPropagate(inner) => {
+                self.expr(inner, out)?;
+                Ok(())
+            }
+
+            // Plan 124: Async block
+            Expr::AsyncBlock { body, return_type } => {
+                out.write(b"(async ()")?;
+                if let Some(ret) = return_type {
+                    out.write(b": Promise<")?;
+                    out.write_all(Self::type_to_ts(ret).as_bytes())?;
+                    out.write(b">")?;
+                }
+                out.write(b"")?;
+                self.body(body, out)?;
+                out.write(b")()")?;
+                Ok(())
+            }
+
+            // Plan 120: Option/Result patterns in is statements
+            Expr::OptionPattern(cover) => {
+                match cover.variant {
+                    crate::ast::cover::OptionVariant::Some => {
+                        if let Some(ref binding) = cover.binding {
+                            // TypeScript: destructuring check
+                            write!(out, "{{ _tag: \"Some\", value: {} }}", binding)?;
+                        } else {
+                            out.write(b"{ _tag: \"Some\" }")?;
+                        }
+                    }
+                    crate::ast::cover::OptionVariant::None => {
+                        out.write(b"null")?;
+                    }
+                }
+                Ok(())
+            }
+            Expr::ResultPattern(cover) => {
+                match cover.variant {
+                    crate::ast::cover::ResultVariant::Ok => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "{{ _tag: \"Ok\", value: {} }}", binding)?;
+                        } else {
+                            out.write(b"{ _tag: \"Ok\" }")?;
+                        }
+                    }
+                    crate::ast::cover::ResultVariant::Err => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "{{ _tag: \"Err\", value: {} }}", binding)?;
+                        } else {
+                            out.write(b"{ _tag: \"Err\" }")?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Expr::OptionUncover(uncover) => {
+                // Access value from Some pattern
+                out.write_all(uncover.src.as_bytes())?;
+                out.write(b".value")?;
+                Ok(())
+            }
+            Expr::ResultUncover(uncover) => {
+                // Access value from Ok/Err pattern
+                out.write_all(uncover.src.as_bytes())?;
+                out.write(b".value")?;
+                Ok(())
+            }
+            Expr::StructPattern(_sc) => {
+                // Struct destructuring - output as a comment/placeholder
+                out.write(b"/* struct pattern */")?;
+                Ok(())
+            }
+
+            // Plan 124: Await expression
+            Expr::Await { expr } => {
+                out.write(b"(await ")?;
+                self.expr(expr, out)?;
+                out.write(b")")?;
+                Ok(())
+            }
+
+            // Plan 200: Tuple expression
+            Expr::Tuple(elems) => {
+                out.write(b"[")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    if i > 0 { out.write(b", ")?; }
+                    self.expr(elem, out)?;
+                }
+                out.write(b"]")?;
+                Ok(())
+            }
+
             // Unsupported expressions
             _ => Err(format!("TypeScript Transpiler: unsupported expression: {}", expr).into()),
         }

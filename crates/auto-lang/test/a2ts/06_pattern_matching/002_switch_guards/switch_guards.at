@@ -1,0 +1,12 @@
+fn classify(x int) {
+    is x {
+        0 -> print("zero")
+        1 -> print("one")
+        _ -> print("other")
+    }
+}
+
+fn main() {
+    classify(0)
+    classify(5)
+}

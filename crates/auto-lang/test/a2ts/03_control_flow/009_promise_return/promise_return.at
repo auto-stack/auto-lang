@@ -1,0 +1,8 @@
+fn compute() int {
+    return 100
+}
+
+fn main() {
+    let result = compute()
+    print(result)
+}

@@ -1,0 +1,13 @@
+type Counter {
+    count int
+
+    fn add(self, n int) {
+        self.count = self.count + n
+    }
+}
+
+fn main() {
+    let c = Counter(0)
+    c.add(5)
+    print(c.count)
+}

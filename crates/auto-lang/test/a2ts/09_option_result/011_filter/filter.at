@@ -1,0 +1,5 @@
+fn main() {
+    let x = Some(10)
+    let filtered = x.filter(v => v > 5)
+    print(filtered)
+}

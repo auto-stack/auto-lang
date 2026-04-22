@@ -1,0 +1,11 @@
+type Record {
+    id int
+    name str
+    active bool
+    score float
+}
+
+fn main() {
+    let r = Record(1, "test", true, 95.5)
+    print(r.name)
+}

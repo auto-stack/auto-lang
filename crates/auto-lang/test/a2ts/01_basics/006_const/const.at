@@ -1,0 +1,6 @@
+fn main() {
+    const PI = 3.14159
+    const MAX = 100
+    print(PI)
+    print(MAX)
+}

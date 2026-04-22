@@ -1,0 +1,5 @@
+fn main() {
+    let x = Some(5)
+    let doubled = x.map(v => v * 2)
+    print(doubled)
+}

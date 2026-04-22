@@ -1,0 +1,6 @@
+fn main() {
+    let val = Ok(42)
+    let err = Err("something failed")
+    print(val)
+    print(err)
+}

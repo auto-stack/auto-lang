@@ -1,0 +1,8 @@
+fn main() {
+    let x = Some(10)
+
+    is x {
+        Some(v) -> print("got value:", v)
+        None -> print("got none")
+    }
+}

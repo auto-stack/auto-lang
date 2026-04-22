@@ -1,0 +1,8 @@
+fn main() {
+    let x = Some(10)
+    let y = None
+    let a = x.is_some()
+    let b = y.is_some()
+    print(a)
+    print(b)
+}

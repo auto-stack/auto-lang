@@ -1,0 +1,4 @@
+fn main() {
+    let scores = {"alice": 90, "bob": 85}
+    print(scores)
+}

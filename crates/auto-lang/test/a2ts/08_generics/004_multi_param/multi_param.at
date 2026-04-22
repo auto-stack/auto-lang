@@ -1,0 +1,10 @@
+type Triple {
+    a int
+    b int
+    c int
+}
+
+fn main() {
+    let t = Triple(1, 2, 3)
+    print(t.a, t.b, t.c)
+}

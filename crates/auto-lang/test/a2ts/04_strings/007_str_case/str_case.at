@@ -1,0 +1,7 @@
+fn main() {
+    let s = "Hello World"
+    let upper = s.to_upper()
+    let lower = s.to_lower()
+    print(upper)
+    print(lower)
+}

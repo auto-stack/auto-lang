@@ -1,0 +1,5 @@
+use math: add, sub
+
+fn main() {
+    print("imported named")
+}

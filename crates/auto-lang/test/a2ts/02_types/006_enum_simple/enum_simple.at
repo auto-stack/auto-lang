@@ -1,0 +1,11 @@
+enum Direction {
+    North
+    South
+    East
+    West
+}
+
+fn main() {
+    let d = Direction.North
+    print("direction")
+}

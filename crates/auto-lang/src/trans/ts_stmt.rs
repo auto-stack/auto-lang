@@ -19,7 +19,8 @@ impl TypeScriptTrans {
                 match store.kind {
                     StoreKind::Let => out.write(b"const ").to()?,
                     StoreKind::Var => out.write(b"let ").to()?,
-                    _ => {} // Field and CVar don't need declaration
+                    StoreKind::Const => out.write(b"const ").to()?,
+                    _ => {} // Field, CVar, Shared don't need declaration prefix
                 };
                 out.write_all(store.name.as_bytes())?;
 
@@ -132,12 +133,39 @@ impl TypeScriptTrans {
                 Ok(())
             }
 
+            // Continue
+            Stmt::Continue => {
+                out.write(b"continue;")?;
+                Ok(())
+            }
+
+            // Comments
+            Stmt::Comment(comment) => {
+                out.write(b"// ")?;
+                out.write_all(comment.as_bytes())?;
+                Ok(())
+            }
+
+            // Use statements → import
+            Stmt::Use(use_stmt) => {
+                self.use_stmt(use_stmt, out)?;
+                Ok(())
+            }
+
             // Unsupported statements
             _ => Err(format!("TypeScript Transpiler: unsupported statement: {:?}", stmt).into()),
         }
     }
 
     pub fn fn_decl(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
+        // Detect async: functions returning ~T (Handle/Future) are async in TypeScript
+        let is_async_fn = Self::has_await_expr(&func.body.stmts)
+            || matches!(func.ret, Type::Handle { .. })
+            || matches!(&func.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
+
+        if is_async_fn {
+            out.write(b"async ")?;
+        }
         out.write(b"function ")?;
         out.write_all(func.name.as_bytes())?;
         out.write(b"(")?;
@@ -772,5 +800,98 @@ impl TypeScriptTrans {
             out.write(b";\n")?;
         }
         Ok(())
+    }
+
+    pub fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
+        // Convert Auto use to TypeScript import
+        let module_name = if let Some(ref mp) = use_stmt.module_path {
+            mp.display().to_string()
+                .replace("pac.", "./")
+                .replace("super.", "../")
+        } else if !use_stmt.paths.is_empty() {
+            use_stmt.paths.join("/")
+        } else {
+            "unknown".to_string()
+        };
+
+        if use_stmt.is_wildcard {
+            write!(out, "import * from \"{}\";", module_name)?;
+        } else if use_stmt.items.is_empty() {
+            write!(out, "import \"{}\";", module_name)?;
+        } else {
+            write!(out, "import {{ {} }} from \"{}\";",
+                use_stmt.items.join(", "), module_name)?;
+        }
+        Ok(())
+    }
+
+    /// Check if a list of statements contains any await expressions
+    fn has_await_expr(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    if Self::expr_has_await(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Return(expr) => {
+                    if Self::expr_has_await(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Store(store) => {
+                    if Self::expr_has_await(&store.expr) {
+                        return true;
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        if Self::body_has_await(&branch.body) {
+                            return true;
+                        }
+                    }
+                    if let Some(else_) = &if_stmt.else_ {
+                        if Self::body_has_await(else_) {
+                            return true;
+                        }
+                    }
+                }
+                Stmt::For(for_loop) => {
+                    if Self::body_has_await(&for_loop.body) {
+                        return true;
+                    }
+                }
+                Stmt::Block(body) | Stmt::Fn(Fn { body, .. }) => {
+                    if Self::has_await_expr(&body.stmts) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn body_has_await(body: &Body) -> bool {
+        Self::has_await_expr(&body.stmts)
+    }
+
+    fn expr_has_await(expr: &Expr) -> bool {
+        match expr {
+            Expr::Await { .. } => true,
+            Expr::Call(call) => {
+                Self::expr_has_await(&call.name) ||
+                    call.args.args.iter().any(|arg| match arg {
+                        Arg::Pos(e) => Self::expr_has_await(e),
+                        Arg::Pair(_, e) => Self::expr_has_await(e),
+                        Arg::Name(_) => false,
+                    })
+            }
+            Expr::Bina(l, _, r) => Self::expr_has_await(l) || Self::expr_has_await(r),
+            Expr::Unary(_, e) => Self::expr_has_await(e),
+            Expr::Dot(l, _) => Self::expr_has_await(l),
+            Expr::Index(a, i) => Self::expr_has_await(a) || Self::expr_has_await(i),
+            _ => false,
+        }
     }
 }

@@ -1,0 +1,9 @@
+fn fetch_data() ~int {
+    let result = 42.await
+    return result
+}
+
+fn main() {
+    let data = fetch_data()
+    print(data)
+}

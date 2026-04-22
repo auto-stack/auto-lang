@@ -1,0 +1,14 @@
+type Inner {
+    val int
+}
+
+type Outer {
+    inner Inner
+    name str
+}
+
+fn main() {
+    let i = Inner(42)
+    let o = Outer(i, "test")
+    print(o.inner.val)
+}

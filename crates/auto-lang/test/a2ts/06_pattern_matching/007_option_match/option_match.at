@@ -1,0 +1,8 @@
+fn main() {
+    let val = Some(42)
+
+    is val {
+        Some(v) -> print("value:", v)
+        None -> print("none")
+    }
+}

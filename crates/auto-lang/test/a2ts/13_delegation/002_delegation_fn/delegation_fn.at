@@ -1,0 +1,21 @@
+type Inner {
+    value int
+
+    fn get_value(self) int {
+        self.value
+    }
+}
+
+type Outer {
+    inner Inner
+
+    fn get_inner_value(self) int {
+        self.inner.get_value()
+    }
+}
+
+fn main() {
+    let i = Inner(42)
+    let o = Outer(i)
+    print(o.get_inner_value())
+}

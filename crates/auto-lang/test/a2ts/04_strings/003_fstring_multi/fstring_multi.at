@@ -1,0 +1,5 @@
+fn main() {
+    let name = "World"
+    let age = 30
+    print(f"Hello $name, age $age")
+}

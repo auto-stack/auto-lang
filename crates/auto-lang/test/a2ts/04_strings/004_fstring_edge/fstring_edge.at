@@ -1,0 +1,6 @@
+fn main() {
+    let x = 42
+    print(f"value is ${x}!")
+    print(f"$x alone")
+    print(f"end $x")
+}

@@ -1,0 +1,5 @@
+fn main() {
+    let x = None
+    let value = x ?? 10
+    print(value)
+}

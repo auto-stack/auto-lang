@@ -1,0 +1,14 @@
+fn check(x int) {
+    is x {
+        1 -> print("one")
+        2 -> print("two")
+        3 -> print("three")
+        _ -> print("other")
+    }
+}
+
+fn main() {
+    check(1)
+    check(2)
+    check(99)
+}

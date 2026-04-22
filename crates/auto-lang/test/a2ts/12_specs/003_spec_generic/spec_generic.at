@@ -1,0 +1,7 @@
+spec Printable {
+    fn format(self) str
+}
+
+fn main() {
+    print("spec defined")
+}

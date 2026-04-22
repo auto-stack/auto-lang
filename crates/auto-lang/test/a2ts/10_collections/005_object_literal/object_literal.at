@@ -1,0 +1,4 @@
+fn main() {
+    let obj = {name: "test", count: 5}
+    print(obj)
+}

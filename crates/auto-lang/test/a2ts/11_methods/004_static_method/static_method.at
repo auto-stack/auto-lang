@@ -1,0 +1,13 @@
+type Box {
+    width int
+    height int
+
+    static fn new(w int, h int) Box {
+        Box(w, h)
+    }
+}
+
+fn main() {
+    let b = Box.new(10, 20)
+    print(b.width)
+}

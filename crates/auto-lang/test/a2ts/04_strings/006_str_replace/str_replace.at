@@ -1,0 +1,5 @@
+fn main() {
+    let s = "hello world"
+    let r = s.replace("world", "Auto")
+    print(r)
+}
