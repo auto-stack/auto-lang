@@ -1,0 +1,4 @@
+let ms = Time.now_ms()
+let sec = Time.now_sec()
+print(ms)
+print(sec)
