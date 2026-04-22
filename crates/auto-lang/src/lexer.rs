@@ -426,6 +426,32 @@ impl<'a> Lexer<'a> {
                         self.buffer.push_back(ident);
                     }
                 }
+            } else if c == '{' {
+                // Plan 204 Phase 6C: Handle {{ as escaped literal {
+                let mut iter = self.chars.clone();
+                iter.next(); // skip current {
+                if iter.next() == Some('{') {
+                    // {{ -> literal {
+                    self.chars.next(); // skip first {
+                    self.chars.next(); // skip second {
+                    text.push('{');
+                } else {
+                    text.push(c);
+                    self.chars.next();
+                }
+            } else if c == '}' {
+                // Plan 204 Phase 6C: Handle }} as escaped literal }
+                let mut iter = self.chars.clone();
+                iter.next(); // skip current }
+                if iter.next() == Some('}') {
+                    // }} -> literal }
+                    self.chars.next(); // skip first }
+                    self.chars.next(); // skip second }
+                    text.push('}');
+                } else {
+                    text.push(c);
+                    self.chars.next();
+                }
             } else {
                 text.push(c);
                 self.chars.next();
@@ -1499,5 +1525,59 @@ mod tests {
         let code = r#""hello""#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<str:hello>");
+    }
+
+    // Plan 204 Phase 6C: f-string escaped brace tests
+
+    #[test]
+    fn test_fstr_escaped_double_open_brace() {
+        // {{ inside f-strings should produce literal {
+        let code = r#"f"hello {{world""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs><fstrp:hello {world><fstre>");
+    }
+
+    #[test]
+    fn test_fstr_escaped_double_close_brace() {
+        // }} inside f-strings should produce literal }
+        let code = r#"f"hello world}}""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs><fstrp:hello world}><fstre>");
+    }
+
+    #[test]
+    fn test_fstr_escaped_braces_pair() {
+        // {{ }} inside f-strings should produce literal { and }
+        let code = r#"f"hello {{world}} end""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs><fstrp:hello {world} end><fstre>");
+    }
+
+    #[test]
+    fn test_fstr_escaped_braces_with_interpolation() {
+        // Mixed escaped braces and interpolation: {{$name}}
+        // {{ -> literal {, then $name interpolation, then }} -> literal }
+        let code = r#"f"{{$name}}""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs><fstrp:{><$><ident:name><fstrp:}><fstre>");
+    }
+
+    #[test]
+    fn test_fstr_single_brace_not_escaped() {
+        // Single { and } should remain as-is (not escaped)
+        let code = r#"f"a{b}c""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs><fstrp:a{b}c><fstre>");
+    }
+
+    #[test]
+    fn test_fstr_escaped_braces_with_expr() {
+        // {{ and }} around a ${expr} interpolation
+        let code = r#"f"obj: {{${x}}}""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:obj: {><$><{><ident:x><}><fstrp:}><fstre>"
+        );
     }
 }

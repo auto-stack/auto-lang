@@ -1172,7 +1172,10 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
 
     // Write output file
     if !source_content.is_empty() {
-        std::fs::write(&rsname, source_content)?;
+        std::fs::write(&rsname, &source_content)?;
+
+        // Plan 204 Phase 6B: Basic output validation
+        validate_rust_output(&rsname, &source_content);
     }
 
     Ok(format!(
@@ -1183,6 +1186,69 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
         db.read().unwrap().get_dirty_fragments().len(),
         results.len()
     ))
+}
+
+/// Plan 204 Phase 6B: Basic structural validation of transpiled Rust output.
+///
+/// Checks bracket matching and basic structural validity.
+/// Logs warnings if validation fails but does not block writing.
+fn validate_rust_output(path: &str, content: &str) {
+    let mut paren_depth: i32 = 0;
+    let mut brace_depth: i32 = 0;
+    let mut bracket_depth: i32 = 0;
+    let mut in_string = false;
+    let mut in_char = false;
+    let mut escape_next = false;
+
+    for ch in content.chars() {
+        if escape_next {
+            escape_next = false;
+            continue;
+        }
+        if ch == '\\' && (in_string || in_char) {
+            escape_next = true;
+            continue;
+        }
+        if ch == '"' && !in_char {
+            in_string = !in_string;
+            continue;
+        }
+        if ch == '\'' && !in_string {
+            in_char = !in_char;
+            continue;
+        }
+        if in_string || in_char {
+            continue;
+        }
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth -= 1,
+            '{' => brace_depth += 1,
+            '}' => brace_depth -= 1,
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth -= 1,
+            _ => {}
+        }
+    }
+
+    let mut warnings = Vec::new();
+    if paren_depth != 0 {
+        warnings.push(format!("unbalanced parentheses (depth: {})", paren_depth));
+    }
+    if brace_depth != 0 {
+        warnings.push(format!("unbalanced braces (depth: {})", brace_depth));
+    }
+    if bracket_depth != 0 {
+        warnings.push(format!("unbalanced brackets (depth: {})", bracket_depth));
+    }
+
+    if !warnings.is_empty() {
+        eprintln!(
+            "[a2r warning] Output validation failed for {}: {}",
+            path,
+            warnings.join(", ")
+        );
+    }
 }
 
 /// Transpile AutoLang file to Python
