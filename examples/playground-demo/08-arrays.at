@@ -1,0 +1,23 @@
+// Arrays and operations
+let nums = [10, 20, 30, 40, 50]
+
+print("Array elements:")
+for i in 0..5 {
+    print(nums[i])
+}
+
+// Sum
+var total = 0
+for i in 0..5 {
+    total = total + nums[i]
+}
+print(f"Sum: $total")
+
+// Find max
+var max = nums[0]
+for i in 1..5 {
+    if nums[i] > max {
+        max = nums[i]
+    }
+}
+print(f"Max: $max")

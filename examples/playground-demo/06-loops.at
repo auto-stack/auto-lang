@@ -1,0 +1,26 @@
+// Loops: for-range, while-style, and loop
+// For-range loop
+print("Counting:")
+for i in 0..5 {
+    print(i)
+}
+
+// Loop with break
+print("Loop with break:")
+var count = 0
+loop {
+    print(count)
+    count = count + 1
+    if count >= 3 {
+        break
+    }
+}
+
+// For as while (condition loop)
+print("Countdown:")
+var n = 5
+for n > 0 {
+    print(n)
+    n = n - 1
+}
+print("Go!")

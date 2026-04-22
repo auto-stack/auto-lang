@@ -1,0 +1,17 @@
+// Type definitions and methods
+type Point {
+    x int
+    y int
+
+    fn new(x int, y int) Point {
+        Point { x: x, y: y }
+    }
+
+    fn distance(self) int {
+        self.x * self.x + self.y * self.y
+    }
+}
+
+let p = Point.new(3, 4)
+print(f"Point: ($p.x, $p.y)")
+print(f"Distance squared: $p.distance()")

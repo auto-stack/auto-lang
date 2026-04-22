@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import type { RunResponse, TransResponse, OutputTab } from '../types';
 
-const API_BASE = 'http://localhost:3030/api';
+const API_BASE = '/api';
 
 export function usePlayground() {
   const source = ref(`// Welcome to Auto Playground!

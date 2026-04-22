@@ -1,0 +1,24 @@
+// Enums and pattern matching
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+let c = Color.Red
+is c {
+    Color.Red -> print("red")
+    Color.Green -> print("green")
+    Color.Blue -> print("blue")
+}
+
+enum Shape {
+    Circle(float)
+    Rect(int, int)
+}
+
+let s = Shape.Circle(3.14)
+is s {
+    Shape.Circle(r) -> print(f"circle with radius $r")
+    Shape.Rect(w, h) -> print(f"rect $w x $h")
+}

@@ -1,0 +1,12 @@
+// Functions with type annotations
+fn add(a int, b int) int {
+    a + b
+}
+
+fn greet(name str) str {
+    f"Hello, $name!"
+}
+
+let result = add(3, 4)
+print(result)
+print(greet("World"))

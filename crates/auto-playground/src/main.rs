@@ -15,15 +15,17 @@ async fn main() {
         .init();
 
     let cors = CorsLayer::new()
-        .allow_origin(HeaderValue::from_static("http://localhost:5173"))
-        .allow_origin(HeaderValue::from_static("http://localhost:3000"))
+        .allow_origin([
+            HeaderValue::from_static("http://localhost:5173"),
+            HeaderValue::from_static("http://localhost:3000"),
+        ])
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(tower_http::cors::Any);
 
     let api_routes = Router::new()
-        .route("/run", post(routes::run::run_handler))
-        .route("/trans", post(routes::trans::trans_handler))
-        .route("/examples", get(routes::examples::examples_handler));
+        .route("/api/run", post(routes::run::run_handler))
+        .route("/api/trans", post(routes::trans::trans_handler))
+        .route("/api/examples", get(routes::examples::examples_handler));
 
     // Serve frontend static files in production
     let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist");

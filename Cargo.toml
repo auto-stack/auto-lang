@@ -13,6 +13,8 @@ members = [
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
     # Plan 082: AutoCache global build cache
     "crates/auto-cache",
+    # Plan 202: Auto Playground
+    "crates/auto-playground",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 resolver = "2"

@@ -1,0 +1,5 @@
+// Variables and F-string interpolation
+let x = 42
+let name = "Auto"
+let pi = 3.14
+print(f"Hello, $name! The answer is $x, pi = $pi")
