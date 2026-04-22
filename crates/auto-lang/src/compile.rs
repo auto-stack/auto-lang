@@ -54,6 +54,9 @@ pub struct CompileSession {
     loading_stack: Vec<String>,
     /// Cross-module function calls: compiled dependency modules
     compiled_modules: Vec<crate::vm::loader::Module>,
+    /// Plan 212b Task 2: Rust imports collected from use.rust statements
+    /// Maps crate_name → list of imported function names
+    rust_imports: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Clone for CompileSession {
@@ -67,6 +70,7 @@ impl Clone for CompileSession {
             declared_crates: self.declared_crates.clone(),
             loading_stack: Vec::new(),
             compiled_modules: Vec::new(),
+            rust_imports: self.rust_imports.clone(),
         }
     }
 }
@@ -85,6 +89,7 @@ impl CompileSession {
             declared_crates: HashSet::new(),
             loading_stack: Vec::new(),
             compiled_modules: Vec::new(),
+            rust_imports: std::collections::HashMap::new(),
         }
     }
 
@@ -175,13 +180,21 @@ impl CompileSession {
             // Plan 092/190: Handle Rust imports
             if use_stmt.is_rust_import {
                 // Extract crate name from module path (first segment)
-                let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module);
+                let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module).to_string();
 
-                if !self.is_dep_declared(crate_name) {
+                if !self.is_dep_declared(&crate_name) {
                     return Err(AutoError::Msg(format!(
                         "Crate '{}' not declared. Add `dep {}` before `use.rust`.",
                         crate_name, crate_name
                     )));
+                }
+
+                // Plan 212b Task 2: Collect imported function names for compilation
+                if !use_stmt.items.is_empty() {
+                    self.rust_imports
+                        .entry(crate_name.clone())
+                        .or_default()
+                        .extend(use_stmt.items.iter().cloned());
                 }
 
                 // Plan 190: Register imported Rust types in TypeStore
@@ -318,6 +331,22 @@ impl CompileSession {
             registered_count += 1;
         }
 
+        // Plan 212b Task 2: Compile deps that have rust imports
+        if let Some(ref sandbox) = self.sandbox {
+            for (crate_name, functions) in &self.rust_imports {
+                if self.declared_crates.contains(crate_name) {
+                    match sandbox.compile_dep(crate_name, functions) {
+                        Ok(path) => {
+                            log::info!("Compiled dep {} -> {}", crate_name, path.display());
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to compile dep {}: {}", crate_name, e);
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(registered_count)
     }
 
@@ -330,6 +359,33 @@ impl CompileSession {
         }
         // Plan 190: Rust built-in crates are always available
         matches!(crate_name, "std" | "core" | "alloc" | "proc_macro")
+    }
+
+    /// Plan 212b Task 2: Collect Rust imports from source code
+    ///
+    /// Scans for `use.rust` statements and collects the function names
+    /// per crate. This should be called after `resolve_deps()` to ensure
+    /// the crates have been declared.
+    pub fn collect_rust_imports(&mut self, source: &str) -> AutoResult<()> {
+        let use_statements = scan_use_statements(source);
+        for use_stmt in &use_statements {
+            if !use_stmt.is_rust_import || use_stmt.items.is_empty() {
+                continue;
+            }
+            let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module).to_string();
+            self.rust_imports
+                .entry(crate_name)
+                .or_default()
+                .extend(use_stmt.items.iter().cloned());
+        }
+        Ok(())
+    }
+
+    /// Plan 212b Task 2: Get collected Rust imports
+    ///
+    /// Returns a map of crate_name → list of function names imported via use.rust.
+    pub fn rust_imports(&self) -> &std::collections::HashMap<String, Vec<String>> {
+        &self.rust_imports
     }
 
     /// Plan 092: Get the sandbox (for FFI bridge integration)
