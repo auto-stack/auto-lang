@@ -30,7 +30,9 @@
           :stderr="stderr"
           :time-ms="timeMs"
           :transpiled-code="transpiledCode"
+          :live-compile="liveCompile"
           @tab-change="onTabChange"
+          @toggle-live="$emit('toggleLive')"
         />
       </div>
     </main>
@@ -51,6 +53,7 @@ defineProps<{
   stderr: string;
   timeMs: number;
   transpiledCode: string;
+  liveCompile: boolean;
   onRun: () => void;
 }>();
 
@@ -59,6 +62,7 @@ const emit = defineEmits<{
   run: [];
   tabChange: [tab: OutputTab];
   loadExample: [code: string];
+  toggleLive: [];
 }>();
 
 function onTabChange(tab: OutputTab) {

@@ -14,6 +14,15 @@ async fn main() {
         .with_env_filter("auto_playground=debug,tower_http=debug")
         .init();
 
+    let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend");
+    let dist_dir = frontend_dir.join("dist");
+
+    // Spawn frontend dev server if no production build
+    let mut frontend_child: Option<tokio::process::Child> = None;
+    if !dist_dir.exists() {
+        frontend_child = spawn_frontend_dev(&frontend_dir);
+    }
+
     let cors = CorsLayer::new()
         .allow_origin([
             HeaderValue::from_static("http://localhost:5173"),
@@ -27,10 +36,8 @@ async fn main() {
         .route("/api/trans", post(routes::trans::trans_handler))
         .route("/api/examples", get(routes::examples::examples_handler));
 
-    // Serve frontend static files in production
-    let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist");
-    let app = if frontend_dir.exists() {
-        api_routes.fallback_service(tower_http::services::ServeDir::new(&frontend_dir))
+    let app = if dist_dir.exists() {
+        api_routes.fallback_service(tower_http::services::ServeDir::new(&dist_dir))
     } else {
         api_routes
     };
@@ -42,4 +49,49 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+
+    drop(frontend_child);
+}
+
+fn spawn_frontend_dev(frontend_dir: &std::path::Path) -> Option<tokio::process::Child> {
+    let cmd = which_frontend_cmd();
+
+    let child = match tokio::process::Command::new(&cmd)
+        .args(["run", "dev"])
+        .current_dir(frontend_dir)
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to start frontend dev server ({}): {}. Start it manually with `cd frontend && {} run dev`",
+                cmd, e, cmd
+            );
+            return None;
+        }
+    };
+
+    tracing::info!(
+        "Frontend dev server started (PID: {:?}) — {}",
+        child.id(),
+        cmd
+    );
+    Some(child)
+}
+
+fn which_frontend_cmd() -> &'static str {
+    // Prefer bun (faster), fall back to npm
+    if std::process::Command::new("bun")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+    {
+        "bun"
+    } else {
+        "npm"
+    }
 }

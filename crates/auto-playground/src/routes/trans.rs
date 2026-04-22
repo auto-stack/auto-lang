@@ -5,7 +5,7 @@ use crate::error::AppError;
 #[derive(Deserialize)]
 pub struct TransRequest {
     pub source: String,
-    pub target: String, // "rust" | "c"
+    pub target: String, // "rust" | "c" | "python" | "javascript" | "typescript"
 }
 
 #[derive(Serialize)]
@@ -23,6 +23,9 @@ pub async fn trans_handler(
     let code = tokio::task::spawn_blocking(move || match target.as_str() {
         "rust" => transpile_rust(&source),
         "c" => transpile_c(&source),
+        "python" => transpile_python(&source),
+        "javascript" => transpile_javascript(&source),
+        "typescript" => transpile_typescript(&source),
         _ => Err(AppError::Internal(format!("Unknown target: {target}"))),
     })
     .await
@@ -51,6 +54,51 @@ fn transpile_c(source: &str) -> Result<String, AppError> {
 
     let mut sink: Sink = auto_transpile_c("playground", source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
+
+    let output = sink.done().map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(String::from_utf8_lossy(output).to_string())
+}
+
+fn transpile_python(source: &str) -> Result<String, AppError> {
+    use auto_lang::trans::{Sink, Trans};
+    use auto_lang::trans::python::PythonTrans;
+    use auto_lang::Parser;
+
+    let mut parser = Parser::from(source);
+    let ast = parser.parse().map_err(|e| AppError::CompileError(e.to_string()))?;
+    let mut sink = Sink::new("playground".into());
+    let mut trans = PythonTrans::new("playground".into());
+    trans.trans(ast, &mut sink).map_err(|e| AppError::CompileError(e.to_string()))?;
+
+    let output = sink.done().map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(String::from_utf8_lossy(output).to_string())
+}
+
+fn transpile_javascript(source: &str) -> Result<String, AppError> {
+    use auto_lang::trans::{Sink, Trans};
+    use auto_lang::trans::javascript::JavaScriptTrans;
+    use auto_lang::Parser;
+
+    let mut parser = Parser::from(source);
+    let ast = parser.parse().map_err(|e| AppError::CompileError(e.to_string()))?;
+    let mut sink = Sink::new("playground".into());
+    let mut trans = JavaScriptTrans::new("playground".into());
+    trans.trans(ast, &mut sink).map_err(|e| AppError::CompileError(e.to_string()))?;
+
+    let output = sink.done().map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(String::from_utf8_lossy(output).to_string())
+}
+
+fn transpile_typescript(source: &str) -> Result<String, AppError> {
+    use auto_lang::trans::{Sink, Trans};
+    use auto_lang::trans::typescript::TypeScriptTrans;
+    use auto_lang::Parser;
+
+    let mut parser = Parser::from(source);
+    let ast = parser.parse().map_err(|e| AppError::CompileError(e.to_string()))?;
+    let mut sink = Sink::new("playground".into());
+    let mut trans = TypeScriptTrans::new("playground".into());
+    trans.trans(ast, &mut sink).map_err(|e| AppError::CompileError(e.to_string()))?;
 
     let output = sink.done().map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(String::from_utf8_lossy(output).to_string())

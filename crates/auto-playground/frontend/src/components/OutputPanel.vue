@@ -9,6 +9,13 @@
       >
         {{ tab.label }}
       </button>
+      <button
+        :class="['tab', 'live-toggle', { active: liveCompile }]"
+        @click="$emit('toggleLive')"
+        title="Toggle live transpile on edit"
+      >
+        {{ liveCompile ? 'Live' : 'Manual' }}
+      </button>
     </div>
     <div class="content">
       <ConsoleOutput
@@ -37,16 +44,21 @@ defineProps<{
   stderr: string;
   timeMs: number;
   transpiledCode: string;
+  liveCompile: boolean;
 }>();
 
 defineEmits<{
   tabChange: [tab: OutputTab];
+  toggleLive: [];
 }>();
 
 const tabs: { id: OutputTab; label: string }[] = [
   { id: 'console', label: 'Console' },
   { id: 'rust', label: 'Rust' },
   { id: 'c', label: 'C' },
+  { id: 'python', label: 'Python' },
+  { id: 'javascript', label: 'JS' },
+  { id: 'typescript', label: 'TS' },
 ];
 </script>
 
@@ -61,12 +73,13 @@ const tabs: { id: OutputTab; label: string }[] = [
   background: #2d2d2d;
   border-bottom: 1px solid #444;
   padding: 0 4px;
+  gap: 0;
 }
 .tab {
   background: transparent;
   color: #999;
   border: none;
-  padding: 8px 16px;
+  padding: 8px 12px;
   cursor: pointer;
   font-size: 13px;
   border-bottom: 2px solid transparent;
@@ -77,6 +90,16 @@ const tabs: { id: OutputTab; label: string }[] = [
 .tab.active {
   color: #fff;
   border-bottom-color: #007acc;
+}
+.live-toggle {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 3px;
+}
+.live-toggle.active {
+  color: #4ec9b0;
+  border-bottom-color: #4ec9b0;
 }
 .content {
   flex: 1;

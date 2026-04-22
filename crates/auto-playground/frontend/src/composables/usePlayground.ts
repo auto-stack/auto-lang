@@ -1,7 +1,8 @@
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { RunResponse, TransResponse, OutputTab } from '../types';
 
 const API_BASE = '/api';
+const DEBOUNCE_MS = 500;
 
 export function usePlayground() {
   const source = ref(`// Welcome to Auto Playground!
@@ -17,12 +18,13 @@ print(result)`);
   const resultCode = ref('');
   const timeMs = ref(0);
   const isLoading = ref(false);
-  const activeTab = ref<OutputTab>('console');
+  const activeTab = ref<OutputTab>('rust');
   const transpiledCode = ref('');
   const transpileTarget = ref('');
+  const liveCompile = ref(true);
 
-  // Cache transpiled code per target
   const transCache = ref<Record<string, string>>({});
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function run() {
     isLoading.value = true;
@@ -53,12 +55,13 @@ print(result)`);
   }
 
   async function transpile(target: string) {
-    activeTab.value = target as OutputTab;
-
-    if (transCache.value[target]) {
-      transpiledCode.value = transCache.value[target];
-      transpileTarget.value = target;
-      return;
+    if (transCache.value[target] && transCache.value[target] === transpiledCode.value) {
+      // Already showing cached result for this target
+      if (transCache.value[target]) {
+        transpiledCode.value = transCache.value[target];
+        transpileTarget.value = target;
+        return;
+      }
     }
 
     isLoading.value = true;
@@ -82,15 +85,34 @@ print(result)`);
 
   function loadExample(code: string) {
     source.value = code;
-    transCache.value = {};
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';
+    // transCache cleared by watch
   }
+
+  // Invalidate cache when source changes, auto-transpile in live mode
+  watch(source, () => {
+    transCache.value = {};
+
+    if (liveCompile.value && activeTab.value !== 'console') {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        transpile(activeTab.value);
+      }, DEBOUNCE_MS);
+    }
+  });
+
+  // Initial transpile for default tab
+  setTimeout(() => {
+    if (liveCompile.value && activeTab.value !== 'console') {
+      transpile(activeTab.value);
+    }
+  }, 100);
 
   return {
     source, stdout, stderr, resultCode, timeMs, isLoading,
-    activeTab, transpiledCode, transpileTarget,
+    activeTab, transpiledCode, transpileTarget, liveCompile,
     run, transpile, loadExample,
   };
 }

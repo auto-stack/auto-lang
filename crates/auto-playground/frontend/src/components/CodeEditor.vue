@@ -8,6 +8,7 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { autoLanguage } from '../lang/auto';
 
 const props = defineProps<{
   modelValue: string;
@@ -29,6 +30,7 @@ onMounted(() => {
     highlightActiveLine(),
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    autoLanguage,
     oneDark,
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
