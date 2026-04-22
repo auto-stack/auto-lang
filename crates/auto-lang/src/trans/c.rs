@@ -54,6 +54,10 @@ pub struct CTrans {
     // Uncover bindings: maps variable name → (src_name, tag_name)
     // e.g., i -> (atom, Int) means `i` is bound to `atom.as.Int`
     local_var_uncovers: HashMap<AutoStr, (AutoStr, AutoStr)>,
+    // Plan 216 Phase 3: C FFI manifest function names
+    // Populated when `use c <header.h>` is encountered — tracks which C functions
+    // are available from imported headers so the transpiler can resolve calls directly.
+    c_manifest_functions: HashSet<AutoStr>,
 }
 
 /// Information about a closure for code generation
@@ -83,6 +87,7 @@ impl CTrans {
             declared_types: HashMap::new(),
             declared_specs: HashMap::new(),
             local_var_uncovers: HashMap::new(),
+            c_manifest_functions: HashSet::new(),
         }
     }
 
@@ -103,6 +108,7 @@ impl CTrans {
             declared_types: HashMap::new(),
             declared_specs: HashMap::new(),
             local_var_uncovers: HashMap::new(),
+            c_manifest_functions: HashSet::new(),
         }
     }
 
@@ -1316,6 +1322,14 @@ impl CTrans {
                 for path in use_stmt.paths.iter() {
                     if !self.libs.contains(path) {
                         self.libs.insert(path.clone());
+                    }
+                    // Plan 216 Phase 3: Load manifest and register C function names
+                    if let Some(manifest) = crate::vm::ffi::c_ffi::load_builtin_manifest(path) {
+                        for func in &manifest.functions {
+                            if !func.variadic {
+                                self.c_manifest_functions.insert(func.name.clone().into());
+                            }
+                        }
                     }
                 }
             }

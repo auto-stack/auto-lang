@@ -1,0 +1,9 @@
+// Plan 216 Phase 3: Auto C FFI - math functions
+// Tests that use.c <math.h> enables direct calls to sqrt/abs
+// without needing explicit fn.c declarations.
+use.c <math.h>
+
+fn main() {
+    let x = sqrt(4.0)
+    let y = abs(-10)
+}

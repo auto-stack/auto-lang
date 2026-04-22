@@ -399,3 +399,6 @@ fn test_25_type_checking_001_type_error() { test_a2c("25_type_checking/001_type_
 #[test] fn test_14_ext_004_ext_static_method() { test_a2c("14_ext/004_ext_static_method").unwrap(); }
 #[test] fn test_14_ext_005_ext_multiple() { test_a2c("14_ext/005_ext_multiple").unwrap(); }
 #[test] fn test_14_ext_006_ext_prop_shorthand() { test_a2c("14_ext/006_ext_prop_shorthand").unwrap(); }
+
+// === 200_auto_cffi === Plan 216 Phase 3: Auto C FFI from manifests
+#[test] fn test_200_auto_cffi_math() { test_a2c("200_auto_cffi_math").unwrap(); }
