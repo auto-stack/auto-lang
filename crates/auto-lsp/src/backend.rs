@@ -325,16 +325,19 @@ impl LanguageServer for Backend {
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri.to_string();
 
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("Document symbols requested for: {}", uri),
-            )
-            .await;
+        // Get document content
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
 
-        // TODO: Parse document and extract symbols
-        // For now, return None
-        Ok(None)
+        let symbols = extract_document_symbols(&content);
+
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(DocumentSymbolResponse::Array(symbols)))
+        }
     }
 
     /// Workspace symbols (search across project)
@@ -476,6 +479,149 @@ impl Backend {
     async fn publish_diagnostics(&self, uri: &str) {
         self.publish_diagnostics_for_uri(uri).await;
     }
+}
+
+/// Extract document symbols from source code using regex
+fn extract_document_symbols(content: &str) -> Vec<DocumentSymbol> {
+    use regex::Regex;
+    let mut symbols = Vec::new();
+
+    // Extract fn declarations
+    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?(?:mut\s+|static\s+)?fn\s+(\w+)") {
+        for (line_num, line) in content.lines().enumerate() {
+            if let Some(caps) = re.captures(line) {
+                if let Some(name) = caps.get(1) {
+                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
+                    symbols.push(DocumentSymbol {
+                        name: name.as_str().to_string(),
+                        detail: Some("fn".to_string()),
+                        kind: SymbolKind::FUNCTION,
+                        tags: None,
+                        deprecated: None,
+                        range: Range {
+                            start: Position { line: line_num as u32, character: 0 },
+                            end: Position { line: line_num as u32, character: line.len() as u32 },
+                        },
+                        selection_range: Range {
+                            start: Position { line: line_num as u32, character: start_char },
+                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
+                        },
+                        children: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Extract type declarations
+    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?type\s+(\w+)") {
+        for (line_num, line) in content.lines().enumerate() {
+            if let Some(caps) = re.captures(line) {
+                if let Some(name) = caps.get(1) {
+                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
+                    symbols.push(DocumentSymbol {
+                        name: name.as_str().to_string(),
+                        detail: Some("type".to_string()),
+                        kind: SymbolKind::CLASS,
+                        tags: None,
+                        deprecated: None,
+                        range: Range {
+                            start: Position { line: line_num as u32, character: 0 },
+                            end: Position { line: line_num as u32, character: line.len() as u32 },
+                        },
+                        selection_range: Range {
+                            start: Position { line: line_num as u32, character: start_char },
+                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
+                        },
+                        children: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Extract enum declarations
+    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?enum\s+(\w+)") {
+        for (line_num, line) in content.lines().enumerate() {
+            if let Some(caps) = re.captures(line) {
+                if let Some(name) = caps.get(1) {
+                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
+                    symbols.push(DocumentSymbol {
+                        name: name.as_str().to_string(),
+                        detail: Some("enum".to_string()),
+                        kind: SymbolKind::ENUM,
+                        tags: None,
+                        deprecated: None,
+                        range: Range {
+                            start: Position { line: line_num as u32, character: 0 },
+                            end: Position { line: line_num as u32, character: line.len() as u32 },
+                        },
+                        selection_range: Range {
+                            start: Position { line: line_num as u32, character: start_char },
+                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
+                        },
+                        children: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Extract spec declarations (interface)
+    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?spec\s+(\w+)") {
+        for (line_num, line) in content.lines().enumerate() {
+            if let Some(caps) = re.captures(line) {
+                if let Some(name) = caps.get(1) {
+                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
+                    symbols.push(DocumentSymbol {
+                        name: name.as_str().to_string(),
+                        detail: Some("spec".to_string()),
+                        kind: SymbolKind::INTERFACE,
+                        tags: None,
+                        deprecated: None,
+                        range: Range {
+                            start: Position { line: line_num as u32, character: 0 },
+                            end: Position { line: line_num as u32, character: line.len() as u32 },
+                        },
+                        selection_range: Range {
+                            start: Position { line: line_num as u32, character: start_char },
+                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
+                        },
+                        children: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Extract const declarations
+    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?const\s+(\w+)") {
+        for (line_num, line) in content.lines().enumerate() {
+            if let Some(caps) = re.captures(line) {
+                if let Some(name) = caps.get(1) {
+                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
+                    symbols.push(DocumentSymbol {
+                        name: name.as_str().to_string(),
+                        detail: Some("const".to_string()),
+                        kind: SymbolKind::CONSTANT,
+                        tags: None,
+                        deprecated: None,
+                        range: Range {
+                            start: Position { line: line_num as u32, character: 0 },
+                            end: Position { line: line_num as u32, character: line.len() as u32 },
+                        },
+                        selection_range: Range {
+                            start: Position { line: line_num as u32, character: start_char },
+                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
+                        },
+                        children: None,
+                    });
+                }
+            }
+        }
+    }
+
+    symbols
 }
 
 /// Apply a text change to content at the given range
