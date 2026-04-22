@@ -402,5 +402,12 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_18_ffi_054_process_current_dir() { test_vm("18_ffi/054_process_current_dir").unwrap(); }
 #[test] fn test_18_ffi_055_process_args() { test_vm("18_ffi/055_process_args").unwrap(); }
 
+// === 20_rust_ffi (Plan 212b: E2E Rust FFI) ===
+// NOTE: These tests require network access (cargo download) and are #[ignore]d by default.
+// Run with: cargo test -p auto-lang test_20_rust_ffi -- --ignored
+#[test]
+#[ignore]
+fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
