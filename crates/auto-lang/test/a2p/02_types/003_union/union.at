@@ -1,0 +1,8 @@
+union MyUnion {
+    i int
+    f float
+}
+
+fn main() {
+    print("Union defined")
+}

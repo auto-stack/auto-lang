@@ -1,0 +1,8 @@
+tag Shape {
+    Circle
+    Rect
+}
+
+fn main() {
+    print("Tag defined")
+}

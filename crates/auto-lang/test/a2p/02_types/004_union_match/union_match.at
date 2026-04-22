@@ -1,0 +1,10 @@
+union Value {
+    i int
+    s str
+    d double
+}
+
+fn main() {
+    let v = Value(i: 42)
+    print("Union match")
+}
