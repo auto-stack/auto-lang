@@ -232,6 +232,12 @@ pub struct Codegen {
     /// Maps local name → qualified name (e.g., "read_text" → "auto.fs.read_text")
     /// Populated from use statements with specific imports: `use auto.fs: read_text`
     import_scope: HashMap<String, String>,
+
+    /// Plan 212b Task 3: Rust FFI function name mappings
+    /// Maps local function name → (crate_name, full_path) for use.rust imports
+    /// e.g., "from_str" → ("serde_json", "serde_json::from_str")
+    /// Used to emit CALL_NAT for Rust FFI functions at codegen time
+    rust_native_map: HashMap<String, (String, String)>,
 }
 
 impl Codegen {
@@ -293,6 +299,7 @@ impl Codegen {
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
+            rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -383,6 +390,7 @@ impl Codegen {
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
+            rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -2889,6 +2897,12 @@ impl Codegen {
     /// - `use auto.list: push` → scope["push"] = "auto.list.push"
     /// - `use auto.fs` (no items) → nothing added (module-level import handled differently)
     fn handle_use_stmt(&mut self, use_stmt: &crate::ast::Use) {
+        // Handle Rust imports (Plan 212b Task 3)
+        if matches!(use_stmt.kind, crate::ast::UseKind::Rust) {
+            self.handle_rust_import(use_stmt);
+            return;
+        }
+
         // Only handle Auto imports (not C/Rust use)
         if !matches!(use_stmt.kind, crate::ast::UseKind::Auto) {
             return;
@@ -2912,6 +2926,36 @@ impl Codegen {
             }
         }
         // Module imports without specific items (use auto.fs) are not added to scope
+    }
+
+    /// Plan 212b Task 3: Handle use.rust statement and record function name mappings
+    ///
+    /// Records each imported function name in `rust_native_map` so that
+    /// when the codegen encounters a call to that function, it can emit
+    /// CALL_NAT instead of a regular CALL.
+    fn handle_rust_import(&mut self, use_stmt: &crate::ast::Use) {
+        // Build module path from AST
+        let module_path = if let Some(ref mp) = use_stmt.module_path {
+            mp.display()
+        } else if !use_stmt.paths.is_empty() {
+            use_stmt.paths.join("::")
+        } else {
+            return;
+        };
+
+        // Extract crate name (first segment of :: path)
+        let crate_name = module_path.split("::").next().unwrap_or(&module_path).to_string();
+
+        if !use_stmt.items.is_empty() {
+            for item in &use_stmt.items {
+                let local_name = item.as_str();
+                let full_path = format!("{}::{}", module_path, local_name);
+                self.rust_native_map.insert(
+                    local_name.to_string(),
+                    (crate_name.clone(), full_path),
+                );
+            }
+        }
     }
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
@@ -4964,6 +5008,22 @@ impl Codegen {
                     // If the bare name isn't found, resolve through the import scope
                     else if let Some(qualified) = self.import_scope.get(name) {
                         BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
+                    }
+                    // Plan 212b Task 3: Check rust_native_map for Rust FFI functions
+                    // If the function was imported via use.rust, register it as a native
+                    // and return the assigned native_id
+                    else if self.rust_native_map.contains_key(name) {
+                        // Look up or register the Rust FFI function in BIGVM_NATIVES
+                        // The native_id will be assigned by the runtime bridge at load time.
+                        // For now, we check if it's already registered (from resolve_uses preprocessing)
+                        let qualified = format!("rust.{}", name);
+                        if let Some(id) = BIGVM_NATIVES.lock().unwrap().resolve_qualified(&qualified) {
+                            Some(id)
+                        } else {
+                            // Register a placeholder native that will be resolved at runtime
+                            let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            Some(id)
+                        }
                     }
                     else {
                         None
