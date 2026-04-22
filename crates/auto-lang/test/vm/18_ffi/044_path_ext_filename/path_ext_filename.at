@@ -1,0 +1,4 @@
+print(Path.extension("file.tar.gz"))
+print(Path.filename("/usr/local/file.txt"))
+print(Path.extension("noext"))
+print(Path.filename("/path/to/"))

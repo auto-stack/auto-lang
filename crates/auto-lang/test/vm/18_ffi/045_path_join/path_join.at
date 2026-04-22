@@ -1,0 +1,3 @@
+print(Path.extension("archive.tar.gz"))
+print(Path.filename("/home/user/docs/readme.md"))
+print(Path.parent("/home/user/docs"))

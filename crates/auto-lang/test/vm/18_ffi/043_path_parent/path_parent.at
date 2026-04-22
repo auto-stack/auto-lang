@@ -1,0 +1,3 @@
+print(Path.parent("/usr/local/bin"))
+print(Path.parent("/usr/local"))
+print(Path.parent("/usr"))

@@ -375,5 +375,10 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_18_ffi_041_json_keys() { test_vm("18_ffi/041_json_keys").unwrap(); }
 #[test] fn test_18_ffi_042_json_type_as() { test_vm("18_ffi/042_json_type_as").unwrap(); }
 
+// === 18_ffi (Plan 211 Task 5: Path stdlib) ===
+#[test] fn test_18_ffi_043_path_parent() { test_vm("18_ffi/043_path_parent").unwrap(); }
+#[test] fn test_18_ffi_044_path_ext_filename() { test_vm("18_ffi/044_path_ext_filename").unwrap(); }
+#[test] fn test_18_ffi_045_path_join() { test_vm("18_ffi/045_path_join").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
