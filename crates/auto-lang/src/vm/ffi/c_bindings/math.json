@@ -1,0 +1,89 @@
+{
+  "header": "math.h",
+  "library": "m",
+  "functions": [
+    {
+      "name": "abs",
+      "params": [
+        { "name": "x", "ty": { "kind": "Int" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "sqrt",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "sin",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "cos",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "tan",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "ceil",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "floor",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "pow",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } },
+        { "name": "y", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "fmin",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } },
+        { "name": "y", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "fmax",
+      "params": [
+        { "name": "x", "ty": { "kind": "Double" } },
+        { "name": "y", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    }
+  ]
+}

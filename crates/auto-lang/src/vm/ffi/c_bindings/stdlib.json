@@ -1,0 +1,60 @@
+{
+  "header": "stdlib.h",
+  "library": "c",
+  "functions": [
+    {
+      "name": "malloc",
+      "params": [
+        { "name": "size", "ty": { "kind": "Size" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "free",
+      "params": [
+        { "name": "ptr", "ty": { "kind": "Ptr" } }
+      ],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    },
+    {
+      "name": "atoi",
+      "params": [
+        { "name": "s", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "atof",
+      "params": [
+        { "name": "s", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    },
+    {
+      "name": "rand",
+      "params": [],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "srand",
+      "params": [
+        { "name": "seed", "ty": { "kind": "UInt" } }
+      ],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    },
+    {
+      "name": "exit",
+      "params": [
+        { "name": "code", "ty": { "kind": "Int" } }
+      ],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    }
+  ]
+}

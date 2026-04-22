@@ -35,10 +35,13 @@ mod convert;
 mod error;
 pub mod stdlib;
 pub mod rust_stdlib;
+// Plan 216 Phase 2: C FFI runtime
+pub mod c_ffi;
 
 pub use convert::VMConvertible;
 pub use error::FFIError;
 pub use stdlib::register_stdlib_ffi;
+pub use c_ffi::CFfiRuntime;
 
 /// Maximum ID for static FFI bindings
 pub const STATIC_ID_MAX: u16 = 10000;

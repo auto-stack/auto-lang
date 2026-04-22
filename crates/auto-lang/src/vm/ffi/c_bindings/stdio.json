@@ -1,0 +1,56 @@
+{
+  "header": "stdio.h",
+  "library": "c",
+  "functions": [
+    {
+      "name": "puts",
+      "params": [
+        { "name": "s", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "getchar",
+      "params": [],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "fopen",
+      "params": [
+        { "name": "path", "ty": { "kind": "CStr" } },
+        { "name": "mode", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "fclose",
+      "params": [
+        { "name": "stream", "ty": { "kind": "Ptr" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "fgets",
+      "params": [
+        { "name": "s", "ty": { "kind": "PtrMut" } },
+        { "name": "size", "ty": { "kind": "Int" } },
+        { "name": "stream", "ty": { "kind": "Ptr" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "fputs",
+      "params": [
+        { "name": "s", "ty": { "kind": "CStr" } },
+        { "name": "stream", "ty": { "kind": "Ptr" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    }
+  ]
+}

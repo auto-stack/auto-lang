@@ -31,6 +31,8 @@ ui-iced = ["ui", "dep:iced"]
 [dependencies]
 auto-val = { path = "../auto-val" }
 auto-cache = { path = "../auto-cache" }
+# Plan 216: C FFI Bindgen manifest types
+auto-bindgen = { path = "../auto-bindgen" }
 rustyline = { workspace = true, features = ["with-file-history"] }
 strum = { workspace = true }
 strum_macros = { workspace = true }

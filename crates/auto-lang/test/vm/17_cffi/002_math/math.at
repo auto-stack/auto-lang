@@ -1,0 +1,10 @@
+// Plan 216 Phase 2: math test
+// Tests C FFI math functions via use.c <math.h>
+use.c <math.h>
+
+fn main() {
+    let x = sqrt(4.0)
+    let y = abs(-10)
+    print(x)
+    print(y)
+}

@@ -1,0 +1,8 @@
+// Plan 216 Phase 2: strlen test
+// Tests C FFI strlen function via use.c <string.h>
+use.c <string.h>
+
+fn main() {
+    let len = strlen(c"hello")
+    print(len)
+}

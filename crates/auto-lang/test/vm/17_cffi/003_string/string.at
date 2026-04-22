@@ -1,0 +1,8 @@
+// Plan 216 Phase 2: string comparison test
+// Tests C FFI strcmp function via use.c <string.h>
+use.c <string.h>
+
+fn main() {
+    let result = strcmp(c"abc", c"abc")
+    print(result)
+}

@@ -18,7 +18,15 @@ use crate::types;
 use auto_val::Op;
 use miette::SourceSpan;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+
+// Plan 216 Phase 2: Global C-FFI runtime instance.
+// Used by codegen's handle_c_import to register C functions, and by the VM
+// engine to merge the shims into its NativeInterface at startup.
+lazy_static::lazy_static! {
+    pub static ref CFFI_GLOBAL: Mutex<crate::vm::ffi::c_ffi::CFfiRuntime> =
+        Mutex::new(crate::vm::ffi::c_ffi::CFfiRuntime::new());
+}
 
 /// Debug logging macro - only prints when VM debug mode is enabled
 macro_rules! vm_debug {
@@ -238,6 +246,11 @@ pub struct Codegen {
     /// e.g., "from_str" → ("serde_json", "serde_json::from_str")
     /// Used to emit CALL_NAT for Rust FFI functions at codegen time
     rust_native_map: HashMap<String, (String, String)>,
+
+    /// Plan 216 Phase 2: C FFI function name → native_id mapping
+    /// Populated when `use c <header.h>` is encountered, by loading the manifest
+    /// and registering functions in the C-FFI runtime.
+    c_ffi_functions: HashMap<String, u16>,
 }
 
 impl Codegen {
@@ -300,6 +313,7 @@ impl Codegen {
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
+            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -391,6 +405,7 @@ impl Codegen {
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
+            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -2903,6 +2918,12 @@ impl Codegen {
             return;
         }
 
+        // Plan 216 Phase 2: Handle C imports
+        if matches!(use_stmt.kind, crate::ast::UseKind::C) {
+            self.handle_c_import(use_stmt);
+            return;
+        }
+
         // Only handle Auto imports (not C/Rust use)
         if !matches!(use_stmt.kind, crate::ast::UseKind::Auto) {
             return;
@@ -2954,6 +2975,49 @@ impl Codegen {
                     local_name.to_string(),
                     (crate_name.clone(), full_path),
                 );
+            }
+        }
+    }
+
+    /// Plan 216 Phase 2: Handle `use c <header.h>` statement.
+    ///
+    /// Loads the manifest for the given C header and registers all its functions
+    /// as C-FFI native shims. The native IDs are stored in `c_ffi_functions` so
+    /// that subsequent function calls can emit CALL_NAT.
+    fn handle_c_import(&mut self, use_stmt: &crate::ast::Use) {
+        // The C header path is stored in paths (e.g. ["<string.h>"])
+        let header = if !use_stmt.paths.is_empty() {
+            use_stmt.paths[0].as_str().to_string()
+        } else {
+            return;
+        };
+
+        // Load the built-in manifest
+        let manifest = match crate::vm::ffi::c_ffi::load_builtin_manifest(&header) {
+            Some(m) => m,
+            None => {
+                log::warn!("No C-FFI manifest found for header: {}", header);
+                return;
+            }
+        };
+
+        // Register each function in the C-FFI runtime and record native IDs
+        // We use a lazy-static pattern: the CFfiRuntime lives in a global registry
+        // so it can be accessed both at codegen time (to get IDs) and at VM runtime
+        // (to provide the shims).
+        let mut cffi = CFFI_GLOBAL.lock().unwrap();
+        if let Err(e) = cffi.load_header(&manifest) {
+            log::warn!("Failed to load C-FFI header {}: {:?}", header, e);
+            return;
+        }
+
+        // Record native IDs for each function so codegen can emit CALL_NAT
+        for func in &manifest.functions {
+            if func.variadic {
+                continue;
+            }
+            if let Some(native_id) = cffi.get_function_id(&func.name) {
+                self.c_ffi_functions.insert(func.name.clone(), native_id);
             }
         }
     }
@@ -5024,6 +5088,10 @@ impl Codegen {
                             let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
                             Some(id)
                         }
+                    }
+                    // Plan 216 Phase 2: Check c_ffi_functions for C FFI functions
+                    else if let Some(&id) = self.c_ffi_functions.get(name) {
+                        Some(id)
                     }
                     else {
                         None

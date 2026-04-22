@@ -186,6 +186,15 @@ impl AutoVM {
         native_interface.register_std_shims();
         // Plan 094: Register static FFI stdlib functions (File, Env, Time, etc.)
         crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+
+        // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
+        // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
+        // here we merge those shims into the VM's NativeInterface so CALL_NAT can find them.
+        {
+            let cffi = crate::vm::codegen::CFFI_GLOBAL.lock().unwrap();
+            native_interface.merge(cffi.native_interface());
+        }
+
         Self {
             flash: Arc::new(flash),
             native_interface: Arc::new(native_interface),

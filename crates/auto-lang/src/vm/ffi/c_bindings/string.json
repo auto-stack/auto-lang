@@ -1,0 +1,79 @@
+{
+  "header": "string.h",
+  "library": "c",
+  "functions": [
+    {
+      "name": "strlen",
+      "params": [
+        { "name": "s", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Size" },
+      "variadic": false
+    },
+    {
+      "name": "strcmp",
+      "params": [
+        { "name": "s1", "ty": { "kind": "CStr" } },
+        { "name": "s2", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "strncmp",
+      "params": [
+        { "name": "s1", "ty": { "kind": "CStr" } },
+        { "name": "s2", "ty": { "kind": "CStr" } },
+        { "name": "n", "ty": { "kind": "Size" } }
+      ],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "strcpy",
+      "params": [
+        { "name": "dest", "ty": { "kind": "PtrMut" } },
+        { "name": "src", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "strcat",
+      "params": [
+        { "name": "dest", "ty": { "kind": "PtrMut" } },
+        { "name": "src", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "strdup",
+      "params": [
+        { "name": "s", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "memset",
+      "params": [
+        { "name": "s", "ty": { "kind": "PtrMut" } },
+        { "name": "c", "ty": { "kind": "Int" } },
+        { "name": "n", "ty": { "kind": "Size" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "memcpy",
+      "params": [
+        { "name": "dest", "ty": { "kind": "PtrMut" } },
+        { "name": "src", "ty": { "kind": "Ptr" } },
+        { "name": "n", "ty": { "kind": "Size" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    }
+  ]
+}

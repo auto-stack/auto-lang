@@ -1,0 +1,29 @@
+{
+  "header": "time.h",
+  "library": "c",
+  "functions": [
+    {
+      "name": "time",
+      "params": [
+        { "name": "tloc", "ty": { "kind": "PtrMut" } }
+      ],
+      "return_type": { "kind": "Long" },
+      "variadic": false
+    },
+    {
+      "name": "clock",
+      "params": [],
+      "return_type": { "kind": "Long" },
+      "variadic": false
+    },
+    {
+      "name": "difftime",
+      "params": [
+        { "name": "end", "ty": { "kind": "Double" } },
+        { "name": "begin", "ty": { "kind": "Double" } }
+      ],
+      "return_type": { "kind": "Double" },
+      "variadic": false
+    }
+  ]
+}
