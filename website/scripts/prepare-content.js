@@ -168,20 +168,56 @@ function listingToCodeView(bookDir, tag) {
 }
 
 function preprocessMarkdown(content, bookDir = null) {
-  // Replace <Listing ...> tags with CodeView components (for books)
-  // or HTML comments (for docs). Tags are always on their own line.
-  content = content.replace(/^<Listing\s+.*$/gm, (match) => {
-    return bookDir ? listingToCodeView(bookDir, match) : `<!-- ${match.slice(1, -1)} -->`
-  })
-  // Remove closing </Listing> tags
-  content = content.replace(/^<\/Listing\s*>$/gm, '')
+  const lines = content.split('\n')
+  const result = []
+  let i = 0
 
-  // Replace <Output ...> tags similarly
-  content = content.replace(/^<Output\s+.*$/gm, (match) => {
-    return `<!-- ${match.slice(1, -1)} -->`
-  })
-  // Also remove closing </Output> tags
-  content = content.replace(/^<\/Output\s*>$/gm, '<!-- /Output -->')
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Handle <Listing ...> tags (also handle malformed "< Listing" with space)
+    const trimmed = line.trim()
+    if (trimmed.startsWith('<Listing') || trimmed.startsWith('< Listing')) {
+      // Normalize malformed tag by removing space after <
+      const normalizedTag = trimmed.replace(/^<\s+Listing/, '<Listing')
+      const codeView = bookDir ? listingToCodeView(bookDir, normalizedTag) : `<!-- ${normalizedTag.slice(1, -1)} -->`
+      result.push(codeView)
+      i++
+
+      // Skip everything until </Listing> (code blocks, empty lines, etc.)
+      while (i < lines.length && !lines[i].trim().startsWith('</Listing>')) {
+        i++
+      }
+      // Skip the </Listing> line itself
+      if (i < lines.length) i++
+      continue
+    }
+
+    // Handle <Output ...> tags
+    if (line.trim().startsWith('<Output')) {
+      result.push(`<!-- ${line.trim().slice(1, -1)} -->`)
+      i++
+      continue
+    }
+
+    // Handle standalone </Listing> tags (orphaned, no matching opening tag)
+    if (line.trim().startsWith('</Listing>')) {
+      i++
+      continue
+    }
+
+    // Handle standalone </Output> tags
+    if (line.trim().startsWith('</Output>')) {
+      result.push('<!-- /Output -->')
+      i++
+      continue
+    }
+
+    result.push(line)
+    i++
+  }
+
+  content = result.join('\n')
 
   // Escape < and > inside inline code to prevent Vue parser errors
   content = escapeInInlineCode(content)
@@ -192,22 +228,22 @@ function preprocessMarkdown(content, bookDir = null) {
 
   // Escape common standalone generic patterns that look like HTML tags
   // but are likely type parameters (only when NOT in code blocks)
-  const lines = content.split('\n')
-  const inCodeBlock = new Array(lines.length).fill(false)
+  const lines2 = content.split('\n')
+  const inCodeBlock = new Array(lines2.length).fill(false)
 
   // Determine which lines are inside code blocks
   let insideCodeBlock = false
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim()
+  for (let j = 0; j < lines2.length; j++) {
+    const trimmed = lines2[j].trim()
     if (trimmed.startsWith('```')) {
       insideCodeBlock = !insideCodeBlock
     }
-    inCodeBlock[i] = insideCodeBlock
+    inCodeBlock[j] = insideCodeBlock
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    if (inCodeBlock[i]) continue
-    let line = lines[i]
+  for (let j = 0; j < lines2.length; j++) {
+    if (inCodeBlock[j]) continue
+    let line = lines2[j]
 
     // Escape common standalone type parameter patterns like <T>, <K>, <Item>, etc.
     // that are NOT already escaped or inside HTML tags
@@ -216,10 +252,10 @@ function preprocessMarkdown(content, bookDir = null) {
     // Escape <dyn Trait> patterns
     line = line.replace(/<dyn\s+[^>]+>/g, (m) => m.replace(/</g, '&lt;').replace(/>/g, '&gt;'))
 
-    lines[i] = line
+    lines2[j] = line
   }
 
-  return lines.join('\n')
+  return lines2.join('\n')
 }
 
 function copyFile(src, dst, bookDir = null) {

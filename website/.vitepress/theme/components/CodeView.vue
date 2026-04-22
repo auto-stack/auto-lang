@@ -1,5 +1,5 @@
 <template>
-  <div class="code-view">
+  <div class="code-view" :class="{ dark: isDark }">
     <div class="code-view-header">
       <div class="tabs">
         <button
@@ -7,7 +7,7 @@
           :key="lang.id"
           class="tab"
           :class="{ active: activeLang === lang.id }"
-          @click="activeLang = lang.id"
+          @click="setLang(lang.id)"
         >
           {{ lang.label }}
         </button>
@@ -21,8 +21,8 @@
       </div>
     </div>
     <div class="code-view-body">
-      <div ref="editorContainer" v-if="isAuto" class="editor-pane"></div>
-      <pre v-else class="code-pane"><code>{{ currentCode }}</code></pre>
+      <div ref="editorContainer" v-show="isAuto" class="editor-pane"></div>
+      <pre v-show="!isAuto" class="code-pane"><code>{{ currentCode }}</code></pre>
     </div>
     <div v-if="showOutput" class="output-pane">
       <div class="output-header">Output</div>
@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
@@ -58,6 +58,7 @@ const stdout = ref('')
 const stderr = ref('')
 const editorContainer = ref<HTMLDivElement>()
 let editorView: EditorView | null = null
+const isDark = ref(false)
 
 const languages = [
   { id: 'auto', label: 'Auto', code: props.auto },
@@ -78,14 +79,25 @@ const currentCode = computed(() => {
   return lang?.code || ''
 })
 
+function checkTheme() {
+  isDark.value = document.documentElement.classList.contains('dark')
+}
+
+let observer: MutationObserver | null = null
+
 onMounted(() => {
-  if (editorContainer.value && props.auto) {
+  checkTheme()
+  if (props.auto) {
     initEditor(props.auto)
   }
+  // Watch for theme changes
+  observer = new MutationObserver(checkTheme)
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
 })
 
 onUnmounted(() => {
   editorView?.destroy()
+  observer?.disconnect()
 })
 
 watch(() => props.auto, (newCode) => {
@@ -96,11 +108,13 @@ watch(() => props.auto, (newCode) => {
   }
 })
 
-watch(activeLang, (lang) => {
-  if (lang === 'auto' && editorContainer.value && props.auto) {
+async function setLang(lang: string) {
+  activeLang.value = lang
+  if (lang === 'auto' && props.auto) {
+    await nextTick()
     initEditor(props.auto)
   }
-})
+}
 
 function initEditor(code: string) {
   if (editorView) {
@@ -163,8 +177,8 @@ async function runCode() {
 .code-view {
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid #313244;
-  background: #1e1e2e;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
   margin: 1.5rem 0;
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
@@ -174,8 +188,8 @@ async function runCode() {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .tabs {
@@ -188,7 +202,7 @@ async function runCode() {
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: #6c7086;
+  color: hsl(var(--muted-foreground));
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
@@ -196,13 +210,13 @@ async function runCode() {
 }
 
 .tab:hover {
-  color: #cdd6f4;
-  background: #313244;
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
 }
 
 .tab.active {
-  color: #cdd6f4;
-  background: #313244;
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
 }
 
 .actions {
@@ -215,8 +229,8 @@ async function runCode() {
   align-items: center;
   gap: 0.35rem;
   padding: 0.35rem 0.75rem;
-  background: #27c93f;
-  color: #1e1e2e;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
   border: none;
   border-radius: 6px;
   font-size: 0.75rem;
@@ -257,6 +271,11 @@ async function runCode() {
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
+.editor-pane :deep(.cm-gutters) {
+  background: #181825;
+  border-right: 1px solid #313244;
+}
+
 .code-pane {
   margin: 0;
   padding: 1rem;
@@ -265,19 +284,20 @@ async function runCode() {
   color: #cdd6f4;
   overflow-x: auto;
   background: #1e1e2e;
+  min-height: 120px;
 }
 
 .output-pane {
-  border-top: 1px solid #313244;
-  background: #181825;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
 }
 
 .output-header {
   padding: 0.4rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #6c7086;
-  border-bottom: 1px solid #313244;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .output-content {
@@ -285,7 +305,7 @@ async function runCode() {
   padding: 0.75rem;
   font-size: 0.8rem;
   line-height: 1.5;
-  color: #cdd6f4;
+  color: hsl(var(--foreground));
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 200px;
@@ -295,9 +315,9 @@ async function runCode() {
 .code-view-caption {
   padding: 0.5rem 0.75rem;
   font-size: 0.8rem;
-  color: #6c7086;
-  background: #181825;
-  border-top: 1px solid #313244;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  border-top: 1px solid hsl(var(--border));
   font-style: italic;
 }
 </style>
