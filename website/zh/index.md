@@ -22,10 +22,10 @@ const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
   <h2 class="section-title">为什么选择 Auto？</h2>
   <div class="features-grid">
     <FeatureCard icon="🎯" title="多目标转译器" description="一次编写，到处运行。Auto 可转译为 C、Rust、TypeScript 和 Python，实现零成本抽象。" color="rgba(239, 68, 68, 0.15)" link="/zh/docs/features/multi-target-transpiler" />
-    <FeatureCard icon="⚡" title="Actor 并发" description="基于 Actor 模型，配合 async ~T 类型。编写天生安全的并发代码。" color="rgba(245, 158, 11, 0.15)" link="/zh/docs/features/actor-concurrency" />
+    <FeatureCard icon="🖥️" title="AutoVM 解释器" description="专用虚拟机，支持 AOT/JIT 编译、热重载，从桌面到嵌入式跨平台运行。" color="rgba(20, 184, 166, 0.15)" link="/zh/docs/features/autovm-interpreter" />
     <FeatureCard icon="🔮" title="编译期元编程" description="在编译期执行代码。生成代码、验证不变式、优化性能，无需宏。" color="rgba(168, 85, 247, 0.15)" link="/zh/docs/features/comptime-metaprogramming" />
     <FeatureCard icon="🛡️" title="内存安全" description="受 Rust 启发的所有权系统，配合智能转换和流类型，提供符合人体工学的安全代码。" color="rgba(59, 130, 246, 0.15)" link="/zh/docs/features/memory-safety" />
-    <FeatureCard icon="🖥️" title="AutoVM 解释器" description="专用虚拟机，支持 AOT/JIT 编译、热重载，从桌面到嵌入式跨平台运行。" color="rgba(20, 184, 166, 0.15)" link="/zh/docs/features/autovm-interpreter" />
+    <FeatureCard icon="⚡" title="Actor 并发" description="基于 Actor 模型，配合 async ~T 类型。编写天生安全的并发代码。" color="rgba(245, 158, 11, 0.15)" link="/zh/docs/features/actor-concurrency" />
     <FeatureCard icon="🤖" title="AI 原生设计" description="对 AI 工作负载的一流支持，包括基于节点的数据流和嵌入式模型推理。" color="rgba(6, 182, 212, 0.15)" link="/zh/docs/features/ai-native-design" />
   </div>
 </div>

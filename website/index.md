@@ -32,10 +32,10 @@ const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
   <h2 class="section-title">Why Auto?</h2>
   <div class="features-grid">
     <FeatureCard icon="🎯" title="Multi-Target Transpiler" description="Write once, run anywhere. Auto transpiles to C, Rust, TypeScript, and Python with zero-cost abstractions." color="rgba(239, 68, 68, 0.15)" link="/docs/features/multi-target-transpiler" />
-    <FeatureCard icon="⚡" title="Actor Concurrency" description="Built on the Actor model with async ~T types. Write concurrent code that is safe by design." color="rgba(245, 158, 11, 0.15)" link="/docs/features/actor-concurrency" />
+    <FeatureCard icon="🖥️" title="AutoVM Interpreter" description="Dedicated VM with AOT/JIT compilation, hot reloading, and cross-platform support from desktop to embedded." color="rgba(20, 184, 166, 0.15)" link="/docs/features/autovm-interpreter" />
     <FeatureCard icon="🔮" title="Comptime Metaprogramming" description="Execute code at compile time. Generate code, validate invariants, and optimize without macros." color="rgba(168, 85, 247, 0.15)" link="/docs/features/comptime-metaprogramming" />
     <FeatureCard icon="🛡️" title="Memory Safety" description="Ownership system inspired by Rust, with smart casts and flow typing for ergonomic safe code." color="rgba(59, 130, 246, 0.15)" link="/docs/features/memory-safety" />
-    <FeatureCard icon="🖥️" title="AutoVM Interpreter" description="Dedicated VM with AOT/JIT compilation, hot reloading, and cross-platform support from desktop to embedded." color="rgba(20, 184, 166, 0.15)" link="/docs/features/autovm-interpreter" />
+    <FeatureCard icon="⚡" title="Actor Concurrency" description="Built on the Actor model with async ~T types. Write concurrent code that is safe by design." color="rgba(245, 158, 11, 0.15)" link="/docs/features/actor-concurrency" />
     <FeatureCard icon="🤖" title="AI-Native Design" description="First-class support for AI workloads with node-based dataflow and embedded model inference." color="rgba(6, 182, 212, 0.15)" link="/docs/features/ai-native-design" />
   </div>
 </div>
