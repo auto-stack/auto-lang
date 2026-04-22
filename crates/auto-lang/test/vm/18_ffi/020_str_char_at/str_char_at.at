@@ -1,0 +1,1 @@
+Str.char_at("hello", 0)

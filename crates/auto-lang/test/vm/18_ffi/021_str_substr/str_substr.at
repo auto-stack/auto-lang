@@ -1,0 +1,1 @@
+Str.substr("hello world", 0, 5)

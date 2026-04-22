@@ -347,5 +347,26 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_99_spec_dispatch_020_tool_registry() { test_vm("99_spec_dispatch/20_tool_registry").unwrap(); }
 #[test] fn test_99_spec_dispatch_031_tool_exec_with_perm() { test_vm("99_spec_dispatch/31_tool_exec_with_perm").unwrap(); }
 
+// === 18_ffi (continued: Plan 211 stdlib test coverage) ===
+#[test] fn test_18_ffi_019_math_abs_f() { test_vm("18_ffi/019_math_abs_f").unwrap(); }
+#[test] fn test_18_ffi_020_str_char_at() { test_vm("18_ffi/020_str_char_at").unwrap(); }
+#[test] fn test_18_ffi_021_str_substr() { test_vm("18_ffi/021_str_substr").unwrap(); }
+#[test] fn test_18_ffi_022_str_trim() { test_vm("18_ffi/022_str_trim").unwrap(); }
+#[test] fn test_18_ffi_023_str_repeat() { test_vm("18_ffi/023_str_repeat").unwrap(); }
+#[test] fn test_18_ffi_024_str_replace() { test_vm("18_ffi/024_str_replace").unwrap(); }
+#[test] fn test_18_ffi_025_str_case() { test_vm("18_ffi/025_str_case").unwrap(); }
+#[test] fn test_18_ffi_026_str_reverse_find() { test_vm("18_ffi/026_str_reverse_find").unwrap(); }
+#[test] fn test_18_ffi_027_str_find() { test_vm("18_ffi/027_str_find").unwrap(); }
+#[test] fn test_18_ffi_028_str_replace_first() { test_vm("18_ffi/028_str_replace_first").unwrap(); }
+#[test] fn test_18_ffi_029_str_match_count() { test_vm("18_ffi/029_str_match_count").unwrap(); }
+#[test] fn test_18_ffi_030_str_contains() { test_vm("18_ffi/030_str_contains").unwrap(); }
+#[test] fn test_18_ffi_031_str_starts_ends() { test_vm("18_ffi/031_str_starts_ends").unwrap(); }
+#[test] fn test_18_ffi_032_char_is_alpha() { test_vm("18_ffi/032_char_is_alpha").unwrap(); }
+#[test] fn test_18_ffi_033_char_is_digit() { test_vm("18_ffi/033_char_is_digit").unwrap(); }
+#[test] fn test_18_ffi_034_char_is_alphanum() { test_vm("18_ffi/034_char_is_alphanum").unwrap(); }
+#[test] fn test_18_ffi_035_char_is_whitespace() { test_vm("18_ffi/035_char_is_whitespace").unwrap(); }
+#[test] fn test_18_ffi_036_char_to_lower() { test_vm("18_ffi/036_char_to_lower").unwrap(); }
+#[test] fn test_18_ffi_037_char_to_upper() { test_vm("18_ffi/037_char_to_upper").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }

@@ -1,0 +1,1 @@
+Str.match_count("hello hello hello", "hello")

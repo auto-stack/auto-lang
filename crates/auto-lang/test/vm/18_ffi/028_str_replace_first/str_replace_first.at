@@ -1,0 +1,1 @@
+Str.replace_first("hello hello", "hello", "hi")
