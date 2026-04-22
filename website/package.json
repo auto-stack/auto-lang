@@ -10,19 +10,25 @@
     "prepare-content": "node scripts/prepare-content.js"
   },
   "devDependencies": {
-    "vitepress": "^1.6.3",
-    "vue": "^3.5.13",
-    "tailwindcss": "^3.4.17",
-    "postcss": "^8.5.3",
-    "autoprefixer": "^10.4.21",
-    "tailwindcss-animate": "^1.0.7",
     "@codemirror/commands": "^6.8.0",
     "@codemirror/state": "^6.5.2",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.36.4",
+    "autoprefixer": "^10.4.21",
+    "clsx": "^2.1.1",
     "codemirror": "^6.0.1",
     "lucide-vue-next": "^0.460.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.6.0"
+    "postcss": "^8.5.3",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
+    "vitepress": "^1.6.3",
+    "vue": "^3.5.13"
+  },
+  "dependencies": {
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2"
   }
 }

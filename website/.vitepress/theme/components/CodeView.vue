@@ -21,8 +21,7 @@
       </div>
     </div>
     <div class="code-view-body">
-      <div ref="editorContainer" v-show="isAuto" class="editor-pane"></div>
-      <pre v-show="!isAuto" class="code-pane"><code>{{ currentCode }}</code></pre>
+      <div ref="editorContainer" class="editor-pane"></div>
     </div>
     <div v-if="showOutput" class="output-pane">
       <div class="output-header">Output</div>
@@ -38,6 +37,10 @@ import { EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { rust } from '@codemirror/lang-rust'
+import { cpp } from '@codemirror/lang-cpp'
+import { javascript } from '@codemirror/lang-javascript'
+import { python } from '@codemirror/lang-python'
 import { Play, Loader2 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -74,10 +77,9 @@ const availableLanguages = computed(() =>
 
 const isAuto = computed(() => activeLang.value === 'auto')
 
-const currentCode = computed(() => {
-  const lang = languages.find((l) => l.id === activeLang.value)
-  return lang?.code || ''
-})
+const currentLang = computed(() =>
+  languages.find((l) => l.id === activeLang.value)
+)
 
 function checkTheme() {
   isDark.value = document.documentElement.classList.contains('dark')
@@ -87,10 +89,9 @@ let observer: MutationObserver | null = null
 
 onMounted(() => {
   checkTheme()
-  if (props.auto) {
-    initEditor(props.auto)
+  if (currentLang.value?.code) {
+    initEditor(currentLang.value.code, currentLang.value.id)
   }
-  // Watch for theme changes
   observer = new MutationObserver(checkTheme)
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
 })
@@ -100,23 +101,31 @@ onUnmounted(() => {
   observer?.disconnect()
 })
 
-watch(() => props.auto, (newCode) => {
-  if (editorView && newCode) {
-    editorView.dispatch({
-      changes: { from: 0, to: editorView.state.doc.length, insert: newCode },
-    })
-  }
-})
-
 async function setLang(lang: string) {
   activeLang.value = lang
-  if (lang === 'auto' && props.auto) {
+  const langData = languages.find((l) => l.id === lang)
+  if (langData?.code) {
     await nextTick()
-    initEditor(props.auto)
+    initEditor(langData.code, langData.id)
   }
 }
 
-function initEditor(code: string) {
+function getLanguageExtension(langId: string): Extension {
+  switch (langId) {
+    case 'rust':
+      return rust()
+    case 'c':
+      return cpp()
+    case 'typescript':
+      return javascript({ typescript: true })
+    case 'python':
+      return python()
+    default:
+      return []
+  }
+}
+
+function initEditor(code: string, langId: string) {
   if (editorView) {
     editorView.destroy()
     editorView = null
@@ -124,17 +133,25 @@ function initEditor(code: string) {
 
   if (!editorContainer.value) return
 
+  const isReadOnly = langId !== 'auto'
+
   const extensions: Extension[] = [
     lineNumbers(),
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
     oneDark,
+    getLanguageExtension(langId),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         // Track changes if needed
       }
     }),
   ]
+
+  if (isReadOnly) {
+    extensions.push(EditorView.editable.of(false))
+    extensions.push(EditorState.readOnly.of(true))
+  }
 
   const state = EditorState.create({
     doc: code,
@@ -276,15 +293,8 @@ async function runCode() {
   border-right: 1px solid #313244;
 }
 
-.code-pane {
-  margin: 0;
-  padding: 1rem;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #cdd6f4;
-  overflow-x: auto;
+.editor-pane :deep(.cm-scroller) {
   background: #1e1e2e;
-  min-height: 120px;
 }
 
 .output-pane {
