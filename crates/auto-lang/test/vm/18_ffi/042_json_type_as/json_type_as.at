@@ -1,0 +1,3 @@
+let s = Json.parse("\"hello\"")
+print(Json.type_of(s))
+print(Json.as_string(s))

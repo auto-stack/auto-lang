@@ -368,5 +368,12 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] fn test_18_ffi_036_char_to_lower() { test_vm("18_ffi/036_char_to_lower").unwrap(); }
 #[test] fn test_18_ffi_037_char_to_upper() { test_vm("18_ffi/037_char_to_upper").unwrap(); }
 
+// === 18_ffi (Plan 211 Task 4: JSON stdlib) ===
+#[test] fn test_18_ffi_038_json_encode_parse() { test_vm("18_ffi/038_json_encode_parse").unwrap(); }
+#[test] fn test_18_ffi_039_json_get() { test_vm("18_ffi/039_json_get").unwrap(); }
+#[test] fn test_18_ffi_040_json_array() { test_vm("18_ffi/040_json_array").unwrap(); }
+#[test] fn test_18_ffi_041_json_keys() { test_vm("18_ffi/041_json_keys").unwrap(); }
+#[test] fn test_18_ffi_042_json_type_as() { test_vm("18_ffi/042_json_type_as").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }

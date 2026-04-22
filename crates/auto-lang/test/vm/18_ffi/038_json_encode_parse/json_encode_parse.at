@@ -1,0 +1,4 @@
+let encoded = Json.encode("hello")
+print(encoded)
+let parsed = Json.parse("{\"x\":1}")
+print(Json.type_of(parsed))
