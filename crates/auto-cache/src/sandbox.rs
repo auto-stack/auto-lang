@@ -375,6 +375,171 @@ impl Sandbox {
         // Use system cargo for now
         PathBuf::from("cargo")
     }
+
+    /// Plan 212b Task 1: Compile a dependency crate as a cdylib wrapper
+    ///
+    /// Generates a small wrapper crate with `#[no_mangle]` shims that expose
+    /// the target crate's functions with C ABI (`string → string` pattern).
+    ///
+    /// The wrapper function pattern is:
+    /// ```c
+    /// auto_{func}(ptr: *const c_char) -> *const c_char
+    /// ```
+    ///
+    /// Steps:
+    /// 1. Check cache — if compiled .dll exists, return immediately
+    /// 2. Generate wrapper crate in `builds/{crate_name}/`
+    /// 3. Run `cargo build --release`
+    /// 4. Copy compiled library to `crates/{lib_name}_wrapper.dll`
+    ///
+    /// # Arguments
+    /// * `crate_name` - Name of the crate to wrap (e.g., "serde_json")
+    /// * `functions` - List of function names to expose as shims
+    ///
+    /// # Returns
+    /// Path to the compiled wrapper library
+    pub fn compile_dep(
+        &self,
+        crate_name: &str,
+        functions: &[String],
+    ) -> Result<PathBuf> {
+        // 1. Check cache
+        let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
+        let output_path = self.crates_path.join(self.library_name(&wrapper_name, "1"));
+
+        if output_path.exists() {
+            log::info!("Using cached wrapper for {}: {}", crate_name, output_path.display());
+            return Ok(output_path);
+        }
+
+        // 2. Generate wrapper crate
+        let build_dir = self.root.join("builds").join(&wrapper_name);
+        std::fs::create_dir_all(&build_dir)?;
+        let src_dir = build_dir.join("src");
+        std::fs::create_dir_all(&src_dir)?;
+
+        // Generate Cargo.toml
+        let cargo_toml = format!(
+            r#"[package]
+name = "{wrapper_name}"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+{crate_name} = "1"
+"#
+        );
+        std::fs::write(build_dir.join("Cargo.toml"), cargo_toml)?;
+
+        // Generate lib.rs with #[no_mangle] shims
+        let mut lib_rs = String::new();
+        lib_rs.push_str("use std::ffi::{CStr, CString};\n");
+        lib_rs.push_str("use std::os::raw::c_char;\n\n");
+
+        for func in functions {
+            lib_rs.push_str(&format!(
+                r#"#[no_mangle]
+pub extern "C" fn auto_{func}(input: *const c_char) -> *const c_char {{
+    let input_str = unsafe {{
+        if input.is_null() {{
+            ""
+        }} else {{
+            CStr::from_ptr(input).to_str().unwrap_or("")
+        }}
+    }};
+    let result = {crate_name}::{func}(input_str);
+    let c_result = CString::new(result.to_string()).unwrap();
+    c_result.into_raw() as *const c_char
+}}
+
+"#
+            ));
+        }
+
+        std::fs::write(src_dir.join("lib.rs"), lib_rs)?;
+
+        log::info!("Generated wrapper crate at {}", build_dir.display());
+
+        // 3. Run cargo build --release
+        let cargo = self.cargo_path();
+        let output = Command::new(&cargo)
+            .args(["build", "--release"])
+            .current_dir(&build_dir)
+            .output()
+            .map_err(|e| SandboxError::CompilationFailed(format!("cargo spawn failed: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(SandboxError::CompilationFailed(format!(
+                "cargo build failed for {}: {}",
+                crate_name, stderr
+            )));
+        }
+
+        // 4. Find and copy compiled library
+        let target_dir = build_dir.join("target").join("release");
+
+        let lib_file = self.find_cdylib_in_dir(&target_dir, &wrapper_name)
+            .ok_or_else(|| SandboxError::CompilationFailed(
+                format!("Compiled library not found in {}", target_dir.display())
+            ))?;
+
+        std::fs::copy(&lib_file, &output_path)?;
+
+        log::info!(
+            "Compiled and cached wrapper for {}: {}",
+            crate_name,
+            output_path.display()
+        );
+
+        Ok(output_path)
+    }
+
+    /// Find the compiled cdylib in a target directory
+    fn find_cdylib_in_dir(&self, dir: &Path, expected_name: &str) -> Option<PathBuf> {
+        if !dir.exists() {
+            return None;
+        }
+
+        let entries = std::fs::read_dir(dir).ok()?;
+        for entry in entries {
+            let entry = entry.ok()?;
+            let path = entry.path();
+
+            if !path.is_file() {
+                continue;
+            }
+
+            let name = path.file_name()?.to_string_lossy().to_string();
+
+            // Check if this is a dynamic library matching the expected name
+            #[cfg(target_os = "windows")]
+            {
+                if name.ends_with(".dll") && name.contains(&expected_name.replace('-', "_")) {
+                    return Some(path);
+                }
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                if name.ends_with(".dylib") && name.contains(&expected_name.replace('-', "_")) {
+                    return Some(path);
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                if name.ends_with(".so") && name.contains(&expected_name.replace('-', "_")) {
+                    return Some(path);
+                }
+            }
+        }
+
+        None
+    }
 }
 
 impl Default for Sandbox {
