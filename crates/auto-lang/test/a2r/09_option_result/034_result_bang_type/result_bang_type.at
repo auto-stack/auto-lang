@@ -1,0 +1,18 @@
+// Plan 204 Phase 3: !T return type with full Result usage
+
+fn safe_divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    Ok(a / b)
+}
+
+fn chain(a int) !int {
+    let x = safe_divide(a, 2).?
+    Ok(x + 1)
+}
+
+fn main() {
+    let r1 = safe_divide(10, 2)
+    let r2 = chain(10)
+}

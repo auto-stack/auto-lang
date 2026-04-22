@@ -144,6 +144,8 @@ fn test_a2r(case: &str) -> AutoResult<()> {
 #[test] fn test_09_option_result_030_list_coalesce() { test_a2r("09_option_result/030_list_coalesce").unwrap(); }
 #[test] fn test_09_option_result_031_option_bool_field() { test_a2r("09_option_result/031_option_bool_field").unwrap(); }
 #[test] fn test_09_option_result_032_fn_result_enum() { test_a2r("09_option_result/032_fn_result_enum").unwrap(); }
+#[test] fn test_09_option_result_033_result_is_match() { test_a2r("09_option_result/033_result_is_match").unwrap(); }
+#[test] fn test_09_option_result_034_result_bang_type() { test_a2r("09_option_result/034_result_bang_type").unwrap(); }
 
 // === 10_collections ===
 #[test] fn test_10_collections_001_array() { test_a2r("10_collections/001_array").unwrap(); }

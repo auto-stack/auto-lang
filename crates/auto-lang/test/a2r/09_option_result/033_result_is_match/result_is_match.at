@@ -1,0 +1,15 @@
+// Plan 204 Phase 3: is result { Ok/Err } pattern match test
+
+fn process(res !int) int {
+    is res {
+        Ok(v) -> v
+        Err(e) -> -1
+    }
+}
+
+fn main() {
+    let r1 = Ok(42)
+    let r2 = Err("bad value")
+    let a = process(r1)
+    let b = process(r2)
+}

@@ -13,7 +13,7 @@ fn maybe_value(x: i32) -> Option<i32> {
 
 fn divide(a: i32, b: i32) -> Result<i32, String> {
     if b == 0 {
-        return Err("division by zero");
+        return Err("division by zero".to_string());
     }
     return Ok(a / b);
 }

@@ -74,6 +74,12 @@ pub struct RustTrans {
     _current_fn: Option<AutoStr>,
     _current_scope: Option<crate::scope::Sid>,
 
+    // Plan 204 Phase 3: Track current function's return type for Err() handling.
+    // When a function returns !T (Type::Result), Err values need .to_string()
+    // because the error type is String. For custom Result<T, E> (GenericInstance),
+    // the error type is user-defined and .to_string() is not needed.
+    current_fn_is_result: bool,
+
     // Cache for struct field names (for positional arg mapping)
     struct_fields: HashMap<AutoStr, Vec<AutoStr>>,
 
@@ -101,6 +107,7 @@ impl RustTrans {
             edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
+            current_fn_is_result: false,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
             spec_decls: HashMap::new(),
@@ -118,6 +125,7 @@ impl RustTrans {
             edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
+            current_fn_is_result: false,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
             spec_decls: HashMap::new(),
@@ -461,8 +469,15 @@ impl RustTrans {
                 write!(out, ")").map_err(Into::into)
             }
             Expr::Err(e) => {
+                // Plan 204 Phase 3: For !T functions (Type::Result), the error type
+                // is String, so wrap the expression with .to_string() to convert
+                // any value to String. For Result<T, E> with custom error type,
+                // emit as-is (the user is responsible for providing the correct type).
                 write!(out, "Err(")?;
                 self.expr(e, out)?;
+                if self.current_fn_is_result {
+                    write!(out, ".to_string()")?;
+                }
                 write!(out, ")").map_err(Into::into)
             }
             // Plan 6B-4.14: Smart pointer constructors
@@ -2430,6 +2445,12 @@ impl RustTrans {
             return Ok(());
         }
 
+        // Plan 204 Phase 3: Track whether current function returns !T (Type::Result)
+        // This is used to decide whether Err(expr) needs .to_string() wrapping.
+        // Type::Result means !T (error type is String), while GenericInstance with
+        // base "Result" means Result<T, E> with custom error type (no .to_string()).
+        self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_));
+
         // Emit doc comments
         if let Some(ref doc) = fn_decl.doc {
             let is_method = fn_decl.parent.is_some();
@@ -3880,6 +3901,7 @@ impl RustTrans {
     }
 
     // Spec/trait declaration
+    // Plan 204 Phase 4: spec → Rust trait mapping
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
         // Cache spec methods for later use in impl Trait for Type
         self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
@@ -3926,14 +3948,28 @@ impl RustTrans {
                 )?;
             }
 
-            // Return type
+            // Return type — use rust_return_type_name for correct str→String mapping
+            // Plan 204 Phase 4: !T (Type::Result) → Result<T, String>
             if !matches!(method.ret, Type::Void) {
-                write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+                write!(sink.body, ") -> {}", self.rust_return_type_name(&method.ret))?;
             } else {
                 write!(sink.body, ")")?;
             }
 
-            writeln!(sink.body, ";")?;
+            // Default method implementation (Plan 019 Stage 8.5)
+            if let Some(ref default_body) = method.body {
+                // SpecMethod.body is Option<Box<Expr>>, emit as { expr }
+                sink.body.write(b" {\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                self.expr(default_body, &mut sink.body)?;
+                sink.body.write(b"\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}\n")?;
+            } else {
+                writeln!(sink.body, ";")?;
+            }
         }
 
         self.dedent();
