@@ -1,0 +1,9 @@
+fn double(x int) int {
+    x * 2
+}
+
+fn main() {
+    let val = Some(10)
+    let result = double(val.?)
+    print(result)
+}

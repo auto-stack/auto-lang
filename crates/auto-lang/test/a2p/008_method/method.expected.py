@@ -3,7 +3,7 @@ class Point:
         self.x = x
         self.y = y
 
-    def modulus(self):
+    def modulus(self) -> int:
         return self.x * self.x + self.y * self.y
 
 def main():

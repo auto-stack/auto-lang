@@ -1,0 +1,7 @@
+fn fetch_data(url str) ~str {
+    return url
+}
+
+fn main() {
+    let x = 42
+}

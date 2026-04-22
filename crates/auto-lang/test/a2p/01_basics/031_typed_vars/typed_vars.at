@@ -1,0 +1,8 @@
+fn main() {
+    let x int = 42
+    let name str = "hello"
+    let pi float = 3.14
+    let flag bool = true
+    print(x)
+    print(name)
+}

@@ -1,0 +1,10 @@
+fn get_name() str {
+    let x = Some("hello")
+    let y = x.?
+    y
+}
+
+fn main() {
+    let name = get_name()
+    print(name)
+}

@@ -1,0 +1,7 @@
+type Container<T> {
+    value T
+}
+
+fn main() {
+    print("Container defined")
+}

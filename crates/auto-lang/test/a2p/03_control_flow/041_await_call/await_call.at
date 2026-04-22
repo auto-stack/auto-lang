@@ -1,0 +1,8 @@
+fn fetch_data(url str) ~str {
+    return url
+}
+
+fn main() {
+    let result = fetch_data("http://example.com").await
+    print(result)
+}

@@ -44,7 +44,7 @@ impl PythonTrans {
             Expr::Uint(u) => write!(out, "{}", u).map_err(Into::into),
             Expr::Float(f, _) => write!(out, "{}", f).map_err(Into::into),
             Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
-            Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
+            Expr::Bool(b) => write!(out, "{}", if *b { "True" } else { "False" }).map_err(Into::into),
             Expr::Char(c) => write!(out, "'{}'", c).map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
@@ -245,8 +245,20 @@ impl PythonTrans {
             // nil/Null -> None
             Expr::Nil | Expr::Null => out.write(b"None").to(),
 
-            // Error propagate: expr.? -> expr (Python doesn't have this, just pass through)
+            // Plan 213 Task 5: Error propagate x.? -> x (Python doesn't have ?, just pass through)
             Expr::ErrorPropagate(e) => self.expr(e, out),
+
+            // Plan 213 Task 7: Await expression expr.await -> await expr
+            Expr::Await { expr } => {
+                out.write(b"await ")?;
+                self.expr(expr, out)
+            }
+
+            // Plan 213 Task 7: Go expression expr.go -> just spawn (fire-and-forget)
+            Expr::Go { expr } => {
+                // Python doesn't have spawn, just emit as expression
+                self.expr(expr, out)
+            }
 
             // Unsupported - return error for now
             _ => Err(format!("Python Transpiler: unsupported expression: {:?}", expr).into()),
@@ -349,35 +361,114 @@ impl PythonTrans {
     }
 
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
-        // For now, just simple assignment without type
         out.write_all(store.name.as_bytes())?;
         out.write(b" = ")?;
         self.expr(&store.expr, out)?;
         Ok(())
     }
 
+    /// Check if a function return type is Future (~T), meaning the function is async
+    fn is_async_fn(&self, func: &Fn) -> bool {
+        matches!(&func.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+            || matches!(&func.ret, Type::Handle { .. })
+    }
+
+    /// Plan 213 Task 7: Check if a function body contains .await expressions
+    fn has_await(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) if Self::expr_has_await(expr) => return true,
+                Stmt::Store(store) if Self::expr_has_await(&store.expr) => return true,
+                Stmt::Return(expr) if Self::expr_has_await(expr) => return true,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn expr_has_await(expr: &Expr) -> bool {
+        match expr {
+            Expr::Await { .. } => true,
+            Expr::Call(call) => Self::expr_has_await(call.name.as_ref()),
+            Expr::Bina(lhs, _, rhs) => Self::expr_has_await(lhs) || Self::expr_has_await(rhs),
+            _ => false,
+        }
+    }
+
+    /// Plan 213 Task 6: Check if a type is a generic type parameter (e.g., T in fn foo<T>)
+    fn is_generic_param(&self, ty: &Type, func: &Fn) -> bool {
+        if let Type::User(type_decl) = ty {
+            // Check if this type name matches any of the function's type params
+            for tp in &func.type_params {
+                if tp.name == type_decl.name {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn fn_decl(&mut self, func: &Fn, out: &mut impl Write) -> AutoResult<()> {
         self.print_indent(out)?;
+
+        // Plan 213 Task 7: async def for ~T return types, or main with .await
+        let is_async = self.is_async_fn(func)
+            || (func.name == "main" && Self::has_await(&func.body.stmts));
+        if is_async {
+            out.write(b"async ")?;
+        }
+
         out.write(b"def ")?;
         out.write_all(func.name.as_bytes())?;
+        // Plan 213 Task 6: Skip generic type params (<T> erased in Python)
         out.write(b"(")?;
 
-        // Parameters (without types for now)
+        // Plan 213 Task 4: Parameters with type annotations
+        // Plan 213 Task 6: Skip type annotations for generic params (type erasure)
         for (i, param) in func.params.iter().enumerate() {
             if i > 0 {
                 out.write(b", ")?;
             }
             out.write_all(param.name.as_bytes())?;
+            // Add type annotation if known and not a generic param
+            if !matches!(param.ty, Type::Unknown) && !self.is_generic_param(&param.ty, func) {
+                out.write(b": ")?;
+                let type_name = self.python_type_name(&param.ty);
+                out.write_all(type_name.as_bytes())?;
+                // Track Optional import
+                if matches!(param.ty, Type::Option(_)) {
+                    self.imports.insert("Optional".into());
+                }
+            }
         }
 
-        out.write(b"):\n")?;
+        // Plan 213 Task 4: Return type annotation
+        let ret_type_for_annotation = self.fn_return_type_for_annotation(func);
+        if let Some(ret_type_str) = &ret_type_for_annotation {
+            out.write(b") -> ")?;
+            out.write_all(ret_type_str.as_bytes())?;
+            out.write(b":\n")?;
+        } else {
+            out.write(b"):\n")?;
+        }
+
+        // Track Optional import for return type
+        if matches!(&func.ret, Type::Option(_)) {
+            self.imports.insert("Optional".into());
+        }
+        if matches!(&func.ret, Type::Result(_)) {
+            self.imports.insert("Result".into());
+        }
+
         self.indent();
 
         // Check if function has a non-void return type (except main)
-        let has_return = !matches!(func.ret, Type::Unknown) && func.name != "main";
+        let has_return = !matches!(func.ret, Type::Unknown | Type::Void) && func.name != "main";
+        // Async functions also need return on last expression
+        let is_async = self.is_async_fn(func);
 
         // Process body statements
-        if has_return && !func.body.stmts.is_empty() {
+        if (has_return || is_async) && !func.body.stmts.is_empty() {
             // Handle all but last statement normally
             for stmt in func.body.stmts.iter().take(func.body.stmts.len() - 1) {
                 self.stmt(stmt, out)?;
@@ -405,26 +496,66 @@ impl PythonTrans {
         Ok(())
     }
 
+    /// Get the Python return type annotation string for a function.
+    /// Returns None if no annotation should be emitted (Unknown type, main, void, generic param).
+    fn fn_return_type_for_annotation(&self, func: &Fn) -> Option<AutoStr> {
+        // Don't annotate main or functions with unknown/void return
+        if func.name == "main" {
+            return None;
+        }
+        match &func.ret {
+            Type::Unknown | Type::Void => None,
+            // Plan 213 Task 6: Skip generic type params (type erasure)
+            _ if self.is_generic_param(&func.ret, func) => None,
+            _ => Some(self.python_type_name(&func.ret)),
+        }
+    }
+
     fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
         self.print_indent(out)?;
+
+        // Plan 213 Task 7: async def for ~T return types
+        if self.is_async_fn(func) {
+            out.write(b"async ")?;
+        }
+
         out.write(b"def ")?;
         out.write_all(func.name.as_bytes())?;
         out.write(b"(self")?;
 
-        // Parameters
+        // Plan 213 Task 4: Parameters with type annotations
         for param in &func.params {
             out.write(b", ")?;
             out.write_all(param.name.as_bytes())?;
+            // Add type annotation if known
+            if !matches!(param.ty, Type::Unknown) {
+                out.write(b": ")?;
+                let type_name = self.python_type_name(&param.ty);
+                out.write_all(type_name.as_bytes())?;
+                if matches!(param.ty, Type::Option(_)) {
+                    self.imports.insert("Optional".into());
+                }
+            }
         }
 
-        out.write(b"):\n")?;
+        // Plan 213 Task 4: Return type annotation
+        let ret_type_for_annotation = self.fn_return_type_for_annotation(func);
+        if let Some(ret_type_str) = &ret_type_for_annotation {
+            out.write(b") -> ")?;
+            out.write_all(ret_type_str.as_bytes())?;
+            out.write(b":\n")?;
+        } else {
+            out.write(b"):\n")?;
+        }
+
         self.indent();
 
         // Check if function has a non-void return type
-        let has_return = !matches!(func.ret, Type::Unknown);
+        let has_return = !matches!(func.ret, Type::Unknown | Type::Void);
+        let is_async = self.is_async_fn(func);
 
         // Process body statements
-        if has_return && !func.body.stmts.is_empty() {
+        if (has_return || is_async) && !func.body.stmts.is_empty() {
             // Handle all but last statement normally
             for stmt in func.body.stmts.iter().take(func.body.stmts.len() - 1) {
                 self.stmt(stmt, out)?;
@@ -674,6 +805,23 @@ impl PythonTrans {
         }
         Ok(())
     }
+    /// Plan 213 Task 6: Check if a type is a generic param of a TypeDecl
+    fn is_type_decl_generic_param(&self, ty: &Type, type_decl: &TypeDecl) -> bool {
+        if let Type::User(user_td) = ty {
+            for gp in &type_decl.generic_params {
+                match gp {
+                    super::super::ast::GenericParam::Type(tp) => {
+                        if tp.name == user_td.name {
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        false
+    }
+
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
         let has_methods = !type_decl.methods.is_empty();
 
@@ -683,6 +831,7 @@ impl PythonTrans {
             out.write(b"@dataclass\n")?;
         }
 
+        // Plan 213 Task 6: Skip generic type params (<T> erased in Python)
         self.print_indent(out)?;
         out.write(b"class ")?;
         out.write_all(type_decl.name.as_bytes())?;
@@ -698,9 +847,12 @@ impl PythonTrans {
                 for member in &type_decl.members {
                     out.write(b", ")?;
                     out.write_all(member.name.as_bytes())?;
-                    out.write(b": ")?;
-                    let type_name = self.python_type_name(&member.ty);
-                    out.write_all(type_name.as_bytes())?;
+                    // Plan 213 Task 6: Skip type annotation for generic params
+                    if !self.is_type_decl_generic_param(&member.ty, type_decl) {
+                        out.write(b": ")?;
+                        let type_name = self.python_type_name(&member.ty);
+                        out.write_all(type_name.as_bytes())?;
+                    }
                 }
                 out.write(b"):\n")?;
                 self.indent();
@@ -723,8 +875,13 @@ impl PythonTrans {
                 self.print_indent(out)?;
                 out.write_all(member.name.as_bytes())?;
                 out.write(b": ")?;
-                let type_name = self.python_type_name(&member.ty);
-                out.write_all(type_name.as_bytes())?;
+                // Plan 213 Task 6: Use Any for generic param types
+                if self.is_type_decl_generic_param(&member.ty, type_decl) {
+                    out.write(b"Any")?;
+                } else {
+                    let type_name = self.python_type_name(&member.ty);
+                    out.write_all(type_name.as_bytes())?;
+                }
                 out.write(b"\n")?;
             }
         }
@@ -765,13 +922,48 @@ impl PythonTrans {
             Type::Float => "float".into(),
             Type::Double => "float".into(),
             Type::Bool => "bool".into(),
-            Type::Str(_) | Type::String => "str".into(),
+            Type::Str(_) | Type::String | Type::StrSlice => "str".into(),
             Type::CStr => "str".into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::List(_) => "list".into(),  // List<T> → list in Python
             Type::Map(_, _) => "dict".into(),  // Map<K, V> → dict in Python (Plan 160)
+            Type::Option(inner) => format!("Optional[{}]", self.python_type_name(inner)).into(),
+            Type::Result(inner) => format!("Result[{}]", self.python_type_name(inner)).into(),
+            Type::GenericInstance(inst) => {
+                // Future<T> -> the inner type (async handles the wrapping)
+                if inst.base_name == "Future" {
+                    if let Some(inner) = inst.args.first() {
+                        return self.python_type_name(inner);
+                    }
+                }
+                "Any".into()
+            }
             _ => "Any".into(), // Fallback for complex types
+        }
+    }
+
+    /// Collect imports needed for type annotations (Optional, Result from typing)
+    fn collect_type_imports(&mut self, types: &[&Type]) {
+        for ty in types {
+            self.collect_type_import_for(ty);
+        }
+    }
+
+    fn collect_type_import_for(&mut self, ty: &Type) {
+        match ty {
+            Type::Option(_) => { self.imports.insert("Optional".into()); }
+            Type::Result(_) => { self.imports.insert("Result".into()); }
+            Type::GenericInstance(inst) => {
+                if inst.base_name == "Future" {
+                    // async functions don't need special import for the type
+                    // but we may want to import the inner type
+                    if let Some(inner) = inst.args.first() {
+                        self.collect_type_import_for(inner);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -820,15 +1012,34 @@ impl Trans for PythonTrans {
                 if type_decl.members.len() > 0 && type_decl.methods.is_empty() {
                     self.imports.insert("dataclass".into());
                 }
+                // Scan methods for Optional/Result types
+                for method in &type_decl.methods {
+                    self.collect_type_imports(&method.params.iter().map(|p| &p.ty).collect::<Vec<_>>());
+                    self.collect_type_import_for(&method.ret);
+                }
             } else if let Stmt::EnumDecl(enum_decl) = decl {
                 // Collect import without emitting
                 if enum_decl.items.len() > 0 {
                     self.imports.insert("Enum".into());
                 }
+            } else if let Stmt::Fn(func) = decl {
+                // Scan function params and return type for Optional/Result
+                self.collect_type_imports(&func.params.iter().map(|p| &p.ty).collect::<Vec<_>>());
+                self.collect_type_import_for(&func.ret);
             }
         }
 
         // Emit imports if needed
+        let mut typing_imports = Vec::new();
+        if self.imports.contains("Optional") {
+            typing_imports.push("Optional");
+        }
+        if self.imports.contains("Result") {
+            typing_imports.push("Result");
+        }
+        if !typing_imports.is_empty() {
+            write!(sink.body, "from typing import {}\n", typing_imports.join(", "))?;
+        }
         if self.imports.contains("dataclass") {
             sink.body.write(b"from dataclasses import dataclass\n")?;
         }
@@ -856,10 +1067,21 @@ impl Trans for PythonTrans {
             }
             self.stmt(&main_stmt, &mut sink.body)?;
 
+            // Check if main is async (has .await in body or async return type)
+            let main_is_async = if let Stmt::Fn(func) = &main_stmt {
+                self.is_async_fn(func) || Self::has_await(&func.body.stmts)
+            } else {
+                false
+            };
+
             // Add main guard
             sink.body.write(b"\nif __name__ == \"__main__\":\n")?;
             self.indent();
-            sink.body.write(b"    main()\n")?;
+            if main_is_async {
+                sink.body.write(b"    asyncio.run(main())\n")?;
+            } else {
+                sink.body.write(b"    main()\n")?;
+            }
             self.dedent();
         } else if !main_stmts.is_empty() {
             // Wrap statements in a main function
@@ -1043,5 +1265,59 @@ mod tests {
     #[test]
     fn test_05_023_return() {
         test_a2p("05_expressions/023_return").unwrap();
+    }
+
+    // Plan 213 Task 4: Type annotations
+    #[test]
+    fn test_01_030_typed_func() {
+        test_a2p("01_basics/030_typed_func").unwrap();
+    }
+
+    #[test]
+    fn test_01_031_typed_vars() {
+        test_a2p("01_basics/031_typed_vars").unwrap();
+    }
+
+    // Plan 213 Task 5: Error propagation ?.
+    #[test]
+    fn test_09_006_propagate() {
+        test_a2p("09_option_result/006_propagate").unwrap();
+    }
+
+    #[test]
+    fn test_09_007_propagate_chain() {
+        test_a2p("09_option_result/007_propagate_chain").unwrap();
+    }
+
+    #[test]
+    fn test_09_008_propagate_result() {
+        test_a2p("09_option_result/008_propagate_result").unwrap();
+    }
+
+    #[test]
+    fn test_09_009_propagate_in_call() {
+        test_a2p("09_option_result/009_propagate_in_call").unwrap();
+    }
+
+    // Plan 213 Task 6: Generics (type erasure)
+    #[test]
+    fn test_08_001_generic_func() {
+        test_a2p("08_generics/001_generic_func").unwrap();
+    }
+
+    #[test]
+    fn test_08_002_generic_struct() {
+        test_a2p("08_generics/002_generic_struct").unwrap();
+    }
+
+    // Plan 213 Task 7: async/await
+    #[test]
+    fn test_03_040_async_func() {
+        test_a2p("03_control_flow/040_async_func").unwrap();
+    }
+
+    #[test]
+    fn test_03_041_await_call() {
+        test_a2p("03_control_flow/041_await_call").unwrap();
     }
 }

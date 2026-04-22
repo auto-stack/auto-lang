@@ -1,0 +1,14 @@
+fn add(a int, b int) int {
+    a + b
+}
+
+fn greet(name str) str {
+    name
+}
+
+fn main() {
+    let result = add(5, 3)
+    let greeting = greet("world")
+    print(result)
+    print(greeting)
+}
