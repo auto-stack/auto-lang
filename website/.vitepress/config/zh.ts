@@ -7,6 +7,7 @@ export const zh = defineConfig({
   description: 'Auto — 现代系统与 AI 语言。多目标转译器、Actor 并发、编译期元编程。',
 
   themeConfig: {
+    logo: '/auto.svg',
     nav: nav(),
     sidebar: {
       '/zh/docs/': { base: '/zh/docs/', items: sidebarDocsZh },

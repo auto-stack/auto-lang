@@ -14,16 +14,16 @@ The official static website for the Auto programming language, built with [ViteP
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Prepare content (copies docs/ and ../book/ into this directory)
 node scripts/prepare-content.js
 
 # Start dev server
-npm run dev
+bun run dev
 
 # Build for production
-npm run build
+bun run build
 ```
 
 ## Content Preparation

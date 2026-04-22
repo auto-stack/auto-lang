@@ -1,59 +1,42 @@
 ---
 layout: home
-
-hero:
-  name: "Auto"
-  text: "The Language for Systems & AI"
-  tagline: Multi-target transpiler · Actor concurrency · Comptime metaprogramming
-  actions:
-    - theme: brand
-      text: Get Started
-      link: /docs/getting-started
-    - theme: alt
-      text: Try Online
-      link: /playground
-    - theme: alt
-      text: View on GitHub
-      link: https://github.com/autostack/auto-lang
-
-features:
-  - icon: 🎯
-    title: Multi-Target Transpiler
-    details: Write once, run anywhere. Auto transpiles to C, Rust, TypeScript, and Python with zero-cost abstractions.
-  - icon: ⚡
-    title: Actor Concurrency
-    details: Built on the Actor model with async ~T types. Write concurrent code that is safe by design.
-  - icon: 🔮
-    title: Comptime Metaprogramming
-    details: Execute code at compile time. Generate code, validate invariants, and optimize without macros.
-  - icon: 🛡️
-    title: Memory Safety
-    details: Ownership system inspired by Rust, with smart casts and flow typing for ergonomic safe code.
-  - icon: 📦
-    title: Modern Tooling
-    details: Built-in package manager, LSP support, formatter, and seamless FFI to existing ecosystems.
-  - icon: 🤖
-    title: AI-Native Design
-    details: First-class support for AI workloads with node-based dataflow and embedded model inference.
 ---
+
+<script>
+(function() {
+  if (sessionStorage.getItem('auto-lang-checked')) return;
+  sessionStorage.setItem('auto-lang-checked', '1');
+  if (navigator.language.toLowerCase().startsWith('zh')) {
+    window.location.replace('/zh/');
+  }
+})();
+</script>
 
 <script setup>
 import HomeHero from './.vitepress/theme/components/HomeHero.vue'
 import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
-import { Zap, Shield, Code2, Box, Cpu, Bot } from 'lucide-vue-next'
+const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
 </script>
 
-<HomeHero />
+<HomeHero
+  badge="v0.2 is now available"
+  title=": The language for AI &amp; OS"
+  description="A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions."
+  primary-text="Get Started"
+  primary-link="/docs/"
+  secondary-text="Try Online"
+  secondary-link="/playground"
+/>
 
 <div class="features-section">
   <h2 class="section-title">Why Auto?</h2>
   <div class="features-grid">
-    <FeatureCard :icon="Code2" title="Multi-Target Transpiler" description="Write once, run anywhere. Auto transpiles to C, Rust, TypeScript, and Python with zero-cost abstractions." />
-    <FeatureCard :icon="Zap" title="Actor Concurrency" description="Built on the Actor model with async ~T types. Write concurrent code that is safe by design." />
-    <FeatureCard :icon="Cpu" title="Comptime Metaprogramming" description="Execute code at compile time. Generate code, validate invariants, and optimize without macros." />
-    <FeatureCard :icon="Shield" title="Memory Safety" description="Ownership system inspired by Rust, with smart casts and flow typing for ergonomic safe code." />
-    <FeatureCard :icon="Box" title="Modern Tooling" description="Built-in package manager, LSP support, formatter, and seamless FFI to existing ecosystems." />
-    <FeatureCard :icon="Bot" title="AI-Native Design" description="First-class support for AI workloads with node-based dataflow and embedded model inference." />
+    <FeatureCard icon="🎯" title="Multi-Target Transpiler" description="Write once, run anywhere. Auto transpiles to C, Rust, TypeScript, and Python with zero-cost abstractions." color="rgba(239, 68, 68, 0.15)" link="/docs/features/multi-target-transpiler" />
+    <FeatureCard icon="⚡" title="Actor Concurrency" description="Built on the Actor model with async ~T types. Write concurrent code that is safe by design." color="rgba(245, 158, 11, 0.15)" link="/docs/features/actor-concurrency" />
+    <FeatureCard icon="🔮" title="Comptime Metaprogramming" description="Execute code at compile time. Generate code, validate invariants, and optimize without macros." color="rgba(168, 85, 247, 0.15)" link="/docs/features/comptime-metaprogramming" />
+    <FeatureCard icon="🛡️" title="Memory Safety" description="Ownership system inspired by Rust, with smart casts and flow typing for ergonomic safe code." color="rgba(59, 130, 246, 0.15)" link="/docs/features/memory-safety" />
+    <FeatureCard icon="🖥️" title="AutoVM Interpreter" description="Dedicated VM with AOT/JIT compilation, hot reloading, and cross-platform support from desktop to embedded." color="rgba(20, 184, 166, 0.15)" link="/docs/features/autovm-interpreter" />
+    <FeatureCard icon="🤖" title="AI-Native Design" description="First-class support for AI workloads with node-based dataflow and embedded model inference." color="rgba(6, 182, 212, 0.15)" link="/docs/features/ai-native-design" />
   </div>
 </div>
 

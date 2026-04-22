@@ -1,20 +1,23 @@
 <template>
-  <div class="feature-card">
-    <div class="icon-wrapper">
-      <component :is="icon" :size="24" />
+  <component :is="link ? 'a' : 'div'" :href="link" class="feature-card">
+    <div class="icon-wrapper" :style="{ background: color || 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' }">
+      <template v-if="typeof icon === 'string'"><span class="emoji-icon">{{ icon }}</span></template>
+      <component v-else :is="icon" :size="24" />
     </div>
     <h3 class="title">{{ title }}</h3>
     <p class="description">{{ description }}</p>
-  </div>
+  </component>
 </template>
 
 <script setup lang="ts">
 import type { Component } from 'vue'
 
 defineProps<{
-  icon: Component
+  icon: Component | string
   title: string
   description: string
+  color?: string
+  link?: string
 }>()
 </script>
 
@@ -25,6 +28,9 @@ defineProps<{
   border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
   transition: all 0.2s ease;
+  text-decoration: none;
+  color: inherit;
+  display: block;
 }
 
 .feature-card:hover {
@@ -41,12 +47,15 @@ defineProps<{
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
   margin-bottom: 1rem;
+}
+
+.emoji-icon {
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
 .title {

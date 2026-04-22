@@ -7,6 +7,7 @@ export const en = defineConfig({
   description: 'Auto — A modern systems and AI language. Multi-target transpiler, actor concurrency, comptime metaprogramming.',
 
   themeConfig: {
+    logo: '/auto.svg',
     nav: nav(),
     sidebar: {
       '/docs/': { base: '/docs/', items: sidebarDocsEn },

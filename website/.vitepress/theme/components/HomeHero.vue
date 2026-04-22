@@ -8,24 +8,20 @@
     <div class="hero-content">
       <div class="badge">
         <span class="badge-dot" />
-        v0.2 is now available
+        {{ badge }}
       </div>
       <h1 class="title">
         <span class="gradient-text">Auto</span>
-        <br />
-        The Language for Systems & AI
+        <span class="subtitle">{{ title }}</span>
       </h1>
-      <p class="description">
-        A modern programming language that transpiles to C, Rust, TypeScript, and Python.
-        Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions.
-      </p>
+      <p class="description" v-html="description" />
       <div class="actions">
-        <a href="/docs/getting-started" class="btn btn-primary">
-          Get Started
+        <a :href="primaryLink" class="btn btn-primary">
+          {{ primaryText }}
           <ArrowRight class="icon" :size="16" />
         </a>
-        <a href="/playground" class="btn btn-secondary">
-          Try Online
+        <a :href="secondaryLink" class="btn btn-secondary">
+          {{ secondaryText }}
           <Play class="icon" :size="16" />
         </a>
       </div>
@@ -49,12 +45,32 @@
 
 <script setup lang="ts">
 import { ArrowRight, Play } from 'lucide-vue-next'
+
+interface Props {
+  badge?: string
+  title?: string
+  description?: string
+  primaryText?: string
+  primaryLink?: string
+  secondaryText?: string
+  secondaryLink?: string
+}
+
+withDefaults(defineProps<Props>(), {
+  badge: 'v0.2 is now available',
+  title: ': The language for AI & OS',
+  description: 'A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions.',
+  primaryText: 'Get Started',
+  primaryLink: '/docs/',
+  secondaryText: 'Try Online',
+  secondaryLink: '/playground',
+})
 </script>
 
 <style scoped>
 .hero {
   position: relative;
-  min-height: 90vh;
+  min-height: 60vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -135,7 +151,7 @@ import { ArrowRight, Play } from 'lucide-vue-next'
 }
 
 .title {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-size: clamp(2.5rem, 5vw, 3.75rem);
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: -0.02em;

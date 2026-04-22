@@ -1,59 +1,32 @@
 ---
 layout: home
-
-hero:
-  name: "Auto"
-  text: "系统与 AI 语言"
-  tagline: 多目标转译器 · Actor 并发 · 编译期元编程
-  actions:
-    - theme: brand
-      text: 快速开始
-      link: /zh/docs/getting-started
-    - theme: alt
-      text: 在线体验
-      link: /zh/playground
-    - theme: alt
-      text: GitHub
-      link: https://github.com/autostack/auto-lang
-
-features:
-  - icon: 🎯
-    title: 多目标转译器
-    details: 一次编写，到处运行。Auto 可转译为 C、Rust、TypeScript 和 Python，实现零成本抽象。
-  - icon: ⚡
-    title: Actor 并发
-    details: 基于 Actor 模型，配合 async ~T 类型。编写天生安全的并发代码。
-  - icon: 🔮
-    title: 编译期元编程
-    details: 在编译期执行代码。生成代码、验证不变式、优化性能，无需宏。
-  - icon: 🛡️
-    title: 内存安全
-    details: 受 Rust 启发的所有权系统，配合智能转换和流类型，提供符合人体工学的安全代码。
-  - icon: 📦
-    title: 现代工具链
-    details: 内置包管理器、LSP 支持、代码格式化器，以及与现有生态系统的无缝 FFI。
-  - icon: 🤖
-    title: AI 原生设计
-    details: 对 AI 工作负载的一流支持，包括基于节点的数据流和嵌入式模型推理。
 ---
 
 <script setup>
 import HomeHero from '../.vitepress/theme/components/HomeHero.vue'
 import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
-import { Zap, Shield, Code2, Box, Cpu, Bot } from 'lucide-vue-next'
+const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
 </script>
 
-<HomeHero />
+<HomeHero
+  badge="v0.2 现已发布"
+  title="：AI操作系统编程语言"
+  description="一门现代编程语言，可转译为 C、Rust、TypeScript 和 Python。<br>支持脚本运行、Actor 并发、编译期元编程和零成本抽象。"
+  primary-text="快速开始"
+  primary-link="/zh/docs/"
+  secondary-text="在线体验"
+  secondary-link="/zh/playground"
+/>
 
 <div class="features-section">
   <h2 class="section-title">为什么选择 Auto？</h2>
   <div class="features-grid">
-    <FeatureCard :icon="Code2" title="多目标转译器" description="一次编写，到处运行。Auto 可转译为 C、Rust、TypeScript 和 Python，实现零成本抽象。" />
-    <FeatureCard :icon="Zap" title="Actor 并发" description="基于 Actor 模型，配合 async ~T 类型。编写天生安全的并发代码。" />
-    <FeatureCard :icon="Cpu" title="编译期元编程" description="在编译期执行代码。生成代码、验证不变式、优化性能，无需宏。" />
-    <FeatureCard :icon="Shield" title="内存安全" description="受 Rust 启发的所有权系统，配合智能转换和流类型，提供符合人体工学的安全代码。" />
-    <FeatureCard :icon="Box" title="现代工具链" description="内置包管理器、LSP 支持、代码格式化器，以及与现有生态系统的无缝 FFI。" />
-    <FeatureCard :icon="Bot" title="AI 原生设计" description="对 AI 工作负载的一流支持，包括基于节点的数据流和嵌入式模型推理。" />
+    <FeatureCard icon="🎯" title="多目标转译器" description="一次编写，到处运行。Auto 可转译为 C、Rust、TypeScript 和 Python，实现零成本抽象。" color="rgba(239, 68, 68, 0.15)" link="/zh/docs/features/multi-target-transpiler" />
+    <FeatureCard icon="⚡" title="Actor 并发" description="基于 Actor 模型，配合 async ~T 类型。编写天生安全的并发代码。" color="rgba(245, 158, 11, 0.15)" link="/zh/docs/features/actor-concurrency" />
+    <FeatureCard icon="🔮" title="编译期元编程" description="在编译期执行代码。生成代码、验证不变式、优化性能，无需宏。" color="rgba(168, 85, 247, 0.15)" link="/zh/docs/features/comptime-metaprogramming" />
+    <FeatureCard icon="🛡️" title="内存安全" description="受 Rust 启发的所有权系统，配合智能转换和流类型，提供符合人体工学的安全代码。" color="rgba(59, 130, 246, 0.15)" link="/zh/docs/features/memory-safety" />
+    <FeatureCard icon="🖥️" title="AutoVM 解释器" description="专用虚拟机，支持 AOT/JIT 编译、热重载，从桌面到嵌入式跨平台运行。" color="rgba(20, 184, 166, 0.15)" link="/zh/docs/features/autovm-interpreter" />
+    <FeatureCard icon="🤖" title="AI 原生设计" description="对 AI 工作负载的一流支持，包括基于节点的数据流和嵌入式模型推理。" color="rgba(6, 182, 212, 0.15)" link="/zh/docs/features/ai-native-design" />
   </div>
 </div>
 

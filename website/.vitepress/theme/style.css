@@ -89,6 +89,11 @@
   background-color: rgba(15, 23, 42, 0.8) !important;
 }
 
+.VPNavBarTitle .logo {
+  height: 32px;
+  width: auto;
+}
+
 .VPFeature {
   border-radius: var(--radius);
   border: 1px solid hsl(var(--border));
