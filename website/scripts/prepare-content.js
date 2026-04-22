@@ -539,6 +539,14 @@ function generateBooksIndex(booksDir, lang) {
   fs.writeFileSync(indexPath, content, 'utf-8')
 }
 
+function prefixBookLinks(items, book) {
+  return items.map(item => ({
+    ...item,
+    link: item.link ? `${book}/${item.link}` : undefined,
+    items: item.items ? prefixBookLinks(item.items, book) : undefined,
+  }))
+}
+
 function buildBooksSidebar(bookFiles) {
   const sidebar = []
 
@@ -564,7 +572,7 @@ function buildBooksSidebar(bookFiles) {
         text: bookTitle,
         link: `${book}/`,
         collapsed: book !== 'tapl',
-        items,
+        items: prefixBookLinks(items, book),
       })
     } else {
       // Fallback: list all markdown files

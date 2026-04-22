@@ -33,14 +33,17 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
-import { EditorState, type Extension } from '@codemirror/state'
+import { EditorState, Compartment, type Extension } from '@codemirror/state'
+import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { oneDark } from '@codemirror/theme-one-dark'
+import { oneDarkTheme, oneDarkHighlightStyle } from '@codemirror/theme-one-dark'
 import { rust } from '@codemirror/lang-rust'
 import { cpp } from '@codemirror/lang-cpp'
 import { javascript } from '@codemirror/lang-javascript'
 import { python } from '@codemirror/lang-python'
+import { autoLanguage } from '../composables/autoLang'
 import { Play, Loader2 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -62,6 +65,21 @@ const stderr = ref('')
 const editorContainer = ref<HTMLDivElement>()
 let editorView: EditorView | null = null
 const isDark = ref(false)
+const themeCompartment = new Compartment()
+const highlightCompartment = new Compartment()
+
+const lightHighlightStyle = HighlightStyle.define([
+  { tag: tags.keyword, color: '#a626a4' },
+  { tag: tags.string, color: '#50a14f' },
+  { tag: tags.number, color: '#986801' },
+  { tag: tags.comment, color: '#a0a1a7' },
+  { tag: tags.typeName, color: '#c18401' },
+  { tag: tags.variableName, color: '#e45649' },
+  { tag: tags.operator, color: '#0184bc' },
+  { tag: tags.propertyName, color: '#4078f2' },
+  { tag: tags.attributeName, color: '#c18401' },
+  { tag: tags.macroName, color: '#0184bc' },
+])
 
 const languages = [
   { id: 'auto', label: 'Auto', code: props.auto },
@@ -112,6 +130,8 @@ async function setLang(lang: string) {
 
 function getLanguageExtension(langId: string): Extension {
   switch (langId) {
+    case 'auto':
+      return autoLanguage
     case 'rust':
       return rust()
     case 'c':
@@ -139,7 +159,8 @@ function initEditor(code: string, langId: string) {
     lineNumbers(),
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
-    oneDark,
+    highlightCompartment.of(syntaxHighlighting(isDark.value ? oneDarkHighlightStyle : lightHighlightStyle)),
+    themeCompartment.of(isDark.value ? oneDarkTheme : []),
     getLanguageExtension(langId),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
@@ -152,6 +173,15 @@ function initEditor(code: string, langId: string) {
     extensions.push(EditorView.editable.of(false))
     extensions.push(EditorState.readOnly.of(true))
   }
+
+  watch(isDark, (dark) => {
+    editorView?.dispatch({
+      effects: [
+        highlightCompartment.reconfigure(syntaxHighlighting(dark ? oneDarkHighlightStyle : lightHighlightStyle)),
+        themeCompartment.reconfigure(dark ? oneDarkTheme : []),
+      ],
+    })
+  })
 
   const state = EditorState.create({
     doc: code,
@@ -289,11 +319,20 @@ async function runCode() {
 }
 
 .editor-pane :deep(.cm-gutters) {
+  background: #f5f5f5;
+  border-right: 1px solid #e2e2e3;
+}
+
+.editor-pane :deep(.cm-scroller) {
+  background: #ffffff;
+}
+
+.code-view.dark .editor-pane :deep(.cm-gutters) {
   background: #181825;
   border-right: 1px solid #313244;
 }
 
-.editor-pane :deep(.cm-scroller) {
+.code-view.dark .editor-pane :deep(.cm-scroller) {
   background: #1e1e2e;
 }
 
