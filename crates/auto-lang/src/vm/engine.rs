@@ -241,6 +241,16 @@ impl AutoVM {
         self.strings = Arc::new(RwLock::new(strings));
     }
 
+    /// Plan 212b Task 4: Merge additional native shims into this VM
+    ///
+    /// Rebuilds the internal Arc<NativeInterface> by merging in shims
+    /// from another NativeInterface (e.g., from RustFfiBridge).
+    pub fn merge_native_interface(&mut self, other: &NativeInterface) {
+        let mut ni = (*self.native_interface).clone();
+        ni.merge(other);
+        self.native_interface = Arc::new(ni);
+    }
+
     /// Plan 197 Task 9: Load generic registry from codegen
     pub fn load_generic_registry(&mut self, registry: crate::vm::generic_registry::GenericRegistry) {
         self.generic_registry = registry;

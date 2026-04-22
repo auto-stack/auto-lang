@@ -40,6 +40,7 @@ pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + 
 /// Supports two types of native functions:
 /// - **Static** (IDs 0-9999): Built into VM, registered at compile time
 /// - **Dynamic** (IDs 10000+): Loaded via `use.rust`, registered at runtime
+#[derive(Clone)]
 pub struct NativeInterface {
     /// Static shims: direct array lookup for maximum performance
     static_shims: Vec<Option<ShimFunc>>,

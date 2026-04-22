@@ -326,7 +326,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
     let mut bridge = match crate::ffi::RustFfiBridge::new() {
         Ok(b) => b,
         Err(e) => {
-            log::warn!("Failed to create RustFfiBridge: {}", e);
+            log::warn!("Failed to create RustFfiBridge: {:?}", e);
             return None;
         }
     };
@@ -341,7 +341,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
             let lib_path = sandbox.crate_library_path(&wrapper_name, "1");
             if lib_path.exists() {
                 if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
-                    log::warn!("Failed to load Rust library {} from {}: {}", crate_name, lib_path.display(), e);
+                    log::warn!("Failed to load Rust library {} from {}: {:?}", crate_name, lib_path.display(), e);
                     continue;
                 }
 
@@ -364,7 +364,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                             }
                         }
                         Err(e) => {
-                            log::warn!("Failed to register Rust function {}::{}: {}", crate_name, func_name, e);
+                            log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
                         }
                     }
                 }
@@ -533,7 +533,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 
     // Plan 212b Task 4: Merge Rust FFI native interface into VM
     if let Some(rust_ni) = rust_ffi_native_interface {
-        vm.native_interface.merge(&rust_ni);
+        vm.merge_native_interface(&rust_ni);
     }
 
     // Helper to extract stdout from capture buffer
