@@ -1,0 +1,4 @@
+fn main() {
+    let obj = {name: "Alice", age: 30}
+    print(obj)
+}

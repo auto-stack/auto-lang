@@ -1,0 +1,7 @@
+fn main() {
+    let x = 10
+    for x > 0 {
+        x = x - 1
+        print(x)
+    }
+}

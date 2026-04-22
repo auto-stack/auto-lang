@@ -1,0 +1,5 @@
+fn main() {
+    let arr = [10, 20, 30]
+    let elem = arr[1]
+    print(elem)
+}

@@ -1,0 +1,11 @@
+fn get_name() str {
+    "Alice"
+}
+
+fn main() {
+    let name = get_name()
+    let result = Some(name)
+    if result != None {
+        print(result)
+    }
+}

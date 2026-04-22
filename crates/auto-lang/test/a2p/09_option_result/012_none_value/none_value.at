@@ -1,0 +1,8 @@
+fn main() {
+    let val = None
+    if val != None {
+        print("has value")
+    } else {
+        print("none")
+    }
+}

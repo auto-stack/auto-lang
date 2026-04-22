@@ -1,0 +1,7 @@
+fn main() {
+    let val = 42
+    is val {
+        0 -> print("zero")
+        else -> print("nonzero")
+    }
+}

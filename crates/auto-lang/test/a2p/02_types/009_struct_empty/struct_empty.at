@@ -1,0 +1,6 @@
+type Empty {
+}
+
+fn main() {
+    print("Empty struct defined")
+}

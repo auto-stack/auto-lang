@@ -1,0 +1,4 @@
+fn main() {
+    let val = Err("something failed")
+    print(val)
+}

@@ -1,0 +1,11 @@
+fn divide(a int, b int) int {
+    if b == 0 {
+        return 0
+    }
+    a / b
+}
+
+fn main() {
+    let result = divide(10, 2)
+    print(result)
+}

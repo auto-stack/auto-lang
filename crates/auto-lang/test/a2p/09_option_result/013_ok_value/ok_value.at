@@ -1,0 +1,4 @@
+fn main() {
+    let val = Ok(42)
+    print(val)
+}

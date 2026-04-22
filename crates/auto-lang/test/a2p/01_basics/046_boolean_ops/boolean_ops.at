@@ -1,0 +1,8 @@
+fn main() {
+    let a = true
+    let b = false
+    let c = a && b
+    let d = a || b
+    print(c)
+    print(d)
+}

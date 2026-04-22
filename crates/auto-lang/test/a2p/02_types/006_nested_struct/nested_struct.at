@@ -1,0 +1,13 @@
+type Point {
+    x int
+    y int
+}
+
+type Rect {
+    p1 Point
+    p2 Point
+}
+
+fn main() {
+    print("Nested struct defined")
+}

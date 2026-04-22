@@ -1,0 +1,10 @@
+type Person {
+    name str
+    age int
+    height float
+    active bool
+}
+
+fn main() {
+    print("Person struct defined")
+}

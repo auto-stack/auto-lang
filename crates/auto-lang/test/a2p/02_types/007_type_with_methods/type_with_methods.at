@@ -1,0 +1,11 @@
+type Counter {
+    count int
+
+    fn increment() {
+        .count = .count + 1
+    }
+}
+
+fn main() {
+    print("Type with methods defined")
+}

@@ -1,0 +1,10 @@
+type Calculator {
+    fn multiply(a int, b int) int {
+        a * b
+    }
+}
+
+fn main() {
+    let c = Calculator()
+    print(c.multiply(6, 7))
+}

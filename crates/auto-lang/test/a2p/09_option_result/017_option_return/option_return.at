@@ -1,0 +1,8 @@
+fn maybe_val() ?int {
+    Some(42)
+}
+
+fn main() {
+    let v = maybe_val()
+    print(v)
+}

@@ -1,0 +1,13 @@
+type Holder {
+    val int
+
+    fn get() int {
+        .val
+    }
+}
+
+fn main() {
+    let b = Holder(val: 10)
+    let v = b.get()
+    print(v)
+}

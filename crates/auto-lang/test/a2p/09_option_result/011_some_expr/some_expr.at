@@ -1,0 +1,4 @@
+fn main() {
+    let val = Some("hello")
+    print(val)
+}

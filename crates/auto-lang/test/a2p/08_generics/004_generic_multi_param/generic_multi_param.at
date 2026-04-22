@@ -1,0 +1,7 @@
+fn pair<K, V>(k K, v V) {
+    print("pair created")
+}
+
+fn main() {
+    pair("key", 42)
+}

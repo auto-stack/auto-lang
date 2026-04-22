@@ -1,0 +1,4 @@
+fn main() {
+    let greeting = "hello"
+    print(greeting)
+}

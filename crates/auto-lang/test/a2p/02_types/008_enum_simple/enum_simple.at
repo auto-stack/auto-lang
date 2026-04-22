@@ -1,0 +1,10 @@
+enum Direction {
+    North
+    South
+    East
+    West
+}
+
+fn main() {
+    print("Enum defined")
+}
