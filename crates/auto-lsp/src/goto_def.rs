@@ -17,11 +17,6 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
     // Get the word at the cursor position
     let word = get_word_at_position(line, position.character as usize)?;
 
-    eprintln!("=== GOTO DEF DEBUG ===");
-    eprintln!("Line: '{}'", line);
-    eprintln!("Word: '{}'", word);
-    eprintln!("Position: {:?}", position);
-
     // Parse the code and get the universe with symbol locations
     let scope = std::rc::Rc::new(std::cell::RefCell::new(auto_lang::Universe::new()));
     {
@@ -36,38 +31,27 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
 
     // First, try to look up the simple name directly
     if let Some(loc) = universe.get_symbol_location(&word) {
-        eprintln!("Found simple name: '{}' -> {:?}", word, loc);
         return create_location(uri, loc);
     }
 
     // If not found, check if this is a member/field access (e.g., p.x or p.square())
     if let Some(var_name) = get_variable_before_dot(line, position.character as usize) {
-        eprintln!("Detected member access: var='{}', member='{}'", var_name, word);
         // Try to infer the type of the variable using the parser's type information
         let type_name = infer_variable_type_from_parser(&universe, &var_name)
             .or_else(|| {
                 // Fallback to heuristic text-based parsing
-                eprintln!("Parser lookup failed, trying heuristic text parsing");
                 infer_variable_type_heuristic(content, &var_name)
             });
 
         if let Some(type_name) = type_name {
-            eprintln!("Inferred type: '{}'", type_name);
             // Try qualified name with the type (AutoLang uses ".", not "::")
             let qualified_name = format!("{}.{}", type_name, word);
-            eprintln!("Trying qualified name: '{}'", qualified_name);
             if let Some(loc) = universe.get_symbol_location(&qualified_name) {
-                eprintln!("Found qualified name: '{}' -> {:?}", qualified_name, loc);
                 return create_location(uri, loc);
-            } else {
-                eprintln!("Qualified name NOT found");
             }
-        } else {
-            eprintln!("Could not infer type for var '{}'", var_name);
         }
     }
 
-    eprintln!("=== END GOTO DEF DEBUG ===");
     None
 }
 
@@ -162,12 +146,9 @@ fn infer_variable_type_from_parser(universe: &auto_lang::Universe, var_name: &st
         match meta.as_ref() {
             Meta::Store(store) => {
                 let type_name = store.ty.unique_name();
-                eprintln!("Parser inferred type for '{}': '{}'", var_name, type_name);
                 return Some(type_name.to_string());
             }
-            _ => {
-                eprintln!("Variable '{}' found but is not a Store: {:?}", var_name, meta);
-            }
+            _ => {}
         }
     }
 

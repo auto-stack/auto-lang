@@ -131,49 +131,78 @@ fn determine_completion_context(
 /// Get all keyword completions
 fn keyword_completions() -> Vec<CompletionItem> {
     vec![
-        completion_item("fn", "Define a function", CompletionItemKind::FUNCTION, "fn name() {\n    \n}"),
+        // Declaration keywords
+        completion_item("fn", "Define a function", CompletionItemKind::FUNCTION, "fn ${1:name}() {\n    \n}"),
         completion_item("let", "Declare immutable variable", CompletionItemKind::KEYWORD, "let ${1:name} = ${2:value};"),
-        completion_item("mut", "Declare mutable variable", CompletionItemKind::KEYWORD, "mut ${1:name} = ${2:value};"),
+        completion_item("var", "Declare mutable variable", CompletionItemKind::KEYWORD, "var ${1:name} = ${2:value};"),
         completion_item("const", "Declare constant", CompletionItemKind::CONSTANT, "const ${1:name} = ${2:value};"),
-        completion_item("var", "Declare variable (inferred type)", CompletionItemKind::KEYWORD, "var ${1:name} = ${2:value};"),
-        completion_item("type", "Define a type alias", CompletionItemKind::KEYWORD, "type ${1:Name} = ${2:Type};"),
+        completion_item("mut", "Mutable modifier (mut fn, mut var)", CompletionItemKind::KEYWORD, "mut ${1:name} = ${2:value};"),
+        completion_item("pub", "Public visibility", CompletionItemKind::KEYWORD, "pub "),
+        // Type definition keywords
+        completion_item("type", "Define a type", CompletionItemKind::KEYWORD, "type ${1:Name} {\n    \n}"),
+        completion_item("enum", "Define enum", CompletionItemKind::ENUM, "enum ${1:Name} {\n    ${2:Variant}\n}"),
+        completion_item("struct", "Define struct", CompletionItemKind::STRUCT, "struct ${1:Name} {\n    ${2:field} ${3:Type}\n}"),
+        completion_item("spec", "Define specification (interface)", CompletionItemKind::INTERFACE, "spec ${1:Name} {\n    \n}"),
+        completion_item("ext", "Extend a type", CompletionItemKind::KEYWORD, "ext ${1:Type} {\n    \n}"),
+        completion_item("impl", "Implement methods", CompletionItemKind::KEYWORD, "impl ${1:Type} {\n    \n}"),
+        completion_item("alias", "Define type alias", CompletionItemKind::KEYWORD, "alias ${1:Name} = ${2:Type};"),
+        // Control flow
         completion_item("if", "If statement", CompletionItemKind::KEYWORD, "if ${1:condition} {\n    \n}"),
         completion_item("else", "Else statement", CompletionItemKind::KEYWORD, "else {\n    \n}"),
         completion_item("elif", "Else if statement", CompletionItemKind::KEYWORD, "elif ${1:condition} {\n    \n}"),
-        completion_item("while", "While loop", CompletionItemKind::KEYWORD, "while ${1:condition} {\n    \n}"),
-        completion_item("for", "For loop", CompletionItemKind::KEYWORD, "for ${1:item} in ${2:iterable} {\n    \n}"),
+        completion_item("for", "For loop (for x in start..end)", CompletionItemKind::KEYWORD, "for ${1:item} in ${2:start}..${3:end} {\n    \n}"),
+        completion_item("is", "Pattern matching (is expr { pat -> ... })", CompletionItemKind::KEYWORD, "is ${1:value} {\n    ${2:pattern} -> ${3:result}\n}"),
         completion_item("loop", "Infinite loop", CompletionItemKind::KEYWORD, "loop {\n    \n}"),
         completion_item("break", "Break from loop", CompletionItemKind::KEYWORD, "break;"),
         completion_item("continue", "Continue to next iteration", CompletionItemKind::KEYWORD, "continue;"),
         completion_item("return", "Return from function", CompletionItemKind::KEYWORD, "return ${1:value};"),
-        completion_item("match", "Pattern matching", CompletionItemKind::KEYWORD, "match ${1:value} {\n    ${2:pattern} => ${3:result}\n}"),
+        // Imports
         completion_item("use", "Import module", CompletionItemKind::KEYWORD, "use ${1:module};"),
-        completion_item("mod", "Define module", CompletionItemKind::KEYWORD, "mod ${1:name};"),
-        completion_item("struct", "Define struct", CompletionItemKind::STRUCT, "struct ${1:Name} {\n    ${2:field}: ${3:Type}\n}"),
-        completion_item("enum", "Define enum", CompletionItemKind::ENUM, "enum ${1:Name} {\n    ${2:Variant}\n}"),
-        completion_item("trait", "Define trait", CompletionItemKind::INTERFACE, "trait ${1:Name} {\n    ${2:method}()\n}"),
-        completion_item("impl", "Implement trait or methods", CompletionItemKind::KEYWORD, "impl ${1:Type} {\n    \n}"),
+        completion_item("pac", "Package root prefix", CompletionItemKind::KEYWORD, "pac.${1:module}"),
+        completion_item("super", "Parent directory import", CompletionItemKind::KEYWORD, "super.${1:module}"),
+        // Literals
         completion_item("true", "Boolean true", CompletionItemKind::KEYWORD, "true"),
         completion_item("false", "Boolean false", CompletionItemKind::KEYWORD, "false"),
         completion_item("nil", "Nil value", CompletionItemKind::KEYWORD, "nil"),
+        // Option/Result constructors
+        completion_item("Some", "Option.Some constructor", CompletionItemKind::ENUM_MEMBER, "Some(${1:value})"),
+        completion_item("None", "Option.None", CompletionItemKind::ENUM_MEMBER, "None"),
+        completion_item("Ok", "Result.Ok constructor", CompletionItemKind::ENUM_MEMBER, "Ok(${1:value})"),
+        completion_item("Err", "Result.Err constructor", CompletionItemKind::ENUM_MEMBER, "Err(${1:value})"),
+        // Concurrency
+        completion_item("task", "Define async task", CompletionItemKind::KEYWORD, "task ${1:name}() {\n    \n}"),
+        completion_item("spawn", "Spawn concurrent task", CompletionItemKind::KEYWORD, "spawn ${1:task}()"),
+        completion_item("await", "Await async result", CompletionItemKind::KEYWORD, "await ${1:expr}"),
+        completion_item("go", "Launch goroutine-style task", CompletionItemKind::KEYWORD, "go ${1:expr}"),
+        // Ownership / misc
+        completion_item("view", "View borrow", CompletionItemKind::KEYWORD, "view "),
+        completion_item("move", "Move ownership", CompletionItemKind::KEYWORD, "move "),
+        completion_item("copy", "Copy value", CompletionItemKind::KEYWORD, "copy "),
+        completion_item("take", "Take ownership", CompletionItemKind::KEYWORD, "take "),
     ]
 }
 
 /// Get all type completions
 fn type_completions(content: &str) -> Vec<CompletionItem> {
     let mut items = vec![
-        // Primitive types
+        // Auto primitive types
         completion_item("int", "Signed integer", CompletionItemKind::TYPE_PARAMETER, "int"),
         completion_item("uint", "Unsigned integer", CompletionItemKind::TYPE_PARAMETER, "uint"),
+        completion_item("byte", "Byte (8-bit unsigned)", CompletionItemKind::TYPE_PARAMETER, "byte"),
         completion_item("float", "Floating point number", CompletionItemKind::TYPE_PARAMETER, "float"),
+        completion_item("double", "Double precision float", CompletionItemKind::TYPE_PARAMETER, "double"),
         completion_item("bool", "Boolean value", CompletionItemKind::TYPE_PARAMETER, "bool"),
         completion_item("str", "String", CompletionItemKind::TYPE_PARAMETER, "str"),
         completion_item("char", "Character", CompletionItemKind::TYPE_PARAMETER, "char"),
-        // Composite types
-        completion_item("array", "Array type", CompletionItemKind::TYPE_PARAMETER, "array[T]"),
-        completion_item("list", "List type", CompletionItemKind::TYPE_PARAMETER, "list[T]"),
-        completion_item("dict", "Dictionary type", CompletionItemKind::TYPE_PARAMETER, "dict[K, V]"),
-        completion_item("object", "Object type", CompletionItemKind::TYPE_PARAMETER, "object"),
+        completion_item("void", "No return value", CompletionItemKind::TYPE_PARAMETER, "void"),
+        // Collection types
+        completion_item("List", "Dynamic list type", CompletionItemKind::CLASS, "List"),
+        completion_item("Map", "Key-value map type", CompletionItemKind::CLASS, "Map"),
+        completion_item("Option", "Optional value (Some/None)", CompletionItemKind::CLASS, "Option"),
+        completion_item("Result", "Result type (Ok/Err)", CompletionItemKind::CLASS, "Result"),
+        // Array types
+        completion_item("[]T", "Slice type", CompletionItemKind::TYPE_PARAMETER, "[]${1:T}"),
+        completion_item("[N]T", "Static array type", CompletionItemKind::TYPE_PARAMETER, "[${1:N}]${2:T}"),
     ];
 
     // Add user-defined types from AST
