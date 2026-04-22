@@ -307,6 +307,79 @@ fn extract_undefined_symbol(error_msg: &str) -> Option<&str> {
         .and_then(|s| s.split(" in ").next())
 }
 
+/// Plan 212b Task 4: Initialize Rust FFI bridge at runtime
+///
+/// Scans the CompileSession for Rust dependencies and imports,
+/// loads compiled libraries, and registers functions as native shims.
+///
+/// Returns a NativeInterface with registered Rust FFI shims, or None
+/// if there are no Rust imports.
+fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::NativeInterface> {
+    let rust_imports = session.rust_imports();
+    if rust_imports.is_empty() {
+        return None;
+    }
+
+    let mut native_interface = crate::vm::native::NativeInterface::new();
+
+    // Create a RustFfiBridge to load and register Rust functions
+    let mut bridge = match crate::ffi::RustFfiBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("Failed to create RustFfiBridge: {}", e);
+            return None;
+        }
+    };
+
+    // Load compiled libraries for each crate
+    for (crate_name, functions) in rust_imports {
+        // The wrapper library name follows the sandbox naming convention
+        let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
+
+        // Try to load the compiled wrapper library
+        if let Some(sandbox) = session.sandbox() {
+            let lib_path = sandbox.crate_library_path(&wrapper_name, "1");
+            if lib_path.exists() {
+                if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
+                    log::warn!("Failed to load Rust library {} from {}: {}", crate_name, lib_path.display(), e);
+                    continue;
+                }
+
+                // Register each function as a string→string shim
+                for func_name in functions {
+                    // Register the function using the auto_{func} naming convention
+                    let shim_name = format!("auto_{}", func_name);
+                    let signature = crate::ffi::RustSignature::new()
+                        .param(crate::ffi::RustType::String)
+                        .returns(crate::ffi::RustType::String);
+
+                    match bridge.register_function(&crate_name, &shim_name, signature) {
+                        Ok(native_id) => {
+                            log::info!("Registered Rust FFI: {}::{} (native_id={})", crate_name, func_name, native_id);
+
+                            // Also register in BIGVM_NATIVES so codegen can find it
+                            let qualified = format!("rust.{}", func_name);
+                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                                registry.register_with_id(&qualified, native_id);
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to register Rust function {}::{}: {}", crate_name, func_name, e);
+                        }
+                    }
+                }
+            } else {
+                log::info!("Wrapper library not found for {} at {}", crate_name, lib_path.display());
+            }
+        }
+    }
+
+    // Merge the bridge's native interface into our result
+    native_interface.merge(bridge.native_interface());
+
+    Some(native_interface)
+}
+
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
 async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String)> {
@@ -318,7 +391,11 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
+    session.resolve_deps(code)?; // Plan 212b: resolve dep statements first
     session.resolve_uses(code)?;
+
+    // Plan 212b Task 4: Initialize Rust FFI bridge if there are Rust imports
+    let rust_ffi_native_interface = init_rust_ffi(&session);
 
     // 1. Parse the code (with pre-loaded type_store from resolve_uses)
     let mut parser = Parser::new_with_type_store(code, session.type_store());
@@ -453,6 +530,11 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     };
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
+
+    // Plan 212b Task 4: Merge Rust FFI native interface into VM
+    if let Some(rust_ni) = rust_ffi_native_interface {
+        vm.native_interface.merge(&rust_ni);
+    }
 
     // Helper to extract stdout from capture buffer
     let get_stdout = || {

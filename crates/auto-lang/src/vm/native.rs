@@ -119,6 +119,29 @@ impl NativeInterface {
         self.next_dynamic_id
     }
 
+    /// Plan 212b Task 4: Merge shims from another NativeInterface into this one
+    ///
+    /// Used to merge Rust FFI bridge native shims into the main VM's
+    /// NativeInterface after the bridge has loaded and registered functions.
+    pub fn merge(&mut self, other: &NativeInterface) {
+        // Merge static shims
+        for (id, shim) in other.static_shims.iter().enumerate() {
+            if let Some(shim) = shim {
+                if id < self.static_shims.len() {
+                    self.static_shims[id] = Some(shim.clone());
+                }
+            }
+        }
+        // Merge dynamic shims
+        for (id, shim) in &other.dynamic_shims {
+            self.dynamic_shims.insert(*id, shim.clone());
+        }
+        // Advance next_dynamic_id if needed
+        if other.next_dynamic_id > self.next_dynamic_id {
+            self.next_dynamic_id = other.next_dynamic_id;
+        }
+    }
+
     /// Legacy method for backwards compatibility
     /// Routes to register_static for IDs < 10000, register_dynamic otherwise
     pub fn register<F>(&mut self, id: u16, func: F)
