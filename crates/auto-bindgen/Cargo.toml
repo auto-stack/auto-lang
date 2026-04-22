@@ -1,0 +1,10 @@
+[package]
+name = "auto-bindgen"
+version = "0.1.0"
+edition = "2021"
+description = "C header manifest generator for AutoLang C FFI (Plan 216)"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
