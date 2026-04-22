@@ -1,0 +1,7 @@
+spec Flyer {
+    fn fly()
+}
+
+fn main() {
+    print("Spec defined")
+}

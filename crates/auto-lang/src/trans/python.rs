@@ -350,11 +350,27 @@ impl PythonTrans {
                 Ok(true)
             }
 
-            // Skip alias, use, union, tag for now
+            // Plan 213 Task 8: Spec declarations → Protocol
+            Stmt::SpecDecl(spec_decl) => {
+                self.spec_decl(spec_decl, out)?;
+                Ok(true)
+            }
+
+            // Plan 213 Task 9: Union declarations → dataclass
+            Stmt::Union(union_decl) => {
+                self.union_decl(union_decl, out)?;
+                Ok(true)
+            }
+
+            // Plan 213 Task 9: Tag declarations → dataclass with factory methods
+            Stmt::Tag(tag_decl) => {
+                self.tag_decl(tag_decl, out)?;
+                Ok(true)
+            }
+
+            // Skip alias, use for now
             Stmt::Alias(_) => Ok(false),
             Stmt::Use(_) => Ok(false),
-            Stmt::Union(_) => Ok(false),
-            Stmt::Tag(_) => Ok(false),
 
             _ => Err(format!("Python Transpiler: unsupported statement: {:?}", stmt).into()),
         }
@@ -619,6 +635,18 @@ impl PythonTrans {
     }
 
     fn for_loop(&mut self, for_loop: &For, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 213 Task 10: Handle conditional for loop (while in Python)
+        if matches!(&for_loop.iter, Iter::Cond) {
+            self.print_indent(out)?;
+            out.write(b"while ")?;
+            self.expr(&for_loop.range, out)?;
+            out.write(b":\n")?;
+            self.indent();
+            self.body(&for_loop.body, out)?;
+            self.dedent();
+            return Ok(());
+        }
+
         self.print_indent(out)?;
         out.write(b"for ")?;
 
@@ -915,6 +943,206 @@ impl PythonTrans {
         Ok(())
     }
 
+    /// Plan 213 Task 8: spec → Protocol
+    /// spec Comparable { fn compare(self, other Self) int }
+    /// →
+    /// class Comparable(Protocol):
+    ///     def compare(self, other: 'Comparable') -> int: ...
+    fn spec_decl(&mut self, spec_decl: &SpecDecl, out: &mut impl Write) -> AutoResult<()> {
+        self.imports.insert("Protocol".into());
+
+        self.print_indent(out)?;
+        out.write(b"class ")?;
+        out.write_all(spec_decl.name.as_bytes())?;
+        out.write(b"(Protocol):\n")?;
+        self.indent();
+
+        for method in &spec_decl.methods {
+            self.print_indent(out)?;
+            out.write(b"def ")?;
+            out.write_all(method.name.as_bytes())?;
+            out.write(b"(self")?;
+
+            for param in &method.params {
+                out.write(b", ")?;
+                out.write_all(param.name.as_bytes())?;
+                if !matches!(param.ty, Type::Unknown) {
+                    out.write(b": ")?;
+                    let type_name = self.python_type_name(&param.ty);
+                    out.write_all(type_name.as_bytes())?;
+                }
+            }
+
+            // Return type annotation
+            if !matches!(method.ret, Type::Void | Type::Unknown) {
+                out.write(b") -> ")?;
+                let type_name = self.python_type_name(&method.ret);
+                out.write_all(type_name.as_bytes())?;
+            } else {
+                out.write(b")")?;
+            }
+
+            out.write(b": ...\n")?;
+        }
+
+        self.dedent();
+        Ok(())
+    }
+
+    /// Plan 213 Task 9: union → dataclass
+    /// union MyUnion { i int, f float }
+    /// →
+    /// @dataclass
+    /// class MyUnion:
+    ///     kind: str = ''
+    ///     i: int = 0
+    ///     f: float = 0.0
+    fn union_decl(&mut self, union_decl: &Union, out: &mut impl Write) -> AutoResult<()> {
+        self.imports.insert("dataclass".into());
+
+        self.print_indent(out)?;
+        out.write(b"@dataclass\n")?;
+        self.print_indent(out)?;
+        out.write(b"class ")?;
+        out.write_all(union_decl.name.as_bytes())?;
+        out.write(b":\n")?;
+        self.indent();
+
+        // kind discriminator field
+        self.print_indent(out)?;
+        out.write(b"kind: str = ''\n")?;
+
+        // Fields with default values
+        for field in &union_decl.fields {
+            self.print_indent(out)?;
+            out.write_all(field.name.as_bytes())?;
+            out.write(b": ")?;
+            let type_name = self.python_type_name(&field.ty);
+            out.write_all(type_name.as_bytes())?;
+            out.write(b" = ")?;
+            let default_val = self.python_default_value(&field.ty);
+            out.write_all(default_val.as_bytes())?;
+            out.write(b"\n")?;
+        }
+
+        self.dedent();
+        Ok(())
+    }
+
+    /// Plan 213 Task 9: tag → dataclass with factory methods
+    /// tag Shape { Circle(radius float), Rect(w float, h float) }
+    /// →
+    /// @dataclass
+    /// class Shape:
+    ///     kind: str = ''
+    ///     radius: float = 0.0
+    ///     w: float = 0.0
+    ///     h: float = 0.0
+    ///
+    ///     @staticmethod
+    ///     def Circle(radius): ...
+    ///     @staticmethod
+    ///     def Rect(w, h): ...
+    fn tag_decl(&mut self, tag_decl: &Tag, out: &mut impl Write) -> AutoResult<()> {
+        self.imports.insert("dataclass".into());
+
+        self.print_indent(out)?;
+        out.write(b"@dataclass\n")?;
+        self.print_indent(out)?;
+        out.write(b"class ")?;
+        out.write_all(tag_decl.name.as_bytes())?;
+        out.write(b":\n")?;
+        self.indent();
+
+        // kind discriminator field
+        self.print_indent(out)?;
+        out.write(b"kind: str = ''\n")?;
+
+        // Fields with default values
+        for field in &tag_decl.fields {
+            self.print_indent(out)?;
+            out.write_all(field.name.as_bytes())?;
+            out.write(b": ")?;
+            let type_name = self.python_type_name(&field.ty);
+            out.write_all(type_name.as_bytes())?;
+            out.write(b" = ")?;
+            let default_val = self.python_default_value(&field.ty);
+            out.write_all(default_val.as_bytes())?;
+            out.write(b"\n")?;
+        }
+
+        // Factory methods for each variant
+        // In Auto tag, each field is a variant. The factory method takes the field's value.
+        // Since tag fields can be simple (just a type) or complex, we emit one factory per field.
+        // Note: In the Auto parser, tag fields are parsed as TagField with name and type.
+        // The factory method name is the field name, and it takes the field type as parameter.
+        if !tag_decl.fields.is_empty() {
+            out.write(b"\n")?;
+        }
+        for field in &tag_decl.fields {
+            self.print_indent(out)?;
+            out.write(b"@staticmethod\n")?;
+            self.print_indent(out)?;
+            out.write(b"def ")?;
+            out.write_all(field.name.as_bytes())?;
+            out.write(b"(")?;
+            out.write_all(field.name.as_bytes())?;
+            out.write(b"):\n")?;
+            self.indent();
+            self.print_indent(out)?;
+            out.write(b"return ")?;
+            out.write_all(tag_decl.name.as_bytes())?;
+            out.write(b"('")?;
+            // Capitalize first letter of variant name
+            let name_str = field.name.as_str();
+            let mut capped = String::new();
+            if let Some(first) = name_str.chars().next() {
+                for (i, c) in name_str.chars().enumerate() {
+                    if i == 0 {
+                        capped.push(first.to_ascii_uppercase());
+                    } else {
+                        capped.push(c);
+                    }
+                }
+            }
+            out.write_all(capped.as_bytes())?;
+            out.write(b"', ")?;
+            out.write_all(field.name.as_bytes())?;
+            out.write(b"=")?;
+            out.write_all(field.name.as_bytes())?;
+            out.write(b")\n")?;
+            self.dedent();
+        }
+
+        // Emit methods if present
+        for (i, method) in tag_decl.methods.iter().enumerate() {
+            if i == 0 || !tag_decl.fields.is_empty() {
+                out.write(b"\n")?;
+            }
+            self.fn_decl_in_class_for_tag(method, tag_decl, out)?;
+        }
+
+        self.dedent();
+        Ok(())
+    }
+
+    /// Helper: emit a method inside a tag class
+    fn fn_decl_in_class_for_tag(&mut self, func: &Fn, _tag: &Tag, out: &mut impl Write) -> AutoResult<()> {
+        // Reuse the same logic as fn_decl_in_class
+        self.fn_decl_in_class(func, &TypeDecl::builtin(&_tag.name), out)
+    }
+
+    /// Helper: get Python default value for a type
+    fn python_default_value(&self, ty: &Type) -> AutoStr {
+        match ty {
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Byte => "0".into(),
+            Type::Float | Type::Double => "0.0".into(),
+            Type::Bool => "False".into(),
+            Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => "\"\"".into(),
+            _ => "None".into(),
+        }
+    }
+
     fn python_type_name(&self, ty: &Type) -> AutoStr {
         match ty {
             Type::Int => "int".into(),
@@ -1026,6 +1254,15 @@ impl Trans for PythonTrans {
                 // Scan function params and return type for Optional/Result
                 self.collect_type_imports(&func.params.iter().map(|p| &p.ty).collect::<Vec<_>>());
                 self.collect_type_import_for(&func.ret);
+            } else if let Stmt::SpecDecl(_) = decl {
+                // spec → Protocol (import collected at emit time via spec_decl method)
+                self.imports.insert("Protocol".into());
+            } else if let Stmt::Union(_) = decl {
+                // union → dataclass
+                self.imports.insert("dataclass".into());
+            } else if let Stmt::Tag(_) = decl {
+                // tag → dataclass
+                self.imports.insert("dataclass".into());
             }
         }
 
@@ -1036,6 +1273,9 @@ impl Trans for PythonTrans {
         }
         if self.imports.contains("Result") {
             typing_imports.push("Result");
+        }
+        if self.imports.contains("Protocol") {
+            typing_imports.push("Protocol");
         }
         if !typing_imports.is_empty() {
             write!(sink.body, "from typing import {}\n", typing_imports.join(", "))?;
@@ -1319,5 +1559,300 @@ mod tests {
     #[test]
     fn test_03_041_await_call() {
         test_a2p("03_control_flow/041_await_call").unwrap();
+    }
+
+    // Plan 213 Task 8: spec → Protocol
+    #[test]
+    fn test_12_001_basic_spec() {
+        test_a2p("12_specs/001_basic_spec").unwrap();
+    }
+
+    #[test]
+    fn test_12_002_spec_impl() {
+        test_a2p("12_specs/002_spec_impl").unwrap();
+    }
+
+    // Plan 213 Task 9: union/tag → dataclass
+    #[test]
+    fn test_02_003_union() {
+        test_a2p("02_types/003_union").unwrap();
+    }
+
+    #[test]
+    fn test_02_004_union_match() {
+        test_a2p("02_types/004_union_match").unwrap();
+    }
+
+    #[test]
+    fn test_02_005_tag() {
+        test_a2p("02_types/005_tag").unwrap();
+    }
+
+    // Plan 213 Task 10: Batch test expansion
+
+    // 01_basics: comments, unary ops, multi-expr, const, nested calls
+    #[test]
+    fn test_01_040_comments() {
+        test_a2p("01_basics/040_comments").unwrap();
+    }
+
+    #[test]
+    fn test_01_041_unary_neg() {
+        test_a2p("01_basics/041_unary_neg").unwrap();
+    }
+
+    #[test]
+    fn test_01_042_unary_not() {
+        test_a2p("01_basics/042_unary_not").unwrap();
+    }
+
+    #[test]
+    fn test_01_043_multi_expr() {
+        test_a2p("01_basics/043_multi_expr").unwrap();
+    }
+
+    #[test]
+    fn test_01_044_const_decl() {
+        test_a2p("01_basics/044_const_decl").unwrap();
+    }
+
+    #[test]
+    fn test_01_045_nested_call() {
+        test_a2p("01_basics/045_nested_call").unwrap();
+    }
+
+    #[test]
+    fn test_01_046_boolean_ops() {
+        test_a2p("01_basics/046_boolean_ops").unwrap();
+    }
+
+    #[test]
+    fn test_01_047_arithmetic() {
+        test_a2p("01_basics/047_arithmetic").unwrap();
+    }
+
+    // 02_types: nested struct, type alias, enum with data
+    #[test]
+    fn test_02_006_nested_struct() {
+        test_a2p("02_types/006_nested_struct").unwrap();
+    }
+
+    #[test]
+    fn test_02_007_type_with_methods() {
+        test_a2p("02_types/007_type_with_methods").unwrap();
+    }
+
+    #[test]
+    fn test_02_008_enum_simple() {
+        test_a2p("02_types/008_enum_simple").unwrap();
+    }
+
+    #[test]
+    fn test_02_009_struct_empty() {
+        test_a2p("02_types/009_struct_empty").unwrap();
+    }
+
+    #[test]
+    fn test_02_010_struct_many_fields() {
+        test_a2p("02_types/010_struct_many_fields").unwrap();
+    }
+
+    // 03_control_flow: while loop (for cond), nested loops, if-elif chains
+    #[test]
+    fn test_03_042_for_cond() {
+        test_a2p("03_control_flow/042_for_cond").unwrap();
+    }
+
+    #[test]
+    fn test_03_043_nested_loop() {
+        test_a2p("03_control_flow/043_nested_loop").unwrap();
+    }
+
+    #[test]
+    fn test_03_044_if_elif() {
+        test_a2p("03_control_flow/044_if_elif").unwrap();
+    }
+
+    // 04_strings: string methods, f-string edge cases
+    #[test]
+    fn test_04_001_string_basic() {
+        test_a2p("04_strings/001_string_basic").unwrap();
+    }
+
+    #[test]
+    fn test_04_002_fstring_expr() {
+        test_a2p("04_strings/002_fstring_expr").unwrap();
+    }
+
+    #[test]
+    fn test_04_003_string_concat() {
+        test_a2p("04_strings/003_string_concat").unwrap();
+    }
+
+    // 05_expressions: ternary, null coalesce, composition
+    #[test]
+    fn test_05_030_null_coalesce() {
+        test_a2p("05_expressions/030_null_coalesce").unwrap();
+    }
+
+    #[test]
+    fn test_05_031_nested_call() {
+        test_a2p("05_expressions/031_nested_call").unwrap();
+    }
+
+    #[test]
+    fn test_05_032_chained_method() {
+        test_a2p("05_expressions/032_chained_method").unwrap();
+    }
+
+    #[test]
+    fn test_05_033_binary_expr() {
+        test_a2p("05_expressions/033_binary_expr").unwrap();
+    }
+
+    #[test]
+    fn test_05_034_index_expr() {
+        test_a2p("05_expressions/034_index_expr").unwrap();
+    }
+
+    // 06_pattern_matching: struct destructuring, wildcard patterns
+    #[test]
+    fn test_06_001_is_wildcard() {
+        test_a2p("06_pattern_matching/001_is_wildcard").unwrap();
+    }
+
+    #[test]
+    fn test_06_002_is_multi_pattern() {
+        test_a2p("06_pattern_matching/002_is_multi_pattern").unwrap();
+    }
+
+    #[test]
+    fn test_06_003_is_else() {
+        test_a2p("06_pattern_matching/003_is_else").unwrap();
+    }
+
+    // 08_generics: generic constraints
+    #[test]
+    fn test_08_003_generic_method() {
+        test_a2p("08_generics/003_generic_method").unwrap();
+    }
+
+    #[test]
+    fn test_08_004_generic_multi_param() {
+        test_a2p("08_generics/004_generic_multi_param").unwrap();
+    }
+
+    // 09_option_result: option chains, result propagation, is_ok/is_err
+    #[test]
+    fn test_09_010_option_chain() {
+        test_a2p("09_option_result/010_option_chain").unwrap();
+    }
+
+    #[test]
+    fn test_09_011_some_expr() {
+        test_a2p("09_option_result/011_some_expr").unwrap();
+    }
+
+    #[test]
+    fn test_09_012_none_value() {
+        test_a2p("09_option_result/012_none_value").unwrap();
+    }
+
+    #[test]
+    fn test_09_013_ok_value() {
+        test_a2p("09_option_result/013_ok_value").unwrap();
+    }
+
+    #[test]
+    fn test_09_014_err_value() {
+        test_a2p("09_option_result/014_err_value").unwrap();
+    }
+
+    #[test]
+    fn test_09_015_option_if() {
+        test_a2p("09_option_result/015_option_if").unwrap();
+    }
+
+    #[test]
+    fn test_09_016_result_func() {
+        test_a2p("09_option_result/016_result_func").unwrap();
+    }
+
+    #[test]
+    fn test_09_017_option_return() {
+        test_a2p("09_option_result/017_option_return").unwrap();
+    }
+
+    // 10_collections: list/dict operations, array methods
+    #[test]
+    fn test_10_001_array_basic() {
+        test_a2p("10_collections/001_array_basic").unwrap();
+    }
+
+    #[test]
+    fn test_10_002_array_index() {
+        test_a2p("10_collections/002_array_index").unwrap();
+    }
+
+    #[test]
+    fn test_10_003_object_literal() {
+        test_a2p("10_collections/003_object_literal").unwrap();
+    }
+
+    // 11_methods: static methods, mut self methods
+    #[test]
+    fn test_11_001_static_method() {
+        test_a2p("11_methods/001_static_method").unwrap();
+    }
+
+    #[test]
+    fn test_11_002_method_call() {
+        test_a2p("11_methods/002_method_call").unwrap();
+    }
+
+    #[test]
+    fn test_11_003_method_params() {
+        test_a2p("11_methods/003_method_params").unwrap();
+    }
+
+    // Additional tests for coverage
+    #[test]
+    fn test_01_050_range_expr() {
+        test_a2p("01_basics/050_range_expr").unwrap();
+    }
+
+    #[test]
+    fn test_01_051_var_mutable() {
+        test_a2p("01_basics/051_var_mutable").unwrap();
+    }
+
+    #[test]
+    fn test_03_045_for_inclusive() {
+        test_a2p("03_control_flow/045_for_inclusive").unwrap();
+    }
+
+    #[test]
+    fn test_05_035_cast_expr() {
+        test_a2p("05_expressions/035_cast_expr").unwrap();
+    }
+
+    #[test]
+    fn test_05_036_to_expr() {
+        test_a2p("05_expressions/036_to_expr").unwrap();
+    }
+
+    #[test]
+    fn test_01_052_multi_assign() {
+        test_a2p("01_basics/052_multi_assign").unwrap();
+    }
+
+    #[test]
+    fn test_01_053_print_var() {
+        test_a2p("01_basics/053_print_var").unwrap();
+    }
+
+    #[test]
+    fn test_03_046_loop_break() {
+        test_a2p("03_control_flow/046_loop_break").unwrap();
     }
 }
