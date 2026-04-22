@@ -1,0 +1,6 @@
+fn main() {
+    let a = Ok(100)
+    let b = Err("something went wrong")
+    print(a)
+    print(b)
+}

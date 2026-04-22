@@ -1,0 +1,7 @@
+fn main() {
+    let res = Ok(42)
+    is res {
+        Ok(v) -> print(v)
+        Err(e) -> print(e)
+    }
+}

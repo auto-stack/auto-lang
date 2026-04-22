@@ -137,6 +137,117 @@ impl PythonTrans {
                 Ok(())
             }
 
+            // Plan 213: Option/Result constructors
+            // Some(x) -> x (in Python, values are just values)
+            Expr::Some(e) => self.expr(e, out),
+            // None -> None
+            Expr::None => out.write(b"None").to(),
+            // Ok(x) -> x
+            Expr::Ok(e) => self.expr(e, out),
+            // Err(msg) -> raise Exception(msg) - but as expression, just emit the value
+            Expr::Err(e) => {
+                write!(out, "Exception(")?;
+                self.expr(e, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
+
+            // Plan 213: Null coalescing - x ?? default -> x if x is not None else default
+            Expr::NullCoalesce(lhs, rhs) => {
+                write!(out, "(")?;
+                self.expr(lhs, out)?;
+                write!(out, " if ")?;
+                self.expr(lhs, out)?;
+                write!(out, " is not None else ")?;
+                self.expr(rhs, out)?;
+                write!(out, ")").map_err(Into::into)
+            }
+
+            // Plan 213: Closure/lambda - (x) => expr -> lambda x: expr
+            Expr::Closure(closure) => {
+                write!(out, "lambda ")?;
+                for (i, param) in closure.params.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
+                    out.write_all(param.name.as_bytes())?;
+                }
+                write!(out, ": ")?;
+                self.expr(&closure.body, out)
+            }
+
+            // Plan 213: Tuple - (a, b) -> (a, b)
+            Expr::Tuple(elems) => {
+                write!(out, "(")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
+                    self.expr(elem, out)?;
+                }
+                // Single-element tuple needs trailing comma
+                if elems.len() == 1 {
+                    write!(out, ",")?;
+                }
+                write!(out, ")").map_err(Into::into)
+            }
+
+            // Plan 213: Object literal - {key: value} -> {"key": value}
+            Expr::Object(pairs) => {
+                write!(out, "{{")?;
+                for (i, pair) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
+                    self.key(&pair.key, out)?;
+                    write!(out, ": ")?;
+                    self.expr(&pair.value, out)?;
+                }
+                write!(out, "}}").map_err(Into::into)
+            }
+
+            // Plan 213: Option pattern in is branches
+            Expr::OptionPattern(cover) => {
+                match cover.variant {
+                    crate::ast::cover::OptionVariant::Some => {
+                        if let Some(ref binding) = cover.binding {
+                            // Some(x) -> capture pattern like ("some", x)
+                            write!(out, "SomeCase({})", binding).map_err(Into::into)
+                        } else {
+                            write!(out, "SomeCase(_)").map_err(Into::into)
+                        }
+                    }
+                    crate::ast::cover::OptionVariant::None => {
+                        write!(out, "None").map_err(Into::into)
+                    }
+                }
+            }
+
+            // Plan 213: Result pattern in is branches
+            Expr::ResultPattern(cover) => {
+                match cover.variant {
+                    crate::ast::cover::ResultVariant::Ok => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "OkCase({})", binding).map_err(Into::into)
+                        } else {
+                            write!(out, "OkCase(_)").map_err(Into::into)
+                        }
+                    }
+                    crate::ast::cover::ResultVariant::Err => {
+                        if let Some(ref binding) = cover.binding {
+                            write!(out, "ErrCase({})", binding).map_err(Into::into)
+                        } else {
+                            write!(out, "ErrCase(_)").map_err(Into::into)
+                        }
+                    }
+                }
+            }
+
+            // nil/Null -> None
+            Expr::Nil | Expr::Null => out.write(b"None").to(),
+
+            // Error propagate: expr.? -> expr (Python doesn't have this, just pass through)
+            Expr::ErrorPropagate(e) => self.expr(e, out),
+
             // Unsupported - return error for now
             _ => Err(format!("Python Transpiler: unsupported expression: {:?}", expr).into()),
         }
@@ -188,6 +299,22 @@ impl PythonTrans {
             Stmt::Break => {
                 self.print_indent(out)?;
                 out.write(b"break\n")?;
+                Ok(true)
+            }
+
+            // Continue statement
+            Stmt::Continue => {
+                self.print_indent(out)?;
+                out.write(b"continue\n")?;
+                Ok(true)
+            }
+
+            // Return statement
+            Stmt::Return(expr) => {
+                self.print_indent(out)?;
+                out.write(b"return ")?;
+                self.expr(expr, out)?;
+                out.write(b"\n")?;
                 Ok(true)
             }
 
@@ -535,6 +662,18 @@ impl PythonTrans {
         Ok(())
     }
 
+    fn key(&mut self, key: &Key, out: &mut impl Write) -> AutoResult<()> {
+        match key {
+            Key::NamedKey(name) => {
+                // Named keys become string keys in Python: x -> "x"
+                write!(out, "\"{}\"", name)?;
+            }
+            Key::IntKey(i) => write!(out, "{}", i)?,
+            Key::BoolKey(b) => write!(out, "{}", b)?,
+            Key::StrKey(s) => write!(out, "\"{}\"", s)?,
+        }
+        Ok(())
+    }
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
         let has_methods = !type_decl.methods.is_empty();
 
@@ -755,7 +894,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn test_a2p(case: &str) -> AutoResult<()> {
-        let parts: Vec<&str> = case.split("_").collect();
+        // Extract the test name from the last path segment's numeric prefix
+        // e.g., "09_option_result/001_option" -> "option"
+        // e.g., "000_hello" -> "hello"
+        let last_segment = case.rsplit('/').next().unwrap_or(case);
+        let parts: Vec<&str> = last_segment.split("_").collect();
         let name = parts[1..].join("_");
         let name = name.as_str();
 
@@ -837,5 +980,68 @@ mod tests {
     #[test]
     fn test_008_method() {
         test_a2p("008_method").unwrap();
+    }
+
+    // Plan 213 Task 1: Option/Result tests
+    #[test]
+    fn test_09_001_option() {
+        test_a2p("09_option_result/001_option").unwrap();
+    }
+
+    #[test]
+    fn test_09_002_option_default() {
+        test_a2p("09_option_result/002_option_default").unwrap();
+    }
+
+    #[test]
+    fn test_09_003_result_ok() {
+        test_a2p("09_option_result/003_result_ok").unwrap();
+    }
+
+    #[test]
+    fn test_09_004_option_pattern() {
+        test_a2p("09_option_result/004_option_pattern").unwrap();
+    }
+
+    #[test]
+    fn test_09_005_result_pattern() {
+        test_a2p("09_option_result/005_result_pattern").unwrap();
+    }
+
+    // Plan 213 Task 2: Lambda/Closure tests
+    #[test]
+    fn test_05_010_lambda() {
+        test_a2p("05_expressions/010_lambda").unwrap();
+    }
+
+    #[test]
+    fn test_05_011_lambda_map() {
+        test_a2p("05_expressions/011_lambda_map").unwrap();
+    }
+
+    #[test]
+    fn test_05_012_closure_var() {
+        test_a2p("05_expressions/012_closure_var").unwrap();
+    }
+
+    // Plan 213 Task 3: Tuple, Object, Continue, Return tests
+    #[test]
+    fn test_05_020_tuple() {
+        test_a2p("05_expressions/020_tuple").unwrap();
+    }
+
+    #[test]
+    fn test_05_021_object() {
+        test_a2p("05_expressions/021_object").unwrap();
+    }
+
+    #[test]
+    fn test_05_022_continue() {
+        test_a2p("05_expressions/022_continue").unwrap();
+    }
+
+    #[test]
+    fn test_05_023_return() {
+        test_a2p("05_expressions/023_return").unwrap();
     }
 }
