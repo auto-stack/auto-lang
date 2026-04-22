@@ -1,0 +1,19 @@
+# Generated content (copied from docs/ and ../book/)
+docs/
+books/
+zh/docs/
+zh/books/
+
+# Auto-generated sidebar configs
+.vitepress/config/sidebar-docs-en.ts
+.vitepress/config/sidebar-docs-zh.ts
+.vitepress/config/sidebar-books-en.ts
+.vitepress/config/sidebar-books-zh.ts
+
+# VitePress build output
+.vitepress/dist
+.vitepress/cache
+
+# Dependencies
+node_modules/
+package-lock.json

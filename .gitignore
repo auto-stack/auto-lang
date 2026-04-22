@@ -68,3 +68,8 @@ xdm-gen/
 
 # Git worktrees
 .worktrees/
+
+# Local IDE/agent settings
+.claude/
+.agent/
+
