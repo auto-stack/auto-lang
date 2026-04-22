@@ -344,6 +344,14 @@ enum Commands {
     JavaScript { path: String },
     #[command(about = "Transpile stdlib to C", hide = true)]
     A2cStdlib,
+
+    // ========== C FFI Bindgen (Plan 216) ==========
+    #[command(about = "List available C FFI bindings from manifests")]
+    Cffi {
+        /// Show functions for a specific header (e.g., "string.h", "math.h")
+        #[arg(long)]
+        header: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -1048,6 +1056,51 @@ fn main() -> Result<()> {
         }
         Some(Commands::A2cStdlib) => {
             cmd_a2c_stdlib::run()?;
+        }
+
+        // Plan 216 Phase 4: C FFI Bindgen
+        Some(Commands::Cffi { header }) => {
+            let headers = ["string.h", "math.h", "stdio.h", "stdlib.h", "time.h"];
+            if let Some(h) = header {
+                // Show functions for a specific header
+                match auto_lang::vm::ffi::c_ffi::load_builtin_manifest(&h) {
+                    Some(manifest) => {
+                        println!("=== C FFI: {} ===", manifest.header);
+                        println!("Library: {}", manifest.library);
+                        println!();
+                        for func in &manifest.functions {
+                            let variadic = if func.variadic { " (variadic)" } else { "" };
+                            println!("  {}{} — {:?}({})",
+                                func.name,
+                                variadic,
+                                func.return_type,
+                                func.params.iter()
+                                    .map(|p| format!("{:?} {}", p.ty, p.name))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
+                        }
+                    }
+                    None => {
+                        eprintln!("No manifest found for: {}", h);
+                        eprintln!("Available headers: {}", headers.join(", "));
+                    }
+                }
+            } else {
+                // List all available headers
+                println!("=== C FFI Bindings (Plan 216) ===");
+                println!();
+                for h in &headers {
+                    match auto_lang::vm::ffi::c_ffi::load_builtin_manifest(h) {
+                        Some(manifest) => {
+                            println!("  {} — {} functions", h, manifest.functions.len());
+                        }
+                        None => {}
+                    }
+                }
+                println!();
+                println!("Use --header <name> to see functions for a specific header.");
+            }
         }
 
         None => {
