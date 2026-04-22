@@ -252,6 +252,13 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_18_rust_std_008_thread() { test_a2r("17_rust_std/008_thread").unwrap(); }
 #[test] fn test_18_rust_std_009_serde_json() { test_a2r("17_rust_std/009_serde_json").unwrap(); }
 #[test] fn test_18_rust_std_010_regex() { test_a2r("17_rust_std/010_regex").unwrap(); }
+#[test] fn test_18_rust_std_011_math() { test_a2r("17_rust_std/011_math").unwrap(); }
+#[test] fn test_18_rust_std_012_vec() { test_a2r("17_rust_std/012_vec").unwrap(); }
+#[test] fn test_18_rust_std_013_option_result() { test_a2r("17_rust_std/013_option_result").unwrap(); }
+#[test] fn test_18_rust_std_014_iter() { test_a2r("17_rust_std/014_iter").unwrap(); }
+#[test] fn test_18_rust_std_015_string_methods() { test_a2r("17_rust_std/015_string_methods").unwrap(); }
+#[test] fn test_18_rust_std_016_cmp_ordering() { test_a2r("17_rust_std/016_cmp_ordering").unwrap(); }
+#[test] fn test_18_rust_std_017_hash_map_ops() { test_a2r("17_rust_std/017_hash_map_ops").unwrap(); }
 
 // === 17_autocode: Real-world integration tests ===
 

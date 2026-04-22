@@ -1,0 +1,10 @@
+use.rust std::cmp::Ordering
+
+fn main() {
+    let ord = 1.cmp(2)
+    is ord {
+        Ordering.Less -> print("less")
+        Ordering.Equal -> print("equal")
+        Ordering.Greater -> print("greater")
+    }
+}

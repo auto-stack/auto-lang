@@ -1,0 +1,7 @@
+use.rust std::cmp::{min, max}
+
+fn main() {
+    let x = min(3, 7)
+    let y = max(3, 7)
+    let z = min(-1, 1)
+}

@@ -1,0 +1,9 @@
+use.rust std::option::Option
+use.rust std::result::Result
+
+fn main() {
+    let a Option<int> = Some(42)
+    let b Option<int> = None
+    let c Result<int, str> = Ok(10)
+    let d Result<int, str> = Err("fail")
+}

@@ -1,0 +1,7 @@
+use.rust std::iter::Iterator
+
+fn main() {
+    let nums = [1, 2, 3]
+    let doubled = nums.iter().map(x => x * 2)
+    let total = nums.iter().fold(0, (acc, x) => acc + x)
+}

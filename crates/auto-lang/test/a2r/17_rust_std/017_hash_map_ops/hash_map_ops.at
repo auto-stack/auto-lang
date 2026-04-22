@@ -1,0 +1,11 @@
+use.rust std::collections::HashMap
+
+fn main() {
+    var map HashMap<str, int> = HashMap.new()
+    map.insert("a", 1)
+    map.insert("b", 2)
+    let val = map.get("a")
+    let has = map.contains_key("b")
+    let len = map.len()
+    map.remove("a")
+}

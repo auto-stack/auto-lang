@@ -1,0 +1,9 @@
+use.rust std::string::String
+
+fn main() {
+    var s String = String.from("hello")
+    s.push_str(" world")
+    let len = s.len()
+    let trimmed = "  hi  ".trim()
+    let replaced = s.replace("world", "auto")
+}
