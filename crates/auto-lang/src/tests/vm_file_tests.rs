@@ -148,6 +148,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_08_strings_012_str_eq() { test_vm("08_strings/012_str_eq").unwrap(); }
 #[test] fn test_08_strings_013_str_param() { test_vm("08_strings/013_str_param").unwrap(); }
 #[test] fn test_08_strings_014_raw_str() { test_vm("08_strings/014_raw_str").unwrap(); }
+#[test] fn test_08_strings_015_multi_fstr() { test_vm("08_strings/015_multi_fstr").unwrap(); }
 
 // === 09_functions ===
 #[test] fn test_09_functions_001_fn_simple() { test_vm("09_functions/001_fn_simple").unwrap(); }

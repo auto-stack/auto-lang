@@ -460,6 +460,121 @@ impl<'a> Lexer<'a> {
         Ok(self.buffer.pop_front().unwrap())
     }
 
+    /// Parse a triple-quoted multi-line f-string: f"""..."""
+    /// Combines multi_str() logic (triple-quote delimiter) with fstr() logic ($ interpolation).
+    /// Supports ${expr}, $ident, {{ (escaped {), }} (escaped }), and literal newlines.
+    fn multi_fstr(&mut self) -> AutoResult<Token> {
+        // Skip f"""
+        self.chars.next(); // f
+        self.chars.next(); // "
+        self.chars.next(); // "
+        self.chars.next(); // "
+
+        let tk = Token::new(TokenKind::FStrStart, self.pos(4), "f\"\"\"".into());
+        self.buffer.push_back(tk);
+
+        let mut text = String::new();
+
+        while let Some(&c) = self.chars.peek() {
+            if c == '"' {
+                // Check for closing """
+                let mut count = 0u32;
+                let mut iter = self.chars.clone();
+                while iter.next() == Some('"') {
+                    count += 1;
+                }
+                if count >= 3 {
+                    // Emit remaining text as FStrPart
+                    if !text.is_empty() {
+                        let part = Token::fstr_part(self.pos(text.len()), text.clone().into());
+                        self.buffer.push_back(part);
+                        text.clear();
+                    }
+                    // Consume closing """
+                    self.chars.next();
+                    self.chars.next();
+                    self.chars.next();
+                    let end = Token::new(TokenKind::FStrEnd, self.pos(3), "\"\"\"".into());
+                    self.buffer.push_back(end);
+                    break;
+                }
+                // Less than 3 — content
+                self.chars.next();
+                text.push('"');
+                continue;
+            }
+            if c == self.fstr_note {
+                // $ interpolation
+                if !text.is_empty() {
+                    let part = Token::fstr_part(self.pos(text.len()), text.clone().into());
+                    self.buffer.push_back(part);
+                    text.clear();
+                }
+                let note = self.single(TokenKind::FStrNote, c);
+                self.buffer.push_back(note);
+                if let Some(&nc) = self.chars.peek() {
+                    if nc == '{' {
+                        self.fstr_expr()?;
+                    } else if nc.is_alphabetic() || nc == '_' {
+                        let ident = self.identifier()?;
+                        self.buffer.push_back(ident);
+                    }
+                }
+            } else if c == '{' {
+                // {{ → escaped literal {
+                let mut iter = self.chars.clone();
+                iter.next();
+                if iter.next() == Some('{') {
+                    self.chars.next();
+                    self.chars.next();
+                    text.push('{');
+                } else {
+                    text.push(c);
+                    self.chars.next();
+                }
+            } else if c == '}' {
+                // }} → escaped literal }
+                let mut iter = self.chars.clone();
+                iter.next();
+                if iter.next() == Some('}') {
+                    self.chars.next();
+                    self.chars.next();
+                    text.push('}');
+                } else {
+                    text.push(c);
+                    self.chars.next();
+                }
+            } else if c == '\\' {
+                // Process escape sequences in text parts
+                self.chars.next();
+                if let Some(&esc) = self.chars.peek() {
+                    match esc {
+                        'n' => text.push('\n'),
+                        't' => text.push('\t'),
+                        'r' => text.push('\r'),
+                        '0' => text.push('\0'),
+                        '\\' => text.push('\\'),
+                        '"' => text.push('"'),
+                        _ => {
+                            text.push('\\');
+                            text.push(esc);
+                        }
+                    }
+                    self.chars.next();
+                }
+            } else {
+                if c == '\n' {
+                    self.line += 1;
+                    self.at = 0;
+                }
+                text.push(c);
+                self.chars.next();
+            }
+        }
+
+        Ok(self.buffer.pop_front().unwrap())
+    }
+
     fn fstr_expr(&mut self) -> AutoResult<()> {
         // push {
         let tk = self.single(TokenKind::LBrace, '{');
@@ -859,9 +974,15 @@ impl<'a> Lexer<'a> {
                 }
                 'f' => {
                     let mut iter_copy = self.chars.clone();
-                    iter_copy.next();
+                    iter_copy.next(); // skip past f
                     if let Some(next_char) = iter_copy.peek() {
                         if *next_char == '"' {
+                            // Check for f""" (multi-line f-string)
+                            let mut iter_triple = iter_copy.clone();
+                            iter_triple.next(); // skip first "
+                            if iter_triple.next() == Some('"') && iter_triple.next() == Some('"') {
+                                return self.multi_fstr();
+                            }
                             return self.fstr();
                         }
                     }

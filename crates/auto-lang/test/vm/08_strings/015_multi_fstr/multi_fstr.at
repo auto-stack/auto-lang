@@ -1,0 +1,25 @@
+// Test: multi-line f-string f"""..."""
+
+let name = "World"
+let age = 25
+
+// Basic multi-line f-string with interpolation
+let msg = f"""Hello $name,
+you are $age years old.
+Welcome!"""
+print(msg)
+
+// Multi-line with expression interpolation
+let a = 10
+let b = 20
+let result = f"""Sum of $a and $b is ${a + b}.
+Product is ${a * b}."""
+print(result)
+
+// Multi-line with escaped braces
+let json = f"""{"type": "text", "value": "$name"}"""
+print(json)
+
+// Single-line f""" (triple-quote on one line)
+let single = f"""just $name"""
+print(single)

@@ -1,0 +1,8 @@
+let name = "World"
+let age = 25
+let msg = f"""Hello $name,
+you are $age years old."""
+print(msg)
+
+let result = f"""Sum: ${age + 1}"""
+print(result)

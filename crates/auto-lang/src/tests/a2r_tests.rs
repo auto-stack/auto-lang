@@ -73,6 +73,7 @@ fn test_a2r(case: &str) -> AutoResult<()> {
 #[test] fn test_04_strings_003_multi_str() { test_a2r("04_strings/003_multi_str").unwrap(); }
 #[test] fn test_04_strings_004_backtick_string() { test_a2r("04_strings/004_backtick_string").unwrap(); }
 #[test] fn test_04_strings_005_escaped_quotes() { test_a2r("04_strings/005_escaped_quotes").unwrap(); }
+#[test] fn test_04_strings_006_multi_fstr() { test_a2r("04_strings/006_multi_fstr").unwrap(); }
 
 // === 05_expressions ===
 #[test] fn test_05_expressions_001_arithmetic() { test_a2r("05_expressions/001_arithmetic").unwrap(); }
