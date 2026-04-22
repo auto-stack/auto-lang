@@ -1,0 +1,6 @@
+fn main() {
+    let factor = 10
+    let scale = (x int) => x * factor
+    let result = scale(5)
+    print(result)
+}
