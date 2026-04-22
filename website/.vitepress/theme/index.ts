@@ -5,6 +5,7 @@ import './style.css'
 import HomeHero from './components/HomeHero.vue'
 import FeatureCard from './components/FeatureCard.vue'
 import AutoPlayground from './components/AutoPlayground.vue'
+import CodeView from './components/CodeView.vue'
 
 export default {
   extends: DefaultTheme,
@@ -17,5 +18,6 @@ export default {
     app.component('HomeHero', HomeHero)
     app.component('FeatureCard', FeatureCard)
     app.component('AutoPlayground', AutoPlayground)
+    app.component('CodeView', CodeView)
   },
 } satisfies Theme

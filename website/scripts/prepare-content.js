@@ -65,20 +65,123 @@ function escapeInInlineCode(content) {
   })
 }
 
-function preprocessMarkdown(content) {
-  // Replace <Listing ...> tags with HTML comments
-  content = content.replace(/<Listing\s+[^>]+>/g, (match) => {
-    return `<!-- ${match.slice(1, -1)} -->`
+// ------------------------------------------------------------------
+// Listing → CodeView conversion
+// ------------------------------------------------------------------
+
+function parseListingAttrs(tag) {
+  const attrs = {}
+  const regex = /(\w+)=['"]([^'"]*)['"]/g
+  let match
+  while ((match = regex.exec(tag)) !== null) {
+    attrs[match[1]] = match[2]
+  }
+  return attrs
+}
+
+function resolveListingDir(bookDir, attrs) {
+  // If file contains path separators, use it directly as directory
+  if (attrs.file && (attrs.file.includes('/') || attrs.file.includes('\\'))) {
+    return path.join(bookDir, attrs.file)
+  }
+
+  // If number is provided, derive directory: number "1-1" → listings/ch01/listing-01-01
+  if (attrs.number) {
+    const num = attrs.number
+    const match = num.match(/^([A-Za-z0-9]+)-(\d+)$/)
+    if (match) {
+      const ch = match[1]
+      const chPadded = /^\d+$/.test(ch) ? ch.padStart(2, '0') : ch
+      const idx = match[2].padStart(2, '0')
+      const listingName = /^\d+$/.test(ch) ? `listing-${chPadded}-${idx}` : `listing-${ch}-${idx}`
+      return path.join(bookDir, 'listings', `ch${chPadded}`, listingName)
+    }
+  }
+
+  return null
+}
+
+function resolveListingFileName(attrs) {
+  if (attrs['file-name']) {
+    return attrs['file-name']
+  }
+  if (attrs.file && !attrs.file.includes('/') && !attrs.file.includes('\\')) {
+    return attrs.file + '.at'
+  }
+  return 'main.at'
+}
+
+function readListingFiles(listingDir, fileName) {
+  const baseName = fileName.replace(/\.at$/, '')
+  const result = {}
+
+  const autoPath = path.join(listingDir, fileName)
+  if (fs.existsSync(autoPath)) {
+    result.auto = fs.readFileSync(autoPath, 'utf-8').trimEnd()
+  }
+
+  const targets = [
+    { ext: '.expected.rs', key: 'rust' },
+    { ext: '.expected.c', key: 'c' },
+    { ext: '.expected.ts', key: 'typescript' },
+    { ext: '.expected.py', key: 'python' },
+  ]
+
+  for (const { ext, key } of targets) {
+    const p = path.join(listingDir, baseName + ext)
+    if (fs.existsSync(p)) {
+      result[key] = fs.readFileSync(p, 'utf-8').trimEnd()
+    }
+  }
+
+  return result
+}
+
+function escapeProp(value) {
+  return value.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')
+}
+
+function listingToCodeView(bookDir, tag) {
+  const attrs = parseListingAttrs(tag)
+  const listingDir = resolveListingDir(bookDir, attrs)
+
+  if (!listingDir || !fs.existsSync(listingDir)) {
+    return `<!-- Listing not found: ${tag.slice(1, -1)} -->`
+  }
+
+  const fileName = resolveListingFileName(attrs)
+  const files = readListingFiles(listingDir, fileName)
+
+  if (!files.auto) {
+    return `<!-- Listing source not found: ${tag.slice(1, -1)} -->`
+  }
+
+  const props = [`auto="${escapeProp(files.auto)}"`]
+  if (files.rust) props.push(`rust="${escapeProp(files.rust)}"`)
+  if (files.c) props.push(`c="${escapeProp(files.c)}"`)
+  if (files.typescript) props.push(`typescript="${escapeProp(files.typescript)}"`)
+  if (files.python) props.push(`python="${escapeProp(files.python)}"`)
+  if (attrs.caption) props.push(`caption="${escapeProp(attrs.caption)}"`)
+  props.push(':runnable="true"')
+
+  return `<CodeView ${props.join(' ')} />`
+}
+
+function preprocessMarkdown(content, bookDir = null) {
+  // Replace <Listing ...> tags with CodeView components (for books)
+  // or HTML comments (for docs). Tags are always on their own line.
+  content = content.replace(/^<Listing\s+.*$/gm, (match) => {
+    return bookDir ? listingToCodeView(bookDir, match) : `<!-- ${match.slice(1, -1)} -->`
   })
-  // Also remove closing </Listing> tags
-  content = content.replace(/<\/Listing>/g, '<!-- /Listing -->')
+  // Remove closing </Listing> tags
+  content = content.replace(/^<\/Listing\s*>$/gm, '')
 
   // Replace <Output ...> tags similarly
-  content = content.replace(/<Output\s+[^>]+>/g, (match) => {
+  content = content.replace(/^<Output\s+.*$/gm, (match) => {
     return `<!-- ${match.slice(1, -1)} -->`
   })
   // Also remove closing </Output> tags
-  content = content.replace(/<\/Output>/g, '<!-- /Output -->')
+  content = content.replace(/^<\/Output\s*>$/gm, '<!-- /Output -->')
 
   // Escape < and > inside inline code to prevent Vue parser errors
   content = escapeInInlineCode(content)
@@ -119,11 +222,11 @@ function preprocessMarkdown(content) {
   return lines.join('\n')
 }
 
-function copyFile(src, dst) {
+function copyFile(src, dst, bookDir = null) {
   ensureDir(path.dirname(dst))
   if (src.endsWith('.md')) {
     const content = fs.readFileSync(src, 'utf-8')
-    const processed = preprocessMarkdown(content)
+    const processed = preprocessMarkdown(content, bookDir)
     fs.writeFileSync(dst, processed, 'utf-8')
   } else {
     fs.copyFileSync(src, dst)
@@ -224,11 +327,11 @@ function prepareBooks() {
 
       if (name.endsWith('.cn.md')) {
         const dstPath = path.join(BOOKS_DST_ZH, book, relPath.replace(/\.cn\.md$/, '.md'))
-        copyFile(fullPath, dstPath)
+        copyFile(fullPath, dstPath, srcDir)
         zhFiles[book].push(relPath.replace(/\.cn\.md$/, '.md'))
       } else {
         const dstPath = path.join(BOOKS_DST_EN, book, relPath)
-        copyFile(fullPath, dstPath)
+        copyFile(fullPath, dstPath, srcDir)
         enFiles[book].push(relPath)
       }
     })
