@@ -1,0 +1,4 @@
+fn main() {
+    let obj = {name: "auto", version: 1}
+    print(obj)
+}
