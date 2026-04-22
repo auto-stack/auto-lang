@@ -450,6 +450,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("File.copy", 1007);
     registry.register_with_id("File.size", 1008);
     registry.register_with_id("File.is_dir", 1009);
+    registry.register_with_id("File.append_text", 1011);
 
     // Env functions (1100-1102)
     registry.register_with_id("auto.env.get", 1100);
@@ -688,6 +689,12 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.url.query", 2011);
     registry.register_with_id("auto.url.fragment", 2012);
 
+    // Log functions (1800-1803)
+    registry.register_with_id("Log.debug", 1800);
+    registry.register_with_id("Log.info", 1801);
+    registry.register_with_id("Log.warn", 1802);
+    registry.register_with_id("Log.error", 1803);
+
     // URL function aliases
     registry.register_with_id("Url.encode", 2000);
     registry.register_with_id("Url.decode", 2001);
@@ -747,6 +754,10 @@ pub fn register_builtin_natives() {
     registry.register_with_id("TaskSystem.start", 2305);
     registry.register_with_id("TaskSystem.run", 2306);
     registry.register_with_id("TaskSystem.stop", 2307);
+
+    // Regex functions (Plan 159) - 2400-2401
+    registry.register_with_id("Regex.is_match", 2400);
+    registry.register_with_id("Regex.find_all", 2401);
 
     // Task aliases (for LoggerTask.spawn(), handle.send(), MonitorTask.send())
     registry.register_with_id("Task.spawn", 2300);

@@ -1,0 +1,8 @@
+File.create_dir("tmp_test_vm_dir")
+print(File.is_dir("tmp_test_vm_dir"))
+print(File.exists("tmp_test_vm_dir"))
+File.write_text("tmp_test_vm_dir/test.txt", "in dir")
+let content = File.read_text("tmp_test_vm_dir/test.txt")
+print(content)
+File.delete("tmp_test_vm_dir/test.txt")
+File.delete("tmp_test_vm_dir")

@@ -1,0 +1,5 @@
+File.write_text("tmp_test_vm_append.txt", "hello")
+File.append_text("tmp_test_vm_append.txt", " world")
+let content = File.read_text("tmp_test_vm_append.txt")
+print(content)
+File.delete("tmp_test_vm_append.txt")

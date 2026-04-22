@@ -1,0 +1,4 @@
+print(Url.encode("hello world"))
+print(Url.decode("hello%20world"))
+print(Url.encode("a=b&c=d"))
+print(Url.decode("a%3Db%26c%3Dd"))

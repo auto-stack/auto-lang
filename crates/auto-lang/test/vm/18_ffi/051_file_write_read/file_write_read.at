@@ -1,0 +1,5 @@
+File.write_text("tmp_test_vm_wr.txt", "hello auto")
+let content = File.read_text("tmp_test_vm_wr.txt")
+print(content)
+File.delete("tmp_test_vm_wr.txt")
+print(File.exists("tmp_test_vm_wr.txt"))

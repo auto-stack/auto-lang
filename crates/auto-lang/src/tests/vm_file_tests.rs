@@ -386,5 +386,17 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 // === 18_ffi (Plan 211 Task 7: Time stdlib) ===
 #[test] fn test_18_ffi_047_time_now() { test_vm("18_ffi/047_time_now").unwrap(); }
 
+// === 18_ffi (Plan 211 Task 8: URL stdlib) ===
+#[test] fn test_18_ffi_048_url_encode_decode() { test_vm("18_ffi/048_url_encode_decode").unwrap(); }
+#[test] fn test_18_ffi_049_url_parts() { test_vm("18_ffi/049_url_parts").unwrap(); }
+
+// === 18_ffi (Plan 211 Task 9: Regex stdlib) ===
+#[test] fn test_18_ffi_050_regex_is_match() { test_vm("18_ffi/050_regex_is_match").unwrap(); }
+
+// === 18_ffi (Plan 211 Task 11: File stdlib) ===
+#[test] fn test_18_ffi_051_file_write_read() { test_vm("18_ffi/051_file_write_read").unwrap(); }
+#[test] fn test_18_ffi_052_file_copy_append() { test_vm("18_ffi/052_file_copy_append").unwrap(); }
+#[test] fn test_18_ffi_053_file_dir_ops() { test_vm("18_ffi/053_file_dir_ops").unwrap(); }
+
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
