@@ -1,7 +1,7 @@
 # Plan 200: 补足 AutoVM 缺失特性（Examples 14-33）
 
 > 日期：2026-04-21
-> 状态：Phase 1-2 已完成，Phase 3.1 spec 分发已提前完成，剩余 Phase 3.3/.map_err() 闭包待实现
+> 状态：✅ **全部完成**
 > 范围：使 AutoVM 能够运行 ac-examples 14~33
 
 ## 背景
@@ -28,9 +28,9 @@
 | 3.1 spec 动态分发 | CALL_SPEC opcode | ✅ **提前完成** | `1933641e` |
 | 3.2 enumerate() | EnumerateIterator | ✅ 完成 | `e8314053` |
 | 3.3 .map_err() 闭包 | native→闭包回调 | ✅ **完成** | Plan 218 |
-| 3.4 fs 模块别名 | 已归入 Phase 4 | ⏭️ 低优先 | — |
+| 3.4 fs 模块别名 | native_registry 别名 | ✅ **完成** | `4c4d2965` |
 
-**剩余工作**：Phase 3.4 fs 模块别名（低优先级，可通过改写示例绕过）。
+**全部完成**。所有 Task 1.1-3.4 均已实现。
 
 ---
 
