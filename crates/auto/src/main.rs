@@ -355,6 +355,26 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Use a dedicated thread with 4MB stack to avoid stack overflow on Windows
+    // (default main thread stack is only 1MB on Windows).
+    // In debug builds, unoptimized stack frames are large enough that the
+    // normal call chain (Automan::run → VueProject → Parser::parse → AURA)
+    // exceeds 1MB by ~424 bytes. Release builds fit within 1MB, but we use
+    // 4MB to leave comfortable headroom for all build profiles.
+    // Set AUTO_STACK_SIZE env var to override (e.g. for debugging).
+    let stack_size = std::env::var("AUTO_STACK_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(4 * 1024 * 1024);
+    let builder = std::thread::Builder::new().stack_size(stack_size);
+    let handle = builder.spawn(real_main).expect("Failed to spawn main thread");
+    match handle.join() {
+        Ok(result) => result,
+        Err(_) => std::process::exit(101),
+    }
+}
+
+fn real_main() -> Result<()> {
     let cli = Cli::parse();
 
     // Determine AI mode: -ai flag or --format json
