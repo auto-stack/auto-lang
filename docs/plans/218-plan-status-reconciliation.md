@@ -28,7 +28,7 @@ Update each plan file's status to match code reality. Commit after each plan upd
 | 7 | 197 | ✅ Complete | ✅ Verified | Confirm |
 | 8 | 198 | No markers | ❌ Not implemented | No change needed |
 | 9 | 199 | Not started | ❌ Not implemented (Plan 199 IS the debugger, Plan 196 renamed) | No change needed |
-| 10 | 200 | Partial | 🔧 Partial (.map_err() and fs aliases pending) | Confirm |
+| 10 | 200 | Partial | ✅ Now fully complete (Task 3.3 + 3.4 done) | Mark complete |
 | 11 | 201 | ✅ Complete | ✅ Verified | Confirm |
 | 12 | 202 | Not started | 🔧 Partial (axum+Vue crate exists) | Mark partial |
 | 13 | 203 | Not started | 🔧 Phase 1 (QualifiedName exists) | Mark partial |
@@ -53,7 +53,7 @@ Pick off incomplete plans one by one. Each sub-task is a separate commit.
 
 | # | Plan | Remaining Work | Priority |
 |---|------|---------------|----------|
-| 1 | 200 | .map_err() closure callback + fs module aliases | P1 |
+| 1 | 200 | .map_err() closure callback + fs module aliases | ~~P1~~ ✅ Done |
 | 2 | 195 | Create auto.http module, unify http_stream, add RequestBuilder | P2 |
 | 3 | 196 | SOURCE_LINE opcode + CallFrame + disassembler (5 phases) | P2 |
 | 4 | 209 | Rewrite 33 ac-examples with modern features | P2 |
