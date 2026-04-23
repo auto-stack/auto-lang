@@ -37,14 +37,14 @@ Update each plan file's status to match code reality. Commit after each plan upd
 | 16 | 206 | ✅ Complete | ✅ Verified | Confirm |
 | 17 | 207 | ✅ Complete | ✅ Verified | Confirm |
 | 18 | 208 | ✅ Complete | ✅ Verified | Confirm |
-| 19 | 209 | Not started | ❌ Not implemented | No change needed |
-| 20 | 210 | Not started | ✅ Implemented in ../book/ (561 listings, 982 expected files) | Mark complete + note external repo |
-| 21 | 211 | Not started | ❌ Not implemented | No change needed |
-| 22 | 212a | Not started | ✅ Implemented in ../auto-vscode/ (grammar, snippets, LSP, v0.2.2) | Mark complete + note external repo |
-| 23 | 212b | Not started | ❌ Not implemented | No change needed |
-| 24 | 213 | Not started | 🔧 Partial (PythonTrans exists, needs maturation) | Mark partial |
-| 25 | 214 | Placeholder | ❌ Not implemented (blocked on 212b) | No change needed |
-| 26 | 215 | Not started | 🔧 Partial (85 tests, needs maturation to 80+) | Mark partial |
+| 19 | 209 | Not started | ✅ Phase 0 done (33/33 PASS), Phase 1-6 现代化待实施 | Mark Phase 0 complete |
+| 20 | 210 | Not started | ✅ Implemented in ../book/ | Mark complete + note external |
+| 21 | 211 | Not started | ✅ Fully implemented (51 VM + 17 a2r tests, all pass) | Mark complete |
+| 22 | 212a | Not started | ✅ Implemented in ../auto-vscode/ | Mark complete + note external |
+| 23 | 212b | Not started | 🔧 Tasks 1-3 done, Task 4 (runtime bridge) pending | Mark partial |
+| 24 | 213 | Not started | 🔧 95 inline tests, needs maturation | Mark partial |
+| 25 | 214 | Placeholder | ❌ Blocked on 212b | No change needed |
+| 26 | 215 | Not started | 🔧 85 tests, needs maturation | Mark partial |
 | 27 | 216 | ✅ Complete | ✅ Verified | Confirm |
 
 ### Phase 2: Complete Remaining Unfinished Work
@@ -56,9 +56,9 @@ Pick off incomplete plans one by one. Each sub-task is a separate commit.
 | 1 | 200 | .map_err() closure callback + fs module aliases | ~~P1~~ ✅ Done |
 | 2 | 195 | Create auto.http module, unify http_stream, add RequestBuilder | P2 |
 | 3 | 196 | SOURCE_LINE opcode + CallFrame + disassembler (5 phases) | P2 |
-| 4 | 209 | Rewrite 33 ac-examples with modern features | P2 |
-| 5 | 211 | Add ~43 stdlib tests to reach 80%+ coverage | P2 |
-| 6 | 212b | Rust FFI E2E (compile_dep -> cdylib -> VM load -> call) | P2 |
+| 4 | 209 | ~~Phase 0~~ ✅ / Phase 1-6 现代化重写（低优先级美化） | ~~P2~~ Phase 0 done |
+| 5 | 211 | Add ~43 stdlib tests to reach 80%+ coverage | ~~P2~~ ✅ Done (51 VM + 17 a2r) |
+| 6 | 212b | Rust FFI E2E (Task 4 runtime bridge + Task 5 E2E test) | P2 |
 | 7 | 213 | a2py maturation to 80+ tests | P3 |
 | 214 | Python FFI (use.py) | P3 (blocked on 212b) |
 | 8 | 215 | a2ts maturation to 80+ tests | P3 |
