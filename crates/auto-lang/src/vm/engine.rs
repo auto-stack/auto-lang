@@ -24,6 +24,85 @@ macro_rules! vm_debug {
     };
 }
 
+// ============================================================================
+// Plan 221 Task 5: String tagging helpers (feature-gated for nanbox migration)
+// ============================================================================
+
+/// Result of popping a mixed int/string value from the stack.
+/// Under non-nanbox: strings are encoded as negative i32 (-(idx+1)).
+/// Under nanbox: strings use NaN-boxed encoding, ints use i32 encoding.
+#[derive(Debug, Clone, Copy)]
+pub enum StackTag {
+    /// A plain integer value
+    Int(i32),
+    /// A string pool index
+    Str(u32),
+}
+
+/// Push a string tag onto the stack.
+#[cfg(feature = "nanbox")]
+#[inline(always)]
+fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
+    ram.push_string(idx);
+}
+
+/// Push a string tag onto the stack.
+#[cfg(not(feature = "nanbox"))]
+#[inline(always)]
+fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
+    ram.push_i32(-(idx as i32) - 1);
+}
+
+/// Pop a known-string value, returning the string pool index.
+#[cfg(feature = "nanbox")]
+#[inline(always)]
+fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
+    ram.pop_string() as usize
+}
+
+/// Pop a known-string value, returning the string pool index.
+#[cfg(not(feature = "nanbox"))]
+#[inline(always)]
+fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
+    let bits = ram.pop_i32();
+    (-bits - 1) as usize
+}
+
+/// Pop a mixed int/string value from the stack.
+/// Under nanbox: uses NanoValue type detection.
+/// Under non-nanbox: uses sign-bit tagging.
+#[cfg(feature = "nanbox")]
+#[inline(always)]
+fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
+    let nv = ram.pop_nv();
+    if auto_val::is_string(nv) {
+        StackTag::Str(auto_val::decode_string(nv))
+    } else {
+        StackTag::Int(auto_val::decode_i32(nv))
+    }
+}
+
+/// Pop a mixed int/string value from the stack.
+#[cfg(not(feature = "nanbox"))]
+#[inline(always)]
+fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
+    let bits = ram.pop_i32();
+    if bits < 0 && bits > i32::MIN {
+        StackTag::Str(((-bits) - 1) as u32)
+    } else {
+        StackTag::Int(bits)
+    }
+}
+
+/// Decode a string tag from an i32 variable (non-stack sources).
+/// NOTE: Under nanbox, callers should prefer `pop_str_idx()` when reading from the stack.
+/// This helper is for sites where the value is already in an i32 variable
+/// (e.g., read from bytecode or a non-stack source).
+#[inline(always)]
+fn decode_str_tag_from_i32(bits: i32) -> usize {
+    (-bits - 1) as usize
+}
+
 /// List iterator state
 #[derive(Debug, Clone)]
 pub struct ListIterator {
@@ -378,7 +457,7 @@ impl AutoVM {
                 let idx = strings.len();
                 strings.push(s_bytes);
                 drop(strings);
-                ram.push_i32(-(idx as i32) - 1);
+                push_str_tag(ram, idx as u32);
             }
             Value::VmRef(vmref) => {
                 // Push heap object ID as i32
@@ -954,8 +1033,8 @@ impl AutoVM {
                 OpCode::LOAD_STR => {
                     let str_idx = self.flash.read_u16(task.ip);
                     task.ip += 2;
-                    // Tag string indices as negative: -(index+1)
-                    task.ram.push_i32(-(str_idx as i32) - 1);
+                    // Push string reference (nanbox: direct tag, non-nanbox: negative i32)
+                    push_str_tag(&mut task.ram, str_idx as u32);
                     // Reset result type since this produces a string, not a number
                     task.last_result_type = ResultType::default();
                 }
@@ -975,19 +1054,19 @@ impl AutoVM {
                     // Pop args (in reverse order)
                     let mut args = Vec::with_capacity(arg_count as usize);
                     for _ in 0..arg_count {
-                        let bits = task.ram.pop_i32();
-                        // Inside VM, everything is an i32 bits. We wrap it in VmRef if it's positive,
-                        // or decode string index if it's negative.
-                        let val = if bits < 0 && bits > i32::MIN {
-                            let str_idx = ((-bits) - 1) as usize;
-                            let strings = self.strings.read().unwrap();
-                            if let Some(bytes) = strings.get(str_idx) {
-                                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
-                            } else {
-                                auto_val::Value::Nil
+                        // Inside VM, everything is either a string tag or an int (VmRef id).
+                        let val = match pop_tagged(&mut task.ram) {
+                            StackTag::Str(str_idx) => {
+                                let strings = self.strings.read().unwrap();
+                                if let Some(bytes) = strings.get(str_idx as usize) {
+                                    auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+                                } else {
+                                    auto_val::Value::Nil
+                                }
                             }
-                        } else {
-                            auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
+                            StackTag::Int(bits) => {
+                                auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
+                            }
                         };
                         args.push(val);
                     }
@@ -1083,13 +1162,7 @@ impl AutoVM {
                                 auto_val::Value::Double(bits)
                             }
                             ObjectType::String => {
-                                let tagged = task.ram.pop_i32();
-                                // Decode negative-tagged string index
-                                let str_idx = if tagged < 0 {
-                                    (-tagged - 1) as usize
-                                } else {
-                                    tagged as usize
-                                };
+                                let str_idx = pop_str_idx(&mut task.ram);
                                 let strings = self.strings.read().unwrap();
                                 if let Some(str_bytes) = strings.get(str_idx) {
                                     let s = String::from_utf8_lossy(str_bytes).to_string();
@@ -1272,37 +1345,43 @@ impl AutoVM {
                                 format!("{}", val)
                             }
                             1 => {
-                                let bits = task.ram.pop_i32();
-                                if bits == i32::MIN {
-                                    "true".to_string()
-                                } else if bits == i32::MIN + 1 {
-                                    "false".to_string()
-                                } else if bits < 0 && bits > i32::MIN {
-                                    let idx = ((-bits) - 1) as usize;
-                                    if idx < strings.len() {
-                                        String::from_utf8_lossy(&strings[idx]).to_string()
-                                    } else {
-                                        format!("<invalid_str_idx:{}>", idx)
+                                match pop_tagged(&mut task.ram) {
+                                    StackTag::Str(idx) => {
+                                        if (idx as usize) < strings.len() {
+                                            String::from_utf8_lossy(&strings[idx as usize]).to_string()
+                                        } else {
+                                            format!("<invalid_str_idx:{}>", idx)
+                                        }
                                     }
-                                } else {
-                                    bits.to_string()
+                                    StackTag::Int(bits) => {
+                                        if bits == i32::MIN {
+                                            "true".to_string()
+                                        } else if bits == i32::MIN + 1 {
+                                            "false".to_string()
+                                        } else {
+                                            bits.to_string()
+                                        }
+                                    }
                                 }
                             }
                             _ => {
-                                let bits = task.ram.pop_i32();
-                                if bits == i32::MIN {
-                                    "true".to_string()
-                                } else if bits == i32::MIN + 1 {
-                                    "false".to_string()
-                                } else if bits < 0 && bits > i32::MIN {
-                                    let idx = ((-bits) - 1) as usize;
-                                    if idx < strings.len() {
-                                        String::from_utf8_lossy(&strings[idx]).to_string()
-                                    } else {
-                                        format!("<invalid_str_idx:{}>", idx)
+                                match pop_tagged(&mut task.ram) {
+                                    StackTag::Str(idx) => {
+                                        if (idx as usize) < strings.len() {
+                                            String::from_utf8_lossy(&strings[idx as usize]).to_string()
+                                        } else {
+                                            format!("<invalid_str_idx:{}>", idx)
+                                        }
                                     }
-                                } else {
-                                    bits.to_string()
+                                    StackTag::Int(bits) => {
+                                        if bits == i32::MIN {
+                                            "true".to_string()
+                                        } else if bits == i32::MIN + 1 {
+                                            "false".to_string()
+                                        } else {
+                                            bits.to_string()
+                                        }
+                                    }
                                 }
                             }
                         };
@@ -1320,7 +1399,7 @@ impl AutoVM {
                     strings.push(result.into_bytes());
                     drop(strings);
 
-                    task.ram.push_i32(-(result_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, result_idx as u32);
                 }
                 OpCode::NULL_COALESCE => {
                     // Pop right expression (default value)
@@ -1559,43 +1638,45 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        task.ram.push_i32(-(str_idx as i32) - 1);
+                        push_str_tag(&mut task.ram, str_idx as u32);
                     } else {
                         let string_value = format!("{}", value_bits);
                         let mut strings = self.strings.write().unwrap();
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        task.ram.push_i32(-(str_idx as i32) - 1);
+                        push_str_tag(&mut task.ram, str_idx as u32);
                     }
                 }
                 OpCode::TYPE_TO_I32 => {
-                    let v = task.ram.pop_i32();
-                    if v < 0 {
-                        let str_idx = ((-v) - 1) as usize;
-                        let strings = self.strings.read().unwrap();
-                        let parsed = strings.get(str_idx)
-                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
-                            .unwrap_or(0);
-                        drop(strings);
-                        task.ram.push_i32(parsed);
-                    } else {
-                        task.ram.push_i32(v);
+                    match pop_tagged(&mut task.ram) {
+                        StackTag::Str(idx) => {
+                            let strings = self.strings.read().unwrap();
+                            let parsed = strings.get(idx as usize)
+                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
+                                .unwrap_or(0);
+                            drop(strings);
+                            task.ram.push_i32(parsed);
+                        }
+                        StackTag::Int(v) => {
+                            task.ram.push_i32(v);
+                        }
                     }
                     task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_TO_F64 => {
-                    let v = task.ram.pop_i32();
-                    if v < 0 {
-                        let str_idx = ((-v) - 1) as usize;
-                        let strings = self.strings.read().unwrap();
-                        let parsed = strings.get(str_idx)
-                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
-                            .unwrap_or(0.0);
-                        drop(strings);
-                        task.ram.push_f32(parsed);
-                    } else {
-                        task.ram.push_f32(v as f32);
+                    match pop_tagged(&mut task.ram) {
+                        StackTag::Str(idx) => {
+                            let strings = self.strings.read().unwrap();
+                            let parsed = strings.get(idx as usize)
+                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
+                                .unwrap_or(0.0);
+                            drop(strings);
+                            task.ram.push_f32(parsed);
+                        }
+                        StackTag::Int(v) => {
+                            task.ram.push_f32(v as f32);
+                        }
                     }
                     task.last_result_type = ResultType::Float;
                 }
@@ -1607,7 +1688,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    task.ram.push_i32(-(str_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, str_idx as u32);
                 }
                 // Plan 193: i64 -> String
                 OpCode::TYPE_I64_TO_STR => {
@@ -1617,7 +1698,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    task.ram.push_i32(-(str_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, str_idx as u32);
                 }
                 // Plan 193: u64 -> String (hex)
                 OpCode::TYPE_U64_TO_STR => {
@@ -1627,7 +1708,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    task.ram.push_i32(-(str_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, str_idx as u32);
                 }
                 // Plan 193: bool -> String
                 OpCode::TYPE_BOOL_TO_STR => {
@@ -1637,7 +1718,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.as_bytes().to_vec());
                     drop(strings);
-                    task.ram.push_i32(-(str_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, str_idx as u32);
                 }
                 // Plan 193: f64 -> i32 (truncate)
                 OpCode::TYPE_F64_TO_I32 => {
@@ -1647,17 +1728,18 @@ impl AutoVM {
                 }
                 // Plan 193: String -> i64
                 OpCode::TYPE_STR_TO_I64 => {
-                    let v = task.ram.pop_i32();
-                    if v < 0 {
-                        let str_idx = ((-v) - 1) as usize;
-                        let strings = self.strings.read().unwrap();
-                        let parsed = strings.get(str_idx)
-                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i64>().ok())
-                            .unwrap_or(0i64);
-                        drop(strings);
-                        task.ram.push_i64(parsed);
-                    } else {
-                        task.ram.push_i64(v as i64);
+                    match pop_tagged(&mut task.ram) {
+                        StackTag::Str(idx) => {
+                            let strings = self.strings.read().unwrap();
+                            let parsed = strings.get(idx as usize)
+                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i64>().ok())
+                                .unwrap_or(0i64);
+                            drop(strings);
+                            task.ram.push_i64(parsed);
+                        }
+                        StackTag::Int(v) => {
+                            task.ram.push_i64(v as i64);
+                        }
                     }
                 }
                 // Plan 193: f32 -> String
@@ -1668,7 +1750,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    task.ram.push_i32(-(str_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, str_idx as u32);
                 }
                 // Plan 193: f32 -> i32 (truncate)
                 OpCode::TYPE_F32_TO_I32 => {
@@ -1744,7 +1826,7 @@ impl AutoVM {
                         strings.push(string_value.into_bytes());
                         drop(strings);
 
-                        task.ram.push_i32(-(str_idx as i32) - 1);
+                        push_str_tag(&mut task.ram, str_idx as u32);
                     } else {
                         // Convert integer to its string representation
                         let string_value = format!("{}", value_bits);
@@ -1755,7 +1837,7 @@ impl AutoVM {
                         strings.push(string_value.into_bytes());
                         drop(strings);
 
-                        task.ram.push_i32(-(str_idx as i32) - 1);
+                        push_str_tag(&mut task.ram, str_idx as u32);
                     }
                 }
                 // Plan 075: Check if value is nil
@@ -1808,7 +1890,7 @@ impl AutoVM {
                     strings.push(result.into_bytes());
                     drop(strings);
 
-                    task.ram.push_i32(-(result_idx as i32) - 1);
+                    push_str_tag(&mut task.ram, result_idx as u32);
                 }
                 // Plan 120: Option type constructor - Some(value)
                 OpCode::CREATE_SOME => {
@@ -2472,7 +2554,7 @@ impl AutoVM {
                             let sliced: String = chars[s_start..s_end].iter().collect();
                             drop(strings);
                             let new_idx = self.add_string(sliced.into_bytes());
-                            task.ram.push_i32(-((new_idx as i32) + 1));
+                            push_str_tag(&mut task.ram, new_idx as u32);
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -2544,7 +2626,7 @@ impl AutoVM {
                                     auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
                                     auto_val::Value::Str(s) => {
                                         let idx = self.add_string(s.as_bytes().to_vec());
-                                        task.ram.push_i32(-((idx as i32) + 1));
+                                        push_str_tag(&mut task.ram, idx as u32);
                                     }
                                     _ => task.ram.push_i32(0),
                                 }
@@ -2861,13 +2943,13 @@ impl AutoVM {
                                 }
                                 auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
                                 auto_val::Value::Str(s) => {
-                                    // Push tagged string index (negative to distinguish from integers)
+                                    // Push tagged string index (nanbox: direct tag, non-nanbox: negative i32)
                                     let str_bytes = s.as_bytes().to_vec();
                                     let mut strings = self.strings.write().unwrap();
                                     let str_idx = strings.len();
                                     strings.push(str_bytes);
                                     drop(strings);
-                                    task.ram.push_i32(-(str_idx as i32) - 1);
+                                    push_str_tag(&mut task.ram, str_idx as u32);
                                 }
                                 auto_val::Value::Nil => task.ram.push_i32(0),
                                 // Plan 073: Nested objects/arrays - push their ID

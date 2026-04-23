@@ -63,11 +63,13 @@ impl Trans for TypeScriptTrans {
             matches!(s, Stmt::Fn(func) if func.name == "main")
         }).cloned();
 
-        // Split into declarations and main statements
-        let mut decls: Vec<Stmt> = Vec::new();
-        let mut main_stmts: Vec<Stmt> = Vec::new();
+        // Split into declarations and main statements, preserving source line info
+        let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
+        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
 
-        for stmt in ast.stmts.into_iter() {
+        let source_lines = ast.source_lines;
+        for (i, stmt) in ast.stmts.into_iter().enumerate() {
+            let line = source_lines.get(i).copied().unwrap_or(0);
             // Skip main function declaration - we'll handle it specially
             if matches!(&stmt, Stmt::Fn(func) if func.name == "main") {
                 continue;
@@ -75,14 +77,15 @@ impl Trans for TypeScriptTrans {
 
             // Check if this is a declaration (type, enum, or function)
             if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Fn(_)) {
-                decls.push(stmt);
+                decls.push((stmt, line));
             } else {
-                main_stmts.push(stmt);
+                main_stmts.push((stmt, line));
             }
         }
 
         // Generate declarations first
-        for (i, decl) in decls.iter().enumerate() {
+        for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.set_source_line(*line);
             self.stmt(decl, &mut body_buf)?;
             if i < decls.len() - 1 {
                 body_buf.write(b"\n\n")?;
@@ -106,7 +109,8 @@ impl Trans for TypeScriptTrans {
             }
             body_buf.write(b"function main(): void {")?;
 
-            for stmt in &main_stmts {
+            for (stmt, line) in &main_stmts {
+                sink.set_source_line(*line);
                 body_buf.write(b"\n    ")?;
                 self.stmt(stmt, &mut body_buf)?;
             }
@@ -118,12 +122,15 @@ impl Trans for TypeScriptTrans {
         }
 
         // Phase 2: Write conditional runtime import based on what was used
+        sink.clear_source_line();
         self.inject_runtime_import(&mut sink.body)?;
         if self.needs_range || self.needs_print {
             sink.body.write(b"\n")?;
         }
 
         // Phase 3: Append the transpiled body
+        // Track newlines from body_buf through sink for source mapping
+        sink.track_newlines(&body_buf);
         sink.body.write_all(&body_buf)?;
 
         Ok(())

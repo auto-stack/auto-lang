@@ -1214,11 +1214,13 @@ impl Trans for PythonTrans {
             }
         }).cloned();
 
-        // Split into declarations and main statements
-        let mut decls: Vec<Stmt> = Vec::new();
-        let mut main_stmts: Vec<Stmt> = Vec::new();
+        // Split into declarations and main statements, preserving source line info
+        let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
+        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
 
-        for stmt in ast.stmts.into_iter() {
+        let source_lines = ast.source_lines;
+        for (i, stmt) in ast.stmts.into_iter().enumerate() {
+            let line = source_lines.get(i).copied().unwrap_or(0);
             // Skip main function declaration - we'll handle it specially
             if let Stmt::Fn(func) = &stmt {
                 if func.name == "main" {
@@ -1227,14 +1229,14 @@ impl Trans for PythonTrans {
             }
 
             if stmt.is_decl() {
-                decls.push(stmt);
+                decls.push((stmt, line));
             } else {
-                main_stmts.push(stmt);
+                main_stmts.push((stmt, line));
             }
         }
 
         // First pass: process declarations to collect imports
-        for decl in &decls {
+        for (decl, _line) in &decls {
             if let Stmt::TypeDecl(type_decl) = decl {
                 // Only use dataclass if there are no methods
                 if type_decl.members.len() > 0 && type_decl.methods.is_empty() {
@@ -1291,7 +1293,8 @@ impl Trans for PythonTrans {
         }
 
         // Generate declarations (excluding main)
-        for (i, decl) in decls.iter().enumerate() {
+        for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.set_source_line(*line);
             self.stmt(decl, &mut sink.body)?;
             // Add newline between declarations, but not after the last one
             if i < decls.len() - 1 {
@@ -1330,7 +1333,8 @@ impl Trans for PythonTrans {
             }
             sink.body.write(b"def main():\n")?;
             self.indent();
-            for stmt in &main_stmts {
+            for (stmt, line) in &main_stmts {
+                sink.set_source_line(*line);
                 self.stmt(stmt, &mut sink.body)?;
             }
             self.dedent();

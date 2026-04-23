@@ -314,6 +314,9 @@ impl CTrans {
 impl CTrans {
     pub fn code(&mut self, code: Code, sink: &mut Sink) -> AutoResult<()> {
         for (i, stmt) in code.stmts.iter().enumerate() {
+            if i < code.source_lines.len() {
+                sink.set_source_line(code.source_lines[i]);
+            }
             if i > 0 {
                 sink.body.write(b"\n")?;
             }
@@ -2161,6 +2164,9 @@ impl CTrans {
             sink.body.write(insert.as_bytes())?;
         }
         for (i, stmt) in body.stmts.iter().enumerate() {
+            if i < body.source_lines.len() {
+                sink.set_source_line(body.source_lines[i]);
+            }
             if !matches!(stmt, Stmt::EmptyLine(_)) {
                 self.print_indent(&mut sink.body)?;
             }
@@ -4321,32 +4327,34 @@ impl CTrans {
 
 impl Trans for CTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        // Split stmts into decls and main
+        // Split stmts into decls and main, preserving source line info
         // TODO: handle potential includes when needed
-        let mut decls: Vec<Stmt> = Vec::new();
-        let mut main: Vec<Stmt> = Vec::new();
+        let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
+        let mut main: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
 
         // preprocess
-        for stmt in ast.stmts.into_iter() {
+        let source_lines = ast.source_lines;
+        for (i, stmt) in ast.stmts.into_iter().enumerate() {
+            let line = source_lines.get(i).copied().unwrap_or(0);
             if stmt.is_decl() {
                 // Check if this is a Store statement with a non-constant initializer
                 // If so, it should go to main() instead of global scope
                 if let Stmt::Store(store) = &stmt {
                     if !self.is_const_expr(&store.expr) {
                         // Non-constant initializer, must be in main()
-                        main.push(stmt);
+                        main.push((stmt, line));
                         continue;
                     }
                 }
-                decls.push(stmt);
+                decls.push((stmt, line));
             } else {
                 match stmt {
                     Stmt::EnumDecl(_) | Stmt::Tag(_) | Stmt::Union(_) | Stmt::TypeDecl(_) => {
                         // These are declarations that need to be processed
-                        decls.push(stmt);
+                        decls.push((stmt, line));
                     }
-                    Stmt::For(_) => main.push(stmt),
-                    Stmt::If(_) => main.push(stmt),
+                    Stmt::For(_) => main.push((stmt, line)),
+                    Stmt::If(_) => main.push((stmt, line)),
                     Stmt::Expr(ref expr) => {
                         match expr {
                             Expr::Call(call) => {
@@ -4358,16 +4366,20 @@ impl Trans for CTrans {
                             }
                             _ => {}
                         }
-                        main.push(stmt);
+                        main.push((stmt, line));
                     }
-                    Stmt::Use(use_stmt) => self.use_stmt(&use_stmt, &mut sink.body)?,
+                    Stmt::Use(use_stmt) => {
+                        sink.set_source_line(line);
+                        self.use_stmt(&use_stmt, &mut sink.body)?;
+                    }
                     _ => {}
                 }
             }
         }
 
         // Decls
-        for (i, decl) in decls.iter().enumerate() {
+        for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.set_source_line(*line);
             let generated = self.stmt(decl, sink)?;
             if i < decls.len() - 1 && generated {
                 sink.body.write(b"\n").to()?;
@@ -4412,7 +4424,8 @@ impl Trans for CTrans {
 
             sink.body.write(b"int main(void) {\n").to()?;
             self.indent();
-            for (i, stmt) in main.iter().enumerate() {
+            for (i, (stmt, line)) in main.iter().enumerate() {
+                sink.set_source_line(*line);
                 self.print_indent(&mut sink.body)?;
                 if i < main.len() - 1 {
                     self.stmt(stmt, sink)?;

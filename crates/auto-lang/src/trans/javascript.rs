@@ -592,11 +592,13 @@ impl Trans for JavaScriptTrans {
             }
         }).cloned();
 
-        // Split into declarations and main statements
-        let mut decls: Vec<Stmt> = Vec::new();
-        let mut main_stmts: Vec<Stmt> = Vec::new();
+        // Split into declarations and main statements, preserving source line info
+        let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
+        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
 
-        for stmt in ast.stmts.into_iter() {
+        let source_lines = ast.source_lines;
+        for (i, stmt) in ast.stmts.into_iter().enumerate() {
+            let line = source_lines.get(i).copied().unwrap_or(0);
             // Skip main function declaration - we'll handle it specially
             if let Stmt::Fn(func) = &stmt {
                 if func.name == "main" {
@@ -606,14 +608,15 @@ impl Trans for JavaScriptTrans {
 
             // Check if this is a declaration (type, enum, or function)
             if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Fn(_)) {
-                decls.push(stmt);
+                decls.push((stmt, line));
             } else {
-                main_stmts.push(stmt);
+                main_stmts.push((stmt, line));
             }
         }
 
         // Generate declarations first
-        for (i, decl) in decls.iter().enumerate() {
+        for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.set_source_line(*line);
             self.stmt(decl, &mut sink.body)?;
             if i < decls.len() - 1 {
                 sink.body.write(b"\n\n")?;
@@ -637,7 +640,8 @@ impl Trans for JavaScriptTrans {
             }
             sink.body.write(b"function main() {")?;
 
-            for stmt in &main_stmts {
+            for (stmt, line) in &main_stmts {
+                sink.set_source_line(*line);
                 sink.body.write(b"\n    ")?;
                 self.stmt(stmt, &mut sink.body)?;
             }

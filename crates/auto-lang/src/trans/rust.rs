@@ -2697,8 +2697,11 @@ impl RustTrans {
     /// Plan 204 Phase 1D: Emit all statements in a loop body.
     /// Previously, only Stmt::Expr and Stmt::Store were handled, silently
     /// dropping other statement types (nested loops, if, break, return, etc.)
-    fn emit_loop_body(&mut self, stmts: &[Stmt], sink: &mut Sink) -> AutoResult<()> {
-        for stmt in stmts {
+    fn emit_loop_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        for (i, stmt) in body.stmts.iter().enumerate() {
+            if i < body.source_lines.len() {
+                sink.set_source_line(body.source_lines[i]);
+            }
             self.print_indent(&mut sink.body)?;
             match stmt {
                 Stmt::Expr(expr) => {
@@ -2744,7 +2747,7 @@ impl RustTrans {
 
                     // Body
                     self.indent();
-                    self.emit_loop_body(&for_stmt.body.stmts, sink)?;
+                    self.emit_loop_body(&for_stmt.body, sink)?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
@@ -2755,7 +2758,7 @@ impl RustTrans {
 
                     // Body
                     self.indent();
-                    self.emit_loop_body(&for_stmt.body.stmts, sink)?;
+                    self.emit_loop_body(&for_stmt.body, sink)?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
@@ -2765,7 +2768,7 @@ impl RustTrans {
                 // Infinite loop: loop { body }
                 sink.body.write(b"loop {\n")?;
                 self.indent();
-                self.emit_loop_body(&for_stmt.body.stmts, sink)?;
+                self.emit_loop_body(&for_stmt.body, sink)?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;
@@ -2792,7 +2795,7 @@ impl RustTrans {
                 sink.body.write(b" {\n")?;
 
                 self.indent();
-                self.emit_loop_body(&for_stmt.body.stmts, sink)?;
+                self.emit_loop_body(&for_stmt.body, sink)?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;
@@ -2819,6 +2822,9 @@ impl RustTrans {
             self.indent();
             let stmt_count = branch.body.stmts.len();
             for (i, stmt) in branch.body.stmts.iter().enumerate() {
+                if i < branch.body.source_lines.len() {
+                    sink.set_source_line(branch.body.source_lines[i]);
+                }
                 self.print_indent(&mut sink.body)?;
                 let is_last = i == stmt_count - 1;
                 match stmt {
@@ -2883,6 +2889,9 @@ impl RustTrans {
             self.indent();
             let stmt_count = else_body.stmts.len();
             for (i, stmt) in else_body.stmts.iter().enumerate() {
+                if i < else_body.source_lines.len() {
+                    sink.set_source_line(else_body.source_lines[i]);
+                }
                 self.print_indent(&mut sink.body)?;
                 let is_last = i == stmt_count - 1;
                 match stmt {
@@ -4120,6 +4129,10 @@ impl RustTrans {
 
         // Process statements
         for (i, stmt) in body.stmts.iter().enumerate() {
+            // Set source line for mapping
+            if i < body.source_lines.len() {
+                sink.set_source_line(body.source_lines[i]);
+            }
             if !matches!(stmt, Stmt::EmptyLine(_)) {
                 self.print_indent(&mut sink.body)?;
             }
@@ -4238,6 +4251,51 @@ impl RustTrans {
         false
     }
 
+    /// Like has_await but takes a slice of references (for use with split stmts)
+    fn has_await_refs(stmts: &[&Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    if Self::expr_has_await(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Store(store) => {
+                    if Self::expr_has_await(&store.expr) {
+                        return true;
+                    }
+                }
+                Stmt::Return(expr) => {
+                    if Self::expr_has_await(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Block(body) => {
+                    let refs: Vec<&Stmt> = body.stmts.iter().collect();
+                    if Self::has_await_refs(&refs) {
+                        return true;
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        let refs: Vec<&Stmt> = branch.body.stmts.iter().collect();
+                        if Self::has_await_refs(&refs) {
+                            return true;
+                        }
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        let refs: Vec<&Stmt> = else_body.stmts.iter().collect();
+                        if Self::has_await_refs(&refs) {
+                            return true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
     /// Plan 220 Task 4: Check if an expression is a bare integer literal that
     /// needs an `as usize` cast when used as a slice/array index in Rust.
     fn needs_usize_cast(expr: &Expr) -> bool {
@@ -4346,11 +4404,13 @@ impl Trans for RustTrans {
         // Emit a2r standard library (List, May, etc.)
         self.emit_a2r_stdlib(&mut sink.body)?;
 
-        // Phase 2: Split into declarations and main
-        let mut decls: Vec<Stmt> = Vec::new();
-        let mut main: Vec<Stmt> = Vec::new();
+        // Phase 2: Split into declarations and main, preserving source line info
+        let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
+        let mut main: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
 
-        for stmt in ast.stmts.into_iter() {
+        let source_lines = ast.source_lines;
+        for (i, stmt) in ast.stmts.into_iter().enumerate() {
+            let line = source_lines.get(i).copied().unwrap_or(0);
             if stmt.is_decl() {
                 // Plan 151: Register global variables (top-level var declarations)
                 if let Stmt::Store(store) = &stmt {
@@ -4358,15 +4418,16 @@ impl Trans for RustTrans {
                         self.register_global_var(store.name.clone());
                     }
                 }
-                decls.push(stmt);
+                decls.push((stmt, line));
             } else {
                 match stmt {
-                    Stmt::For(_) => main.push(stmt),
-                    Stmt::If(_) => main.push(stmt),
-                    Stmt::Expr(_) => main.push(stmt),
-                    Stmt::Store(_) => main.push(stmt),
-                    Stmt::Break => main.push(stmt),
+                    Stmt::For(_) => main.push((stmt, line)),
+                    Stmt::If(_) => main.push((stmt, line)),
+                    Stmt::Expr(_) => main.push((stmt, line)),
+                    Stmt::Store(_) => main.push((stmt, line)),
+                    Stmt::Break => main.push((stmt, line)),
                     Stmt::Use(use_stmt) => {
+                        sink.set_source_line(line);
                         self.use_stmt(&use_stmt, &mut sink.body)?;
                         sink.body.write(b"\n")?;
                     }
@@ -4382,7 +4443,8 @@ impl Trans for RustTrans {
         }
 
         // Phase 3: Generate declarations
-        for (i, decl) in decls.iter().enumerate() {
+        for (i, (decl, line)) in decls.iter().enumerate() {
+            sink.set_source_line(*line);
             self.stmt(decl, sink)?;
             if i < decls.len() - 1 {
                 // Add blank line between declarations
@@ -4407,7 +4469,11 @@ impl Trans for RustTrans {
             }
 
             // Plan 163: Check for async (await) and generate #[tokio::main] if needed
-            let is_async = Self::has_await(&main);
+            // Collect references for has_await check
+            let is_async = {
+                let refs: Vec<&Stmt> = main.iter().map(|(s, _)| s).collect();
+                Self::has_await_refs(&refs)
+            };
             if is_async {
                 sink.body.write(b"#[tokio::main]\n")?;
                 sink.body.write(b"async fn main() {\n")?;
@@ -4416,7 +4482,8 @@ impl Trans for RustTrans {
             }
             self.indent();
 
-            for stmt in main.iter() {
+            for (stmt, line) in main.iter() {
+                sink.set_source_line(*line);
                 self.print_indent(&mut sink.body)?;
 
                 match stmt {

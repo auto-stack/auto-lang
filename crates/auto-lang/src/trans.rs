@@ -10,12 +10,26 @@ pub mod javascript;
 pub mod typescript;
 pub mod r2a;
 
+/// A single entry in the source map, mapping a source line to an output line.
+/// Both line numbers are 1-based.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SourceMapEntry {
+    pub source_line: usize,
+    pub output_line: usize,
+}
+
 pub struct Sink {
     pub name: AutoStr,
     pub includes: Vec<u8>,
     pub body: Vec<u8>,
     pub header: Vec<u8>,
     pub source: Vec<u8>,
+    /// Source map entries: maps source line -> output line (both 1-based)
+    pub source_map: Vec<SourceMapEntry>,
+    /// Currently active source line (set by transpilers before emitting a statement)
+    current_source_line: Option<usize>,
+    /// Current output line number (1-based), incremented on each newline in body
+    current_output_line: usize,
 }
 
 impl Sink {
@@ -26,6 +40,9 @@ impl Sink {
             body: Vec::new(),
             header: Vec::new(),
             source: Vec::new(),
+            source_map: Vec::new(),
+            current_source_line: None,
+            current_output_line: 1,
         }
     }
 
@@ -37,27 +54,66 @@ impl Sink {
             body: Vec::new(),
             header: Vec::new(),
             source: Vec::new(),
+            source_map: Vec::new(),
+            current_source_line: None,
+            current_output_line: 1,
         }
     }
 
     pub fn print(&mut self, data: &[u8]) -> AutoResult<()> {
+        self.track_newlines(data);
         self.body.write(data)?;
         Ok(())
     }
 
     pub fn println(&mut self, data: &[u8]) -> AutoResult<()> {
+        self.track_newlines(data);
         self.body.write(data)?;
+        self.track_newlines(b"\n");
         self.body.write(b"\n")?;
         Ok(())
+    }
+
+    /// Set the current source line. Transpilers call this before emitting each statement.
+    pub fn set_source_line(&mut self, line: usize) {
+        self.current_source_line = Some(line);
+    }
+
+    /// Clear the current source line (e.g., between top-level items).
+    pub fn clear_source_line(&mut self) {
+        self.current_source_line = None;
+    }
+
+    /// Track newlines in data and push source map entries when a source line is active.
+    pub(crate) fn track_newlines(&mut self, data: &[u8]) {
+        for &byte in data {
+            if byte == b'\n' {
+                if let Some(sl) = self.current_source_line {
+                    self.source_map.push(SourceMapEntry {
+                        source_line: sl,
+                        output_line: self.current_output_line,
+                    });
+                }
+                self.current_output_line += 1;
+            }
+        }
     }
 
     pub fn done(&mut self) -> AutoResult<&Vec<u8>> {
         // add include to self.h
         // println!("Sink Name: {}", self.name); // LSP: disabled
+        let mut prefix_lines = 0usize;
         if !self.header.is_empty() && !self.body.is_empty() {
             self.source.write(b"#include \"")?;
             self.source.write(self.name.as_bytes())?;
             self.source.write(b".h\"\n\n")?;
+            prefix_lines = 2; // the include line + blank line
+        }
+        // Adjust all source map output lines by any prefix lines added above
+        if prefix_lines > 0 {
+            for entry in &mut self.source_map {
+                entry.output_line += prefix_lines;
+            }
         }
         self.source.append(&mut self.body);
         Ok(&self.source)
