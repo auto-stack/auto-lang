@@ -246,6 +246,11 @@ pub fn register_builtin_natives() {
     registry.register_with_id("List.all", 2065);
     registry.register_with_id("List.reduce", 2066);
 
+    // Result higher-order functions (Plan 200 Task 3.3)
+    registry.register_with_id("Result.map_err", 2070);
+    registry.register_with_id("Result.Ok.map_err", 2070);
+    registry.register_with_id("Result.Err.map_err", 2070);
+
     // Memory allocation functions (Plan 052 Phase 2)
     registry.register_with_id("alloc_array", 190);
     registry.register_with_id("realloc_array", 191);

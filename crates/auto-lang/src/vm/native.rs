@@ -48,6 +48,8 @@ pub struct NativeInterface {
     dynamic_shims: HashMap<u16, ShimFunc>,
     /// Next available dynamic ID
     next_dynamic_id: u16,
+    /// Plan 200 Task 3.3: name -> ID mapping for CALL_SPEC fallback
+    name_to_id: HashMap<String, u16>,
 }
 
 impl NativeInterface {
@@ -56,6 +58,7 @@ impl NativeInterface {
             static_shims: vec![None; STATIC_ID_MAX as usize],
             dynamic_shims: HashMap::new(),
             next_dynamic_id: DYNAMIC_ID_START,
+            name_to_id: HashMap::new(),
         }
     }
 
@@ -113,6 +116,16 @@ impl NativeInterface {
     /// Check if an ID is static or dynamic
     pub fn is_static(&self, id: u16) -> bool {
         id < STATIC_ID_MAX
+    }
+
+    /// Register a name -> ID mapping for CALL_SPEC fallback (Plan 200 Task 3.3)
+    pub fn register_name(&mut self, name: &str, id: u16) {
+        self.name_to_id.insert(name.to_string(), id);
+    }
+
+    /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
+    pub fn resolve(&self, name: &str) -> Option<u16> {
+        self.name_to_id.get(name).copied()
     }
 
     /// Get the next available dynamic ID
@@ -192,6 +205,12 @@ impl NativeInterface {
         self.register(NATIVE_LIST_ANY, shim_list_any);
         self.register(NATIVE_LIST_ALL, shim_list_all);
         self.register(NATIVE_LIST_REDUCE, shim_list_reduce);
+
+        // Plan 200 Task 3.3: Result.map_err(closure)
+        self.register(NATIVE_RESULT_MAP_ERR, shim_result_map_err);
+        self.register_name("Result.map_err", NATIVE_RESULT_MAP_ERR);
+        self.register_name("Result.Ok.map_err", NATIVE_RESULT_MAP_ERR);
+        self.register_name("Result.Err.map_err", NATIVE_RESULT_MAP_ERR);
 
         // Iterator functions
         self.register(NATIVE_LIST_ITER, shim_list_iter);
@@ -506,6 +525,10 @@ pub const NATIVE_LIST_FIND: u16 = 2063;
 pub const NATIVE_LIST_ANY: u16 = 2064;
 pub const NATIVE_LIST_ALL: u16 = 2065;
 pub const NATIVE_LIST_REDUCE: u16 = 2066;
+
+// === Result HOF Native Functions ===
+// Plan 200 Task 3.3: .map_err() closure callback
+pub const NATIVE_RESULT_MAP_ERR: u16 = 2070;
 
 // === Iterator Native Functions (111+) ===
 pub const NATIVE_LIST_ITER: u16 = 111;
@@ -1299,6 +1322,50 @@ pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     }
 
     task.ram.push_i32(acc);
+    Ok(())
+}
+
+// ============================================================================
+// Result HOF Native Shims
+// ============================================================================
+
+/// Result.map_err(closure) — if Err, call closure with error value; if Ok, pass through.
+/// Stack: closure_id, result_instance_id -> new_result_instance_id
+/// Plan 200 Task 3.3
+pub fn shim_result_map_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let closure_id = task.ram.pop_i32() as u32;
+    let result_id = task.ram.pop_i32() as u64;
+
+    // Look up the Result heap object
+    let obj = vm.get_heap_object(result_id)
+        .ok_or_else(|| VMError::RuntimeError(format!("map_err: invalid heap object {}", result_id)))?;
+    let guard = obj.read().unwrap();
+    let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
+        .ok_or_else(|| VMError::RuntimeError("map_err: not a Result heap object".into()))?;
+
+    if instance.mono_name == "Result.Err" {
+        let err_val = match instance.fields.first() {
+            Some(auto_val::Value::Int(v)) => *v,
+            _ => return Err(VMError::RuntimeError("map_err: Err field not an int".into())),
+        };
+        // Release the read lock before calling closure (which may access heap)
+        drop(guard);
+
+        // Call closure with the error value as argument
+        task.ram.push_i32(err_val);
+        vm.call_closure(task, closure_id, 1)?;
+        let new_err_val = task.ram.pop_i32();
+
+        // Wrap back in Result.Err heap object
+        let new_instance = GenericInstanceData::new("Result.Err".to_string(), vec![auto_val::Value::Int(new_err_val)]);
+        let new_id = vm.insert_heap_object(new_instance);
+        task.ram.push_i32(new_id as i32);
+    } else {
+        // Ok — pass through unchanged
+        drop(guard);
+        task.ram.push_i32(result_id as i32);
+    }
     Ok(())
 }
 

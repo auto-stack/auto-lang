@@ -27,10 +27,10 @@
 | 2.8 命名统一 | has→contains, append→push | ✅ 改写即可 | — |
 | 3.1 spec 动态分发 | CALL_SPEC opcode | ✅ **提前完成** | `1933641e` |
 | 3.2 enumerate() | EnumerateIterator | ✅ 完成 | `e8314053` |
-| 3.3 .map_err() 闭包 | native→闭包回调 | ❌ **待实现** | — |
+| 3.3 .map_err() 闭包 | native→闭包回调 | ✅ **完成** | Plan 218 |
 | 3.4 fs 模块别名 | 已归入 Phase 4 | ⏭️ 低优先 | — |
 
-**剩余工作**：Phase 3.3 `.map_err()` 闭包 — 需要原生→自动虚拟机闭包回调 API（与 Plan 201 Phase 2 共享同一基础设施）。
+**剩余工作**：Phase 3.4 fs 模块别名（低优先级，可通过改写示例绕过）。
 
 ---
 

@@ -3130,20 +3130,26 @@ impl AutoVM {
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
 
-                    // Look up function address
-                    let target = if let Some(&addr) = self.flash.exports_by_name.get(&func_name) {
-                        addr as usize
+                    // Look up function address in exports first
+                    if let Some(&addr) = self.flash.exports_by_name.get(&func_name) {
+                        // Standard CALL sequence: push return address, old BP, set new BP, jump
+                        task.ram.push_i32(task.ip as i32);
+                        task.ram.push_i32(task.bp as i32);
+                        task.bp = task.ram.sp - 1;
+                        task.ip = addr as usize;
+                    } else if let Some(native_id) = self.native_interface.resolve(&func_name) {
+                        // Plan 200 Task 3.3: Fallback to native registry for type.method natives
+                        // (e.g., Result.Ok.map_err -> shim_result_map_err)
+                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(native_id));
+                        }
                     } else {
                         return Err(VMError::RuntimeError(
                             format!("CALL_SPEC: no function '{}' for type '{}'", func_name, type_name)
                         ));
-                    };
-
-                    // Standard CALL sequence: push return address, old BP, set new BP, jump
-                    task.ram.push_i32(task.ip as i32);
-                    task.ram.push_i32(task.bp as i32);
-                    task.bp = task.ram.sp - 1;
-                    task.ip = target;
+                    }
                 }
                 OpCode::CALL_NAT => {
                     let native_id = self.flash.read_u16(task.ip);
