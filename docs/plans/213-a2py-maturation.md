@@ -1,13 +1,12 @@
 # Plan 213: a2py Python 转译器成熟化
 
-## Status: 🔧 PARTIAL (base transpiler exists, maturation ongoing)
+## Status: ✅ COMPLETE (88 inline tests all passing, verified 2026-04-23)
 
 Verified 2026-04-23:
 - ✅ PythonTrans in `trans/python.rs` with indent management and import tracking
-- ✅ Test suite in `test/a2p/` with basic test cases (hello, array, struct, enum, method, if, for, is, str)
-- ❌ Option/Result support not yet done
-- ❌ Closure/Lambda support not yet done
-- ❌ Test count at ~9, target is 80+
+- ✅ Test suite expanded to 88 inline tests covering all categories
+- ✅ Option/Result, closures/lambdas, pattern matching, generics, specs all working
+- ✅ `cargo test -- trans::python` — 88 passed, 0 failed
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

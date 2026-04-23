@@ -1,5 +1,7 @@
-# Plan 092 补充：Rust FFI 动态加载端到端实现
+# Plan 212b: Rust FFI 动态加载端到端实现
 
+> **Status: 🔧 PARTIAL** (Tasks 1-3+4 code exists, E2E test `#[ignore]`d pending runtime validation)
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 实现 `dep serde_json` → cargo 编译 cdylib → AutoVM 加载 .dll → 调用 `serde_json::from_str` 的完整端到端链路，用一个 crate 验证整个流程。
