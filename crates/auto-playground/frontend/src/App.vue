@@ -8,12 +8,14 @@
     :time-ms="timeMs"
     :transpiled-code="transpiledCode"
     :live-compile="liveCompile"
+    :highlight-lines="highlightedOutputLines"
     :on-run="run"
     @update:source="source = $event"
     @run="run"
     @tab-change="onTabChange"
     @load-example="loadExample"
     @toggle-live="liveCompile = !liveCompile"
+    @line-click="highlightSourceLine"
   />
 </template>
 
@@ -25,7 +27,7 @@ import type { OutputTab } from './types';
 const {
   source, stdout, stderr, timeMs, isLoading,
   activeTab, transpiledCode, liveCompile,
-  run, transpile, loadExample,
+  highlightedOutputLines, run, transpile, loadExample, highlightSourceLine,
 } = usePlayground();
 
 function onTabChange(tab: OutputTab) {
