@@ -1293,48 +1293,43 @@ pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoRes
 pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)?;
 
-    // Compile source with incremental support
+    // Compile source with incremental support (for dirty-tracking / caching)
     let frag_ids = session.compile_source(&code, path)?;
 
-    // Get file_id and Database
-    let db = session.db();
-    let file_id = {
-        let db_read = db.read().unwrap();
-        db_read
-            .get_file_id_by_path(path)
-            .ok_or_else(|| format!("File not found in database: {}", path))?
-    };
-
-    // Create transpiler with Database
-    let mut trans = crate::trans::rust::RustTrans::with_database(db.clone());
-
-    // Perform incremental transpilation
-    let results = trans.trans_incremental(session, file_id)?;
-
-    // Merge results and write output file
     // Plan 204 Phase 6A: Use .a2r.rs suffix to avoid overwriting .rs files
     let rsname = path.replace(".at", ".a2r.rs");
+    let fname = AutoPath::new(path).filename();
 
-    let mut source_content = String::new();
-    for (_frag_id, source) in &results {
-        source_content.push_str(source);
-    }
+    // Re-parse for transpilation using the full pipeline (not incremental),
+    // so that type declarations (structs, enums, etc.) are emitted.
+    let mut parser = Parser::from(code.as_str());
+    parser.set_dest(crate::parser::CompileDest::TransRust);
+    let mut ast = parser.parse()?;
+
+    // Run CTEE (Compile-Time Execution Engine) to transform AST
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
+
+    // Full transpilation via RustTrans::trans()
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::rust::RustTrans::new(fname);
+    trans.trans(ast, &mut sink)?;
 
     // Write output file
-    if !source_content.is_empty() {
-        std::fs::write(&rsname, &source_content)?;
+    let source_bytes = sink.done()?;
+    if !source_bytes.is_empty() {
+        std::fs::write(&rsname, source_bytes)?;
 
         // Plan 204 Phase 6B: Basic output validation
-        validate_rust_output(&rsname, &source_content);
+        let source_str = String::from_utf8_lossy(source_bytes);
+        validate_rust_output(&rsname, &source_str);
     }
 
     Ok(format!(
-        "[trans] {} -> {} ({} fragments, {} dirty, {} transpiled)",
+        "[trans] {} -> {} ({} fragments tracked)",
         path,
         rsname,
-        frag_ids.len(),
-        db.read().unwrap().get_dirty_fragments().len(),
-        results.len()
+        frag_ids.len()
     ))
 }
 

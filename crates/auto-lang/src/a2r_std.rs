@@ -182,6 +182,35 @@ pub fn nil<T>() -> Option<T> {
     None
 }
 
+/// AutoLang's Json module - thin wrappers around serde_json for transpiled code
+pub mod Json {
+    use serde_json::Value;
+
+    pub fn is_valid(s: &str) -> bool {
+        serde_json::from_str::<Value>(s).is_ok()
+    }
+
+    pub fn parse(s: &str) -> Option<Value> {
+        serde_json::from_str(s).ok()
+    }
+
+    pub fn get_at(val: &Value, idx: usize) -> Option<Value> {
+        val.get(idx).cloned()
+    }
+
+    pub fn get<'a>(val: &'a Value, key: &str) -> Option<&'a Value> {
+        val.get(key)
+    }
+
+    pub fn as_string(val: &Value) -> Option<String> {
+        val.as_str().map(|s| s.to_string())
+    }
+
+    pub fn to_string(val: &Value) -> String {
+        serde_json::to_string(val).unwrap_or_default()
+    }
+}
+
 // =============================================================================
 // String functions for a2r transpiler
 // =============================================================================

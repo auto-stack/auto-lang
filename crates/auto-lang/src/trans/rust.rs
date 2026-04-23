@@ -592,6 +592,23 @@ impl RustTrans {
                         write!(out, "..=")?;
                         self.expr(rhs, out)?;
                     }
+                    Op::Add => {
+                        // Plan 220 Task 6: String concatenation via format!
+                        let lhs_is_str = matches!(lhs.as_ref(), Expr::Str(_));
+                        let rhs_is_str = matches!(rhs.as_ref(), Expr::Str(_));
+                        if lhs_is_str || rhs_is_str {
+                            write!(out, "format!(\"{{}}{{}}\", ")?;
+                            self.expr(&lhs, out)?;
+                            write!(out, ", ")?;
+                            self.expr(&rhs, out)?;
+                            write!(out, ")")?;
+                        } else {
+                            // Default: numeric addition
+                            self.expr(&lhs, out)?;
+                            write!(out, " + ")?;
+                            self.expr(&rhs, out)?;
+                        }
+                    }
                     Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
                         // Plan 151: Handle global variable assignment
                         // Check if lhs is a global variable identifier
@@ -627,6 +644,37 @@ impl RustTrans {
                         };
                         write!(out, " {} ", op_str)?;
                         self.expr(rhs, out)?;
+                    }
+                    Op::Eq | Op::Neq => {
+                        // Plan 220 Task 5: When comparing with a single-char string literal,
+                        // emit a char comparison instead of &str comparison.
+                        // e.g.  ch == "a"  ->  ch == 'a'
+                        let op_str = op.op(); // "==" or "!="
+                        if let Expr::Str(s) = rhs.as_ref() {
+                            if s.chars().count() == 1 {
+                                self.expr(lhs, out)?;
+                                write!(out, " {} ", op_str)?;
+                                write!(out, "'{}'", escape_str(s))?;
+                            } else {
+                                self.expr(lhs, out)?;
+                                write!(out, " {} ", op_str)?;
+                                self.expr(rhs, out)?;
+                            }
+                        } else if let Expr::Str(s) = lhs.as_ref() {
+                            if s.chars().count() == 1 {
+                                write!(out, "'{}'", escape_str(s))?;
+                                write!(out, " {} ", op_str)?;
+                                self.expr(rhs, out)?;
+                            } else {
+                                self.expr(lhs, out)?;
+                                write!(out, " {} ", op_str)?;
+                                self.expr(rhs, out)?;
+                            }
+                        } else {
+                            self.expr(lhs, out)?;
+                            write!(out, " {} ", op_str)?;
+                            self.expr(rhs, out)?;
+                        }
                     }
                     _ => {
                         // Binary operators: lhs OP rhs
@@ -703,7 +751,13 @@ impl RustTrans {
             Expr::Index(arr, idx) => {
                 self.expr(arr, out)?;
                 write!(out, "[")?;
-                self.expr(idx, out)?;
+                if Self::needs_usize_cast(idx) {
+                    write!(out, "(")?;
+                    self.expr(idx, out)?;
+                    write!(out, ") as usize")?;
+                } else {
+                    self.expr(idx, out)?;
+                }
                 write!(out, "]").map_err(Into::into)
             }
 
@@ -1655,12 +1709,24 @@ impl RustTrans {
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             if let Some(Arg::Pos(a)) = call.args.args.first() {
-                                self.expr(a, out)?;
+                                if Self::needs_usize_cast(a) {
+                                    write!(out, "(")?;
+                                    self.expr(a, out)?;
+                                    write!(out, ") as usize")?;
+                                } else {
+                                    self.expr(a, out)?;
+                                }
                             }
                             write!(out, "..")?;
                             if call.args.args.len() > 1 {
                                 if let Arg::Pos(a) = &call.args.args[1] {
-                                    self.expr(a, out)?;
+                                    if Self::needs_usize_cast(a) {
+                                        write!(out, "(")?;
+                                        self.expr(a, out)?;
+                                        write!(out, ") as usize")?;
+                                    } else {
+                                        self.expr(a, out)?;
+                                    }
                                 }
                             }
                             write!(out, "]")?;
@@ -1668,13 +1734,35 @@ impl RustTrans {
                         }
                         "slice" => {
                             // s.slice(n) -> &s[n..]
+                            // s.slice(start, end) -> &s[start..end]
                             write!(out, "&")?;
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() {
-                                self.expr(a, out)?;
+                            let args = &call.args.args;
+                            if let Some(Arg::Pos(a)) = args.first() {
+                                if Self::needs_usize_cast(a) {
+                                    write!(out, "(")?;
+                                    self.expr(a, out)?;
+                                    write!(out, ") as usize")?;
+                                } else {
+                                    self.expr(a, out)?;
+                                }
                             }
-                            write!(out, "..]")?;
+                            if args.len() >= 2 {
+                                if let Some(Arg::Pos(b)) = args.get(1) {
+                                    write!(out, "..")?;
+                                    if Self::needs_usize_cast(b) {
+                                        write!(out, "(")?;
+                                        self.expr(b, out)?;
+                                        write!(out, ") as usize")?;
+                                    } else {
+                                        self.expr(b, out)?;
+                                    }
+                                }
+                                write!(out, "]")?;
+                            } else {
+                                write!(out, "..]")?;
+                            }
                             return Ok(());
                         }
                         "repeat" => {
@@ -1797,12 +1885,24 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
-                        self.expr(a, out)?;
+                        if Self::needs_usize_cast(a) {
+                            write!(out, "(")?;
+                            self.expr(a, out)?;
+                            write!(out, ") as usize")?;
+                        } else {
+                            self.expr(a, out)?;
+                        }
                     }
                     write!(out, "..")?;
                     if call.args.args.len() > 1 {
                         if let Arg::Pos(a) = &call.args.args[1] {
-                            self.expr(a, out)?;
+                            if Self::needs_usize_cast(a) {
+                                write!(out, "(")?;
+                                self.expr(a, out)?;
+                                write!(out, ") as usize")?;
+                            } else {
+                                self.expr(a, out)?;
+                            }
                         }
                     }
                     write!(out, "]")?;
@@ -1810,13 +1910,35 @@ impl RustTrans {
                 }
                 "slice" => {
                     // s.slice(n) -> &s[n..]
+                    // s.slice(start, end) -> &s[start..end]
                     write!(out, "&")?;
                     self.expr(object, out)?;
                     write!(out, "[")?;
-                    if let Some(Arg::Pos(a)) = call.args.args.first() {
-                        self.expr(a, out)?;
+                    let args = &call.args.args;
+                    if let Some(Arg::Pos(a)) = args.first() {
+                        if Self::needs_usize_cast(a) {
+                            write!(out, "(")?;
+                            self.expr(a, out)?;
+                            write!(out, ") as usize")?;
+                        } else {
+                            self.expr(a, out)?;
+                        }
                     }
-                    write!(out, "..]")?;
+                    if args.len() >= 2 {
+                        if let Some(Arg::Pos(b)) = args.get(1) {
+                            write!(out, "..")?;
+                            if Self::needs_usize_cast(b) {
+                                write!(out, "(")?;
+                                self.expr(b, out)?;
+                                write!(out, ") as usize")?;
+                            } else {
+                                self.expr(b, out)?;
+                            }
+                        }
+                        write!(out, "]")?;
+                    } else {
+                        write!(out, "..]")?;
+                    }
                     return Ok(());
                 }
                 "repeat" => {
@@ -4114,6 +4236,15 @@ impl RustTrans {
             }
         }
         false
+    }
+
+    /// Plan 220 Task 4: Check if an expression is a bare integer literal that
+    /// needs an `as usize` cast when used as a slice/array index in Rust.
+    fn needs_usize_cast(expr: &Expr) -> bool {
+        matches!(expr,
+            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
+            | Expr::I64(_) | Expr::U64(_)
+        )
     }
 
     /// Plan 163: Check if an expression contains await
