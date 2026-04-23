@@ -73,3 +73,7 @@ xdm-gen/
 .claude/
 .agent/
 
+# Graphify knowledge graph output (regenerate with /graphify)
+graphify-out/
+graphify-out-crates/
+
