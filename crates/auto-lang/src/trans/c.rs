@@ -1338,6 +1338,11 @@ impl CTrans {
                     "use.rust imports are not supported in C target".to_string()
                 ));
             }
+            UseKind::Py => {
+                return Err(AutoError::Msg(
+                    "use.py imports are not supported in C target".to_string()
+                ));
+            }
         }
         Ok(())
     }

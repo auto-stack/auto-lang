@@ -8,7 +8,6 @@ use crate::vm::native::NativeInterface;
 use crate::vm::task::AutoTask;
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -19,8 +18,9 @@ pub struct PyFfiBridge {
 
 impl PyFfiBridge {
     pub fn new() -> Result<Self, VMError> {
-        Python::with_gil(|py| {
-            let _ = PyErr::fetch(py);
+        // Ensure Python interpreter is initialized (PyO3 auto-initialize handles this)
+        Python::with_gil(|_py| {
+            // Just verify the interpreter is available
         });
 
         Ok(Self {
@@ -105,7 +105,48 @@ impl PyFfiBridge {
         Ok(native_id)
     }
 
-    pub fn native_interface(self) -> Arc<NativeInterface> {
-        Arc::new(self.native_interface)
+    pub fn native_interface(&self) -> &NativeInterface {
+        &self.native_interface
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_py_ffi_bridge_creation() {
+        let bridge = PyFfiBridge::new();
+        assert!(bridge.is_ok());
+    }
+
+    #[test]
+    fn test_py_ffi_import_builtin_module() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        let result = bridge.import_module("json");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_py_ffi_import_and_register() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("json").unwrap();
+        let native_id = bridge.register_function("json", "dumps");
+        assert!(native_id.is_ok());
+        assert_eq!(native_id.unwrap(), 400);
+    }
+
+    #[test]
+    fn test_py_ffi_nonexistent_module() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        let result = bridge.import_module("nonexistent_module_xyz_12345");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_py_ffi_register_without_import() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        let result = bridge.register_function("nonexistent", "func");
+        assert!(result.is_err());
     }
 }

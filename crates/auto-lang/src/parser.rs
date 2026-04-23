@@ -4612,7 +4612,52 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Use(uses))
     }
 
-    // There are three kinds of import
+    /// Plan 214: Parse `use.py module::{items}` statement
+    pub fn use_py_stmt(&mut self) -> AutoResult<Stmt> {
+        // Already consumed: use . py
+        // Now parse: module::{items}
+
+        let mut paths = Vec::new();
+
+        let name = self.expect_ident_str()?;
+        paths.push(name.into());
+
+        // Parse module path (. separated for Python)
+        while self.is_kind(TokenKind::Dot) {
+            self.next();
+            let segment = self.expect_ident_str()?;
+            paths.push(segment.into());
+        }
+
+        // Check for :: style paths (Python submodules)
+        while self.is_kind(TokenKind::Colon) {
+            self.next();
+            if !self.is_kind(TokenKind::Colon) {
+                break;
+            }
+            self.next();
+
+            if self.is_kind(TokenKind::LBrace) {
+                break;
+            }
+
+            let segment = self.expect_ident_str()?;
+            paths.push(segment.into());
+        }
+
+        let (items, is_wildcard) = self.parse_use_items()?;
+
+        let uses = Use {
+            kind: UseKind::Py,
+            module_path: None,
+            paths,
+            items,
+            is_pub: false,
+            is_wildcard,
+        };
+
+        Ok(Stmt::Use(uses))
+    }
     // 1. auto: use std.io: println
     // 2. c: use c <stdio.h>
     // 3. rust: use rust std::fs
@@ -4643,6 +4688,8 @@ impl<'a> Parser<'a> {
                 return self.use_c_stmt();
             } else if name == "rust" {
                 return self.use_rust_stmt();
+            } else if name == "py" {
+                return self.use_py_stmt();
             } else {
                 segments.push(name.into());
             }

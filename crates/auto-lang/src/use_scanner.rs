@@ -36,6 +36,8 @@ pub struct UseStatement {
     pub c_header: Option<String>,
     /// Plan 092: 是否是 Rust 导入 (use.rust serde::json)
     pub is_rust_import: bool,
+    /// Plan 214: 是否是 Python 导入 (use.py json5::{dumps, loads})
+    pub is_python_import: bool,
     /// Plan 167: 是否是 pub use
     pub is_pub: bool,
 }
@@ -51,6 +53,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_python_import: false,
             is_pub: false,
         }
     }
@@ -65,6 +68,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_python_import: false,
             is_pub: false,
         }
     }
@@ -79,6 +83,7 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_python_import: false,
             is_pub: false,
         }
     }
@@ -93,6 +98,7 @@ impl UseStatement {
             is_c_import: true,
             c_header: Some(header.into()),
             is_rust_import: false,
+            is_python_import: false,
             is_pub: false,
         }
     }
@@ -107,6 +113,22 @@ impl UseStatement {
             is_c_import: false,
             c_header: None,
             is_rust_import: true,
+            is_python_import: false,
+            is_pub: false,
+        }
+    }
+
+    /// Plan 214: 创建 Python module 导入
+    pub fn python_import(module: impl Into<String>, items: Vec<String>) -> Self {
+        Self {
+            module: module.into(),
+            items,
+            is_wildcard: false,
+            alias: None,
+            is_c_import: false,
+            c_header: None,
+            is_rust_import: false,
+            is_python_import: true,
             is_pub: false,
         }
     }
@@ -155,7 +177,7 @@ pub fn scan_use_statements(source: &str) -> Vec<UseStatement> {
                 }
             }
         } else if let Some(rest) = trimmed.strip_prefix("use.") {
-            // Plan 092: Handle use.rust without space
+            // Plan 092/214: Handle use.rust / use.py without space
             if let Some(stmt) = parse_use_line(&format!(".{}", rest)) {
                 if seen_modules.insert(stmt.module.clone()) {
                     statements.push(stmt);
@@ -187,6 +209,12 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
     if line.starts_with(".rust ") || line.starts_with(".rust\t") {
         let rest = line[5..].trim();  // Skip ".rust "
         return parse_rust_import(rest);
+    }
+
+    // Plan 214: Python module 导入: use.py json5::{dumps, loads}
+    if line.starts_with(".py ") || line.starts_with(".py\t") {
+        let rest = line[3..].trim();  // Skip ".py "
+        return parse_python_import(rest);
     }
 
     // C 头文件导入: use c <stdio.h>
@@ -244,6 +272,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
                 is_c_import: false,
                 c_header: None,
                 is_rust_import: false,
+                is_python_import: false,
                 is_pub,
             });
         }
@@ -256,6 +285,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_python_import: false,
             is_pub,
         });
     }
@@ -272,6 +302,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
             is_c_import: false,
             c_header: None,
             is_rust_import: false,
+            is_python_import: false,
             is_pub,
         });
     }
@@ -284,6 +315,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
         is_c_import: false,
         c_header: None,
         is_rust_import: false,
+        is_python_import: false,
         is_pub,
     })
 }
@@ -330,7 +362,44 @@ fn parse_rust_import(line: &str) -> Option<UseStatement> {
     Some(UseStatement::rust_import(module, items))
 }
 
-#[cfg(test)]
+/// Plan 214: Parse Python module import
+///
+/// Parses: `json5::{dumps, loads}` or `json5`
+fn parse_python_import(line: &str) -> Option<UseStatement> {
+    let line = line.trim();
+
+    if line.is_empty() {
+        return None;
+    }
+
+    // Find items in braces: {item1, item2}
+    let (module_part, items) = if let Some(brace_start) = line.find('{') {
+        let module = line[..brace_start].trim();
+        let rest = &line[brace_start + 1..];
+
+        let items_str = if let Some(brace_end) = rest.find('}') {
+            &rest[..brace_end]
+        } else {
+            rest
+        };
+
+        let module = module.trim_end_matches(':').trim();
+
+        let items: Vec<String> = items_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        (module, items)
+    } else {
+        (line, Vec::new())
+    };
+
+    let module = module_part.trim_end_matches(':').trim();
+
+    Some(UseStatement::python_import(module, items))
+}
 mod tests {
     use super::*;
 
@@ -538,5 +607,61 @@ use local_mod
         assert_eq!(uses[0].module, "pac.db");
         assert_eq!(uses[1].module, "super.utils");
         assert_eq!(uses[2].module, "local_mod");
+    }
+
+    // Plan 214: Python import tests
+
+    #[test]
+    fn test_py_import_simple() {
+        let source = "use.py json";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_python_import);
+        assert_eq!(uses[0].module, "json");
+        assert!(uses[0].items.is_empty());
+    }
+
+    #[test]
+    fn test_py_import_with_items() {
+        let source = "use.py json5::{dumps, loads}";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_python_import);
+        assert_eq!(uses[0].module, "json5");
+        assert_eq!(uses[0].items, vec!["dumps", "loads"]);
+    }
+
+    #[test]
+    fn test_py_import_deep_path() {
+        let source = "use.py os.path";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_python_import);
+        assert_eq!(uses[0].module, "os.path");
+    }
+
+    #[test]
+    fn test_mixed_all_import_types() {
+        let source = r#"
+use std.io
+use.rust serde::json::{from_str}
+use.py json::{dumps, loads}
+use c <stdio.h>
+"#;
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 4);
+
+        assert!(!uses[0].is_rust_import);
+        assert!(!uses[0].is_python_import);
+        assert!(!uses[0].is_c_import);
+
+        assert!(uses[1].is_rust_import);
+        assert!(!uses[1].is_python_import);
+
+        assert!(uses[2].is_python_import);
+        assert!(!uses[2].is_rust_import);
+
+        assert!(uses[3].is_c_import);
+        assert!(!uses[3].is_python_import);
     }
 }

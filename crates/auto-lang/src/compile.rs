@@ -57,6 +57,9 @@ pub struct CompileSession {
     /// Plan 212b Task 2: Rust imports collected from use.rust statements
     /// Maps crate_name → list of imported function names
     rust_imports: std::collections::HashMap<String, Vec<String>>,
+    /// Plan 214: Python imports collected from use.py statements
+    /// Maps module_name → list of imported function names
+    py_imports: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Clone for CompileSession {
@@ -71,6 +74,7 @@ impl Clone for CompileSession {
             loading_stack: Vec::new(),
             compiled_modules: Vec::new(),
             rust_imports: self.rust_imports.clone(),
+            py_imports: self.py_imports.clone(),
         }
     }
 }
@@ -90,6 +94,7 @@ impl CompileSession {
             loading_stack: Vec::new(),
             compiled_modules: Vec::new(),
             rust_imports: std::collections::HashMap::new(),
+            py_imports: std::collections::HashMap::new(),
         }
     }
 
@@ -220,6 +225,27 @@ impl CompileSession {
                     }
                 }
 
+                loaded_count += 1;
+                continue;
+            }
+
+            // Plan 214: Handle Python imports
+            if use_stmt.is_python_import {
+                #[cfg(feature = "python")]
+                {
+                    if !use_stmt.items.is_empty() {
+                        self.py_imports
+                            .entry(use_stmt.module.clone())
+                            .or_default()
+                            .extend(use_stmt.items.iter().cloned());
+                    }
+                }
+                #[cfg(not(feature = "python"))]
+                {
+                    return Err(AutoError::Msg(format!(
+                        "Python FFI not enabled. Rebuild with `--features python` to use `use.py`."
+                    )));
+                }
                 loaded_count += 1;
                 continue;
             }
@@ -386,6 +412,29 @@ impl CompileSession {
     /// Returns a map of crate_name → list of function names imported via use.rust.
     pub fn rust_imports(&self) -> &std::collections::HashMap<String, Vec<String>> {
         &self.rust_imports
+    }
+
+    /// Plan 214: Collect Python imports from source code
+    ///
+    /// Scans for `use.py` statements and collects the function names
+    /// per Python module.
+    pub fn collect_py_imports(&mut self, source: &str) -> AutoResult<()> {
+        let use_statements = scan_use_statements(source);
+        for use_stmt in &use_statements {
+            if !use_stmt.is_python_import || use_stmt.items.is_empty() {
+                continue;
+            }
+            self.py_imports
+                .entry(use_stmt.module.clone())
+                .or_default()
+                .extend(use_stmt.items.iter().cloned());
+        }
+        Ok(())
+    }
+
+    /// Plan 214: Get collected Python imports
+    pub fn py_imports(&self) -> &std::collections::HashMap<String, Vec<String>> {
+        &self.py_imports
     }
 
     /// Plan 092: Get the sandbox (for FFI bridge integration)

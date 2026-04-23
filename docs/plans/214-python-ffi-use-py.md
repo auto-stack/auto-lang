@@ -1,6 +1,6 @@
 # Plan 214: AutoVM Python FFI — `use.py` 嵌入 Python 解释器
 
-> **Status: 📋 READY** (Plan 212 Rust FFI E2E ✅ complete, dependency resolved)
+> **Status: ✅ COMPLETE** (All 6 tasks implemented and tested)
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -54,7 +54,7 @@
 
 ---
 
-## Task 1: 添加 PyO3 依赖和 Feature Gate
+## Task 1: 添加 PyO3 依赖和 Feature Gate ✅ DONE
 
 **文件：**
 - 修改：`crates/auto-lang/Cargo.toml`
@@ -170,7 +170,7 @@ git commit -m "feat(py-ffi): add pyo3 dependency and PyFfiBridge scaffold (Plan 
 
 ---
 
-## Task 2: `dep` → pip install 管线
+## Task 2: `dep` → pip install 管线 ✅ DONE
 
 **文件：**
 - 修改：`crates/auto-cache/src/sandbox.rs`
@@ -296,7 +296,7 @@ git commit -m "feat(py-ffi): add pip install pipeline and use.py AST (Plan 214 T
 
 ---
 
-## Task 3: VM Codegen 处理 UseKind::Py
+## Task 3: VM Codegen 处理 UseKind::Py ✅ DONE
 
 **文件：**
 - 修改：`crates/auto-lang/src/vm/codegen.rs`
@@ -408,7 +408,7 @@ git commit -m "feat(vm): handle UseKind::Py in codegen, emit CALL_NAT for python
 
 ---
 
-## Task 4: 运行时初始化 — `init_py_ffi()`
+## Task 4: 运行时初始化 — `init_py_ffi()` ✅ DONE
 
 **文件：**
 - 修改：`crates/auto-lang/src/lib.rs`
@@ -565,7 +565,7 @@ git commit -m "feat(py-ffi): add init_py_ffi runtime init with PyO3 shims (Plan 
 
 ---
 
-## Task 5: 端到端集成测试
+## Task 5: 端到端集成测试 ✅ DONE
 
 **文件：**
 - 创建：`crates/auto-lang/test/vm/21_python_ffi/001_json5/json5.at`
@@ -632,7 +632,7 @@ git commit -m "test: add E2E Python FFI test for json5 (dep → pip install → 
 
 ---
 
-## Task 6: 清理和计划更新
+## Task 6: 清理和计划更新 ✅ DONE
 
 **目标：** 清理所有 debug 日志，验证完整测试套件无回归，更新计划状态。
 

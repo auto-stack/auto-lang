@@ -251,6 +251,10 @@ pub struct Codegen {
     /// Populated when `use c <header.h>` is encountered, by loading the manifest
     /// and registering functions in the C-FFI runtime.
     c_ffi_functions: HashMap<String, u16>,
+
+    /// Plan 214: Python FFI function name → (module, full_path) mapping
+    /// Populated when `use.py module::{items}` is encountered.
+    py_native_map: HashMap<String, (String, String)>,
 }
 
 impl Codegen {
@@ -314,6 +318,7 @@ impl Codegen {
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
+            py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -406,6 +411,7 @@ impl Codegen {
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
+            py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -1326,7 +1332,7 @@ impl Codegen {
                     // Plan 118 Phase 4: Track type instances from type constructor calls
                     // Example: var duck = Duck(), var wing = Wing()
                     else if let Expr::Ident(type_name) = call.name.as_ref() {
-                        if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) {
+                        if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) && !self.py_native_map.contains_key(type_name.as_str()) {
                             // Create a TypeDecl with proper members from generic_registry
                             let type_decl = if self.generic_registry.has_template(type_name) {
                                 // Create a TypeDecl from the template
@@ -2924,6 +2930,12 @@ impl Codegen {
             return;
         }
 
+        // Plan 214: Handle Python imports
+        if matches!(use_stmt.kind, crate::ast::UseKind::Py) {
+            self.handle_py_import(use_stmt);
+            return;
+        }
+
         // Only handle Auto imports (not C/Rust use)
         if !matches!(use_stmt.kind, crate::ast::UseKind::Auto) {
             return;
@@ -3020,6 +3032,34 @@ impl Codegen {
             }
             if let Some(native_id) = cffi.get_function_id(&func.name) {
                 self.c_ffi_functions.insert(func.name.clone(), native_id);
+            }
+        }
+    }
+
+    /// Plan 214: Handle `use.py module::{items}` statement.
+    ///
+    /// Records each imported Python function name in `py_native_map` so that
+    /// when the codegen encounters a call to that function, it can emit
+    /// CALL_NAT instead of a regular CALL. Also sets return type to Str.
+    fn handle_py_import(&mut self, use_stmt: &crate::ast::Use) {
+        let module_path = if let Some(ref mp) = use_stmt.module_path {
+            mp.display()
+        } else if !use_stmt.paths.is_empty() {
+            use_stmt.paths.join(".")
+        } else {
+            return;
+        };
+
+        if !use_stmt.items.is_empty() {
+            for item in &use_stmt.items {
+                let local_name = item.as_str();
+                let full_path = format!("{}.{}", module_path, local_name);
+                self.py_native_map.insert(
+                    local_name.to_string(),
+                    (module_path.to_string(), full_path),
+                );
+                // Python FFI functions return String via the string-pool bridge
+                self.fn_return_types.insert(local_name.to_string(), Type::Str(0));
             }
         }
     }
@@ -5077,6 +5117,19 @@ impl Codegen {
                             Some(id)
                         }
                     }
+                    // Plan 214: Check py_native_map for Python FFI functions
+                    else if self.py_native_map.contains_key(name) {
+                        let qualified = format!("py.{}", name);
+                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        if let Some(id) = reg.resolve_qualified(&qualified) {
+                            drop(reg);
+                            Some(id)
+                        } else {
+                            drop(reg);
+                            let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            Some(id)
+                        }
+                    }
                     // Then check BIGVM_NATIVES (List methods, etc.)
                     // Plan 203 Phase 3: resolve_qualified checks qualified registry
                     // first, then falls back to short-name registry internally.
@@ -5362,6 +5415,10 @@ impl Codegen {
                         }
                         // Plan 212b: Rust FFI functions return String
                         if self.rust_native_map.contains_key(name) {
+                            self.last_expr_type = ObjectType::String;
+                        }
+                        // Plan 214: Python FFI functions return String
+                        if self.py_native_map.contains_key(name) {
                             self.last_expr_type = ObjectType::String;
                         }
                     }

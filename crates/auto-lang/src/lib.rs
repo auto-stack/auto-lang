@@ -383,6 +383,62 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
     Some(native_interface)
 }
 
+/// Plan 214: Initialize Python FFI bridge if there are use.py imports
+///
+/// Creates a PyFfiBridge, imports the requested Python modules,
+/// registers each function as a native shim, and returns the
+/// NativeInterface for merging into the VM.
+#[cfg(feature = "python")]
+fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::NativeInterface> {
+    let py_imports = session.py_imports();
+    if py_imports.is_empty() {
+        return None;
+    }
+
+    let mut bridge = match crate::py_ffi::PyFfiBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("Failed to create PyFfiBridge: {:?}", e);
+            return None;
+        }
+    };
+
+    // Import each Python module and register its functions
+    for (module_name, functions) in py_imports {
+        if let Err(e) = bridge.import_module(module_name) {
+            log::warn!("Failed to import Python module '{}': {:?}", module_name, e);
+            continue;
+        }
+
+        for func_name in functions {
+            match bridge.register_function(module_name, func_name) {
+                Ok(native_id) => {
+                    log::info!("Registered Python FFI: {}.{} (native_id={})", module_name, func_name, native_id);
+
+                    // Also register in BIGVM_NATIVES so codegen can find it
+                    let qualified = format!("py.{}", func_name);
+                    if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                        registry.register_with_id(&qualified, native_id);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to register Python function {}.{}: {:?}", module_name, func_name, e);
+                }
+            }
+        }
+    }
+
+    let mut native_interface = crate::vm::native::NativeInterface::new();
+    native_interface.merge(bridge.native_interface());
+
+    Some(native_interface)
+}
+
+#[cfg(not(feature = "python"))]
+fn init_py_ffi(_session: &compile::CompileSession) -> Option<crate::vm::native::NativeInterface> {
+    None
+}
+
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
 async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String)> {
@@ -395,11 +451,15 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
     session.collect_rust_imports(code)?; // Plan 212b: collect use.rust imports before resolving deps
+    session.collect_py_imports(code)?; // Plan 214: collect use.py imports
     session.resolve_deps(code)?; // Plan 212b: resolve dep statements (triggers compile_dep)
     session.resolve_uses(code)?;
 
     // Plan 212b Task 4: Initialize Rust FFI bridge if there are Rust imports
     let rust_ffi_native_interface = init_rust_ffi(&session);
+
+    // Plan 214: Initialize Python FFI bridge if there are Python imports
+    let py_ffi_native_interface = init_py_ffi(&session);
 
     // 1. Parse the code (with pre-loaded type_store from resolve_uses)
     let mut parser = Parser::new_with_type_store(code, session.type_store());
@@ -537,6 +597,11 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Plan 212b Task 4: Merge Rust FFI native interface into VM
     if let Some(rust_ni) = rust_ffi_native_interface {
         vm.merge_native_interface(&rust_ni);
+    }
+
+    // Plan 214: Merge Python FFI native interface into VM
+    if let Some(py_ni) = py_ffi_native_interface {
+        vm.merge_native_interface(&py_ni);
     }
 
     // Helper to extract stdout from capture buffer

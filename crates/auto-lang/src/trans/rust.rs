@@ -2954,6 +2954,11 @@ impl RustTrans {
                     self.uses.insert(full_path.into());
                 }
             }
+            UseKind::Py => {
+                return Err(AutoError::Msg(
+                    "use.py imports are not supported in Rust target".to_string()
+                ));
+            }
         }
         Ok(())
     }

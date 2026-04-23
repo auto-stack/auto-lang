@@ -8,6 +8,7 @@ pub enum UseKind {
     Auto,
     C,
     Rust,
+    Py, // Plan 214: Python FFI import
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +32,7 @@ impl fmt::Display for Use {
         match self.kind {
             UseKind::C => write!(f, " (kind c)")?,
             UseKind::Rust => write!(f, " (kind rust)")?,
+            UseKind::Py => write!(f, " (kind py)")?,
             _ => (),
         }
         // Plan 131: Display module_path if present
@@ -65,6 +67,7 @@ impl ToNode for Use {
         match self.kind {
             UseKind::C => node.set_prop("kind", Value::str("c")),
             UseKind::Rust => node.set_prop("kind", Value::str("rust")),
+            UseKind::Py => node.set_prop("kind", Value::str("py")),
             UseKind::Auto => {} // Default, omit
         }
 
@@ -91,6 +94,7 @@ impl AtomWriter for Use {
         match self.kind {
             UseKind::C => write!(f, "kind(\"c\"), ")?,
             UseKind::Rust => write!(f, "kind(\"rust\"), ")?,
+            UseKind::Py => write!(f, "kind(\"py\"), ")?,
             UseKind::Auto => {}
         }
         // Plan 131: Include module_path if present
