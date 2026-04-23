@@ -28,9 +28,11 @@ Plans covering documentation infrastructure, example projects, component galleri
 | 183 | Unified UI Examples | ⏳ | Progressive cross-platform UI examples for all 6 targets |
 | 188 | Tier 3 Blocker Resolution | ⏳ | Fix prerequisites blocking Tier 3 mini-app examples (011-016) |
 | 189 | Tier 4 Prerequisites | ⏳ | Resolve feature gaps for Tier 4 real-app examples (017-024) |
+| 202 | Auto Playground | ⏳ | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phases 0-6 in progress |
 
 ## Status Summary
-- Completed: 3 | Partial: 1 | Planned: 17 | Deprecated: 0
+- Completed: 3 | Partial: 2 | Planned: 18 | Deprecated: 0
 
 ## Key Achievements
 - Comptime examples (Plan 137) provide working reference code for compile-time features
@@ -42,3 +44,5 @@ Plans covering documentation infrastructure, example projects, component galleri
 - QuickStart Sprint A (Plan 141) is partially complete with remaining tutorial projects to implement
 - Unified UI Examples (Plan 183) and Tier blockers (Plans 188, 189) drive the progressive example roadmap
 - AI Mode (Plan 150) would enable better tooling integration for AI-assisted development
+- Plan 202: Auto Playground web-based code editor and transpilation viewer
+- Plan 209: Rewrite 33 ac-examples using modern language features

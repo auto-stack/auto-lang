@@ -14,9 +14,12 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 | 172 | A2TS Test Suite Reorganization | ✅ | Reorganize a2ts tests into categorized structure aligned with a2r/a2c; 24 tests passing |
 | 179 | Migrate vm_tests.rs to File-Based vm_file Tests | 🔧 | Migrate ~130 inline VM tests to file-based .at test files; ~167 file-based tests, vm_tests.rs slimmed |
 | 191 | Assert and Precise Linker Errors | ⏳ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
+| 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phases 0-6 in progress |
+| 210 | Book Listing Test Harness | ⏳ | Auto-discovery test harness for 1136 code listings |
+| 211 | Stdlib Test Coverage 80%+ | ⏳ | VM + a2r tests for all stdlib modules (~60 new tests) |
 
 ## Status Summary
-- Completed: 4 | Partial: 2 | Planned: 1 | Deprecated: 0
+- Completed: 4 | Partial: 3 | Planned: 3 | Deprecated: 0
 
 ## Key Achievements
 - All three transpiler test suites (a2r, a2c, a2ts) reorganized into consistent categorized directory structures with clear numbering
@@ -26,4 +29,7 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 ## Remaining Work
 - Complete AutoDown test suite with snapshot tests for Typst, HTML, and edge-case coverage
 - Finish VM file-based test migration for remaining inline tests that require AST inspection or bytecode-level verification
-- Add assert/assert_eq/assert_ne as native intrinsics and improve linker error spans to point to exact call sites
+- Add assert/assert_eq/assert_ne as native intrinsics and improve linker error spans to point to exact call sites (Plan 191)
+- Plan 209: Rewrite 33 ac-examples using modern language features
+- Plan 210: Build auto-discovery test harness for 1136 book code listings
+- Plan 211: Add ~60 stdlib tests to reach 80%+ coverage

@@ -22,14 +22,16 @@ AutoLang's type system evolved from a simple set of built-in primitives into a c
 | 059 | Generic Type Fields | Complete | Generic fields in structs, `*const T`/`*mut T` qualifiers, `impl<T>` blocks |
 | 060 | Closure Syntax | Complete | JS/TS-style `x => x * 2`, variable capture, type inference, C function pointer transpilation |
 | 061 | Generic Constraints | Complete | `<T: Spec>` bounds enabling Plan 051 Auto Flow iterator system |
+| 193 | Conv Type Conversion System | Planned | Unified `.to()` method with Conv<From, To> spec for type-safe conversions (DRAFT) |
+| 194 | Monomorphic Dispatch for Generic Methods | Complete | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
 
 ## Status
 
-**Implemented**: Plans 019, 021, 025, 026, 048, 049, 056, 057, 058, 059, 060, 061
+**Implemented**: Plans 019, 021, 025, 026, 048, 049, 056, 057, 058, 059, 060, 061, 194
 
 **Partial**: Plan 018 (`has` composition is a no-op in evaluator and transpiler), Plan 055 (infrastructure complete but type alias syntax blocks the seamless `List<T>` user experience)
 
-**Planned**: Full polymorphic arrays with `[]Flyer` trait objects; associated types in specs; deeper variable capture semantics for closures
+**Planned**: Plan 193 (Conv type conversion system); full polymorphic arrays with `[]Flyer` trait objects; associated types in specs; deeper variable capture semantics for closures
 
 ## Design
 
@@ -115,3 +117,5 @@ The implementation stores closure data in the evaluator indexed by unique ID to 
 - Plan 059: Generic Type Fields
 - Plan 060: Closure Syntax
 - Plan 061: Generic Constraints
+- [193-conv-type-conversion.md](../plans/193-conv-type-conversion.md)
+- [194-monomorphic-dispatch.md](../plans/194-monomorphic-dispatch.md)

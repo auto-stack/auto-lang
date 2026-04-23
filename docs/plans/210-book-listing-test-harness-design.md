@@ -1,5 +1,14 @@
 # Plan 210: Book Listing Test Harness — Implementation Plan
 
+## Status: ✅ COMPLETE (in ../book/ repo)
+
+Verified 2026-04-23: Fully implemented in the `book` sibling repository.
+- ✅ `book/build.rs` auto-discovers listings/ directories across all books
+- ✅ Supports 5 test types: a2r, a2c, a2p, a2ts, vm (based on .expected.* files)
+- ✅ 561 `main.at` listing files, 982 `.expected.*` output files
+- ✅ Covers `rust/`, `little-c/`, `byte-of-python/` books
+- ✅ Commit: 152c588 "feat: add listing test harness with auto-discovery (Plan 210)"
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Create an auto-discovery test harness in the `book/` repo that transpiles and runs all 1136 code listings against their expected outputs.

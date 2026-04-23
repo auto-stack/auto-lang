@@ -1,5 +1,13 @@
 # Plan 203: Native Registry Namespace 统一
 
+## Status: 🔧 PARTIAL (Phase 1 done)
+
+Verified 2026-04-23:
+- ✅ Phase 1: `QualifiedName` struct in `vm/qualified_name.rs` with path() and dot-separated module support
+- ❌ Phase 2: Use Resolver (make `use` statements participate in name resolution)
+- ❌ Phase 3: Codegen eliminate string lookup (7 hardcoded concatenation sites)
+- ❌ Phase 4: Migration + cleanup
+
 > 日期：2026-04-21
 > 状态：设计阶段
 > 依赖：Plan 200（VM 缺失特性）

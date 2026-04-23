@@ -1,5 +1,13 @@
 # Plan 205: DynamicComponent — AutoVM 驱动的动态 UI 渲染
 
+## Status: 🔧 PARTIAL (Phase 1 done)
+
+Verified 2026-04-23:
+- ✅ Phase 1: VmBridge in `ui/vm_bridge.rs` — creates AutoVM, stores widget state as GenericInstanceData, reads fields, calls handlers
+- ✅ AuraViewBuilder in `ui/aura_view_builder.rs`
+- ✅ DynamicComponent in `ui/dynamic.rs`
+- ❌ Phase 2-5: iced integration, hot reload, polish
+
 ## Overview
 
 将 AutoVM 集成到 UI 运行时中，实现 DynamicComponent，使 AURA 脚本无需经过 a2r 转译即可动态构建界面。目标是消除 AOT 编译延迟，实现 .at 文件修改后秒级生效的热重载开发体验。

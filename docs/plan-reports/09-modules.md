@@ -15,6 +15,8 @@ AutoLang's module system evolved through a deliberate architectural transformati
 | 131 | Module Path Syntax Design | Done | Design and implement pac/super/dep import prefixes with filesystem resolver |
 | 167 | Complete Module System Implementation | Done | pub use re-exports, wildcard imports, circular dependency detection, multi-file a2r transpilation |
 | 184 | Cross-Module Function Calls | Done | Compile dependency modules to bytecode and link via existing Linker infrastructure |
+| 198 | Native Metadata from Source | Planned | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 203 | Native Registry Namespace Unification | Planned | QualifiedName-based native function lookup replacing string concatenation |
 
 ## Status
 
@@ -22,7 +24,7 @@ AutoLang's module system evolved through a deliberate architectural transformati
 
 **Partial**: Full `pub` visibility enforcement across module boundaries is not yet enforced at compile time. The `PathPrefix::Dep` variant for external dependency resolution is deferred. String pool merging across modules is not yet implemented -- cross-module string constant references remain a known limitation.
 
-**Planned**: Deep package dependency resolution via `dep` declarations in `pac.at`, module versioning, remote module loading, and IDE integration for auto-import completion.
+**Planned**: Deep package dependency resolution via `dep` declarations in `pac.at`, module versioning, remote module loading, and IDE integration for auto-import completion. Plans 198 and 203 address native metadata derivation and registry namespace unification.
 
 ## Design
 
@@ -89,3 +91,5 @@ The implementation identified three categories of external functions: `#[vm]` na
 - Plan 131: Module Path Syntax Design
 - Plan 167: Complete Module System Implementation
 - Plan 184: Cross-Module Function Calls
+- [198-native-metadata-from-source.md](../plans/198-native-metadata-from-source.md)
+- [203-native-registry-namespace.md](../plans/203-native-registry-namespace.md)

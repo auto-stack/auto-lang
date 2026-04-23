@@ -2,7 +2,7 @@
 
 ## Overview
 
-AutoLang's language features span a wide range of syntax enhancements, type system extensions, and developer ergonomics improvements. The nineteen plans in this category cover everything from the foundational `ext` statement for OOP-style method extension, through type system unification (enum migration, string tiers, type conversion), to build infrastructure (caching, unified type context) and tooling (debug overlays, VSCode integration). Four plans are fully implemented, two are partially complete, one is deprecated, and twelve remain in planning or early implementation stages. Collectively, these plans aim to make AutoLang more expressive, safer, and more consistent with its own design philosophy of being a self-hosting language with a clean, minimal syntax.
+AutoLang's language features span a wide range of syntax enhancements, type system extensions, and developer ergonomics improvements. The twenty-four plans in this category cover everything from the foundational `ext` statement for OOP-style method extension, through type system unification (enum migration, string tiers, type conversion), to build infrastructure (caching, unified type context) and tooling (debug overlays, VSCode integration). Eleven plans are fully implemented, two are partially complete, one is deprecated, and ten remain in planning or early implementation stages. Collectively, these plans aim to make AutoLang more expressive, safer, and more consistent with its own design philosophy of being a self-hosting language with a clean, minimal syntax.
 
 ## Plan Index
 
@@ -27,10 +27,15 @@ AutoLang's language features span a wide range of syntax enhancements, type syst
 | 185 | VSCode Extension Reuses Vue Build | Planned | Eliminate duplicate webview build |
 | 190 | Extend use.rust for Rust Stdlib Access | Planned | Import any Rust stdlib type via use.rust |
 | 193 | Conv Type Conversion System | Draft | Unified .to() method with Conv spec for type-safe conversions |
+| 194 | Monomorphic Dispatch for Generic Methods | Complete | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
+| 197 | VM Enum/Data, Generic Lists, Pattern Debug | Complete | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
+| 206 | Closure HOF + call_closure API | Complete | call_closure public API, List.map/filter/reduce/find/for_each shims |
+| 207 | Enum Multi-Field Destructuring | Complete | Multi-binding destructuring and named arg construction for enum variants |
+| 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
 
 ## Status
 
-**Implemented**: Plans 035, 036, 084, 156, 168, 169 (six plans fully complete).
+**Implemented**: Plans 035, 036, 084, 156, 168, 169, 194, 197, 206, 207, 208 (eleven plans fully complete).
 
 **Partial**: Plans 040 (tag method parsing deferred, ext workaround works), 086 (parser/AST done, WidgetLoader not yet built).
 
@@ -133,3 +138,8 @@ Plan 086 proposes loading widget specifications from `stdlib/aura/widgets/*.at` 
 - Plan 185: VSCode Extension Reuses Vue Build
 - Plan 190: Extend use.rust for Rust Stdlib Access
 - Plan 193: Conv Type Conversion System
+- [194-monomorphic-dispatch.md](../plans/194-monomorphic-dispatch.md)
+- [197-vm-adt-generic-lists-pattern-debug.md](../plans/197-vm-adt-generic-lists-pattern-debug.md)
+- [206-closure-hof-call-closure-api.md](../plans/206-closure-hof-call-closure-api.md)
+- [207-enum-multi-field-destruct-construction.md](../plans/207-enum-multi-field-destruct-construction.md)
+- [208-result-heap-object.md](../plans/208-result-heap-object.md)

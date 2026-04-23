@@ -1,5 +1,13 @@
 # Plan 202: Auto Playground
 
+## Status: 🔧 PARTIAL
+
+Verified 2026-04-23:
+- ✅ crates/auto-playground/ with axum backend (Cargo.toml lists reqwest, axum)
+- ✅ crates/auto-playground/frontend/ with Vue 3 (App.vue, PlaygroundLayout.vue, usePlayground.ts)
+- ✅ Website VitePress component (website/.vitepress/theme/components/AutoPlayground.vue)
+- ❌ V2 deferred features (SourceMap, live preview, shareable URLs, multi-file) not yet done
+
 ## Overview
 
 A web-based playground for AutoLang — edit Auto code, run it via VM, and view transpiled output in Rust/C/TypeScript. Uses Vue 3 + shadcn-vue frontend with a Rust (axum) backend that directly reuses the existing auto-lang crate.

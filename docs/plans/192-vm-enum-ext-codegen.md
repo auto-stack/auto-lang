@@ -1,5 +1,13 @@
 # VM Enum & Ext Codegen 实现计划
 
+## Status: ✅ COMPLETE
+
+Verified 2026-04-23: All features implemented.
+- `Stmt::EnumDecl` codegen registers enum variants in `enum_values` and `generic_registry`
+- `Stmt::Ext` codegen compiles ext methods with `TypeName.method` mangling
+- `IS_VARIANT` opcode (0xB9) for `is` match on enum variants in `engine.rs`
+- Scalar and data-carrying enum variants both supported
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 使 `05_permission_check/main.at` 能在 AutoVM 中正确解析、编译和运行。

@@ -27,16 +27,21 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 118 | VM Test Failures Analysis | In Progress | Systematic fix of 76+ failing VM tests (183/197 passing) |
 | 127 | AutoVM TaskSystem Execution | Complete | Bytecode compilation and execution for Task/Msg systems |
 | 177 | VM File-Based Test Framework | Planned | Replace inline tests with file-based .expected.out/result/error assertions |
-| 192 | VM Enum and Ext Codegen | Planned | Enum declaration, ext method codegen, is-match for enum variants |
-| 194 | Monomorphic Dispatch for Generic Methods | Planned | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
+| 192 | VM Enum and Ext Codegen | Complete | Enum declaration, ext method codegen, is-match for enum variants (done per Plan 200 ref) |
+| 194 | Monomorphic Dispatch for Generic Methods | Complete | Compile-time type-based dispatch for HashMap/HashSet generic APIs (done per Plan 200 ref) |
+| 196 | AutoVM Interactive Debugger | Planned | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 197 | VM Enum/Data, Generic Lists, Pattern Debug | Complete | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
+| 199 | Plan Reports by Topic | Planned | Create 16 summary report files in docs/plan-reports/ |
+| 200 | VM Missing Features (Examples 14-33) | In Progress | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
+| 201 | VM Four Pillars (Enum/Closure/Result/Spec) | Complete | All 4 pillars: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 192, 194, 197, 201
 
-**Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
+**Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing), 200 (most tasks done, .map_err() and fs pending)
 
-**Planned**: 177, 192, 194
+**Planned**: 177, 196, 199
 
 ## Design
 
@@ -127,3 +132,8 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [177-vm-file-test-framework.md](../plans/177-vm-file-test-framework.md)
 - [192-vm-enum-ext-codegen.md](../plans/192-vm-enum-ext-codegen.md)
 - [194-monomorphic-dispatch.md](../plans/194-monomorphic-dispatch.md)
+- [196-plan-reports.md](../plans/196-plan-reports.md)
+- [197-vm-adt-generic-lists-pattern-debug.md](../plans/197-vm-adt-generic-lists-pattern-debug.md)
+- [199-vm-interactive-debugger.md](../plans/199-vm-interactive-debugger.md)
+- [200-vm-missing-features-examples-14-33.md](../plans/200-vm-missing-features-examples-14-33.md)
+- [201-vm-four-pillars-enum-closure-result-spec.md](../plans/201-vm-four-pillars-enum-closure-result-spec.md)

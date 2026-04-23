@@ -1,5 +1,15 @@
 # Plan 195: HTTP Client 实现 + auto.http 统一 + 异步支持
 
+## Status: 🔧 PARTIAL
+
+Verified 2026-04-23:
+- ✅ reqwest dependency added (Cargo.toml)
+- ✅ http_stream stdlib module with GET/POST/streaming/SSE support (implemented under Plans 152/154/159)
+- ✅ Native shims: shim_http_get_stream, shim_http_post_stream, etc. in vm/ffi/stdlib.rs
+- ❌ No auto.http unified module (only http_stream.at exists)
+- ❌ No RequestBuilder API
+- ❌ No async HTTP (Phase 3.2 blocked by Plan 196)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 实现完整的 HTTP Client（基于 reqwest），统一 auto.http 标准库 API，并为 HTTP Server/Client 添加 async 支持。

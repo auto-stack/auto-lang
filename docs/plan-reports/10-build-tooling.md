@@ -19,12 +19,15 @@ AutoLang's build infrastructure spans two major domains: the compiler-internal A
 | 146 | AutoShell SmartCmd Integration | Complete | Integrate sysinfo/uutils libraries for structured shell command output and cross-platform support |
 | 151 | Tauri IPC Mode for api-example | Planned | Generate complete Tauri IPC backend by transpiling api.at + db.at to Rust |
 | 186 | Switch from npm to bun for Vue/Web Projects | Planned | Replace npm with bun for faster installs via global cache hard-linking |
+| 212b | Rust FFI E2E Dynamic Loading | Planned | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 214 | Python FFI (use.py) | Planned | Embed Python interpreter in AutoVM (placeholder, blocked on Plan 212b) |
+| 216 | C FFI Build Pipeline Integration | Complete | CLI integration for C FFI bindgen into build pipeline |
 
 ## Status
 
-**Implemented**: 063 (partial), 064, 065, 066, 092, 146
+**Implemented**: 063 (partial), 064, 065, 066, 092, 146, 216
 **Partial**: 063 (MCU phases deferred)
-**Planned**: 093, 111, 112, 151, 186
+**Planned**: 093, 111, 112, 151, 186, 212b, 214
 
 ## Design
 
@@ -104,3 +107,6 @@ Plan 186 replaces npm with bun across all Vue/web project tooling in auto-man. B
 - Plan 146: `docs/plans/146-ash-smartcmd-integration.md`
 - Plan 151: `docs/plans/151-tauri-ipc-mode.md`
 - Plan 186: `docs/plans/186-bun-package-manager.md`
+- [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
+- [214-python-ffi-use-py.md](../plans/214-python-ffi-use-py.md)
+- [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)

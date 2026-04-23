@@ -16,6 +16,7 @@ AutoLang implements a complete Actor-based concurrency stack spanning eight impl
 | 126 | Phase 4 - Micro-Concurrency Engine | Complete | `.go` suffix operator, implicit worker pool, ownership-safe capture semantics |
 | 127 | AutoVM TaskSystem Execution | Partial | Bytecode compilation for Task/Msg systems, on-block compilation, ctx.reply(); ask/reply sync deferred |
 | 128 | Scheduler Message Dispatch Loop | Complete | Zero-shared-mutable-state scheduler with Tokio async, Arc + mpsc channels |
+| 195 | HTTP Client + auto.http Unification | Planned | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
 
 ## Status
 
@@ -23,7 +24,7 @@ AutoLang implements a complete Actor-based concurrency stack spanning eight impl
 
 **Partial**: Plan 127 Phase 4 (Ask/Reply synchronization) is deferred pending an async/sync bridge. The `.send()` fire-and-forget and `.go` patterns provide sufficient concurrency for current use cases, so blocking `ask().await` is postponed.
 
-**Planned**: Performance optimization of the scheduler under high task counts; pub visibility for task message types; wildcard re-exports; a2c (C transpiler) backend for `.go` using state machines and RTOS primitives.
+**Planned**: Plan 195 (HTTP client + auto.http unification); performance optimization of the scheduler under high task counts; pub visibility for task message types; wildcard re-exports; a2c (C transpiler) backend for `.go` using state machines and RTOS primitives.
 
 ## Design
 
@@ -154,3 +155,4 @@ The scheduler supports dynamic task spawning via `SystemCommand::Spawn`, with a 
 - Plan 126: `docs/plans/126-phase4-micro-concurrency.md`
 - Plan 127: `docs/plans/127-autovm-task-system-execution.md`
 - Plan 128: `docs/plans/128-scheduler-message-dispatch.md`
+- [195-http-client-async-unification.md](../plans/195-http-client-async-unification.md)

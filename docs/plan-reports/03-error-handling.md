@@ -11,6 +11,7 @@ Error handling in AutoLang spans three deeply interconnected domains: compiler d
 | 008 | Error Message System | Completed | Rust-compiler-grade error reporting with miette, error codes (E0001--E0305), source locations, "did you mean?" suggestions, multi-error display, warning system, and JSON output |
 | 009 | Runtime Error Integration | Partial | Replace `panic!` calls in evaluator with `RuntimeError` variants, source location tracking, and stack traces -- planned but not yet started |
 | 010 | Type Inference Subsystem | Completed | Full type inference with Hindley-Milner unification, ~2,770 LOC across 7 implementation stages, 285+ unit tests, integrated into parser |
+| 191 | Assert and Precise Linker Errors | Planned | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
 
 ## Status
 
@@ -18,7 +19,7 @@ Error handling in AutoLang spans three deeply interconnected domains: compiler d
 
 **Partial**: Runtime error integration in the evaluator (Plan 009). The `RuntimeError` enum is defined (E0301--E0305) and the infrastructure is in place, but the evaluator still contains `panic!` calls and returns raw `Value` instead of `AutoResult<Value>`. Span tracking in AST nodes and stack-trace capture are not yet implemented.
 
-**Planned**: LSP integration for real-time IDE diagnostics; C-implementation port of the error system; generic type parameters and trait-based type inference.
+**Planned**: LSP integration for real-time IDE diagnostics; C-implementation port of the error system; generic type parameters and trait-based type inference; assert/assert_eq/assert_ne intrinsics and precise linker error spans (Plan 191).
 
 ## Design
 
@@ -167,3 +168,4 @@ The estimated effort is 12--18 hours. This is the primary remaining gap in the e
 - docs/plans/008-error-message-system.md
 - docs/plans/009-runtime-error-integration.md
 - docs/plans/010-type-inference-subsystem.md
+- [191-assert-and-precise-linker-errors.md](../plans/191-assert-and-precise-linker-errors.md)

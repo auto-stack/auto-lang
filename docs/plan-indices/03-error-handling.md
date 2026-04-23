@@ -14,14 +14,17 @@ This report covers the three plans that built AutoLang's error reporting and typ
 Status codes: Completed, Planned, Partial/In Progress, Deprecated
 
 ## Status Summary
-- Completed: 2 | Partial: 1 | Planned: 0 | Deprecated: 0
+- Completed: 2 | Partial: 1 | Planned: 1 | Deprecated: 0
 
 ## Key Achievements
 - Comprehensive error type hierarchy: SyntaxError (E0001-E0007), TypeError (E0101-E0105), NameError (E0201-E0204), RuntimeError (E0301-E0305), all with miette-based colorful diagnostic output
 - Type inference subsystem with modular architecture (context, constraints, unification, expression inference, statement checking, type promotion, cast checking) across ~2,770 LOC and 285+ passing tests
 - "Did you mean?" suggestions for name errors and source code attachment for all error types
 
+| 191 | Assert and Precise Linker Errors | ⏳ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
+
 ## Remaining Work
 - Plan 009: Full integration of RuntimeError into evaluator to replace remaining `panic!` calls with proper error reporting and stack traces
+- Plan 191: Add assert intrinsics and improve linker error spans to point to exact call sites
 - Error recovery could be expanded to support multi-error reporting (continue compilation after first error)
 - Type inference error messages could be further improved with more contextual hints and suggestions

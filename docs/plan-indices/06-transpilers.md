@@ -29,9 +29,13 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 180 | a2rust-ui Generator | ⏳ | Wire RustGenerator into auto gen for Rust UI backend (GPUI examples) |
 | 181 | a2vscode Generator | ⏳ | VSCode extension generator from AURA widgets using a2vue + webview panel |
 | 187 | a2ts Vue Adapter | ⏳ | Replace Vue generator's inline JS with a2ts delegation for proper TypeScript output |
+| 204 | a2r Transpiler Completeness | ⏳ | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping |
+| 213 | a2py Python Transpiler Maturation | ⏳ | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
+| 215 | a2ts TypeScript Transpiler Maturation | ⏳ | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
+| 216 | C FFI Bindgen | ✅ | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
 
 ## Status Summary
-- Completed: 10 | Partial: 3 | Planned: 9 | Deprecated: 0
+- Completed: 11 | Partial: 3 | Planned: 12 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (10 tests), a2j (9 tests)
@@ -40,7 +44,8 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 - Test suite reorganization across all backends with categorized directory structures
 
 ## Remaining Work
-- Close a2r feature gap with a2c (advanced data types, closures, async patterns)
-- Complete a2ts migration from a2js with full TypeScript type annotations
+- Close a2r feature gap with a2c (Result, spec, enum, stdlib method mapping — Plan 204)
+- Complete a2ts migration with TypeScript type annotations and expanded test coverage (Plan 215)
+- Expand a2py Python transpiler from 18% to 80%+ coverage (Plan 213)
 - Implement UI backend generators (a2rust-ui, a2vscode) and migrate auto-ui
 - Add struct destructuring, generic constraints, and external trait impl to a2r

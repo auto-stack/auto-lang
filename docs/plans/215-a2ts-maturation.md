@@ -1,5 +1,13 @@
 # Plan 215: a2ts TypeScript 转译器成熟化
 
+## Status: 🔧 PARTIAL (85 tests, significant progress)
+
+Verified 2026-04-23:
+- ✅ 85 test files across 16 categorized directories in `test/a2ts/`
+- ✅ Covers: basics, types, control flow, strings, expressions, pattern matching, ownership, generics, option/result, collections, methods, specs, delegation, modules, type conversion, TS interop
+- ❌ Target is 80+ tests (nearly there)
+- ❌ Module import/export, async/await not yet done
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 将 a2ts（Auto→TypeScript 转译器）从当前 24 个测试提升到 80+ 个测试，补齐字符串、泛型约束、Option/Result、集合类型、模块系统等特性，达到 a2r 约 60% 的功能覆盖（排除 Rust 特有的所有权/FFI 特性）。

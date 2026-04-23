@@ -29,6 +29,8 @@ AutoLang's documentation and learning ecosystem spans 21 plans organized around 
 | 183 | Unified UI Examples | Planned | Progressive cross-platform UI examples for all 6 targets |
 | 188 | Tier 3 Blocker Resolution | Planned | Fix prerequisites blocking Tier 3 mini-app examples |
 | 189 | Tier 4 Prerequisites | Planned | Resolve feature gaps for Tier 4 real-app examples |
+| 202 | Auto Playground | Planned | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 209 | ac-examples Modernization | In Progress | Rewrite 33 examples using Plan 200/201 features; Phases 0-6 in progress |
 
 ## Status
 
@@ -36,7 +38,9 @@ AutoLang's documentation and learning ecosystem spans 21 plans organized around 
 
 **Partial**: Plan 141 (QuickStart Sprint A -- Sprint A tutorials partially done, Sprints B-D remain)
 
-**Planned**: Plans 032, 104, 105, 106, 107, 108, 109, 132, 144, 149, 157, 183, 188, 189
+**Partial**: Plan 209 (ac-examples modernization -- Phases 0-6 in progress, rewriting 33 examples)
+
+**Planned**: Plans 032, 104, 105, 106, 107, 108, 109, 132, 144, 149, 157, 183, 188, 189, 202
 
 ## Design
 
@@ -113,3 +117,5 @@ The Comptime Example Codebase (Plan 137, completed) provides 16 working example 
 - 183-unified-ui-examples.md
 - 188-tier3-blocker-resolution.md
 - 189-tier4-prerequisites.md
+- [202-playground-design.md](../plans/202-playground-design.md)
+- [209-example-modernization.md](../plans/209-example-modernization.md)

@@ -20,9 +20,11 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 | 119 | a2rs Backend Stdlib | 🔧 | Backend stdlib for HTTP, Redis, SQLite enabling server-side AutoLang applications |
 | 143 | Stdlib Widget Library | ⏳ | Migration of ~45 components from component-gallery into stdlib/aura/widgets (7 categories) |
 | 160 | Map Type | ✅ | Built-in Map<K,V> type as typed version of Object, with a2r HashMap generation support |
+| 191 | Assert Builtins | ⏳ | Add assert/assert_eq/assert_ne as native intrinsics |
+| 195 | HTTP Client + auto.http Unification | ⏳ | Upgrade to reqwest, unify http_stream, add async HTTP support |
 
 ## Status Summary
-- Completed: 8 | Partial: 2 | Planned: 3 | Deprecated: 0
+- Completed: 8 | Partial: 2 | Planned: 5 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform ext architecture enabling .at (interface) / .vm.at (VM impl) / .c.at (C impl) separation
@@ -35,3 +37,5 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 - Implement generic Slice<T> with range operators and borrow checking
 - Build out backend stdlib (Redis, SQLite) for server-side AutoLang
 - Migrate widget library from component-gallery into stdlib/aura/widgets
+- Add assert/assert_eq/assert_ne as native intrinsics (Plan 191)
+- Unify HTTP client with reqwest upgrade and async support (Plan 195)

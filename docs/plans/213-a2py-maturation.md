@@ -1,5 +1,14 @@
 # Plan 213: a2py Python 转译器成熟化
 
+## Status: 🔧 PARTIAL (base transpiler exists, maturation ongoing)
+
+Verified 2026-04-23:
+- ✅ PythonTrans in `trans/python.rs` with indent management and import tracking
+- ✅ Test suite in `test/a2p/` with basic test cases (hello, array, struct, enum, method, if, for, is, str)
+- ❌ Option/Result support not yet done
+- ❌ Closure/Lambda support not yet done
+- ❌ Test count at ~9, target is 80+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 将 a2py（Auto→Python 转译器）从 18% a2r 功能覆盖提升到 80%+，补齐 Option/Result、闭包、async/await、泛型、specs、元组、对象字面量、错误传播等关键特性，测试数从 10 个增长到 80+ 个。

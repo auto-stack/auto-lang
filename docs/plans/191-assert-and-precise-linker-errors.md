@@ -1,5 +1,13 @@
 # 191: Add assert builtins and precise linker error spans
 
+## Status: ✅ COMPLETE
+
+Verified 2026-04-23: All four components implemented end-to-end.
+- assert/assert_eq/assert_ne intrinsics registered in `vm/native.rs` with IDs 4-6
+- `Call.pos: Option<Pos>` field added in `ast/call.rs`, populated by parser
+- `RelocEntry.source_pos` carries call-site position from codegen to linker
+- `LinkError` struct with `source_pos` for "Undefined symbol" errors in `vm/loader.rs`
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add `assert`/`assert_eq`/`assert_ne` as native intrinsics (like `print`), and propagate source positions from AST through codegen into the linker so "Undefined symbol" errors point to the exact call site instead of a heuristic guess.

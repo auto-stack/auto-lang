@@ -15,6 +15,8 @@ This report covers the evolution of AutoLang's type system from basic `has` comp
 | 048 | Generic Type Definitions | ✅ | Full generic type support with type substitution; stdlib `tag May<T>` and `type List<T>` working |
 | 049 | May Operators to Generic Types | ✅ | Migrate `?T`, `.?`, `??` operators from hardcoded `Type::May` to generic `tag May<T>` system |
 | 055 | Storage Injection | ⏳ | Platform-aware storage strategy injection (MCU=Fixed, PC=Dynamic) for `List<T>` |
+| 193 | Conv Type Conversion System | ⏳ | Unified `.to()` method with `Conv<From, To>` spec for type-safe conversions (DRAFT) |
+| 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
 | 056 | Dot Expression Field Access | ✅ | Complete dot-expression and struct field access with read/write, distinguishing fields from methods |
 | 057 | Generic Specs | ✅ | Traits with type parameters (`spec Storage<T>`), monomorphized vtable generation in C transpiler |
 | 058 | Type Alias Syntax | ✅ | Implement `type X = Y` syntax for simplified type notation with parser, evaluator, and C transpiler |
@@ -25,7 +27,7 @@ This report covers the evolution of AutoLang's type system from basic `has` comp
 Status codes: Completed, Planned, Partial/In Progress, Deprecated
 
 ## Status Summary
-- Completed: 12 | Partial: 1 | Planned: 1 | Deprecated: 0
+- Completed: 13 | Partial: 1 | Planned: 2 | Deprecated: 0
 
 ## Key Achievements
 - Full generic type system: type parameters, substitution, constraints, and stdlib integration (`May<T>`, `List<T>`)
@@ -36,4 +38,5 @@ Status codes: Completed, Planned, Partial/In Progress, Deprecated
 ## Remaining Work
 - Plan 018: `has` composition needs actual composition logic in evaluator and transpiler (currently a no-op)
 - Plan 055: Storage injection for platform-aware allocation strategy selection in generic containers
+- Plan 193: Conv type conversion system still in DRAFT, awaiting final design decisions
 - Generic constraints could be extended with associated types and more complex bound expressions in the future

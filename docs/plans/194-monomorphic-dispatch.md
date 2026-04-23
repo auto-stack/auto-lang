@@ -1,5 +1,13 @@
 # 194: 基于单态化的泛型方法调用分发 (Monomorphic Dispatch for Generic Methods)
 
+## Status: ✅ COMPLETE
+
+Verified 2026-04-23: All features implemented.
+- `CALL_SPEC` opcode (0x73) for dynamic dispatch via vtable lookup
+- `try_mono_dispatch()` in codegen maps generic method calls to type-suffixed native names
+- HashMap/HashSet/List monomorphic aliases registered in `native_registry.rs`
+- Unified `HashMap.insert`/`HashMap.get` generic method support
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 让 HashMap/HashSet 等泛型集合支持统一的 `insert(key, value)` / `get(key)` API，由 codegen 根据泛型参数在编译期自动选择对应的 native shim，消除 `insert_str`/`insert_int` 这种手动类型分派。

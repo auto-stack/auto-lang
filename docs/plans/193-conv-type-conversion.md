@@ -1,6 +1,14 @@
 # Plan 193: Auto 类型转换系统 (`Conv<From, To>` + `.to()` 方法)
 
-## 状态: DRAFT
+## Status: ✅ COMPLETE (was marked DRAFT, but fully implemented)
+
+Verified 2026-04-23: All layers implemented.
+- `stdlib/auto/conv.at` defines `Conv<From, To>` and `TryConv<From, To>` specs
+- `stdlib/auto/conv.vm.at` declares VM-native `string_try_to_i64`
+- Parser supports `.to(Type)` syntax producing `Expr::To` AST node
+- Type inference returns `target_type` for `Expr::To`
+- Codegen maps `(src_type, target_type)` pairs to conversion opcodes (TYPE_TO_STR, TYPE_F64_TO_I32, etc.)
+- `vm/ffi/convert.rs` provides `VMConvertible` trait for FFI marshalling
 
 ## 背景
 

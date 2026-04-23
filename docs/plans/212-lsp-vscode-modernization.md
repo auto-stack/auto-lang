@@ -1,5 +1,15 @@
 # Plan 212: LSP + VSCode Extension 现代化 — 同步 Auto 语言最新特性
 
+## Status: ✅ COMPLETE (in ../auto-vscode/ repo)
+
+Verified 2026-04-23: Fully implemented in the `auto-vscode` sibling repository.
+- ✅ TextMate grammar: `auto.tmLanguage.json` with full syntax highlighting
+- ✅ Language configuration: `language-configuration.json` (brackets, comments, folding)
+- ✅ Code snippets: `snippets/auto.code-snippets.json`
+- ✅ LSP server: `bin/windows/auto-lsp.exe`
+- ✅ VSCode extension v0.2.2 published with Build/Run commands
+- ✅ Commits: 512d2ca (snippets), 77f1e1f (TextMate grammar rewrite)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 让 VSCode 打开 `.at` 文件不再报红，补全/悬停/跳转覆盖所有 Auto 关键字，TextMate 语法高亮完整支持 f-string、三引号、`is`/`spec`/`ext` 等新语法。

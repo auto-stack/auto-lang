@@ -14,9 +14,11 @@ AutoLang's module system evolved from a monolithic Universe-based architecture t
 | 131 | Module Path Syntax Design | ✅ | Design for relative (super), package-relative (pac), and dependency imports |
 | 167 | Complete Module System Implementation | ✅ | Folder modules, pub use re-exports, wildcard imports, circular dependency detection |
 | 184 | Cross-Module Function Calls | ✅ | Compile dependency modules to bytecode and link via existing Linker infrastructure |
+| 198 | Native Metadata from Source | ⏳ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 203 | Native Registry Namespace Unification | ⏳ | QualifiedName-based native function lookup replacing string concatenation |
 
 ## Status Summary
-- Completed: 7 | Partial: 0 | Planned: 0 | Deprecated: 0
+- Completed: 7 | Partial: 0 | Planned: 2 | Deprecated: 0
 
 ## Key Achievements
 - Complete removal of the monolithic Universe type, replaced by TypeStore + InferenceContext + Database + AutoCache
@@ -27,3 +29,5 @@ AutoLang's module system evolved from a monolithic Universe-based architecture t
 - pub visibility enforcement and pub use re-export expansion (Phase 4-5 from Plan 131)
 - Wildcard imports (use db: *) limited to .as scripts; full .at support pending
 - Deep module path resolution for package dependencies via dep declarations in pac.at
+- Plan 198: Eliminate hardcoded native metadata by deriving from source declarations
+- Plan 203: Unify native registry with QualifiedName-based lookup

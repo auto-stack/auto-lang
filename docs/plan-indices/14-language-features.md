@@ -26,9 +26,14 @@ Plans covering core language syntax additions and enhancements, from the ext sta
 | 185 | VSCode Extension Reuses Vue Build | ⏳ | Eliminate duplicate webview build by reusing gen/vue/dist output |
 | 190 | Extend use.rust for Rust Stdlib Access | ⏳ | Import any Rust stdlib type/function via use.rust with compile-time type awareness |
 | 193 | Conv Type Conversion System | ⏳ | Unified `.to()` method with `Conv<From, To>` spec for type-safe conversions |
+| 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
+| 197 | VM Enum/Data, Lists, Pattern, Debug | ✅ | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
+| 206 | Closure HOF + call_closure API | ✅ | call_closure public API, List.map/filter/reduce/find/for_each shims |
+| 207 | Enum Multi-Field Destructuring | ✅ | Multi-binding destructuring and named arg construction for enum variants |
+| 208 | Result Heap Object | ✅ | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
 
 ## Status Summary
-- Completed: 4 | Partial: 2 | Planned: 12 | Deprecated: 1
+- Completed: 8 | Partial: 2 | Planned: 12 | Deprecated: 1
 
 ## Key Achievements
 - `ext` statement (Plan 035) enables idiomatic OOP-style API design, completed in just 2 days
@@ -40,3 +45,4 @@ Plans covering core language syntax additions and enhancements, from the ext sta
 - String Type Refactoring (Plan 155) introduces a three-tier string system affecting the entire type system
 - Conv Type Conversion (Plan 193) is still in draft, awaiting final design decisions
 - AutoCache (Plan 082) and Unified Type Context (Plan 084) are foundational build/infra improvements
+- Debug Mode (Plan 182) and VSCode Extension Reuse (Plan 185) are UI tooling improvements

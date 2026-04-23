@@ -21,6 +21,8 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 | 119 | a2rs Backend Stdlib | Partial | Backend stdlib for HTTP, Redis, SQLite enabling server-side AutoLang applications |
 | 143 | Stdlib Widget Library | Planned | Migration of ~45 components from component-gallery into stdlib/aura/widgets (7 categories) |
 | 160 | Map Type | Done | Built-in Map<K,V> type as typed version of Object, with a2r HashMap generation support |
+| 191 | Assert Builtins | Planned | Add assert/assert_eq/assert_ne as native intrinsics |
+| 195 | HTTP Client + auto.http Unification | Planned | Upgrade to reqwest, unify http_stream, add async HTTP support |
 
 ## Status
 
@@ -28,7 +30,7 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 
 **Partial**: Plan 042 (dstr has core byte-level API but lacks from_str/to_str/iteration), Plan 054 (core infrastructure complete -- storage types, target detection, environment injection -- but config block syntax and startup code generation are not started), Plan 119 (HTTP server/client FFI done for VM; Redis and SQLite are design-only, no Rust implementations yet)
 
-**Planned**: Plan 043 (Slice<T> with range operators and borrow semantics), Plan 143 (widget library migration from component-gallery)
+**Planned**: Plan 043 (Slice<T> with range operators and borrow semantics), Plan 143 (widget library migration from component-gallery), Plan 191 (assert builtins), Plan 195 (HTTP client + auto.http unification)
 
 ## Design
 
@@ -108,3 +110,5 @@ Plan 143 defines the migration of approximately 45 UI components from `examples/
 - Plan 119: a2rs Backend Stdlib
 - Plan 143: Stdlib Widget Library
 - Plan 160: Map Type
+- [191-assert-and-precise-linker-errors.md](../plans/191-assert-and-precise-linker-errors.md)
+- [195-http-client-async-unification.md](../plans/195-http-client-async-unification.md)

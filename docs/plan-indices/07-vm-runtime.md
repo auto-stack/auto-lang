@@ -26,11 +26,16 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 118 | VM Test Failures Analysis | 🔧 | Systematic fix of 76+ failing VM tests (183/197 passing) |
 | 127 | AutoVM TaskSystem Execution | ✅ | Bytecode compilation and execution for Task/Msg systems |
 | 177 | VM File-Based Test Framework | ⏳ | Replace inline tests with file-based .expected.out/result/error assertions |
-| 192 | VM Enum & Ext Codegen | ⏳ | Enum declaration, ext method codegen, is-match for enum variants |
-| 194 | Monomorphic Dispatch for Generic Methods | ⏳ | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
+| 192 | VM Enum & Ext Codegen | ✅ | Enum declaration, ext method codegen, is-match for enum variants (done per Plan 200 ref) |
+| 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs (done per Plan 200 ref) |
+| 196 | AutoVM Interactive Debugger | ⏳ | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 197 | VM Enum/Data, Generic Lists, Pattern Debug | ✅ | All 5 phases done: string eq, method chaining, struct debug, enum data, List<UserType>, pattern destruct, Option<T> |
+| 199 | Plan Reports by Topic | ⏳ | Create 16 summary report files in docs/plan-reports/ |
+| 200 | VM Missing Features (Examples 14-33) | 🔧 | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
+| 201 | VM Four Pillars (Enum/Closure/Result/Spec) | ✅ | All 4 pillars complete: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
 
 ## Status Summary
-- Completed: 14 | Partial: 4 | Planned: 3 | Deprecated: 0
+- Completed: 18 | Partial: 5 | Planned: 2 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity
@@ -39,5 +44,6 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 ## Remaining Work
 - File-based test framework (Plan 177) to replace 3000+ lines of inline tests with maintainable .expected.* files
-- Enum and ext method codegen (Plan 192) to support pattern matching on enum variants with data payloads
-- Monomorphic dispatch (Plan 194) to enable unified generic APIs like HashMap.insert() without type suffixes
+- AutoVM Interactive Debugger (Plan 196) for SOURCE_LINE opcodes, call stack tracing, and AI agent debug API
+- Plan 200 remaining: .map_err() closure callback and fs module aliases
+- Plan Reports (Plan 199) to create 16 topic-based summary reports
