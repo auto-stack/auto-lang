@@ -2,6 +2,9 @@ mod value;
 
 pub use value::*;
 
+mod nano_value;
+pub use nano_value::*;
+
 mod to_value;
 pub use to_value::ToAutoValue;
 
