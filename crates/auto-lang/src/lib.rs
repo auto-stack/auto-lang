@@ -44,6 +44,8 @@ pub mod error;
 pub mod session;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
 pub mod aura;
+// Plan 217: A2UI Protocol Bridge (AURA ↔ A2UI JSON)
+pub mod a2ui;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
 pub mod ui_gen;
 // Plan 152: Server-Sent Events (SSE) 解析

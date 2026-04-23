@@ -1,0 +1,139 @@
+widget App {
+    msg Msg { ToggleText, ToggleButton, ToggleInput, ToggleCol, ClearAll }
+
+    model {
+        var has_text bool = false
+        var has_button bool = false
+        var has_input bool = false
+        var has_col bool = false
+        var show_empty bool = true
+    }
+
+    view {
+        col {
+            class: "h-screen bg-gray-100"
+
+            row {
+                h1 "A2UI Composer"
+                class: "px-4 py-3 bg-white border-b shadow-sm items-center justify-between"
+
+                row {
+                    button "Clear" { onclick: .ClearAll, class: "px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm ml-2" }
+                    class: "gap-2"
+                }
+            }
+
+            row {
+                class: "flex-1 overflow-hidden"
+
+                col {
+                    class: "w-56 bg-white border-r overflow-y-auto p-4 gap-3"
+                    h3 "Components"
+                    class: "text-sm font-semibold text-gray-500 mb-2"
+                    button "Text" { onclick: .ToggleText, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                    button "Button" { onclick: .ToggleButton, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                    button "Input" { onclick: .ToggleInput, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                    button "Column" { onclick: .ToggleCol, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                }
+
+                col {
+                    class: "flex-1 p-6 overflow-y-auto gap-2"
+
+                    if .show_empty {
+                        text "Toggle components in the palette to build your UI"
+                        class: "text-gray-400 text-center mt-20"
+                    }
+
+                    if .has_text {
+                        row {
+                            class: "p-3 border border-gray-200 rounded bg-white"
+                            text "Hello World"
+                        }
+                    }
+                    if .has_button {
+                        row {
+                            class: "p-3 border border-gray-200 rounded bg-white"
+                            button "Click me" { class: "px-4 py-2 bg-blue-500 text-white rounded" }
+                        }
+                    }
+                    if .has_input {
+                        row {
+                            class: "p-3 border border-gray-200 rounded bg-white"
+                            input { placeholder: "Enter text...", class: "px-3 py-2 border rounded w-full" }
+                        }
+                    }
+                    if .has_col {
+                        row {
+                            class: "p-3 border border-gray-200 rounded bg-white"
+                            col {
+                                class: "p-4 border border-dashed border-gray-300 rounded bg-white"
+                                text "Column content"
+                                class: "text-sm text-gray-600"
+                            }
+                        }
+                    }
+                }
+
+                col {
+                    class: "w-64 bg-white border-l overflow-y-auto p-4 gap-3"
+                    h3 "Inspector"
+                    class: "text-sm font-semibold text-gray-500 mb-2"
+
+                    text "Active components"
+                    class: "text-xs text-gray-400 mb-2"
+
+                    if .has_text {
+                        row {
+                            class: "p-2 bg-gray-50 rounded border text-sm"
+                            text "Text: Hello World"
+                        }
+                    }
+                    if .has_button {
+                        row {
+                            class: "p-2 bg-gray-50 rounded border text-sm"
+                            text "Button: Click me"
+                        }
+                    }
+                    if .has_input {
+                        row {
+                            class: "p-2 bg-gray-50 rounded border text-sm"
+                            text "Input: Enter text..."
+                        }
+                    }
+                    if .has_col {
+                        row {
+                            class: "p-2 bg-gray-50 rounded border text-sm"
+                            text "Column"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .ToggleText -> {
+            has_text = has_text == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+        }
+        .ToggleButton -> {
+            has_button = has_button == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+        }
+        .ToggleInput -> {
+            has_input = has_input == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+        }
+        .ToggleCol -> {
+            has_col = has_col == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+        }
+        .ClearAll -> {
+            has_text = false
+            has_button = false
+            has_input = false
+            has_col = false
+            show_empty = true
+        }
+    }
+}

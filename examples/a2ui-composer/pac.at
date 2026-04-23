@@ -1,0 +1,4 @@
+name: "a2ui-composer"
+version: "0.1.0"
+scene: "ui"
+backend: ["vue"]
