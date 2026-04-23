@@ -457,6 +457,22 @@ pub fn register_builtin_natives() {
     registry.register_with_id("File.is_dir", 1009);
     registry.register_with_id("File.append_text", 1011);
 
+    // Plan 200 Task 3.4: fs module aliases (fs.read -> File.read_text, etc.)
+    registry.register_with_id("fs.read_text", 1000);
+    registry.register_with_id("fs.read", 1000);
+    registry.register_with_id("fs.write_text", 1001);
+    registry.register_with_id("fs.write", 1001);
+    registry.register_with_id("fs.append_text", 1011);
+    registry.register_with_id("fs.append", 1011);
+    registry.register_with_id("fs.exists", 1002);
+    registry.register_with_id("fs.delete", 1003);
+    registry.register_with_id("fs.create_dir", 1004);
+    registry.register_with_id("fs.read_bytes", 1005);
+    registry.register_with_id("fs.write_bytes", 1006);
+    registry.register_with_id("fs.copy", 1007);
+    registry.register_with_id("fs.size", 1008);
+    registry.register_with_id("fs.is_dir", 1009);
+
     // Env functions (1100-1102)
     registry.register_with_id("auto.env.get", 1100);
     registry.register_with_id("auto.env.set", 1101);
