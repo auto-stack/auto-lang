@@ -58,6 +58,9 @@ pub mod mode;
 pub mod multi_mode;
 // Plan 081 Phase 5: FFI layer for cross-mode function calls
 pub mod ffi;
+// Plan 214: Python FFI via PyO3 (optional, requires `--features python`)
+#[cfg(feature = "python")]
+pub mod py_ffi;
 // Plan 073 Phase 9.3: Execution engine selection (AutoVM vs Evaluator)
 pub mod execution_engine;
 pub mod hash;
