@@ -11,6 +11,7 @@ use std::sync::RwLock;
 /// Decode a tagged string index from stack value.
 /// LOAD_STR pushes string indices as negative tagged values: -(str_idx as i32) - 1
 /// This function decodes the tag to get the actual string pool index.
+#[cfg(not(feature = "nanbox"))]
 #[inline]
 fn decode_str_idx(bits: i32) -> usize {
     if bits < 0 {
@@ -20,11 +21,25 @@ fn decode_str_idx(bits: i32) -> usize {
     }
 }
 
+/// Under nanbox, decode from a NanoValue popped from the stack.
+#[cfg(feature = "nanbox")]
+#[inline]
+fn decode_str_idx_nv(nv: auto_val::NanoValue) -> usize {
+    auto_val::decode_string(nv) as usize
+}
+
 /// Encode a string pool index as a tagged value (negative).
-/// This function encodes the index so it can be identified as a string reference.
+#[cfg(not(feature = "nanbox"))]
 #[inline]
 fn encode_str_idx(idx: i32) -> i32 {
     -(idx + 1)
+}
+
+/// Under nanbox, encode as a NanoValue string tag.
+#[cfg(feature = "nanbox")]
+#[inline]
+fn encode_str_idx_nv(idx: u32) -> auto_val::NanoValue {
+    auto_val::encode_string(idx)
 }
 
 // Plan 094: ID ranges for hybrid FFI
@@ -807,48 +822,107 @@ pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let right = task.ram.pop_i32();
-    let left = task.ram.pop_i32();
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let right = task.ram.pop_i32();
+        let left = task.ram.pop_i32();
 
-    let equal = if left < 0 && right < 0 {
-        // Both are tagged string indices — compare actual string contents
-        let left_str = vm.get_string(decode_str_idx(left) as u16)
-            .map(|b| String::from_utf8_lossy(&b).to_string());
-        let right_str = vm.get_string(decode_str_idx(right) as u16)
-            .map(|b| String::from_utf8_lossy(&b).to_string());
-        left_str.as_deref() == right_str.as_deref()
-    } else {
-        left == right
-    };
+        let equal = if left < 0 && right < 0 {
+            // Both are tagged string indices — compare actual string contents
+            let left_str = vm.get_string(decode_str_idx(left) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            let right_str = vm.get_string(decode_str_idx(right) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            left_str.as_deref() == right_str.as_deref()
+        } else {
+            left == right
+        };
 
-    if !equal {
-        return Err(VMError::RuntimeError(
-            format!("Assertion failed: {} != {}", left, right)
-        ));
+        if !equal {
+            return Err(VMError::RuntimeError(
+                format!("Assertion failed: {} != {}", left, right)
+            ));
+        }
+        Ok(())
     }
-    Ok(())
+
+    #[cfg(feature = "nanbox")]
+    {
+        let right_nv = task.ram.pop_nv();
+        let left_nv = task.ram.pop_nv();
+
+        let left_is_str = auto_val::is_string(left_nv);
+        let right_is_str = auto_val::is_string(right_nv);
+
+        let equal = if left_is_str && right_is_str {
+            let left_str = vm.get_string(auto_val::decode_string(left_nv) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            let right_str = vm.get_string(auto_val::decode_string(right_nv) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            left_str.as_deref() == right_str.as_deref()
+        } else {
+            // Compare as i32 values
+            auto_val::decode_i32(left_nv) == auto_val::decode_i32(right_nv)
+        };
+
+        if !equal {
+            return Err(VMError::RuntimeError(
+                format!("Assertion failed: {:?} != {:?}", left_nv, right_nv)
+            ));
+        }
+        Ok(())
+    }
 }
 
 pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let right = task.ram.pop_i32();
-    let left = task.ram.pop_i32();
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let right = task.ram.pop_i32();
+        let left = task.ram.pop_i32();
 
-    let equal = if left < 0 && right < 0 {
-        let left_str = vm.get_string(decode_str_idx(left) as u16)
-            .map(|b| String::from_utf8_lossy(&b).to_string());
-        let right_str = vm.get_string(decode_str_idx(right) as u16)
-            .map(|b| String::from_utf8_lossy(&b).to_string());
-        left_str.as_deref() == right_str.as_deref()
-    } else {
-        left == right
-    };
+        let equal = if left < 0 && right < 0 {
+            let left_str = vm.get_string(decode_str_idx(left) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            let right_str = vm.get_string(decode_str_idx(right) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            left_str.as_deref() == right_str.as_deref()
+        } else {
+            left == right
+        };
 
-    if equal {
-        return Err(VMError::RuntimeError(
-            format!("Assertion failed: {} == {}", left, right)
-        ));
+        if equal {
+            return Err(VMError::RuntimeError(
+                format!("Assertion failed: {} == {}", left, right)
+            ));
+        }
+        Ok(())
     }
-    Ok(())
+
+    #[cfg(feature = "nanbox")]
+    {
+        let right_nv = task.ram.pop_nv();
+        let left_nv = task.ram.pop_nv();
+
+        let left_is_str = auto_val::is_string(left_nv);
+        let right_is_str = auto_val::is_string(right_nv);
+
+        let equal = if left_is_str && right_is_str {
+            let left_str = vm.get_string(auto_val::decode_string(left_nv) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            let right_str = vm.get_string(auto_val::decode_string(right_nv) as u16)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            left_str.as_deref() == right_str.as_deref()
+        } else {
+            auto_val::decode_i32(left_nv) == auto_val::decode_i32(right_nv)
+        };
+
+        if equal {
+            return Err(VMError::RuntimeError(
+                format!("Assertion failed: {:?} == {:?}", left_nv, right_nv)
+            ));
+        }
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -1888,13 +1962,9 @@ pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Stack: hashmap_id, key_str_id, value_str_id -> result (0)
 pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let value_str_bits = task.ram.pop_i32();
-    let key_str_bits = task.ram.pop_i32();
+    let value_str_idx = task.ram.pop_str_idx();
+    let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string indices
-    let key_str_idx = decode_str_idx(key_str_bits);
-    let value_str_idx = decode_str_idx(value_str_bits);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         // Get strings from strings pool
@@ -1925,11 +1995,8 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let value = task.ram.pop_i32();
-    let key_str_bits = task.ram.pop_i32();
+    let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index for key
-    let key_str_idx = decode_str_idx(key_str_bits);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         // Get key string from pool
@@ -1953,11 +2020,8 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Stack: hashmap_id, key_str_id -> value (0 if not found)
 pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let key_str_bits = task.ram.pop_i32();
+    let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_str_idx = decode_str_idx(key_str_bits);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -1991,11 +2055,8 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: hashmap_id, key_str_id -> value (0 if not found)
 pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let key_str_bits = task.ram.pop_i32();
+    let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_str_idx = decode_str_idx(key_str_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -2025,11 +2086,8 @@ pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: hashmap_id, key_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let key_str_bits = task.ram.pop_i32();
+    let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_str_idx = decode_str_idx(key_str_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -2054,11 +2112,8 @@ pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Stack: hashmap_id, key_str_id -> result (0)
 pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let key_str_bits = task.ram.pop_i32();
+    let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_str_idx = decode_str_idx(key_str_bits);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let mut guard = obj.write().unwrap();
@@ -2138,11 +2193,8 @@ pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Insert a string element into the set
 /// Stack: hashset_id, elem_str_id -> result (0)
 pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let elem_str_bits = task.ram.pop_i32();
+    let elem_str_idx = task.ram.pop_str_idx();
     let set_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let elem_str_idx = decode_str_idx(elem_str_bits);
 
     if let Some(obj) = vm.get_heap_object(set_id) {
         // Get string from pool
@@ -2164,11 +2216,8 @@ pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Check if element exists in the set
 /// Stack: hashset_id, elem_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let elem_str_bits = task.ram.pop_i32();
+    let elem_str_idx = task.ram.pop_str_idx();
     let set_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let elem_str_idx = decode_str_idx(elem_str_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(set_id) {
         let guard = obj.read().unwrap();
@@ -2192,11 +2241,8 @@ pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Remove an element from the set
 /// Stack: hashset_id, elem_str_id -> result (0)
 pub fn shim_hashset_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let elem_str_bits = task.ram.pop_i32();
+    let elem_str_idx = task.ram.pop_str_idx();
     let set_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let elem_str_idx = decode_str_idx(elem_str_bits);
 
     if let Some(obj) = vm.get_heap_object(set_id) {
         let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
@@ -2276,11 +2322,8 @@ pub fn shim_stringbuilder_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Append a string to the StringBuilder
 /// Stack: sb_id, str_id -> result (0)
 pub fn shim_stringbuilder_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_bits = task.ram.pop_i32();
+    let str_idx = task.ram.pop_str_idx();
     let sb_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let str_idx = decode_str_idx(str_bits);
 
     if let Some(obj) = vm.get_heap_object(sb_id) {
         let bytes = vm.strings.read().unwrap().get(str_idx).cloned()
@@ -2397,9 +2440,8 @@ pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let str_idx = vm.strings.read().unwrap().len() as i32;
     vm.strings.write().unwrap().push(result_str.into_bytes());
 
-    // Return as tagged string index (negative)
-    let tagged_idx = encode_str_idx(str_idx);
-    task.ram.push_i32(tagged_idx);
+    // Return as tagged string index
+    task.ram.push_str_idx(str_idx as u32);
     Ok(())
 }
 
@@ -2611,11 +2653,8 @@ pub fn shim_btreemap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Stack: btreemap_id, key_str_id, value -> result (0)
 pub fn shim_btreemap_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let value = task.ram.pop_i32();
-    let key_bits = task.ram.pop_i32();
+    let key_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_idx = decode_str_idx(key_bits);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
@@ -2636,11 +2675,8 @@ pub fn shim_btreemap_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Get a value by key
 /// Stack: btreemap_id, key_str_id -> value (0 if not found)
 pub fn shim_btreemap_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key_bits = task.ram.pop_i32();
+    let key_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_idx = decode_str_idx(key_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -2664,11 +2700,8 @@ pub fn shim_btreemap_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Check if key exists
 /// Stack: btreemap_id, key_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_btreemap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key_bits = task.ram.pop_i32();
+    let key_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_idx = decode_str_idx(key_bits);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -2692,11 +2725,8 @@ pub fn shim_btreemap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Remove a key-value pair
 /// Stack: btreemap_id, key_str_id -> result (0)
 pub fn shim_btreemap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key_bits = task.ram.pop_i32();
+    let key_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
-
-    // Decode tagged string index
-    let key_idx = decode_str_idx(key_bits);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
@@ -2839,9 +2869,7 @@ pub fn shim_btreemap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
 /// Get the length of a string from the constant pool.
 /// Stack: str_idx (tagged) -> length (as i32)
 pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_bits = task.ram.pop_i32();
-    // Decode tagged string index
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let str_idx = task.ram.pop_str_idx() as u16;
 
     if let Some(bytes) = vm.get_string(str_idx) {
         task.ram.push_i32(bytes.len() as i32);
@@ -2855,27 +2883,60 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Supports both constant pool strings (tagged index) and heap-based mutable Strings (SpecializedStringBuilder).
 /// Stack: str_idx_or_sb_id -> length (as i32, char count for heap, byte count for const pool)
 pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let bits = task.ram.pop_i32();
+    // Under non-nanbox: raw i32 is either a heap object ID (positive) or tagged string index (negative).
+    // Under nanbox: NanoValue is either an int (heap ID) or a string tag.
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let bits = task.ram.pop_i32();
 
-    // First try as heap object (mutable String)
-    let sb_id = bits as u64;
-    if let Some(obj) = vm.get_heap_object(sb_id) {
-        let guard = obj.read().unwrap();
-        if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
-            // Return character count (not byte count) for mutable String
-            task.ram.push_i32(sb.buffer.chars().count() as i32);
+        // First try as heap object (mutable String)
+        let sb_id = bits as u64;
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let guard = obj.read().unwrap();
+            if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+                task.ram.push_i32(sb.buffer.chars().count() as i32);
+                return Ok(());
+            }
+        }
+
+        // Fall back to constant pool string (tagged index)
+        let str_idx = decode_str_idx(bits) as u16;
+        if let Some(bytes) = vm.get_string(str_idx) {
+            task.ram.push_i32(bytes.len() as i32);
+        } else {
+            task.ram.push_i32(0);
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+
+        // If it's a string, compute byte length directly
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv) as u16;
+            if let Some(bytes) = vm.get_string(str_idx) {
+                task.ram.push_i32(bytes.len() as i32);
+            } else {
+                task.ram.push_i32(0);
+            }
             return Ok(());
         }
-    }
 
-    // Fall back to constant pool string (tagged index)
-    let str_idx = decode_str_idx(bits) as u16;
-    if let Some(bytes) = vm.get_string(str_idx) {
-        task.ram.push_i32(bytes.len() as i32);
-    } else {
+        // Otherwise try as heap object ID
+        let sb_id = auto_val::decode_i32(nv) as u64;
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let guard = obj.read().unwrap();
+            if let Some(sb) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+                task.ram.push_i32(sb.buffer.chars().count() as i32);
+                return Ok(());
+            }
+        }
+
         task.ram.push_i32(0);
+        Ok(())
     }
-    Ok(())
 }
 
 /// Plan 118 Phase 4: Create a new mutable string with initial content and capacity.
@@ -2886,8 +2947,7 @@ pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _capacity = task.ram.pop_i32();
 
     // Pop initial string index
-    let str_bits = task.ram.pop_i32();
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let str_idx = task.ram.pop_str_idx() as u16;
 
     // Get initial string content
     let initial_content = if let Some(bytes) = vm.get_string(str_idx) {
@@ -2914,8 +2974,7 @@ pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: str_idx (tagged), mut_str_id (i32) -> mut_str_id (i32)
 pub fn shim_str_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop string to append
-    let str_bits = task.ram.pop_i32();
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let str_idx = task.ram.pop_str_idx() as u16;
 
     // Pop mutable string ID
     let obj_id = task.ram.pop_i32() as u64;
@@ -2957,8 +3016,7 @@ pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let str_idx = vm.add_string(bytes);
 
     // Return tagged string index
-    let tagged = encode_str_idx(str_idx as i32);
-    task.ram.push_i32(tagged);
+    task.ram.push_str_idx(str_idx as u32);
     Ok(())
 }
 
@@ -2966,8 +3024,7 @@ pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: str_idx (tagged) -> str_idx (tagged)
 pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop string index
-    let str_bits = task.ram.pop_i32();
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let str_idx = task.ram.pop_str_idx() as u16;
 
     // Get string content
     let upper_str = if let Some(bytes) = vm.get_string(str_idx) {
@@ -2981,8 +3038,7 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let new_idx = vm.add_string(bytes);
 
     // Return tagged string index
-    let tagged = encode_str_idx(new_idx as i32);
-    task.ram.push_i32(tagged);
+    task.ram.push_str_idx(new_idx as u32);
     Ok(())
 }
 
@@ -2994,8 +3050,7 @@ pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{Iterator, ListIterator};
     use crate::vm::types::ListData;
 
-    let str_bits = task.ram.pop_i32();
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let str_idx = task.ram.pop_str_idx() as u16;
 
     // Get string bytes
     let bytes: Vec<i32> = if let Some(str_bytes) = vm.get_string(str_idx) {
@@ -3035,7 +3090,7 @@ pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let bytes = hex_str.into_bytes();
     let str_idx = vm.add_string(bytes);
 
-    task.ram.push_i32(encode_str_idx(str_idx as i32));
+    task.ram.push_str_idx(str_idx as u32);
     Ok(())
 }
 
@@ -3043,8 +3098,7 @@ pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Creates an owned mutable String (heap object) from a string literal.
 /// Stack: str_idx (tagged) -> sb_id (heap object ID)
 pub fn shim_string_from(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_bits = task.ram.pop_i32();
-    let str_idx = decode_str_idx(str_bits) as u16;
+    let str_idx = task.ram.pop_str_idx() as u16;
 
     // Get string content from constant pool
     let content = if let Some(bytes) = vm.get_string(str_idx) {

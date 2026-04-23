@@ -516,4 +516,33 @@ impl VirtualRAM {
     pub fn pop_string(&mut self) -> u32 {
         decode_string(self.pop_nv())
     }
+
+    /// Pop a value that is known to be a string reference, returning the string pool index.
+    /// Under non-nanbox: pops i32 and decodes negative tagging.
+    /// Under nanbox: pops NanoValue and decodes string tag.
+    #[cfg(not(feature = "nanbox"))]
+    #[inline(always)]
+    pub fn pop_str_idx(&mut self) -> usize {
+        let bits = self.pop_i32();
+        if bits < 0 { (-bits - 1) as usize } else { bits as usize }
+    }
+
+    #[cfg(feature = "nanbox")]
+    #[inline(always)]
+    pub fn pop_str_idx(&mut self) -> usize {
+        decode_string(self.pop_nv()) as usize
+    }
+
+    /// Push a string pool index as a tagged reference.
+    #[cfg(not(feature = "nanbox"))]
+    #[inline(always)]
+    pub fn push_str_idx(&mut self, idx: u32) {
+        self.push_i32(-(idx as i32) - 1);
+    }
+
+    #[cfg(feature = "nanbox")]
+    #[inline(always)]
+    pub fn push_str_idx(&mut self, idx: u32) {
+        self.push_nv(encode_string(idx));
+    }
 }
