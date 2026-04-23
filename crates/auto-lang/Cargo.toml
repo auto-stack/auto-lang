@@ -25,6 +25,9 @@ streaming-http = ["tokio-util", "futures"]
 # Plan 214: Python FFI (embed CPython via PyO3)
 python = ["pyo3"]
 
+# Plan 221: NaN-boxed value representation
+nanbox = []
+
 # Plan 015: UI Features (AutoUI Core)
 ui = []
 ui-interpreter = ["ui"]
