@@ -1040,6 +1040,7 @@ pub enum CodeSection {
 impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> AutoResult<Code> {
         let mut stmts = Vec::new();
+        let mut source_lines = Vec::new();
         self.skip_empty_lines();
         let mut current_section = CodeSection::None;
         let mut stmt_index = 0; // Track statement index for is_first_stmt check
@@ -1119,6 +1120,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
+            let stmt_line = self.cur.pos.line;
             match self.parse_stmt() {
                 Ok(stmt) => {
                     // First level pairs are viewed as variable declarations
@@ -1137,6 +1139,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                     stmts.push(stmt);
+                    source_lines.push(stmt_line);
                     let is_first = stmt_index == 0;
                     // Check for ambiguous syntax errors in expect_eos
                     let newline_count = match self.expect_eos(is_first) {
@@ -1157,6 +1160,7 @@ impl<'a> Parser<'a> {
                     // Insert EmptyLine statement for 2+ consecutive newlines
                     if newline_count > 1 {
                         stmts.push(Stmt::EmptyLine(newline_count - 1));
+                        source_lines.push(stmt_line);
                     }
                     stmt_index += 1;
                 }
@@ -1192,7 +1196,7 @@ impl<'a> Parser<'a> {
         // Post-processing: Merge ext blocks into their target TypeDecl
         stmts = self.merge_ext_blocks(stmts)?;
 
-        Ok(Code { stmts })
+        Ok(Code { stmts, source_lines })
     }
 
     /// Merge ext blocks into their target TypeDecl
@@ -4889,6 +4893,7 @@ impl<'a> Parser<'a> {
         self.enter_scope();
 
         let mut stmts = Vec::new();
+        let mut source_lines = Vec::new();
         let new_lines = self.skip_empty_lines();
 
         // Snapshot docs collected right after `{` (and optional newlines) —
@@ -4898,11 +4903,13 @@ impl<'a> Parser<'a> {
 
         if new_lines > 1 {
             stmts.push(Stmt::EmptyLine(new_lines - 1));
+            source_lines.push(0); // EmptyLine placeholder
         }
         let has_new_line = new_lines > 0;
         let mut stmt_index = 0; // Track statement index for is_first_stmt check
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            let stmt_line = self.cur.pos.line;
             match self.parse_stmt() {
                 Ok(stmt) => {
                     if is_node {
@@ -4918,6 +4925,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                     stmts.push(stmt);
+                    source_lines.push(stmt_line);
                     let is_first = stmt_index == 0;
                     // Check for ambiguous syntax errors in expect_eos
                     let newline_count = match self.expect_eos(is_first) {
@@ -4940,6 +4948,7 @@ impl<'a> Parser<'a> {
                     // Insert EmptyLine statement for 2+ consecutive newlines
                     if newline_count > 1 {
                         stmts.push(Stmt::EmptyLine(newline_count - 1));
+                        source_lines.push(stmt_line);
                     }
                     stmt_index += 1;
                 }
@@ -4968,6 +4977,7 @@ impl<'a> Parser<'a> {
         Ok(Body {
             stmts,
             has_new_line,
+            source_lines,
         })
     }
 

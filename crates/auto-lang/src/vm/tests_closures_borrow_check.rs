@@ -283,6 +283,7 @@ mod borrow_check_tests {
                     )),
                 ],
                 has_new_line: false,
+                source_lines: Vec::new(),
             })),
         };
 

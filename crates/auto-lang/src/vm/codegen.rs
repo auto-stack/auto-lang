@@ -7846,6 +7846,7 @@ mod tests {
             Body {
                 stmts: vec![Stmt::Return(Box::new(Expr::Int(42)))],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             crate::ast::Type::Int,
         );

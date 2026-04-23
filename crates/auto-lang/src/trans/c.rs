@@ -3563,6 +3563,7 @@ impl CTrans {
                     })),
                 ],
                 has_new_line: true,
+                source_lines: Vec::new(),
             },
             typ: shared(Type::Tag(shared(tag.clone()))),
             doc: None,

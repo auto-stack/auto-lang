@@ -134,11 +134,16 @@ pub trait ToNode {
 #[derive(Debug, Clone)]
 pub struct Code {
     pub stmts: Vec<Stmt>,
+    /// Source line numbers for each statement (parallel to stmts)
+    pub source_lines: Vec<usize>,
 }
 
 impl Code {
     pub fn new() -> Self {
-        Self { stmts: Vec::new() }
+        Self {
+            stmts: Vec::new(),
+            source_lines: Vec::new(),
+        }
     }
 }
 
@@ -146,6 +151,7 @@ impl Default for Code {
     fn default() -> Self {
         Self {
             stmts: Vec::default(),
+            source_lines: Vec::default(),
         }
     }
 }

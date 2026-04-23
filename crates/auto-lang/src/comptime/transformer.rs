@@ -79,12 +79,19 @@ impl CTEE {
 
     /// Transform AST by evaluating all comptime constructs
     pub fn transform(&mut self, code: &mut Code) -> AutoResult<()> {
+        let source_lines = std::mem::take(&mut code.source_lines);
+        let stmts = std::mem::take(&mut code.stmts);
         let mut new_stmts = Vec::new();
-        for stmt in code.stmts.drain(..) {
+        let mut new_source_lines = Vec::new();
+        for (stmt, line) in stmts.into_iter().zip(source_lines.into_iter()) {
             let transformed = self.transform_stmt(stmt)?;
-            new_stmts.extend(transformed);
+            for s in transformed {
+                new_stmts.push(s);
+                new_source_lines.push(line);
+            }
         }
         code.stmts = new_stmts;
+        code.source_lines = new_source_lines;
         Ok(())
     }
 

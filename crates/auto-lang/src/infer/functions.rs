@@ -144,6 +144,7 @@ mod tests {
             body: Body {
                 stmts: vec![Stmt::Return(Box::new(Expr::Int(42)))],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Int,
             ret_name: None,
@@ -185,6 +186,7 @@ mod tests {
             body: Body {
                 stmts: vec![], // Empty body returns Void
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -225,6 +227,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -253,6 +256,7 @@ mod tests {
             body: Body {
                 stmts: vec![Stmt::Expr(Expr::Int(42))],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Unknown,
             ret_name: None,
@@ -302,6 +306,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Int,
             ret_name: None,
@@ -336,6 +341,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -375,6 +381,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -410,6 +417,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -437,6 +445,7 @@ mod tests {
             body: Body {
                 stmts: vec![Stmt::Expr(Expr::Bool(true))],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Unknown,
             ret_name: None,
@@ -470,6 +479,7 @@ mod tests {
             body: Body {
                 stmts: vec![Stmt::Expr(Expr::Str("hello".into()))],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Unknown,
             ret_name: None,
@@ -508,6 +518,7 @@ mod tests {
             body: Body {
                 stmts: vec![Stmt::Return(Box::new(Expr::Bool(false)))], // Wrong return type
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Int,
             ret_name: None,
@@ -556,6 +567,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Bool,
             ret_name: None,
@@ -595,6 +607,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -622,6 +635,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Void,
             ret_name: None,
@@ -656,6 +670,7 @@ mod tests {
             body: Body {
                 stmts: vec![Stmt::Expr(Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]))],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Unknown,
             ret_name: None,
@@ -689,6 +704,7 @@ mod tests {
             body: Body {
                 stmts: vec![],
                 has_new_line: false,
+                source_lines: Vec::new(),
             },
             ret: Type::Int,  // Declared return type but no body
             ret_name: None,

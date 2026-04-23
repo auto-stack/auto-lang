@@ -6,6 +6,8 @@ use std::{fmt, io as stdio};
 pub struct Body {
     pub stmts: Vec<Stmt>,
     pub has_new_line: bool,
+    /// Source line numbers for each statement (parallel to stmts)
+    pub source_lines: Vec<usize>,
 }
 
 impl Body {
@@ -13,6 +15,7 @@ impl Body {
         Self {
             stmts: Vec::new(),
             has_new_line: false,
+            source_lines: Vec::new(),
         }
     }
 
@@ -20,6 +23,7 @@ impl Body {
         Self {
             stmts: vec![Stmt::Expr(expr)],
             has_new_line: false,
+            source_lines: Vec::new(),
         }
     }
 
