@@ -440,8 +440,53 @@ crate-type = ["cdylib"]
         lib_rs.push_str("use std::os::raw::c_char;\n\n");
 
         for func in functions {
-            lib_rs.push_str(&format!(
-                r#"#[no_mangle]
+            // Generate shim with proper type handling
+            // from_str is generic (from_str<T>) and needs explicit type annotation
+            if func == "from_str" {
+                // JSON parse: string -> string (parses JSON, returns compact form)
+                lib_rs.push_str(&format!(
+                    r#"#[no_mangle]
+pub extern "C" fn auto_from_str(input: *const c_char) -> *const c_char {{
+    let input_str = unsafe {{
+        if input.is_null() {{ "" }} else {{ CStr::from_ptr(input).to_str().unwrap_or("") }}
+    }};
+    let result: Result<{crate_name}::Value, _> = {crate_name}::from_str(input_str);
+    let output = match result {{
+        Ok(v) => v.to_string(),
+        Err(e) => format!("ERROR: {{}}", e),
+    }};
+    let c_result = CString::new(output).unwrap();
+    c_result.into_raw() as *const c_char
+}}
+
+"#
+                ));
+            } else if func == "to_string" {
+                // JSON serialize: string -> string (parses then re-serializes)
+                lib_rs.push_str(&format!(
+                    r#"#[no_mangle]
+pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
+    let input_str = unsafe {{
+        if input.is_null() {{ "" }} else {{ CStr::from_ptr(input).to_str().unwrap_or("") }}
+    }};
+    let value: {crate_name}::Value = match {crate_name}::from_str(input_str) {{
+        Ok(v) => v,
+        Err(e) => {{
+            let err = format!("ERROR: {{}}", e);
+            return CString::new(err).unwrap().into_raw() as *const c_char;
+        }}
+    }};
+    let output = {crate_name}::to_string(&value).unwrap_or_default();
+    let c_result = CString::new(output).unwrap();
+    c_result.into_raw() as *const c_char
+}}
+
+"#
+                ));
+            } else {
+                // Generic string -> string shim
+                lib_rs.push_str(&format!(
+                    r#"#[no_mangle]
 pub extern "C" fn auto_{func}(input: *const c_char) -> *const c_char {{
     let input_str = unsafe {{
         if input.is_null() {{
@@ -456,7 +501,8 @@ pub extern "C" fn auto_{func}(input: *const c_char) -> *const c_char {{
 }}
 
 "#
-            ));
+                ));
+            }
         }
 
         std::fs::write(src_dir.join("lib.rs"), lib_rs)?;

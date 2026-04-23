@@ -640,28 +640,35 @@ impl RustFfiBridge {
             .get(crate_name)
             .ok_or_else(|| VMError::FFI(format!("Crate {} not loaded", crate_name)))?;
 
-        // Get the symbol from the library
-        let symbol_name = std::ffi::CString::new(function_name.as_bytes())
+        // Get the symbol from the library (sandbox wrapper uses auto_ prefix)
+        let exported_name = format!("auto_{}", function_name);
+        let symbol_name = std::ffi::CString::new(exported_name.as_bytes())
             .map_err(|e| VMError::FFI(format!("Invalid function name: {}", e)))?;
 
         // Get the symbol as a raw pointer (we'll cast it based on signature)
+        // Note: library.get() returns a Symbol whose internal pointer IS the function address.
+        // We must not dereference it (which reads machine code bytes as a pointer).
+        // Instead, extract the raw platform pointer via into_raw() + as_raw_ptr().
         let symbol_ptr: *const () = unsafe {
-            let symbol: libloading::Symbol<*const ()> = library
-                .get(symbol_name.as_bytes())
-                .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", function_name, e)))?;
-            *symbol.into_raw()
+            let symbol = library
+                .get::<*const ()>(symbol_name.as_bytes())
+                .map_err(|e| VMError::FFI(format!("Symbol {} (exported as {}) not found: {}", function_name, exported_name, e)))?;
+            let raw = symbol.into_raw();
+            let ptr = raw.as_raw_ptr() as *const ();
+            ptr
         };
 
         let native_id = self.next_native_id;
         self.next_native_id += 1;
 
-        // Create shim for this function
-        let shim = self.create_rust_shim_with_ptr(
+        // Create shim for this function — pass library + symbol name for lazy resolution
+        let exported_name = format!("auto_{}", function_name);
+        let shim = self.create_rust_shim_lazy(
             Arc::clone(library),
             crate_name,
             function_name,
+            &exported_name,
             signature.clone(),
-            symbol_ptr,
         );
         self.native_interface.register(native_id, shim);
         self.functions.insert(key.clone(), native_id);
@@ -686,6 +693,136 @@ impl RustFfiBridge {
         &self.functions
     }
 
+    /// Create a native shim that resolves the DLL symbol on each call.
+    /// This avoids issues with raw function pointer transmutation across DLL boundaries.
+    fn create_rust_shim_lazy(
+        &self,
+        _library: Arc<libloading::Library>,
+        crate_name: &str,
+        function_name: &str,
+        exported_name: &str,
+        signature: RustSignature,
+    ) -> impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static {
+        let crate_name = crate_name.to_string();
+        let function_name = function_name.to_string();
+        let exported_name = exported_name.to_string();
+        let signature = signature.clone();
+        let _keep_lib_alive = _library; // Keep library Arc alive for the closure's lifetime
+
+        move |task: &mut AutoTask, _vm: &AutoVM| {
+            // Pop arguments from stack (in reverse order)
+            let mut args_i32: Vec<i32> = Vec::new();
+            let mut args_i64: Vec<i64> = Vec::new();
+            let mut args_f32: Vec<f32> = Vec::new();
+            let mut args_f64: Vec<f64> = Vec::new();
+            let mut args_ptr: Vec<*const ()> = Vec::new();
+            let mut string_pool: Vec<std::ffi::CString> = Vec::new();
+
+            for param_type in signature.params.iter().rev() {
+                match param_type {
+                    RustType::Int | RustType::Bool => {
+                        args_i32.push(task.ram.pop_i32());
+                    }
+                    RustType::Long => {
+                        args_i64.push(task.ram.pop_i64());
+                    }
+                    RustType::Float => {
+                        args_f32.push(task.ram.pop_f32());
+                    }
+                    RustType::Double => {
+                        args_f64.push(task.ram.pop_f64());
+                    }
+                    RustType::String => {
+                        let raw = task.ram.pop_i32();
+                        let str_idx = if raw < 0 { (-(raw) - 1) as usize } else { raw as usize };
+                        let str_owned: Vec<u8> = if let Ok(strings) = _vm.strings.read() {
+                            strings.get(str_idx).cloned().unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        };
+                        let c_string = std::ffi::CString::new(str_owned)
+                            .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+                        args_ptr.push(c_string.as_ptr() as *const ());
+                        string_pool.push(c_string);
+                    }
+                    RustType::Pointer | RustType::PointerMut => {
+                        let ptr_val = task.ram.pop_i64();
+                        args_ptr.push(ptr_val as *const ());
+                    }
+                    RustType::Bytes => {
+                        let len = task.ram.pop_i32() as usize;
+                        let ptr_val = task.ram.pop_i64();
+                        args_ptr.push(ptr_val as *const ());
+                        args_i32.push(len as i32);
+                    }
+                    RustType::Callback => {
+                        let callback_ptr = task.ram.pop_i64();
+                        args_ptr.push(callback_ptr as *const ());
+                    }
+                    RustType::Void => {
+                        log::warn!("Void used as parameter type");
+                    }
+                }
+            }
+
+            args_i32.reverse();
+            args_i64.reverse();
+            args_f32.reverse();
+            args_f64.reverse();
+            args_ptr.reverse();
+
+            let result = unsafe {
+                match (signature.params.as_slice(), &signature.returns) {
+                    // String -> String: resolve and call through libloading Symbol
+                    (&[RustType::String], RustType::String) => {
+                        let input_ptr = args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char;
+
+                        // Resolve symbol fresh each call — avoids transmute issues
+                        let sym: libloading::Symbol<extern "C" fn(*const std::ffi::c_char) -> *const std::ffi::c_char> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+
+                        let result_ptr = sym(input_ptr);
+                        let result_str = if result_ptr.is_null() {
+                            String::new()
+                        } else {
+                            std::ffi::CStr::from_ptr(result_ptr)
+                                .to_str()
+                                .unwrap_or("")
+                                .to_string()
+                        };
+
+                        if let Ok(mut strings) = _vm.strings.write() {
+                            let idx = strings.len() as u16;
+                            strings.push(result_str.into_bytes());
+                            task.ram.push_i32(-(idx as i32) - 1);
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                        return Ok(());
+                    }
+
+                    // Default: unsupported
+                    _ => {
+                        log::warn!(
+                            "Unsupported FFI signature: {:?} -> {:?} for {}::{}",
+                            signature.params, signature.returns, crate_name, function_name
+                        );
+                        0
+                    }
+                }
+            };
+
+            match &signature.returns {
+                RustType::Int | RustType::Bool => task.ram.push_i32(result),
+                _ => task.ram.push_i32(0),
+            }
+
+            Ok(())
+        }
+    }
+
     /// Create a native shim for calling a Rust function with actual symbol resolution
     fn create_rust_shim_with_ptr(
         &self,
@@ -699,10 +836,12 @@ impl RustFfiBridge {
         let function_name = function_name.to_string();
         let signature = signature.clone();
         let symbol_ptr = symbol_ptr as usize; // Store as usize for Send + Sync
+        let _keep_lib_alive = _library; // Keep library Arc alive for the closure's lifetime
 
         move |task: &mut AutoTask, _vm: &AutoVM| {
             let func_ptr = symbol_ptr as *const ();
 
+            // Debug: dump top of stack
             // Pop arguments from stack (in reverse order)
             // Note: Arguments are pushed left-to-right, so we pop right-to-left
             let mut args_i32: Vec<i32> = Vec::new();
@@ -728,8 +867,10 @@ impl RustFfiBridge {
                         args_f64.push(task.ram.pop_f64());
                     }
                     RustType::String => {
-                        // Pop string index from constants pool, convert to C string
-                        let str_idx = task.ram.pop_i32() as usize;
+                        // Pop tagged string index from stack (tagged as -(idx+1))
+                        let raw = task.ram.pop_i32();
+                        // Decode: strings are stored as -(index+1) to tag them
+                        let str_idx = if raw < 0 { (-(raw) - 1) as usize } else { raw as usize };
                         // Get string from pool (owned copy to avoid lifetime issues)
                         let str_owned: Vec<u8> = if let Ok(strings) = _vm.strings.read() {
                             strings.get(str_idx).cloned().unwrap_or_default()
@@ -1049,6 +1190,37 @@ impl RustFfiBridge {
                             args_f64.get(0).copied().unwrap_or(0.0),
                         );
                         task.ram.push_f64(r);
+                        return Ok(());
+                    }
+
+                    // === String -> String pattern (Plan 212b: Rust FFI E2E) ===
+                    // *const c_char fn(*const c_char) - e.g., serde_json wrapper shims
+                    (&[RustType::String], RustType::String) => {
+                        let input_ptr = args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char;
+                        let func: extern "C" fn(*const std::ffi::c_char) -> *const std::ffi::c_char =
+                            std::mem::transmute(func_ptr);
+                        let result_ptr = func(input_ptr);
+                        // Convert returned C string to Rust string and push as string constant
+                        let result_str = if result_ptr.is_null() {
+                            String::new()
+                        } else {
+                            unsafe {
+                                std::ffi::CStr::from_ptr(result_ptr)
+                                    .to_str()
+                                    .unwrap_or("")
+                                    .to_string()
+                            }
+                        };
+                        // Push as tagged string index into the VM's string pool
+                        // Tag format: -(index+1) to match LOAD_STR encoding
+                        if let Ok(mut strings) = _vm.strings.write() {
+                            let idx = strings.len() as u16;
+                            strings.push(result_str.into_bytes());
+                            task.ram.push_i32(-(idx as i32) - 1);
+                        } else {
+                            task.ram.push_i32(0);
+                        }
                         return Ok(());
                     }
 

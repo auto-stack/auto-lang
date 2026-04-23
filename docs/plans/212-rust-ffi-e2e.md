@@ -1,6 +1,6 @@
 # Plan 212b: Rust FFI 动态加载端到端实现
 
-> **Status: 🔧 PARTIAL** (Tasks 1-3+4 code exists, E2E test `#[ignore]`d pending runtime validation)
+> **Status: ✅ COMPLETE** (All 5 tasks done. E2E test passing: `dep serde_json` → cargo compile cdylib → AutoVM load .dll → call `serde_json::from_str` → output `{"name":"auto","ver":1}`)
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

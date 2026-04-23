@@ -1326,7 +1326,7 @@ impl Codegen {
                     // Plan 118 Phase 4: Track type instances from type constructor calls
                     // Example: var duck = Duck(), var wing = Wing()
                     else if let Expr::Ident(type_name) = call.name.as_ref() {
-                        if self.is_type(type_name) {
+                        if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) {
                             // Create a TypeDecl with proper members from generic_registry
                             let type_decl = if self.generic_registry.has_template(type_name) {
                                 // Create a TypeDecl from the template
@@ -2975,6 +2975,8 @@ impl Codegen {
                     local_name.to_string(),
                     (crate_name.clone(), full_path),
                 );
+                // Rust FFI functions return String via the C ABI bridge
+                self.fn_return_types.insert(local_name.to_string(), Type::Str(0));
             }
         }
     }
@@ -5062,6 +5064,19 @@ impl Codegen {
                     if let Some(&id) = self.intrinsics.get(name) {
                         Some(id)
                     }
+                    // Plan 212b: Check rust_native_map FIRST (before BIGVM_NATIVES lock)
+                    else if self.rust_native_map.contains_key(name) {
+                        let qualified = format!("rust.{}", name);
+                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        if let Some(id) = reg.resolve_qualified(&qualified) {
+                            drop(reg);
+                            Some(id)
+                        } else {
+                            drop(reg);
+                            let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
+                            Some(id)
+                        }
+                    }
                     // Then check BIGVM_NATIVES (List methods, etc.)
                     // Plan 203 Phase 3: resolve_qualified checks qualified registry
                     // first, then falls back to short-name registry internally.
@@ -5072,22 +5087,6 @@ impl Codegen {
                     // If the bare name isn't found, resolve through the import scope
                     else if let Some(qualified) = self.import_scope.get(name) {
                         BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
-                    }
-                    // Plan 212b Task 3: Check rust_native_map for Rust FFI functions
-                    // If the function was imported via use.rust, register it as a native
-                    // and return the assigned native_id
-                    else if self.rust_native_map.contains_key(name) {
-                        // Look up or register the Rust FFI function in BIGVM_NATIVES
-                        // The native_id will be assigned by the runtime bridge at load time.
-                        // For now, we check if it's already registered (from resolve_uses preprocessing)
-                        let qualified = format!("rust.{}", name);
-                        if let Some(id) = BIGVM_NATIVES.lock().unwrap().resolve_qualified(&qualified) {
-                            Some(id)
-                        } else {
-                            // Register a placeholder native that will be resolved at runtime
-                            let id = BIGVM_NATIVES.lock().unwrap().register(&qualified);
-                            Some(id)
-                        }
                     }
                     // Plan 216 Phase 2: Check c_ffi_functions for C FFI functions
                     else if let Some(&id) = self.c_ffi_functions.get(name) {
@@ -5360,6 +5359,10 @@ impl Codegen {
                         // List HOF methods return arrays (tracked for type-aware dispatch)
                         if name == "List.map" || name == "List.filter" {
                             self.last_expr_type = ObjectType::Array;
+                        }
+                        // Plan 212b: Rust FFI functions return String
+                        if self.rust_native_map.contains_key(name) {
+                            self.last_expr_type = ObjectType::String;
                         }
                     }
 

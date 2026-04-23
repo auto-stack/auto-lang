@@ -349,13 +349,11 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
 
                 // Register each function as a string→string shim
                 for func_name in functions {
-                    // Register the function using the auto_{func} naming convention
-                    let shim_name = format!("auto_{}", func_name);
                     let signature = crate::ffi::RustSignature::new()
                         .param(crate::ffi::RustType::String)
                         .returns(crate::ffi::RustType::String);
 
-                    match bridge.register_function(&crate_name, &shim_name, signature) {
+                    match bridge.register_function(&crate_name, func_name, signature) {
                         Ok(native_id) => {
                             log::info!("Registered Rust FFI: {}::{} (native_id={})", crate_name, func_name, native_id);
 
@@ -393,7 +391,8 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
 
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
-    session.resolve_deps(code)?; // Plan 212b: resolve dep statements first
+    session.collect_rust_imports(code)?; // Plan 212b: collect use.rust imports before resolving deps
+    session.resolve_deps(code)?; // Plan 212b: resolve dep statements (triggers compile_dep)
     session.resolve_uses(code)?;
 
     // Plan 212b Task 4: Initialize Rust FFI bridge if there are Rust imports
@@ -412,13 +411,12 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Plan 091: Wrap script-level code with FN_PROLOG/RESERVE_STACK for proper local variable support
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
-    
     // Separate type/ext declarations from other statements
     // Type declarations and ext blocks stay at global level, other code goes into script wrapper
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
-    
+
     // First, compile type declarations at global level
     for stmt in &type_decls {
         codegen.compile_stmt(stmt)?;
@@ -429,21 +427,21 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
         if is_vm_debug() {
             vm_debug!("DEBUG: Compiling {} script statements", other_stmts.len());
         }
-        
+
         // Reserve space for locals (Plan 091)
         let n_locals = 16; // Reserve space for up to 16 locals
-        
+
         // Emit FN_PROLOG to set up BP
         codegen.emit_op(crate::vm::opcode::OpCode::FN_PROLOG);
         codegen.emit_byte(0); // n_args
         codegen.emit_byte(n_locals as u8); // n_locals
-        
+
         // Emit RESERVE_STACK to reserve space for locals
         codegen.emit_op(crate::vm::opcode::OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
-        
+
         // Now compile the statements
-        for stmt in &other_stmts {
+        for stmt in other_stmts.iter() {
             codegen.compile_stmt(stmt)?;
         }
     }

@@ -1,8 +1,6 @@
 dep serde_json
 use.rust serde_json::{from_str, to_string}
 
-fn main() {
-    let json = "{\"name\":\"auto\",\"ver\":1}"
-    let data = from_str(json)
-    print(data)
-}
+let json = "{\"name\":\"auto\",\"ver\":1}"
+let data = from_str(json)
+print(data)
