@@ -10,5 +10,7 @@ fn main() {
     let content = read_to_string("test.txt");
     let file = File::open("test.txt");
     let reader = BufReader::new(file);
-    let line = reader.lines().next();
+    for line in reader.lines() {
+        println!("{}", line);
+    }
 }
