@@ -1,6 +1,6 @@
 # Plan 221: AutoVM NaN-boxing Migration
 
-> **Status: 📋 READY**
+> **Status: ✅ DONE (Tasks 1-8, Task 9 no-op) — nanbox feature flag compiles, non-nanbox path green (3084 pass, 36 pre-existing failures)**
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
