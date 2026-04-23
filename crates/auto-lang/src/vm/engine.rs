@@ -87,7 +87,8 @@ fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
 #[inline(always)]
 fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
     let bits = ram.pop_i32();
-    if bits < 0 && bits > i32::MIN {
+    // Boolean sentinels: i32::MIN = true, i32::MIN + 1 = false — treat as int
+    if bits < 0 && bits > i32::MIN + 1 {
         StackTag::Str(((-bits) - 1) as u32)
     } else {
         StackTag::Int(bits)

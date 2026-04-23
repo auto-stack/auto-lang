@@ -4296,13 +4296,16 @@ impl RustTrans {
         false
     }
 
-    /// Plan 220 Task 4: Check if an expression is a bare integer literal that
-    /// needs an `as usize` cast when used as a slice/array index in Rust.
-    fn needs_usize_cast(expr: &Expr) -> bool {
-        matches!(expr,
-            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
-            | Expr::I64(_) | Expr::U64(_)
-        )
+    /// Plan 220 Task 4: Check if an expression needs an `as usize` cast
+    /// when used as a slice/array index in Rust.
+    ///
+    /// Integer literals do NOT need a cast -- Rust infers the correct type
+    /// automatically in index position (e.g., `arr[0]` just works).
+    /// Only non-trivial expressions like variables or binary ops may need it,
+    /// but we cannot reliably determine the type at the AST level, so we
+    /// return `false` here and let Rust's type inference handle it.
+    fn needs_usize_cast(_expr: &Expr) -> bool {
+        false
     }
 
     /// Plan 163: Check if an expression contains await
