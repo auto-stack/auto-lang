@@ -61,9 +61,7 @@ impl PyFfiBridge {
         let func_name = function_name.to_string();
 
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
-            // Pop string argument from stack (tagged as -(idx+1))
-            let raw = task.ram.pop_i32();
-            let str_idx = if raw < 0 { (-(raw) - 1) as usize } else { raw as usize };
+            let str_idx = task.ram.pop_str_idx();
             let input_string: Vec<u8> = if let Ok(strings) = vm.strings.read() {
                 strings.get(str_idx).cloned().unwrap_or_default()
             } else {
@@ -93,7 +91,7 @@ impl PyFfiBridge {
             if let Ok(mut strings) = vm.strings.write() {
                 let idx = strings.len() as u16;
                 strings.push(result_string.into_bytes());
-                task.ram.push_i32(-(idx as i32) - 1);
+                task.ram.push_str_idx(idx as u32);
             } else {
                 task.ram.push_i32(0);
             }

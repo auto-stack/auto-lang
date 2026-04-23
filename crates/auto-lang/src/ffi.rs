@@ -733,8 +733,7 @@ impl RustFfiBridge {
                         args_f64.push(task.ram.pop_f64());
                     }
                     RustType::String => {
-                        let raw = task.ram.pop_i32();
-                        let str_idx = if raw < 0 { (-(raw) - 1) as usize } else { raw as usize };
+                        let str_idx = task.ram.pop_str_idx();
                         let str_owned: Vec<u8> = if let Ok(strings) = _vm.strings.read() {
                             strings.get(str_idx).cloned().unwrap_or_default()
                         } else {
@@ -796,7 +795,7 @@ impl RustFfiBridge {
                         if let Ok(mut strings) = _vm.strings.write() {
                             let idx = strings.len() as u16;
                             strings.push(result_str.into_bytes());
-                            task.ram.push_i32(-(idx as i32) - 1);
+                            task.ram.push_str_idx(idx as u32);
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -867,11 +866,7 @@ impl RustFfiBridge {
                         args_f64.push(task.ram.pop_f64());
                     }
                     RustType::String => {
-                        // Pop tagged string index from stack (tagged as -(idx+1))
-                        let raw = task.ram.pop_i32();
-                        // Decode: strings are stored as -(index+1) to tag them
-                        let str_idx = if raw < 0 { (-(raw) - 1) as usize } else { raw as usize };
-                        // Get string from pool (owned copy to avoid lifetime issues)
+                        let str_idx = task.ram.pop_str_idx();
                         let str_owned: Vec<u8> = if let Ok(strings) = _vm.strings.read() {
                             strings.get(str_idx).cloned().unwrap_or_default()
                         } else {
@@ -880,7 +875,7 @@ impl RustFfiBridge {
                         let c_string = std::ffi::CString::new(str_owned)
                             .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
                         args_ptr.push(c_string.as_ptr() as *const ());
-                        string_pool.push(c_string); // Keep alive for duration of call
+                        string_pool.push(c_string);
                     }
                     RustType::Pointer | RustType::PointerMut => {
                         // Pointers are stored as i64 (2 slots)
@@ -1213,11 +1208,10 @@ impl RustFfiBridge {
                             }
                         };
                         // Push as tagged string index into the VM's string pool
-                        // Tag format: -(index+1) to match LOAD_STR encoding
                         if let Ok(mut strings) = _vm.strings.write() {
                             let idx = strings.len() as u16;
                             strings.push(result_str.into_bytes());
-                            task.ram.push_i32(-(idx as i32) - 1);
+                            task.ram.push_str_idx(idx as u32);
                         } else {
                             task.ram.push_i32(0);
                         }

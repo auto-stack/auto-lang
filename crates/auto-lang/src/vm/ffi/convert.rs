@@ -136,39 +136,27 @@ impl VMConvertible for () {
 
 impl VMConvertible for String {
     fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
-        let tagged = task.ram.pop_i32();
-
-        // Decode tagged string index (LOAD_STR pushes -(idx+1))
-        let str_idx = if tagged < 0 {
-            ((-tagged) - 1) as u16  // Decode tagged string index
-        } else {
-            tagged as u16  // Direct index (shouldn't happen normally)
-        };
+        let str_idx = task.ram.pop_str_idx();
 
         let bytes = vm
-            .get_string(str_idx)
-            .ok_or(FFIError::InvalidStringIndex(str_idx))?;
+            .get_string(str_idx as u16)
+            .ok_or(FFIError::InvalidStringIndex(str_idx as u16))?;
 
         let s = String::from_utf8_lossy(&bytes).to_string();
         Ok(s)
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
-        // Add string to the VM's string pool
         let strings = vm.strings.read().unwrap();
         let len = strings.len();
         drop(strings);
 
-        // We need to add the string - but vm.strings is Arc<RwLock>
-        // For now, we'll store the string index if it already exists
-        // or create a new entry
         {
             let mut strings = vm.strings.write().unwrap();
             strings.push(self.as_bytes().to_vec());
         }
 
-        // Push the index as a tagged string reference (same format as LOAD_STR: -(idx+1))
-        task.ram.push_i32(-((len as i32) + 1));
+        task.ram.push_str_idx(len as u32);
         Ok(())
     }
 }

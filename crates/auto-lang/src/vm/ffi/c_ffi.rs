@@ -176,12 +176,7 @@ fn create_c_shim(
                     args_f64.push(task.ram.pop_f64());
                 }
                 CTypeDesc::CStr => {
-                    let str_idx = task.ram.pop_i32();
-                    let idx = if str_idx < 0 {
-                        (-str_idx - 1) as usize
-                    } else {
-                        str_idx as usize
-                    };
+                    let idx = task.ram.pop_str_idx();
                     let owned: Vec<u8> = if let Ok(strings) = _vm.strings.read() {
                         strings.get(idx).cloned().unwrap_or_default()
                     } else {
