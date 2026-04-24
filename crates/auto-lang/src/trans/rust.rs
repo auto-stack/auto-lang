@@ -3737,6 +3737,7 @@ impl RustTrans {
     }
 
     /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
+    #[allow(dead_code)]
     fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
         let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
             name: item.name.clone().into(),

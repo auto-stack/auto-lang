@@ -183,6 +183,7 @@ pub fn nil<T>() -> Option<T> {
 }
 
 /// AutoLang's Json module - thin wrappers around serde_json for transpiled code
+#[allow(non_snake_case)]
 pub mod Json {
     use serde_json::Value;
 

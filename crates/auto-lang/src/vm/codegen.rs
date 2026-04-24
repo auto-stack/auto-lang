@@ -56,6 +56,7 @@ pub enum ObjectType {
 
 /// Plan 193: Precise source type for .to() conversion opcode selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum ConvSrcType {
     I32,
     I64,
@@ -255,6 +256,10 @@ pub struct Codegen {
     /// Plan 214: Python FFI function name → (module, full_path) mapping
     /// Populated when `use.py module::{items}` is encountered.
     py_native_map: HashMap<String, (String, String)>,
+
+    /// Plan 222: Python FFI function return types for type-aware dispatch
+    /// Maps local function name → PyType (from py_ffi_types, no pyo3 dependency)
+    py_return_types: HashMap<String, crate::py_ffi_types::PyType>,
 }
 
 impl Codegen {
@@ -274,7 +279,7 @@ impl Codegen {
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
         // Register return types for native functions (used for type inference in let bindings)
-        let fn_return_types = Self::build_fn_return_types();
+        let _fn_return_types = Self::build_fn_return_types();
 
         // Create global scope
         let locals = HashMap::new();
@@ -319,6 +324,7 @@ impl Codegen {
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
+            py_return_types: HashMap::new(), // Plan 222: Python FFI return types
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -412,6 +418,7 @@ impl Codegen {
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
+            py_return_types: HashMap::new(), // Plan 222: Python FFI return types
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -3060,6 +3067,8 @@ impl Codegen {
                 );
                 // Python FFI functions return String via the string-pool bridge
                 self.fn_return_types.insert(local_name.to_string(), Type::Str(0));
+                // Plan 222: Record PyType::Auto as default return type
+                self.py_return_types.insert(local_name.to_string(), crate::py_ffi_types::PyType::Auto);
             }
         }
     }
@@ -5417,9 +5426,19 @@ impl Codegen {
                         if self.rust_native_map.contains_key(name) {
                             self.last_expr_type = ObjectType::String;
                         }
-                        // Plan 214: Python FFI functions return String
+                        // Plan 214/222: Python FFI functions — type-aware return tracking
                         if self.py_native_map.contains_key(name) {
-                            self.last_expr_type = ObjectType::String;
+                            use crate::py_ffi_types::PyType;
+                            let py_ret = self.py_return_types.get(name).cloned().unwrap_or(PyType::Auto);
+                            self.last_expr_type = match py_ret {
+                                PyType::Int => ObjectType::Int,
+                                PyType::Float => ObjectType::Double,
+                                PyType::Bool => ObjectType::Bool,
+                                PyType::List => ObjectType::Array,
+                                PyType::None => ObjectType::Void,
+                                // Auto and String both use string pool
+                                PyType::Auto | PyType::String => ObjectType::String,
+                            };
                         }
                     }
 
@@ -5431,7 +5450,7 @@ impl Codegen {
                 let mut is_instance_method_call = false;
                 let mut is_spec_dispatch = false;
 
-                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if let Expr::Dot(obj, _method) = call.name.as_ref() {
                     // Check if it's a static method call (Type.method with capital T)
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
@@ -6747,6 +6766,7 @@ impl Codegen {
     }
 
     /// Plan 088 Phase 4: Emit LOAD_REF for immutable reference
+    #[allow(dead_code)]
     fn emit_load_ref(&mut self, index: usize) {
         self.emit(OpCode::LOAD_REF);
         self.code.extend_from_slice(&(index as u32).to_le_bytes());
@@ -6760,6 +6780,7 @@ impl Codegen {
     }
 
     /// Plan 088 Phase 4: Emit LOAD_MUT_REF for mutable reference
+    #[allow(dead_code)]
     fn emit_load_mut_ref(&mut self, index: usize) {
         vm_debug!("DEBUG: emit_load_mut_ref called with index={}", index);
         self.emit(OpCode::LOAD_MUT_REF);
@@ -7476,6 +7497,7 @@ impl Codegen {
     ///
     /// Plan 203 Phase 3: Provides a centralised lookup path for instance method
     /// calls, trying qualified names first then falling back to short names.
+    #[allow(dead_code)]
     fn resolve_method(&self, receiver_type: &str, method_name: &str) -> Option<u16> {
         let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
 

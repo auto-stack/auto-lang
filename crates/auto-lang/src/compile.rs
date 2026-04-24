@@ -246,8 +246,11 @@ impl CompileSession {
                         "Python FFI not enabled. Rebuild with `--features python` to use `use.py`."
                     )));
                 }
-                loaded_count += 1;
-                continue;
+                #[cfg(feature = "python")]
+                {
+                    loaded_count += 1;
+                    continue;
+                }
             }
 
             self.load_module(use_stmt)?;

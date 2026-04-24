@@ -1052,9 +1052,6 @@ impl<'a> Lexer<'a> {
                     // Single & — bitwise AND operator reserved for future use
                     return Ok(Token::new(TokenKind::Amp, self.pos(1), "&".into()));
                 }
-                '`' => {
-                    return self.fstr();
-                }
                 '?' => {
                     return Ok(self.question_or_operators(c));
                 }

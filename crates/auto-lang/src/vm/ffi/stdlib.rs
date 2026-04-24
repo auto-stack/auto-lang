@@ -862,7 +862,7 @@ pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 match inner {
                     auto_val::Value::Int(n) => task.ram.push_i32(n),
                     auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
-                    other => {
+                    _other => {
                         // For non-i32 values, push the heap_id of the inner value
                         // (strings, floats etc are heap-stored)
                         task.ram.push_i32(opt_val);
@@ -1399,7 +1399,7 @@ pub fn shim_net_tcp_bind(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
 
     let listener = match StdTcpListener::bind(&addr) {
         Ok(l) => l,
-        Err(e) => {
+        Err(_) => {
             task.ram.push_i32(0); // Return 0 on failure
             return Ok(());
         }

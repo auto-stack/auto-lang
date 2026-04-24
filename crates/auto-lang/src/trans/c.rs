@@ -2821,7 +2821,6 @@ impl CTrans {
                     // Check if this is a tag/enum cover pattern like Atom.Int(i)
                     let first = &patterns[0];
                     if let Expr::Cover(Cover::Tag(tag_cover)) = first {
-                        let expr = first;
                         // Generate: case ENUM_VARIANT:
                         let enum_const = format!("{}_{}",
                             tag_cover.kind.to_uppercase(),

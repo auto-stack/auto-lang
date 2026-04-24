@@ -649,7 +649,7 @@ impl RustFfiBridge {
         // Note: library.get() returns a Symbol whose internal pointer IS the function address.
         // We must not dereference it (which reads machine code bytes as a pointer).
         // Instead, extract the raw platform pointer via into_raw() + as_raw_ptr().
-        let symbol_ptr: *const () = unsafe {
+        let _symbol_ptr: *const () = unsafe {
             let symbol = library
                 .get::<*const ()>(symbol_name.as_bytes())
                 .map_err(|e| VMError::FFI(format!("Symbol {} (exported as {}) not found: {}", function_name, exported_name, e)))?;
@@ -823,6 +823,7 @@ impl RustFfiBridge {
     }
 
     /// Create a native shim for calling a Rust function with actual symbol resolution
+    #[allow(dead_code)]
     fn create_rust_shim_with_ptr(
         &self,
         _library: Arc<libloading::Library>,
@@ -1200,12 +1201,10 @@ impl RustFfiBridge {
                         let result_str = if result_ptr.is_null() {
                             String::new()
                         } else {
-                            unsafe {
-                                std::ffi::CStr::from_ptr(result_ptr)
-                                    .to_str()
-                                    .unwrap_or("")
-                                    .to_string()
-                            }
+                            std::ffi::CStr::from_ptr(result_ptr)
+                                .to_str()
+                                .unwrap_or("")
+                                .to_string()
                         };
                         // Push as tagged string index into the VM's string pool
                         if let Ok(mut strings) = _vm.strings.write() {

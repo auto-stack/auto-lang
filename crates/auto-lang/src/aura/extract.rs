@@ -661,7 +661,7 @@ pub fn extract_type(ty: &Type) -> Type {
 // Widget Declaration Extractor (Plan 096)
 // ============================================================================
 
-use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, MsgDecl, PropDecl, ViewNode, ViewText, Body};
+use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, MsgDecl, PropDecl, ViewNode, ViewText};
 
 /// Extract AuraWidget from parsed WidgetDecl
 pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> {

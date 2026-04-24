@@ -249,7 +249,6 @@ impl TypeStore {
 
     /// Plan 190: Register a Rust type imported via use.rust
     pub fn register_rust_type(&mut self, name: impl Into<AutoStr>, full_path: impl Into<String>) {
-        use crate::ast::RustSource;
         use crate::ast::{Name, TypeDecl, TypeDeclKind};
 
         let type_name = name.into();

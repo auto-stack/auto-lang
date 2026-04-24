@@ -100,6 +100,7 @@ fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
 /// This helper is for sites where the value is already in an i32 variable
 /// (e.g., read from bytecode or a non-stack source).
 #[inline(always)]
+#[allow(dead_code)]
 fn decode_str_tag_from_i32(bits: i32) -> usize {
     (-bits - 1) as usize
 }
@@ -1447,7 +1448,7 @@ impl AutoVM {
                     let may_bits = task.ram.pop_i32();
 
                     // Determine if this is an error case that should propagate
-                    let mut should_propagate = false;
+                    let should_propagate;
                     let mut propagate_value = 0;
 
                     // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)

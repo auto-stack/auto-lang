@@ -31,6 +31,7 @@ fn decode_str_idx_nv(nv: auto_val::NanoValue) -> usize {
 /// Encode a string pool index as a tagged value (negative).
 #[cfg(not(feature = "nanbox"))]
 #[inline]
+#[allow(dead_code)]
 fn encode_str_idx(idx: i32) -> i32 {
     -(idx + 1)
 }
@@ -1255,6 +1256,7 @@ fn vm_is_truthy(val: i32) -> bool {
 
 /// Helper: convert a VM value to a printable boolean (1 or 0)
 #[inline]
+#[allow(dead_code)]
 fn vm_to_printable_bool(val: i32) -> i32 {
     if vm_is_truthy(val) { 1 } else { 0 }
 }

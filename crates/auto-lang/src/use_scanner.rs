@@ -400,6 +400,7 @@ fn parse_python_import(line: &str) -> Option<UseStatement> {
 
     Some(UseStatement::python_import(module, items))
 }
+#[cfg(test)]
 mod tests {
     use super::*;
 

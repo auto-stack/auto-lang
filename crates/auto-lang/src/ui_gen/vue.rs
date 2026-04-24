@@ -2744,6 +2744,7 @@ impl VueGenerator {
     }
 
     /// Convert AuraStmt to JS statement
+    #[allow(dead_code)]
     fn stmt_to_js(&self, stmt: &AuraStmt) -> GenResult<String> {
         match stmt {
             AuraStmt::Assign { target, value } => {

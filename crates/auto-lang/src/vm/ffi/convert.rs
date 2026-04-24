@@ -215,7 +215,7 @@ impl<T: VMConvertible, E: std::fmt::Display> VMConvertible for Result<T, E> {
                 // Only push the inner value (AutoVM expects single return value)
                 value.push_to_stack(task, vm)?;
             }
-            Err(e) => {
+            Err(_) => {
                 // Push 0 as error indicator (Auto code checks for 0/false/null)
                 task.ram.push_i32(0);
             }

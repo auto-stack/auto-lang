@@ -3,6 +3,7 @@ use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
 pub enum AppError {
+    #[allow(dead_code)]
     VmError(String),
     CompileError(String),
     Internal(String),

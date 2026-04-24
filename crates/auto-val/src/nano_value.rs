@@ -8,6 +8,7 @@
 pub type NanoValue = u64;
 
 // Tag constants (placed at bits 51-48 within NaN-boxed values)
+#[allow(dead_code)]
 const TAG_F64:    u64 = 0x0000_0000_0000_0000;
 const TAG_I32:    u64 = 0x0001_0000_0000_0000;
 const TAG_STRING: u64 = 0x0002_0000_0000_0000;
