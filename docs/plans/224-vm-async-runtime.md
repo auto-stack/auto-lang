@@ -1,6 +1,6 @@
 # Plan 224: VM Async Runtime — TaskSystem.run 桥接 + AWAIT_FUTURE 完善 + Async FFI
 
-## Status: 🔧 PLANNED
+## Status: ✅ COMPLETE
 
 **Goal:** 完善 AutoLang VM 的 async 执行基础设施，使 `TaskSystem.run(~{ ... })` 能真正执行异步代码块，`AWAIT_FUTURE` 能正确执行 async body 的字节码，FFI shim 能执行异步操作。
 

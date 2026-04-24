@@ -2968,31 +2968,114 @@ pub fn shim_task_system_stop() -> Result<(), String> {
     Ok(())
 }
 
-// Plan 124: TaskSystem.run() - Sync bridge for async code
+// Plan 224: TaskSystem.run() - VM-aware async body execution
 //
-// Executes an async block synchronously on the current thread.
-// This is the main entry point for running async code from sync context.
+// Executes an async block by looking up the future in the VM registry
+// and running its body bytecode via execute_single_frame.
 //
 // Usage in AutoLang:
 //   TaskSystem.run(~{
 //     // async code here
 //   })
 //
-// Note: For Phase 2.1, this is a simplified implementation that executes
-// the async block synchronously. Full implementation would use tokio::runtime.
-#[auto_macros::rust_fn("TaskSystem.run")]
-pub fn shim_task_system_run(_future_id: i64) -> Result<i64, String> {
-    // Phase 2.1: Simplified implementation
-    // The future_id is passed from VM stack, but we just return it as-is
-    // to indicate the async block was "executed"
-    //
-    // In full implementation, this would:
-    // 1. Create a tokio runtime if not exists
-    // 2. Block on the future
-    // 3. Return the result
+// The future_id is encoded on the VM stack as (future_id << 8) | 0xF0.
+#[allow(non_snake_case)]
+pub fn shim_task_system_run(
+    task: &mut crate::vm::task::AutoTask,
+    vm: &crate::vm::engine::AutoVM,
+) -> Result<(), crate::vm::engine::VMError> {
+    use crate::vm::engine::{FrameResult, FutureState};
 
-    // For now, just return success (0 = nil result)
-    Ok(0)
+    // Pop the future encoding from stack
+    let future_bits = task.ram.pop_i32();
+
+    // Decode future ID
+    if (future_bits & 0xFF) != 0xF0 {
+        // Not a valid future — push nil and return
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+    let future_id = (future_bits >> 8) as u32;
+
+    // Look up the future
+    let future_arc = match vm.futures.get(&future_id) {
+        Some(f) => f,
+        None => {
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+    };
+
+    let body_offset = {
+        let fv = future_arc.read().unwrap();
+        fv.body_offset
+    };
+
+    // Execute the async body using VM engine
+    let saved_ip = task.ip;
+    task.ip = body_offset as usize;
+
+    let mut result_value = auto_val::Value::Int(0);
+    let success;
+
+    loop {
+        match vm.execute_single_frame(task, 10_000) {
+            FrameResult::Return => {
+                if task.ram.sp > task.bp + 1 {
+                    let raw = task.ram.pop_i32();
+                    result_value = auto_val::Value::Int(raw);
+                }
+                success = true;
+                break;
+            }
+            FrameResult::AwaitFuture { future_id: inner_id, body_offset: inner_offset } => {
+                vm.handle_await_future(task, inner_id, inner_offset)?;
+            }
+            FrameResult::BudgetExhausted | FrameResult::Yielded => {
+                // Continue executing
+                continue;
+            }
+            FrameResult::Error(e) => {
+                if let Some(fv) = vm.futures.get(&future_id) {
+                    fv.write().unwrap().state = FutureState::Failed;
+                }
+                task.ip = saved_ip;
+                return Err(e);
+            }
+            FrameResult::Continue => unreachable!(),
+        }
+    }
+
+    task.ip = saved_ip;
+
+    // Update future state
+    if let Some(fv) = vm.futures.get(&future_id) {
+        let mut future = fv.write().unwrap();
+        future.state = if success { FutureState::Ready } else { FutureState::Failed };
+        future.result = Some(result_value.clone());
+    }
+
+    // Push result onto stack
+    match &result_value {
+        auto_val::Value::Int(n) => task.ram.push_i32(*n),
+        auto_val::Value::Nil => task.ram.push_i32(0),
+        _ => task.ram.push_i32(0),
+    }
+
+    Ok(())
+}
+
+/// Plan 224: Helper for executing async operations in FFI shims.
+/// Creates an independent tokio runtime and runs the future with block_on.
+/// Note: This blocks the current thread. Do not call from within an existing tokio runtime.
+pub fn ffi_async_block_on<F, T>(f: F) -> Result<T, crate::vm::engine::VMError>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(format!("Failed to create tokio runtime: {}", e)))?;
+    rt.block_on(f)
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(e))
 }
 
 // Plan 127 Phase 3: ctx.reply() - Send reply from message handler
@@ -3240,7 +3323,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_TASK_HANDLE_TYPE, __shim_TaskHandle_task_type);
     natives.register_static(NATIVE_TASK_HANDLE_ID, __shim_TaskHandle_instance_id);
     natives.register_static(NATIVE_TASK_SYSTEM_START, __shim_TaskSystem_start);
-    natives.register_static(NATIVE_TASK_SYSTEM_RUN, __shim_TaskSystem_run); // Plan 124
+    natives.register_static(NATIVE_TASK_SYSTEM_RUN, shim_task_system_run); // Plan 224: manual shim with VM access
     natives.register_static(NATIVE_TASK_SEND_AWAIT, __shim_TaskHandle_send_await); // Plan 124 Phase 2.2
     natives.register_static(NATIVE_TASK_ASK, __shim_TaskHandle_ask); // Plan 124 Phase 2.3
     natives.register_static(NATIVE_CTX_REPLY, __shim_ctx_reply); // Plan 127: ctx.reply()

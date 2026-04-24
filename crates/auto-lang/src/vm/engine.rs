@@ -179,6 +179,25 @@ enum StepResult {
     Terminated,
     /// Task should pause the current batch (YIELD, SLEEP, blocked JOIN/SEND/RECV)
     Yield,
+    /// Plan 224: AWAIT_FUTURE hit a Pending future — caller should handle body execution
+    AwaitFuture { future_id: u32, body_offset: u32 },
+}
+
+/// Plan 224: Result of executing a single frame (budget-limited instruction batch)
+#[derive(Debug)]
+pub enum FrameResult {
+    /// Normal continuation (unreachable — budget handles this)
+    Continue,
+    /// Frame completed: RET/HALT reached
+    Return,
+    /// AWAIT_FUTURE hit Pending — body_offset needs execution
+    AwaitFuture { future_id: u32, body_offset: u32 },
+    /// Task yielded (SLEEP, YIELD, blocked channel op)
+    Yielded,
+    /// Execution error
+    Error(VMError),
+    /// Instruction budget exhausted (cooperative yielding)
+    BudgetExhausted,
 }
 
 pub struct AutoVM {
@@ -732,6 +751,10 @@ impl AutoVM {
                 StepResult::Yield => {
                     // In call_closure context, Yield just means "continue after pause"
                     continue;
+                }
+                StepResult::AwaitFuture { future_id, body_offset } => {
+                    // Handle await within closure execution
+                    self.handle_await_future(task, future_id, body_offset)?;
                 }
             }
         }
@@ -4363,7 +4386,7 @@ impl AutoVM {
 
                         // Look up the future in the registry
                         if let Some(future_arc) = self.futures.get(&future_id) {
-                            let mut future = future_arc.write().unwrap();
+                            let future = future_arc.write().unwrap();
 
                             match future.state {
                                 FutureState::Ready => {
@@ -4387,34 +4410,10 @@ impl AutoVM {
                                     task.ram.push_i32(0);
                                 }
                                 FutureState::Pending => {
-                                    // Phase 2.1: Execute the async body synchronously
-                                    // In full implementation, this would suspend the task
-                                    // and schedule execution on a worker thread
-                                    vm_debug!("DEBUG: AWAIT_FUTURE: id={} is pending, executing synchronously", future_id);
-
-                                    // Save current IP
-                                    let saved_ip = task.ip;
-                                    let body_offset = future.body_offset as usize;
-
-                                    // Jump to async body and execute
-                                    task.ip = body_offset;
-
-                                    // Execute until we hit a marker or run out of instructions
-                                    // For Phase 2.1, the async body will execute and leave a result on stack
-                                    // We'll execute a limited number of instructions
-
-                                    // Execute the body (simplified - just set result as complete)
-                                    // In real implementation, we'd run the bytecode interpreter here
-
-                                    // Restore IP
-                                    task.ip = saved_ip;
-
-                                    // Mark future as ready with a placeholder result
-                                    future.state = FutureState::Ready;
-                                    future.result = Some(auto_val::Value::Int(0));
-
-                                    // Push the result
-                                    task.ram.push_i32(0);
+                                    // Plan 224: Return AwaitFuture signal for frame-level handling
+                                    vm_debug!("DEBUG: AWAIT_FUTURE: id={} is pending, returning AwaitFuture signal", future_id);
+                                    let body_offset = future.body_offset;
+                                    return Ok(StepResult::AwaitFuture { future_id, body_offset });
                                 }
                             }
                         } else {
@@ -4490,29 +4489,145 @@ impl AutoVM {
             Ok(StepResult::Continue)
         }
 
-    /// Execute a chunk of opcodes for a specific task
-    fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
-        let budget = 100; // OpCode Budget
+    /// Plan 224: Execute bytecode for a single frame until a boundary condition.
+    /// Returns FrameResult indicating what stopped execution.
+    /// This can be called recursively for AWAIT_FUTURE body execution.
+    pub fn execute_single_frame(
+        &self,
+        task: &mut AutoTask,
+        budget: u32,
+    ) -> FrameResult {
         for _ in 0..budget {
             let ip_before = task.ip;
             let line_before = task.current_line;
-            match self.run_one_instruction(task)? {
-                StepResult::Continue => {
-                    // Plan 199: Record trace if enabled
+            match self.run_one_instruction(task) {
+                Ok(StepResult::Continue) => {
                     self.record_trace(ip_before, line_before, task);
-                    continue;
                 }
-                StepResult::Terminated => return Ok(TaskStatus::Terminated),
-                StepResult::Yield => {
-                    // SLEEP sets task.status to Waiting; YIELD/JOIN/SEND/RECV leave it Ready
-                    if matches!(task.status, TaskStatus::Waiting(_)) {
-                        return Ok(task.status.clone());
-                    }
-                    return Ok(TaskStatus::Ready);
+                Ok(StepResult::Terminated) => return FrameResult::Return,
+                Ok(StepResult::Yield) => return FrameResult::Yielded,
+                Ok(StepResult::AwaitFuture { future_id, body_offset }) => {
+                    return FrameResult::AwaitFuture { future_id, body_offset };
                 }
+                Err(e) => return FrameResult::Error(e),
             }
         }
-        Ok(TaskStatus::Ready)
+        FrameResult::BudgetExhausted
+    }
+
+    /// Plan 224: Handle AWAIT_FUTURE for a pending future.
+    /// Executes the async body bytecode via recursive execute_single_frame.
+    pub fn handle_await_future(
+        &self,
+        task: &mut AutoTask,
+        future_id: u32,
+        body_offset: u32,
+    ) -> Result<(), VMError> {
+        const MAX_RECURSION_DEPTH: u32 = 64;
+        self.execute_future_body(task, future_id, body_offset, 0, MAX_RECURSION_DEPTH)
+    }
+
+    /// Recursively execute a future's body bytecode.
+    fn execute_future_body(
+        &self,
+        task: &mut AutoTask,
+        future_id: u32,
+        body_offset: u32,
+        depth: u32,
+        max_depth: u32,
+    ) -> Result<(), VMError> {
+        if depth >= max_depth {
+            // Set future to Failed on recursion limit
+            if let Some(future_arc) = self.futures.get(&future_id) {
+                future_arc.write().unwrap().state = FutureState::Failed;
+            }
+            return Err(VMError::RuntimeError(
+                format!("Future recursion depth exceeded ({})", max_depth)
+            ));
+        }
+
+        // Save current IP so we can restore after body execution
+        let saved_ip = task.ip;
+        task.ip = body_offset as usize;
+
+        // Execute body until Return/AwaitFuture/Error
+        const BODY_BUDGET: u32 = 10_000;
+        let mut result_value = auto_val::Value::Int(0);
+
+        loop {
+            match self.execute_single_frame(task, BODY_BUDGET) {
+                FrameResult::Return => {
+                    // Body completed — read result from stack top
+                    if task.ram.sp > task.bp + 1 {
+                        let raw = task.ram.pop_i32();
+                        result_value = auto_val::Value::Int(raw);
+                    }
+                    break;
+                }
+                FrameResult::AwaitFuture { future_id: inner_id, body_offset: inner_offset } => {
+                    // Recursive await: execute inner future body
+                    self.execute_future_body(task, inner_id, inner_offset, depth + 1, max_depth)?;
+                    // Inner future result was pushed onto stack, continue body execution
+                }
+                FrameResult::BudgetExhausted => {
+                    // Continue executing body
+                    continue;
+                }
+                FrameResult::Yielded => {
+                    // In future body context, yields are just pauses
+                    continue;
+                }
+                FrameResult::Error(e) => {
+                    if let Some(future_arc) = self.futures.get(&future_id) {
+                        future_arc.write().unwrap().state = FutureState::Failed;
+                    }
+                    task.ip = saved_ip;
+                    return Err(e);
+                }
+                FrameResult::Continue => unreachable!(),
+            }
+        }
+
+        // Restore IP
+        task.ip = saved_ip;
+
+        // Update future state
+        if let Some(future_arc) = self.futures.get(&future_id) {
+            let mut future = future_arc.write().unwrap();
+            future.state = FutureState::Ready;
+            future.result = Some(result_value.clone());
+        }
+
+        // Push result onto caller's stack
+        match &result_value {
+            auto_val::Value::Int(n) => task.ram.push_i32(*n as i32),
+            auto_val::Value::Nil => task.ram.push_i32(0),
+            _ => task.ram.push_i32(0),
+        }
+
+        Ok(())
+    }
+
+    /// Execute a chunk of opcodes for a specific task
+    fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
+        const BUDGET: u32 = 100;
+        match self.execute_single_frame(task, BUDGET) {
+            FrameResult::Return => Ok(TaskStatus::Terminated),
+            FrameResult::Yielded => {
+                if matches!(task.status, TaskStatus::Waiting(_)) {
+                    Ok(task.status.clone())
+                } else {
+                    Ok(TaskStatus::Ready)
+                }
+            }
+            FrameResult::AwaitFuture { future_id, body_offset } => {
+                self.handle_await_future(task, future_id, body_offset)?;
+                Ok(TaskStatus::Ready)
+            }
+            FrameResult::BudgetExhausted => Ok(TaskStatus::Ready),
+            FrameResult::Continue => unreachable!(),
+            FrameResult::Error(e) => Err(e),
+        }
     }
 
     /// Plan 199: Record a trace entry if tracing is enabled

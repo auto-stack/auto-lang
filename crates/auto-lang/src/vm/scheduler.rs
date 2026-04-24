@@ -218,6 +218,35 @@ pub async fn execute_handler_fully(
     }
 }
 
+/// Plan 224: VM-aware handler execution using execute_single_frame.
+/// This runs a handler to completion with full opcode support via the VM engine.
+pub async fn execute_handler_with_vm(
+    vm: &crate::vm::engine::AutoVM,
+    task: &mut AutoTask,
+) -> Result<TaskStatus, VMError> {
+    use crate::vm::engine::FrameResult;
+
+    loop {
+        match vm.execute_single_frame(task, 10_000) {
+            FrameResult::Return => return Ok(TaskStatus::Terminated),
+            FrameResult::Yielded => {
+                if matches!(task.status, TaskStatus::Waiting(_)) {
+                    return Ok(task.status.clone());
+                }
+                tokio::task::yield_now().await;
+            }
+            FrameResult::AwaitFuture { future_id, body_offset } => {
+                vm.handle_await_future(task, future_id, body_offset)?;
+            }
+            FrameResult::BudgetExhausted => {
+                tokio::task::yield_now().await;
+            }
+            FrameResult::Error(e) => return Err(e),
+            FrameResult::Continue => unreachable!(),
+        }
+    }
+}
+
 /// Task message loop - runs until mailbox closes or HALT
 ///
 /// Lifecycle:
