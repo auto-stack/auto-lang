@@ -58,6 +58,8 @@ pub mod mode;
 pub mod multi_mode;
 // Plan 081 Phase 5: FFI layer for cross-mode function calls
 pub mod ffi;
+// Plan 222: Python FFI type definitions (no pyo3 dependency)
+pub mod py_ffi_types;
 // Plan 214: Python FFI via PyO3 (optional, requires `--features python`)
 #[cfg(feature = "python")]
 pub mod py_ffi;
@@ -411,7 +413,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         }
 
         for func_name in functions {
-            match bridge.register_function(module_name, func_name) {
+            let sig = crate::py_ffi_types::PySignature::default_string_string();
+            match bridge.register_function(module_name, func_name, sig) {
                 Ok(native_id) => {
                     log::info!("Registered Python FFI: {}.{} (native_id={})", module_name, func_name, native_id);
 
