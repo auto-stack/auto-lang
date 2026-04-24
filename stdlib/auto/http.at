@@ -179,3 +179,44 @@ pub fn RequestBuilder.timeout(self RequestBuilder, ms int) RequestBuilder;
 
 /// Send the request
 pub fn RequestBuilder.send(self RequestBuilder) Response;
+
+// ═══════════════════════════════════════════════════════════
+// Response Access Methods
+// ═══════════════════════════════════════════════════════════
+
+/// Get the status code from a response
+/// Example: let code = res.status_code()
+pub fn Response.status_code(self Response) int;
+
+/// Get a header value by key (case-insensitive)
+/// Example: let ct = res.header_get("Content-Type")
+pub fn Response.header_get(self Response, key str) str;
+
+/// Get the raw body as byte array
+/// Example: let bytes = res.body_bytes()
+pub fn Response.body_bytes(self Response) []byte;
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Stream (SSE)
+// ═══════════════════════════════════════════════════════════
+
+/// HTTP streaming response for SSE and chunked data
+type HTTPStream
+
+/// Create a streaming GET request
+pub fn get_stream(url str) HTTPStream;
+
+/// Create a streaming POST request
+pub fn post_stream(url str, body str) HTTPStream;
+
+/// Create a streaming POST request with custom headers
+pub fn post_stream_with_headers(url str, body str, headers str) HTTPStream;
+
+/// Read next chunk from stream
+pub fn HTTPStream.next(self HTTPStream) str;
+
+/// Check if stream is done (1 = done, 0 = active)
+pub fn HTTPStream.is_done(self HTTPStream) int;
+
+/// Close stream and release resources
+pub fn HTTPStream.close(self HTTPStream) void;

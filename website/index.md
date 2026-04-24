@@ -2,20 +2,18 @@
 layout: home
 ---
 
-<script>
-(function() {
+<script setup>
+import { onMounted } from 'vue'
+import HomeHero from './.vitepress/theme/components/HomeHero.vue'
+import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
+const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
+onMounted(() => {
   if (sessionStorage.getItem('auto-lang-checked')) return;
   sessionStorage.setItem('auto-lang-checked', '1');
   if (navigator.language.toLowerCase().startsWith('zh')) {
     window.location.replace('/zh/');
   }
-})();
-</script>
-
-<script setup>
-import HomeHero from './.vitepress/theme/components/HomeHero.vue'
-import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
-const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
+});
 </script>
 
 <HomeHero

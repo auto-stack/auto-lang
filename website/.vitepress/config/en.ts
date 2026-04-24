@@ -29,6 +29,8 @@ export const en = defineConfig({
 function nav(): DefaultTheme.NavItem[] {
   return [
     { text: 'Home', link: '/' },
+    { text: 'AI', link: '/ai' },
+    { text: 'OS', link: '/os' },
     { text: 'Docs', link: '/docs/' },
     { text: 'Books', link: '/books/' },
     { text: 'Playground', link: '/playground' },

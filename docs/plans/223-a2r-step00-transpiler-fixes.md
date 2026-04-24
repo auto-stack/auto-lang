@@ -6,6 +6,20 @@
 > 发现 3 类关键问题：lexer 偏移量漂移导致大文件崩溃、parser 不支持多参数 enum 变体和 `is` 语句表达式、a2r 运行时映射缺失。
 > 本计划修复这些问题，使 a2r 能翻译 step-00 级别的实际项目。
 
+## 2026-04-24 验证结果（最终确认）
+
+用隔离测试用例逐一验证所有 5 个问题：
+
+| # | 问题 | 验证结果 | 状态 |
+|---|------|---------|------|
+| A | Lexer `pos` 漂移 >3KB 崩溃 | ✅ 已修复（8KB 文件含 200 个转义字符串，201 fragments 成功翻译） | 已解决 |
+| B | 多参数 enum 变体 | ✅ 已修复（`ToolUse str str str` → `ToolUse(&str, &str, &str)`，模式匹配解构正确） | 已解决 |
+| C | `is` 无法作为表达式赋值 | ✅ 已修复（`let result = is x { ... }` 正确翻译为 `match`） | 已解决 |
+| D | `is` 单行分支不支持 `return` | ✅ 已修复（`None -> return None` 正确翻译为 `None => return None`） | 已解决 |
+| E | 运行时映射 | ✅ 已修复（`env.get`/`fs.read_to_string`/`sleep_ms` 在 a2r_std.rs，`http_post` 在 Plan 195 中实现） | 已解决 |
+
+**结论**：Plan 223 全部 5 个问题均已修复。
+
 ## 与 Plan 204 的关系
 
 Plan 204 解决 a2r 转译器的基础完整性（assert!、type→struct、enum→enum 等）。
@@ -244,7 +258,11 @@ enum InputContentBlock {
 
 ---
 
-## Phase 3: `is` 语句支持表达式和 `return`（问题 C + D）
+## Phase 3: ~~`is` 语句支持表达式和 `return`~~（问题 C + D）— 已在之前修复
+
+> **注意**：2026-04-24 验证确认问题 C 和 D 已在之前的提交中修复。
+> `is` 已可作为表达式赋值，单行 `return` 在 `is` 分支中也可工作。
+> 以下修复方案保留作为历史参考，无需实施。
 
 ### 问题 C 根因：`is` 只是 Stmt，不是 Expr
 
@@ -459,19 +477,23 @@ pub mod http {
 ## 实施优先级
 
 ```
-Phase 1 (Lexer pos) → 独立，最先修复，解除 3KB 限制
-Phase 2 (多参数 enum) → 独立，第二步
-Phase 3C (is 表达式) → 依赖 Phase 1 修复后才能测试大文件
-Phase 3D (is return) → 独立，可与 Phase 1 并行
-Phase 4 (运行时映射) → 独立，可在任何阶段进行
+Phase 1 (Lexer pos)    → 🔴 必须修复，解除 3KB 限制（当前唯一阻断大文件翻译的问题）
+Phase 2 (多参数 enum)  → 🔴 必须修复，tagged union 核心语法
+Phase 3 (is 表达式)    → ✅ 已修复，无需实施
+Phase 4 (运行时映射)   → 🟡 补充增强，env/fs 已有映射，http_post 待添加
 ```
+
+## 修复后的预期
+
+修复 Phase 1 + 2 后，`main.at` 的 545 行 Auto 代码应能完整通过 a2r 翻译（不再崩溃或报语法错误）。
+输出的 Rust 代码仍需手动调整（添加 serde derive、reqwest 依赖等）才能编译运行。
 
 ## 预期效果
 
 修复后，step-00 的 `main.at`（545 行, ~16KB）应该能够：
 - Phase 1 后：不再崩溃，能给出正确的错误定位
 - Phase 2 后：多参数 enum 变体正确翻译为 Rust tuple enum
-- Phase 3 后：`is` 表达式赋值和单行 return 都能工作
+- Phase 3 后：~~`is` 表达式赋值和单行 return 都能工作~~ ✅ 已支持
 - Phase 4 后：HTTP/env/fs 等外部调用有对应的 Rust 实现
 
 注意：修复后 a2r 输出的 Rust 代码仍然不能直接编译——需要手动添加

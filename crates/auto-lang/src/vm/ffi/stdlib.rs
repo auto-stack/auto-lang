@@ -171,6 +171,19 @@ pub const NATIVE_HTTP_POST: u16 = 2231;
 pub const NATIVE_HTTP_PUT: u16 = 2232;
 pub const NATIVE_HTTP_DELETE: u16 = 2233;
 
+// Plan 195: RequestBuilder (2234-2239)
+pub const NATIVE_HTTP_REQUEST: u16 = 2234;
+pub const NATIVE_HTTP_REQUEST_BUILDER_HEADER: u16 = 2235;
+pub const NATIVE_HTTP_REQUEST_BUILDER_BODY: u16 = 2236;
+pub const NATIVE_HTTP_REQUEST_BUILDER_TIMEOUT: u16 = 2237;
+pub const NATIVE_HTTP_REQUEST_BUILDER_JSON: u16 = 2238;
+pub const NATIVE_HTTP_REQUEST_BUILDER_SEND: u16 = 2239;
+
+// Plan 195: Response access (2216-2218)
+pub const NATIVE_RESPONSE_STATUS_CODE: u16 = 2216;
+pub const NATIVE_RESPONSE_HEADER_GET: u16 = 2217;
+pub const NATIVE_RESPONSE_BODY: u16 = 2218;
+
 // Plan 152: 流式 HTTP (2240-2249)
 pub const NATIVE_HTTP_GET_STREAM: u16 = 2240;
 pub const NATIVE_HTTP_POST_STREAM: u16 = 2241;
@@ -1671,6 +1684,21 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+// Plan 195: RequestBuilder 数据存储
+#[derive(Debug, Clone)]
+struct HttpRequestBuilderData {
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+    timeout_ms: Option<u64>,
+}
+
+thread_local! {
+    static HTTP_REQUEST_BUILDERS: std::cell::RefCell<std::collections::HashMap<u64, HttpRequestBuilderData>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 /// HTTP Response data
 #[derive(Debug, Clone, Default)]
 struct HttpResponseData {
@@ -1774,14 +1802,52 @@ pub fn shim_http_server_static(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
-/// Start server listening (placeholder)
+/// Start server listening (blocking, using tokio)
 pub fn shim_http_server_listen(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _addr: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let addr: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let _server: i64 = task.ram.pop_i64();
 
-    // Placeholder - would start TCP server with HTTP parsing
-    eprintln!("[HTTP] Server listen not yet implemented");
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| VMError::RuntimeError(format!("Failed to create tokio runtime: {}", e)))?;
+
+    rt.block_on(async {
+        let listener = match tokio::net::TcpListener::bind(&addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[HTTP] Server bind failed: {}", e);
+                return;
+            }
+        };
+        eprintln!("[HTTP] Server listening on {}", addr);
+
+        loop {
+            match listener.accept().await {
+                Ok((mut stream, _peer)) => {
+                    tokio::spawn(async move {
+                        use tokio::io::AsyncReadExt;
+                        use tokio::io::AsyncWriteExt;
+
+                        let mut buf = vec![0u8; 4096];
+                        match stream.read(&mut buf).await {
+                            Ok(n) if n > 0 => {
+                                let response = "HTTP/1.1 200 OK\r\n\
+                                    Content-Type: text/plain\r\n\
+                                    Content-Length: 27\r\n\
+                                    Connection: close\r\n\
+                                    \r\n\
+                                    Hello from Auto HTTP Server";
+                                let _ = stream.write_all(response.as_bytes()).await;
+                            }
+                            _ => {}
+                        }
+                    });
+                }
+                Err(e) => eprintln!("[HTTP] Accept error: {}", e),
+            }
+        }
+    });
+
     Ok(())
 }
 
@@ -2017,6 +2083,173 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
     let response_handle = simple_http_request("DELETE", &url, None);
 
     task.ram.push_i64(response_handle);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 195: RequestBuilder FFI
+// ============================================================================
+
+/// Create a new RequestBuilder handle
+/// http_request(method, url) -> RequestBuilder handle
+pub fn shim_http_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let method: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let data = HttpRequestBuilderData {
+        method,
+        url,
+        headers: vec![],
+        body: None,
+        timeout_ms: None,
+    };
+    HTTP_REQUEST_BUILDERS.with(|b| b.borrow_mut().insert(handle, data));
+    task.ram.push_i64(handle as i64);
+    Ok(())
+}
+
+/// Add a header to RequestBuilder
+/// request_builder_header(rb, key, value) -> rb
+pub fn shim_request_builder_header(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let value: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let key: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let rb_handle: i64 = task.ram.pop_i64();
+
+    HTTP_REQUEST_BUILDERS.with(|b| {
+        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
+            builder.headers.push((key, value));
+        }
+    });
+
+    task.ram.push_i64(rb_handle);
+    Ok(())
+}
+
+/// Set body on RequestBuilder
+/// request_builder_body(rb, body) -> rb
+pub fn shim_request_builder_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let rb_handle: i64 = task.ram.pop_i64();
+
+    HTTP_REQUEST_BUILDERS.with(|b| {
+        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
+            builder.body = Some(body);
+        }
+    });
+
+    task.ram.push_i64(rb_handle);
+    Ok(())
+}
+
+/// Set timeout on RequestBuilder
+/// request_builder_timeout(rb, ms) -> rb
+pub fn shim_request_builder_timeout(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let ms: i64 = task.ram.pop_i64();
+    let rb_handle: i64 = task.ram.pop_i64();
+
+    HTTP_REQUEST_BUILDERS.with(|b| {
+        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
+            builder.timeout_ms = Some(ms as u64);
+        }
+    });
+
+    task.ram.push_i64(rb_handle);
+    Ok(())
+}
+
+/// Set JSON body on RequestBuilder
+/// request_builder_json(rb, data) -> rb
+pub fn shim_request_builder_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let data: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let rb_handle: i64 = task.ram.pop_i64();
+
+    HTTP_REQUEST_BUILDERS.with(|b| {
+        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
+            builder.body = Some(data);
+            if !builder.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
+                builder.headers.push(("Content-Type".to_string(), "application/json".to_string()));
+            }
+        }
+    });
+
+    task.ram.push_i64(rb_handle);
+    Ok(())
+}
+
+/// Send RequestBuilder and return Response handle
+/// request_builder_send(rb) -> Response handle
+pub fn shim_request_builder_send(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let rb_handle: i64 = task.ram.pop_i64();
+
+    let builder_data = HTTP_REQUEST_BUILDERS.with(|b| {
+        b.borrow_mut().remove(&(rb_handle as u64))
+    }).ok_or_else(|| VMError::RuntimeError(format!("Invalid RequestBuilder handle: {}", rb_handle)))?;
+
+    let response_handle = simple_http_request(
+        &builder_data.method,
+        &builder_data.url,
+        builder_data.body.as_deref(),
+    );
+
+    task.ram.push_i64(response_handle);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 195: Enhanced Response access methods
+// ============================================================================
+
+/// Get status code from Response handle
+/// response_status_code(res_handle) -> int
+pub fn shim_response_status_code(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let res_handle: i64 = task.ram.pop_i64();
+
+    let status = HTTP_RESPONSES.with(|r| {
+        r.borrow().get(&(res_handle as u64)).map(|res| res.status as i64)
+    }).unwrap_or(0);
+
+    task.ram.push_i64(status);
+    Ok(())
+}
+
+/// Get header value from Response handle
+/// response_header_get(res_handle, key) -> str
+pub fn shim_response_header_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let res_handle: i64 = task.ram.pop_i64();
+
+    let value = HTTP_RESPONSES.with(|r| {
+        let responses = r.borrow();
+        responses.get(&(res_handle as u64)).and_then(|res| {
+            res.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(&key)).map(|(_, v)| v.clone())
+        })
+    }).unwrap_or_default();
+
+    value.push_to_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Get raw body bytes from Response handle
+/// response_body(res_handle) -> []byte
+pub fn shim_response_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let res_handle: i64 = task.ram.pop_i64();
+
+    let body_bytes = HTTP_RESPONSES.with(|r| {
+        r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
+    }).unwrap_or_default();
+
+    let byte_vec: Vec<i32> = body_bytes.into_iter().map(|b| b as i32).collect();
+    byte_vec.push_to_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -2316,102 +2549,46 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
     events
 }
 
-/// Simple HTTP request implementation
+/// HTTP request using reqwest::blocking
 fn simple_http_request(method: &str, url: &str, body: Option<&str>) -> i64 {
-    // Parse URL (simple: expect http://host:port/path)
-    let url = url.trim_start_matches("http://");
-
-    let (host_port, path) = match url.find('/') {
-        Some(i) => (&url[..i], &url[i..]),
-        None => (url, "/"),
+    let client = reqwest::blocking::Client::new();
+    let mut builder = match method {
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "DELETE" => client.delete(url),
+        _ => client.get(url),
     };
-
-    let (host, port) = match host_port.find(':') {
-        Some(i) => (&host_port[..i], &host_port[i + 1..]),
-        None => (host_port, "80"),
-    };
-
-    let addr = format!("{}:{}", host, port);
-
-    // Connect
-    let mut stream = match StdTcpStream::connect(&addr) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("[HTTP] Connection failed: {} - {}", addr, e);
-            return shim_http_internal_error(format!("Connection failed: {}", e));
-        }
-    };
-
-    // Set timeout
-    stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
-
-    // Build request
-    let body_len = body.map(|b| b.len()).unwrap_or(0);
-    let mut request = format!(
-        "{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n",
-        method, path, host
-    );
-
-    if body.is_some() {
-        request.push_str(&format!("Content-Length: {}\r\n", body_len));
-        request.push_str("Content-Type: application/json\r\n");
-    }
-
-    request.push_str("\r\n");
 
     if let Some(b) = body {
-        request.push_str(b);
+        builder = builder
+            .header("Content-Type", "application/json")
+            .body(b.to_string());
     }
 
-    // Send request
-    if let Err(e) = stream.write_all(request.as_bytes()) {
-        return shim_http_internal_error(format!("Write failed: {}", e));
-    }
+    match builder.send() {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            let headers: Vec<(String, String)> = response
+                .headers()
+                .iter()
+                .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
+                .collect();
+            let body_bytes = response.bytes().unwrap_or_default().to_vec();
 
-    // Read response
-    let mut response_bytes = Vec::new();
-    if let Err(e) = stream.read_to_end(&mut response_bytes) {
-        return shim_http_internal_error(format!("Read failed: {}", e));
-    }
+            let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+            let resp_data = HttpResponseData {
+                status,
+                headers,
+                body: body_bytes,
+            };
 
-    // Parse response (simple: just extract status code and body)
-    let response_str = String::from_utf8_lossy(&response_bytes);
-    let status = extract_status_code(&response_str);
-    let body = extract_body(&response_str);
+            HTTP_RESPONSES.with(|r| {
+                r.borrow_mut().insert(handle, resp_data);
+            });
 
-    // Create response handle
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData {
-        status,
-        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
-        body: body.into_bytes(),
-    };
-
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
-
-    handle as i64
-}
-
-/// Extract status code from HTTP response
-fn extract_status_code(response: &str) -> u16 {
-    // HTTP/1.1 200 OK
-    let first_line = response.lines().next().unwrap_or("");
-    let parts: Vec<&str> = first_line.split_whitespace().collect();
-    if parts.len() >= 2 {
-        parts[1].parse().unwrap_or(500)
-    } else {
-        500
-    }
-}
-
-/// Extract body from HTTP response
-fn extract_body(response: &str) -> String {
-    // Find \r\n\r\n separator
-    match response.find("\r\n\r\n") {
-        Some(i) => response[i + 4..].to_string(),
-        None => String::new(),
+            handle as i64
+        }
+        Err(e) => shim_http_internal_error(format!("HTTP {} failed: {}", method, e)),
     }
 }
 
@@ -3026,6 +3203,19 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_HTTP_POST, shim_http_post);
     natives.register_static(NATIVE_HTTP_PUT, shim_http_put);
     natives.register_static(NATIVE_HTTP_DELETE, shim_http_delete);
+
+    // Plan 195: RequestBuilder
+    natives.register_static(NATIVE_HTTP_REQUEST, shim_http_request);
+    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_HEADER, shim_request_builder_header);
+    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_BODY, shim_request_builder_body);
+    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_TIMEOUT, shim_request_builder_timeout);
+    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_JSON, shim_request_builder_json);
+    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_SEND, shim_request_builder_send);
+
+    // Plan 195: Response access
+    natives.register_static(NATIVE_RESPONSE_STATUS_CODE, shim_response_status_code);
+    natives.register_static(NATIVE_RESPONSE_HEADER_GET, shim_response_header_get);
+    natives.register_static(NATIVE_RESPONSE_BODY, shim_response_body);
 
     // Plan 152: 流式 HTTP
     natives.register_static(NATIVE_HTTP_GET_STREAM, shim_http_get_stream);

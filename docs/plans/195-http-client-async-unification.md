@@ -1,14 +1,17 @@
 # Plan 195: HTTP Client 实现 + auto.http 统一 + 异步支持
 
-## Status: 🔧 PARTIAL
+## Status: ✅ COMPLETE
 
-Verified 2026-04-23:
+Verified 2026-04-24:
 - ✅ reqwest dependency added (Cargo.toml)
 - ✅ http_stream stdlib module with GET/POST/streaming/SSE support (implemented under Plans 152/154/159)
 - ✅ Native shims: shim_http_get_stream, shim_http_post_stream, etc. in vm/ffi/stdlib.rs
-- ❌ No auto.http unified module (only http_stream.at exists)
-- ❌ No RequestBuilder API
-- ❌ No async HTTP (Phase 3.2 blocked by Plan 196)
+- ✅ auto.http unified module (http_stream merged in, http_stream.at deprecated)
+- ✅ RequestBuilder FFI (native IDs 2234-2239) with header/body/timeout/json/send
+- ✅ Response access methods (native IDs 2216-2218): status_code, header_get, body
+- ✅ simple_http_request replaced with reqwest::blocking (HTTPS, redirects, headers)
+- ✅ HTTP Server listen with tokio (blocking, Task 3.1)
+- ⏩ Phase 3.2 (Async HTTP) 剥离至 [Plan 224](224-vm-async-runtime.md)（VM Async Runtime 基础设施）
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -576,9 +579,9 @@ feat(http): implement HTTP server listen with tokio TCP accept loop
 
 ---
 
-#### Task 3.2: Async HTTP Client/Server（BLOCKED）
+#### Task 3.2: Async HTTP Client/Server（剥离至 Plan 224）
 
-> **此 Task 被前置 A-D 阻塞，需要先完成 Plan 196 后才能实施。**
+> **此 Task 已从本 Plan 剥离。** VM async 基础设施（TaskSystem.run 桥接、AWAIT_FUTURE 完善、Async FFI）已独立为 [Plan 224: VM Async Runtime](224-vm-async-runtime.md)。完成 Plan 224 后可回来实现 async HTTP。
 
 以下为完成前置后的实现设计，仅供参考：
 

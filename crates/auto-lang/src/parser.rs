@@ -2945,8 +2945,10 @@ impl<'a> Parser<'a> {
             let mut bindings = vec![];
             if !self.is_kind(TokenKind::RParen) {
                 bindings.push(self.parse_name()?);
-                while self.is_kind(TokenKind::Comma) {
-                    self.next();
+                while self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Ident) {
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                    }
                     bindings.push(self.parse_name()?);
                 }
             }
@@ -4009,7 +4011,11 @@ impl<'a> Parser<'a> {
                 // Single: `Move Point` → payload_type = Some(Point)
                 // Multi:  `ToolUse str str str` → payload_types = [str, str, str]
                 let mut types = vec![self.parse_type()?];
-                while self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LParen) {
+                while self.is_kind(TokenKind::Ident)
+                    || self.is_kind(TokenKind::LParen)
+                    || self.is_kind(TokenKind::Question)
+                    || self.is_kind(TokenKind::Not)
+                {
                     types.push(self.parse_type()?);
                 }
                 if types.len() == 1 {
@@ -5585,6 +5591,7 @@ impl<'a> Parser<'a> {
                 }
                 let expr = patterns.swap_remove(0); // take first for compatibility
                 self.expect(TokenKind::Arrow)?;
+                self.skip_empty_lines();
 
                 // Check for pattern binding cases
                 let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {

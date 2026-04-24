@@ -145,3 +145,38 @@ fn request_builder_timeout(rb RequestBuilder, ms int) RequestBuilder
 
 #[vm]
 fn request_builder_send(rb RequestBuilder) Response
+
+// ═══════════════════════════════════════════════════════════
+// Response Access Methods
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn response_status_code(res Response) int
+
+#[vm]
+fn response_header_get(res Response, key str) str
+
+#[vm]
+fn response_body(res Response) []byte
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Stream
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn http_get_stream(url str) HTTPStream
+
+#[vm]
+fn http_post_stream(url str, body str) HTTPStream
+
+#[vm]
+fn http_post_stream_with_headers(url str, body str, headers str) HTTPStream
+
+#[vm]
+fn http_stream_next(stream HTTPStream) str
+
+#[vm]
+fn http_stream_is_done(stream HTTPStream) int
+
+#[vm]
+fn http_stream_close(stream HTTPStream) void
