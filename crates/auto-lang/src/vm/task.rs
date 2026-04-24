@@ -21,6 +21,15 @@ pub enum ResultType {
     Uint,
 }
 
+/// Plan 199: Structured call frame for stack trace debugging
+#[derive(Debug, Clone)]
+pub struct CallFrame {
+    pub return_ip: usize,
+    pub old_bp: usize,
+    pub fn_name: Option<String>,
+    pub line: u32,
+}
+
 /// Represents a single concurrent task in the AutoVM
 /// Holds its own stack, instruction pointer, and execution state.
 pub struct AutoTask {
@@ -48,6 +57,8 @@ pub struct AutoTask {
     // Plan 199: Source line tracking for debugging
     pub current_line: u32,
     pub current_source: Option<String>,
+    // Plan 199: Structured call stack for debugging
+    pub call_stack: Vec<CallFrame>,
 }
 
 impl AutoTask {
@@ -72,6 +83,7 @@ impl AutoTask {
             current_msg_context: None,
             current_line: 0,
             current_source: None,
+            call_stack: Vec::new(),
         }
     }
 }

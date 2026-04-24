@@ -927,6 +927,14 @@ impl AutoVM {
                         };
                         task.last_error = Some(error_msg.clone());
                         eprintln!("Task {} Error: {}", task.id, error_msg);
+                        // Plan 199: Print call stack trace on error
+                        if !task.call_stack.is_empty() {
+                            eprintln!("Stack trace:");
+                            for (i, frame) in task.call_stack.iter().enumerate().rev() {
+                                let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
+                                eprintln!("  #{} {} at line {}", i, name, frame.line);
+                            }
+                        }
                         task.status = TaskStatus::Terminated;
                     }
                 }
@@ -3198,6 +3206,14 @@ impl AutoVM {
                     // New BP points to the saved BP location (SP - 1)
                     task.bp = task.ram.sp - 1;
 
+                    // Plan 199: Push structured call frame for debugging
+                    task.call_stack.push(crate::vm::task::CallFrame {
+                        return_ip: task.ip,
+                        old_bp: task.bp,
+                        fn_name: None,
+                        line: task.current_line,
+                    });
+
                     vm_debug!("DEBUG CALL: Stack depth after setup = {}, BP = {}",
                         task.ram.sp, task.bp
                     );
@@ -3318,6 +3334,9 @@ impl AutoVM {
                     task.ip = ret_ip;
                     task.ram.sp = new_sp;
                     task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
+
+                    // Plan 199: Pop structured call frame
+                    task.call_stack.pop();
                 }
                 // RET_D: Return with 2-slot value (f64, u64, i64)
                 OpCode::RET_D => {
