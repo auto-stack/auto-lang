@@ -3,7 +3,8 @@
     <div v-if="timeMs > 0" class="time-info">Completed in {{ timeMs }}ms</div>
     <pre v-if="stdout" class="stdout">{{ stdout }}</pre>
     <pre v-if="stderr" class="stderr">{{ stderr }}</pre>
-    <div v-if="!stdout && !stderr" class="empty">Click Run or press Ctrl+Enter to execute</div>
+    <pre v-if="result" class="result">Result: {{ result }}</pre>
+    <div v-if="!stdout && !stderr && !result" class="empty">Click Run or press Ctrl+Enter to execute</div>
   </div>
 </template>
 
@@ -11,6 +12,7 @@
 defineProps<{
   stdout: string;
   stderr: string;
+  result: string;
   timeMs: number;
 }>();
 </script>
@@ -35,6 +37,12 @@ defineProps<{
   word-break: break-all;
   margin: 0;
   color: #f48771;
+}
+.result {
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 8px 0 0 0;
+  color: #4ec9b0;
 }
 .time-info {
   color: #6a9955;

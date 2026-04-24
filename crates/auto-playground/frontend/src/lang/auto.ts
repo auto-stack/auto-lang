@@ -56,7 +56,7 @@ export const autoLanguage = StreamLanguage.define({
         stream.next();
         return 'string';
       }
-      const quote = state.inString === 'f"' || state.inString === "c'" ? '"' : state.inString === "'" ? "'" : '"';
+      const quote = state.inString === 'f"' || state.inString === 'c"' ? '"' : state.inString === "'" ? "'" : '"';
       if (stream.peek() === quote) {
         stream.next();
         state.inString = false;

@@ -1,0 +1,22 @@
+// Test: multi-argument tuple variant enum destructuring
+fn main() {
+    enum Shape {
+        Circle(float)
+        Rect(int, int)
+    }
+
+    let s = Shape.Circle(3.14)
+    is s {
+        Shape.Circle(r) -> print(r)
+        Shape.Rect(w, h) -> print(w)
+    }
+
+    let r = Shape.Rect(10, 20)
+    is r {
+        Shape.Circle(r) -> print(r)
+        Shape.Rect(w, h) -> {
+            print(w)
+            print(h)
+        }
+    }
+}

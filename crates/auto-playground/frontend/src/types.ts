@@ -35,4 +35,4 @@ export interface ExamplesResponse {
   examples: Example[];
 }
 
-export type OutputTab = 'console' | 'rust' | 'c' | 'python' | 'javascript' | 'typescript';
+export type OutputTab = 'rust' | 'c' | 'python' | 'javascript' | 'typescript';

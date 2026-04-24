@@ -6,38 +6,64 @@
         <ExampleSelector @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
-        <button
-          class="run-btn"
-          @click="$emit('run')"
-          :disabled="isLoading"
-        >
-          {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
+        <button class="share-btn" @click="$emit('share')" title="Copy shareable link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+          Share
         </button>
       </div>
     </header>
-    <main class="main">
-      <div class="editor-pane">
-        <CodeEditor
-          :model-value="source"
-          @update:model-value="$emit('update:source', $event)"
-          :on-run="onRun"
-          @line-click="$emit('lineClick', $event)"
-        />
+
+    <div class="workspace">
+      <div class="top-row">
+        <div class="editor-pane">
+          <div class="pane-header">Auto</div>
+          <div class="pane-body">
+            <CodeEditor
+              :model-value="source"
+              @update:model-value="$emit('update:source', $event)"
+              :on-run="onRun"
+              @line-click="$emit('lineClick', $event)"
+            />
+          </div>
+        </div>
+        <div class="transpile-pane">
+          <OutputPanel
+            :active-tab="activeTab"
+            :transpiled-code="transpiledCode"
+            :live-compile="liveCompile"
+            :highlight-lines="highlightLines"
+            @tab-change="onTabChange"
+            @trans="$emit('trans')"
+            @toggle-live="$emit('toggleLive')"
+          />
+        </div>
       </div>
-      <div class="output-pane">
-        <OutputPanel
-          :active-tab="activeTab"
-          :stdout="stdout"
-          :stderr="stderr"
-          :time-ms="timeMs"
-          :transpiled-code="transpiledCode"
-          :live-compile="liveCompile"
-          :highlight-lines="highlightLines"
-          @tab-change="onTabChange"
-          @toggle-live="$emit('toggleLive')"
-        />
+
+      <div class="console-pane">
+        <div class="pane-header">
+          <span>Console</span>
+          <button
+            class="run-btn"
+            @click="$emit('run')"
+            :disabled="isLoading"
+          >
+            {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
+          </button>
+        </div>
+        <div class="pane-body">
+          <ConsoleOutput
+            :stdout="stdout"
+            :stderr="stderr"
+            :result="resultCode"
+            :time-ms="timeMs"
+          />
+        </div>
       </div>
-    </main>
+    </div>
   </div>
 </template>
 
@@ -45,6 +71,7 @@
 import type { OutputTab } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import OutputPanel from './OutputPanel.vue';
+import ConsoleOutput from './ConsoleOutput.vue';
 import ExampleSelector from './ExampleSelector.vue';
 
 defineProps<{
@@ -53,6 +80,7 @@ defineProps<{
   activeTab: OutputTab;
   stdout: string;
   stderr: string;
+  resultCode: string;
   timeMs: number;
   transpiledCode: string;
   liveCompile: boolean;
@@ -63,10 +91,12 @@ defineProps<{
 const emit = defineEmits<{
   'update:source': [value: string];
   run: [];
+  trans: [];
   tabChange: [tab: OutputTab];
   loadExample: [code: string];
   toggleLive: [];
   lineClick: [line: number];
+  share: [];
 }>();
 
 function onTabChange(tab: OutputTab) {
@@ -93,6 +123,7 @@ function onLoadExample(code: string) {
   padding: 8px 16px;
   background: #2d2d2d;
   border-bottom: 1px solid #444;
+  flex-shrink: 0;
 }
 .toolbar-left {
   display: flex;
@@ -102,6 +133,7 @@ function onLoadExample(code: string) {
 .toolbar-right {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 .title {
   font-size: 16px;
@@ -109,15 +141,87 @@ function onLoadExample(code: string) {
   margin: 0;
   color: #fff;
 }
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #3c3c3c;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.share-btn:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.top-row {
+  flex: 2;
+  display: flex;
+  overflow: hidden;
+}
+.editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #444;
+  overflow: hidden;
+}
+.transpile-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.console-pane {
+  flex: 1;
+  min-height: 140px;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #444;
+  overflow: hidden;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #444;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+.pane-body {
+  flex: 1;
+  overflow: hidden;
+}
+
 .run-btn {
   background: #0e639c;
   color: #fff;
   border: none;
   border-radius: 4px;
-  padding: 6px 16px;
+  padding: 4px 14px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
+  transition: background 0.15s;
 }
 .run-btn:hover {
   background: #1177bb;
@@ -126,21 +230,9 @@ function onLoadExample(code: string) {
   background: #555;
   cursor: not-allowed;
 }
-.main {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-.editor-pane {
-  flex: 1;
-  border-right: 1px solid #444;
-}
-.output-pane {
-  flex: 1;
-}
 
 @media (max-width: 768px) {
-  .main {
+  .top-row {
     flex-direction: column;
   }
   .editor-pane {

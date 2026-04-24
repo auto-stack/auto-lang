@@ -1700,7 +1700,14 @@ impl Codegen {
                         .or(homogeneous_payload.as_ref());
 
                     if let Some(payload_type) = payload {
-                        let fields = vec![FieldDef::new("_0", payload_type.clone())];
+                        // Handle tuple payload like Rect(int, int) -> fields _0, _1
+                        let fields = if let crate::ast::Type::Tuple(ref types) = payload_type {
+                            types.iter().enumerate()
+                                .map(|(i, t)| FieldDef::new(&format!("_{}", i), t.clone()))
+                                .collect()
+                        } else {
+                            vec![FieldDef::new("_0", payload_type.clone())]
+                        };
                         let template = ClassTemplate::new(
                             &variant_mono,
                             vec![],  // No generic params for enum variants
@@ -2617,11 +2624,12 @@ impl Codegen {
                                         // Actually: IS_VARIANT pops the dup'd instance_id and pushes bool.
                                         // JMP_IF_Z pops the bool. So the original target is still on stack.
 
-                                        // Determine field count from the generic registry
-                                        let field_count = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
-                                            template.fields.len()
+                                        // Determine field count and types from the generic registry
+                                        let (field_count, field_types) = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
+                                            let types: Vec<crate::ast::Type> = template.fields.iter().map(|f| f.field_type.clone()).collect();
+                                            (template.fields.len(), types)
                                         } else {
-                                            1 // Default: single payload field
+                                            (1, vec![]) // Default: single payload field
                                         };
 
                                         // Extract each field and bind to variables
@@ -2634,6 +2642,10 @@ impl Codegen {
                                                 self.emit(OpCode::DUP);
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
                                                 self.emit_u32(i as u32);
+                                                // Record variable type so later use (e.g., print) knows the type
+                                                if let Some(ref ty) = field_types.get(i) {
+                                                    self.var_types.insert(binding.to_string(), (*ty).clone());
+                                                }
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
                                             }

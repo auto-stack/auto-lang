@@ -2132,8 +2132,21 @@ impl AutoVM {
                         instance_id
                     );
 
+                    // Peek mono_name from the instance to look up field types
+                    let mono_name = if let Some(obj) = self.get_heap_object(instance_id) {
+                        let guard = obj.read().unwrap();
+                        guard.as_any().downcast_ref::<GenericInstanceData>()
+                            .map(|inst| inst.mono_name.clone())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
                     // Pop values from stack (in reverse order)
-                    // For Phase 2, detect if value is a heap object ID or basic type
+                    // Use field types from generic registry to correctly interpret stack values
+                    let field_types: Vec<crate::ast::Type> = self.generic_registry
+                        .get_type(&mono_name)
+                        .map(|ct| ct.template.fields.iter().map(|f| f.field_type.clone()).collect())
+                        .unwrap_or_else(|| vec![]);
                     let mut field_values = Vec::with_capacity(field_count);
                     for i in 0..field_count {
                         vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}",
@@ -2141,32 +2154,50 @@ impl AutoVM {
                             field_count,
                             task.ram.sp
                         );
-                        // Pop value as i32
-                        let val_i32 = task.ram.pop_i32();
-                        vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
+                        // Fields are popped in reverse order; look up type from the end
+                        let type_idx = field_count.saturating_sub(1 + i);
+                        let field_type = field_types.get(type_idx);
 
-                        // Plan 197 Task 16: Detect string, heap object, or basic integer
-                        // Strings are encoded as -(idx+1) (negative)
-                        // Heap objects are >= 4000000
-                        // Integers are everything else
-                        let value = if val_i32 >= 4000000 {
-                            // This is likely a heap object reference
-                            Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
-                        } else if val_i32 < 0 {
-                            // Tagged string index: -(idx+1)
-                            let idx = (-val_i32 - 1) as usize;
-                            let strings_guard = self.strings.read().unwrap();
-                            if idx < strings_guard.len() {
-                                let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
-                                drop(strings_guard);
-                                Value::Str(auto_val::AutoStr::from(s))
-                            } else {
-                                drop(strings_guard);
-                                Value::Int(val_i32)
+                        let value = match field_type {
+                            Some(crate::ast::Type::Float) => {
+                                let val_f32 = task.ram.pop_f32();
+                                vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped float = {}", val_f32);
+                                Value::Float(val_f32 as f64)
                             }
-                        } else {
-                            // Basic integer type
-                            Value::Int(val_i32)
+                            Some(crate::ast::Type::Double) => {
+                                let val_f64 = task.ram.pop_f64();
+                                vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped double = {}", val_f64);
+                                Value::Double(val_f64)
+                            }
+                            _ => {
+                                // Pop value as i32 for all other types
+                                let val_i32 = task.ram.pop_i32();
+                                vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
+
+                                // Plan 197 Task 16: Detect string, heap object, or basic integer
+                                // Strings are encoded as -(idx+1) (negative)
+                                // Heap objects are >= 4000000
+                                // Integers are everything else
+                                if val_i32 >= 4000000 {
+                                    // This is likely a heap object reference
+                                    Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
+                                } else if val_i32 < 0 {
+                                    // Tagged string index: -(idx+1)
+                                    let idx = (-val_i32 - 1) as usize;
+                                    let strings_guard = self.strings.read().unwrap();
+                                    if idx < strings_guard.len() {
+                                        let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
+                                        drop(strings_guard);
+                                        Value::Str(auto_val::AutoStr::from(s))
+                                    } else {
+                                        drop(strings_guard);
+                                        Value::Int(val_i32)
+                                    }
+                                } else {
+                                    // Basic integer type
+                                    Value::Int(val_i32)
+                                }
+                            }
                         };
                         field_values.push(value);
                     }

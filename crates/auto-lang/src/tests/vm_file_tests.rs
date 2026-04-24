@@ -169,6 +169,38 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] fn test_09_functions_016_enum_multi_destruct() { test_vm("09_functions/016_enum_multi_destruct").unwrap(); }
 #[test] fn test_09_functions_017_enum_named_construct() { test_vm("09_functions/017_enum_named_construct").unwrap(); }
 #[test] fn test_09_functions_018_enum_destruct_edge() { test_vm("09_functions/018_enum_destruct_edge").unwrap(); }
+#[test] fn test_09_functions_019_enum_tuple_payload() { test_vm("09_functions/019_enum_tuple_payload").unwrap(); }
+
+#[test]
+fn test_playground_enum_example() {
+    let src = r#"// Enums and pattern matching
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+let c = Color.Red
+is c {
+    Color.Red -> print("red")
+    Color.Green -> print("green")
+    Color.Blue -> print("blue")
+}
+
+enum Shape {
+    Circle(float)
+    Rect(int, int)
+}
+
+let s = Shape.Circle(3.14)
+is s {
+    Shape.Circle(r) -> print(f"circle with radius $r")
+    Shape.Rect(w, h) -> print(f"rect $w x $h")
+}
+"#;
+    let (_res, stdout) = crate::run_with_capture(src).unwrap();
+    assert_eq!(stdout, "red\ncircle with radius 3.14\n");
+}
 
 // === 10_types ===
 #[test] fn test_10_types_001_type_compose() { test_vm("10_types/001_type_compose").unwrap(); }
