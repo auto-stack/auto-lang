@@ -389,6 +389,8 @@ pub enum Expr {
     Comptime(Box<HashBrace>),
     /// Plan 200: Tuple expression (expr1, expr2, ...)
     Tuple(Vec<Expr>),
+    /// Plan 223: is as expression (e.g., `let x = is y { ... }`)
+    Is(Box<crate::ast::is::Is>),
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -503,6 +505,7 @@ impl fmt::Display for Expr {
             Expr::Go { expr } => write!(f, "({}.go)", expr),
             Expr::Comptime(hash_brace) => write!(f, "{}", hash_brace),
             Expr::Tuple(elems) => fmt_tuple(f, elems),
+            Expr::Is(is) => write!(f, "(is-expr {})", is.target),
         }
     }
 }
@@ -1056,6 +1059,11 @@ impl ToNode for Expr {
                 for elem in elems {
                     node.add_kid(elem.to_node());
                 }
+                node
+            }
+            Expr::Is(is) => {
+                let mut node = AutoNode::new("is-expr");
+                node.add_kid(is.target.to_node());
                 node
             }
         }

@@ -1608,6 +1608,37 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 223: is as expression → Rust match expression
+            Expr::Is(is) => {
+                write!(out, "match ")?;
+                self.expr(&is.target, out)?;
+                write!(out, " {{ ")?;
+                for (i, branch) in is.branches.iter().enumerate() {
+                    if i > 0 { write!(out, " ")?; }
+                    match branch {
+                        crate::ast::IsBranch::EqBranch(patterns, body) => {
+                            for (j, pat) in patterns.iter().enumerate() {
+                                if j > 0 { write!(out, " | ")?; }
+                                self.expr(pat, out)?;
+                            }
+                            write!(out, " => ")?;
+                            self.write_body_inline(body, out)?;
+                        }
+                        crate::ast::IsBranch::IfBranch(cond, body) => {
+                            self.expr(cond, out)?;
+                            write!(out, " if true => ")?;
+                            self.write_body_inline(body, out)?;
+                        }
+                        crate::ast::IsBranch::ElseBranch(body) => {
+                            write!(out, "_ => ")?;
+                            self.write_body_inline(body, out)?;
+                        }
+                    }
+                }
+                write!(out, " }}")?;
+                Ok(())
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported expression: {}", expr).into()),
         }
     }
@@ -1644,6 +1675,72 @@ impl RustTrans {
                 }
                 write!(out, ")")?;
                 return Ok(());
+            }
+        }
+
+        // Plan 223: Function name mappings for external calls
+        if let Expr::Ident(name) = call.name.as_ref() {
+            match name.as_str() {
+                "sleep_ms" => {
+                    write!(out, "std::thread::sleep(std::time::Duration::from_millis(")?;
+                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                    write!(out, " as u64))")?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        // Plan 223: Method call mappings for env.x / fs.x
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                if let (Expr::Ident(obj), Expr::Ident(method)) = (lhs.as_ref(), rhs.as_ref()) {
+                    match obj.as_str() {
+                        "env" => match method.as_str() {
+                            "get" => {
+                                write!(out, "std::env::var(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ").ok()")?;
+                                return Ok(());
+                            }
+                            "set" => {
+                                write!(out, "std::env::set_var(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    self.arg(arg, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        "fs" => match method.as_str() {
+                            "read_to_string" => {
+                                write!(out, "std::fs::read_to_string(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ").ok()")?;
+                                return Ok(());
+                            }
+                            "write" => {
+                                write!(out, "std::fs::write(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    self.arg(arg, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "exists" => {
+                                write!(out, "std::path::Path::new(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ").exists()")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
             }
         }
 
@@ -1808,6 +1905,8 @@ impl RustTrans {
                         "length" => Some("len"),
                         "is_empty" => Some("is_empty"),
                         "trim" => Some("trim"),
+                        "trim_left" => Some("trim_start"),
+                        "trim_right" => Some("trim_end"),
                         "starts_with" => Some("starts_with"),
                         "ends_with" => Some("ends_with"),
                         "append" => Some("push_str"),
@@ -2953,6 +3052,35 @@ impl RustTrans {
     }
 
     // Is statement (pattern matching)
+    /// Write match arm body inline into a generic Write (for is-as-expression).
+    fn write_body_inline(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+        if body.stmts.len() == 1 {
+            match &body.stmts[0] {
+                Stmt::Expr(expr) => self.expr(expr, out)?,
+                Stmt::Return(ret) => {
+                    write!(out, "return ")?;
+                    self.expr(ret, out)?;
+                }
+                _ => write!(out, "{{ }}")?,
+            }
+        } else if body.stmts.is_empty() {
+            write!(out, "{{}}")?;
+        } else {
+            write!(out, "{{ ")?;
+            for stmt in &body.stmts {
+                match stmt {
+                    Stmt::Expr(expr) => { self.expr(expr, out)?; write!(out, "; ")?; }
+                    Stmt::Return(ret) => { write!(out, "return ")?; self.expr(ret, out)?; write!(out, "; ")?; }
+                    Stmt::Break => write!(out, "break; ")?,
+                    Stmt::Continue => write!(out, "continue; ")?,
+                    _ => {}
+                }
+            }
+            write!(out, "}}")?;
+        }
+        Ok(())
+    }
+
     /// Write a match arm body: single expression inline, or block for multiple statements
     fn write_match_arm_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
         if body.stmts.is_empty() {
@@ -3884,6 +4012,16 @@ impl RustTrans {
                             write!(sink.body, "{}: {}", field.name, self.rust_type_name(&field.field_type))?;
                         }
                         writeln!(sink.body, " }},")?;
+                    } else if item.has_tuple_payload() {
+                        // Multi-arg tuple variant: ToolUse str str str → ToolUse(String, String, String)
+                        write!(sink.body, "{}(", item.name)?;
+                        for (j, pt) in item.payload_types.iter().enumerate() {
+                            if j > 0 {
+                                write!(sink.body, ", ")?;
+                            }
+                            write!(sink.body, "{}", self.rust_type_name(pt))?;
+                        }
+                        writeln!(sink.body, "),")?;
                     } else if let Some(ref payload) = item.payload_type {
                         // Single-payload tuple variant: Name(Type)
                         writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload))?;

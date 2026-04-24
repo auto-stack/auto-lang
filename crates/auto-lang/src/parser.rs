@@ -1568,6 +1568,11 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RBrace)?;
                 Expr::Comptime(Box::new(HashBrace { expr }))
             }
+            // Plan 223: is as expression (e.g., `let x = is y { ... }`)
+            TokenKind::Is => {
+                let is = self.parse_is()?;
+                Expr::Is(Box::new(is))
+            }
             // normal
             _ => self.atom()?,
         };
@@ -3974,6 +3979,7 @@ impl<'a> Parser<'a> {
 
             let mut scalar_value = None;
             let mut payload_type = None;
+            let mut payload_types: Vec<Type> = vec![];
 
             if self.is_kind(TokenKind::Asn) {
                 // Variant = value (Scalar form)
@@ -3990,6 +3996,7 @@ impl<'a> Parser<'a> {
                     name: item_name,
                     scalar_value: None,
                     payload_type: None,
+                    payload_types: vec![],
                     fields,
                 });
                 self.expect_eos(false)?;
@@ -3998,8 +4005,18 @@ impl<'a> Parser<'a> {
             } else if self.is_kind(TokenKind::Ident)
                 || self.is_kind(TokenKind::LParen)
             {
-                // Variant followed by a type (Heterogeneous form)
-                payload_type = Some(self.parse_type()?);
+                // Variant followed by one or more types (Heterogeneous form)
+                // Single: `Move Point` → payload_type = Some(Point)
+                // Multi:  `ToolUse str str str` → payload_types = [str, str, str]
+                let mut types = vec![self.parse_type()?];
+                while self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LParen) {
+                    types.push(self.parse_type()?);
+                }
+                if types.len() == 1 {
+                    payload_type = Some(types.into_iter().next().unwrap());
+                } else {
+                    payload_types = types;
+                }
                 has_any_payload = true;
             } else {
                 // No value, no type — plain variant, auto-increment for scalar
@@ -4011,6 +4028,7 @@ impl<'a> Parser<'a> {
                 name: item_name,
                 scalar_value,
                 payload_type,
+                payload_types,
                 fields: vec![],
             });
             self.expect_eos(false)?;
@@ -4046,6 +4064,7 @@ impl<'a> Parser<'a> {
                 name: self.cur.text.clone().into(),
                 scalar_value: None,
                 payload_type: None,
+                payload_types: vec![],
                 fields: vec![],
             };
             self.next();
@@ -4087,6 +4106,7 @@ impl<'a> Parser<'a> {
                 name: item_name,
                 scalar_value: None,
                 payload_type: None,
+                payload_types: vec![],
                 fields: vec![],
             });
             self.expect_eos(false)?;
@@ -5516,6 +5536,18 @@ impl<'a> Parser<'a> {
     pub fn parse_expr_or_body(&mut self) -> AutoResult<Body> {
         if self.is_kind(TokenKind::LBrace) {
             self.body()
+        } else if self.is_kind(TokenKind::Return) {
+            let mut body = Body::new();
+            body.stmts.push(self.return_stmt()?);
+            Ok(body)
+        } else if self.is_kind(TokenKind::Break) {
+            let mut body = Body::new();
+            body.stmts.push(self.break_stmt()?);
+            Ok(body)
+        } else if self.is_kind(TokenKind::Continue) {
+            let mut body = Body::new();
+            body.stmts.push(self.continue_stmt()?);
+            Ok(body)
         } else {
             let mut body = Body::new();
             body.stmts.push(Stmt::Expr(self.parse_expr()?));

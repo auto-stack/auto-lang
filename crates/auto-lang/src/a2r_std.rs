@@ -235,6 +235,55 @@ pub fn str_append(s: &mut String, other: &str) {
     s.push_str(other);
 }
 
+// =============================================================================
+// Environment module for a2r transpiler
+// =============================================================================
+
+/// AutoLang's env module — thin wrappers around std::env
+#[allow(non_snake_case)]
+pub mod env {
+    pub fn get(key: &str) -> Option<String> {
+        std::env::var(key).ok()
+    }
+
+    pub fn set(key: &str, val: &str) {
+        std::env::set_var(key, val);
+    }
+}
+
+// =============================================================================
+// File system module for a2r transpiler
+// =============================================================================
+
+/// AutoLang's fs module — thin wrappers around std::fs
+#[allow(non_snake_case)]
+pub mod fs {
+    pub fn read_to_string(path: &str) -> Option<String> {
+        std::fs::read_to_string(path).ok()
+    }
+
+    pub fn write(path: &str, content: &str) -> bool {
+        std::fs::write(path, content).is_ok()
+    }
+
+    pub fn exists(path: &str) -> bool {
+        std::path::Path::new(path).exists()
+    }
+
+    pub fn create_dir(path: &str) -> bool {
+        std::fs::create_dir_all(path).is_ok()
+    }
+}
+
+// =============================================================================
+// Utility functions for a2r transpiler
+// =============================================================================
+
+/// Sleep for the specified number of milliseconds
+pub fn sleep_ms(ms: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(ms));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

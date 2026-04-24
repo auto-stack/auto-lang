@@ -286,6 +286,25 @@ impl<'db> DepScanner<'db> {
             | Expr::Comptime(hash_brace) => {
                 self.walk_expr(&hash_brace.expr, deps);
             }
+            // Plan 223: is as expression
+            | Expr::Is(is) => {
+                self.walk_expr(&is.target, deps);
+                for branch in &is.branches {
+                    match branch {
+                        crate::ast::IsBranch::EqBranch(pats, body) => {
+                            for pat in pats { self.walk_expr(pat, deps); }
+                            self.walk_body(body, deps);
+                        }
+                        crate::ast::IsBranch::IfBranch(expr, body) => {
+                            self.walk_expr(expr, deps);
+                            self.walk_body(body, deps);
+                        }
+                        crate::ast::IsBranch::ElseBranch(body) => {
+                            self.walk_body(body, deps);
+                        }
+                    }
+                }
+            }
         }
     }
 

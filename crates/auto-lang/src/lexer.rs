@@ -10,6 +10,7 @@ pub struct Lexer<'a> {
     line: usize,
     pos: usize,
     at: usize,
+    byte_pos: usize, // tracks actual source bytes consumed since last pos() call
     buffer: VecDeque<Token>,
     last: Option<Token>,
     // special tokens
@@ -23,6 +24,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             at: 0,
             pos: 0,
+            byte_pos: 0,
             buffer: VecDeque::new(),
             last: None,
             fstr_note: '$',
@@ -42,6 +44,35 @@ impl<'a> Lexer<'a> {
         };
         self.pos += len;
         self.at += len;
+        p
+    }
+
+    /// Advance the chars iterator and track actual source bytes consumed.
+    /// Use this instead of `self.chars.next()` in tokenizers that have
+    /// escapes or non-ASCII content where `text.len()` != source bytes.
+    fn advance(&mut self) -> Option<char> {
+        match self.chars.next() {
+            Some(c) => {
+                self.byte_pos += c.len_utf8();
+                Some(c)
+            }
+            None => None,
+        }
+    }
+
+    /// Create a Pos using actual source bytes consumed since the last pos() call.
+    /// Resets byte_pos tracker. Use in tokenizers with escape sequences.
+    fn pos_from_bytes(&mut self) -> Pos {
+        let consumed = self.byte_pos;
+        let p = Pos {
+            line: self.line,
+            at: self.at,
+            pos: self.pos,
+            len: consumed,
+        };
+        self.pos += consumed;
+        self.at += consumed;
+        self.byte_pos = 0;
         p
     }
 
@@ -182,37 +213,33 @@ impl<'a> Lexer<'a> {
     }
 
     fn char(&mut self) -> AutoResult<Token> {
-        let start_pos = self.pos; // Record position BEFORE skipping '
-        self.chars.next(); // skip '
+        let start_pos = self.pos;
+        self.advance(); // skip '
         if let Some(&c) = self.chars.peek() {
             // deal with escapes
             if self.peek('\\') {
-                self.chars.next(); // skip \
+                self.advance(); // skip \
                 if let Some(&esc_char) = self.chars.peek() {
                     match esc_char {
                         'n' => {
-                            // \n
-                            self.chars.next(); // skip char
-                            self.chars.next(); // skip '
-                            return Ok(Token::char(self.pos(1), '\n'.into()));
+                            self.advance(); // skip char
+                            self.advance(); // skip '
+                            return Ok(Token::char(self.pos_from_bytes(), '\n'.into()));
                         }
                         't' => {
-                            // \t
-                            self.chars.next(); // skip char
-                            self.chars.next(); // skip '
-                            return Ok(Token::char(self.pos(1), '\t'.into()));
+                            self.advance(); // skip char
+                            self.advance(); // skip '
+                            return Ok(Token::char(self.pos_from_bytes(), '\t'.into()));
                         }
                         'r' => {
-                            // \r
-                            self.chars.next(); // skip char
-                            self.chars.next(); // skip '
-                            return Ok(Token::char(self.pos(1), '\r'.into()));
+                            self.advance(); // skip char
+                            self.advance(); // skip '
+                            return Ok(Token::char(self.pos_from_bytes(), '\r'.into()));
                         }
                         '0' => {
-                            // \0
-                            self.chars.next(); // skip char
-                            self.chars.next(); // skip '
-                            return Ok(Token::char(self.pos(1), '\0'.into()));
+                            self.advance(); // skip char
+                            self.advance(); // skip '
+                            return Ok(Token::char(self.pos_from_bytes(), '\0'.into()));
                         }
                         _ => {
                             let seq = format!("\\{}", esc_char);
@@ -225,7 +252,6 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 } else {
-                    // Unexpected end of input after backslash
                     let span = crate::error::span_from(start_pos, 1);
                     return Err(LexerError::UnknownEscapeSequence {
                         sequence: "\\".to_string(),
@@ -234,11 +260,10 @@ impl<'a> Lexer<'a> {
                     .into());
                 }
             } else {
-                let tok = Token::char(self.pos(1), c.into());
-                self.chars.next(); // skip char
+                self.advance(); // skip char
                 if self.peek('\'') {
-                    self.chars.next(); // skip '
-                    Ok(tok)
+                    self.advance(); // skip '
+                    Ok(Token::char(self.pos_from_bytes(), c.into()))
                 } else {
                     let span = crate::error::span_from(start_pos, 1);
                     Err(LexerError::UnterminatedChar { span }.into())
@@ -252,14 +277,14 @@ impl<'a> Lexer<'a> {
 
     pub fn str(&mut self) -> Token {
         let mut text = String::new();
-        self.chars.next(); // skip opening "
+        self.advance(); // skip opening "
         while let Some(&c) = self.chars.peek() {
             if c == '"' {
-                self.chars.next();
+                self.advance();
                 break;
             }
             if c == '\\' {
-                self.chars.next(); // skip \
+                self.advance(); // skip \
                 if let Some(&esc) = self.chars.peek() {
                     match esc {
                         'n' => text.push('\n'),
@@ -269,19 +294,18 @@ impl<'a> Lexer<'a> {
                         '\\' => text.push('\\'),
                         '"' => text.push('"'),
                         _ => {
-                            // Unknown escape, keep as-is
                             text.push('\\');
                             text.push(esc);
                         }
                     }
-                    self.chars.next();
+                    self.advance();
                     continue;
                 }
             }
             text.push(c);
-            self.chars.next();
+            self.advance();
         }
-        Token::str(self.pos(text.len()), text.into())
+        Token::str(self.pos_from_bytes(), text.into())
     }
 
     /// Parse a backtick raw string: `...`
@@ -308,9 +332,9 @@ impl<'a> Lexer<'a> {
     pub fn multi_str(&mut self) -> Token {
         let mut text = String::new();
         // Consume opening """
-        self.chars.next();
-        self.chars.next();
-        self.chars.next();
+        self.advance();
+        self.advance();
+        self.advance();
 
         while let Some(&c) = self.chars.peek() {
             if c == '"' {
@@ -325,21 +349,21 @@ impl<'a> Lexer<'a> {
                     let extra = count - 3;
                     for _ in 0..extra {
                         text.push('"');
-                        self.chars.next();
+                        self.advance();
                     }
                     // Consume closing """
-                    self.chars.next();
-                    self.chars.next();
-                    self.chars.next();
+                    self.advance();
+                    self.advance();
+                    self.advance();
                     break;
                 }
                 // Less than 3 — all are content
-                self.chars.next();
+                self.advance();
                 text.push('"');
                 continue;
             }
             if c == '\\' {
-                self.chars.next(); // skip backslash
+                self.advance(); // skip backslash
                 if let Some(&esc) = self.chars.peek() {
                     match esc {
                         'n' => text.push('\n'),
@@ -349,12 +373,11 @@ impl<'a> Lexer<'a> {
                         '\\' => text.push('\\'),
                         '"' => text.push('"'),
                         _ => {
-                            // Unknown escape, keep as-is
                             text.push('\\');
                             text.push(esc);
                         }
                     }
-                    self.chars.next();
+                    self.advance();
                     continue;
                 }
             }
@@ -363,26 +386,26 @@ impl<'a> Lexer<'a> {
                 self.at = 0;
             }
             text.push(c);
-            self.chars.next();
+            self.advance();
         }
-        Token::str(self.pos(text.len()), text.into())
+        Token::str(self.pos_from_bytes(), text.into())
     }
 
     fn cstr(&mut self) -> Token {
-        self.chars.next(); // skip c
-        self.chars.next(); // skip "
+        self.advance(); // skip c
+        self.advance(); // skip "
 
         let mut text = String::new();
 
         while let Some(&c) = self.chars.peek() {
             if c == '"' {
-                self.chars.next();
+                self.advance();
                 break;
             }
             text.push(c);
-            self.chars.next();
+            self.advance();
         }
-        Token::new(TokenKind::CStr, self.pos(text.len()), text.into())
+        Token::new(TokenKind::CStr, self.pos_from_bytes(), text.into())
     }
 
     fn fstr(&mut self) -> AutoResult<Token> {

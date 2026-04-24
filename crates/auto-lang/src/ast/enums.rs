@@ -64,9 +64,12 @@ pub struct EnumItem {
     pub scalar_value: Option<i32>,
     /// Heterogeneous form: the payload type for this variant (e.g., `Point` in `Move Point`).
     pub payload_type: Option<Type>,
+    /// Multi-argument tuple variant: `ToolUse str str str` → ToolUse(String, String, String).
+    /// When non-empty, `payload_type` should be None.
+    pub payload_types: Vec<Type>,
     /// Plan 201 Phase 1: Multi-field struct-like variant.
     /// Example: `Api { status uint, message str }` has fields [EnumField("status", uint), EnumField("message", str)]
-    /// When non-empty, `payload_type` should be None.
+    /// When non-empty, `payload_type` and `payload_types` should be empty.
     pub fields: Vec<EnumField>,
 }
 
@@ -81,10 +84,17 @@ impl EnumItem {
         !self.fields.is_empty()
     }
 
+    /// Returns true if this variant has multi-argument tuple payload.
+    pub fn has_tuple_payload(&self) -> bool {
+        !self.payload_types.is_empty()
+    }
+
     /// Returns the number of data fields (either struct fields or single payload).
     pub fn field_count(&self) -> usize {
         if self.has_fields() {
             self.fields.len()
+        } else if self.has_tuple_payload() {
+            self.payload_types.len()
         } else if self.payload_type.is_some() {
             1
         } else {

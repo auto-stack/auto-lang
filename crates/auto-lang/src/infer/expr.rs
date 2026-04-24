@@ -472,6 +472,10 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             let elem_types: Vec<Type> = elems.iter().map(|e| infer_expr(ctx, e)).collect();
             Type::Tuple(elem_types)
         }
+
+        // ========== Plan 223: is as expression ==========
+        // Type inference not implemented — return unknown for now
+        Expr::Is(_) => Type::Unknown,
     }
 }
 
