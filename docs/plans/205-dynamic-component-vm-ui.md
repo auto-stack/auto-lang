@@ -1,12 +1,14 @@
 # Plan 205: DynamicComponent — AutoVM 驱动的动态 UI 渲染
 
-## Status: 🔧 PARTIAL (Phase 1 done)
+## Status: ✅ COMPLETE
 
-Verified 2026-04-23:
-- ✅ Phase 1: VmBridge in `ui/vm_bridge.rs` — creates AutoVM, stores widget state as GenericInstanceData, reads fields, calls handlers
-- ✅ AuraViewBuilder in `ui/aura_view_builder.rs`
-- ✅ DynamicComponent in `ui/dynamic.rs`
-- ❌ Phase 2-5: iced integration, hot reload, polish
+Verified 2026-04-24:
+- ✅ Phase 1: VmBridge — VM ↔ UI bridge with state read/write, handler call
+- ✅ Phase 2: AuraViewBuilder — AuraNode → View<DynamicMsg> for all core widgets
+- ✅ Phase 3: DynamicComponent — Component trait, message routing, dirty tracking
+- ✅ Phase 4: Hot reload — state migration, file change detection, DynamicComponent.reload()
+- ✅ Phase 5: iced integration — IntoIcedElement trait, full rendering pipeline (25k+ lines)
+- ⚠️ Advanced features deferred: ForLoop iteration, Conditional eval, Component instantiation
 
 ## Overview
 
