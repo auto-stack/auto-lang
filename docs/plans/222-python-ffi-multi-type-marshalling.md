@@ -1,5 +1,7 @@
 # Plan 222: Python FFI Multi-Type Marshalling
 
+> **Status: ✅ DONE** — All 7 tasks complete. Commits: `9e119bb9` (Tasks 1-5), `8cc9cc50` (Tasks 6-7).
+
 ## Context
 
 Plan 214 实现了 Python FFI（`use.py`），但只支持 string→string 单参数调用。AutoVM 已通过 Plan 221 引入 NaN-boxing 双模式栈，Rust FFI 也已支持多种类型 marshalling（`RustType` + `RustSignature`）。本计划将 Python FFI 扩展为支持 int/float/bool/string/list（基础类型列表）的多类型 marshalling。
