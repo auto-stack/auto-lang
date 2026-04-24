@@ -29,8 +29,9 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 175 | Migrate auto-ui into auto-lang | ⏳ | Move GPUI and ICED backend runners from standalone auto-ui into auto-lang workspace |
 | 180 | a2rust-ui Generator | ⏳ | Wire RustGenerator into auto gen for GPUI-based Rust UI examples |
 | 181 | a2vscode Generator | ⏳ | Generate VSCode extension projects from AURA widgets with webview panel rendering |
-| 205 | DynamicComponent VM UI | ⏳ | VM-driven dynamic UI rendering with VmBridge, AuraViewBuilder, and iced integration |
-| 212a | LSP + VSCode Extension Modernization | ⏳ | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
+| 205 | DynamicComponent VM UI | 🔧 | VM-driven dynamic UI rendering with VmBridge, AuraViewBuilder, and iced integration |
+| 212a | LSP + VSCode Extension Modernization | ✅ | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
+| 217 | a2ui Composer Implementation | 🔧 | UI composer tool for visual AURA widget assembly and code generation |
 
 ## Status Summary
 - Completed: 8 | Partial: 4 | Planned: 11 | Deprecated: 0

@@ -28,8 +28,11 @@ Plans covering documentation infrastructure, example projects, component galleri
 | 183 | Unified UI Examples | ⏳ | Progressive cross-platform UI examples for all 6 targets |
 | 188 | Tier 3 Blocker Resolution | ⏳ | Fix prerequisites blocking Tier 3 mini-app examples (011-016) |
 | 189 | Tier 4 Prerequisites | ⏳ | Resolve feature gaps for Tier 4 real-app examples (017-024) |
-| 202 | Auto Playground | ⏳ | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
-| 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phases 0-6 in progress |
+| 196 | Plan Reports by Topic | ✅ | Create 16 summary report files in docs/plan-reports/ |
+| 202 | Auto Playground | 🔧 | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
+| 210 | Book Listing Test Harness | ✅ | Auto-discovery test harness for 1136 code listings |
+| 218 | Plan Status Reconciliation | ✅ | Reconcile plan statuses across all plan-indices and plan-reports files |
 
 ## Status Summary
 - Completed: 3 | Partial: 2 | Planned: 18 | Deprecated: 0

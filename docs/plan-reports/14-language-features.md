@@ -26,7 +26,7 @@ AutoLang's language features span a wide range of syntax enhancements, type syst
 | 182 | Debug Mode for Rust Desktop UI | Planned | Chrome DevTools-inspired debug overlay |
 | 185 | VSCode Extension Reuses Vue Build | Planned | Eliminate duplicate webview build |
 | 190 | Extend use.rust for Rust Stdlib Access | Planned | Import any Rust stdlib type via use.rust |
-| 193 | Conv Type Conversion System | Draft | Unified .to() method with Conv spec for type-safe conversions |
+| 193 | Conv Type Conversion System | Complete | Unified .to() method with Conv spec for type-safe conversions |
 | 194 | Monomorphic Dispatch for Generic Methods | Complete | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
 | 197 | VM Enum/Data, Generic Lists, Pattern Debug | Complete | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
 | 206 | Closure HOF + call_closure API | Complete | call_closure public API, List.map/filter/reduce/find/for_each shims |
@@ -35,11 +35,11 @@ AutoLang's language features span a wide range of syntax enhancements, type syst
 
 ## Status
 
-**Implemented**: Plans 035, 036, 084, 156, 168, 169, 194, 197, 206, 207, 208 (eleven plans fully complete).
+**Implemented**: Plans 035, 036, 084, 156, 168, 169, 193, 194, 197, 206, 207, 208 (twelve plans fully complete).
 
 **Partial**: Plans 040 (tag method parsing deferred, ext workaround works), 086 (parser/AST done, WidgetLoader not yet built).
 
-**Planned**: Plans 044, 045, 050, 082, 139, 155, 182, 185, 190, 193.
+**Planned**: Plans 044, 045, 050, 082, 139, 155, 182, 185, 190.
 
 **Deprecated**: Plan 072 (and/or keywords reverted to && and || to avoid conflicts with bitwise method names).
 

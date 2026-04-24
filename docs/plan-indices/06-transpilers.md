@@ -29,10 +29,12 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 180 | a2rust-ui Generator | ⏳ | Wire RustGenerator into auto gen for Rust UI backend (GPUI examples) |
 | 181 | a2vscode Generator | ⏳ | VSCode extension generator from AURA widgets using a2vue + webview panel |
 | 187 | a2ts Vue Adapter | ⏳ | Replace Vue generator's inline JS with a2ts delegation for proper TypeScript output |
-| 204 | a2r Transpiler Completeness | ⏳ | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping |
-| 213 | a2py Python Transpiler Maturation | ⏳ | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
-| 215 | a2ts TypeScript Transpiler Maturation | ⏳ | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
+| 204 | a2r Transpiler Completeness | 🔧 | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping |
+| 213 | a2py Python Transpiler Maturation | ✅ | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
+| 215 | a2ts TypeScript Transpiler Maturation | ✅ | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
 | 216 | C FFI Bindgen | ✅ | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
+| 219 | Playground Source Map | ✅ | Source mapping for transpiler output to enable clickable error locations |
+| 220 | a2r Transpiler Improvement | ✅ | Rust transpiler improvements: better type mapping, enum support, stdlib coverage |
 
 ## Status Summary
 - Completed: 11 | Partial: 3 | Planned: 12 | Deprecated: 0

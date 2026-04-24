@@ -27,21 +27,30 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 118 | VM Test Failures Analysis | In Progress | Systematic fix of 76+ failing VM tests (183/197 passing) |
 | 127 | AutoVM TaskSystem Execution | Complete | Bytecode compilation and execution for Task/Msg systems |
 | 177 | VM File-Based Test Framework | Planned | Replace inline tests with file-based .expected.out/result/error assertions |
+| 191 | Assert and Precise Linker Errors | Complete | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
 | 192 | VM Enum and Ext Codegen | Complete | Enum declaration, ext method codegen, is-match for enum variants (done per Plan 200 ref) |
 | 194 | Monomorphic Dispatch for Generic Methods | Complete | Compile-time type-based dispatch for HashMap/HashSet generic APIs (done per Plan 200 ref) |
-| 196 | AutoVM Interactive Debugger | Planned | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
 | 197 | VM Enum/Data, Generic Lists, Pattern Debug | Complete | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
-| 199 | Plan Reports by Topic | Planned | Create 16 summary report files in docs/plan-reports/ |
-| 200 | VM Missing Features (Examples 14-33) | In Progress | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
+| 198 | Native Metadata from Source | Not Implemented | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 199 | VM Interactive Debugger | Not Implemented | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 200 | VM Missing Features (Examples 14-33) | Complete | loop/continue/tuple/range slicing, .map_err() closure, fs module aliases |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | Complete | All 4 pillars: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
+| 203 | Native Registry Namespace Unification | Partial | QualifiedName-based native function lookup replacing string concatenation |
+| 206 | Closure HOF + call_closure API | Complete | call_closure public API, List.map/filter/reduce/find/for_each shims |
+| 207 | Enum Multi-Field Destructuring | Complete | Multi-binding destructuring and named arg construction for enum variants |
+| 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
+| 212b | Rust FFI E2E Dynamic Loading | Complete | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 221 | Nanboxing Migration | Complete | Migrate VM value representation to NaN-boxing for improved memory and performance |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 192, 194, 197, 201
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 200, 201, 206, 207, 208, 212b, 221
 
-**Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing), 200 (most tasks done, .map_err() and fs pending)
+**Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing), 203 (qualified name lookup in progress)
 
-**Planned**: 177, 196, 199
+**Not Implemented**: 198, 199
+
+**Planned**: 177, 196
 
 ## Design
 
@@ -130,10 +139,17 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [118-vm-test-failures-analysis.md](../plans/118-vm-test-failures-analysis.md)
 - [127-autovm-task-system-execution.md](../plans/127-autovm-task-system-execution.md)
 - [177-vm-file-test-framework.md](../plans/177-vm-file-test-framework.md)
+- [191-assert-and-precise-linker-errors.md](../plans/191-assert-and-precise-linker-errors.md)
 - [192-vm-enum-ext-codegen.md](../plans/192-vm-enum-ext-codegen.md)
 - [194-monomorphic-dispatch.md](../plans/194-monomorphic-dispatch.md)
-- [196-plan-reports.md](../plans/196-plan-reports.md)
 - [197-vm-adt-generic-lists-pattern-debug.md](../plans/197-vm-adt-generic-lists-pattern-debug.md)
+- [198-native-metadata-from-source.md](../plans/198-native-metadata-from-source.md)
 - [199-vm-interactive-debugger.md](../plans/199-vm-interactive-debugger.md)
 - [200-vm-missing-features-examples-14-33.md](../plans/200-vm-missing-features-examples-14-33.md)
 - [201-vm-four-pillars-enum-closure-result-spec.md](../plans/201-vm-four-pillars-enum-closure-result-spec.md)
+- [203-native-registry-namespace.md](../plans/203-native-registry-namespace.md)
+- [206-closure-hof-call-closure-api.md](../plans/206-closure-hof-call-closure-api.md)
+- [207-enum-multi-field-destruct-construction.md](../plans/207-enum-multi-field-destruct-construction.md)
+- [208-result-heap-object.md](../plans/208-result-heap-object.md)
+- [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
+- [221-nanboxing-migration.md](../plans/221-nanboxing-migration.md)

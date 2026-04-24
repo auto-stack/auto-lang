@@ -26,13 +26,21 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 118 | VM Test Failures Analysis | 🔧 | Systematic fix of 76+ failing VM tests (183/197 passing) |
 | 127 | AutoVM TaskSystem Execution | ✅ | Bytecode compilation and execution for Task/Msg systems |
 | 177 | VM File-Based Test Framework | ⏳ | Replace inline tests with file-based .expected.out/result/error assertions |
+| 191 | Assert and Precise Linker Errors | ✅ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
 | 192 | VM Enum & Ext Codegen | ✅ | Enum declaration, ext method codegen, is-match for enum variants (done per Plan 200 ref) |
 | 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs (done per Plan 200 ref) |
-| 196 | AutoVM Interactive Debugger | ⏳ | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
 | 197 | VM Enum/Data, Generic Lists, Pattern Debug | ✅ | All 5 phases done: string eq, method chaining, struct debug, enum data, List<UserType>, pattern destruct, Option<T> |
-| 199 | Plan Reports by Topic | ⏳ | Create 16 summary report files in docs/plan-reports/ |
+| 198 | Native Metadata from Source | ❌ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 199 | VM Interactive Debugger | ❌ | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
 | 200 | VM Missing Features (Examples 14-33) | 🔧 | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | ✅ | All 4 pillars complete: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
+| 203 | Native Registry Namespace Unification | 🔧 | QualifiedName-based native function lookup replacing string concatenation |
+| 206 | Closure HOF + call_closure API | ✅ | call_closure public API, List.map/filter/reduce/find/for_each shims |
+| 207 | Enum Multi-Field Destructuring | ✅ | Multi-binding destructuring and named arg construction for enum variants |
+| 208 | Result Heap Object | ✅ | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
+| 212b | Rust FFI E2E Dynamic Loading | ✅ | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
+| 221 | Nanboxing Migration | ✅ | Migrate VM value representation to NaN-boxing for compact tagged values |
 
 ## Status Summary
 - Completed: 18 | Partial: 5 | Planned: 2 | Deprecated: 0

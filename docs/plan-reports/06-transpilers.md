@@ -30,10 +30,12 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 180 | a2rust-ui Generator | Planned | Wire RustGenerator into auto gen for Rust UI backend (GPUI examples) |
 | 181 | a2vscode Generator | Planned | VSCode extension generator from AURA widgets using a2vue + webview panel |
 | 187 | a2ts Vue Adapter | Planned | Replace Vue generator's inline JS with a2ts delegation for proper TypeScript output |
-| 204 | a2r Transpiler Completeness | Planned | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping |
-| 213 | a2py Python Transpiler Maturation | Planned | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
-| 215 | a2ts TypeScript Transpiler Maturation | Planned | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
+| 204 | a2r Transpiler Completeness | Partial | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping |
+| 213 | a2py Python Transpiler Maturation | Complete | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
+| 215 | a2ts TypeScript Transpiler Maturation | Complete | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
 | 216 | C FFI Bindgen | Complete | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
+| 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
+| 220 | a2r Transpiler Improvement | Complete | Enhanced a2r output quality with improved type mapping and code generation |
 
 ## Status
 
@@ -41,7 +43,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 
 **Partial**: a2r (144 tests, 38% parity with a2c, ongoing gap closure), a2r .rs.at platform-specific files, a2ts migration from a2js (Phase 2-3 done, Phase 4 pending).
 
-**Planned**: .to(Type) method keyword, ext-for-trait in a2r, struct destructuring, generic constraints, conditional UI backends, auto-ui migration, a2rust-ui generator, a2vscode generator, a2ts Vue adapter, a2r transpiler completeness (Plan 204), a2py Python transpiler maturation (Plan 213), a2ts TypeScript transpiler maturation (Plan 215).
+**Planned**: .to(Type) method keyword, ext-for-trait in a2r, struct destructuring, generic constraints, conditional UI backends, auto-ui migration, a2rust-ui generator, a2vscode generator, a2ts Vue adapter.
 
 ## Design
 
@@ -104,9 +106,11 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220.
 
 - [204-a2r-transpiler-completeness.md](../plans/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
 - [215-a2ts-maturation.md](../plans/215-a2ts-maturation.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
+- [219-playground-source-map.md](../plans/219-playground-source-map.md)
+- [220-a2r-transpiler-improvement.md](../plans/220-a2r-transpiler-improvement.md)

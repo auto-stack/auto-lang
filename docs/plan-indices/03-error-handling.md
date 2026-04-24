@@ -21,7 +21,8 @@ Status codes: Completed, Planned, Partial/In Progress, Deprecated
 - Type inference subsystem with modular architecture (context, constraints, unification, expression inference, statement checking, type promotion, cast checking) across ~2,770 LOC and 285+ passing tests
 - "Did you mean?" suggestions for name errors and source code attachment for all error types
 
-| 191 | Assert and Precise Linker Errors | ⏳ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
+| 191 | Assert and Precise Linker Errors | ✅ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
+| 208 | Result Heap Object | ✅ | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
 
 ## Remaining Work
 - Plan 009: Full integration of RuntimeError into evaluator to replace remaining `panic!` calls with proper error reporting and stack traces

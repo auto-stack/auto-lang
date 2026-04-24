@@ -18,9 +18,12 @@ AutoLang's build infrastructure evolved from a file-based full-compilation archi
 | 146 | AutoShell SmartCmd Integration | ⏳ | Integrate nushell/uutils libraries for structured shell command output and cross-platform support |
 | 151 | Tauri IPC Mode for api-example | ⏳ | Generate complete Tauri IPC backend by transpiling api.at + db.at to Rust |
 | 186 | Switch from npm to bun for Vue/Web Projects | ⏳ | Replace npm with bun for faster installs via global cache hard-linking |
+| 202 | Auto Playground | 🔧 | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 212a | LSP + VSCode Extension Modernization | ✅ | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
+| 212b | Rust FFI E2E Dynamic Loading | ✅ | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 214 | Python FFI (use.py) | ✅ | Embed Python interpreter in AutoVM |
 | 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
-| 212b | Rust FFI E2E Dynamic Loading | ⏳ | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
-| 214 | Python FFI (use.py) | ⏳ | Embed Python interpreter in AutoVM (placeholder, blocked on Plan 212b) |
+| 219 | Playground Source Map | ✅ | Source mapping for transpiler output to enable clickable error locations |
 
 ## Status Summary
 - Completed: 5 | Partial: 1 | Planned: 8 | Deprecated: 0

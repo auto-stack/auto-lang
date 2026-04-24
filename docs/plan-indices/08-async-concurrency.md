@@ -15,7 +15,7 @@ AutoLang implements an Actor-based concurrency model using Task/Msg primitives, 
 | 126 | Phase 4 - Micro-Concurrency Engine | ✅ | `.go` suffix operator, implicit worker pool, ownership-safe capture semantics |
 | 127 | AutoVM TaskSystem Execution | ✅ | Bytecode compilation for Task/Msg systems, on-block compilation, ctx.reply() |
 | 128 | Scheduler Message Dispatch Loop | ✅ | Zero-shared-mutable-state scheduler with Tokio async, Arc + mpsc channels |
-| 195 | HTTP Client + auto.http Unification | ⏳ | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
+| 195 | HTTP Client + auto.http Unification | 🔧 | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
 
 ## Status Summary
 - Completed: 8 | Partial: 0 | Planned: 1 | Deprecated: 0

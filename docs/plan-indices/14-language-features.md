@@ -25,7 +25,7 @@ Plans covering core language syntax additions and enhancements, from the ext sta
 | 182 | Debug Mode for Rust Desktop UI | ⏳ | Chrome DevTools-inspired debug overlay for GPUI/iced desktop frameworks |
 | 185 | VSCode Extension Reuses Vue Build | ⏳ | Eliminate duplicate webview build by reusing gen/vue/dist output |
 | 190 | Extend use.rust for Rust Stdlib Access | ⏳ | Import any Rust stdlib type/function via use.rust with compile-time type awareness |
-| 193 | Conv Type Conversion System | ⏳ | Unified `.to()` method with `Conv<From, To>` spec for type-safe conversions |
+| 193 | Conv Type Conversion System | ✅ | Unified `.to()` method with `Conv<From, To>` spec for type-safe conversions |
 | 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
 | 197 | VM Enum/Data, Lists, Pattern, Debug | ✅ | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
 | 206 | Closure HOF + call_closure API | ✅ | call_closure public API, List.map/filter/reduce/find/for_each shims |

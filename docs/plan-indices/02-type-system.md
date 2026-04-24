@@ -15,7 +15,8 @@ This report covers the evolution of AutoLang's type system from basic `has` comp
 | 048 | Generic Type Definitions | ✅ | Full generic type support with type substitution; stdlib `tag May<T>` and `type List<T>` working |
 | 049 | May Operators to Generic Types | ✅ | Migrate `?T`, `.?`, `??` operators from hardcoded `Type::May` to generic `tag May<T>` system |
 | 055 | Storage Injection | ⏳ | Platform-aware storage strategy injection (MCU=Fixed, PC=Dynamic) for `List<T>` |
-| 193 | Conv Type Conversion System | ⏳ | Unified `.to()` method with `Conv<From, To>` spec for type-safe conversions (DRAFT) |
+| 191 | Assert and Precise Linker Errors | ✅ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
+| 193 | Conv Type Conversion System | ✅ | Unified `.to()` method with `Conv<From, To>` spec for type-safe conversions |
 | 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs |
 | 056 | Dot Expression Field Access | ✅ | Complete dot-expression and struct field access with read/write, distinguishing fields from methods |
 | 057 | Generic Specs | ✅ | Traits with type parameters (`spec Storage<T>`), monomorphized vtable generation in C transpiler |

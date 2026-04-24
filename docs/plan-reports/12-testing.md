@@ -14,10 +14,11 @@ AutoLang's testing infrastructure evolved from inline Rust unit tests embedded i
 | 171 | A2C Test Suite Reorganization | Done | Reorganize a2c tests from 239 directories into 25 categorized directories; 106 tests |
 | 172 | A2TS Test Suite Reorganization | Done | Reorganize a2ts tests into 10 categorized directories aligned with a2r/a2c; 24 tests |
 | 179 | Migrate vm_tests.rs to File-Based Tests | Partial | Migrate ~130 inline VM tests to file-based `.at` tests across 16 category directories |
-| 191 | Assert and Precise Linker Errors | Planned | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker errors |
-| 209 | ac-examples Modernization | In Progress | Rewrite 33 examples using Plan 200/201 features; Phases 0-6 in progress |
-| 210 | Book Listing Test Harness | Planned | Auto-discovery test harness for 1136 code listings |
-| 211 | Stdlib Test Coverage 80%+ | Planned | VM + a2r tests for all stdlib modules (~60 new tests) |
+| 191 | Assert and Precise Linker Errors | Complete | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker errors |
+| 199 | VM Interactive Debugger | Not Implemented | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 209 | ac-examples Modernization | Partial | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
+| 210 | Book Listing Test Harness | Complete | Auto-discovery test harness for 1136 code listings |
+| 211 | Stdlib Test Coverage 80%+ | Complete | VM + a2r tests for all stdlib modules (~85 new tests across 12 categories) |
 
 ## Status
 
@@ -25,7 +26,7 @@ AutoLang's testing infrastructure evolved from inline Rust unit tests embedded i
 
 **Partial:** The VM file-based test migration (Plan 179) has established the directory structure and framework across 16 categories, with roughly 167 file-based tests created. The inline `vm_tests.rs` file has been slimmed down but still retains tests that require direct bytecode construction, AST inspection, or config-mode parsing. The AutoDown test suite (Plan 110) has its directory structure and test runner pattern defined but needs completion of the full 88-test suite covering lexer, parser, transpiler snapshots, math, and error recovery phases. The ac-examples modernization (Plan 209) is in progress, rewriting 33 examples to use features from Plans 200/201 across Phases 0-6.
 
-**Planned:** Plan 191 proposes adding `assert`, `assert_eq`, and `assert_ne` as native VM intrinsics (IDs 4-6) with shim functions that panic on failure, and propagating source positions from AST `Call` nodes through `RelocEntry` into a structured `LinkError` type so that "Undefined symbol" errors point to the exact call site rather than falling back to heuristic text search. Plan 210 proposes an auto-discovery test harness for 1136 code listings in the book. Plan 211 targets 80%+ stdlib test coverage with VM and a2r tests for all stdlib modules (~60 new tests).
+**Planned:** Plan 199 proposes SOURCE_LINE opcodes, call stack, disassembler, debug controller, and AI agent debug API for the VM.
 
 ## Design
 
@@ -86,6 +87,7 @@ The linker error precision improvement addresses the problem where "Undefined sy
 - `docs/plans/172-a2ts-test-reorganization.md`
 - `docs/plans/179-migrate-vm-tests-to-file-based.md`
 - `docs/plans/191-assert-and-precise-linker-errors.md`
+- `docs/plans/199-vm-interactive-debugger.md`
 - `docs/plans/209-example-modernization.md`
 - `docs/plans/210-book-listing-test-harness-design.md`
 - `docs/plans/211-stdlib-test-coverage.md`

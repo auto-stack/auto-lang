@@ -19,15 +19,18 @@ AutoLang's build infrastructure spans two major domains: the compiler-internal A
 | 146 | AutoShell SmartCmd Integration | Complete | Integrate sysinfo/uutils libraries for structured shell command output and cross-platform support |
 | 151 | Tauri IPC Mode for api-example | Planned | Generate complete Tauri IPC backend by transpiling api.at + db.at to Rust |
 | 186 | Switch from npm to bun for Vue/Web Projects | Planned | Replace npm with bun for faster installs via global cache hard-linking |
-| 212b | Rust FFI E2E Dynamic Loading | Planned | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
-| 214 | Python FFI (use.py) | Planned | Embed Python interpreter in AutoVM (placeholder, blocked on Plan 212b) |
+| 212b | Rust FFI E2E Dynamic Loading | Complete | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 214 | Python FFI (use.py) | Complete | Embed Python interpreter in AutoVM (placeholder, blocked on Plan 212b) |
 | 216 | C FFI Build Pipeline Integration | Complete | CLI integration for C FFI bindgen into build pipeline |
+| 202 | Auto Playground | Partial | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 212a | LSP + VSCode Extension Modernization | Complete | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
+| 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
 
 ## Status
 
-**Implemented**: 063 (partial), 064, 065, 066, 092, 146, 216
-**Partial**: 063 (MCU phases deferred)
-**Planned**: 093, 111, 112, 151, 186, 212b, 214
+**Implemented**: 063 (partial), 064, 065, 066, 092, 146, 212a, 212b, 214, 216, 219
+**Partial**: 063 (MCU phases deferred), 202 (playground partially implemented)
+**Planned**: 093, 111, 112, 151, 186
 
 ## Design
 
@@ -110,3 +113,6 @@ Plan 186 replaces npm with bun across all Vue/web project tooling in auto-man. B
 - [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
 - [214-python-ffi-use-py.md](../plans/214-python-ffi-use-py.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
+- [202-playground-design.md](../plans/202-playground-design.md)
+- [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
+- [219-playground-source-map.md](../plans/219-playground-source-map.md)

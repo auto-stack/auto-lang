@@ -14,8 +14,11 @@ AutoLang's module system evolved from a monolithic Universe-based architecture t
 | 131 | Module Path Syntax Design | ✅ | Design for relative (super), package-relative (pac), and dependency imports |
 | 167 | Complete Module System Implementation | ✅ | Folder modules, pub use re-exports, wildcard imports, circular dependency detection |
 | 184 | Cross-Module Function Calls | ✅ | Compile dependency modules to bytecode and link via existing Linker infrastructure |
-| 198 | Native Metadata from Source | ⏳ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
-| 203 | Native Registry Namespace Unification | ⏳ | QualifiedName-based native function lookup replacing string concatenation |
+| 198 | Native Metadata from Source | ❌ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 203 | Native Registry Namespace Unification | 🔧 | QualifiedName-based native function lookup replacing string concatenation |
+| 212b | Rust FFI E2E Dynamic Loading | ✅ | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
+| 214 | Python FFI (use.py) | ✅ | Embed Python interpreter in AutoVM |
+| 216 | C FFI Bindgen | ✅ | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
 
 ## Status Summary
 - Completed: 7 | Partial: 0 | Planned: 2 | Deprecated: 0
