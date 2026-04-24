@@ -239,6 +239,9 @@ pub struct AutoVM {
 
     // Plan 177: Optional stdout capture buffer for testing
     pub output_buffer: Option<Arc<RwLock<String>>>,
+
+    // Plan 199: Debugger controller (NoOpController for normal execution)
+    pub debugger: Arc<std::sync::Mutex<Box<dyn crate::vm::debugger::DebuggerController>>>,
 }
 
 // Plan 124: Future value for async operations
@@ -315,6 +318,10 @@ impl AutoVM {
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
             // Plan 177: stdout capture (None = normal println)
             output_buffer: None,
+            // Plan 199: Debugger controller (NoOpController for normal execution)
+            debugger: Arc::new(std::sync::Mutex::new(
+                Box::new(crate::vm::debugger::NoOpController)
+            )),
         }
     }
 
@@ -329,6 +336,11 @@ impl AutoVM {
     /// Load strings from a module's string constant pool
     pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
         self.strings = Arc::new(RwLock::new(strings));
+    }
+
+    /// Plan 199: Set a custom debugger controller
+    pub fn set_debugger(&mut self, controller: Box<dyn crate::vm::debugger::DebuggerController>) {
+        self.debugger = Arc::new(std::sync::Mutex::new(controller));
     }
 
     /// Plan 212b Task 4: Merge additional native shims into this VM
@@ -992,6 +1004,30 @@ impl AutoVM {
             return Err(VMError::RuntimeError(format!("Invalid opcode: 0x{:02x} at ip={}", op_byte, task.ip - 1)));
         }
         let op: OpCode = op_byte.into();
+
+            // Plan 199: Debugger hook — check if we should pause before executing
+            {
+                let mut dbg = self.debugger.lock().unwrap();
+                let ctx = crate::vm::debugger::DebugContext {
+                    task: &task,
+                    current_op: op,
+                    ip: task.ip - 1,
+                    line: task.current_line,
+                    call_stack: &task.call_stack,
+                };
+                if dbg.should_pause(&ctx) {
+                    let action = dbg.on_pause(&ctx);
+                    match action {
+                        crate::vm::debugger::DebuggerAction::Quit => {
+                            return Err(VMError::RuntimeError("Debugger quit".to_string()));
+                        }
+                        crate::vm::debugger::DebuggerAction::Continue
+                        | crate::vm::debugger::DebuggerAction::Step
+                        | crate::vm::debugger::DebuggerAction::StepOver
+                        | crate::vm::debugger::DebuggerAction::StepOut => {}
+                    }
+                }
+            }
 
             // 2. Decode & Execute
             match op {
