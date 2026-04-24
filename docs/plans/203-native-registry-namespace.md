@@ -1,12 +1,12 @@
 # Plan 203: Native Registry Namespace 统一
 
-## Status: 🔧 PARTIAL (Phase 1 done)
+## Status: ✅ COMPLETE
 
-Verified 2026-04-23:
+Verified 2026-04-24:
 - ✅ Phase 1: `QualifiedName` struct in `vm/qualified_name.rs` with path() and dot-separated module support
-- ❌ Phase 2: Use Resolver (make `use` statements participate in name resolution)
-- ❌ Phase 3: Codegen eliminate string lookup (7 hardcoded concatenation sites)
-- ❌ Phase 4: Migration + cleanup
+- ✅ Phase 2: Use Resolver — `import_scope` HashMap + `handle_use_stmt()` populates from `use mod: items`
+- ✅ Phase 3: Codegen uses `resolve_qualified()` everywhere (checks qualified_registry then short-name fallback)
+- ✅ Phase 4: `register_qualified()` + `resolve_qualified()` in native_registry, dead `resolve_method()` helper available
 
 > 日期：2026-04-21
 > 状态：设计阶段
