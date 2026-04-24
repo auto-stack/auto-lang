@@ -126,6 +126,31 @@ impl AutoVMNativeRegistry {
         }
     }
 
+    /// Plan 198 Phase 5: Register a native with auto-generated TitleCase alias.
+    ///
+    /// Given a canonical name like "auto.file.read_text", automatically generates:
+    /// - "File.read_text" (TitleCase alias for codegen method resolution)
+    ///
+    /// This eliminates the need for manual duplicate registration of every
+    /// `auto.X.Y` + `TitleX.Y` pair. The TitleCase alias is only generated
+    /// if it doesn't already exist (explicit registrations take precedence).
+    pub fn register_with_aliases(&mut self, canonical: &str, id: u16) {
+        self.register_with_id(canonical, id);
+
+        if let Some(rest) = canonical.strip_prefix("auto.") {
+            if let Some((module, method)) = rest.split_once('.') {
+                let mut chars = module.chars();
+                if let Some(first) = chars.next() {
+                    let titled: String = first.to_uppercase().collect::<String>() + chars.as_str();
+                    let alias = format!("{}.{}", titled, method);
+                    if !self.registry.contains_key(&alias) {
+                        self.registry.insert(alias, id);
+                    }
+                }
+            }
+        }
+    }
+
     /// Register a native function with a specific ID and return type.
     pub fn register_with_id_and_type(&mut self, name: &str, id: u16, ret_type: NativeRetType) {
         self.registry.insert(name.to_string(), id);
@@ -172,12 +197,76 @@ impl AutoVMNativeRegistry {
             .copied()
             .or_else(|| self.registry.get(path).copied())
     }
+
+    /// Plan 198 Phase 2: Enrich registry with return types from #[vm] declarations.
+    ///
+    /// For each #[vm] function in TypeStore that already has an ID registered,
+    /// derive the return type from the declaration and store it. This supplements
+    /// the manual `register_with_id_and_type()` calls — functions that already
+    /// have return type info are not overridden.
+    pub fn enrich_from_type_store(&mut self, type_store: &crate::types::TypeStore) {
+        for (name, fn_decl) in type_store.all_fn_decls() {
+            if fn_decl.kind != crate::ast::FnKind::VmFunction {
+                continue;
+            }
+            let fn_name = name.to_string();
+            let ret_type = match Self::type_to_native_ret(&fn_decl.ret) {
+                Some(rt) => rt,
+                None => continue,
+            };
+
+            if let Some(parent) = &fn_decl.parent {
+                let parent_str = parent.to_string();
+                // Enrich lowercase: "str.char_at"
+                let lower = format!("{}.{}", parent_str.to_lowercase(), fn_name);
+                self.enrich_return_type(&lower, ret_type);
+                // Enrich TitleCase: "Str.char_at"
+                let mut chars = parent_str.chars();
+                if let Some(first) = chars.next() {
+                    let titled: String = first.to_uppercase().collect::<String>() + chars.as_str();
+                    let title_key = format!("{}.{}", titled, fn_name);
+                    self.enrich_return_type(&title_key, ret_type);
+                }
+                // Enrich auto qualified: "auto.str.char_at"
+                let qualified = format!("auto.{}.{}", parent_str.to_lowercase(), fn_name);
+                if self.qualified_registry.contains_key(&qualified) {
+                    self.return_types.insert(qualified, ret_type);
+                }
+            }
+            // Standalone name
+            self.enrich_return_type(&fn_name, ret_type);
+        }
+    }
+
+    /// Add return type for an already-registered name (no-op if already has type or not registered).
+    fn enrich_return_type(&mut self, name: &str, ret_type: NativeRetType) {
+        if self.registry.contains_key(name) && !self.return_types.contains_key(name) {
+            self.return_types.insert(name.to_string(), ret_type);
+        }
+    }
+
+    /// Convert a Type to NativeRetType if possible.
+    fn type_to_native_ret(ty: &crate::ast::Type) -> Option<NativeRetType> {
+        use crate::ast::Type;
+        match ty {
+            Type::Void => Some(NativeRetType::Void),
+            Type::Int => Some(NativeRetType::Int),
+            Type::Float => Some(NativeRetType::Float),
+            Type::Bool => Some(NativeRetType::Bool),
+            Type::Str(_) => Some(NativeRetType::String),
+            Type::I64 => Some(NativeRetType::I64),
+            _ => None,
+        }
+    }
 }
 
 // Global native registry instance
 lazy_static::lazy_static! {
     pub static ref BIGVM_NATIVES: Mutex<AutoVMNativeRegistry> =
         Mutex::new(AutoVMNativeRegistry::new());
+    // Plan 198 Phase 2: Track whether enrich_from_type_store has been called
+    pub static ref NATIVE_REGISTRY_ENRICHED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
 }
 
 /// Register all built-in native functions.
@@ -430,32 +519,21 @@ pub fn register_builtin_natives() {
     // =========================================================================
     // FFI Shim Registrations (Plan 094)
     // These map Auto function names to their native IDs
+    // Plan 198 Phase 5: register_with_aliases auto-generates TitleCase aliases
     // =========================================================================
 
-    // File functions (1000-1009)
-    registry.register_with_id("auto.file.read_text", 1000);
-    registry.register_with_id("auto.file.write_text", 1001);
-    registry.register_with_id("auto.file.exists", 1002);
-    registry.register_with_id("auto.file.delete", 1003);
-    registry.register_with_id("auto.file.create_dir", 1004);
-    registry.register_with_id("auto.file.read_bytes", 1005);
-    registry.register_with_id("auto.file.write_bytes", 1006);
-    registry.register_with_id("auto.file.copy", 1007);
-    registry.register_with_id("auto.file.size", 1008);
-    registry.register_with_id("auto.file.is_dir", 1009);
-
-    // File function aliases (codegen uses File.method names)
-    registry.register_with_id("File.read_text", 1000);
-    registry.register_with_id("File.write_text", 1001);
-    registry.register_with_id("File.exists", 1002);
-    registry.register_with_id("File.delete", 1003);
-    registry.register_with_id("File.create_dir", 1004);
-    registry.register_with_id("File.read_bytes", 1005);
-    registry.register_with_id("File.write_bytes", 1006);
-    registry.register_with_id("File.copy", 1007);
-    registry.register_with_id("File.size", 1008);
-    registry.register_with_id("File.is_dir", 1009);
-    registry.register_with_id("File.append_text", 1011);
+    // File functions (1000-1009) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.file.read_text", 1000);
+    registry.register_with_aliases("auto.file.write_text", 1001);
+    registry.register_with_aliases("auto.file.exists", 1002);
+    registry.register_with_aliases("auto.file.delete", 1003);
+    registry.register_with_aliases("auto.file.create_dir", 1004);
+    registry.register_with_aliases("auto.file.read_bytes", 1005);
+    registry.register_with_aliases("auto.file.write_bytes", 1006);
+    registry.register_with_aliases("auto.file.copy", 1007);
+    registry.register_with_aliases("auto.file.size", 1008);
+    registry.register_with_aliases("auto.file.is_dir", 1009);
+    registry.register_with_id("File.append_text", 1011); // no auto.file prefix
 
     // Plan 200 Task 3.4: fs module aliases (fs.read -> File.read_text, etc.)
     registry.register_with_id("fs.read_text", 1000);
@@ -473,92 +551,55 @@ pub fn register_builtin_natives() {
     registry.register_with_id("fs.size", 1008);
     registry.register_with_id("fs.is_dir", 1009);
 
-    // Env functions (1100-1102)
-    registry.register_with_id("auto.env.get", 1100);
-    registry.register_with_id("auto.env.set", 1101);
-    registry.register_with_id("auto.env.remove", 1102);
+    // Env functions (1100-1102) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.env.get", 1100);
+    registry.register_with_aliases("auto.env.set", 1101);
+    registry.register_with_aliases("auto.env.remove", 1102);
 
-    // Env function aliases
-    registry.register_with_id("Env.get", 1100);
-    registry.register_with_id("Env.set", 1101);
-    registry.register_with_id("Env.remove", 1102);
-
-    // Time functions (1200-1202)
+    // Time functions (1200-1202) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.time.now_ms", 1200);
+    registry.register_with_aliases("auto.time.now_sec", 1201);
+    registry.register_with_aliases("auto.time.sleep_ms", 1202);
+    registry.register_with_id("sleep", 1202); // Alias for auto.time.sleep_ms
+    // Time functions carry return type info
     registry.register_with_id_and_type("auto.time.now_ms", 1200, NativeRetType::I64);
     registry.register_with_id_and_type("auto.time.now_sec", 1201, NativeRetType::I64);
     registry.register_with_id_and_type("auto.time.sleep_ms", 1202, NativeRetType::Void);
-    registry.register_with_id("sleep", 1202); // Alias for auto.time.sleep_ms
 
-    // Time function aliases
-    registry.register_with_id("Time.now_ms", 1200);
-    registry.register_with_id("Time.now_sec", 1201);
-    registry.register_with_id("Time.sleep_ms", 1202);
+    // Process functions (1300-1304) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.process.exit", 1300);
+    registry.register_with_aliases("auto.process.args", 1301);
+    registry.register_with_aliases("auto.process.current_dir", 1302);
+    registry.register_with_aliases("auto.process.set_current_dir", 1303);
+    registry.register_with_aliases("auto.process.spawn", 1304);
 
-    // Process functions (1300-1304)
-    registry.register_with_id("auto.process.exit", 1300);
-    registry.register_with_id("auto.process.args", 1301);
-    registry.register_with_id("auto.process.current_dir", 1302);
-    registry.register_with_id("auto.process.set_current_dir", 1303);
-    registry.register_with_id("auto.process.spawn", 1304);
+    // Path functions (1400-1404) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.path.join", 1400);
+    registry.register_with_aliases("auto.path.parent", 1401);
+    registry.register_with_aliases("auto.path.extension", 1402);
+    registry.register_with_aliases("auto.path.filename", 1403);
+    registry.register_with_aliases("auto.path.canonicalize", 1404);
 
-    // Process function aliases
-    registry.register_with_id("Process.exit", 1300);
-    registry.register_with_id("Process.args", 1301);
-    registry.register_with_id("Process.current_dir", 1302);
-    registry.register_with_id("Process.set_current_dir", 1303);
-    registry.register_with_id("Process.spawn", 1304);
-
-    // Path functions (1400-1404)
-    registry.register_with_id("auto.path.join", 1400);
-    registry.register_with_id("auto.path.parent", 1401);
-    registry.register_with_id("auto.path.extension", 1402);
-    registry.register_with_id("auto.path.filename", 1403);
-    registry.register_with_id("auto.path.canonicalize", 1404);
-
-    // Path function aliases
-    registry.register_with_id("Path.parent", 1401);
-    registry.register_with_id("Path.extension", 1402);
-    registry.register_with_id("Path.filename", 1403);
-
-    // String functions (1500-1509)
-    registry.register_with_id("auto.str.len", 1500);
-    registry.register_with_id("auto.str.is_empty", 1501);
-    registry.register_with_id("auto.str.char_at", 1502);
-    registry.register_with_id("auto.str.substr", 1503);
-    registry.register_with_id("auto.str.contains", 1504);
-    registry.register_with_id("auto.str.starts_with", 1505);
-    registry.register_with_id("auto.str.ends_with", 1506);
-    registry.register_with_id("auto.str.trim", 1507);
-    registry.register_with_id("auto.str.split", 1508);
-    registry.register_with_id("auto.str.repeat", 1509);
-    registry.register_with_id("auto.str.replace", 1510);
-    registry.register_with_id("auto.str.to_upper", 1511);
-    registry.register_with_id("auto.str.to_lower", 1512);
-    registry.register_with_id("auto.str.reverse", 1513);
-    registry.register_with_id("auto.str.find", 1514);
-    registry.register_with_id("auto.str.lines", 1515);
-    registry.register_with_id("auto.str.parse_int", 1516);
-    registry.register_with_id("auto.str.parse_float", 1517);
-
-    // String function aliases (codegen uses Str.method names)
-    registry.register_with_id("Str.len", 1500);
-    registry.register_with_id("Str.is_empty", 1501);
-    registry.register_with_id("Str.char_at", 1502);
-    registry.register_with_id("Str.substr", 1503);
-    registry.register_with_id("Str.contains", 1504);
-    registry.register_with_id("Str.starts_with", 1505);
-    registry.register_with_id("Str.ends_with", 1506);
-    registry.register_with_id("Str.trim", 1507);
-    registry.register_with_id("Str.split", 1508);
-    registry.register_with_id("Str.repeat", 1509);
-    registry.register_with_id("Str.replace", 1510);
-    registry.register_with_id("Str.to_upper", 1511);
-    registry.register_with_id("Str.to_lower", 1512);
-    registry.register_with_id("Str.reverse", 1513);
-    registry.register_with_id("Str.find", 1514);
-    registry.register_with_id("Str.lines", 1515);
-    registry.register_with_id("Str.parse_int", 1516);
-    registry.register_with_id("Str.parse_float", 1517);
+    // String functions (1500-1520) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.str.len", 1500);
+    registry.register_with_aliases("auto.str.is_empty", 1501);
+    registry.register_with_aliases("auto.str.char_at", 1502);
+    registry.register_with_aliases("auto.str.substr", 1503);
+    registry.register_with_aliases("auto.str.contains", 1504);
+    registry.register_with_aliases("auto.str.starts_with", 1505);
+    registry.register_with_aliases("auto.str.ends_with", 1506);
+    registry.register_with_aliases("auto.str.trim", 1507);
+    registry.register_with_aliases("auto.str.split", 1508);
+    registry.register_with_aliases("auto.str.repeat", 1509);
+    registry.register_with_aliases("auto.str.replace", 1510);
+    registry.register_with_aliases("auto.str.to_upper", 1511);
+    registry.register_with_aliases("auto.str.to_lower", 1512);
+    registry.register_with_aliases("auto.str.reverse", 1513);
+    registry.register_with_aliases("auto.str.find", 1514);
+    registry.register_with_aliases("auto.str.lines", 1515);
+    registry.register_with_aliases("auto.str.parse_int", 1516);
+    registry.register_with_aliases("auto.str.parse_float", 1517);
+    // Extra Str methods not in auto.str prefix
     registry.register_with_id("Str.split_once", 1518);
     registry.register_with_id("Str.match_count", 1519);
     registry.register_with_id("Str.replace_first", 1520);
@@ -604,111 +645,71 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Option.or", 1550);
     registry.register_with_id("Option.unwrap_or", 1551);
 
-    // Char functions (1600-1606)
-    registry.register_with_id("auto.char.is_alpha", 1600);
-    registry.register_with_id("auto.char.is_digit", 1601);
-    registry.register_with_id("auto.char.is_alphanum", 1602);
-    registry.register_with_id("auto.char.is_whitespace", 1603);
-    registry.register_with_id("auto.char.is_ident", 1604);
-    registry.register_with_id("auto.char.to_lower", 1605);
-    registry.register_with_id("auto.char.to_upper", 1606);
+    // Char functions (1600-1606) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.char.is_alpha", 1600);
+    registry.register_with_aliases("auto.char.is_digit", 1601);
+    registry.register_with_aliases("auto.char.is_alphanum", 1602);
+    registry.register_with_aliases("auto.char.is_whitespace", 1603);
+    registry.register_with_aliases("auto.char.is_ident", 1604);
+    registry.register_with_aliases("auto.char.to_lower", 1605);
+    registry.register_with_aliases("auto.char.to_upper", 1606);
 
-    // Char function aliases
-    registry.register_with_id("Char.is_alpha", 1600);
-    registry.register_with_id("Char.is_digit", 1601);
-    registry.register_with_id("Char.is_alphanum", 1602);
-    registry.register_with_id("Char.is_whitespace", 1603);
-    registry.register_with_id("Char.to_lower", 1605);
-    registry.register_with_id("Char.to_upper", 1606);
-
-    // Math functions (1700-1703, 1710-1725)
+    // Math functions (1700-1703, 1710-1725) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.math.abs", 1700);
+    registry.register_with_aliases("auto.math.min", 1701);
+    registry.register_with_aliases("auto.math.max", 1702);
+    registry.register_with_aliases("auto.math.sqrt", 1703);
+    registry.register_with_aliases("auto.math.floor", 1710);
+    registry.register_with_aliases("auto.math.ceil", 1711);
+    registry.register_with_aliases("auto.math.round", 1712);
+    registry.register_with_aliases("auto.math.pow", 1713);
+    registry.register_with_aliases("auto.math.min_f", 1714);
+    registry.register_with_aliases("auto.math.max_f", 1715);
+    registry.register_with_aliases("auto.math.sin", 1716);
+    registry.register_with_aliases("auto.math.cos", 1717);
+    registry.register_with_aliases("auto.math.tan", 1718);
+    registry.register_with_aliases("auto.math.exp", 1719);
+    registry.register_with_aliases("auto.math.ln", 1720);
+    registry.register_with_aliases("auto.math.log2", 1721);
+    registry.register_with_aliases("auto.math.log10", 1722);
+    registry.register_with_aliases("auto.math.abs_f", 1723);
+    registry.register_with_aliases("auto.math.signum", 1724);
+    registry.register_with_aliases("auto.math.clamp", 1725);
+    // Math functions carry return type info
     registry.register_with_id_and_type("auto.math.abs", 1700, NativeRetType::Int);
     registry.register_with_id_and_type("auto.math.min", 1701, NativeRetType::Int);
     registry.register_with_id_and_type("auto.math.max", 1702, NativeRetType::Int);
     registry.register_with_id_and_type("auto.math.sqrt", 1703, NativeRetType::Float);
-    registry.register_with_id("auto.math.floor", 1710);
-    registry.register_with_id("auto.math.ceil", 1711);
-    registry.register_with_id("auto.math.round", 1712);
-    registry.register_with_id("auto.math.pow", 1713);
-    registry.register_with_id("auto.math.min_f", 1714);
-    registry.register_with_id("auto.math.max_f", 1715);
-    registry.register_with_id("auto.math.sin", 1716);
-    registry.register_with_id("auto.math.cos", 1717);
-    registry.register_with_id("auto.math.tan", 1718);
-    registry.register_with_id("auto.math.exp", 1719);
-    registry.register_with_id("auto.math.ln", 1720);
-    registry.register_with_id("auto.math.log2", 1721);
-    registry.register_with_id("auto.math.log10", 1722);
-    registry.register_with_id("auto.math.abs_f", 1723);
-    registry.register_with_id("auto.math.signum", 1724);
-    registry.register_with_id("auto.math.clamp", 1725);
 
-    // Math function aliases (codegen uses Math.method names)
-    registry.register_with_id("Math.floor", 1710);
-    registry.register_with_id("Math.ceil", 1711);
-    registry.register_with_id("Math.round", 1712);
-    registry.register_with_id("Math.pow", 1713);
-    registry.register_with_id("Math.min_f", 1714);
-    registry.register_with_id("Math.max_f", 1715);
-    registry.register_with_id("Math.sin", 1716);
-    registry.register_with_id("Math.cos", 1717);
-    registry.register_with_id("Math.tan", 1718);
-    registry.register_with_id("Math.exp", 1719);
-    registry.register_with_id("Math.ln", 1720);
-    registry.register_with_id("Math.log2", 1721);
-    registry.register_with_id("Math.log10", 1722);
-    registry.register_with_id("Math.abs_f", 1723);
-    registry.register_with_id("Math.signum", 1724);
-    registry.register_with_id("Math.clamp", 1725);
+    // JSON functions (1900-1917) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.json.encode", 1900);
+    registry.register_with_aliases("auto.json.decode", 1901);
+    registry.register_with_aliases("auto.json.parse", 1902);
+    registry.register_with_aliases("auto.json.prettify", 1903);
+    registry.register_with_aliases("auto.json.minify", 1904);
+    registry.register_with_aliases("auto.json.is_valid", 1905);
+    registry.register_with_aliases("auto.json.get", 1906);
+    registry.register_with_aliases("auto.json.get_at", 1907);
+    registry.register_with_aliases("auto.json.len", 1908);
+    registry.register_with_aliases("auto.json.type_of", 1909);
+    registry.register_with_aliases("auto.json.as_string", 1910);
+    registry.register_with_aliases("auto.json.as_number", 1911);
+    registry.register_with_aliases("auto.json.as_int", 1912);
+    registry.register_with_aliases("auto.json.as_bool", 1913);
+    registry.register_with_aliases("auto.json.is_null", 1914);
+    registry.register_with_aliases("auto.json.keys", 1915);
+    registry.register_with_aliases("auto.json.has_key", 1917);
 
-    // JSON functions (1900-1917)
-    registry.register_with_id("auto.json.encode", 1900);
-    registry.register_with_id("auto.json.decode", 1901);
-    registry.register_with_id("auto.json.parse", 1902);
-    registry.register_with_id("auto.json.prettify", 1903);
-    registry.register_with_id("auto.json.minify", 1904);
-    registry.register_with_id("auto.json.is_valid", 1905);
-    registry.register_with_id("auto.json.get", 1906);
-    registry.register_with_id("auto.json.get_at", 1907);
-    registry.register_with_id("auto.json.len", 1908);
-    registry.register_with_id("auto.json.type_of", 1909);
-    registry.register_with_id("auto.json.as_string", 1910);
-    registry.register_with_id("auto.json.as_number", 1911);
-    registry.register_with_id("auto.json.as_int", 1912);
-    registry.register_with_id("auto.json.as_bool", 1913);
-    registry.register_with_id("auto.json.is_null", 1914);
-    registry.register_with_id("auto.json.keys", 1915);
-    registry.register_with_id("auto.json.has_key", 1917);
-
-    // JSON function aliases (codegen uses Json.method names)
-    registry.register_with_id("Json.encode", 1900);
-    registry.register_with_id("Json.decode", 1901);
-    registry.register_with_id("Json.parse", 1902);
-    registry.register_with_id("Json.prettify", 1903);
-    registry.register_with_id("Json.minify", 1904);
-    registry.register_with_id("Json.is_valid", 1905);
-    registry.register_with_id("Json.get", 1906);
-    registry.register_with_id("Json.get_at", 1907);
-    registry.register_with_id("Json.len", 1908);
-    registry.register_with_id("Json.type_of", 1909);
-    registry.register_with_id("Json.as_string", 1910);
-    registry.register_with_id("Json.as_number", 1911);
-    registry.register_with_id("Json.as_int", 1912);
-    registry.register_with_id("Json.as_bool", 1913);
-    registry.register_with_id("Json.is_null", 1914);
-    registry.register_with_id("Json.keys", 1915);
-    registry.register_with_id("Json.has_key", 1917);
-
-    // URL functions (2000-2015)
-    registry.register_with_id("auto.url.encode", 2000);
-    registry.register_with_id("auto.url.decode", 2001);
-    registry.register_with_id("auto.url.parse", 2006);
-    registry.register_with_id("auto.url.scheme", 2007);
-    registry.register_with_id("auto.url.host", 2008);
-    registry.register_with_id("auto.url.port", 2009);
-    registry.register_with_id("auto.url.path", 2010);
-    registry.register_with_id("auto.url.query", 2011);
-    registry.register_with_id("auto.url.fragment", 2012);
+    // URL functions (2000-2012) — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.url.encode", 2000);
+    registry.register_with_aliases("auto.url.decode", 2001);
+    registry.register_with_aliases("auto.url.parse", 2006);
+    registry.register_with_aliases("auto.url.scheme", 2007);
+    registry.register_with_aliases("auto.url.host", 2008);
+    registry.register_with_aliases("auto.url.port", 2009);
+    registry.register_with_aliases("auto.url.path", 2010);
+    registry.register_with_aliases("auto.url.query", 2011);
+    registry.register_with_aliases("auto.url.fragment", 2012);
 
     // Log functions (1800-1803)
     registry.register_with_id("Log.debug", 1800);
@@ -717,24 +718,6 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Log.error", 1803);
 
     // URL function aliases
-    registry.register_with_id("Url.encode", 2000);
-    registry.register_with_id("Url.decode", 2001);
-    registry.register_with_id("Url.scheme", 2007);
-    registry.register_with_id("Url.host", 2008);
-    registry.register_with_id("Url.port", 2009);
-    registry.register_with_id("Url.path", 2010);
-    registry.register_with_id("Url.query", 2011);
-    registry.register_with_id("Url.fragment", 2012);
-
-    // URL function aliases (codegen uses Url.method names)
-    registry.register_with_id("Url.parse", 2006);
-    registry.register_with_id("Url.scheme", 2007);
-    registry.register_with_id("Url.host", 2008);
-    registry.register_with_id("Url.port", 2009);
-    registry.register_with_id("Url.path", 2010);
-    registry.register_with_id("Url.query", 2011);
-    registry.register_with_id("Url.fragment", 2012);
-
     // Net/TCP functions (2100-2113)
     registry.register_with_id("Net.tcp_bind", 2100);
     registry.register_with_id("Net.tcp_listener_accept", 2101);
@@ -758,23 +741,18 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.task.handle_type", 2303);
     registry.register_with_id("auto.task.handle_id", 2304);
 
-    // HTTP Stream functions (Plan 152) - 2240-2250
-    registry.register_with_id("auto.http_stream.get_stream", 2240);
-    registry.register_with_id("auto.http_stream.post_stream", 2241);
-    registry.register_with_id("auto.http_stream.stream_next", 2242);
-    registry.register_with_id("auto.http_stream.stream_is_done", 2243);
-    registry.register_with_id("auto.http_stream.stream_close", 2244);
+    // HTTP Stream functions (Plan 152) - 2240-2244 — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.http_stream.get_stream", 2240);
+    registry.register_with_aliases("auto.http_stream.post_stream", 2241);
+    registry.register_with_aliases("auto.http_stream.stream_next", 2242);
+    registry.register_with_aliases("auto.http_stream.stream_is_done", 2243);
+    registry.register_with_aliases("auto.http_stream.stream_close", 2244);
     registry.register_with_id("parse_sse", 2250);
 
-    // TaskSystem functions (Plan 127) - 2305-2307
-    registry.register_with_id("auto.task_system.start", 2305);
-    registry.register_with_id("auto.task_system.run", 2306);
-    registry.register_with_id("auto.task_system.stop", 2307);
-
-    // TaskSystem aliases (codegen uses TitleCase names)
-    registry.register_with_id("TaskSystem.start", 2305);
-    registry.register_with_id("TaskSystem.run", 2306);
-    registry.register_with_id("TaskSystem.stop", 2307);
+    // TaskSystem functions (Plan 127) - 2305-2307 — TitleCase aliases auto-generated
+    registry.register_with_aliases("auto.task_system.start", 2305);
+    registry.register_with_aliases("auto.task_system.run", 2306);
+    registry.register_with_aliases("auto.task_system.stop", 2307);
 
     // Regex functions (Plan 159) - 2400-2401
     registry.register_with_id("Regex.is_match", 2400);

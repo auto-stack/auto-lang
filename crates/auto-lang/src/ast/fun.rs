@@ -4,7 +4,7 @@ use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FnKind {
     Function,
     Lambda,

@@ -361,6 +361,20 @@ impl Codegen {
         // Initialize the global native registry
         crate::vm::native_registry::register_builtin_natives();
 
+        // Plan 198 Phase 2: Enrich native registry with return types from TypeStore
+        // Only enrich once per process to avoid mutating global state across test runs
+        if !crate::vm::native_registry::NATIVE_REGISTRY_ENRICHED
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            let ts = type_store.read().unwrap();
+            crate::vm::native_registry::BIGVM_NATIVES
+                .lock()
+                .unwrap()
+                .enrich_from_type_store(&ts);
+            crate::vm::native_registry::NATIVE_REGISTRY_ENRICHED
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+
         let mut intrinsics = HashMap::new();
         // Register intrinsics - only built-in print functions
         // "print" defaults to print_str since most print calls are for strings
@@ -373,7 +387,12 @@ impl Codegen {
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
 
         // Register return types for native functions (used for type inference in let bindings)
-        let fn_return_types = Self::build_fn_return_types();
+        let mut fn_return_types = Self::build_fn_return_types();
+        // Plan 198 Phase 1: Enrich with TypeStore-derived return types (authoritative)
+        {
+            let ts = type_store.read().unwrap();
+            Self::enrich_fn_return_types_from_type_store(&ts, &mut fn_return_types);
+        }
 
         // Create global scope
         let locals = HashMap::new();
@@ -1192,151 +1211,18 @@ impl Codegen {
                 }
 
                 // Plan 080: Track variable type for instance method support
-                // If the expression is a call like List.new(), track that the variable has type List
+                // Plan 198 Phase 4: Replaced 120-line hardcoded if-chain with resolve_constructor_type()
                 if let Expr::Call(call) = &store.expr {
                     if let Expr::Dot(obj, method) = call.name.as_ref() {
                         if let Expr::Ident(type_name) = obj.as_ref() {
-                            // Check if this is a known type (List, HashMap, etc.)
-                            if type_name == "List" && method == "new" {
-                                // Plan 194 Task 6: Track List with default generic param <int>
-                                // as GenericInstance so monomorphic dispatch works like HashMap/HashSet
-                                let inst = crate::ast::GenericInstance {
-                                    base_name: crate::ast::Name::from("List"),
-                                    args: vec![Type::Int],
-                                    source: None,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
-                            }
-                            // Plan 086: Add collection type constructors
-                            else if type_name == "HashMap" && method == "new" {
-                                // Plan 194 Task 3: Track HashMap with default generic params <str, int>
-                                // This enables monomorphic dispatch for instance method calls
-                                let inst = crate::ast::GenericInstance {
-                                    base_name: crate::ast::Name::from("HashMap"),
-                                    args: vec![Type::Str(0), Type::Int],
-                                    source: None,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
-                            } else if type_name == "HashSet" && method == "new" {
-                                // Plan 194 Task 3: Track HashSet with default generic param <str>
-                                let inst = crate::ast::GenericInstance {
-                                    base_name: crate::ast::Name::from("HashSet"),
-                                    args: vec![Type::Str(0)],
-                                    source: None,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
-                            } else if type_name == "Map" && method == "new" {
-                                // Plan 194 Task 3: Map is an alias for HashMap
-                                let inst = crate::ast::GenericInstance {
-                                    base_name: crate::ast::Name::from("HashMap"),
-                                    args: vec![Type::Str(0), Type::Int],
-                                    source: None,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::GenericInstance(inst));
-                            } else if type_name == "VecDeque" && method == "new" {
-                                let type_decl = crate::ast::TypeDecl {
-                                    name: crate::ast::Name::from("VecDeque"),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::User(type_decl));
-                            } else if type_name == "BTreeMap" && method == "new" {
-                                let type_decl = crate::ast::TypeDecl {
-                                    name: crate::ast::Name::from("BTreeMap"),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::User(type_decl));
-                            } else if type_name == "StringBuilder" && method == "new" {
-                                let type_decl = crate::ast::TypeDecl {
-                                    name: crate::ast::Name::from("StringBuilder"),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::User(type_decl));
-                            } else if type_name == "String" && (method == "new" || method == "from") {
-                                let type_decl = crate::ast::TypeDecl {
-                                    name: crate::ast::Name::from("String"),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                };
-                                self.var_types
-                                    .insert(store.name.to_string(), Type::User(type_decl));
-                            }
-                            // Plan 087 Phase 3: Track user-defined type instances
-                            // Example: let c = Counter.new()
-                            else if self.is_type(type_name) {
-                                // Get type info and create a synthetic TypeDecl
-                                if let Some(_type_info) = self.get_type(type_name) {
-                                    let type_decl = crate::ast::TypeDecl {
-                                        name: crate::ast::Name::from(type_name),
-                                        kind: crate::ast::TypeDeclKind::UserType,
-                                        parent: None,
-                                        has: vec![],
-                                        specs: vec![],
-                                        spec_impls: vec![],
-                                        generic_params: vec![],
-                                        members: vec![],
-                                        delegations: vec![],
-                                        methods: vec![],
-                                        attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                    };
-                                    self.var_types
-                                        .insert(store.name.to_string(), Type::User(type_decl));
+                            if method == "new" || (type_name == "String" && method == "from") {
+                                if let Some(resolved) = self.resolve_constructor_type(type_name) {
+                                    self.var_types.insert(store.name.to_string(), resolved);
                                 }
                             }
                         }
                     }
-                    // Plan 118 Phase 4: Track type instances from type constructor calls
+                                        // Plan 118 Phase 4: Track type instances from type constructor calls
                     // Example: var duck = Duck(), var wing = Wing()
                     else if let Expr::Ident(type_name) = call.name.as_ref() {
                         if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) && !self.py_native_map.contains_key(type_name.as_str()) {
@@ -7505,6 +7391,46 @@ impl Codegen {
         map
     }
 
+    /// Plan 198 Phase 1: Enrich fn_return_types from TypeStore's #[vm] declarations.
+    ///
+    /// Reads function declarations from TypeStore (populated by parsing stdlib .at files)
+    /// and adds/overrides return types. This is the authoritative source — TypeStore
+    /// return types override registry-derived types because they come directly from
+    /// the source declarations.
+    fn enrich_fn_return_types_from_type_store(
+        type_store: &types::TypeStore,
+        map: &mut HashMap<String, Type>,
+    ) {
+        for (name, fn_decl) in type_store.all_fn_decls() {
+            let ret_type = fn_decl.ret.clone();
+            if matches!(ret_type, Type::Void | Type::Unknown) {
+                continue;
+            }
+
+            let fn_name = name.to_string();
+
+            if let Some(parent) = &fn_decl.parent {
+                let parent_str = parent.to_string();
+
+                // lowercase.type: "str.char_at"
+                let lower = format!("{}.{}", parent_str.to_lowercase(), fn_name);
+                map.insert(lower, ret_type.clone());
+
+                // TitleCase: "Str.char_at"
+                let mut chars = parent_str.chars();
+                if let Some(first) = chars.next() {
+                    let titled: String =
+                        first.to_uppercase().collect::<String>() + chars.as_str();
+                    let title_key = format!("{}.{}", titled, fn_name);
+                    map.insert(title_key, ret_type.clone());
+                }
+            }
+
+            // Standalone function name
+            map.insert(fn_name, ret_type);
+        }
+    }
+
     /// Resolve a method call: receiver_type + method_name -> qualified name -> native ID.
     ///
     /// Plan 203 Phase 3: Provides a centralised lookup path for instance method
@@ -7779,6 +7705,90 @@ impl Codegen {
     /// breaking instance method calls (treated as static method calls).
     pub fn is_type(&self, name: &str) -> bool {
         self.type_store.read().unwrap().is_type(name)
+    }
+
+    /// Plan 198 Phase 4: Resolve the Type for a constructor call like `List.new()`.
+    ///
+    /// Replaces the previous 120-line hardcoded if-chain. Uses a compact table
+    /// for generic collections with known default type params, and falls back
+    /// to TypeStore for user-defined types.
+    fn resolve_constructor_type(&self, type_name: &str) -> Option<Type> {
+        // Generic collections with default type params
+        const GENERIC_DEFAULTS: &[(&str, &str, &[Type])] = &[
+            ("List",         "List",     &[Type::Int] as &[Type]),
+            ("HashMap",      "HashMap",  &[Type::Str(0), Type::Int]),
+            ("HashSet",      "HashSet",  &[Type::Str(0)]),
+            ("Map",          "HashMap",  &[Type::Str(0), Type::Int]),
+            ("VecDeque",     "VecDeque", &[Type::Int]),
+            ("BTreeMap",     "BTreeMap", &[Type::Str(0), Type::Int]),
+        ];
+
+        if let Some((_, base, defaults)) = GENERIC_DEFAULTS.iter().find(|(n, _, _)| *n == type_name) {
+            let inst = crate::ast::GenericInstance {
+                base_name: crate::ast::Name::from(*base),
+                args: defaults.to_vec(),
+                source: None,
+            };
+            return Some(Type::GenericInstance(inst));
+        }
+
+        // Non-generic VM-native types that need Type::User
+        const NON_GENERIC_TYPES: &[&str] = &["StringBuilder", "String"];
+        if NON_GENERIC_TYPES.contains(&type_name) {
+            let type_decl = crate::ast::TypeDecl {
+                name: crate::ast::Name::from(type_name),
+                kind: crate::ast::TypeDeclKind::UserType,
+                parent: None,
+                has: vec![],
+                specs: vec![],
+                spec_impls: vec![],
+                generic_params: vec![],
+                members: vec![],
+                delegations: vec![],
+                methods: vec![],
+                attrs: vec![],
+                doc: None,
+                is_pub: false,
+            };
+            return Some(Type::User(type_decl));
+        }
+
+        // Try TypeStore for user-defined types
+        let ts = self.type_store.read().unwrap();
+        if let Some(decl) = ts.lookup_type_decl_str(type_name) {
+            if !decl.generic_params.is_empty() {
+                let inst = crate::ast::GenericInstance {
+                    base_name: decl.name.clone(),
+                    args: vec![Type::Int; decl.generic_params.len()],
+                    source: None,
+                };
+                return Some(Type::GenericInstance(inst));
+            }
+            let type_decl = (*decl).clone();
+            return Some(Type::User(type_decl));
+        }
+
+        // Final fallback: check codegen's own type registry
+        if self.types.contains_key(type_name) {
+            let type_decl = crate::ast::TypeDecl {
+                name: crate::ast::Name::from(type_name),
+                kind: crate::ast::TypeDeclKind::UserType,
+                parent: None,
+                has: vec![],
+                specs: vec![],
+                spec_impls: vec![],
+                generic_params: vec![],
+                members: vec![],
+                delegations: vec![],
+                methods: vec![],
+                attrs: vec![],
+                doc: None,
+                is_pub: false,
+            };
+            return Some(Type::User(type_decl));
+        }
+
+        None
     }
 
     /// Get type information by name

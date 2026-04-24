@@ -304,6 +304,11 @@ impl TypeStore {
         self.fn_decls.get(&Name::from(name))
     }
 
+    /// Plan 198: Iterate all function declarations (for deriving return types)
+    pub fn all_fn_decls(&self) -> impl Iterator<Item = (&Name, &Fn)> {
+        self.fn_decls.iter()
+    }
+
     /// 查找 spec 声明
     pub fn lookup_spec_decl(&self, name: &AutoStr) -> Option<&SpecDecl> {
         self.spec_decls.get(name)
