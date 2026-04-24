@@ -242,6 +242,9 @@ pub struct AutoVM {
 
     // Plan 199: Debugger controller (NoOpController for normal execution)
     pub debugger: Arc<std::sync::Mutex<Box<dyn crate::vm::debugger::DebuggerController>>>,
+
+    // Plan 199: Execution trace collector (None = tracing disabled)
+    pub trace: Arc<std::sync::Mutex<Option<crate::vm::trace::TraceCollector>>>,
 }
 
 // Plan 124: Future value for async operations
@@ -322,6 +325,7 @@ impl AutoVM {
             debugger: Arc::new(std::sync::Mutex::new(
                 Box::new(crate::vm::debugger::NoOpController)
             )),
+            trace: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -341,6 +345,19 @@ impl AutoVM {
     /// Plan 199: Set a custom debugger controller
     pub fn set_debugger(&mut self, controller: Box<dyn crate::vm::debugger::DebuggerController>) {
         self.debugger = Arc::new(std::sync::Mutex::new(controller));
+    }
+
+    /// Plan 199: Enable execution trace collection with a max record limit
+    pub fn enable_trace(&mut self, max_records: usize) {
+        self.trace = Arc::new(std::sync::Mutex::new(
+            Some(crate::vm::trace::TraceCollector::new(max_records))
+        ));
+    }
+
+    /// Plan 199: Get trace output as JSON
+    pub fn get_trace_json(&self) -> Option<String> {
+        let trace = self.trace.lock().unwrap();
+        trace.as_ref().map(|t| t.to_json())
     }
 
     /// Plan 212b Task 4: Merge additional native shims into this VM
@@ -4477,8 +4494,14 @@ impl AutoVM {
     fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
         let budget = 100; // OpCode Budget
         for _ in 0..budget {
+            let ip_before = task.ip;
+            let line_before = task.current_line;
             match self.run_one_instruction(task)? {
-                StepResult::Continue => continue,
+                StepResult::Continue => {
+                    // Plan 199: Record trace if enabled
+                    self.record_trace(ip_before, line_before, task);
+                    continue;
+                }
                 StepResult::Terminated => return Ok(TaskStatus::Terminated),
                 StepResult::Yield => {
                     // SLEEP sets task.status to Waiting; YIELD/JOIN/SEND/RECV leave it Ready
@@ -4490,5 +4513,23 @@ impl AutoVM {
             }
         }
         Ok(TaskStatus::Ready)
+    }
+
+    /// Plan 199: Record a trace entry if tracing is enabled
+    fn record_trace(&self, ip: usize, line: u32, task: &AutoTask) {
+        let mut trace = self.trace.lock().unwrap();
+        if let Some(ref mut collector) = *trace {
+            let op_name = if ip < self.flash.memory.len() {
+                let byte = self.flash.read_u8(ip);
+                if OpCode::is_valid(byte) {
+                    OpCode::from(byte).to_mnemonic().to_string()
+                } else {
+                    format!("0x{:02x}", byte)
+                }
+            } else {
+                "EOF".to_string()
+            };
+            collector.record(ip, &op_name, line, task.ram.sp, task.call_stack.len());
+        }
     }
 }

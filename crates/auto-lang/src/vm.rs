@@ -8,6 +8,7 @@ pub mod codegen;
 pub mod context;
 pub mod debugger;
 pub mod disasm;
+pub mod trace;
 // Plan 075: ConfigCodegen for config file compilation
 pub mod config_codegen;
 // Plan 075: TemplateCodegen for template file compilation
