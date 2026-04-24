@@ -2,8 +2,9 @@
 
 ## Status
 
-**Phase 0: COMPLETE** — A2UI Protocol Bridge implemented and tested.  
+**Phase 0: COMPLETE** — A2UI Protocol Bridge implemented and tested.
 **Phase 1: PARTIAL** — Simplified three-panel composer scaffold builds and runs.
+**Phase 2-4: DEFERRED** — Blocked on parser limitations (method calls in on blocks, array types in models, range for loops in view, nested if blocks).
 
 ### What Was Actually Built (vs. Original Plan)
 
