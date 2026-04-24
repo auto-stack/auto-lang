@@ -1,5 +1,5 @@
-import { ref, watch } from 'vue';
-import type { RunResponse, TransResponse, OutputTab } from '../types';
+import { ref, watch, computed } from 'vue';
+import type { RunResponse, TransResponse, OutputTab, SourceMapEntry } from '../types';
 
 const API_BASE = '/api';
 const DEBOUNCE_MS = 500;
@@ -24,7 +24,32 @@ print(result)`);
   const liveCompile = ref(true);
 
   const transCache = ref<Record<string, string>>({});
+  const sourceMap = ref<SourceMapEntry[]>([]);
+  const highlightedSourceLine = ref<number | null>(null);
+  const highlightedOutputLines = ref<number[]>([]);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Build inverted index: source line -> output lines
+  const sourceToOutputMap = computed(() => {
+    const map: Record<number, number[]> = {};
+    for (const entry of sourceMap.value) {
+      if (!map[entry.source_line]) {
+        map[entry.source_line] = [];
+      }
+      map[entry.source_line].push(entry.output_line);
+    }
+    return map;
+  });
+
+  function highlightSourceLine(line: number) {
+    highlightedSourceLine.value = line;
+    highlightedOutputLines.value = sourceToOutputMap.value[line] ?? [];
+  }
+
+  function clearHighlight() {
+    highlightedSourceLine.value = null;
+    highlightedOutputLines.value = [];
+  }
 
   async function run() {
     isLoading.value = true;
@@ -74,6 +99,7 @@ print(result)`);
       const data: TransResponse = await res.json();
       transpiledCode.value = data.code || '';
       transpileTarget.value = target;
+      sourceMap.value = data.source_map || [];
       transCache.value[target] = transpiledCode.value;
     } catch (e: any) {
       transpiledCode.value = `Error: ${e.message}`;
@@ -88,6 +114,9 @@ print(result)`);
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';
+    sourceMap.value = [];
+    highlightedSourceLine.value = null;
+    highlightedOutputLines.value = [];
     // transCache cleared by watch
   }
 
@@ -113,6 +142,7 @@ print(result)`);
   return {
     source, stdout, stderr, resultCode, timeMs, isLoading,
     activeTab, transpiledCode, transpileTarget, liveCompile,
-    run, transpile, loadExample,
+    sourceMap, highlightedSourceLine, highlightedOutputLines,
+    run, transpile, loadExample, highlightSourceLine, clearHighlight,
   };
 }

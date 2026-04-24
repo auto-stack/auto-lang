@@ -28,6 +28,7 @@
         v-else
         :code="transpiledCode"
         :language="activeTab"
+        :highlight-lines="highlightLines"
       />
     </div>
   </div>
@@ -45,6 +46,7 @@ defineProps<{
   timeMs: number;
   transpiledCode: string;
   liveCompile: boolean;
+  highlightLines?: number[];
 }>();
 
 defineEmits<{

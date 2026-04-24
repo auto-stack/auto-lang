@@ -15,9 +15,15 @@ export interface TransRequest {
   target: string;
 }
 
+export interface SourceMapEntry {
+  source_line: number;
+  output_line: number;
+}
+
 export interface TransResponse {
   code: string;
   target: string;
+  source_map: SourceMapEntry[];
 }
 
 export interface Example {

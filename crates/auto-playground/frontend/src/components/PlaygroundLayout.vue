@@ -21,6 +21,7 @@
           :model-value="source"
           @update:model-value="$emit('update:source', $event)"
           :on-run="onRun"
+          @line-click="$emit('lineClick', $event)"
         />
       </div>
       <div class="output-pane">
@@ -31,6 +32,7 @@
           :time-ms="timeMs"
           :transpiled-code="transpiledCode"
           :live-compile="liveCompile"
+          :highlight-lines="highlightLines"
           @tab-change="onTabChange"
           @toggle-live="$emit('toggleLive')"
         />
@@ -54,6 +56,7 @@ defineProps<{
   timeMs: number;
   transpiledCode: string;
   liveCompile: boolean;
+  highlightLines?: number[];
   onRun: () => void;
 }>();
 
@@ -63,6 +66,7 @@ const emit = defineEmits<{
   tabChange: [tab: OutputTab];
   loadExample: [code: string];
   toggleLive: [];
+  lineClick: [line: number];
 }>();
 
 function onTabChange(tab: OutputTab) {

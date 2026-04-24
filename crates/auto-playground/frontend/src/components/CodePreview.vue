@@ -5,19 +5,42 @@
         {{ copied ? 'Copied!' : 'Copy' }}
       </button>
     </div>
-    <pre><code>{{ code }}</code></pre>
+    <div class="lines-container">
+      <div
+        v-for="(line, index) in lines"
+        :key="index"
+        :class="['code-line', { highlighted: isHighlighted(index + 1) }]"
+      >
+        <span class="line-number">{{ index + 1 }}</span>
+        <span class="line-content">{{ line }}</span>
+      </div>
+      <div v-if="lines.length === 0" class="code-line">
+        <span class="line-number">1</span>
+        <span class="line-content"></span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 const props = defineProps<{
   code: string;
   language?: string;
+  highlightLines?: number[];
 }>();
 
 const copied = ref(false);
+
+const lines = computed(() => {
+  if (!props.code) return [''];
+  return props.code.split('\n');
+});
+
+function isHighlighted(lineNum: number): boolean {
+  return props.highlightLines?.includes(lineNum) ?? false;
+}
 
 async function copyCode() {
   try {
@@ -56,12 +79,30 @@ async function copyCode() {
 .copy-btn:hover {
   background: #4c4c4c;
 }
-pre {
-  margin: 0;
-  padding: 12px;
+.lines-container {
+  padding: 0;
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 13px;
   color: #d4d4d4;
-  white-space: pre-wrap;
+}
+.code-line {
+  display: flex;
+  padding: 0 12px;
+  min-height: 20px;
+  line-height: 20px;
+}
+.code-line.highlighted {
+  background: rgba(255, 255, 0, 0.12);
+}
+.line-number {
+  flex-shrink: 0;
+  width: 48px;
+  text-align: right;
+  padding-right: 16px;
+  color: #6e7681;
+  user-select: none;
+}
+.line-content {
+  white-space: pre;
 }
 </style>

@@ -17,6 +17,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
+  'line-click': [line: number];
 }>();
 
 const editorContainer = ref<HTMLDivElement>();
@@ -36,6 +37,21 @@ onMounted(() => {
       if (update.docChanged) {
         emit('update:modelValue', update.state.doc.toString());
       }
+    }),
+    EditorView.domEventHandlers({
+      mousedown: (event, view) => {
+        // Check if the click is in the gutter area
+        const target = event.target as HTMLElement;
+        if (target.closest('.cm-gutters') || target.closest('.cm-gutter')) {
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
+          if (pos !== null) {
+            const line = view.state.doc.lineAt(pos);
+            emit('line-click', line.number);
+            return true;
+          }
+        }
+        return false;
+      },
     }),
   ];
 
@@ -82,5 +98,8 @@ onUnmounted(() => {
 }
 .editor-container :deep(.cm-scroller) {
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+.editor-container :deep(.cm-gutters) {
+  cursor: pointer;
 }
 </style>
