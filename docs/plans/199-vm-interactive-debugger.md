@@ -1,4 +1,6 @@
-# Plan 196: AutoVM 交互式调试器 + AI Agent 可调试性
+# Plan 199: AutoVM 交互式调试器 + AI Agent 可调试性
+
+> **Status: ❌ NOT IMPLEMENTED**
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

@@ -1,5 +1,7 @@
 # Plan 207: Enum Multi-Field Destructuring + Named Construction
 
+> **Status: ✅ COMPLETE** — Multi-field destructuring and named-arg construction implemented in parser/codegen/engine
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Enable `is err { Api(status, msg) -> ... }` multi-field destructuring and `Api(status: 429, msg: "err")` named-arg construction for enum variants with multiple fields.

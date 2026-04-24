@@ -1,5 +1,7 @@
 # Plan 208: Result Heap Object — `!T` with Rich Error Values
 
+> **Status: ✅ COMPLETE** — Result Ok/Err as heap objects via GenericInstanceData, IS_VARIANT + GET_GENERIC_FIELD for pattern matching
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Change Result from sentinel integers to heap objects so `Err` can carry any value (enum variants, strings, objects), enabling `is result { Ok(x) -> ... Err(e) -> is e { ParseError.InvalidChar(ch, pos) -> ... } }`.

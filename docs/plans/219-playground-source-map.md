@@ -1,4 +1,6 @@
-# Plan: Playground Source Map — Click Auto Line to Highlight Generated Code
+# Plan 219: Playground Source Map — Click Auto Line to Highlight Generated Code
+
+> **Status: ✅ COMPLETE** — SourceMapEntry structs implemented in auto-playground, plumbed through all transpilation targets
 
 ## Goal
 Enable the auto-playground to highlight corresponding generated code (Rust/C/JS/TS/Python) when the user clicks a line in the left Auto source editor. This requires bottom-up source map support in the transpiler pipeline.

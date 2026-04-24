@@ -1,5 +1,7 @@
 # Plan 206: Closure HOF — call_closure API + List 高阶函数
 
+> **Status: ✅ COMPLETE** — call_closure API + List.map/filter/reduce/for_each/find/any/all all implemented and tested
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 为 AutoVM 添加 native→closure 回调 API，然后基于此实现 `List.map/filter/reduce/for_each/find/any/all` 六个高阶函数。

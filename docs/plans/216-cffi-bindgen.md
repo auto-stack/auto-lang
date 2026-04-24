@@ -1,4 +1,6 @@
-# Plan 213: Auto C FFI — 基于 Bindgen 的自动签名提取与绑定
+# Plan 216: Auto C FFI — 基于 Bindgen 的自动签名提取与绑定
+
+> **Status: ✅ COMPLETE** — All 4 phases done: auto-bindgen tool, C FFI runtime (libloading), auto-bind C functions, CLI integration
 
 ## Context
 

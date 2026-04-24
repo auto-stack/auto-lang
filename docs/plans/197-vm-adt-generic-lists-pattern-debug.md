@@ -3,7 +3,7 @@
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Date:** 2026-04-20
-**Status:** Approved
+**Status:** ✅ COMPLETE — All 11 runtime features implemented (GenericInstanceData, Option<T>, List<UserType>, pattern destructuring, struct equality, debug formatting)
 **Goal:** Add eleven runtime features to the Auto VM in dependency order: string equality via `==`, chained method call type resolution, field type inference after GET_GENERIC_FIELD, struct-as-function-param passing, `str.slice()` method, struct equality, `Option<T>` + `Some()`/`None`, struct debug formatting, enum variants with data, List<UserType>, and pattern destructuring in `is`-expressions.
 **Architecture:** Enum variants reuse the existing `GenericInstanceData` heap object system with a `mono_name` encoding the variant (`"Atom.Int"`). Pattern matching compiles to tag-check + field-extraction using existing opcodes. Debug formatting extends `TO_STR` to handle heap objects. String equality is fixed by interning literals in codegen + content-aware EQ in the engine. Method chaining is fixed by consulting `fn_return_types` in `infer_object_type()`. Field type inference is fixed by looking up field types from `GenericTemplate` after `GET_GENERIC_FIELD`. Struct param passing is fixed by correcting LOAD_LOCAL offset for heap ID arguments in CALL frames. `Option<T>` is represented as a built-in enum `Option` with variants `Some(T)` and `None`. Struct equality is a field-by-field comparison in EQ when both operands are heap objects.
 **Tech Stack:** Rust, AutoLang crate (`auto-lang`), existing VM infrastructure (heap objects, generic registry, opcodes).

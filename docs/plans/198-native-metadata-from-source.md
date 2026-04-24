@@ -1,4 +1,6 @@
-# Plan 194: Eliminate Hardcoded Native Metadata — Derive from Source Declarations
+# Plan 198: Eliminate Hardcoded Native Metadata — Derive from Source Declarations
+
+> **Status: ❌ NOT IMPLEMENTED**
 
 ## Problem
 
