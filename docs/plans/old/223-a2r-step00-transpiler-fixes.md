@@ -1,6 +1,6 @@
 # Plan 223: a2r 转译器关键缺陷修复
 
-## Status: 📋 DRAFT
+## Status: ✅ COMPLETE
 
 > 基于 step-00-api-minimal（545 行 Auto 代码 → Rust）的翻译对比分析。
 > 发现 3 类关键问题：lexer 偏移量漂移导致大文件崩溃、parser 不支持多参数 enum 变体和 `is` 语句表达式、a2r 运行时映射缺失。

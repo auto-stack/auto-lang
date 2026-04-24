@@ -35,9 +35,10 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 216 | C FFI Bindgen | ✅ | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
 | 219 | Playground Source Map | ✅ | Source mapping for transpiler output to enable clickable error locations |
 | 220 | a2r Transpiler Improvement | ✅ | Rust transpiler improvements: better type mapping, enum support, stdlib coverage |
+| 223 | a2r Step-00 Transpiler Fixes | ✅ | Lexer pos drift fix, multi-arg enum variants, is-expression, return/break in match arms |
 
 ## Status Summary
-- Completed: 11 | Partial: 3 | Planned: 12 | Deprecated: 0
+- Completed: 12 | Partial: 3 | Planned: 12 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (10 tests), a2j (9 tests)

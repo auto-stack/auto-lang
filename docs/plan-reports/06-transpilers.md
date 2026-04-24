@@ -2,7 +2,7 @@
 
 ## Overview
 
-AutoLang supports a comprehensive suite of transpiler backends that convert AutoLang source code into target languages including C, Rust, TypeScript, Python, and JavaScript. The system also includes a reverse transpiler (r2a) for importing Rust code back into AutoLang. Each backend follows a shared architectural pattern: parse AutoLang source, walk the AST, and emit idiomatic target-language code. The transpilers differ in maturity: a2c is the most mature with 106 tests, followed by a2r at 144 tests, a2ts at 24, and a2p/a2j at 10 and 9 tests respectively. UI-specific generators produce output for Vue, ArkTS, GPUI, and VSCode extensions. Across 22 plans, 10 are completed, 3 are partially implemented, and 9 remain in planning stages.
+AutoLang supports a comprehensive suite of transpiler backends that convert AutoLang source code into target languages including C, Rust, TypeScript, Python, and JavaScript. The system also includes a reverse transpiler (r2a) for importing Rust code back into AutoLang. Each backend follows a shared architectural pattern: parse AutoLang source, walk the AST, and emit idiomatic target-language code. The transpilers differ in maturity: a2c is the most mature with 106 tests, followed by a2r at 144 tests, a2ts at 24, and a2p/a2j at 10 and 9 tests respectively. UI-specific generators produce output for Vue, ArkTS, GPUI, and VSCode extensions. Across 23 plans, 11 are completed, 3 are partially implemented, and 9 remain in planning stages.
 
 ## Plan Index
 
@@ -36,6 +36,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 216 | C FFI Bindgen | Complete | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
 | 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
 | 220 | a2r Transpiler Improvement | Complete | Enhanced a2r output quality with improved type mapping and code generation |
+| 223 | a2r Step-00 Transpiler Fixes | Complete | Lexer pos drift fix (str/char/multi_str), multi-arg enum tuple variants, is as expression, return/break in match arms, env/fs/sleep_ms runtime mappings |
 
 ## Status
 
@@ -114,3 +115,4 @@ Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171,
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
 - [219-playground-source-map.md](../plans/219-playground-source-map.md)
 - [220-a2r-transpiler-improvement.md](../plans/220-a2r-transpiler-improvement.md)
+- [223-a2r-step00-transpiler-fixes.md](../plans/223-a2r-step00-transpiler-fixes.md)
