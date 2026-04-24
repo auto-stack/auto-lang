@@ -75,7 +75,6 @@ const tabs: { id: OutputTab; label: string }[] = [
   { id: 'rust', label: 'Rust' },
   { id: 'c', label: 'C' },
   { id: 'python', label: 'Python' },
-  { id: 'javascript', label: 'JS' },
   { id: 'typescript', label: 'TS' },
 ];
 

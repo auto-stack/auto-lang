@@ -22,14 +22,12 @@ import { computed } from 'vue';
 import hljs from 'highlight.js/lib/core';
 import rust from 'highlight.js/lib/languages/rust';
 import python from 'highlight.js/lib/languages/python';
-import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
 import c from 'highlight.js/lib/languages/c';
 import 'highlight.js/styles/atom-one-dark.css';
 
 hljs.registerLanguage('rust', rust);
 hljs.registerLanguage('python', python);
-hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('c', c);
 
@@ -42,7 +40,6 @@ const props = defineProps<{
 const hljsLanguageMap: Record<string, string> = {
   rust: 'rust',
   python: 'python',
-  javascript: 'javascript',
   typescript: 'typescript',
   c: 'c',
 };
