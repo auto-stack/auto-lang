@@ -253,6 +253,7 @@ pub enum OpCode {
                              // Returns (true, value) if ready, (false, nil) if pending
 
     // === Debug ===
+    SOURCE_LINE = 0xFE, // line: u16 -> void (Plan 199: record current source line)
     PRINT = 0xF0,
     HALT = 0xFF,
 }
@@ -314,7 +315,7 @@ impl OpCode {
         // Extended type conversions (Plan 193)
         0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
         // Debug/Misc
-        0xF0, 0xF1, 0xF2, 0xFF,
+        0xF0, 0xF1, 0xF2, 0xFE, 0xFF,
     ];
 
     pub fn is_valid(v: u8) -> bool {

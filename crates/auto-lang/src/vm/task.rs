@@ -45,6 +45,9 @@ pub struct AutoTask {
     pub task_type_name: Option<String>, // Task type name for handler lookup
     pub current_handler_has_context: bool, // Whether current handler has ctx parameter
     pub current_msg_context: Option<crate::vm::message_context::MessageContext>, // Current reply context
+    // Plan 199: Source line tracking for debugging
+    pub current_line: u32,
+    pub current_source: Option<String>,
 }
 
 impl AutoTask {
@@ -67,6 +70,8 @@ impl AutoTask {
             task_type_name: None,
             current_handler_has_context: false,
             current_msg_context: None,
+            current_line: 0,
+            current_source: None,
         }
     }
 }

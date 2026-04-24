@@ -918,7 +918,13 @@ impl AutoVM {
                     }
                     Err(e) => {
                         // Plan 118: Store error for proper error propagation
-                        let error_msg = format!("{:?}", e);
+                        // Plan 199: Include source line number in error message
+                        let line = task.current_line;
+                        let error_msg = if line > 0 {
+                            format!("{:?} at line {}", e, line)
+                        } else {
+                            format!("{:?}", e)
+                        };
                         task.last_error = Some(error_msg.clone());
                         eprintln!("Task {} Error: {}", task.id, error_msg);
                         task.status = TaskStatus::Terminated;
@@ -4178,6 +4184,12 @@ impl AutoVM {
                 }
 
                 // === Debug ===
+                OpCode::SOURCE_LINE => {
+                    // Plan 199: Record current source line for debugging
+                    let line = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    task.current_line = line as u32;
+                }
                 OpCode::HALT => {
                     return Ok(StepResult::Terminated);
                 }

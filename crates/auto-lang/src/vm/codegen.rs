@@ -260,6 +260,10 @@ pub struct Codegen {
     /// Plan 222: Python FFI function return types for type-aware dispatch
     /// Maps local function name → PyType (from py_ffi_types, no pyo3 dependency)
     py_return_types: HashMap<String, crate::py_ffi_types::PyType>,
+
+    /// Plan 199: Current source line for SOURCE_LINE opcode emission
+    /// Avoids emitting redundant SOURCE_LINE for consecutive stmts on the same line
+    current_source_line: u32,
 }
 
 impl Codegen {
@@ -325,6 +329,7 @@ impl Codegen {
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            current_source_line: 0, // Plan 199: Source line tracking
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -438,6 +443,7 @@ impl Codegen {
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            current_source_line: 0, // Plan 199: Source line tracking
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -540,6 +546,10 @@ impl Codegen {
 
                 let n = body.stmts.len();
                 for (i, s) in body.stmts.iter().enumerate() {
+                    // Plan 199: Emit SOURCE_LINE for debugging
+                    if i < body.source_lines.len() {
+                        self.emit_source_line(body.source_lines[i]);
+                    }
                     let is_last = i == n - 1;
                     let old_pop = self.should_pop_expr_result;
                     // Plan 118 Phase 5: For the last statement in a block, we should NOT pop
@@ -5931,6 +5941,17 @@ impl Codegen {
     // Plan 087 Phase 2: Emit u16 value (2 bytes, little-endian)
     fn emit_u16(&mut self, val: u16) {
         self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    /// Plan 199: Emit SOURCE_LINE opcode if line number changed.
+    /// Avoids redundant emission for consecutive statements on the same line.
+    fn emit_source_line(&mut self, line: usize) {
+        let line = line as u32;
+        if line > 0 && line != self.current_source_line {
+            self.current_source_line = line;
+            self.emit(OpCode::SOURCE_LINE);
+            self.emit_u16(line as u16);
+        }
     }
 
     // Plan 073: Emit i16 value (2 bytes, little-endian) for jump offsets
