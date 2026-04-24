@@ -8,7 +8,7 @@ use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::native::NativeInterface;
 use crate::vm::task::AutoTask;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyFloat, PyList, PyString};
+use pyo3::types::{PyFloat, PyList, PyString, PyTuple};
 use std::collections::HashMap;
 
 pub struct PyFfiBridge {
@@ -59,29 +59,32 @@ impl PyFfiBridge {
                 .map(|m| m.clone_ref(py))
         })?;
         let func_name = function_name.to_string();
-        let param_count = signature.params.len();
         let return_type = signature.returns.clone();
         let param_types = signature.params.clone();
 
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
-            // Marshal arguments from VM stack (pop in reverse order)
-            let py_args: Vec<Py<PyAny>> = Python::with_gil(|py| {
-                let mut args = Vec::with_capacity(param_count);
-                // Params are on stack in order, so reverse-pop
-                let param_types_rev: Vec<_> = param_types.iter().rev().collect();
-                for pt in param_types_rev {
+            Python::with_gil(|py| {
+                let mod_ref = module.bind(py);
+                let func = mod_ref.getattr(&func_name).map_err(|e| {
+                    VMError::FFI(format!("Python function '{}' not found: {}", func_name, e))
+                })?;
+
+                // Build Python argument tuple by popping from stack in reverse
+                let n = param_types.len();
+                let mut bound_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n);
+                for pt in param_types.iter().rev() {
                     let py_val = match pt {
                         PyType::Int => {
                             let val = task.ram.pop_i32();
-                            PyLong::new(py, val).into()
+                            val.into_pyobject(py).unwrap().into_any()
                         }
                         PyType::Float => {
                             let val = task.ram.pop_f64();
-                            PyFloat::new(py, val).into()
+                            PyFloat::new(py, val).into_any()
                         }
                         PyType::Bool => {
                             let val = task.ram.pop_i32();
-                            PyBool::new(py, val != 0).into()
+                            val.into_pyobject(py).unwrap().into_any()
                         }
                         PyType::String => {
                             let str_idx = task.ram.pop_str_idx();
@@ -91,56 +94,45 @@ impl PyFfiBridge {
                                 Vec::new()
                             };
                             let s = String::from_utf8_lossy(&s).to_string();
-                            PyString::new(py, &s).into()
+                            PyString::new(py, &s).into_any()
                         }
-                        PyType::None => py.None(),
-                        _ => py.None(),
+                        PyType::None => py.None().into_bound(py),
+                        _ => py.None().into_bound(py),
                     };
-                    args.push(py_val);
+                    bound_args.push(py_val);
                 }
-                // Reverse back to correct order
-                args.reverse();
-                Ok::<Vec<Py<PyAny>>, VMError>(args)
-            })?;
+                bound_args.reverse();
 
-            // Call Python function
-            let py_result: Py<PyAny> = Python::with_gil(|py| {
-                let mod_ref = module.bind(py);
-                let func: Bound<'_, PyAny> = mod_ref.getattr(&func_name).map_err(|e| {
-                    VMError::FFI(format!("Python function '{}' not found: {}", func_name, e))
+                // Call with PyTuple
+                let args_tuple = PyTuple::new(py, bound_args).map_err(|e| {
+                    VMError::FFI(format!("Failed to create Python args tuple: {}", e))
                 })?;
-
-                let py_result = func.call1(py_args.as_slice()).map_err(|e| {
+                let py_result = func.call1(args_tuple).map_err(|e| {
                     VMError::FFI(format!("Python call {}() failed: {}", func_name, e))
                 })?;
 
-                Ok::<Py<PyAny>, VMError>(py_result)
-            })?;
-
-            // Marshal return value to VM stack
-            Python::with_gil(|py| {
+                // Marshal return value to VM stack
                 match return_type {
                     PyType::Int => {
-                        let val: i32 = py_result.extract(py).map_err(|e| {
+                        let val: i32 = py_result.extract().map_err(|e| {
                             VMError::FFI(format!("Python return not int: {}", e))
                         })?;
                         task.ram.push_i32(val);
                     }
                     PyType::Float => {
-                        let val: f64 = py_result.extract(py).map_err(|e| {
+                        let val: f64 = py_result.extract().map_err(|e| {
                             VMError::FFI(format!("Python return not float: {}", e))
                         })?;
                         task.ram.push_f64(val);
                     }
                     PyType::Bool => {
-                        // Must check bool before int (Python bool is int subclass)
-                        let val: bool = py_result.extract(py).map_err(|e| {
+                        let val: bool = py_result.extract().map_err(|e| {
                             VMError::FFI(format!("Python return not bool: {}", e))
                         })?;
                         task.ram.push_i32(if val { 1 } else { 0 });
                     }
                     PyType::String => {
-                        let val: String = py_result.extract(py).map_err(|e| {
+                        let val: String = py_result.extract().map_err(|e| {
                             VMError::FFI(format!("Python return not string: {}", e))
                         })?;
                         if let Ok(mut strings) = vm.strings.write() {
@@ -155,13 +147,13 @@ impl PyFfiBridge {
                         task.ram.push_i32(0);
                     }
                     PyType::List => {
-                        let list: &Bound<'_, PyList> = py_result.downcast(py).map_err(|e| {
+                        let list = py_result.downcast::<PyList>().map_err(|e| {
                             VMError::FFI(format!("Python return not list: {}", e))
                         })?;
-                        py_list_to_vm_heap(py, list, task, vm)?;
+                        py_list_to_vm_heap(list, task, vm)?;
                     }
                     PyType::Auto => {
-                        py_auto_marshal_return(py, &py_result.bind(py), task, vm)?;
+                        py_auto_marshal_return(&py_result, task, vm)?;
                     }
                 }
                 Ok::<(), VMError>(())
@@ -181,7 +173,6 @@ impl PyFfiBridge {
 
 /// Auto-detect Python return type and marshal to VM stack.
 fn py_auto_marshal_return(
-    py: Python<'_>,
     py_val: &Bound<'_, PyAny>,
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -204,7 +195,7 @@ fn py_auto_marshal_return(
     } else if py_val.is_none() {
         task.ram.push_i32(0);
     } else if let Ok(list) = py_val.downcast::<PyList>() {
-        py_list_to_vm_heap(py, list, task, vm)?;
+        py_list_to_vm_heap(list, task, vm)?;
     } else {
         // Fallback: convert to string
         let s = format!("{:?}", py_val);
@@ -221,7 +212,6 @@ fn py_auto_marshal_return(
 
 /// Convert a Python list to a VM heap List object and push its ID.
 fn py_list_to_vm_heap(
-    py: Python<'_>,
     py_list: &Bound<'_, PyList>,
     task: &mut AutoTask,
     vm: &AutoVM,
