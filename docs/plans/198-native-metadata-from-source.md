@@ -1,6 +1,6 @@
 # Plan 198: Eliminate Hardcoded Native Metadata
 
-> **Status: 🔄 REDESIGNED**
+> **Status: 🔄 MOSTLY COMPLETE**
 >
 > Earlier "safe" implementation completed Phase 1, 4, 5 (return types from TypeStore, collection inference, alias auto-gen).
 > Plan redesigned around three orthogonal problems identified during implementation review.
