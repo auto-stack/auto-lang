@@ -143,8 +143,14 @@ impl NativeInterface {
     }
 
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
+    /// Falls back to BIGVM_NATIVES.resolve_qualified() for canonical normalization.
     pub fn resolve(&self, name: &str) -> Option<u16> {
-        self.name_to_id.get(name).copied()
+        self.name_to_id.get(name).copied().or_else(|| {
+            crate::vm::native_registry::BIGVM_NATIVES
+                .lock()
+                .ok()
+                .and_then(|r| r.resolve_qualified(name))
+        })
     }
 
     /// Get the next available dynamic ID

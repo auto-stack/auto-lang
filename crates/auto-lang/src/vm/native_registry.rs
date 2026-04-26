@@ -180,6 +180,12 @@ impl AutoVMNativeRegistry {
         &self.return_types
     }
 
+    /// Register only the return type for a native function (without registering an ID).
+    /// Used when the ID is already registered elsewhere (e.g., in qualified_registry).
+    pub fn register_return_type(&mut self, name: &str, ret_type: NativeRetType) {
+        self.return_types.insert(name.to_string(), ret_type);
+    }
+
     // =========================================================================
     // Plan 203 Phase 1: Qualified name registry methods
     // =========================================================================
@@ -507,11 +513,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("InlineInt64.drop", 202);
 
     // Instance method aliases (lowercase receiver names used by codegen)
-    // Plan 198: InlineInt64.* duplicates removed (already registered above)
-    registry.register_with_id("heap.new", 195);
-    registry.register_with_id("heap.capacity", 196);
-    registry.register_with_id("heap.try_grow", 197);
-    registry.register_with_id("heap.drop", 198);
+    // Plan 198: heap.* and InlineInt64.* duplicates removed — to_canonical() resolves
 
     // Iterator functions (IDs 111-117 aligned with NATIVE_LIST_ITER + NATIVE_ITERATOR_*)
     registry.register_with_id("List.iter", 111);
@@ -637,26 +639,10 @@ pub fn register_builtin_natives() {
     registry.register_with_id("String.reserve", 186);
 
     // Plan 178: Bit operation methods on int
-    registry.register_with_id("int.and", 210);
-    registry.register_with_id("int.or", 211);
-    registry.register_with_id("int.xor", 212);
-    registry.register_with_id("int.not", 213);
-    registry.register_with_id("int.shl", 214);
-    registry.register_with_id("int.shr", 215);
-    registry.register_with_id("int.sar", 216);
-    registry.register_with_id("int.rol", 217);
-    registry.register_with_id("int.ror", 218);
-    registry.register_with_id("int.count_ones", 220);
-    registry.register_with_id("int.leading_zeros", 221);
-    registry.register_with_id("int.trailing_zeros", 222);
-    registry.register_with_id("int.flip", 223);
+    // Plan 198: int.* lowercase aliases removed — to_canonical() resolves via auto.int.*
 
     // Phase 4: Dynamic bitfield views
-    registry.register_with_id("int.bit_read", 230);
-    registry.register_with_id("int.bit_test", 231);
-    registry.register_with_id("int.bit_on", 232);
-    registry.register_with_id("int.bit_off", 233);
-    registry.register_with_id("int.bit_flip", 234);
+    // Plan 198: int.bit_* aliases removed — to_canonical() resolves via auto.int.bit_*
 
     // String/Uint extension functions
     registry.register_with_id("str.bytes", 235);    // str.bytes() → iterator
@@ -681,21 +667,22 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.file.is_dir", 1009);
     registry.register_with_id("File.append_text", 1011); // no auto.file prefix
 
-    // Plan 200 Task 3.4: fs module aliases (fs.read -> File.read_text, etc.)
-    registry.register_with_id("fs.read_text", 1000);
-    registry.register_with_id("fs.read", 1000);
-    registry.register_with_id("fs.write_text", 1001);
-    registry.register_with_id("fs.write", 1001);
-    registry.register_with_id("fs.append_text", 1011);
-    registry.register_with_id("fs.append", 1011);
-    registry.register_with_id("fs.exists", 1002);
-    registry.register_with_id("fs.delete", 1003);
-    registry.register_with_id("fs.create_dir", 1004);
-    registry.register_with_id("fs.read_bytes", 1005);
-    registry.register_with_id("fs.write_bytes", 1006);
-    registry.register_with_id("fs.copy", 1007);
-    registry.register_with_id("fs.size", 1008);
-    registry.register_with_id("fs.is_dir", 1009);
+    // Plan 200 Task 3.4: fs module aliases → auto.fs.* qualified entries
+    // Plan 198: fs.* removed from registry; to_canonical("fs.X") → "auto.fs.X" in qualified_registry
+    registry.register_qualified("auto.fs.read_text", 1000);
+    registry.register_qualified("auto.fs.read", 1000);
+    registry.register_qualified("auto.fs.write_text", 1001);
+    registry.register_qualified("auto.fs.write", 1001);
+    registry.register_qualified("auto.fs.append_text", 1011);
+    registry.register_qualified("auto.fs.append", 1011);
+    registry.register_qualified("auto.fs.exists", 1002);
+    registry.register_qualified("auto.fs.delete", 1003);
+    registry.register_qualified("auto.fs.create_dir", 1004);
+    registry.register_qualified("auto.fs.read_bytes", 1005);
+    registry.register_qualified("auto.fs.write_bytes", 1006);
+    registry.register_qualified("auto.fs.copy", 1007);
+    registry.register_qualified("auto.fs.size", 1008);
+    registry.register_qualified("auto.fs.is_dir", 1009);
 
     // Env functions (1100-1102) — TitleCase aliases auto-generated
     registry.register_with_id("auto.env.get", 1100);
@@ -752,32 +739,32 @@ pub fn register_builtin_natives() {
 
     // Plan 198: auto.str.upper/lower/sub/slice and Str.slice removed — redundant with auto.str.to_upper/substr
 
-    // String function aliases (codegen infer_type_from_var returns lowercase "str")
-    // These also carry return type info for codegen type inference
-    // NOTE: Use IDs from native.rs (170+), NOT FFI IDs (1500+), because FFI shims
-    // are not registered in native_interface. Only override if not already registered.
-    registry.register_with_id_and_type("str.len", 170, NativeRetType::Int);
-    registry.register_with_id_and_type("str.is_empty", 1501, NativeRetType::Bool);
-    registry.register_with_id_and_type("str.char_at", 1502, NativeRetType::String);
-    registry.register_with_id_and_type("str.substr", 1503, NativeRetType::String);
-    registry.register_with_id_and_type("str.contains", 1504, NativeRetType::Bool);
-    registry.register_with_id_and_type("str.starts_with", 1505, NativeRetType::Bool);
-    registry.register_with_id_and_type("str.ends_with", 1506, NativeRetType::Bool);
-    registry.register_with_id_and_type("str.trim", 1507, NativeRetType::String);
-    registry.register_with_id_and_type("str.split", 1508, NativeRetType::String);
-    registry.register_with_id_and_type("str.repeat", 1509, NativeRetType::String);
-    registry.register_with_id_and_type("str.replace", 1510, NativeRetType::String);
-    registry.register_with_id_and_type("str.to_upper", 1511, NativeRetType::String);
-    registry.register_with_id_and_type("str.to_lower", 1512, NativeRetType::String);
-    registry.register_with_id_and_type("str.reverse", 1513, NativeRetType::String);
-    registry.register_with_id_and_type("str.find", 1514, NativeRetType::Int);
-    registry.register_with_id_and_type("str.lines", 1515, NativeRetType::String);
-    registry.register_with_id_and_type("str.parse_int", 1516, NativeRetType::Int);
-    registry.register_with_id_and_type("str.parse_float", 1517, NativeRetType::Float);
+    // Plan 198: Return types under canonical keys (get_return_type("str.X") falls back via to_canonical)
+    registry.register_return_type("auto.str.len", NativeRetType::Int);
+    registry.register_return_type("auto.str.is_empty", NativeRetType::Bool);
+    registry.register_return_type("auto.str.char_at", NativeRetType::String);
+    registry.register_return_type("auto.str.substr", NativeRetType::String);
+    registry.register_return_type("auto.str.contains", NativeRetType::Bool);
+    registry.register_return_type("auto.str.starts_with", NativeRetType::Bool);
+    registry.register_return_type("auto.str.ends_with", NativeRetType::Bool);
+    registry.register_return_type("auto.str.trim", NativeRetType::String);
+    registry.register_return_type("auto.str.split", NativeRetType::String);
+    registry.register_return_type("auto.str.repeat", NativeRetType::String);
+    registry.register_return_type("auto.str.replace", NativeRetType::String);
+    registry.register_return_type("auto.str.to_upper", NativeRetType::String);
+    registry.register_return_type("auto.str.to_lower", NativeRetType::String);
+    registry.register_return_type("auto.str.reverse", NativeRetType::String);
+    registry.register_return_type("auto.str.find", NativeRetType::Int);
+    registry.register_return_type("auto.str.lines", NativeRetType::String);
+    registry.register_return_type("auto.str.parse_int", NativeRetType::Int);
+    registry.register_return_type("auto.str.parse_float", NativeRetType::Float);
+
+    // Plan 198: str.* lowercase aliases removed — to_canonical() resolves via auto.str.*
+    // Exception: Str.split_once/match_count/replace_first have no auto.str.* canonical entry,
+    // so their lowercase forms are kept here (codegen also constructs "str.split_once" etc.)
     registry.register_with_id_and_type("str.split_once", 1518, NativeRetType::List);
     registry.register_with_id_and_type("str.match_count", 1519, NativeRetType::Int);
     registry.register_with_id_and_type("str.replace_first", 1520, NativeRetType::String);
-    // Plan 198: str.upper/lower/sub/slice removed — to_canonical() resolves via auto.str.*
 
     // Option functions (1550-1551) — Plan 200 Task 2.4
     registry.register_with_id("Option.or", 1550);
@@ -1030,6 +1017,13 @@ pub fn register_builtin_natives() {
     registry.register_qualified("auto.int.not", 213);
     registry.register_qualified("auto.int.shl", 214);
     registry.register_qualified("auto.int.shr", 215);
+    registry.register_qualified("auto.int.sar", 216);
+    registry.register_qualified("auto.int.rol", 217);
+    registry.register_qualified("auto.int.ror", 218);
+    registry.register_qualified("auto.int.count_ones", 220);
+    registry.register_qualified("auto.int.leading_zeros", 221);
+    registry.register_qualified("auto.int.trailing_zeros", 222);
+    registry.register_qualified("auto.int.flip", 223);
     registry.register_qualified("auto.int.bit_read", 230);
     registry.register_qualified("auto.int.bit_test", 231);
     registry.register_qualified("auto.int.bit_on", 232);
