@@ -719,8 +719,6 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the function
     let func = parse_macro_input!(item as ItemFn);
     let func_name = &func.sig.ident;
-    let _func_vis = &func.vis;
-    let _doc_attrs = &func.attrs;
 
     // Generate a unique shim name based on the FFI name
     // e.g., "File.read_text" -> "__shim_File_read_text"
@@ -775,6 +773,14 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
                 .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
 
             Ok(())
+        }
+
+        // Static registration via inventory
+        crate::inventory::submit! {
+            crate::vm::ffi::StaticFFIRegistration {
+                name: #name,
+                shim: #shim_name,
+            }
         }
     };
 

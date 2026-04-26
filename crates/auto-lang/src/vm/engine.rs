@@ -292,6 +292,8 @@ impl AutoVM {
         native_interface.register_std_shims();
         // Plan 094: Register static FFI stdlib functions (File, Env, Time, etc.)
         crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+        // Plan 198: Auto-register all #[rust_fn] shims collected by inventory crate
+        crate::vm::ffi::register_all_rust_fn(&mut native_interface);
         // Plan 198 Problem C: Build dispatch table from named shims
         native_interface.build_dispatch_table();
 

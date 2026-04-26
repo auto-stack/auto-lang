@@ -3110,160 +3110,40 @@ pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
 /// Register all stdlib FFI functions with the NativeInterface
 pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 198 Problem C: Use register_with_name for dual ID+name registration.
-    // This enables future removal of NATIVE_* constants and ID-based registration.
+    // Auto-registered via inventory: #[rust_fn] macro → register_all_rust_fn()
+    // Only manual shims (shim_* without __ prefix) remain here.
 
-    // File functions
-    natives.register_with_name(NATIVE_FILE_READ_TEXT, "auto.file.read_text", __shim_File_read_text);
-    natives.register_with_name(NATIVE_FILE_WRITE_TEXT, "auto.file.write_text", __shim_File_write_text);
-    natives.register_with_name(NATIVE_FILE_EXISTS, "auto.file.exists", __shim_File_exists);
-    natives.register_with_name(NATIVE_FILE_DELETE, "auto.file.delete", __shim_File_delete);
-    natives.register_with_name(NATIVE_FILE_CREATE_DIR, "auto.file.create_dir", __shim_File_create_dir);
-    natives.register_with_name(NATIVE_FILE_READ_BYTES, "auto.file.read_bytes", __shim_File_read_bytes);
-    natives.register_with_name(NATIVE_FILE_WRITE_BYTES, "auto.file.write_bytes", __shim_File_write_bytes);
-    natives.register_with_name(NATIVE_FILE_COPY, "auto.file.copy", __shim_File_copy);
-    natives.register_with_name(NATIVE_FILE_SIZE, "auto.file.size", __shim_File_size);
-    natives.register_with_name(NATIVE_FILE_IS_DIR, "auto.file.is_dir", __shim_File_is_dir);
+    // File functions (walk, read_lines require manual shims)
     natives.register_with_name(NATIVE_FILE_WALK, "auto.file.walk", shim_file_walk);
-    natives.register_with_name(NATIVE_FILE_APPEND_TEXT, "auto.file.append_text", __shim_File_append_text);
     natives.register_with_name(NATIVE_FILE_READ_LINES, "auto.file.read_lines", shim_file_read_lines);
 
-    // Env functions
-    natives.register_with_name(NATIVE_ENV_GET, "auto.env.get", __shim_Env_get);
-    natives.register_with_name(NATIVE_ENV_SET, "auto.env.set", __shim_Env_set);
-    natives.register_with_name(NATIVE_ENV_REMOVE, "auto.env.remove", __shim_Env_remove);
-
-    // Time functions
-    natives.register_with_name(NATIVE_TIME_NOW_MS, "auto.time.now_ms", __shim_Time_now_ms);
-    natives.register_with_name(NATIVE_TIME_NOW_SEC, "auto.time.now_sec", __shim_Time_now_sec);
-    natives.register_with_name(NATIVE_TIME_SLEEP_MS, "auto.time.sleep_ms", __shim_Time_sleep_ms);
-
-    // Process functions
-    natives.register_with_name(NATIVE_PROCESS_EXIT, "auto.process.exit", __shim_Process_exit);
-    natives.register_with_name(NATIVE_PROCESS_ARGS, "auto.process.args", __shim_Process_args);
-    natives.register_with_name(NATIVE_PROCESS_CURRENT_DIR, "auto.process.current_dir", __shim_Process_current_dir);
-    natives.register_with_name(NATIVE_PROCESS_SET_CURRENT_DIR, "auto.process.set_current_dir", __shim_Process_set_current_dir);
-    natives.register_with_name(NATIVE_PROCESS_SPAWN, "auto.process.spawn", __shim_Process_spawn);
+    // Process functions (spawn_with_output requires manual shim)
     natives.register_with_name(NATIVE_PROCESS_SPAWN_WITH_OUTPUT, "auto.process.spawn_with_output", shim_process_spawn_with_output);
 
-    // Path functions
-    natives.register_with_name(NATIVE_PATH_JOIN, "auto.path.join", __shim_Path_join);
-    natives.register_with_name(NATIVE_PATH_PARENT, "auto.path.parent", __shim_Path_parent);
-    natives.register_with_name(NATIVE_PATH_EXTENSION, "auto.path.extension", __shim_Path_extension);
-    natives.register_with_name(NATIVE_PATH_FILENAME, "auto.path.filename", __shim_Path_filename);
-    natives.register_with_name(NATIVE_PATH_CANONICALIZE, "auto.path.canonicalize", __shim_Path_canonicalize);
-
-    // String functions
-    natives.register_with_name(NATIVE_STR_LEN, "auto.str.len", __shim_Str_len);
-    natives.register_with_name(NATIVE_STR_IS_EMPTY, "auto.str.is_empty", __shim_Str_is_empty);
-    natives.register_with_name(NATIVE_STR_CHAR_AT, "auto.str.char_at", __shim_Str_char_at);
-    natives.register_with_name(NATIVE_STR_SUBSTR, "auto.str.substr", __shim_Str_substr);
-    natives.register_with_name(NATIVE_STR_CONTAINS, "auto.str.contains", __shim_Str_contains);
-    natives.register_with_name(NATIVE_STR_STARTS_WITH, "auto.str.starts_with", __shim_Str_starts_with);
-    natives.register_with_name(NATIVE_STR_ENDS_WITH, "auto.str.ends_with", __shim_Str_ends_with);
-    natives.register_with_name(NATIVE_STR_TRIM, "auto.str.trim", __shim_Str_trim);
-    natives.register_with_name(NATIVE_STR_SPLIT, "auto.str.split", __shim_Str_split);
-    natives.register_with_name(NATIVE_STR_REPEAT, "auto.str.repeat", __shim_Str_repeat);
-    natives.register_with_name(NATIVE_STR_REPLACE, "auto.str.replace", __shim_Str_replace);
-    natives.register_with_name(NATIVE_STR_TO_UPPER, "auto.str.to_upper", __shim_Str_to_upper);
-    natives.register_with_name(NATIVE_STR_TO_LOWER, "auto.str.to_lower", __shim_Str_to_lower);
-    natives.register_with_name(NATIVE_STR_REVERSE, "auto.str.reverse", __shim_Str_reverse);
-    natives.register_with_name(NATIVE_STR_FIND, "auto.str.find", __shim_Str_find);
-    natives.register_with_name(NATIVE_STR_LINES, "auto.str.lines", __shim_Str_lines);
-    natives.register_with_name(NATIVE_STR_PARSE_INT, "auto.str.parse_int", __shim_Str_parse_int);
-    natives.register_with_name(NATIVE_STR_PARSE_FLOAT, "auto.str.parse_float", __shim_Str_parse_float);
-    natives.register_with_name(NATIVE_STR_SPLIT_ONCE, "auto.str.split_once", __shim_Str_split_once);
-    natives.register_with_name(NATIVE_STR_MATCH_COUNT, "auto.str.match_count", __shim_Str_match_count);
-    natives.register_with_name(NATIVE_STR_REPLACE_FIRST, "auto.str.replace_first", __shim_Str_replace_first);
-
-    // Char functions
-    natives.register_with_name(NATIVE_CHAR_IS_ALPHA, "auto.char.is_alpha", __shim_Char_is_alpha);
-    natives.register_with_name(NATIVE_CHAR_IS_DIGIT, "auto.char.is_digit", __shim_Char_is_digit);
-    natives.register_with_name(NATIVE_CHAR_IS_ALPHANUM, "auto.char.is_alphanum", __shim_Char_is_alphanum);
-    natives.register_with_name(NATIVE_CHAR_IS_WHITESPACE, "auto.char.is_whitespace", __shim_Char_is_whitespace);
-    natives.register_with_name(NATIVE_CHAR_IS_IDENT, "auto.char.is_ident", __shim_Char_is_ident);
-    natives.register_with_name(NATIVE_CHAR_TO_LOWER, "auto.char.to_lower", __shim_Char_to_lower);
-    natives.register_with_name(NATIVE_CHAR_TO_UPPER, "auto.char.to_upper", __shim_Char_to_upper);
-
-    // Option functions (Plan 200 Task 2.4)
+    // Option functions (manual shims)
     natives.register_with_name(NATIVE_OPTION_OR, "auto.option.or", shim_option_or);
     natives.register_with_name(NATIVE_OPTION_UNWRAP_OR, "auto.option.unwrap_or", shim_option_or);
 
-    // Math functions
+    // Math functions (abs, min, max, sqrt require manual shims)
     natives.register_with_name(NATIVE_MATH_ABS, "auto.math.abs", shim_math_abs);
     natives.register_with_name(NATIVE_MATH_MIN, "auto.math.min", shim_math_min);
     natives.register_with_name(NATIVE_MATH_MAX, "auto.math.max", shim_math_max);
     natives.register_with_name(NATIVE_MATH_SQRT, "auto.math.sqrt", shim_math_sqrt);
-    natives.register_with_name(NATIVE_MATH_FLOOR, "auto.math.floor", __shim_Math_floor);
-    natives.register_with_name(NATIVE_MATH_CEIL, "auto.math.ceil", __shim_Math_ceil);
-    natives.register_with_name(NATIVE_MATH_ROUND, "auto.math.round", __shim_Math_round);
-    natives.register_with_name(NATIVE_MATH_POW, "auto.math.pow", __shim_Math_pow);
-    natives.register_with_name(NATIVE_MATH_MIN_F, "auto.math.min_f", __shim_Math_min_f);
-    natives.register_with_name(NATIVE_MATH_MAX_F, "auto.math.max_f", __shim_Math_max_f);
-    natives.register_with_name(NATIVE_MATH_SIN, "auto.math.sin", __shim_Math_sin);
-    natives.register_with_name(NATIVE_MATH_COS, "auto.math.cos", __shim_Math_cos);
-    natives.register_with_name(NATIVE_MATH_TAN, "auto.math.tan", __shim_Math_tan);
-    natives.register_with_name(NATIVE_MATH_EXP, "auto.math.exp", __shim_Math_exp);
-    natives.register_with_name(NATIVE_MATH_LN, "auto.math.ln", __shim_Math_ln);
-    natives.register_with_name(NATIVE_MATH_LOG2, "auto.math.log2", __shim_Math_log2);
-    natives.register_with_name(NATIVE_MATH_LOG10, "auto.math.log10", __shim_Math_log10);
-    natives.register_with_name(NATIVE_MATH_ABS_F, "auto.math.abs_f", __shim_Math_abs_f);
-    natives.register_with_name(NATIVE_MATH_SIGNUM, "auto.math.signum", __shim_Math_signum);
-    natives.register_with_name(NATIVE_MATH_CLAMP, "auto.math.clamp", __shim_Math_clamp);
 
-    // Log functions
-    natives.register_with_name(NATIVE_LOG_DEBUG, "auto.log.debug", __shim_Log_debug);
-    natives.register_with_name(NATIVE_LOG_INFO, "auto.log.info", __shim_Log_info);
-    natives.register_with_name(NATIVE_LOG_WARN, "auto.log.warn", __shim_Log_warn);
-    natives.register_with_name(NATIVE_LOG_ERROR, "auto.log.error", __shim_Log_error);
-
-    // JSON functions
-    natives.register_with_name(NATIVE_JSON_ENCODE, "auto.json.encode", __shim_Json_encode);
-    natives.register_with_name(NATIVE_JSON_PARSE, "auto.json.parse", __shim_Json_parse);
-    natives.register_with_name(NATIVE_JSON_PRETTIFY, "auto.json.prettify", __shim_Json_prettify);
-    natives.register_with_name(NATIVE_JSON_IS_VALID, "auto.json.is_valid", __shim_Json_is_valid);
-    natives.register_with_name(NATIVE_JSON_GET, "auto.json.get", __shim_Json_get);
-    natives.register_with_name(NATIVE_JSON_GET_AT, "auto.json.get_at", __shim_Json_get_at);
-    natives.register_with_name(NATIVE_JSON_LEN, "auto.json.len", __shim_Json_len);
-    natives.register_with_name(NATIVE_JSON_TYPE, "auto.json.type_of", __shim_Json_type_of);
-    natives.register_with_name(NATIVE_JSON_AS_STRING, "auto.json.as_string", __shim_Json_as_string);
-    natives.register_with_name(NATIVE_JSON_AS_NUMBER, "auto.json.as_number", __shim_Json_as_number);
-    natives.register_with_name(NATIVE_JSON_AS_INT, "auto.json.as_int", __shim_Json_as_int);
-    natives.register_with_name(NATIVE_JSON_AS_BOOL, "auto.json.as_bool", __shim_Json_as_bool);
-    natives.register_with_name(NATIVE_JSON_IS_NULL, "auto.json.is_null", __shim_Json_is_null);
-    natives.register_with_name(NATIVE_JSON_KEYS, "auto.json.keys", __shim_Json_keys);
-    natives.register_with_name(NATIVE_JSON_HAS_KEY, "auto.json.has_key", __shim_Json_has_key);
-
-    // URL functions
-    natives.register_with_name(NATIVE_URL_ENCODE, "auto.url.encode", __shim_Url_encode);
-    natives.register_with_name(NATIVE_URL_DECODE, "auto.url.decode", __shim_Url_decode);
-    natives.register_with_name(NATIVE_URL_ENCODE_QUERY, "auto.url.encode_query", __shim_Url_encode_query);
-    natives.register_with_name(NATIVE_URL_DECODE_QUERY, "auto.url.decode_query", __shim_Url_decode_query);
-    natives.register_with_name(NATIVE_URL_JOIN_PATH, "auto.url.join_path", __shim_Url_join_path);
-    natives.register_with_name(NATIVE_URL_PARSE, "auto.url.parse", __shim_Url_parse);
-    natives.register_with_name(NATIVE_URL_SCHEME, "auto.url.scheme", __shim_Url_scheme);
-    natives.register_with_name(NATIVE_URL_HOST, "auto.url.host", __shim_Url_host);
-    natives.register_with_name(NATIVE_URL_PORT, "auto.url.port", __shim_Url_port);
-    natives.register_with_name(NATIVE_URL_PATH, "auto.url.path", __shim_Url_path);
-    natives.register_with_name(NATIVE_URL_QUERY, "auto.url.query", __shim_Url_query);
-    natives.register_with_name(NATIVE_URL_FRAGMENT, "auto.url.fragment", __shim_Url_fragment);
-
-    // Net functions
+    // Net functions (all manual shims)
     natives.register_with_name(NATIVE_NET_TCP_BIND, "auto.net.tcp_bind", shim_net_tcp_bind);
     natives.register_with_name(NATIVE_NET_TCP_LISTENER_ACCEPT, "auto.net.tcp_listener_accept", shim_net_tcp_listener_accept);
-    natives.register_with_name(NATIVE_NET_TCP_LISTENER_LOCAL_ADDR, "auto.net.tcp_listener_local_addr", __shim_Net_tcp_listener_local_addr);
     natives.register_with_name(NATIVE_NET_TCP_LISTENER_CLOSE, "auto.net.tcp_listener_close", shim_net_tcp_listener_close);
     natives.register_with_name(NATIVE_NET_TCP_CONNECT, "auto.net.tcp_connect", shim_net_tcp_connect);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_READ, "auto.net.tcp_stream_read", shim_net_tcp_stream_read);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_WRITE, "auto.net.tcp_stream_write", shim_net_tcp_stream_write);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_READ_ALL, "auto.net.tcp_stream_read_all", shim_net_tcp_stream_read_all);
-    natives.register_with_name(NATIVE_NET_TCP_STREAM_READ_LINE, "auto.net.tcp_stream_read_line", __shim_Net_tcp_stream_read_line);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_WRITE_STR, "auto.net.tcp_stream_write_str", shim_net_tcp_stream_write_str);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_CLOSE, "auto.net.tcp_stream_close", shim_net_tcp_stream_close);
-    natives.register_with_name(NATIVE_NET_TCP_STREAM_PEER_ADDR, "auto.net.tcp_stream_peer_addr", __shim_Net_tcp_stream_peer_addr);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_SET_READ_TIMEOUT, "auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout);
     natives.register_with_name(NATIVE_NET_TCP_STREAM_SET_WRITE_TIMEOUT, "auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout);
 
-    // HTTP functions
+    // HTTP functions (manual shims)
     natives.register_with_name(NATIVE_HTTP_SERVER, "auto.http.server", shim_http_server);
     natives.register_with_name(NATIVE_HTTP_SERVER_GET, "auto.http.server_get", shim_http_server_get);
     natives.register_with_name(NATIVE_HTTP_SERVER_POST, "auto.http.server_post", shim_http_server_post);
@@ -3277,17 +3157,12 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_with_name(NATIVE_HTTP_RESPONSE_TEXT, "auto.http.response_text", shim_http_response_text);
     natives.register_with_name(NATIVE_HTTP_RESPONSE_HTML, "auto.http.response_html", shim_http_response_html);
     natives.register_with_name(NATIVE_HTTP_RESPONSE_BYTES, "auto.http.response_bytes", shim_http_response_bytes);
-    natives.register_with_name(NATIVE_HTTP_OK, "auto.http.ok", __shim_Http_ok);
-    natives.register_with_name(NATIVE_HTTP_CREATED, "auto.http.created", __shim_Http_created);
-    natives.register_with_name(NATIVE_HTTP_BAD_REQUEST, "auto.http.bad_request", __shim_Http_bad_request);
-    natives.register_with_name(NATIVE_HTTP_NOT_FOUND, "auto.http.not_found", __shim_Http_not_found);
-    natives.register_with_name(NATIVE_HTTP_INTERNAL_ERROR, "auto.http.internal_error", __shim_Http_internal_error);
     natives.register_with_name(NATIVE_HTTP_GET, "auto.http.get", shim_http_get);
     natives.register_with_name(NATIVE_HTTP_POST, "auto.http.post", shim_http_post);
     natives.register_with_name(NATIVE_HTTP_PUT, "auto.http.put", shim_http_put);
     natives.register_with_name(NATIVE_HTTP_DELETE, "auto.http.delete", shim_http_delete);
 
-    // Plan 195: RequestBuilder
+    // Plan 195: RequestBuilder (manual shims)
     natives.register_with_name(NATIVE_HTTP_REQUEST, "auto.http.request", shim_http_request);
     natives.register_with_name(NATIVE_HTTP_REQUEST_BUILDER_HEADER, "auto.http.request_builder_header", shim_request_builder_header);
     natives.register_with_name(NATIVE_HTTP_REQUEST_BUILDER_BODY, "auto.http.request_builder_body", shim_request_builder_body);
@@ -3308,11 +3183,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_with_name(NATIVE_HTTP_STREAM_CLOSE, "auto.http.http_stream_close", shim_http_stream_close);
     natives.register_with_name(NATIVE_HTTP_POST_STREAM_WITH_HEADERS, "auto.http.http_post_stream_with_headers", shim_http_post_stream_with_headers);
 
-    // SSE Parser functions (Plan 152)
-    natives.register_with_name(NATIVE_SSE_PARSE, "auto.sse.parse_sse", __shim_parse_sse);
-
-    // Regex functions (Plan 159)
-    natives.register_with_name(NATIVE_REGEX_IS_MATCH, "auto.regex.is_match", __shim_Regex_is_match);
+    // Regex functions (find_all requires manual shim)
     natives.register_with_name(NATIVE_REGEX_FIND_ALL, "auto.regex.find_all", shim_regex_find_all);
 
     // Task/Msg functions (Plan 121)
