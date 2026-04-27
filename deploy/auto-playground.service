@@ -1,0 +1,15 @@
+[Unit]
+Description=Auto Playground Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/local/bin
+Environment="RUST_LOG=info"
+ExecStart=/usr/local/bin/auto-playground
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

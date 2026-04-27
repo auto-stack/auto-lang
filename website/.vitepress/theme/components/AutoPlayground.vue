@@ -56,7 +56,7 @@ const props = withDefaults(defineProps<{
     let message = "Hello from Auto!";
     println(message);
 }`,
-  apiUrl: 'http://localhost:3030',
+  apiUrl: '',
 })
 
 const editorContainer = ref<HTMLDivElement>()

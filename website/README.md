@@ -67,8 +67,201 @@ website/
 └── package.json
 ```
 
-## Deployment
+## Production Deployment
+
+The production deployment consists of two parts: the **VitePress frontend** (static site) and the **Playground backend** (Rust Axum server).
+
+### Architecture
+
+```
+┌─────────────────┐     ┌─────────────┐     ┌─────────────────┐
+│   User Browser  │────▶│  nginx:80   │────▶│  VitePress      │
+│                 │     │             │     │  Static Files   │
+│                 │────▶│  /api/*     │────▶│  Axum Backend   │
+└─────────────────┘     │  (proxy)    │     │  :3030          │
+                        └─────────────┘     └─────────────────┘
+```
+
+### 1. Build the Frontend
+
+```bash
+cd website
+
+# Install dependencies
+bun install
+
+# Prepare content
+node scripts/prepare-content.js
+
+# Build for production
+bun run build
+```
+
+The output is generated in `website/.vitepress/dist/`.
+
+**Important — Playground API URL:**
+
+The `AutoPlayground.vue` component uses `apiUrl` prop with a default of empty string (`''`). This makes the frontend call `/api/run` and `/api/trans` as **same-origin requests**, which are then reverse-proxied by nginx to the backend.
+
+If you need to point to a different backend during development, pass the prop:
+
+```vue
+<AutoPlayground apiUrl="http://localhost:3030" />
+```
+
+But for production builds, keep the default empty string so nginx handles the proxying.
+
+### 2. Build the Backend (Cross-Compilation)
+
+The Playground backend is `crates/auto-playground/`, a Rust Axum server. On resource-constrained servers (e.g., 1.6 GB RAM, limited disk), **remote compilation often fails** due to cargo crate downloads and linker OOM. The solution is to build locally and copy the binary.
+
+#### Option A: Build in WSL (Recommended for Windows dev machines)
+
+**Important:** Building on `/mnt/d/` (Windows-mounted drives in WSL) is extremely slow. Clone or copy the repo into WSL's native ext4 filesystem first:
+
+```bash
+# Clone to WSL native filesystem (NOT /mnt/d/)
+cd ~
+git clone <repo-url> auto-lang
+cd auto-lang
+
+# Build the release binary (~17 MB)
+cargo build -p auto-playground --release
+
+# Output:
+# target/release/auto-playground
+```
+
+#### Option B: Build on a Linux build machine
+
+```bash
+cargo build -p auto-playground --release
+```
+
+### 3. Deploy to Server
+
+#### 3.1 Copy Frontend
+
+```bash
+# Copy built static files to nginx root
+scp -r website/.vitepress/dist/* root@112.74.45.241:/home/visus/auto-website/
+```
+
+#### 3.2 Copy Backend Binary
+
+```bash
+# Copy the binary to server
+scp target/release/auto-playground root@112.74.45.241:/usr/local/bin/auto-playground
+```
+
+The server does **not** need Rust installed — the binary is statically linked and self-contained.
+
+#### 3.3 Create systemd Service
+
+Create `/etc/systemd/system/auto-playground.service`:
+
+```ini
+[Unit]
+Description=Auto Playground Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/local/bin
+Environment="RUST_LOG=info"
+ExecStart=/usr/local/bin/auto-playground
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Start and enable:
+
+```bash
+systemctl daemon-reload
+systemctl start auto-playground
+systemctl enable auto-playground
+```
+
+#### 3.4 Configure nginx
+
+Create `/etc/nginx/sites-enabled/auto-playground`:
+
+```nginx
+server {
+    listen 80;
+    server_name 112.74.45.241;
+
+    root /home/visus/auto-website;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3030;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+        expires 1M;
+        add_header Cache-Control "public, immutable";
+    }
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+}
+```
+
+Validate and reload:
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+### 4. Verify Deployment
+
+```bash
+# Test backend directly
+curl -X POST http://127.0.0.1:3030/api/run \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"fn main() { print(\"hello\") }"}'
+
+# Test via nginx proxy
+curl -X POST http://112.74.45.241/api/run \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"fn main() { print(\"hello\") }"}'
+```
+
+Both should return:
+
+```json
+{"stdout":"hello\n","result":"","time_ms":30}
+```
+
+### 5. Server Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| OS | Linux (tested on Ubuntu / Alibaba Cloud Linux) |
+| RAM | 512 MB+ for running; 2 GB+ for compiling |
+| Disk | 1 GB for binary + website; 10 GB+ for compiling with cargo |
+| Runtime | No Rust toolchain needed on server if using prebuilt binary |
+| Reverse Proxy | nginx (recommended) |
+
+## GitHub Pages Deployment (Alternative)
 
 GitHub Actions workflow: `.github/workflows/deploy-website.yml`
 
-Pushes to `main` that modify `website/`, `docs/`, or the workflow file will trigger a build and deployment to GitHub Pages.
+Pushes to `main` that modify `website/`, `docs/`, or the workflow file will trigger a build and deployment to GitHub Pages. Note that this only deploys the static frontend; the Playground backend is not included.
