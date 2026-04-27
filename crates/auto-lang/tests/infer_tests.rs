@@ -43,6 +43,7 @@ fn test_infer_block_integration() {
     let body = auto_lang::ast::Body {
         stmts,
         has_new_line: false,
+        source_lines: vec![],
     };
     let stmt = Stmt::Block(body);
 

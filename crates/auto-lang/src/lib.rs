@@ -102,8 +102,6 @@ pub mod autodown;
 pub mod symbol;
 pub mod util;
 pub mod vm;
-
-pub use inventory;
 // Plan 095: Compile-Time Execution Engine
 pub mod comptime;
 

@@ -5050,21 +5050,40 @@ impl Codegen {
                     // Then check BIGVM_NATIVES (List methods, etc.)
                     // Plan 203 Phase 3: resolve_qualified checks qualified registry
                     // first, then falls back to short-name registry internally.
-                    else if let Some(id) = BIGVM_NATIVES.lock().unwrap().resolve_qualified(name) {
-                        Some(id)
-                    }
-                    // Plan 203 Phase 2: Try import scope resolution as fallback
-                    // If the bare name isn't found, resolve through the import scope
-                    else if let Some(qualified) = self.import_scope.get(name) {
-                        BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
-                    }
-                    // Plan 216 Phase 2: Check c_ffi_functions for C FFI functions
-                    else if let Some(&id) = self.c_ffi_functions.get(name) {
-                        Some(id)
-                    }
+                    // IMPORTANT: Extract lock into separate scope to ensure the MutexGuard
+                    // is dropped before the import_scope branch tries to lock again.
+                    // A temporary guard in an `else if let` condition lives until the
+                    // end of the entire if-else chain, causing deadlock.
                     else {
-                        None
+                        let natives_id = {
+                            let reg = BIGVM_NATIVES.lock().unwrap();
+                            reg.resolve_qualified(name)
+                        }; // guard dropped here
+                        if let Some(id) = natives_id {
+                            Some(id)
+                        } else if let Some(qualified) = self.import_scope.get(name) {
+                            BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
+                        } else if let Some(&id) = self.c_ffi_functions.get(name) {
+                            Some(id)
+                        } else {
+                            None
+                        }
                     }
+                    // Plan 216 Phase 2: Check c_ffi_functions for C FFI functions (removed — merged above)
+                    // else if let Some(&id) = self.c_ffi_functions.get(name) {
+                    //     Some(id)
+                    // }
+                    // else {
+                    //     None
+                    // }
+                    // NOTE: The original code had these as separate else-if branches:
+                    //   else if let Some(id) = BIGVM_NATIVES.lock()... { Some(id) }
+                    //   else if let Some(qualified) = self.import_scope.get(name) { ... }
+                    //   else if let Some(&id) = self.c_ffi_functions.get(name) { ... }
+                    //   else { None }
+                    // But the MutexGuard temporary in the first else-if extends to the
+                    // end of the entire if-else chain, so the import_scope branch would
+                    // deadlock trying to re-acquire the lock.
                 } else {
                     None
                 };

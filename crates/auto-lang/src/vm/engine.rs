@@ -292,10 +292,6 @@ impl AutoVM {
         native_interface.register_std_shims();
         // Plan 094: Register static FFI stdlib functions (File, Env, Time, etc.)
         crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
-        // Plan 198: Auto-register all #[rust_fn] shims collected by inventory crate
-        crate::vm::ffi::register_all_rust_fn(&mut native_interface);
-        // Plan 198 Problem C: Build dispatch table from named shims
-        native_interface.build_dispatch_table();
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
         // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
@@ -4615,7 +4611,8 @@ impl AutoVM {
     /// Execute a chunk of opcodes for a specific task
     fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
         const BUDGET: u32 = 100;
-        match self.execute_single_frame(task, BUDGET) {
+        let result = self.execute_single_frame(task, BUDGET);
+        match result {
             FrameResult::Return => Ok(TaskStatus::Terminated),
             FrameResult::Yielded => {
                 if matches!(task.status, TaskStatus::Waiting(_)) {

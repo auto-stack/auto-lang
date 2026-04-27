@@ -66,8 +66,6 @@ pub struct NativeInterface {
     next_dynamic_id: u16,
     /// Plan 200 Task 3.3: name -> ID mapping for CALL_SPEC fallback
     name_to_id: HashMap<String, u16>,
-    /// Plan 198 Problem C: name -> shim mapping for dispatch table build
-    named_shims: HashMap<String, ShimFunc>,
 }
 
 impl NativeInterface {
@@ -77,7 +75,6 @@ impl NativeInterface {
             dynamic_shims: HashMap::new(),
             next_dynamic_id: DYNAMIC_ID_START,
             name_to_id: HashMap::new(),
-            named_shims: HashMap::new(),
         }
     }
 
@@ -143,14 +140,8 @@ impl NativeInterface {
     }
 
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
-    /// Falls back to BIGVM_NATIVES.resolve_qualified() for canonical normalization.
     pub fn resolve(&self, name: &str) -> Option<u16> {
-        self.name_to_id.get(name).copied().or_else(|| {
-            crate::vm::native_registry::BIGVM_NATIVES
-                .lock()
-                .ok()
-                .and_then(|r| r.resolve_qualified(name))
-        })
+        self.name_to_id.get(name).copied()
     }
 
     /// Get the next available dynamic ID
@@ -181,68 +172,6 @@ impl NativeInterface {
         }
     }
 
-    // Plan 198 Problem C: Name-based shim registration
-    //
-    /// Register a shim by name (e.g., "auto.file.read_text").
-    /// The ID is resolved later via build_dispatch_table().
-    pub fn register_shim_by_name<F>(&mut self, name: &str, func: F)
-    where
-        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
-    {
-        self.named_shims.insert(name.to_string(), Arc::new(func));
-    }
-
-    /// Build the dispatch table by joining name→shim with name→ID from BIGVM_NATIVES.
-    ///
-    /// For each named shim, look up its ID in the native registry and register
-    /// it in the static/dynamic dispatch table. Called after both the registry
-    /// and all named shims have been populated.
-    pub fn build_dispatch_table(&mut self) {
-        use crate::vm::native_registry::BIGVM_NATIVES;
-        let registry = BIGVM_NATIVES.lock().unwrap();
-
-        let pending: Vec<(String, ShimFunc)> = self.named_shims.drain().collect();
-
-        for (name, shim) in &pending {
-            if let Some(id) = registry.resolve_qualified(name) {
-                if id < STATIC_ID_MAX {
-                    // Only fill empty slots — register_with_name already populated its own
-                    if self.static_shims[id as usize].is_none() {
-                        self.static_shims[id as usize] = Some(shim.clone());
-                    }
-                } else {
-                    if !self.dynamic_shims.contains_key(&id) {
-                        self.dynamic_shims.insert(id, shim.clone());
-                    }
-                }
-            }
-        }
-
-        // Put back any unresolved shims (might be registered later)
-        for (name, shim) in pending {
-            if !registry.resolve_qualified(&name).is_some() {
-                self.named_shims.insert(name, shim);
-            }
-        }
-    }
-
-    /// Register a shim by both ID and name (Plan 198 Problem C migration helper).
-    ///
-    /// Used during migration from ID-only to name-based registration.
-    /// Once all registrations use this, the ID-based path can be removed.
-    pub fn register_with_name<F>(&mut self, id: u16, name: &str, func: F)
-    where
-        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
-    {
-        let shim: ShimFunc = Arc::new(func);
-        if id < STATIC_ID_MAX {
-            self.static_shims[id as usize] = Some(shim.clone());
-        } else {
-            self.dynamic_shims.insert(id, shim.clone());
-        }
-        self.named_shims.insert(name.to_string(), shim);
-    }
-
     /// Legacy method for backwards compatibility
     /// Routes to register_static for IDs < 10000, register_dynamic otherwise
     pub fn register<F>(&mut self, id: u16, func: F)
@@ -257,179 +186,177 @@ impl NativeInterface {
     }
 
     pub fn register_std_shims(&mut self) {
-        // Plan 198 Problem C: Use register_with_name for dual ID+name registration.
-
         // Print functions
-        self.register_with_name(NATIVE_PRINT_I32, "auto.print_i32", shim_print_i32);
-        self.register_with_name(NATIVE_PRINT_F32, "auto.print_f32", shim_print_f32);
-        self.register_with_name(NATIVE_PRINT_STR, "auto.print_str", shim_print_str);
+        self.register(NATIVE_PRINT_I32, shim_print_i32);
+        self.register(NATIVE_PRINT_F32, shim_print_f32);
+        self.register(NATIVE_PRINT_STR, shim_print_str);
 
         // Assert functions
-        self.register_with_name(NATIVE_ASSERT, "auto.assert", shim_assert);
-        self.register_with_name(NATIVE_ASSERT_EQ, "auto.assert_eq", shim_assert_eq);
-        self.register_with_name(NATIVE_ASSERT_NE, "auto.assert_ne", shim_assert_ne);
+        self.register(NATIVE_ASSERT, shim_assert);
+        self.register(NATIVE_ASSERT_EQ, shim_assert_eq);
+        self.register(NATIVE_ASSERT_NE, shim_assert_ne);
 
-        // Runtime panic
-        self.register_with_name(NATIVE_RUNTIME_PANIC, "auto.runtime_panic", shim_runtime_panic);
+        // Runtime panic (for #[vm] stubs when native not found)
+        self.register(NATIVE_RUNTIME_PANIC, shim_runtime_panic);
 
         // List functions
-        self.register_with_name(NATIVE_LIST_NEW, "auto.list.new", shim_list_new);
-        self.register_with_name(NATIVE_LIST_PUSH, "auto.list.push", shim_list_push);
-        self.register_with_name(NATIVE_LIST_POP, "auto.list.pop", shim_list_pop);
-        self.register_with_name(NATIVE_LIST_LEN, "auto.list.len", shim_list_len);
-        self.register_with_name(NATIVE_LIST_IS_EMPTY, "auto.list.is_empty", shim_list_is_empty);
-        self.register_with_name(NATIVE_LIST_CLEAR, "auto.list.clear", shim_list_clear);
-        self.register_with_name(NATIVE_LIST_GET, "auto.list.get", shim_list_get);
-        self.register_with_name(NATIVE_LIST_SET, "auto.list.set", shim_list_set);
-        self.register_with_name(NATIVE_LIST_INSERT, "auto.list.insert", shim_list_insert);
-        self.register_with_name(NATIVE_LIST_REMOVE, "auto.list.remove", shim_list_remove);
-        self.register_with_name(NATIVE_LIST_DROP, "auto.list.drop", shim_list_drop);
-        self.register_with_name(NATIVE_LIST_RESERVE, "auto.list.reserve", shim_list_reserve);
+        self.register(NATIVE_LIST_NEW, shim_list_new);
+        self.register(NATIVE_LIST_PUSH, shim_list_push);
+        self.register(NATIVE_LIST_POP, shim_list_pop);
+        self.register(NATIVE_LIST_LEN, shim_list_len);
+        self.register(NATIVE_LIST_IS_EMPTY, shim_list_is_empty);
+        self.register(NATIVE_LIST_CLEAR, shim_list_clear);
+        self.register(NATIVE_LIST_GET, shim_list_get);
+        self.register(NATIVE_LIST_SET, shim_list_set);
+        self.register(NATIVE_LIST_INSERT, shim_list_insert);
+        self.register(NATIVE_LIST_REMOVE, shim_list_remove);
+        self.register(NATIVE_LIST_DROP, shim_list_drop);
+        self.register(NATIVE_LIST_RESERVE, shim_list_reserve);
 
         // List higher-order functions (Plan 206)
-        self.register_with_name(NATIVE_LIST_MAP, "auto.list.map", shim_list_map);
-        self.register_with_name(NATIVE_LIST_FILTER, "auto.list.filter", shim_list_filter);
-        self.register_with_name(NATIVE_LIST_FOREACH, "auto.list.for_each", shim_list_for_each);
-        self.register_with_name(NATIVE_LIST_FIND, "auto.list.find", shim_list_find);
-        self.register_with_name(NATIVE_LIST_ANY, "auto.list.any", shim_list_any);
-        self.register_with_name(NATIVE_LIST_ALL, "auto.list.all", shim_list_all);
-        self.register_with_name(NATIVE_LIST_REDUCE, "auto.list.reduce", shim_list_reduce);
+        self.register(NATIVE_LIST_MAP, shim_list_map);
+        self.register(NATIVE_LIST_FILTER, shim_list_filter);
+        self.register(NATIVE_LIST_FOREACH, shim_list_for_each);
+        self.register(NATIVE_LIST_FIND, shim_list_find);
+        self.register(NATIVE_LIST_ANY, shim_list_any);
+        self.register(NATIVE_LIST_ALL, shim_list_all);
+        self.register(NATIVE_LIST_REDUCE, shim_list_reduce);
 
-        // Result.map_err
-        self.register_with_name(NATIVE_RESULT_MAP_ERR, "auto.result.map_err", shim_result_map_err);
+        // Plan 200 Task 3.3: Result.map_err(closure)
+        self.register(NATIVE_RESULT_MAP_ERR, shim_result_map_err);
         self.register_name("Result.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Ok.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Err.map_err", NATIVE_RESULT_MAP_ERR);
 
         // Iterator functions
-        self.register_with_name(NATIVE_LIST_ITER, "auto.list.iter", shim_list_iter);
-        self.register_with_name(NATIVE_ITERATOR_NEXT, "auto.iterator.next", shim_iterator_next);
-        self.register_with_name(NATIVE_ITERATOR_MAP, "auto.iterator.map", shim_iterator_map);
-        self.register_with_name(NATIVE_ITERATOR_FILTER, "auto.iterator.filter", shim_iterator_filter);
-        self.register_with_name(NATIVE_ITERATOR_COLLECT, "auto.iterator.collect", shim_iterator_collect);
-        self.register_with_name(NATIVE_ITERATOR_REDUCE, "auto.iterator.reduce", shim_iterator_reduce);
-        self.register_with_name(NATIVE_ITERATOR_FIND, "auto.iterator.find", shim_iterator_find);
-        self.register_with_name(NATIVE_ITERATOR_ENUMERATE, "auto.iterator.enumerate", shim_iterator_enumerate);
+        self.register(NATIVE_LIST_ITER, shim_list_iter);
+        self.register(NATIVE_ITERATOR_NEXT, shim_iterator_next);
+        self.register(NATIVE_ITERATOR_MAP, shim_iterator_map);
+        self.register(NATIVE_ITERATOR_FILTER, shim_iterator_filter);
+        self.register(NATIVE_ITERATOR_COLLECT, shim_iterator_collect);
+        self.register(NATIVE_ITERATOR_REDUCE, shim_iterator_reduce);
+        self.register(NATIVE_ITERATOR_FIND, shim_iterator_find);
+        self.register(NATIVE_ITERATOR_ENUMERATE, shim_iterator_enumerate);
 
         // HashMap functions
-        self.register_with_name(NATIVE_HASHMAP_NEW, "auto.hashmap.new", shim_hashmap_new);
-        self.register_with_name(NATIVE_HASHMAP_INSERT_STR, "auto.hashmap.insert_str", shim_hashmap_insert_str);
-        self.register_with_name(NATIVE_HASHMAP_INSERT_INT, "auto.hashmap.insert_int", shim_hashmap_insert_int);
-        self.register_with_name(NATIVE_HASHMAP_GET_STR, "auto.hashmap.get_str", shim_hashmap_get_str);
-        self.register_with_name(NATIVE_HASHMAP_GET_INT, "auto.hashmap.get_int", shim_hashmap_get_int);
-        self.register_with_name(NATIVE_HASHMAP_CONTAINS, "auto.hashmap.contains", shim_hashmap_contains);
-        self.register_with_name(NATIVE_HASHMAP_REMOVE, "auto.hashmap.remove", shim_hashmap_remove);
-        self.register_with_name(NATIVE_HASHMAP_SIZE, "auto.hashmap.size", shim_hashmap_size);
-        self.register_with_name(NATIVE_HASHMAP_CLEAR, "auto.hashmap.clear", shim_hashmap_clear);
-        self.register_with_name(NATIVE_HASHMAP_DROP, "auto.hashmap.drop", shim_hashmap_drop);
+        self.register(NATIVE_HASHMAP_NEW, shim_hashmap_new);
+        self.register(NATIVE_HASHMAP_INSERT_STR, shim_hashmap_insert_str);
+        self.register(NATIVE_HASHMAP_INSERT_INT, shim_hashmap_insert_int);
+        self.register(NATIVE_HASHMAP_GET_STR, shim_hashmap_get_str);
+        self.register(NATIVE_HASHMAP_GET_INT, shim_hashmap_get_int);
+        self.register(NATIVE_HASHMAP_CONTAINS, shim_hashmap_contains);
+        self.register(NATIVE_HASHMAP_REMOVE, shim_hashmap_remove);
+        self.register(NATIVE_HASHMAP_SIZE, shim_hashmap_size);
+        self.register(NATIVE_HASHMAP_CLEAR, shim_hashmap_clear);
+        self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
 
         // HashSet functions
-        self.register_with_name(NATIVE_HASHSET_NEW, "auto.hashset.new", shim_hashset_new);
-        self.register_with_name(NATIVE_HASHSET_INSERT, "auto.hashset.insert", shim_hashset_insert);
-        self.register_with_name(NATIVE_HASHSET_CONTAINS, "auto.hashset.contains", shim_hashset_contains);
-        self.register_with_name(NATIVE_HASHSET_REMOVE, "auto.hashset.remove", shim_hashset_remove);
-        self.register_with_name(NATIVE_HASHSET_SIZE, "auto.hashset.size", shim_hashset_size);
-        self.register_with_name(NATIVE_HASHSET_CLEAR, "auto.hashset.clear", shim_hashset_clear);
-        self.register_with_name(NATIVE_HASHSET_DROP, "auto.hashset.drop", shim_hashset_drop);
+        self.register(NATIVE_HASHSET_NEW, shim_hashset_new);
+        self.register(NATIVE_HASHSET_INSERT, shim_hashset_insert);
+        self.register(NATIVE_HASHSET_CONTAINS, shim_hashset_contains);
+        self.register(NATIVE_HASHSET_REMOVE, shim_hashset_remove);
+        self.register(NATIVE_HASHSET_SIZE, shim_hashset_size);
+        self.register(NATIVE_HASHSET_CLEAR, shim_hashset_clear);
+        self.register(NATIVE_HASHSET_DROP, shim_hashset_drop);
 
         // StringBuilder functions
-        self.register_with_name(NATIVE_STRINGBUILDER_NEW, "auto.stringbuilder.new", shim_stringbuilder_new);
-        self.register_with_name(NATIVE_STRINGBUILDER_APPEND, "auto.stringbuilder.append", shim_stringbuilder_append);
-        self.register_with_name(NATIVE_STRINGBUILDER_APPEND_INT, "auto.stringbuilder.append_int", shim_stringbuilder_append_int);
-        self.register_with_name(NATIVE_STRINGBUILDER_APPEND_CHAR, "auto.stringbuilder.append_char", shim_stringbuilder_append_char);
-        self.register_with_name(NATIVE_STRINGBUILDER_LEN, "auto.stringbuilder.len", shim_stringbuilder_len);
-        self.register_with_name(NATIVE_STRINGBUILDER_CLEAR, "auto.stringbuilder.clear", shim_stringbuilder_clear);
-        self.register_with_name(NATIVE_STRINGBUILDER_DROP, "auto.stringbuilder.drop", shim_stringbuilder_drop);
-        self.register_with_name(NATIVE_STRINGBUILDER_BUILD, "auto.stringbuilder.build", shim_stringbuilder_build);
+        self.register(NATIVE_STRINGBUILDER_NEW, shim_stringbuilder_new);
+        self.register(NATIVE_STRINGBUILDER_APPEND, shim_stringbuilder_append);
+        self.register(NATIVE_STRINGBUILDER_APPEND_INT, shim_stringbuilder_append_int);
+        self.register(NATIVE_STRINGBUILDER_APPEND_CHAR, shim_stringbuilder_append_char);
+        self.register(NATIVE_STRINGBUILDER_LEN, shim_stringbuilder_len);
+        self.register(NATIVE_STRINGBUILDER_CLEAR, shim_stringbuilder_clear);
+        self.register(NATIVE_STRINGBUILDER_DROP, shim_stringbuilder_drop);
+        self.register(NATIVE_STRINGBUILDER_BUILD, shim_stringbuilder_build);
 
         // VecDeque functions
-        self.register_with_name(NATIVE_VECDEQUE_NEW, "auto.vecdeque.new", shim_vecdeque_new);
-        self.register_with_name(NATIVE_VECDEQUE_PUSH_BACK, "auto.vecdeque.push_back", shim_vecdeque_push_back);
-        self.register_with_name(NATIVE_VECDEQUE_PUSH_FRONT, "auto.vecdeque.push_front", shim_vecdeque_push_front);
-        self.register_with_name(NATIVE_VECDEQUE_POP_BACK, "auto.vecdeque.pop_back", shim_vecdeque_pop_back);
-        self.register_with_name(NATIVE_VECDEQUE_POP_FRONT, "auto.vecdeque.pop_front", shim_vecdeque_pop_front);
-        self.register_with_name(NATIVE_VECDEQUE_FRONT, "auto.vecdeque.front", shim_vecdeque_front);
-        self.register_with_name(NATIVE_VECDEQUE_BACK, "auto.vecdeque.back", shim_vecdeque_back);
-        self.register_with_name(NATIVE_VECDEQUE_SIZE, "auto.vecdeque.size", shim_vecdeque_size);
-        self.register_with_name(NATIVE_VECDEQUE_IS_EMPTY, "auto.vecdeque.is_empty", shim_vecdeque_is_empty);
-        self.register_with_name(NATIVE_VECDEQUE_CLEAR, "auto.vecdeque.clear", shim_vecdeque_clear);
-        self.register_with_name(NATIVE_VECDEQUE_DROP, "auto.vecdeque.drop", shim_vecdeque_drop);
+        self.register(NATIVE_VECDEQUE_NEW, shim_vecdeque_new);
+        self.register(NATIVE_VECDEQUE_PUSH_BACK, shim_vecdeque_push_back);
+        self.register(NATIVE_VECDEQUE_PUSH_FRONT, shim_vecdeque_push_front);
+        self.register(NATIVE_VECDEQUE_POP_BACK, shim_vecdeque_pop_back);
+        self.register(NATIVE_VECDEQUE_POP_FRONT, shim_vecdeque_pop_front);
+        self.register(NATIVE_VECDEQUE_FRONT, shim_vecdeque_front);
+        self.register(NATIVE_VECDEQUE_BACK, shim_vecdeque_back);
+        self.register(NATIVE_VECDEQUE_SIZE, shim_vecdeque_size);
+        self.register(NATIVE_VECDEQUE_IS_EMPTY, shim_vecdeque_is_empty);
+        self.register(NATIVE_VECDEQUE_CLEAR, shim_vecdeque_clear);
+        self.register(NATIVE_VECDEQUE_DROP, shim_vecdeque_drop);
 
         // BTreeMap functions
-        self.register_with_name(NATIVE_BTREEMAP_NEW, "auto.btreemap.new", shim_btreemap_new);
-        self.register_with_name(NATIVE_BTREEMAP_INSERT, "auto.btreemap.insert", shim_btreemap_insert);
-        self.register_with_name(NATIVE_BTREEMAP_GET, "auto.btreemap.get", shim_btreemap_get);
-        self.register_with_name(NATIVE_BTREEMAP_CONTAINS, "auto.btreemap.contains", shim_btreemap_contains);
-        self.register_with_name(NATIVE_BTREEMAP_REMOVE, "auto.btreemap.remove", shim_btreemap_remove);
-        self.register_with_name(NATIVE_BTREEMAP_SIZE, "auto.btreemap.size", shim_btreemap_size);
-        self.register_with_name(NATIVE_BTREEMAP_IS_EMPTY, "auto.btreemap.is_empty", shim_btreemap_is_empty);
-        self.register_with_name(NATIVE_BTREEMAP_CLEAR, "auto.btreemap.clear", shim_btreemap_clear);
-        self.register_with_name(NATIVE_BTREEMAP_FIRST_KEY, "auto.btreemap.first_key", shim_btreemap_first_key);
-        self.register_with_name(NATIVE_BTREEMAP_LAST_KEY, "auto.btreemap.last_key", shim_btreemap_last_key);
-        self.register_with_name(NATIVE_BTREEMAP_DROP, "auto.btreemap.drop", shim_btreemap_drop);
+        self.register(NATIVE_BTREEMAP_NEW, shim_btreemap_new);
+        self.register(NATIVE_BTREEMAP_INSERT, shim_btreemap_insert);
+        self.register(NATIVE_BTREEMAP_GET, shim_btreemap_get);
+        self.register(NATIVE_BTREEMAP_CONTAINS, shim_btreemap_contains);
+        self.register(NATIVE_BTREEMAP_REMOVE, shim_btreemap_remove);
+        self.register(NATIVE_BTREEMAP_SIZE, shim_btreemap_size);
+        self.register(NATIVE_BTREEMAP_IS_EMPTY, shim_btreemap_is_empty);
+        self.register(NATIVE_BTREEMAP_CLEAR, shim_btreemap_clear);
+        self.register(NATIVE_BTREEMAP_FIRST_KEY, shim_btreemap_first_key);
+        self.register(NATIVE_BTREEMAP_LAST_KEY, shim_btreemap_last_key);
+        self.register(NATIVE_BTREEMAP_DROP, shim_btreemap_drop);
 
-        // String functions (VM intrinsics — different from FFI shims)
-        self.register_with_name(NATIVE_STR_LEN, "auto.str.len_vm", shim_str_len);
-        self.register_with_name(NATIVE_STRING_LEN, "auto.string.len", shim_string_len);
-        self.register_with_name(NATIVE_STR_NEW, "auto.str.new", shim_str_new);
-        self.register_with_name(NATIVE_STR_APPEND, "auto.str.append", shim_str_append);
-        self.register_with_name(NATIVE_INT_STR, "auto.int.str", shim_int_str);
-        self.register_with_name(NATIVE_STR_UPPER, "auto.str.upper", shim_str_upper);
-        self.register_with_name(NATIVE_STRING_FROM, "auto.string.from", shim_string_from);
+        // String functions
+        self.register(NATIVE_STR_LEN, shim_str_len);
+        self.register(NATIVE_STRING_LEN, shim_string_len);
+        self.register(NATIVE_STR_NEW, shim_str_new);
+        self.register(NATIVE_STR_APPEND, shim_str_append);
+        self.register(NATIVE_INT_STR, shim_int_str);
+        self.register(NATIVE_STR_UPPER, shim_str_upper);
+        self.register(NATIVE_STRING_FROM, shim_string_from);
 
-        // String/Uint extension functions
-        self.register_with_name(NATIVE_STR_BYTES, "auto.str.bytes", shim_str_bytes);
-        self.register_with_name(NATIVE_UINT_TO_HEX, "auto.uint.to_hex", shim_uint_to_hex);
+        // String/Uint extension functions (235-236)
+        self.register(NATIVE_STR_BYTES, shim_str_bytes);
+        self.register(NATIVE_UINT_TO_HEX, shim_uint_to_hex);
 
-        // Mutable String functions
-        self.register_with_name(NATIVE_STRING_NEW, "auto.string.new", shim_string_new);
-        self.register_with_name(NATIVE_STRING_PUSH, "auto.string.push", shim_string_push);
-        self.register_with_name(NATIVE_STRING_POP, "auto.string.pop", shim_string_pop);
-        self.register_with_name(NATIVE_STRING_GET, "auto.string.get", shim_string_get);
-        self.register_with_name(NATIVE_STRING_SET, "auto.string.set", shim_string_set);
-        self.register_with_name(NATIVE_STRING_INSERT, "auto.string.insert", shim_string_insert);
-        self.register_with_name(NATIVE_STRING_REMOVE, "auto.string.remove", shim_string_remove);
-        self.register_with_name(NATIVE_STRING_CLEAR, "auto.string.clear", shim_string_clear);
-        self.register_with_name(NATIVE_STRING_IS_EMPTY, "auto.string.is_empty", shim_string_is_empty);
-        self.register_with_name(NATIVE_STRING_RESERVE, "auto.string.reserve", shim_string_reserve);
+        // Mutable String functions (177-186)
+        self.register(NATIVE_STRING_NEW, shim_string_new);
+        self.register(NATIVE_STRING_PUSH, shim_string_push);
+        self.register(NATIVE_STRING_POP, shim_string_pop);
+        self.register(NATIVE_STRING_GET, shim_string_get);
+        self.register(NATIVE_STRING_SET, shim_string_set);
+        self.register(NATIVE_STRING_INSERT, shim_string_insert);
+        self.register(NATIVE_STRING_REMOVE, shim_string_remove);
+        self.register(NATIVE_STRING_CLEAR, shim_string_clear);
+        self.register(NATIVE_STRING_IS_EMPTY, shim_string_is_empty);
+        self.register(NATIVE_STRING_RESERVE, shim_string_reserve);
 
         // Memory allocation functions
-        self.register_with_name(NATIVE_ALLOC_ARRAY, "auto.alloc_array", shim_alloc_array);
-        self.register_with_name(NATIVE_REALLOC_ARRAY, "auto.realloc_array", shim_realloc_array);
-        self.register_with_name(NATIVE_FREE_ARRAY, "auto.free_array", shim_free_array);
+        self.register(NATIVE_ALLOC_ARRAY, shim_alloc_array);
+        self.register(NATIVE_REALLOC_ARRAY, shim_realloc_array);
+        self.register(NATIVE_FREE_ARRAY, shim_free_array);
 
         // Storage functions
-        self.register_with_name(NATIVE_HEAP_NEW, "auto.heap.new", shim_heap_new);
-        self.register_with_name(NATIVE_HEAP_CAPACITY, "auto.heap.capacity", shim_heap_capacity);
-        self.register_with_name(NATIVE_HEAP_TRY_GROW, "auto.heap.try_grow", shim_heap_try_grow);
-        self.register_with_name(NATIVE_HEAP_DROP, "auto.heap.drop", shim_heap_drop);
-        self.register_with_name(NATIVE_INLINE_INT64_NEW, "auto.inlineint64.new", shim_inline_int64_new);
-        self.register_with_name(NATIVE_INLINE_INT64_CAPACITY, "auto.inlineint64.capacity", shim_inline_int64_capacity);
-        self.register_with_name(NATIVE_INLINE_INT64_TRY_GROW, "auto.inlineint64.try_grow", shim_inline_int64_try_grow);
-        self.register_with_name(NATIVE_INLINE_INT64_DROP, "auto.inlineint64.drop", shim_inline_int64_drop);
+        self.register(NATIVE_HEAP_NEW, shim_heap_new);
+        self.register(NATIVE_HEAP_CAPACITY, shim_heap_capacity);
+        self.register(NATIVE_HEAP_TRY_GROW, shim_heap_try_grow);
+        self.register(NATIVE_HEAP_DROP, shim_heap_drop);
+        self.register(NATIVE_INLINE_INT64_NEW, shim_inline_int64_new);
+        self.register(NATIVE_INLINE_INT64_CAPACITY, shim_inline_int64_capacity);
+        self.register(NATIVE_INLINE_INT64_TRY_GROW, shim_inline_int64_try_grow);
+        self.register(NATIVE_INLINE_INT64_DROP, shim_inline_int64_drop);
 
         // List extra functions
-        self.register_with_name(NATIVE_LIST_CAPACITY, "auto.list.capacity", shim_list_capacity);
+        self.register(NATIVE_LIST_CAPACITY, shim_list_capacity);
 
-        // Bit operation shims
-        self.register_with_name(NATIVE_INT_AND, "auto.int.and", shim_int_and);
-        self.register_with_name(NATIVE_INT_OR, "auto.int.or", shim_int_or);
-        self.register_with_name(NATIVE_INT_XOR, "auto.int.xor", shim_int_xor);
-        self.register_with_name(NATIVE_INT_NOT, "auto.int.not", shim_int_not);
-        self.register_with_name(NATIVE_INT_SHL, "auto.int.shl", shim_int_shl);
-        self.register_with_name(NATIVE_INT_SHR, "auto.int.shr", shim_int_shr);
-        self.register_with_name(NATIVE_INT_SAR, "auto.int.sar", shim_int_sar);
-        self.register_with_name(NATIVE_INT_ROL, "auto.int.rol", shim_int_rol);
-        self.register_with_name(NATIVE_INT_ROR, "auto.int.ror", shim_int_ror);
-        self.register_with_name(NATIVE_INT_COUNT_ONES, "auto.int.count_ones", shim_int_count_ones);
-        self.register_with_name(NATIVE_INT_LEADING_ZEROS, "auto.int.leading_zeros", shim_int_leading_zeros);
-        self.register_with_name(NATIVE_INT_TRAILING_ZEROS, "auto.int.trailing_zeros", shim_int_trailing_zeros);
-        self.register_with_name(NATIVE_INT_BITREV, "auto.int.bitrev", shim_int_bitrev);
-        self.register_with_name(NATIVE_INT_BIT_READ, "auto.int.bit_read", shim_int_bit_read);
-        self.register_with_name(NATIVE_INT_BIT_TEST, "auto.int.bit_test", shim_int_bit_test);
-        self.register_with_name(NATIVE_INT_BIT_ON, "auto.int.bit_on", shim_int_bit_on);
-        self.register_with_name(NATIVE_INT_BIT_OFF, "auto.int.bit_off", shim_int_bit_off);
-        self.register_with_name(NATIVE_INT_BIT_FLIP, "auto.int.bit_flip", shim_int_bit_flip);
+        // Plan 178: Bit operation shims
+        self.register(NATIVE_INT_AND, shim_int_and);
+        self.register(NATIVE_INT_OR, shim_int_or);
+        self.register(NATIVE_INT_XOR, shim_int_xor);
+        self.register(NATIVE_INT_NOT, shim_int_not);
+        self.register(NATIVE_INT_SHL, shim_int_shl);
+        self.register(NATIVE_INT_SHR, shim_int_shr);
+        self.register(NATIVE_INT_SAR, shim_int_sar);
+        self.register(NATIVE_INT_ROL, shim_int_rol);
+        self.register(NATIVE_INT_ROR, shim_int_ror);
+        self.register(NATIVE_INT_COUNT_ONES, shim_int_count_ones);
+        self.register(NATIVE_INT_LEADING_ZEROS, shim_int_leading_zeros);
+        self.register(NATIVE_INT_TRAILING_ZEROS, shim_int_trailing_zeros);
+        self.register(NATIVE_INT_BITREV, shim_int_bitrev);
+        self.register(NATIVE_INT_BIT_READ, shim_int_bit_read);
+        self.register(NATIVE_INT_BIT_TEST, shim_int_bit_test);
+        self.register(NATIVE_INT_BIT_ON, shim_int_bit_on);
+        self.register(NATIVE_INT_BIT_OFF, shim_int_bit_off);
+        self.register(NATIVE_INT_BIT_FLIP, shim_int_bit_flip);
     }
 }
 

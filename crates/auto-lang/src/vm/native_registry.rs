@@ -987,17 +987,21 @@ pub fn register_builtin_natives() {
     registry.register_qualified("auto.stringbuilder.build", 167);
 
     // String operations (VM-level, IDs 170-186)
-    registry.register_qualified("auto.str.len", 170);
+    registry.register_qualified("auto.str.len", 1500);
     registry.register_qualified("auto.str.upper", 175);
     registry.register_qualified("auto.str.new", 177);
     registry.register_qualified("auto.str.push", 178);
+    // Aliases: lower→to_lower, sub/slice→substr
+    registry.register_qualified("auto.str.lower", 1512);
+    registry.register_qualified("auto.str.sub", 1503);
+    registry.register_qualified("auto.str.slice", 1503);
     registry.register_qualified("auto.str.pop", 179);
     registry.register_qualified("auto.str.get", 180);
     registry.register_qualified("auto.str.set", 181);
     registry.register_qualified("auto.str.insert", 182);
     registry.register_qualified("auto.str.remove", 183);
     registry.register_qualified("auto.str.clear", 184);
-    registry.register_qualified("auto.str.is_empty", 185);
+    registry.register_qualified("auto.str.is_empty", 1501);
     registry.register_qualified("auto.str.reserve", 186);
 
     // Heap / storage operations
