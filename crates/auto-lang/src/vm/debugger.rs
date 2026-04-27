@@ -161,10 +161,12 @@ pub struct GdbController {
     source_lines: Vec<String>,
     flash: VirtualFlash,
     started: bool,
+    /// Plan 199 Phase 7: Function name -> address mapping for enhanced break syntax
+    exports_by_name: std::collections::HashMap<String, u32>,
 }
 
 impl GdbController {
-    pub fn new(source_lines: Vec<String>, flash_bytes: Vec<u8>) -> Self {
+    pub fn new(source_lines: Vec<String>, flash_bytes: Vec<u8>, exports_by_name: std::collections::HashMap<String, u32>) -> Self {
         Self {
             breakpoints: Vec::new(),
             step_mode: StepMode::None,
@@ -173,6 +175,7 @@ impl GdbController {
             source_lines,
             flash: VirtualFlash::from_vec(flash_bytes),
             started: false,
+            exports_by_name,
         }
     }
 
@@ -217,6 +220,26 @@ impl GdbController {
         }
     }
 
+    /// Scan bytecode from function entry to find the first SOURCE_LINE opcode
+    fn find_function_start_line(&self, addr: usize) -> u32 {
+        let source_line_opcode = OpCode::SOURCE_LINE as u8;
+        let fn_prolog_opcode = OpCode::FN_PROLOG as u8;
+        let mut ip = addr;
+        let end = self.flash.memory.len().min(ip + 100);
+        while ip < end {
+            let byte = self.flash.read_u8(ip);
+            if byte == source_line_opcode && ip + 2 < end {
+                return self.flash.read_u16(ip + 1) as u32;
+            }
+            if byte == fn_prolog_opcode {
+                ip += 3; // FN_PROLOG: opcode + n_args + n_locals
+            } else {
+                ip += 1;
+            }
+        }
+        0
+    }
+
     fn show_help(&self) {
         println!("GDB-like commands:");
         println!("  run (r)                Start / continue execution");
@@ -225,7 +248,7 @@ impl GdbController {
         println!("  next (n)               Step over (next source line)");
         println!("  finish (fin)           Run until current function returns");
         println!("  until <line> (u)       Run until source line");
-        println!("  break <line|fn> (b)    Set breakpoint (line number or function name)");
+        println!("  break <line|fn|fn/N> (b) Set breakpoint (line, function, or function+offset)");
         println!("  delete <n> (d)         Delete breakpoint #n");
         println!("  info breakpoints (i b) List breakpoints");
         println!("  info stack (i s)       Show call stack (backtrace)");
@@ -353,19 +376,65 @@ impl DebuggerController for GdbController {
                 }
                 "break" | "b" => {
                     if arg.is_empty() {
-                        println!("Usage: break <line_number|function_name>");
+                        println!("Usage: break <line | function | function/N | file:line>");
                         continue;
                     }
+                    let idx = self.breakpoints.len();
+
+                    // 1. Pure number → line breakpoint
                     if let Ok(line) = arg.parse::<u32>() {
-                        let bp = Breakpoint::AtLine(line);
-                        let idx = self.breakpoints.len();
-                        self.breakpoints.push(bp);
+                        self.breakpoints.push(Breakpoint::AtLine(line));
                         println!("Breakpoint {} at line {}", idx, line);
-                    } else {
-                        let bp = Breakpoint::AtFunction(arg.to_string());
-                        let idx = self.breakpoints.len();
-                        self.breakpoints.push(bp);
+                        continue;
+                    }
+
+                    // 2. Contains colon → file:line or file:fn/N (multi-file, not yet supported)
+                    if arg.contains(':') {
+                        println!("Error: multi-file breakpoints not yet supported.");
+                        println!("  Use: b <line> or b <function> or b <function/N>");
+                        continue;
+                    }
+
+                    // 3. Contains slash → function/line_offset
+                    if let Some(slash_pos) = arg.find('/') {
+                        let fn_name = &arg[..slash_pos];
+                        let offset_str = &arg[slash_pos + 1..];
+                        let offset: u32 = match offset_str.parse() {
+                            Ok(n) => n,
+                            Err(_) => {
+                                println!("Error: invalid line offset '{}'", offset_str);
+                                continue;
+                            }
+                        };
+                        if let Some(&addr) = self.exports_by_name.get(fn_name) {
+                            let start_line = self.find_function_start_line(addr as usize);
+                            if start_line == 0 {
+                                println!("Error: could not determine start line for function '{}'", fn_name);
+                                continue;
+                            }
+                            let target_line = start_line + offset;
+                            self.breakpoints.push(Breakpoint::AtLine(target_line));
+                            println!("Breakpoint {} at line {} ({} + {})", idx, target_line, fn_name, offset);
+                        } else {
+                            println!("Error: function '{}' not found.", fn_name);
+                            let names: Vec<&String> = self.exports_by_name.keys().collect();
+                            if !names.is_empty() {
+                                println!("  Available: {}", names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+                            }
+                        }
+                        continue;
+                    }
+
+                    // 4. Plain function name → AtFunction
+                    if self.exports_by_name.contains_key(arg) {
+                        self.breakpoints.push(Breakpoint::AtFunction(arg.to_string()));
                         println!("Breakpoint {} at function {}", idx, arg);
+                    } else {
+                        println!("Error: function '{}' not found.", arg);
+                        let names: Vec<&String> = self.exports_by_name.keys().collect();
+                        if !names.is_empty() {
+                            println!("  Available: {}", names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+                        }
                     }
                 }
                 "delete" | "d" => {

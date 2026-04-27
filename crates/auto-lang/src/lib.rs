@@ -979,6 +979,9 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
         dep_size
     };
 
+    // Clone exports before moving global_symbols into flash
+    let debug_exports = global_symbols.clone();
+
     let flash = VirtualFlash::from_vec_with_metadata(
         linked_code.clone(),
         global_symbols,
@@ -1000,7 +1003,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
 
     // Inject GDB-style debugger controller
     let source_lines: Vec<String> = code.lines().map(|s| s.to_string()).collect();
-    let controller = GdbController::new(source_lines, linked_code);
+    let controller = GdbController::new(source_lines, linked_code, debug_exports);
     vm.set_debugger(Box::new(controller));
 
     let _task_id = vm.spawn_task(main_entry, 16384);

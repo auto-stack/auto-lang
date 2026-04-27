@@ -3284,11 +3284,16 @@ impl AutoVM {
                     // New BP points to the saved BP location (SP - 1)
                     task.bp = task.ram.sp - 1;
 
+                    // Plan 199 Phase 7: Resolve function name from address
+                    let fn_name = self.flash.addr_to_name
+                        .get(&(target as u32))
+                        .cloned();
+
                     // Plan 199: Push structured call frame for debugging
                     task.call_stack.push(crate::vm::task::CallFrame {
                         return_ip: task.ip,
                         old_bp: task.bp,
-                        fn_name: None,
+                        fn_name,
                         line: task.current_line,
                     });
 

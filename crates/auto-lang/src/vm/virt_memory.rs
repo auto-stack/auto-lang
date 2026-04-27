@@ -46,6 +46,8 @@ pub struct VirtualFlash {
     pub object_types: Vec<Vec<ObjectType>>,
     /// Exports by name for CALL_SPEC dynamic dispatch
     pub exports_by_name: HashMap<String, u32>,
+    /// Plan 199 Phase 7: Reverse map — bytecode offset to function name
+    pub addr_to_name: HashMap<u32, String>,
 }
 
 impl VirtualFlash {
@@ -56,6 +58,7 @@ impl VirtualFlash {
             object_keys: Vec::new(),
             object_types: Vec::new(),
             exports_by_name: HashMap::new(),
+            addr_to_name: HashMap::new(),
         }
     }
 
@@ -66,6 +69,7 @@ impl VirtualFlash {
             object_keys: Vec::new(),
             object_types: Vec::new(),
             exports_by_name: HashMap::new(),
+            addr_to_name: HashMap::new(),
         }
     }
 
@@ -81,6 +85,7 @@ impl VirtualFlash {
             object_keys,
             object_types,
             exports_by_name: HashMap::new(),
+            addr_to_name: HashMap::new(),
         }
     }
 
@@ -93,6 +98,7 @@ impl VirtualFlash {
             object_keys: Vec::new(),
             object_types: Vec::new(),
             exports_by_name: HashMap::new(),
+            addr_to_name: HashMap::new(),
         }
     }
 
@@ -107,6 +113,12 @@ impl VirtualFlash {
     ) -> Self {
         // Keep exports_by_name for CALL_SPEC dynamic dispatch
         let exports_by_name = exports.clone();
+
+        // Plan 199 Phase 7: Build reverse map (address -> function name)
+        let addr_to_name: HashMap<u32, String> = exports_by_name
+            .iter()
+            .map(|(name, &addr)| (addr, name.clone()))
+            .collect();
 
         // Convert string exports to u32 symbol map
         // For now, we use a simple hash-based ID for symbols
@@ -125,6 +137,7 @@ impl VirtualFlash {
             object_keys,
             object_types,
             exports_by_name,
+            addr_to_name,
         }
     }
 

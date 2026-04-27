@@ -1178,6 +1178,15 @@ Modified:
 - [x] `debug_autovm()` / `debug_file()` 调试执行管道
 - [x] `VirtualFlash::from_vec()` 用于调试器反汇编
 
+### Phase 7: 增强断点语法 + 函数名填充
+- [x] `VirtualFlash.addr_to_name` 反向映射
+- [x] CALL/CALL_SPEC 填充 `CallFrame.fn_name`
+- [x] `b fibonacci` 函数名断点正常命中
+- [x] `b fibonacci/3` 函数+行偏移断点
+- [x] `b file.at:5` 报错提示不支持多文件
+- [x] `b nonexistent` 报错并显示可用函数列表
+- [x] `info stack` 显示真实函数名
+
 ### 集成验证
 - [ ] 在一个已知 bug 的 .at 文件上，AI Agent 通过 AgentDebugSession 自动定位到错误行
 - [x] `auto debug program.at` 启动交互式调试
@@ -1242,6 +1251,70 @@ auto dbg program.at      # 缩写
 | `crates/auto-lang/src/vm/virt_memory.rs` | 新增 `VirtualFlash::from_vec()` |
 | `crates/auto-lang/src/lib.rs` | 新增 `debug_file()`、`debug_autovm()` |
 | `crates/auto/src/main.rs` | 新增 `Commands::Debug { file }` + 处理分支 |
+
+---
+
+### Phase 7 实现记录 (2026-04-27): 增强断点语法 + 函数名填充
+
+#### 问题
+
+1. **函数名断点不工作** — `CallFrame.fn_name` 始终为 `None`，因为 CALL 指令不知道目标函数名
+2. **断点语法太简陋** — 只支持 `b <行号>` 和 `b <函数名>`，不支持函数内行偏移
+
+#### 根因
+
+CALL 指令在 engine.rs 推入 CallFrame 时，`fn_name` 硬编码为 `None`。
+虽然 codegen 在 `exports: HashMap<String, u32>` 中记录了函数名→地址映射，
+linker 也将此映射传入 `VirtualFlash.exports_by_name`，但 CALL 指令只有 `target` 地址，无法反查函数名。
+
+#### 新增断点语法
+
+| 语法 | 含义 | 匹配方式 |
+|------|------|----------|
+| `b 15` | 第 15 行 | `Breakpoint::AtLine(15)` |
+| `b fibonacci` | fibonacci 函数入口 | `Breakpoint::AtFunction("fibonacci")` |
+| `b fibonacci/3` | fibonacci 函数体 +3 行 | 扫描字节码找函数入口 SOURCE_LINE，计算起始行+3 |
+| `b file.at:5` | file.at 的第 5 行 | **暂不支持**，报错提示 |
+| `b file.at:main/2` | file.at 的 main 函数 +2 行 | **暂不支持**，报错提示 |
+
+#### 实现步骤
+
+**Task 7.1: VirtualFlash 添加 addr_to_name 反向映射**
+
+在 `VirtualFlash` 添加字段：
+```rust
+pub addr_to_name: HashMap<u32, String>,
+```
+在 `from_vec_with_metadata()` 中构建反向映射。其他构造函数初始化为空 HashMap。
+
+**Task 7.2: CALL/CALL_SPEC 填充 CallFrame.fn_name**
+
+在 CALL 指令处理中，用 `self.flash.addr_to_name.get(&(target as u32)).cloned()` 获取函数名填入 CallFrame。
+
+**Task 7.3: GdbController 持有 exports + 增强 break 解析**
+
+- GdbController 添加 `exports_by_name: HashMap<String, u32>` 字段
+- `new()` 接收 exports 参数
+- break 命令增强解析：冒号报错、斜杠解析为 `fn/N`、函数名验证
+
+**Task 7.4: find_function_start_line 辅助方法**
+
+从函数入口地址扫描字节码，找到第一个 SOURCE_LINE opcode 获取起始行号。
+
+**Task 7.5: debug_autovm() 传递 exports**
+
+在 `debug_autovm()` 中 clone exports 传给 GdbController。
+
+**Task 7.6: 更新 help 信息**
+
+#### 修改的文件
+
+| File | Change |
+|------|--------|
+| `crates/auto-lang/src/vm/virt_memory.rs` | 添加 `addr_to_name` 字段 + 构建反向映射 |
+| `crates/auto-lang/src/vm/engine.rs` | CALL/CALL_SPEC 填充 `CallFrame.fn_name` |
+| `crates/auto-lang/src/vm/debugger.rs` | GdbController 持有 exports + 增强 break 解析 + `fn/N` 语法 |
+| `crates/auto-lang/src/lib.rs` | `debug_autovm()` 传递 exports 给 GdbController |
 
 ---
 
