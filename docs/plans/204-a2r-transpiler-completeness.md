@@ -1,16 +1,17 @@
 # Plan 204: a2r 转译器完整性
 
-## Status: ✅ COMPLETE (Phases 3-4 deferred, blocked on Plan 201)
+## Status: ✅ COMPLETE (Phase 4 was already implemented)
 
-Verified 2026-04-24:
-- ✅ Result<T> transpilation: Type::Result mapped to Rust Result<T, String>, Ok/Err pattern branches
+Verified 2026-04-28:
+- ✅ Result<T> transpilation: Type::Result mapped to Rust Result<T, Box<dyn Err>>, Ok/Err pattern branches
 - ✅ Spec transpilation: Type::Spec mapped to Box<dyn Trait>, spec_decls caching
 - ✅ Phase 1 basic fixes (assert! macro, &str vs String, ! operator, loop body, array type inference)
 - ✅ Phase 2 type -> struct, ext -> impl, enum -> Rust enum
-- ✅ Phase 5 stdlib method mapping (20+ methods including char_at, to_hex, find, sub, slice)
+- ✅ Phase 3 Result mapping: !T → Result<T, Box<dyn Err>>, auto-emit Err trait, Err values boxed
+- ✅ Phase 4 spec → trait mapping: spec→trait, ext for spec→impl Trait for Type, Box<dyn Trait> (already done)
+- ✅ Phase 5 stdlib method mapping (24 methods including char_at, to_hex, find, sub, slice)
 - ✅ Phase 6 safe output (.a2r.rs suffix, bracket validation, f-string {{}} escapes)
-- ❌ Phase 3 Result mapping (blocked on Plan 201 Phase 3)
-- ❌ Phase 4 spec → trait mapping (blocked on Plan 201 Phase 4)
+- ✅ VM fix: CREATE_OK supports all value types via type tag operand (not just i32)
 
 > 基于 ac-examples 01~13 的 `.at` → a2r → `.a2r.rs` 与原始 `.rs` 对比分析。
 > 配合 Plan 201 补齐 Auto 语言能力后，a2r 转译器仍需大量实现工作才能输出可编译的 Rust。
