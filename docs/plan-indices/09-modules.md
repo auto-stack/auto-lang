@@ -15,7 +15,7 @@ AutoLang's module system evolved from a monolithic Universe-based architecture t
 | 167 | Complete Module System Implementation | ✅ | Folder modules, pub use re-exports, wildcard imports, circular dependency detection |
 | 184 | Cross-Module Function Calls | ✅ | Compile dependency modules to bytecode and link via existing Linker infrastructure |
 | 198 | Native Metadata from Source | ✅ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
-| 203 | Native Registry Namespace Unification | 🔧 | QualifiedName-based native function lookup replacing string concatenation |
+| 203 | Native Registry Namespace Unification | ✅ | QualifiedName + resolve_qualified + import_scope; ~137 aliases eliminated (Phase 5f deferred) |
 | 212b | Rust FFI E2E Dynamic Loading | ✅ | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
 | 214 | Python FFI (use.py) | ✅ | Embed Python interpreter in AutoVM |
 | 216 | C FFI Bindgen | ✅ | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
@@ -32,5 +32,4 @@ AutoLang's module system evolved from a monolithic Universe-based architecture t
 - pub visibility enforcement and pub use re-export expansion (Phase 4-5 from Plan 131)
 - Wildcard imports (use db: *) limited to .as scripts; full .at support pending
 - Deep module path resolution for package dependencies via dep declarations in pac.at
-- Plan 203: Unify native registry with QualifiedName-based lookup
-- Plan 203: Unify native registry with QualifiedName-based lookup
+- Plan 203 Phase 5f: Eliminate remaining ~61 short-name aliases (#[rust_fn] annotation rename)

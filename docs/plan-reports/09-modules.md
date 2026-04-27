@@ -16,7 +16,7 @@ AutoLang's module system evolved through a deliberate architectural transformati
 | 167 | Complete Module System Implementation | Done | pub use re-exports, wildcard imports, circular dependency detection, multi-file a2r transpilation |
 | 184 | Cross-Module Function Calls | Done | Compile dependency modules to bytecode and link via existing Linker infrastructure |
 | 198 | Native Metadata from Source | Complete | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
-| 203 | Native Registry Namespace Unification | Partial | QualifiedName-based native function lookup replacing string concatenation |
+| 203 | Native Registry Namespace Unification | Complete | QualifiedName + resolve_qualified + import_scope; ~137 aliases eliminated; Phase 5f deferred |
 | 212b | Rust FFI E2E Dynamic Loading | Complete | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
 | 214 | Python FFI (use.py) | Complete | Embed Python interpreter in AutoVM via use.py import syntax |
 | 216 | C FFI Build Pipeline Integration | Complete | CLI integration for C FFI bindgen into build pipeline |

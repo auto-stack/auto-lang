@@ -34,7 +34,7 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 199 | VM Interactive Debugger | ✅ | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
 | 200 | VM Missing Features (Examples 14-33) | 🔧 | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | ✅ | All 4 pillars complete: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
-| 203 | Native Registry Namespace Unification | 🔧 | QualifiedName-based native function lookup replacing string concatenation |
+| 203 | Native Registry Namespace Unification | ✅ | QualifiedName + resolve_qualified + import_scope; ~137 short-name aliases eliminated; monomorphic dispatch refactored |
 | 206 | Closure HOF + call_closure API | ✅ | call_closure public API, List.map/filter/reduce/find/for_each shims |
 | 207 | Enum Multi-Field Destructuring | ✅ | Multi-binding destructuring and named arg construction for enum variants |
 | 208 | Result Heap Object | ✅ | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |

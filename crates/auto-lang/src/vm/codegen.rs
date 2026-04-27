@@ -1729,7 +1729,7 @@ impl Codegen {
                             // Emit CALL_NAT for Iterator.next
                             // Look up the native function ID
                             let native_id = if let Some(id) =
-                                BIGVM_NATIVES.lock().unwrap().resolve_qualified("Iterator.next")
+                                BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.iterator.next")
                             {
                                 id
                             } else {
@@ -4786,8 +4786,8 @@ impl Codegen {
                                         if let Some(info) = type_info {
                                             if info._name.contains("#single") || info._name == obj_name.as_ref() {
                                                 // This is a task type - use Task.spawn
-                                                vm_debug!("DEBUG: Task spawn detected: {}.spawn() -> Task.spawn", obj_name);
-                                                Some("Task.spawn".to_string())
+                                                vm_debug!("DEBUG: Task spawn detected: {}.spawn() -> auto.task.spawn", obj_name);
+                                                Some("auto.task.spawn".to_string())
                                             } else {
                                                 Some(format!("{}.{}", obj_name, method))
                                             }
@@ -4800,8 +4800,8 @@ impl Codegen {
                                         if let Some(info) = type_info {
                                             if info._name.contains("#single") {
                                                 // This is a singleton task - use Task.send
-                                                vm_debug!("DEBUG: Singleton task send detected: {}.send() -> Task.send", obj_name);
-                                                Some("Task.send".to_string())
+                                                vm_debug!("DEBUG: Singleton task send detected: {}.send() -> auto.task.singleton_send", obj_name);
+                                                Some("auto.task.singleton_send".to_string())
                                             } else {
                                                 Some(format!("{}.{}", obj_name, method))
                                             }
@@ -4899,7 +4899,7 @@ impl Codegen {
                                                     } else {
                                                         if method.as_str() == "send" {
                                                             vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
-                                                            Some("TaskHandle.send".to_string())
+                                                            Some("auto.task.send".to_string())
                                                         } else {
                                                             vm_debug!("DEBUG: Failed to infer type for {}",
                                                                 obj_name
@@ -4925,7 +4925,7 @@ impl Codegen {
                                                     } else {
                                                         if method.as_str() == "send" {
                                                             vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
-                                                            Some("TaskHandle.send".to_string())
+                                                            Some("auto.task.send".to_string())
                                                         } else {
                                                             vm_debug!("DEBUG: Failed to infer type for {}",
                                                                 obj_name
@@ -4952,7 +4952,7 @@ impl Codegen {
                                             // and the method is "send", use TaskHandle.send
                                             if method.as_str() == "send" {
                                                 vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
-                                                Some("TaskHandle.send".to_string())
+                                                Some("auto.task.send".to_string())
                                             } else {
                                                 vm_debug!("DEBUG: Failed to infer type for {}",
                                                     obj_name
@@ -5004,7 +5004,7 @@ impl Codegen {
                                     Some(format!("{}.{}", type_name, method.as_ref()))
                                 } else if method.as_str() == "len" {
                                     // Fallback for len() - most common
-                                    Some("str.len".to_string())
+                                    Some("auto.str.len".to_string())
                                 } else {
                                     Some(format!("Unknown_{}", method))
                                 }
@@ -5207,7 +5207,7 @@ impl Codegen {
                     // Pop order: capacity first (from top), then task_type (from next)
                     // Stack layout needed: [task_type, capacity] where capacity is on top
                     // Push order: task_type first (bottom), capacity second (top)
-                    if func_name.as_deref() == Some("Task.spawn") {
+                    if func_name.as_deref() == Some("auto.task.spawn") {
                         // Get the task type name from the original Dot expression
                         if let Expr::Dot(obj, _) = call.name.as_ref() {
                             if let Expr::Ident(task_type) = obj.as_ref() {
@@ -5229,7 +5229,7 @@ impl Codegen {
                     }
 
                     // Plan 127: Special handling for Task.send - inject task_type for singleton tasks
-                    if func_name.as_deref() == Some("Task.send") {
+                    if func_name.as_deref() == Some("auto.task.singleton_send") {
                         // Get the task type name from the original Dot expression
                         if let Expr::Dot(obj, _) = call.name.as_ref() {
                             if let Expr::Ident(task_type) = obj.as_ref() {
@@ -7566,39 +7566,44 @@ impl Codegen {
     /// - The type parameter index is out of bounds
     /// - The resolved native name does not exist in the registry
     fn try_mono_dispatch(&self, base_type: &str, method: &str, type_args: &[Type]) -> Option<String> {
-        // Map Auto base type names to their native registry equivalents
-        let native_base = match base_type {
-            "Map" => "HashMap",  // Map<K,V> -> HashMap natives
-            other => other,
+        // Map Auto base type names to their native registry module path
+        let native_module = match base_type {
+            "Map" | "HashMap" => "auto.hashmap",
+            "String" => "auto.str",
+            other => {
+                let lower = other.to_lowercase();
+                let canonical = format!("auto.{}.{}", lower, method);
+                if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&canonical).is_some() {
+                    vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, canonical);
+                    return Some(canonical);
+                }
+                vm_debug!("DEBUG: Mono dispatch failed for {}.{}", base_type, method);
+                return None;
+            }
         };
 
-        // Determine which generic param to use for the suffix based on collection type + method
-        let suffix_param_idx: Option<usize> = match native_base {
-            "HashMap" => match method {
-                "insert" | "get" => Some(1),       // value type (2nd generic param)
-                "contains" | "remove" => Some(0),  // key type (1st generic param)
-                _ => None,
-            },
-            "HashSet" => Some(0),   // element type
-            "List" | "Vec" => Some(0),  // element type
-            _ => None,
-        };
+        // HashMap insert/get have genuinely different shims for str vs int.
+        // Try type-suffixed canonical first (e.g., auto.hashmap.insert_str).
+        if matches!(method, "insert" | "get") {
+            if !type_args.is_empty() {
+                let suffix = type_to_native_suffix(&type_args[type_args.len().saturating_sub(1)]);
+                if !suffix.is_empty() {
+                    let typed = format!("{}.{}{}", native_module, method, suffix);
+                    if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&typed).is_some() {
+                        vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, typed);
+                        return Some(typed);
+                    }
+                }
+            }
+        }
 
-        let idx = suffix_param_idx?;
-        if idx >= type_args.len() { return None; }
-        let suffix = type_to_native_suffix(&type_args[idx]);
-        if suffix.is_empty() { return None; }
-
-        // Build the candidate native name with suffix
-        let mono_name = format!("{}.{}{}", native_base, method, suffix);
-
-        // Verify this native exists in the registry before returning it
-        // Plan 203 Phase 3: use resolve_qualified which checks qualified + short-name registries
-        if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&mono_name).is_some() {
-            vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, mono_name);
-            Some(mono_name)
+        // Fallback: generic canonical name
+        let canonical = format!("{}.{}", native_module, method);
+        if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&canonical).is_some() {
+            vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, canonical);
+            Some(canonical)
         } else {
-            vm_debug!("DEBUG: Mono dispatch candidate {} not found in registry", mono_name);
+            vm_debug!("DEBUG: Mono dispatch failed for {}.{}", base_type, method);
             None
         }
     }
@@ -7623,15 +7628,15 @@ impl Codegen {
         // They are now stored as heap objects with direct IDs
 
         // Only iterators still use the old Value::Instance format with id field
-        if method_name.starts_with("Iterator.") {
+        if method_name.starts_with("auto.iterator.") {
             return matches!(
                 method_name,
-                "Iterator.next"
-                    | "Iterator.map"
-                    | "Iterator.filter"
-                    | "Iterator.collect"
-                    | "Iterator.reduce"
-                    | "Iterator.find"
+                "auto.iterator.next"
+                    | "auto.iterator.map"
+                    | "auto.iterator.filter"
+                    | "auto.iterator.collect"
+                    | "auto.iterator.reduce"
+                    | "auto.iterator.find"
             );
         }
 

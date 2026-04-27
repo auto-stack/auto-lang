@@ -255,33 +255,6 @@ impl CompileSession {
 
             self.load_module(use_stmt)?;
 
-            // Register native function aliases in BIGVM_NATIVES
-            // so the codegen can emit CALL_NAT for #[vm] functions
-            if !use_stmt.items.is_empty() {
-                for item in &use_stmt.items {
-                    let full_path = format!("{}.{}", use_stmt.module, item);
-                    if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
-                        if let Some(native_id) = registry.resolve_qualified(&full_path) {
-                            registry.register_with_id(item, native_id);
-                        }
-                    }
-                }
-            } else {
-                // Wildcard import — register all native functions matching this module prefix
-                if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
-                    let prefix = format!("{}.", use_stmt.module);
-                    let names: Vec<String> = registry.get_function_names();
-                    for name in names {
-                        if name.starts_with(&prefix) {
-                            let short = &name[prefix.len()..];
-                            if let Some(id) = registry.get_id(&name) {
-                                registry.register_with_id(short, id);
-                            }
-                        }
-                    }
-                }
-            }
-
             loaded_count += 1;
         }
 

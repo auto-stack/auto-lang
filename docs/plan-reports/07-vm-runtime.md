@@ -35,7 +35,7 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 199 | VM Interactive Debugger | Complete | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
 | 200 | VM Missing Features (Examples 14-33) | Complete | loop/continue/tuple/range slicing, .map_err() closure, fs module aliases |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | Complete | All 4 pillars: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
-| 203 | Native Registry Namespace Unification | Partial | QualifiedName-based native function lookup replacing string concatenation |
+| 203 | Native Registry Namespace Unification | Complete | QualifiedName + resolve_qualified + import_scope; ~137 aliases eliminated; monomorphic dispatch refactored (Phase 5f deferred) |
 | 206 | Closure HOF + call_closure API | Complete | call_closure public API, List.map/filter/reduce/find/for_each shims |
 | 207 | Enum Multi-Field Destructuring | Complete | Multi-binding destructuring and named arg construction for enum variants |
 | 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
@@ -46,7 +46,7 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 **Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221
 
-**Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing), 203 (qualified name lookup in progress)
+**Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
 **Not Implemented**: (none remaining)
 

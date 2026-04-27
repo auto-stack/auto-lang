@@ -46,6 +46,22 @@ pub struct AutoVMNativeRegistry {
     next_id: u16,
 }
 
+/// Maps short type name prefixes to canonical module path.
+/// Handles cases where to_lowercase() produces wrong module segment.
+const TYPE_CANONICAL_MAP: &[(&str, &str)] = &[
+    ("TaskHandle", "auto.task"),
+    ("TaskSystem", "auto.task_system"),
+    ("Result.Ok", "auto.result"),
+    ("Result.Err", "auto.result"),
+    ("Result", "auto.result"),
+    ("Response", "auto.http.response"),
+    ("Http", "auto.http"),
+    ("Option", "auto.option"),
+    ("String", "auto.str"),
+    ("Str", "auto.str"),
+    ("File", "auto.file"),
+];
+
 impl AutoVMNativeRegistry {
     pub fn new() -> Self {
         Self {
@@ -177,10 +193,17 @@ impl AutoVMNativeRegistry {
     ///
     /// - "str.len" → "auto.str.len"
     /// - "List.push" → "auto.list.push"
-    /// - "File.read_text" → "auto.file.read_text"
-    /// - "auto.str.len" → "auto.str.len" (already canonical)
+    /// - "TaskHandle.send" → "auto.task.send" (via TYPE_CANONICAL_MAP)
+    /// - "TaskSystem.start" → "auto.task_system.start" (via TYPE_CANONICAL_MAP)
     fn to_canonical(name: &str) -> Option<String> {
         let (prefix, rest) = name.split_once('.')?;
+        // Check explicit map first (handles composite/wrong-case type names)
+        for &(short, canonical_prefix) in TYPE_CANONICAL_MAP {
+            if prefix == short {
+                return Some(format!("{}.{}", canonical_prefix, rest));
+            }
+        }
+        // Default: lowercase the prefix
         let lower = prefix.to_lowercase();
         Some(format!("auto.{}.{}", lower, rest))
     }
@@ -685,43 +708,43 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.net.tcp_stream_set_write_timeout", 2113);
 
     // HTTP server functions (2200-2215)
-    registry.register_with_id("Http.server", 2200);
-    registry.register_with_id("Http.server_get", 2201);
-    registry.register_with_id("Http.server_post", 2202);
-    registry.register_with_id("Http.server_put", 2203);
-    registry.register_with_id("Http.server_delete", 2204);
-    registry.register_with_id("Http.server_static", 2205);
-    registry.register_with_id("Http.server_listen", 2206);
-    registry.register_with_id("Http.response", 2210);
-    registry.register_with_id("Http.response_status", 2211);
-    registry.register_with_id("Http.response_header", 2212);
-    registry.register_with_id("Http.response_text", 2213);
-    registry.register_with_id("Http.response_html", 2214);
-    registry.register_with_id("Http.response_bytes", 2215);
+    registry.register_with_id("auto.http.server", 2200);
+    registry.register_with_id("auto.http.server_get", 2201);
+    registry.register_with_id("auto.http.server_post", 2202);
+    registry.register_with_id("auto.http.server_put", 2203);
+    registry.register_with_id("auto.http.server_delete", 2204);
+    registry.register_with_id("auto.http.server_static", 2205);
+    registry.register_with_id("auto.http.server_listen", 2206);
+    registry.register_with_id("auto.http.response", 2210);
+    registry.register_with_id("auto.http.response_status", 2211);
+    registry.register_with_id("auto.http.response_header", 2212);
+    registry.register_with_id("auto.http.response_text", 2213);
+    registry.register_with_id("auto.http.response_html", 2214);
+    registry.register_with_id("auto.http.response_bytes", 2215);
 
     // HTTP response access (2216-2218)
-    registry.register_with_id("Response.status_code", 2216);
-    registry.register_with_id("Response.header_get", 2217);
-    registry.register_with_id("Response.body", 2218);
+    registry.register_with_id("auto.http.response.status_code", 2216);
+    registry.register_with_id("auto.http.response.header_get", 2217);
+    registry.register_with_id("auto.http.response.body", 2218);
 
     // HTTP client helpers (2220-2224)
-    registry.register_with_id("Http.ok", 2220);
-    registry.register_with_id("Http.created", 2221);
-    registry.register_with_id("Http.bad_request", 2222);
-    registry.register_with_id("Http.not_found", 2223);
-    registry.register_with_id("Http.internal_error", 2224);
+    registry.register_with_id("auto.http.ok", 2220);
+    registry.register_with_id("auto.http.created", 2221);
+    registry.register_with_id("auto.http.bad_request", 2222);
+    registry.register_with_id("auto.http.not_found", 2223);
+    registry.register_with_id("auto.http.internal_error", 2224);
 
     // HTTP client functions (2230-2239)
-    registry.register_with_id("Http.get", 2230);
-    registry.register_with_id("Http.post", 2231);
-    registry.register_with_id("Http.put", 2232);
-    registry.register_with_id("Http.delete", 2233);
-    registry.register_with_id("Http.request", 2234);
-    registry.register_with_id("Http.request_builder_header", 2235);
-    registry.register_with_id("Http.request_builder_body", 2236);
-    registry.register_with_id("Http.request_builder_timeout", 2237);
-    registry.register_with_id("Http.request_builder_json", 2238);
-    registry.register_with_id("Http.request_builder_send", 2239);
+    registry.register_with_id("auto.http.get", 2230);
+    registry.register_with_id("auto.http.post", 2231);
+    registry.register_with_id("auto.http.put", 2232);
+    registry.register_with_id("auto.http.delete", 2233);
+    registry.register_with_id("auto.http.request", 2234);
+    registry.register_with_id("auto.http.request_builder_header", 2235);
+    registry.register_with_id("auto.http.request_builder_body", 2236);
+    registry.register_with_id("auto.http.request_builder_timeout", 2237);
+    registry.register_with_id("auto.http.request_builder_json", 2238);
+    registry.register_with_id("auto.http.request_builder_send", 2239);
 
     // HTTP streaming (2240-2255)
     registry.register_with_id("auto.http_stream.get_stream", 2240);
@@ -729,7 +752,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.http_stream.stream_next", 2242);
     registry.register_with_id("auto.http_stream.stream_is_done", 2243);
     registry.register_with_id("auto.http_stream.stream_close", 2244);
-    registry.register_with_id("Http.post_stream_with_headers", 2255);
+    registry.register_with_id("auto.http.post_stream_with_headers", 2255);
 
     // Task/Msg functions (2300-2311)
     registry.register_with_id("auto.task.spawn", 2300);
@@ -759,131 +782,84 @@ pub fn register_builtin_natives() {
     // (to_canonical() cannot resolve these — no dot or multi-segment)
     // =========================================================================
 
-    // Bare function names
+    // Bare function names (no canonical equivalent — used by internal shims)
     registry.register_with_id("sleep", 1202);
     registry.register_with_id("parse_sse", 2250);
     registry.register_with_id("str_new", 172);
     registry.register_with_id("str_append", 173);
     registry.register_with_id("int.str", 174);
-    registry.register_with_id("str.bytes", 235);
     registry.register_with_id("uint.to_hex", 236);
     registry.register_with_id("alloc_array", 190);
     registry.register_with_id("realloc_array", 191);
     registry.register_with_id("free_array", 192);
 
-    // ID-conflicting short names (different ID from canonical)
+    // ID-conflicting short names (different ID from canonical, used by legacy shims)
     registry.register_with_id("str.len", 170);
     registry.register_with_id("String.len", 171);
     registry.register_with_id("str.upper", 175);
     registry.register_with_id("String.from", 176);
-    registry.register_with_id("String.new", 177);
-    registry.register_with_id("String.push", 178);
-    registry.register_with_id("String.pop", 179);
-    registry.register_with_id("String.get", 180);
-    registry.register_with_id("String.set", 181);
-    registry.register_with_id("String.insert", 182);
-    registry.register_with_id("String.remove", 183);
-    registry.register_with_id("String.clear", 184);
     registry.register_with_id("String.is_empty", 185);
-    registry.register_with_id("String.reserve", 186);
 
-    // Non-canonicalizable TitleCase names (to_canonical produces wrong result)
+    // FFI shim name aliases (#[rust_fn] uses these names — needed by build_from_inventory)
+    registry.register_with_id("File.read_text", 1000);
+    registry.register_with_id("File.write_text", 1001);
+    registry.register_with_id("File.exists", 1002);
+    registry.register_with_id("File.delete", 1003);
+    registry.register_with_id("File.create_dir", 1004);
+    registry.register_with_id("File.read_bytes", 1005);
+    registry.register_with_id("File.write_bytes", 1006);
+    registry.register_with_id("File.copy", 1007);
+    registry.register_with_id("File.size", 1008);
+    registry.register_with_id("File.is_dir", 1009);
+    registry.register_with_id("File.append_text", 1011);
+
+    registry.register_with_id("Str.len", 1500);
+    registry.register_with_id("Str.is_empty", 1501);
+    registry.register_with_id("Str.char_at", 1502);
+    registry.register_with_id("Str.substr", 1503);
+    registry.register_with_id("Str.contains", 1504);
+    registry.register_with_id("Str.starts_with", 1505);
+    registry.register_with_id("Str.ends_with", 1506);
+    registry.register_with_id("Str.trim", 1507);
+    registry.register_with_id("Str.split", 1508);
+    registry.register_with_id("Str.repeat", 1509);
+    registry.register_with_id("Str.replace", 1510);
+    registry.register_with_id("Str.to_upper", 1511);
+    registry.register_with_id("Str.to_lower", 1512);
+    registry.register_with_id("Str.reverse", 1513);
+    registry.register_with_id("Str.find", 1514);
+    registry.register_with_id("Str.lines", 1515);
+    registry.register_with_id("Str.parse_int", 1516);
+    registry.register_with_id("Str.parse_float", 1517);
     registry.register_with_id("Str.split_once", 1518);
     registry.register_with_id("Str.match_count", 1519);
     registry.register_with_id("Str.replace_first", 1520);
-    registry.register_with_id("File.append_text", 1011);
 
-    // Option functions (1550-1551)
-    registry.register_with_id("Option.or", 1550);
-    registry.register_with_id("Option.unwrap_or", 1551);
+    registry.register_with_id("Http.ok", 2220);
+    registry.register_with_id("Http.created", 2221);
+    registry.register_with_id("Http.bad_request", 2222);
+    registry.register_with_id("Http.not_found", 2223);
+    registry.register_with_id("Http.internal_error", 2224);
 
-    // Task/TaskHandle aliases (to_canonical produces auto.taskhandle.* instead of auto.task.handle_*)
+    registry.register_with_id("Task.spawn", 2300);
     registry.register_with_id("TaskHandle.send", 2301);
+    registry.register_with_id("Task.singleton_send", 2311);
+    registry.register_with_id("TaskHandle.send_await", 2308);
+    registry.register_with_id("TaskHandle.ask", 2309);
     registry.register_with_id("TaskHandle.is_null", 2302);
     registry.register_with_id("TaskHandle.task_type", 2303);
     registry.register_with_id("TaskHandle.instance_id", 2304);
-    registry.register_with_id("TaskHandle.send_await", 2308);
-    registry.register_with_id("TaskHandle.ask", 2309);
-    registry.register_with_id("Task.send", 2311);
-    registry.register_with_id("Task.singleton_send", 2311);
-
-    // TaskSystem aliases (to_canonical produces auto.tasksystem.* instead of auto.task_system.*)
     registry.register_with_id("TaskSystem.start", 2305);
     registry.register_with_id("TaskSystem.stop", 2307);
 
-    registry.register_with_id("Result.map_err", 2070);
-    registry.register_with_id("Result.Ok.map_err", 2070);
-    registry.register_with_id("Result.Err.map_err", 2070);
+    // Option functions (canonical names, resolved via to_canonical)
+    registry.register_with_id("auto.option.or", 1550);
+    registry.register_with_id("auto.option.unwrap_or", 1551);
 
-    // =========================================================================
-    // Monomorphic type-suffix aliases (Plan 194)
-    // (cannot be canonicalized — suffix changes meaning)
-    // =========================================================================
-
-    // List monomorphic aliases
-    registry.register_with_id("List.push_int", 101);
-    registry.register_with_id("List.push_uint", 101);
-    registry.register_with_id("List.push_float", 101);
-    registry.register_with_id("List.push_bool", 101);
-    registry.register_with_id("List.push_str", 101);
-    registry.register_with_id("List.pop_int", 102);
-    registry.register_with_id("List.pop_uint", 102);
-    registry.register_with_id("List.pop_float", 102);
-    registry.register_with_id("List.pop_bool", 102);
-    registry.register_with_id("List.pop_str", 102);
-    registry.register_with_id("List.get_int", 106);
-    registry.register_with_id("List.get_uint", 106);
-    registry.register_with_id("List.get_float", 106);
-    registry.register_with_id("List.get_bool", 106);
-    registry.register_with_id("List.get_str", 106);
-    registry.register_with_id("List.set_int", 107);
-    registry.register_with_id("List.set_uint", 107);
-    registry.register_with_id("List.set_float", 107);
-    registry.register_with_id("List.set_bool", 107);
-    registry.register_with_id("List.set_str", 107);
-    registry.register_with_id("List.insert_int", 108);
-    registry.register_with_id("List.insert_uint", 108);
-    registry.register_with_id("List.insert_float", 108);
-    registry.register_with_id("List.insert_bool", 108);
-    registry.register_with_id("List.insert_str", 108);
-    registry.register_with_id("List.remove_int", 109);
-    registry.register_with_id("List.remove_uint", 109);
-    registry.register_with_id("List.remove_float", 109);
-    registry.register_with_id("List.remove_bool", 109);
-    registry.register_with_id("List.remove_str", 109);
-
-    // HashMap monomorphic aliases
-    registry.register_with_id("HashMap.insert_float", 121);
-    registry.register_with_id("HashMap.insert_bool", 121);
-    registry.register_with_id("HashMap.get_float", 123);
-    registry.register_with_id("HashMap.get_bool", 123);
-    registry.register_with_id("HashMap.contains_str", 124);
-    registry.register_with_id("HashMap.contains_int", 124);
-    registry.register_with_id("HashMap.contains_float", 124);
-    registry.register_with_id("HashMap.contains_bool", 124);
-    registry.register_with_id("HashMap.remove_str", 125);
-    registry.register_with_id("HashMap.remove_int", 125);
-    registry.register_with_id("HashMap.remove_float", 125);
-    registry.register_with_id("HashMap.remove_bool", 125);
-    registry.register_with_id("HashMap.insert_str", 120);
-    registry.register_with_id("HashMap.insert_int", 121);
-    registry.register_with_id("HashMap.get_str", 122);
-    registry.register_with_id("HashMap.get_int", 123);
-
-    // HashSet monomorphic aliases
-    registry.register_with_id("HashSet.insert_str", 130);
-    registry.register_with_id("HashSet.insert_int", 130);
-    registry.register_with_id("HashSet.insert_float", 130);
-    registry.register_with_id("HashSet.insert_bool", 130);
-    registry.register_with_id("HashSet.contains_str", 131);
-    registry.register_with_id("HashSet.contains_int", 131);
-    registry.register_with_id("HashSet.contains_float", 131);
-    registry.register_with_id("HashSet.contains_bool", 131);
-    registry.register_with_id("HashSet.remove_str", 132);
-    registry.register_with_id("HashSet.remove_int", 132);
-    registry.register_with_id("HashSet.remove_float", 132);
-    registry.register_with_id("HashSet.remove_bool", 132);
-
+    // Result functions (canonical names, resolved via to_canonical)
+    registry.register_with_id("auto.result.map_err", 2070);
+    registry.register_with_id("auto.result.Ok.map_err", 2070);
+    registry.register_with_id("auto.result.Err.map_err", 2070);
     // =========================================================================
     // Return type annotations (for codegen type inference)
     // =========================================================================
@@ -1004,5 +980,28 @@ mod tests {
         let id = BIGVM_NATIVES.lock().unwrap().register("Test.func");
         assert!(id >= 100);
         assert!(BIGVM_NATIVES.lock().unwrap().contains("Test.func"));
+    }
+
+    #[test]
+    fn test_to_canonical_default() {
+        assert_eq!(AutoVMNativeRegistry::to_canonical("List.push"), Some("auto.list.push".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("str.len"), Some("auto.str.len".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("File.read_text"), Some("auto.file.read_text".to_string()));
+    }
+
+    #[test]
+    fn test_to_canonical_mapped() {
+        assert_eq!(AutoVMNativeRegistry::to_canonical("TaskHandle.send"), Some("auto.task.send".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("TaskSystem.start"), Some("auto.task_system.start".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("Response.status_code"), Some("auto.http.response.status_code".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("Result.map_err"), Some("auto.result.map_err".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("Http.get"), Some("auto.http.get".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("Option.or"), Some("auto.option.or".to_string()));
+    }
+
+    #[test]
+    fn test_to_canonical_bare() {
+        assert_eq!(AutoVMNativeRegistry::to_canonical("sleep"), None);
+        assert_eq!(AutoVMNativeRegistry::to_canonical("parse_sse"), None);
     }
 }
