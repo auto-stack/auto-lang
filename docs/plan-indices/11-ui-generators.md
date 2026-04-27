@@ -31,7 +31,7 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 181 | a2vscode Generator | ⏳ | Generate VSCode extension projects from AURA widgets with webview panel rendering |
 | 205 | DynamicComponent VM UI | ✅ | VM-driven dynamic UI rendering with VmBridge, AuraViewBuilder, and iced integration |
 | 212a | LSP + VSCode Extension Modernization | ✅ | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
-| 217 | a2ui Composer Implementation | 🔧 | UI composer tool for visual AURA widget assembly and code generation |
+| 217 | a2ui Composer Implementation | ✅ | Three-panel composer with palette/canvas/inspector, builds as Vue 3 app |
 
 ## Status Summary
 - Completed: 8 | Partial: 4 | Planned: 11 | Deprecated: 0
@@ -46,4 +46,5 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 - Stdlib widget library consolidation (~45 components from component-gallery into stdlib/aura/widgets)
 - Conditional UI backend inclusion and auto-ui migration into the main workspace
 - Plan 205: DynamicComponent VM-driven UI rendering for hot-reloadable AURA widgets — DONE
+- Plan 217: A2UI Composer three-panel app — DONE
 - Plan 212a: LSP + VSCode extension modernization (grammar, completions, snippets)

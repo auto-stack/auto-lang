@@ -1,25 +1,27 @@
 widget App {
-    msg Msg { ToggleText, ToggleButton, ToggleInput, ToggleCol, ClearAll }
+    msg Msg { ToggleText, ToggleButton, ToggleInput, ToggleRow, ToggleCol, ClearAll, ExportJSON }
 
     model {
         var has_text bool = false
         var has_button bool = false
         var has_input bool = false
+        var has_row bool = false
         var has_col bool = false
         var show_empty bool = true
     }
 
     view {
         col {
-            class: "h-screen bg-gray-100"
+            class: "h-screen bg-gray-100 flex flex-col"
 
             row {
-                h1 "A2UI Composer"
                 class: "px-4 py-3 bg-white border-b shadow-sm items-center justify-between"
-
+                h1 "A2UI Composer"
+                class: "text-lg font-bold"
                 row {
-                    button "Clear" { onclick: .ClearAll, class: "px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm ml-2" }
                     class: "gap-2"
+                    button "Export JSON" { onclick: .ExportJSON, class: "px-3 py-1 bg-blue-500 text-white rounded text-sm" }
+                    button "Clear" { onclick: .ClearAll, class: "px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm" }
                 }
             }
 
@@ -27,13 +29,17 @@ widget App {
                 class: "flex-1 overflow-hidden"
 
                 col {
-                    class: "w-56 bg-white border-r overflow-y-auto p-4 gap-3"
+                    class: "w-56 bg-white border-r overflow-y-auto p-4"
                     h3 "Components"
-                    class: "text-sm font-semibold text-gray-500 mb-2"
-                    button "Text" { onclick: .ToggleText, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
-                    button "Button" { onclick: .ToggleButton, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
-                    button "Input" { onclick: .ToggleInput, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
-                    button "Column" { onclick: .ToggleCol, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                    class: "text-sm font-semibold text-gray-500 mb-3"
+                    col {
+                        class: "gap-2"
+                        button "+ Text" { onclick: .ToggleText, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                        button "+ Button" { onclick: .ToggleButton, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                        button "+ Input" { onclick: .ToggleInput, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                        button "+ Row" { onclick: .ToggleRow, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                        button "+ Column" { onclick: .ToggleCol, class: "w-full px-3 py-2 bg-gray-50 hover:bg-blue-50 border rounded text-left text-sm" }
+                    }
                 }
 
                 col {
@@ -45,66 +51,57 @@ widget App {
                     }
 
                     if .has_text {
-                        row {
-                            class: "p-3 border border-gray-200 rounded bg-white"
-                            text "Hello World"
-                        }
+                        text "Text Block"
+                        class: "p-3 border border-gray-200 rounded bg-white"
                     }
+
                     if .has_button {
-                        row {
-                            class: "p-3 border border-gray-200 rounded bg-white"
-                            button "Click me" { class: "px-4 py-2 bg-blue-500 text-white rounded" }
-                        }
+                        text "Button"
+                        class: "p-3 border border-gray-200 rounded bg-white"
                     }
+
                     if .has_input {
-                        row {
-                            class: "p-3 border border-gray-200 rounded bg-white"
-                            input { placeholder: "Enter text...", class: "px-3 py-2 border rounded w-full" }
-                        }
+                        text "Text Input"
+                        class: "p-3 border border-gray-200 rounded bg-white"
                     }
+
+                    if .has_row {
+                        text "Row Layout"
+                        class: "p-3 border border-gray-200 rounded bg-white"
+                    }
+
                     if .has_col {
-                        row {
-                            class: "p-3 border border-gray-200 rounded bg-white"
-                            col {
-                                class: "p-4 border border-dashed border-gray-300 rounded bg-white"
-                                text "Column content"
-                                class: "text-sm text-gray-600"
-                            }
-                        }
+                        text "Column Layout"
+                        class: "p-3 border border-gray-200 rounded bg-white"
                     }
                 }
 
                 col {
-                    class: "w-64 bg-white border-l overflow-y-auto p-4 gap-3"
+                    class: "w-64 bg-white border-l overflow-y-auto p-4"
                     h3 "Inspector"
-                    class: "text-sm font-semibold text-gray-500 mb-2"
-
+                    class: "text-sm font-semibold text-gray-500 mb-3"
                     text "Active components"
                     class: "text-xs text-gray-400 mb-2"
 
                     if .has_text {
-                        row {
-                            class: "p-2 bg-gray-50 rounded border text-sm"
-                            text "Text: Hello World"
-                        }
+                        text "Text: added"
+                        class: "p-2 bg-gray-50 rounded border text-sm"
                     }
                     if .has_button {
-                        row {
-                            class: "p-2 bg-gray-50 rounded border text-sm"
-                            text "Button: Click me"
-                        }
+                        text "Button: added"
+                        class: "p-2 bg-gray-50 rounded border text-sm"
                     }
                     if .has_input {
-                        row {
-                            class: "p-2 bg-gray-50 rounded border text-sm"
-                            text "Input: Enter text..."
-                        }
+                        text "Input: added"
+                        class: "p-2 bg-gray-50 rounded border text-sm"
+                    }
+                    if .has_row {
+                        text "Row: added"
+                        class: "p-2 bg-gray-50 rounded border text-sm"
                     }
                     if .has_col {
-                        row {
-                            class: "p-2 bg-gray-50 rounded border text-sm"
-                            text "Column"
-                        }
+                        text "Column: added"
+                        class: "p-2 bg-gray-50 rounded border text-sm"
                     }
                 }
             }
@@ -114,26 +111,34 @@ widget App {
     on {
         .ToggleText -> {
             has_text = has_text == false
-            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_row == false && has_col == false
         }
         .ToggleButton -> {
             has_button = has_button == false
-            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_row == false && has_col == false
         }
         .ToggleInput -> {
             has_input = has_input == false
-            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_row == false && has_col == false
+        }
+        .ToggleRow -> {
+            has_row = has_row == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_row == false && has_col == false
         }
         .ToggleCol -> {
             has_col = has_col == false
-            show_empty = has_text == false && has_button == false && has_input == false && has_col == false
+            show_empty = has_text == false && has_button == false && has_input == false && has_row == false && has_col == false
         }
         .ClearAll -> {
             has_text = false
             has_button = false
             has_input = false
+            has_row = false
             has_col = false
             show_empty = true
+        }
+        .ExportJSON -> {
+            print("A2UI Composer: Export JSON placeholder - wired in Phase 2")
         }
     }
 }

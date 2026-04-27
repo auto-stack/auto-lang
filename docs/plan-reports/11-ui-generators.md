@@ -32,13 +32,13 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 181 | a2vscode Generator | Planned | Generate VSCode extension projects from AURA widgets |
 | 205 | DynamicComponent VM UI | Complete | VM-driven dynamic UI rendering with VmBridge, AuraViewBuilder, and iced integration |
 | 212a | LSP + VSCode Extension Modernization | Complete | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
-| 217 | a2ui Composer Implementation | Partial | A2UI composer for visual widget assembly and code generation |
+| 217 | a2ui Composer Implementation | Complete | A2UI composer with three-panel layout, palette/canvas/inspector, builds and runs |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205 (9 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217 (10 plans fully complete)
 
-**Partial**: 099, 133, 144, 147, 217 (5 plans with significant progress)
+**Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
 **Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181 (10 plans not yet started or early stage)
 
@@ -134,4 +134,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - 181-a2vscode-generator.md
 - [205-dynamic-component-vm-ui.md](../plans/old/205-dynamic-component-vm-ui.md)
 - [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
-- [217-a2ui-composer-implementation.md](../plans/217-a2ui-composer-implementation.md)
+- [217-a2ui-composer-implementation.md](../plans/old/217-a2ui-composer-implementation.md)

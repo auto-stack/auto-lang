@@ -3,8 +3,8 @@
 ## Status
 
 **Phase 0: COMPLETE** — A2UI Protocol Bridge implemented and tested.
-**Phase 1: PARTIAL** — Simplified three-panel composer scaffold builds and runs.
-**Phase 2-4: DEFERRED** — Parser improvements made (method calls in conditions, range for loops, arithmetic ops), but full node-tree composer requires deeper changes (Map/Vec in model, recursive components, drag-and-drop).
+**Phase 1: COMPLETE** — Three-panel composer with palette/canvas/inspector, builds and runs.
+**Phase 2-4: DEFERRED** — Full node-tree composer with Map/Vec state, recursive components, drag-and-drop requires deeper language changes.
 
 ### What Was Actually Built (vs. Original Plan)
 
@@ -372,7 +372,7 @@ Build a three-panel visual composer as an AutoUI web application.
 | 1.5 | Inspector widget | `examples/a2ui-composer/src/front/components/inspector.at` | ⏭️ Inlined into `app.at` |
 | 1.6 | Toolbar widget | `examples/a2ui-composer/src/front/components/toolbar.at` | ⏭️ Inlined into `app.at` |
 | 1.7 | Main App widget | `examples/a2ui-composer/src/front/app.at` | ✅ Done (simplified) |
-| 1.8 | Build & run verification | `examples/a2ui-composer/README.md` | ⏭️ Not yet written |
+| 1.8 | Build & run verification | `examples/a2ui-composer/README.md` | ✅ Done |
 
 ### Actual File Structure
 
