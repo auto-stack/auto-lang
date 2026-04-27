@@ -32,10 +32,10 @@ const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
 
 <div class="cta-section">
   <h2 class="section-title">准备好尝试 Auto 了吗？</h2>
-  <p class="section-desc">进入交互式 Playground，或阅读书籍从零开始学习 Auto。</p>
+  <p class="section-desc">进入交互式 Playground，或阅读教程从零开始学习 Auto。</p>
   <div class="cta-actions">
     <a href="/zh/playground" class="cta-btn cta-primary">打开 Playground</a>
-    <a href="/zh/books/tapl/" class="cta-btn cta-secondary">阅读书籍</a>
+    <a href="/zh/books/tapl/" class="cta-btn cta-secondary">阅读教程</a>
   </div>
 </div>
 

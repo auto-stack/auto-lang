@@ -32,7 +32,7 @@ function nav(): DefaultTheme.NavItem[] {
     { text: 'AI', link: '/ai' },
     { text: 'OS', link: '/os' },
     { text: 'Docs', link: '/docs/' },
-    { text: 'Books', link: '/books/' },
+    { text: 'Tutorials', link: '/books/' },
     { text: 'Playground', link: '/playground' },
     {
       text: 'v0.2',

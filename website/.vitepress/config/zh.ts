@@ -32,7 +32,7 @@ function nav(): DefaultTheme.NavItem[] {
     { text: 'AI', link: '/zh/ai' },
     { text: 'OS', link: '/zh/os' },
     { text: '文档', link: '/zh/docs/' },
-    { text: '书籍', link: '/zh/books/' },
+    { text: '教程', link: '/zh/books/' },
     { text: 'Playground', link: '/zh/playground' },
     {
       text: 'v0.2',

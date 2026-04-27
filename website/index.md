@@ -40,10 +40,10 @@ onMounted(() => {
 
 <div class="cta-section">
   <h2 class="section-title">Ready to try Auto?</h2>
-  <p class="section-desc">Jump into the interactive playground or read the book to learn Auto from the ground up.</p>
+  <p class="section-desc">Jump into the interactive playground or read the tutorial to learn Auto from the ground up.</p>
   <div class="cta-actions">
     <a href="/playground" class="cta-btn cta-primary">Open Playground</a>
-    <a href="/books/tapl/" class="cta-btn cta-secondary">Read the Book</a>
+    <a href="/books/tapl/" class="cta-btn cta-secondary">Read the Tutorial</a>
   </div>
 </div>
 
