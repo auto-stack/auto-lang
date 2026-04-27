@@ -84,6 +84,18 @@ impl VirtualFlash {
         }
     }
 
+    /// Create VirtualFlash from raw bytecode (no metadata).
+    /// Used by debugger for disassembly.
+    pub fn from_vec(code: Vec<u8>) -> Self {
+        Self {
+            memory: code,
+            symbol_map: HashMap::new(),
+            object_keys: Vec::new(),
+            object_types: Vec::new(),
+            exports_by_name: HashMap::new(),
+        }
+    }
+
     /// Plan 128: Create VirtualFlash from Vec with full metadata
     ///
     /// Used by VMLoader to create the frozen bytecode from CompiledPackage

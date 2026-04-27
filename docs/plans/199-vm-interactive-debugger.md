@@ -1119,8 +1119,12 @@ Modified:
 ├── crates/auto-lang/src/vm/codegen.rs
 │   └── SOURCE_LINE emission (Task 1.2)
 │
-└── crates/auto-lang/src/vm/mod.rs
-    └── pub mod disasm; debugger; trace;
+├── crates/auto-lang/src/vm/mod.rs
+│   └── pub mod disasm; debugger; trace;
+│
+├── crates/auto-lang/src/vm/virt_memory.rs   (Phase 6: from_vec() for debugger)
+├── crates/auto-lang/src/lib.rs              (Phase 6: debug_file/debug_autovm)
+└── crates/auto/src/main.rs                  (Phase 6: Commands::Debug CLI entry)
 ```
 
 ---
@@ -1148,29 +1152,96 @@ Modified:
 ## Success Criteria
 
 ### Phase 1
-- [ ] VM 错误包含 `line N` 信息
-- [ ] `cargo test` 通过，SOURCE_LINE 对现有测试透明
+- [x] VM 错误包含 `line N` 信息
+- [x] `cargo test` 通过，SOURCE_LINE 对现有测试透明
 
 ### Phase 2
-- [ ] 崩溃时打印调用栈 `#0 fn_name at line N`
-- [ ] CALL/RET 正确维护 call_stack
+- [x] 崩溃时打印调用栈 `#0 fn_name at line N`
+- [x] CALL/RET 正确维护 call_stack
 
 ### Phase 3
-- [ ] `OpCode::ADD.to_mnemonic()` → `"add"`
-- [ ] 反汇编器输出包含 `.line` 注释
+- [x] `OpCode::ADD.to_mnemonic()` → `"add"`
+- [x] 反汇编器输出包含 `.line` 注释
 
 ### Phase 4
-- [ ] `AgentController` 可设断点、获取 JSON state
-- [ ] `ReplController` 支持 `c/s/q/stack/locals` 命令
-- [ ] NoOpController 下性能损失 < 1%
+- [x] `AgentController` 可设断点、获取 JSON state
+- [x] `ReplController` 支持 `c/s/q/stack/locals` 命令
+- [x] NoOpController 下性能损失 < 1%
 
 ### Phase 5
-- [ ] TraceCollector 输出有效 JSONL
-- [ ] AI Agent 可通过 `AgentDebugSession` 自动化调试
+- [x] TraceCollector 输出有效 JSONL
+- [ ] ~~AI Agent 可通过 `AgentDebugSession` 自动化调试~~ (Deferred — AgentController + TraceCollector provide the core capability; AgentDebugSession is a convenience wrapper)
+
+### Phase 6: GDB-style 交互式调试器 CLI
+- [x] `GdbController` 实现 GDB 风格命令集（16 个命令）
+- [x] `auto debug <file>` / `auto dbg <file>` CLI 入口
+- [x] `debug_autovm()` / `debug_file()` 调试执行管道
+- [x] `VirtualFlash::from_vec()` 用于调试器反汇编
 
 ### 集成验证
 - [ ] 在一个已知 bug 的 .at 文件上，AI Agent 通过 AgentDebugSession 自动定位到错误行
-- [ ] `auto debug program.at` 启动交互式调试
+- [x] `auto debug program.at` 启动交互式调试
+
+---
+
+## Phase 6 实现记录 (2026-04-27)
+
+### 新增内容
+
+#### GdbController — GDB 风格交互式调试器
+
+替换了原来的简版 `ReplController`，实现完整的 GDB-like 命令集：
+
+| 命令 | 缩写 | 说明 |
+|------|------|------|
+| `run` | `r` | 开始/继续执行 |
+| `continue` | `c` | 继续到下一个断点 |
+| `step` | `s` | 单步进入（step into） |
+| `next` | `n` | 单步跳过（step over） |
+| `finish` | `fin` | 执行到当前函数返回（step out） |
+| `until <line>` | `u` | 执行到指定行号 |
+| `break <line\|fn>` | `b` | 设置断点（行号或函数名） |
+| `delete <n>` | `d` | 删除第 n 个断点 |
+| `info breakpoints` | `i b` | 列出所有断点 |
+| `info stack` | `i s` | 显示调用栈（backtrace） |
+| `info locals` | `i l` | 显示局部变量 |
+| `info registers` | `i r` | 显示 IP/BP/SP 寄存器 |
+| `list` | `l` | 显示源码上下文（前后各 5 行） |
+| `disassemble` | `disas` | 反汇编当前附近的字节码 |
+| `print <slot>` | `p` | 打印变量值（按 local slot index） |
+| `quit` | `q` | 退出调试器 |
+| `help` | `h` | 显示帮助信息 |
+
+**StepMode 控制：**
+- `StepInto` — 每条指令暂停
+- `StepOver` — 同一源码行不暂停（line 变化时暂停）
+- `StepOut` — call_stack 深度减少时暂停
+- `UntilLine(N)` — 执行到指定行号后切回 None
+- `None` — 只在断点处暂停
+
+**断点类型：** `AtIp(usize)` / `AtLine(u32)` / `AtFunction(String)`
+
+#### CLI 入口
+
+```bash
+auto debug program.at    # 启动 GDB 风格调试器
+auto dbg program.at      # 缩写
+```
+
+#### 新增函数
+
+- `debug_file(path)` — 读取文件并启动调试
+- `debug_autovm(code)` — async 调试执行管道（编译 → GdbController → VM）
+- `VirtualFlash::from_vec(code)` — 从原始字节码创建 VirtualFlash（无 metadata）
+
+### 修改的文件
+
+| File | Change |
+|------|--------|
+| `crates/auto-lang/src/vm/debugger.rs` | 新增 `GdbController`（替换 `ReplController`），保留 `NoOpController`、`AgentController` |
+| `crates/auto-lang/src/vm/virt_memory.rs` | 新增 `VirtualFlash::from_vec()` |
+| `crates/auto-lang/src/lib.rs` | 新增 `debug_file()`、`debug_autovm()` |
+| `crates/auto/src/main.rs` | 新增 `Commands::Debug { file }` + 处理分支 |
 
 ---
 

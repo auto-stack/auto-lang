@@ -2,10 +2,11 @@
 //!
 //! Provides the DebuggerController trait for VM debugging hooks,
 //! with NoOpController (normal execution), AgentController (AI Agent),
-//! and ReplController (interactive human debugging).
+//! and GdbController (interactive human debugging with GDB-like commands).
 
 use crate::vm::task::{AutoTask, CallFrame};
 use crate::vm::opcode::OpCode;
+use crate::vm::virt_memory::VirtualFlash;
 use std::collections::HashSet;
 
 /// Snapshot of VM state at a pause point
@@ -137,65 +138,166 @@ impl DebuggerController for AgentController {
     }
 }
 
-/// Interactive REPL debugger for human use
-pub struct ReplController {
-    breakpoints: HashSet<Breakpoint>,
-    step_mode: bool,
-    last_line: u32,
+// =========================================================================
+// GdbController — GDB-style interactive debugger
+// =========================================================================
+
+/// Step mode for controlling pause behavior
+#[derive(Debug, Clone, PartialEq)]
+enum StepMode {
+    None,
+    StepInto,
+    StepOver,
+    StepOut,
+    UntilLine(u32),
 }
 
-impl ReplController {
-    pub fn new() -> Self {
+/// GDB-style interactive debugger controller
+pub struct GdbController {
+    breakpoints: Vec<Breakpoint>,
+    step_mode: StepMode,
+    last_line: u32,
+    call_depth_at_step: usize,
+    source_lines: Vec<String>,
+    flash: VirtualFlash,
+    started: bool,
+}
+
+impl GdbController {
+    pub fn new(source_lines: Vec<String>, flash_bytes: Vec<u8>) -> Self {
         Self {
-            breakpoints: HashSet::new(),
-            step_mode: false,
+            breakpoints: Vec::new(),
+            step_mode: StepMode::None,
             last_line: 0,
+            call_depth_at_step: 0,
+            source_lines,
+            flash: VirtualFlash::from_vec(flash_bytes),
+            started: false,
         }
+    }
+
+    fn print_source_context(&self, line: u32, context: usize) {
+        if line == 0 || self.source_lines.is_empty() {
+            return;
+        }
+        let center = line as usize;
+        let start = center.saturating_sub(context);
+        let end = (center + context + 1).min(self.source_lines.len());
+        for i in start..end {
+            let ln = i + 1;
+            let marker = if ln == center { ">" } else { " " };
+            println!(
+                "{} {:>4} | {}",
+                marker,
+                ln,
+                self.source_lines[i]
+            );
+        }
+    }
+
+    fn print_disassembly(&self, ip: usize, count: usize) {
+        let start = ip.saturating_sub(20);
+        let end = (ip + count * 10).min(self.flash.memory.len());
+        if start >= end {
+            println!("No bytecode to disassemble.");
+            return;
+        }
+        let disasm = crate::vm::disasm::Disassembler::new(&self.flash);
+        let lines = disasm.disassemble_range(start, end);
+        for dl in &lines {
+            let marker = if dl.offset == ip { ">" } else { " " };
+            let line_info = match dl.line {
+                Some(l) => format!("; line {}", l),
+                None => String::new(),
+            };
+            println!(
+                "{} {:04x}  {:<12} {} {}",
+                marker, dl.offset, dl.mnemonic, dl.operands, line_info
+            );
+        }
+    }
+
+    fn show_help(&self) {
+        println!("GDB-like commands:");
+        println!("  run (r)                Start / continue execution");
+        println!("  continue (c)           Continue to next breakpoint");
+        println!("  step (s)               Step into (one instruction)");
+        println!("  next (n)               Step over (next source line)");
+        println!("  finish (fin)           Run until current function returns");
+        println!("  until <line> (u)       Run until source line");
+        println!("  break <line|fn> (b)    Set breakpoint (line number or function name)");
+        println!("  delete <n> (d)         Delete breakpoint #n");
+        println!("  info breakpoints (i b) List breakpoints");
+        println!("  info stack (i s)       Show call stack (backtrace)");
+        println!("  info locals (i l)      Show local variables");
+        println!("  info registers (i r)   Show IP/BP/SP registers");
+        println!("  list (l)               Show source code context");
+        println!("  disassemble (disas)    Disassemble nearby bytecode");
+        println!("  print <slot> (p)       Print local variable by slot index");
+        println!("  quit (q)               Exit debugger");
+        println!("  help (h)               Show this help");
     }
 }
 
-impl DebuggerController for ReplController {
+impl DebuggerController for GdbController {
     fn should_pause(&mut self, ctx: &DebugContext) -> bool {
-        if self.step_mode {
+        // Before first run, always pause (user hasn't typed 'run' yet)
+        if !self.started {
             return true;
         }
 
-        // Pause on line change when there are breakpoints
-        if ctx.line != self.last_line && ctx.line > 0 {
-            self.last_line = ctx.line;
-        }
-
-        self.breakpoints.iter().any(|bp| match bp {
-            Breakpoint::AtLine(line) => *line == ctx.line,
-            Breakpoint::AtIp(ip) => *ip == ctx.ip,
-            Breakpoint::AtFunction(name) => {
-                ctx.call_stack
-                    .last()
-                    .and_then(|f| f.fn_name.as_ref())
-                    .map(|n| n == name)
-                    .unwrap_or(false)
+        match self.step_mode {
+            StepMode::None => {
+                // Only pause at breakpoints
+                self.breakpoints.iter().any(|bp| match bp {
+                    Breakpoint::AtIp(ip) => *ip == ctx.ip,
+                    Breakpoint::AtLine(line) => *line == ctx.line,
+                    Breakpoint::AtFunction(name) => {
+                        ctx.call_stack
+                            .last()
+                            .and_then(|f| f.fn_name.as_ref())
+                            .map(|n| n == name)
+                            .unwrap_or(false)
+                    }
+                })
             }
-        })
+            StepMode::StepInto => true,
+            StepMode::StepOver => {
+                let line_changed = ctx.line != self.last_line && ctx.line > 0;
+                if line_changed {
+                    self.last_line = ctx.line;
+                }
+                line_changed
+            }
+            StepMode::StepOut => {
+                ctx.call_stack.len() < self.call_depth_at_step
+            }
+            StepMode::UntilLine(target) => {
+                if ctx.line == target {
+                    self.step_mode = StepMode::None;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     fn on_pause(&mut self, ctx: &DebugContext) -> DebuggerAction {
-        let line = if ctx.line > 0 {
-            format!("line {}", ctx.line)
+        // Show current position
+        if ctx.line > 0 {
+            let source_line = self.source_lines.get(ctx.line as usize - 1)
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            println!("\n--- Paused at line {} | ip={:04x} | {:?} ---",
+                ctx.line, ctx.ip, ctx.current_op);
+            println!("  {}", source_line);
         } else {
-            format!("ip={}", ctx.ip)
-        };
-        println!("--- Paused at {} | op={:?} ---", line, ctx.current_op);
-
-        let sp = ctx.task.ram.sp;
-        if sp > 0 {
-            let show = std::cmp::min(sp, 5);
-            print!("  Stack[{}]: ", show);
-            for i in (sp - show)..sp {
-                print!("{} ", ctx.task.ram.read_i32(i));
-            }
-            println!();
+            println!("\n--- Paused at ip={:04x} | {:?} ---",
+                ctx.ip, ctx.current_op);
         }
 
+        // REPL loop
         let mut input = String::new();
         loop {
             print!("(auto-dbg) ");
@@ -204,35 +306,156 @@ impl DebuggerController for ReplController {
             if std::io::stdin().read_line(&mut input).is_err() {
                 return DebuggerAction::Quit;
             }
-            let cmd = input.trim();
+            let raw = input.trim();
+            if raw.is_empty() {
+                continue;
+            }
+            let parts: Vec<&str> = raw.splitn(2, ' ').collect();
+            let cmd = parts[0];
+            let arg = parts.get(1).map(|s| s.trim()).unwrap_or("");
+
             match cmd {
-                "c" | "continue" => {
-                    self.step_mode = false;
+                "run" | "r" => {
+                    self.started = true;
+                    self.step_mode = StepMode::None;
                     return DebuggerAction::Continue;
                 }
-                "s" | "step" => {
-                    self.step_mode = true;
+                "continue" | "c" => {
+                    self.started = true;
+                    self.step_mode = StepMode::None;
+                    return DebuggerAction::Continue;
+                }
+                "step" | "s" => {
+                    self.started = true;
+                    self.step_mode = StepMode::StepInto;
                     return DebuggerAction::Step;
                 }
-                "q" | "quit" => return DebuggerAction::Quit,
-                "stack" => {
-                    println!("Call stack:");
-                    for (i, frame) in ctx.call_stack.iter().enumerate().rev() {
-                        let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
-                        println!("  #{} {} at line {}", i, name, frame.line);
+                "next" | "n" => {
+                    self.started = true;
+                    self.last_line = ctx.line;
+                    self.step_mode = StepMode::StepOver;
+                    return DebuggerAction::Step;
+                }
+                "finish" | "fin" => {
+                    self.started = true;
+                    self.call_depth_at_step = ctx.call_stack.len();
+                    self.step_mode = StepMode::StepOut;
+                    return DebuggerAction::Step;
+                }
+                "until" | "u" => {
+                    if let Ok(line) = arg.parse::<u32>() {
+                        self.started = true;
+                        self.step_mode = StepMode::UntilLine(line);
+                        return DebuggerAction::Step;
+                    } else {
+                        println!("Usage: until <line_number>");
                     }
                 }
-                "locals" => {
-                    let bp = ctx.task.bp;
-                    let n = ctx.task.current_fn_n_locals;
-                    println!("Locals ({}):", n);
-                    for i in 0..n {
-                        let val = ctx.task.ram.read_i32(bp + 1 + i);
-                        println!("  [{}] = {}", i, val);
+                "break" | "b" => {
+                    if arg.is_empty() {
+                        println!("Usage: break <line_number|function_name>");
+                        continue;
                     }
+                    if let Ok(line) = arg.parse::<u32>() {
+                        let bp = Breakpoint::AtLine(line);
+                        let idx = self.breakpoints.len();
+                        self.breakpoints.push(bp);
+                        println!("Breakpoint {} at line {}", idx, line);
+                    } else {
+                        let bp = Breakpoint::AtFunction(arg.to_string());
+                        let idx = self.breakpoints.len();
+                        self.breakpoints.push(bp);
+                        println!("Breakpoint {} at function {}", idx, arg);
+                    }
+                }
+                "delete" | "d" => {
+                    if let Ok(idx) = arg.parse::<usize>() {
+                        if idx < self.breakpoints.len() {
+                            self.breakpoints.remove(idx);
+                            println!("Deleted breakpoint {}", idx);
+                        } else {
+                            println!("No breakpoint #{}", idx);
+                        }
+                    } else {
+                        println!("Usage: delete <breakpoint_number>");
+                    }
+                }
+                "info" | "i" => {
+                    match arg {
+                        "breakpoints" | "b" => {
+                            if self.breakpoints.is_empty() {
+                                println!("No breakpoints.");
+                            } else {
+                                for (i, bp) in self.breakpoints.iter().enumerate() {
+                                    match bp {
+                                        Breakpoint::AtLine(line) => {
+                                            println!("  #{} at line {}", i, line);
+                                        }
+                                        Breakpoint::AtIp(ip) => {
+                                            println!("  #{} at ip {:04x}", i, ip);
+                                        }
+                                        Breakpoint::AtFunction(name) => {
+                                            println!("  #{} at function {}", i, name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        "stack" | "s" => {
+                            if ctx.call_stack.is_empty() {
+                                println!("Call stack: <top level>");
+                            } else {
+                                println!("Call stack:");
+                                for (i, frame) in ctx.call_stack.iter().enumerate().rev() {
+                                    let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
+                                    println!("  #{} {} at line {}", i, name, frame.line);
+                                }
+                            }
+                        }
+                        "locals" | "l" => {
+                            let bp = ctx.task.bp;
+                            let n = ctx.task.current_fn_n_locals;
+                            println!("Locals ({} slots from bp+1):", n);
+                            for i in 0..n {
+                                let val = ctx.task.ram.read_i32(bp + 1 + i);
+                                println!("  [{}] = {}", i, val);
+                            }
+                        }
+                        "registers" | "r" => {
+                            println!("  IP  = {:04x} ({})", ctx.task.ip, ctx.task.ip);
+                            println!("  BP  = {:04x} ({})", ctx.task.bp, ctx.task.bp);
+                            println!("  SP  = {:04x} ({})", ctx.task.ram.sp, ctx.task.ram.sp);
+                            println!("  Line = {}", ctx.task.current_line);
+                        }
+                        _ => {
+                            println!("Usage: info <breakpoints|stack|locals|registers>");
+                        }
+                    }
+                }
+                "list" | "l" => {
+                    self.print_source_context(ctx.line, 5);
+                }
+                "disassemble" | "disas" => {
+                    self.print_disassembly(ctx.ip, 10);
+                }
+                "print" | "p" => {
+                    if let Ok(slot) = arg.parse::<usize>() {
+                        let bp = ctx.task.bp;
+                        let val = ctx.task.ram.read_i32(bp + 1 + slot);
+                        println!("local[{}] = {}", slot, val);
+                    } else {
+                        println!("Usage: print <slot_index>");
+                    }
+                }
+                "quit" | "q" => {
+                    println!("Exiting debugger.");
+                    return DebuggerAction::Quit;
+                }
+                "help" | "h" => {
+                    self.show_help();
                 }
                 _ => {
-                    println!("Commands: c(ontinue), s(tep), q(uit), stack, locals");
+                    println!("Unknown command: {}. Type 'help' for commands.", cmd);
                 }
             }
         }

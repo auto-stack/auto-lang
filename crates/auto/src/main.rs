@@ -345,6 +345,13 @@ enum Commands {
     #[command(about = "Transpile stdlib to C", hide = true)]
     A2cStdlib,
 
+    // ========== Debug (Plan 199) ==========
+    #[command(about = "Debug an Auto program with interactive debugger", alias = "dbg")]
+    Debug {
+        /// Path to the .at file to debug
+        file: String,
+    },
+
     // ========== C FFI Bindgen (Plan 216) ==========
     #[command(about = "List available C FFI bindings from manifests")]
     Cffi {
@@ -1121,6 +1128,14 @@ fn real_main() -> Result<()> {
                 println!();
                 println!("Use --header <name> to see functions for a specific header.");
             }
+        }
+
+        // ========== Debug (Plan 199) ==========
+        Some(Commands::Debug { file }) => {
+            println!("----------------------");
+            println!("Debugging Auto {}", file);
+            println!("----------------------");
+            auto_lang::debug_file(&file).map_err(to_miette_err)?;
         }
 
         None => {
