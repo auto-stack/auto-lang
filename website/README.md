@@ -109,7 +109,35 @@ If you need to point to a different backend during development, pass the prop:
 <AutoPlayground apiUrl="http://localhost:3030" />
 ```
 
-But for production builds, keep the default empty string so nginx handles the proxying.
+But for production builds, **keep the default empty string** so nginx handles the proxying.
+
+#### ⚠️ Why `localhost:3030` must not be used in production
+
+If the built static files contain `apiUrl: "http://localhost:3030"`, the user's browser will try to connect to `localhost:3030` **on their own machine** — not the server. This causes the Playground to fail silently with "Could not connect to playground server."
+
+**Verify after deployment:**
+
+```bash
+# Check if the built JS still contains localhost
+grep -r "localhost:3030" website/.vitepress/dist/
+# Should return nothing. If it does, the build used the wrong default.
+```
+
+**Emergency fix (if you already deployed with localhost):**
+
+If the build already went out with `localhost:3030` and you cannot rebuild immediately, you can hot-fix the deployed files directly on the server:
+
+```bash
+ssh root@112.74.45.241 "python3 -c \"
+path = '/home/visus/auto-website/assets/chunks/theme.4JN5UQsF.js'
+with open(path, 'r') as f: c = f.read()
+c = c.replace('apiUrl:{default:\"http://localhost:3030\"}', 'apiUrl:{default:\"\"}')
+with open(path, 'w') as f: f.write(c)
+print('fixed')
+\""
+```
+
+> Note: The exact filename under `assets/chunks/` will vary with each build (hash changes). Find it with `grep -r "localhost:3030" /home/visus/auto-website/`. This is a temporary workaround — always fix the source (`AutoPlayground.vue`) and rebuild for the next deployment.
 
 ### 2. Build the Backend (Cross-Compilation)
 
