@@ -1,9 +1,11 @@
 # Plan 198: Eliminate Hardcoded Native Metadata
 
-> **Status: 🔄 MOSTLY COMPLETE**
+> **Status: 🔄 IN PROGRESS (~40%)**
 >
-> Earlier "safe" implementation completed Phase 1, 4, 5 (return types from TypeStore, collection inference, alias auto-gen).
-> Plan redesigned around three orthogonal problems identified during implementation review.
+> Problem A (canonical name resolution) is partially done — codegen normalizes calls via `import_scope`, but the 322 alias registrations and `qualified_registry` remain.
+> Problem B (dynamic IDs) has the auto-scan working (`register_vm_declarations()`), but 131 `NATIVE_*` constants and `register_builtin_natives()` (623 lines) are still present.
+> Problem C (shim binding by name) is not started.
+> Pre-plan "safe" items (return types, collection inference, etc.) are all done.
 
 ## Problem Statement
 
@@ -128,11 +130,15 @@ When `use auto.str: len` is processed, store the mapping `{ "len" → "auto.str.
 
 **Files:** `codegen.rs` (import resolution), `compile.rs` / `autovm_persistent.rs` (module loading)
 
+**Status: ✅ DONE** — `compile.rs:255-278` registers alias mappings (`local_name → native_id`), and `codegen.rs:2873` stores `import_scope.insert(local_name, qualified)`.
+
 **Step A2: Normalize function names at call sites**
 
 When codegen compiles a call like `len(text)`, look up `"len"` in `import_scope` to get `"auto.str.len"`, then look up the ID from BIGVM_NATIVES using the canonical form only.
 
 **Files:** `codegen.rs` (native call compilation)
+
+**Status: ✅ DONE** — `codegen.rs:5073` uses `self.import_scope.get(name)` then `resolve_qualified(qualified)`.
 
 **Step A3: Remove alias registrations**
 
@@ -146,6 +152,8 @@ Delete all alias registrations from `register_builtin_natives()`:
 Keep only: `registry.register("auto.str.len")` (one entry per function).
 
 **Files:** `native_registry.rs`
+
+**Status: ❌ NOT DONE** — `register_with_aliases()` still exists (marked `#[allow(dead_code)]`), `qualified_registry` still active (11 references), `register_builtin_natives()` has 322 `register_with_id` calls.
 
 **Verification:** `cargo test -p auto-lang` — all tests should pass since `use` statements provide the canonical path.
 
@@ -163,6 +171,8 @@ But we need a migration path. Start by making the constants optional — codegen
 
 **Files:** `native.rs`, `ffi/stdlib.rs`, `codegen.rs`
 
+**Status: ❌ NOT DONE** — 131 `NATIVE_*` constants still declared in `native.rs`, 265 total references.
+
 **Step B2: Auto-assign IDs during stdlib parsing**
 
 When parsing `stdlib/auto/str.vm.at` and encountering `#[vm] fn len() int` inside `ext str`:
@@ -174,11 +184,15 @@ This replaces the 600+ lines of `register_builtin_natives()` with automatic regi
 
 **Files:** `compile.rs` (parse_module_to_type_store), `native_registry.rs`
 
+**Status: ✅ DONE** — `register_vm_declarations()` (native_registry.rs:316) scans `stdlib/auto/*.vm.at`, parses `#[vm]` declarations, and auto-assigns sequential IDs with canonical names and return types. Called at line 432 of `register_builtin_natives()`.
+
 **Step B3: Remove register_builtin_natives()**
 
 Once all IDs are auto-assigned from parsing, the manual registration function becomes empty.
 
 **Files:** `native_registry.rs`
+
+**Status: ❌ NOT DONE** — `register_builtin_natives()` still exists (623 lines, 322 manual registrations) and is called from `engine.rs`. Auto-scan runs first but hardcoded IDs take precedence.
 
 **Verification:** a2c and a2r tests should be unaffected (they use symbolic names, not IDs). VM tests should pass since IDs are consistent within a session.
 
@@ -203,6 +217,8 @@ pub fn build_dispatch_table(&mut self, registry: &AutoVMNativeRegistry)
 
 **Files:** `native.rs`
 
+**Status: ❌ NOT DONE** — `NativeInterface` only has `register_static()`, `register_dynamic()`, `register()`, `merge()`. No name-based registration.
+
 **Step C2: Extend #[rust_fn] macro to self-register**
 
 ```rust
@@ -219,11 +235,15 @@ At init time, iterate all inventory entries and call `register_shim_by_name()`.
 
 **Files:** `auto-macros/src/lib.rs`, `native.rs`
 
+**Status: ❌ NOT DONE** — `#[rust_fn]` macro does not use `inventory::submit`.
+
 **Step C3: Remove manual registration functions**
 
 Delete `register_std_shims()` and `register_std_ffi()`. Replace with auto-collection from inventory.
 
 **Files:** `native.rs`, `ffi/stdlib.rs`
+
+**Status: ❌ NOT DONE** — Both functions still exist and are called from `engine.rs`.
 
 ---
 
@@ -239,6 +259,8 @@ The following were implemented before the plan redesign and remain valid:
 | `register_with_aliases()` | ✅ Done | will be removed by Problem A |
 | `all_fn_decls()` on TypeStore | ✅ Done | accessor for iterating function declarations |
 | `PartialEq` on `FnKind` | ✅ Done | needed for VmFunction filtering |
+| `register_vm_declarations()` | ✅ Done | auto-scans `.vm.at` files, assigns sequential IDs (Problem B2) |
+| `import_scope` in codegen | ✅ Done | canonical path mapping used for native call resolution (Problem A2) |
 
 These are stepping stones toward the full implementation. `register_with_aliases()` and the enrichment methods will become unnecessary once Problems A and B are fully implemented.
 
@@ -255,6 +277,22 @@ Problem A can be done first and independently.
 Problem B depends on A (canonical names needed for ID assignment).
 Problem C depends on B (IDs must be assigned before shims can bind).
 ```
+
+## Progress Summary (2026-04-27)
+
+| Step | Description | Status |
+|------|-------------|--------|
+| A1 | Preserve canonical path in import resolution | ✅ Done |
+| A2 | Normalize function names at call sites | ✅ Done |
+| A3 | Remove alias registrations (322 calls, `qualified_registry`) | ❌ Not Done |
+| B1 | Remove 131 `NATIVE_*` constants | ❌ Not Done |
+| B2 | Auto-assign IDs during stdlib parsing | ✅ Done |
+| B3 | Remove `register_builtin_natives()` (623 lines) | ❌ Not Done |
+| C1 | Name-based shim registration in NativeInterface | ❌ Not Done |
+| C2 | `#[rust_fn]` macro self-registration via inventory | ❌ Not Done |
+| C3 | Remove `register_std_shims()` / `register_stdlib_ffi()` | ❌ Not Done |
+
+**Next actionable step:** A3 — remove alias registrations. A1+A2 are done, so codegen already resolves via canonical paths. The 322 manual registrations can be deleted incrementally, keeping only the canonical entries.
 
 ## Risks
 
