@@ -4,8 +4,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted } from 'vue';
-import { EditorState, type Extension } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import { EditorState, type Extension, Compartment, StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, Decoration, type DecorationSet, GutterMarker, gutter } from '@codemirror/view';
 import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autoLanguage } from '../lang/auto';
@@ -13,15 +13,134 @@ import { autoLanguage } from '../lang/auto';
 const props = defineProps<{
   modelValue: string;
   onRun?: () => void;
+  isDebugging?: boolean;
+  breakpoints?: number[];
+  currentDebugLine?: number | null;
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'line-click': [line: number];
+  'breakpointsChange': [lines: number[]];
 }>();
 
 const editorContainer = ref<HTMLDivElement>();
 let editorView: EditorView | null = null;
+const debugCompartment = new Compartment();
+
+// ============================================================================
+// Breakpoint Gutter
+// ============================================================================
+
+const breakpointEffect = StateEffect.define<number>({
+  map: (val, mapping) => mapping.mapPos(val),
+});
+
+const breakpointState = StateField.define<Set<number>>({
+  create() { return new Set(); },
+  update(set, tr) {
+    for (const e of tr.effects) {
+      if (e.is(breakpointEffect)) {
+        const line = e.value;
+        const newSet = new Set(set);
+        if (newSet.has(line)) newSet.delete(line);
+        else newSet.add(line);
+        return newSet;
+      }
+    }
+    return set;
+  },
+});
+
+class BreakpointMarker extends GutterMarker {
+  eq(other: GutterMarker): boolean { return this === other; }
+  override elementClass = 'cm-breakpoint-marker';
+}
+
+class SpacerMarker extends GutterMarker {
+  eq(other: GutterMarker): boolean { return this === other; }
+  override elementClass = 'cm-breakpoint-spacer';
+}
+
+const breakpointGutter = [
+  breakpointState,
+  gutter({
+    class: 'cm-breakpoint-gutter',
+    markers(view) {
+      const builder = new RangeSetBuilder<GutterMarker>();
+      const bps = view.state.field(breakpointState);
+      for (const line of bps) {
+        const pos = view.state.doc.line(line).from;
+        builder.add(pos, pos, new BreakpointMarker());
+      }
+      return builder.finish();
+    },
+    initialSpacer() {
+      return new SpacerMarker();
+    },
+    domEventHandlers: {
+      mousedown(view, line) {
+        const lineNo = view.state.doc.lineAt(line.from).number;
+        view.dispatch({ effects: breakpointEffect.of(lineNo) });
+        const bps = view.state.field(breakpointState);
+        emit('breakpointsChange', Array.from(bps));
+        return true;
+      },
+    },
+  }),
+];
+
+// ============================================================================
+// Debug Current Line Highlight
+// ============================================================================
+
+const debugLineEffect = StateEffect.define<number | null>();
+
+const debugLineState = StateField.define<DecorationSet>({
+  create() { return Decoration.none; },
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(debugLineEffect)) {
+        if (e.value === null) return Decoration.none;
+        const line = tr.state.doc.line(e.value);
+        return Decoration.set([
+          Decoration.line({ class: 'cm-debug-current-line' }).range(line.from),
+        ]);
+      }
+    }
+    return deco.map(tr.changes);
+  },
+});
+
+const debugLineHighlight = [
+  debugLineState,
+  EditorView.baseTheme({
+    '.cm-debug-current-line': {
+      backgroundColor: '#0e639c40',
+      borderLeft: '2px solid #0e639c',
+    },
+    '.cm-breakpoint-marker::before': {
+      content: '""',
+      display: 'block',
+      width: '10px',
+      height: '10px',
+      borderRadius: '50%',
+      background: '#e51400',
+      margin: '0 auto',
+    },
+    '.cm-breakpoint-spacer': {
+      width: '16px',
+    },
+  }),
+];
+
+function getDebugExtensions(): Extension[] {
+  return [...breakpointGutter, ...debugLineHighlight];
+}
+
+// ============================================================================
+// Editor Setup
+// ============================================================================
 
 onMounted(() => {
   if (!editorContainer.value) return;
@@ -40,7 +159,6 @@ onMounted(() => {
     }),
     EditorView.domEventHandlers({
       mousedown: (event, view) => {
-        // Check if the click is in the gutter area
         const target = event.target as HTMLElement;
         if (target.closest('.cm-gutters') || target.closest('.cm-gutter')) {
           const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
@@ -53,6 +171,7 @@ onMounted(() => {
         return false;
       },
     }),
+    debugCompartment.of(props.isDebugging ? getDebugExtensions() : []),
   ];
 
   if (props.onRun) {
@@ -80,6 +199,35 @@ watch(() => props.modelValue, (newVal) => {
     });
   }
 });
+
+watch(() => props.isDebugging, (debugging) => {
+  if (!editorView) return;
+  editorView.dispatch({
+    effects: debugCompartment.reconfigure(debugging ? getDebugExtensions() : []),
+  });
+});
+
+watch(() => props.currentDebugLine, (line) => {
+  if (!editorView) return;
+  editorView.dispatch({ effects: debugLineEffect.of(line ?? null) });
+});
+
+watch(() => props.breakpoints, (bps) => {
+  if (!editorView) return;
+  // Sync external breakpoints into editor state
+  const current = editorView.state.field(breakpointState, false);
+  if (!current) return;
+  const currentArr = Array.from(current);
+  const newArr = bps || [];
+  const toAdd = newArr.filter((l) => !currentArr.includes(l));
+  const toRemove = currentArr.filter((l) => !newArr.includes(l));
+  if (toAdd.length === 0 && toRemove.length === 0) return;
+  const effects = [
+    ...toAdd.map((l) => breakpointEffect.of(l)),
+    ...toRemove.map((l) => breakpointEffect.of(l)),
+  ];
+  editorView.dispatch({ effects });
+}, { deep: true });
 
 onUnmounted(() => {
   editorView?.destroy();

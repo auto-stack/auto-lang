@@ -17,6 +17,8 @@
     :debug-state="debug.state.value"
     :current-source-line="highlightedSourceLine"
     :highlighted-offsets="highlightedBytecodeOffsets"
+    :breakpoints="breakpoints"
+    :current-debug-line="debug.state.value?.line ?? null"
     @update:source="source = $event"
     @run="run"
     @trans="transpile(activeTab)"
@@ -28,6 +30,7 @@
     @toggle-debug="toggleDebug"
     @debug-command="onDebugCommand"
     @offset-click="onOffsetClick"
+    @breakpoints-change="onBreakpointsChange"
   />
   <div class="toast" :class="{ visible: shareToast.visible }">
     {{ shareToast.message }}
@@ -38,7 +41,7 @@
 import PlaygroundLayout from './components/PlaygroundLayout.vue';
 import { usePlayground } from './composables/usePlayground';
 import { useDebugger } from './composables/useDebugger';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
@@ -48,6 +51,7 @@ const {
 } = usePlayground();
 
 const debug = useDebugger();
+const breakpoints = ref<number[]>([]);
 
 const highlightedBytecodeOffsets = computed(() => {
   if (!highlightedSourceLine.value) return undefined;
@@ -57,6 +61,7 @@ const highlightedBytecodeOffsets = computed(() => {
 function toggleDebug() {
   if (debug.isDebugging.value) {
     debug.stop();
+    breakpoints.value = [];
   } else {
     debug.connect(source.value);
   }
@@ -71,6 +76,11 @@ function onOffsetClick(offset: number) {
   if (line) {
     highlightSourceLine(line);
   }
+}
+
+function onBreakpointsChange(lines: number[]) {
+  breakpoints.value = lines;
+  debug.setBreakpoints(lines);
 }
 </script>
 

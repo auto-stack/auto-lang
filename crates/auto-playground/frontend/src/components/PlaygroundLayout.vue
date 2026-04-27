@@ -32,6 +32,12 @@
       </div>
     </header>
 
+    <DebugToolbar
+      v-if="isDebugging"
+      :is-paused="isPaused"
+      @command="$emit('debugCommand', $event)"
+    />
+
     <div class="workspace">
       <div class="top-row">
         <div class="editor-pane">
@@ -41,7 +47,11 @@
               :model-value="source"
               @update:model-value="$emit('update:source', $event)"
               :on-run="onRun"
+              :is-debugging="isDebugging"
+              :breakpoints="breakpoints"
+              :current-debug-line="currentDebugLine"
               @line-click="$emit('lineClick', $event)"
+              @breakpoints-change="$emit('breakpointsChange', $event)"
             />
           </div>
         </div>
@@ -64,7 +74,17 @@
 
       <div class="console-pane">
         <div class="pane-header">
-          <span>Console</span>
+          <div class="console-tabs">
+            <button
+              :class="{ active: consoleTab === 'output' }"
+              @click="consoleTab = 'output'"
+            >Console</button>
+            <button
+              v-if="isDebugging"
+              :class="{ active: consoleTab === 'debug' }"
+              @click="consoleTab = 'debug'"
+            >Debug</button>
+          </div>
           <button
             class="run-btn"
             @click="$emit('run')"
@@ -75,10 +95,15 @@
         </div>
         <div class="pane-body">
           <ConsoleOutput
+            v-if="consoleTab === 'output'"
             :stdout="stdout"
             :stderr="stderr"
             :result="resultCode"
             :time-ms="timeMs"
+          />
+          <DebugPanel
+            v-else-if="consoleTab === 'debug' && debugState"
+            :state="debugState"
           />
         </div>
       </div>
@@ -87,11 +112,14 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import type { OutputTab, BytecodeLine, DebugState } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import OutputPanel from './OutputPanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
 import ExampleSelector from './ExampleSelector.vue';
+import DebugToolbar from './DebugToolbar.vue';
+import DebugPanel from './DebugPanel.vue';
 
 defineProps<{
   source: string;
@@ -112,6 +140,8 @@ defineProps<{
   debugState?: DebugState | null;
   currentSourceLine?: number | null;
   highlightedOffsets?: number[];
+  breakpoints?: number[];
+  currentDebugLine?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -127,6 +157,7 @@ const emit = defineEmits<{
   toggleDebug: [];
   debugCommand: [cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop'];
   offsetClick: [offset: number];
+  breakpointsChange: [lines: number[]];
 }>();
 
 function onTabChange(tab: OutputTab) {
@@ -136,6 +167,8 @@ function onTabChange(tab: OutputTab) {
 function onLoadExample(code: string) {
   emit('loadExample', code);
 }
+
+const consoleTab = ref<'output' | 'debug'>('output');
 </script>
 
 <style scoped>
@@ -282,6 +315,27 @@ function onLoadExample(code: string) {
 .run-btn:disabled {
   background: #555;
   cursor: not-allowed;
+}
+.console-tabs {
+  display: flex;
+  gap: 4px;
+}
+.console-tabs button {
+  padding: 4px 12px;
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 3px;
+}
+.console-tabs button:hover {
+  color: #ccc;
+}
+.console-tabs button.active {
+  background: #3c3c3c;
+  color: #fff;
 }
 
 @media (max-width: 768px) {
