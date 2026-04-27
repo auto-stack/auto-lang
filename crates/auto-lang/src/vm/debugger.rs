@@ -8,6 +8,7 @@ use crate::vm::task::{AutoTask, CallFrame};
 use crate::vm::opcode::OpCode;
 use crate::vm::virt_memory::VirtualFlash;
 use std::collections::HashSet;
+use colored::Colorize;
 
 /// Snapshot of VM state at a pause point
 pub struct DebugContext<'a> {
@@ -191,13 +192,12 @@ impl GdbController {
         let end = (center + context + 1).min(self.source_lines.len());
         for i in start..end {
             let ln = i + 1;
-            let marker = if ln == center { ">" } else { " " };
-            println!(
-                "{} {:>4} | {}",
-                marker,
-                ln,
-                self.source_lines[i]
-            );
+            let is_current = ln == center;
+            if is_current {
+                println!("{} {} | {}", ">".green().bold(), format!("{:>4}", ln).yellow().bold(), self.source_lines[i].white());
+            } else {
+                println!("  {} | {}", format!("{:>4}", ln).dimmed(), self.source_lines[i].dimmed());
+            }
         }
     }
 
@@ -211,15 +211,27 @@ impl GdbController {
         let disasm = crate::vm::disasm::Disassembler::new(&self.flash);
         let lines = disasm.disassemble_range(start, end);
         for dl in &lines {
-            let marker = if dl.offset == ip { ">" } else { " " };
+            let is_current = dl.offset == ip;
             let line_info = match dl.line {
-                Some(l) => format!("; line {}", l),
+                Some(l) => format!("; line {}", l).dimmed().to_string(),
                 None => String::new(),
             };
-            println!(
-                "{} {:04x}  {:<12} {} {}",
-                marker, dl.offset, dl.mnemonic, dl.operands, line_info
-            );
+            if is_current {
+                println!("{} {:04x}  {:<12} {} {}",
+                    ">".green().bold(),
+                    dl.offset,
+                    dl.mnemonic.white().bold(),
+                    dl.operands,
+                    line_info
+                );
+            } else {
+                println!("  {}  {:<12} {} {}",
+                    format!("{:04x}", dl.offset).dimmed(),
+                    dl.mnemonic,
+                    dl.operands,
+                    line_info
+                );
+            }
         }
     }
 
@@ -241,6 +253,32 @@ impl GdbController {
             }
         }
         0
+    }
+
+    /// Get a truncated source line for display
+    fn source_preview(&self, line: u32) -> String {
+        if line == 0 { return String::new(); }
+        self.source_lines.get(line as usize - 1)
+            .map(|s| {
+                let trimmed = s.trim();
+                if trimmed.len() > 50 {
+                    format!("{}...", &trimmed[..50])
+                } else {
+                    trimmed.to_string()
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// Print a breakpoint confirmation with source preview
+    fn print_bp_confirmed(&self, idx: usize, detail: &str, line: u32) {
+        let preview = self.source_preview(line);
+        if preview.is_empty() {
+            println!("{} {} {}", "Breakpoint".green(), idx.to_string().cyan(), detail);
+        } else {
+            println!("{} {} {}:", "Breakpoint".green(), idx.to_string().cyan(), detail);
+            println!("  {} {}", format!("{}:", line).dimmed(), preview);
+        }
     }
 
     fn show_help(&self) {
@@ -327,18 +365,28 @@ impl DebuggerController for GdbController {
             let source_line = self.source_lines.get(ctx.line as usize - 1)
                 .map(|s| s.as_str())
                 .unwrap_or("");
-            println!("\n--- Paused at line {} | ip={:04x} | {:?} ---",
-                ctx.line, ctx.ip, ctx.current_op);
+            println!("\n{} {} {} {} {} {}",
+                "---".dimmed(),
+                format!("line {}", ctx.line).yellow().bold(),
+                "|".dimmed(),
+                format!("ip={:04x}", ctx.ip).blue(),
+                "|".dimmed(),
+                format!("{:?}", ctx.current_op).magenta(),
+            );
             println!("  {}", source_line);
         } else {
-            println!("\n--- Paused at ip={:04x} | {:?} ---",
-                ctx.ip, ctx.current_op);
+            println!("\n{} {} {} {}",
+                "---".dimmed(),
+                format!("ip={:04x}", ctx.ip).blue(),
+                "|".dimmed(),
+                format!("{:?}", ctx.current_op).magenta(),
+            );
         }
 
         // REPL loop
         let mut input = String::new();
         loop {
-            print!("(auto-dbg) ");
+            print!("{} ", "(auto-dbg)".green().bold());
             std::io::Write::flush(&mut std::io::stdout()).ok();
             input.clear();
             if std::io::stdin().read_line(&mut input).is_err() {
@@ -399,13 +447,13 @@ impl DebuggerController for GdbController {
                     // 1. Pure number → line breakpoint
                     if let Ok(line) = arg.parse::<u32>() {
                         self.breakpoints.push(Breakpoint::AtLine(line));
-                        println!("Breakpoint {} at line {}", idx, line);
+                        self.print_bp_confirmed(idx, &format!("at line {}", line), line);
                         continue;
                     }
 
                     // 2. Contains colon → file:line or file:fn/N (multi-file, not yet supported)
                     if arg.contains(':') {
-                        println!("Error: multi-file breakpoints not yet supported.");
+                        println!("{} multi-file breakpoints not yet supported.", "Error:".red().bold());
                         println!("  Use: b <line> or b <function> or b <function/N>");
                         continue;
                     }
@@ -417,24 +465,24 @@ impl DebuggerController for GdbController {
                         let offset: u32 = match offset_str.parse() {
                             Ok(n) => n,
                             Err(_) => {
-                                println!("Error: invalid line offset '{}'", offset_str);
+                                println!("{} invalid line offset '{}'", "Error:".red().bold(), offset_str);
                                 continue;
                             }
                         };
                         if let Some(&addr) = self.exports_by_name.get(fn_name) {
                             let start_line = self.find_function_start_line(addr as usize);
                             if start_line == 0 {
-                                println!("Error: could not determine start line for function '{}'", fn_name);
+                                println!("{} could not determine start line for function '{}'", "Error:".red().bold(), fn_name);
                                 continue;
                             }
                             let target_line = start_line + offset;
                             self.breakpoints.push(Breakpoint::AtLine(target_line));
-                            println!("Breakpoint {} at line {} ({} + {})", idx, target_line, fn_name, offset);
+                            self.print_bp_confirmed(idx, &format!("at line {} ({} + {})", target_line, fn_name, offset), target_line);
                         } else {
-                            println!("Error: function '{}' not found.", fn_name);
+                            println!("{} function '{}' not found.", "Error:".red().bold(), fn_name);
                             let names: Vec<&String> = self.exports_by_name.keys().collect();
                             if !names.is_empty() {
-                                println!("  Available: {}", names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+                                println!("  {} {}", "Available:".dimmed(), names.iter().map(|s| s.cyan().to_string()).collect::<Vec<_>>().join(", "));
                             }
                         }
                         continue;
@@ -443,12 +491,18 @@ impl DebuggerController for GdbController {
                     // 4. Plain function name → AtFunction
                     if self.exports_by_name.contains_key(arg) {
                         self.breakpoints.push(Breakpoint::AtFunction(arg.to_string()));
-                        println!("Breakpoint {} at function {}", idx, arg);
+                        let start_line = self.exports_by_name.get(arg)
+                            .and_then(|&addr| {
+                                let sl = self.find_function_start_line(addr as usize);
+                                if sl > 0 { Some(sl) } else { None }
+                            })
+                            .unwrap_or(0);
+                        self.print_bp_confirmed(idx, &format!("at function {}", arg.cyan()), start_line);
                     } else {
-                        println!("Error: function '{}' not found.", arg);
+                        println!("{} function '{}' not found.", "Error:".red().bold(), arg);
                         let names: Vec<&String> = self.exports_by_name.keys().collect();
                         if !names.is_empty() {
-                            println!("  Available: {}", names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+                            println!("  {} {}", "Available:".dimmed(), names.iter().map(|s| s.cyan().to_string()).collect::<Vec<_>>().join(", "));
                         }
                     }
                 }
@@ -456,9 +510,9 @@ impl DebuggerController for GdbController {
                     if let Ok(idx) = arg.parse::<usize>() {
                         if idx < self.breakpoints.len() {
                             self.breakpoints.remove(idx);
-                            println!("Deleted breakpoint {}", idx);
+                            println!("{} breakpoint #{}", "Deleted".yellow(), idx);
                         } else {
-                            println!("No breakpoint #{}", idx);
+                            println!("{} breakpoint #{}", "No".red(), idx);
                         }
                     } else {
                         println!("Usage: delete <breakpoint_number>");
@@ -473,13 +527,18 @@ impl DebuggerController for GdbController {
                                 for (i, bp) in self.breakpoints.iter().enumerate() {
                                     match bp {
                                         Breakpoint::AtLine(line) => {
-                                            println!("  #{} at line {}", i, line);
+                                            let preview = self.source_preview(*line);
+                                            println!("  {} at {} {}",
+                                                format!("#{}", i).cyan(),
+                                                format!("line {}", line).yellow(),
+                                                if preview.is_empty() { String::new() } else { format!(": {}", preview.dimmed()) }
+                                            );
                                         }
                                         Breakpoint::AtIp(ip) => {
-                                            println!("  #{} at ip {:04x}", i, ip);
+                                            println!("  {} at {} {:04x}", format!("#{}", i).cyan(), "ip".blue(), ip);
                                         }
                                         Breakpoint::AtFunction(name) => {
-                                            println!("  #{} at function {}", i, name);
+                                            println!("  {} at {} {}", format!("#{}", i).cyan(), "function".blue(), name.cyan());
                                         }
                                     }
                                 }
@@ -487,29 +546,34 @@ impl DebuggerController for GdbController {
                         }
                         "stack" | "s" => {
                             if ctx.call_stack.is_empty() {
-                                println!("Call stack: <top level>");
+                                println!("Call stack: {}", "<top level>".dimmed());
                             } else {
-                                println!("Call stack:");
+                                println!("{}", "Call stack:".bold());
                                 for (i, frame) in ctx.call_stack.iter().enumerate().rev() {
                                     let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
-                                    println!("  #{} {} at line {}", i, name, frame.line);
+                                    println!("  {} {} {} {}",
+                                        format!("#{}", i).cyan(),
+                                        name.green(),
+                                        "at line".dimmed(),
+                                        frame.line.to_string().yellow(),
+                                    );
                                 }
                             }
                         }
                         "locals" | "l" => {
                             let bp = ctx.task.bp;
                             let n = ctx.task.current_fn_n_locals;
-                            println!("Locals ({} slots from bp+1):", n);
+                            println!("{} ({} slots from bp+1):", "Locals".bold(), n);
                             for i in 0..n {
                                 let val = ctx.task.ram.read_i32(bp + 1 + i);
-                                println!("  [{}] = {}", i, val);
+                                println!("  {} = {}", format!("[{}]", i).cyan(), val.to_string().yellow());
                             }
                         }
                         "registers" | "r" => {
-                            println!("  IP  = {:04x} ({})", ctx.task.ip, ctx.task.ip);
-                            println!("  BP  = {:04x} ({})", ctx.task.bp, ctx.task.bp);
-                            println!("  SP  = {:04x} ({})", ctx.task.ram.sp, ctx.task.ram.sp);
-                            println!("  Line = {}", ctx.task.current_line);
+                            println!("  {} = {} ({})", "IP ".blue().bold(), format!("{:04x}", ctx.task.ip).yellow(), ctx.task.ip);
+                            println!("  {} = {} ({})", "BP ".blue().bold(), format!("{:04x}", ctx.task.bp).yellow(), ctx.task.bp);
+                            println!("  {} = {} ({})", "SP ".blue().bold(), format!("{:04x}", ctx.task.ram.sp).yellow(), ctx.task.ram.sp);
+                            println!("  {} = {}", "Line".blue().bold(), ctx.task.current_line.to_string().yellow());
                         }
                         _ => {
                             println!("Usage: info <breakpoints|stack|locals|registers>");
@@ -526,20 +590,20 @@ impl DebuggerController for GdbController {
                     if let Ok(slot) = arg.parse::<usize>() {
                         let bp = ctx.task.bp;
                         let val = ctx.task.ram.read_i32(bp + 1 + slot);
-                        println!("local[{}] = {}", slot, val);
+                        println!("{} = {}", format!("local[{}]", slot).cyan(), val.to_string().yellow());
                     } else {
                         println!("Usage: print <slot_index>");
                     }
                 }
                 "quit" | "q" => {
-                    println!("Exiting debugger.");
+                    println!("{}", "Exiting debugger.".yellow());
                     return DebuggerAction::Quit;
                 }
                 "help" | "h" => {
                     self.show_help();
                 }
                 _ => {
-                    println!("Unknown command: {}. Type 'help' for commands.", cmd);
+                    println!("{}: {}. Type {} for commands.", "Unknown command".red(), cmd, "'help'".cyan());
                 }
             }
         }

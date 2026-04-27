@@ -64,6 +64,8 @@ libloading = "0.8"
 log = { workspace = true }
 # URL encoding (Plan 102)
 urlencoding = { workspace = true }
+# Plan 199 Phase 7: Colored output for debugger
+colored = { workspace = true }
 
 # Plan 154: 真正的 HTTP 流式实现（reqwest::blocking）
 reqwest = { version = "0.12", features = ["blocking"] }
