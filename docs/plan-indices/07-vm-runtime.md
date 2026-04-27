@@ -30,8 +30,8 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 192 | VM Enum & Ext Codegen | ✅ | Enum declaration, ext method codegen, is-match for enum variants (done per Plan 200 ref) |
 | 194 | Monomorphic Dispatch for Generic Methods | ✅ | Compile-time type-based dispatch for HashMap/HashSet generic APIs (done per Plan 200 ref) |
 | 197 | VM Enum/Data, Generic Lists, Pattern Debug | ✅ | All 5 phases done: string eq, method chaining, struct debug, enum data, List<UserType>, pattern destruct, Option<T> |
-| 198 | Native Metadata from Source | ❌ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
-| 199 | VM Interactive Debugger | ❌ | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 198 | Native Metadata from Source | ✅ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 199 | VM Interactive Debugger | ✅ | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
 | 200 | VM Missing Features (Examples 14-33) | 🔧 | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | ✅ | All 4 pillars complete: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
 | 203 | Native Registry Namespace Unification | 🔧 | QualifiedName-based native function lookup replacing string concatenation |
@@ -43,7 +43,7 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 221 | Nanboxing Migration | ✅ | Migrate VM value representation to NaN-boxing for compact tagged values |
 
 ## Status Summary
-- Completed: 18 | Partial: 5 | Planned: 2 | Deprecated: 0
+- Completed: 20 | Partial: 5 | Planned: 1 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity
@@ -52,6 +52,4 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 ## Remaining Work
 - File-based test framework (Plan 177) to replace 3000+ lines of inline tests with maintainable .expected.* files
-- AutoVM Interactive Debugger (Plan 196) for SOURCE_LINE opcodes, call stack tracing, and AI agent debug API
 - Plan 200 remaining: .map_err() closure callback and fs module aliases
-- Plan Reports (Plan 199) to create 16 topic-based summary reports

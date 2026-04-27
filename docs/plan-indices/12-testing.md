@@ -14,7 +14,7 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 | 172 | A2TS Test Suite Reorganization | ✅ | Reorganize a2ts tests into categorized structure aligned with a2r/a2c; 24 tests passing |
 | 179 | Migrate vm_tests.rs to File-Based vm_file Tests | 🔧 | Migrate ~130 inline VM tests to file-based .at test files; ~167 file-based tests, vm_tests.rs slimmed |
 | 191 | Assert and Precise Linker Errors | ✅ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
-| 199 | VM Interactive Debugger | ❌ | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 199 | VM Interactive Debugger | ✅ | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
 | 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
 | 210 | Book Listing Test Harness | ✅ | Auto-discovery test harness for 1136 code listings |
 | 211 | Stdlib Test Coverage 80%+ | ✅ | VM + a2r tests for all stdlib modules (~60 new tests) |

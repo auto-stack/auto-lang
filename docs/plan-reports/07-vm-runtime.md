@@ -31,8 +31,8 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 192 | VM Enum and Ext Codegen | Complete | Enum declaration, ext method codegen, is-match for enum variants (done per Plan 200 ref) |
 | 194 | Monomorphic Dispatch for Generic Methods | Complete | Compile-time type-based dispatch for HashMap/HashSet generic APIs (done per Plan 200 ref) |
 | 197 | VM Enum/Data, Generic Lists, Pattern Debug | Complete | All 5 phases: string eq, method chaining, struct debug, enum data, List<UserType>, Option<T> |
-| 198 | Native Metadata from Source | Not Implemented | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
-| 199 | VM Interactive Debugger | Not Implemented | SOURCE_LINE opcodes, call stack, disassembler, debug controller, AI agent debug API |
+| 198 | Native Metadata from Source | Complete | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
+| 199 | VM Interactive Debugger | Complete | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
 | 200 | VM Missing Features (Examples 14-33) | Complete | loop/continue/tuple/range slicing, .map_err() closure, fs module aliases |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | Complete | All 4 pillars: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
 | 203 | Native Registry Namespace Unification | Partial | QualifiedName-based native function lookup replacing string concatenation |
@@ -44,13 +44,13 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 200, 201, 206, 207, 208, 212b, 221
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing), 203 (qualified name lookup in progress)
 
-**Not Implemented**: 198, 199
+**Not Implemented**: (none remaining)
 
-**Planned**: 177, 196
+**Planned**: 177
 
 ## Design
 
@@ -143,8 +143,8 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [192-vm-enum-ext-codegen.md](../plans/192-vm-enum-ext-codegen.md)
 - [194-monomorphic-dispatch.md](../plans/194-monomorphic-dispatch.md)
 - [197-vm-adt-generic-lists-pattern-debug.md](../plans/197-vm-adt-generic-lists-pattern-debug.md)
-- [198-native-metadata-from-source.md](../plans/198-native-metadata-from-source.md)
-- [199-vm-interactive-debugger.md](../plans/199-vm-interactive-debugger.md)
+- [198-native-metadata-from-source.md](../plans/old/198-native-metadata-from-source.md)
+- [199-vm-interactive-debugger.md](../plans/old/199-vm-interactive-debugger.md)
 - [200-vm-missing-features-examples-14-33.md](../plans/200-vm-missing-features-examples-14-33.md)
 - [201-vm-four-pillars-enum-closure-result-spec.md](../plans/201-vm-four-pillars-enum-closure-result-spec.md)
 - [203-native-registry-namespace.md](../plans/203-native-registry-namespace.md)
