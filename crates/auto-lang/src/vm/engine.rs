@@ -290,8 +290,10 @@ impl AutoVM {
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
         native_interface.register_std_shims();
-        // Plan 094: Register static FFI stdlib functions (File, Env, Time, etc.)
+        // Plan 094: Register manual FFI shims (cannot use #[rust_fn])
         crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+        // Plan 198: Register #[rust_fn]-annotated shims via inventory
+        native_interface.build_from_inventory();
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
         // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;

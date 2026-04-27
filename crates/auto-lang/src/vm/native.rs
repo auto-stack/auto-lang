@@ -172,6 +172,41 @@ impl NativeInterface {
         }
     }
 
+    /// Register a shim by name, looking up the ID from BIGVM_NATIVES.
+    ///
+    /// Used by inventory-based auto-registration (Plan 198).
+    /// Returns the resolved ID.
+    pub fn register_shim_by_name<F>(&mut self, name: &str, func: F) -> u16
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        use crate::vm::native_registry::BIGVM_NATIVES;
+        let id = BIGVM_NATIVES
+            .lock()
+            .unwrap()
+            .resolve_qualified(name)
+            .unwrap_or_else(|| panic!("register_shim_by_name: '{}' not found in BIGVM_NATIVES", name));
+        self.register_static(id, func);
+        id
+    }
+
+    /// Collect all inventory-submitted FFI registrations and register them.
+    ///
+    /// Called during VM init after BIGVM_NATIVES is populated.
+    pub fn build_from_inventory(&mut self) {
+        use crate::vm::ffi::StaticFFIRegistration;
+        for entry in inventory::iter::<StaticFFIRegistration> {
+            use crate::vm::native_registry::BIGVM_NATIVES;
+            let id = BIGVM_NATIVES
+                .lock()
+                .unwrap()
+                .resolve_qualified(entry.name)
+                .unwrap_or_else(|| panic!("build_from_inventory: '{}' not found in BIGVM_NATIVES", entry.name));
+            assert!(id < STATIC_ID_MAX, "Inventory shim '{}' resolved to dynamic ID {}", entry.name, id);
+            self.static_shims[id as usize] = Some(Arc::new(entry.shim));
+        }
+    }
+
     /// Legacy method for backwards compatibility
     /// Routes to register_static for IDs < 10000, register_dynamic otherwise
     pub fn register<F>(&mut self, id: u16, func: F)

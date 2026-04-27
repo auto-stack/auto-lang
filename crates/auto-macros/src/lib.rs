@@ -776,6 +776,14 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             Ok(())
         }
+
+        // Plan 198: Static registration via inventory
+        inventory::submit! {
+            crate::vm::ffi::StaticFFIRegistration {
+                name: #name,
+                shim: #shim_name,
+            }
+        }
     };
 
     expanded.into()

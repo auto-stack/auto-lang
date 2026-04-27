@@ -3108,229 +3108,88 @@ pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
 // ============================================================================
 
 /// Register all stdlib FFI functions with the NativeInterface
+/// Register manual shims that cannot use #[rust_fn] (custom VM access, variadic args, etc.).
+///
+/// #[rust_fn]-annotated functions are auto-registered via inventory (build_from_inventory).
+/// This function only registers the ~54 manual shims that need special handling.
 pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
-    // File functions
-    natives.register_static(NATIVE_FILE_READ_TEXT, __shim_File_read_text);
-    natives.register_static(NATIVE_FILE_WRITE_TEXT, __shim_File_write_text);
-    natives.register_static(NATIVE_FILE_EXISTS, __shim_File_exists);
-    natives.register_static(NATIVE_FILE_DELETE, __shim_File_delete);
-    natives.register_static(NATIVE_FILE_CREATE_DIR, __shim_File_create_dir);
-    natives.register_static(NATIVE_FILE_READ_BYTES, __shim_File_read_bytes);
-    natives.register_static(NATIVE_FILE_WRITE_BYTES, __shim_File_write_bytes);
-    natives.register_static(NATIVE_FILE_COPY, __shim_File_copy);
-    natives.register_static(NATIVE_FILE_SIZE, __shim_File_size);
-    natives.register_static(NATIVE_FILE_IS_DIR, __shim_File_is_dir);
-    natives.register_static(NATIVE_FILE_WALK, shim_file_walk);
-    natives.register_static(NATIVE_FILE_APPEND_TEXT, __shim_File_append_text);
-    natives.register_static(NATIVE_FILE_READ_LINES, shim_file_read_lines);
+    // File functions (manual shims only)
+    natives.register_shim_by_name("auto.file.walk", shim_file_walk);
+    natives.register_shim_by_name("auto.file.read_lines", shim_file_read_lines);
 
-    // Env functions
-    natives.register_static(NATIVE_ENV_GET, __shim_Env_get);
-    natives.register_static(NATIVE_ENV_SET, __shim_Env_set);
-    natives.register_static(NATIVE_ENV_REMOVE, __shim_Env_remove);
+    // Process functions (manual shims only)
+    natives.register_shim_by_name("auto.process.spawn_with_output", shim_process_spawn_with_output);
 
-    // Time functions
-    natives.register_static(NATIVE_TIME_NOW_MS, __shim_Time_now_ms);
-    natives.register_static(NATIVE_TIME_NOW_SEC, __shim_Time_now_sec);
-    natives.register_static(NATIVE_TIME_SLEEP_MS, __shim_Time_sleep_ms);
+    // Option functions (manual shims only)
+    natives.register_shim_by_name("Option.or", shim_option_or);
+    natives.register_shim_by_name("Option.unwrap_or", shim_option_or);
 
-    // Process functions
-    natives.register_static(NATIVE_PROCESS_EXIT, __shim_Process_exit);
-    natives.register_static(NATIVE_PROCESS_ARGS, __shim_Process_args);
-    natives.register_static(NATIVE_PROCESS_CURRENT_DIR, __shim_Process_current_dir);
-    natives.register_static(
-        NATIVE_PROCESS_SET_CURRENT_DIR,
-        __shim_Process_set_current_dir,
-    );
-    natives.register_static(NATIVE_PROCESS_SPAWN, __shim_Process_spawn);
-    natives.register_static(NATIVE_PROCESS_SPAWN_WITH_OUTPUT, shim_process_spawn_with_output);
+    // Math functions (manual shims only — polymorphic over i64/f64)
+    natives.register_shim_by_name("auto.math.abs", shim_math_abs);
+    natives.register_shim_by_name("auto.math.min", shim_math_min);
+    natives.register_shim_by_name("auto.math.max", shim_math_max);
+    natives.register_shim_by_name("auto.math.sqrt", shim_math_sqrt);
 
-    // Path functions
-    natives.register_static(NATIVE_PATH_JOIN, __shim_Path_join);
-    natives.register_static(NATIVE_PATH_PARENT, __shim_Path_parent);
-    natives.register_static(NATIVE_PATH_EXTENSION, __shim_Path_extension);
-    natives.register_static(NATIVE_PATH_FILENAME, __shim_Path_filename);
-    natives.register_static(NATIVE_PATH_CANONICALIZE, __shim_Path_canonicalize);
+    // Net/TCP functions (manual shims — use heap objects for TCP state)
+    // Note: registry uses underscores in method portion (auto.net.tcp_bind, not auto.net.tcp.bind)
+    natives.register_shim_by_name("auto.net.tcp_bind", shim_net_tcp_bind);
+    natives.register_shim_by_name("auto.net.tcp_listener_accept", shim_net_tcp_listener_accept);
+    natives.register_shim_by_name("auto.net.tcp_listener_close", shim_net_tcp_listener_close);
+    natives.register_shim_by_name("auto.net.tcp_connect", shim_net_tcp_connect);
+    natives.register_shim_by_name("auto.net.tcp_stream_read", shim_net_tcp_stream_read);
+    natives.register_shim_by_name("auto.net.tcp_stream_write", shim_net_tcp_stream_write);
+    natives.register_shim_by_name("auto.net.tcp_stream_read_all", shim_net_tcp_stream_read_all);
+    natives.register_shim_by_name("auto.net.tcp_stream_write_str", shim_net_tcp_stream_write_str);
+    natives.register_shim_by_name("auto.net.tcp_stream_close", shim_net_tcp_stream_close);
+    natives.register_shim_by_name("auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout);
+    natives.register_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout);
 
-    // String functions
-    natives.register_static(NATIVE_STR_LEN, __shim_Str_len);
-    natives.register_static(NATIVE_STR_IS_EMPTY, __shim_Str_is_empty);
-    natives.register_static(NATIVE_STR_CHAR_AT, __shim_Str_char_at);
-    natives.register_static(NATIVE_STR_SUBSTR, __shim_Str_substr);
-    natives.register_static(NATIVE_STR_CONTAINS, __shim_Str_contains);
-    natives.register_static(NATIVE_STR_STARTS_WITH, __shim_Str_starts_with);
-    natives.register_static(NATIVE_STR_ENDS_WITH, __shim_Str_ends_with);
-    natives.register_static(NATIVE_STR_TRIM, __shim_Str_trim);
-    natives.register_static(NATIVE_STR_SPLIT, __shim_Str_split);
-    natives.register_static(NATIVE_STR_REPEAT, __shim_Str_repeat);
-    natives.register_static(NATIVE_STR_REPLACE, __shim_Str_replace);
-    natives.register_static(NATIVE_STR_TO_UPPER, __shim_Str_to_upper);
-    natives.register_static(NATIVE_STR_TO_LOWER, __shim_Str_to_lower);
-    natives.register_static(NATIVE_STR_REVERSE, __shim_Str_reverse);
-    natives.register_static(NATIVE_STR_FIND, __shim_Str_find);
-    natives.register_static(NATIVE_STR_LINES, __shim_Str_lines);
-    natives.register_static(NATIVE_STR_PARSE_INT, __shim_Str_parse_int);
-    natives.register_static(NATIVE_STR_PARSE_FLOAT, __shim_Str_parse_float);
-    natives.register_static(NATIVE_STR_SPLIT_ONCE, __shim_Str_split_once);
-    natives.register_static(NATIVE_STR_MATCH_COUNT, __shim_Str_match_count);
-    natives.register_static(NATIVE_STR_REPLACE_FIRST, __shim_Str_replace_first);
+    // HTTP server functions (manual shims — heap objects for server state)
+    natives.register_shim_by_name("Http.server", shim_http_server);
+    natives.register_shim_by_name("Http.server_get", shim_http_server_get);
+    natives.register_shim_by_name("Http.server_post", shim_http_server_post);
+    natives.register_shim_by_name("Http.server_put", shim_http_server_put);
+    natives.register_shim_by_name("Http.server_delete", shim_http_server_delete);
+    natives.register_shim_by_name("Http.server_static", shim_http_server_static);
+    natives.register_shim_by_name("Http.server_listen", shim_http_server_listen);
+    natives.register_shim_by_name("Http.response", shim_http_response);
+    natives.register_shim_by_name("Http.response_status", shim_http_response_status);
+    natives.register_shim_by_name("Http.response_header", shim_http_response_header);
+    natives.register_shim_by_name("Http.response_text", shim_http_response_text);
+    natives.register_shim_by_name("Http.response_html", shim_http_response_html);
+    natives.register_shim_by_name("Http.response_bytes", shim_http_response_bytes);
 
-    // Char functions
-    natives.register_static(NATIVE_CHAR_IS_ALPHA, __shim_Char_is_alpha);
-    natives.register_static(NATIVE_CHAR_IS_DIGIT, __shim_Char_is_digit);
-    natives.register_static(NATIVE_CHAR_IS_ALPHANUM, __shim_Char_is_alphanum);
-    natives.register_static(NATIVE_CHAR_IS_WHITESPACE, __shim_Char_is_whitespace);
-    natives.register_static(NATIVE_CHAR_IS_IDENT, __shim_Char_is_ident);
-    natives.register_static(NATIVE_CHAR_TO_LOWER, __shim_Char_to_lower);
-    natives.register_static(NATIVE_CHAR_TO_UPPER, __shim_Char_to_upper);
+    // HTTP client functions (manual shims — heap objects for request/response)
+    natives.register_shim_by_name("Http.get", shim_http_get);
+    natives.register_shim_by_name("Http.post", shim_http_post);
+    natives.register_shim_by_name("Http.put", shim_http_put);
+    natives.register_shim_by_name("Http.delete", shim_http_delete);
+    natives.register_shim_by_name("Http.request", shim_http_request);
+    natives.register_shim_by_name("Http.request_builder_header", shim_request_builder_header);
+    natives.register_shim_by_name("Http.request_builder_body", shim_request_builder_body);
+    natives.register_shim_by_name("Http.request_builder_timeout", shim_request_builder_timeout);
+    natives.register_shim_by_name("Http.request_builder_json", shim_request_builder_json);
+    natives.register_shim_by_name("Http.request_builder_send", shim_request_builder_send);
+    natives.register_shim_by_name("Response.status_code", shim_response_status_code);
+    natives.register_shim_by_name("Response.header_get", shim_response_header_get);
+    natives.register_shim_by_name("Response.body", shim_response_body);
 
-    // Option functions (Plan 200 Task 2.4)
-    natives.register_static(NATIVE_OPTION_OR, shim_option_or);
-    natives.register_static(NATIVE_OPTION_UNWRAP_OR, shim_option_or);
+    // HTTP streaming (manual shims — heap objects for stream state)
+    natives.register_shim_by_name("auto.http_stream.get_stream", shim_http_get_stream);
+    natives.register_shim_by_name("auto.http_stream.post_stream", shim_http_post_stream);
+    natives.register_shim_by_name("auto.http_stream.stream_next", shim_http_stream_next);
+    natives.register_shim_by_name("auto.http_stream.stream_is_done", shim_http_stream_is_done);
+    natives.register_shim_by_name("auto.http_stream.stream_close", shim_http_stream_close);
+    natives.register_shim_by_name("Http.post_stream_with_headers", shim_http_post_stream_with_headers);
 
-    // Math functions
-    natives.register_static(NATIVE_MATH_ABS, shim_math_abs);
-    natives.register_static(NATIVE_MATH_MIN, shim_math_min);
-    natives.register_static(NATIVE_MATH_MAX, shim_math_max);
-    natives.register_static(NATIVE_MATH_SQRT, shim_math_sqrt);
-    natives.register_static(NATIVE_MATH_FLOOR, __shim_Math_floor);
-    natives.register_static(NATIVE_MATH_CEIL, __shim_Math_ceil);
-    natives.register_static(NATIVE_MATH_ROUND, __shim_Math_round);
-    natives.register_static(NATIVE_MATH_POW, __shim_Math_pow);
-    natives.register_static(NATIVE_MATH_MIN_F, __shim_Math_min_f);
-    natives.register_static(NATIVE_MATH_MAX_F, __shim_Math_max_f);
-    natives.register_static(NATIVE_MATH_SIN, __shim_Math_sin);
-    natives.register_static(NATIVE_MATH_COS, __shim_Math_cos);
-    natives.register_static(NATIVE_MATH_TAN, __shim_Math_tan);
-    natives.register_static(NATIVE_MATH_EXP, __shim_Math_exp);
-    natives.register_static(NATIVE_MATH_LN, __shim_Math_ln);
-    natives.register_static(NATIVE_MATH_LOG2, __shim_Math_log2);
-    natives.register_static(NATIVE_MATH_LOG10, __shim_Math_log10);
-    natives.register_static(NATIVE_MATH_ABS_F, __shim_Math_abs_f);
-    natives.register_static(NATIVE_MATH_SIGNUM, __shim_Math_signum);
-    natives.register_static(NATIVE_MATH_CLAMP, __shim_Math_clamp);
+    // Regex (manual shim — heap objects for compiled regex)
+    natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);
 
-    // Log functions
-    natives.register_static(NATIVE_LOG_DEBUG, __shim_Log_debug);
-    natives.register_static(NATIVE_LOG_INFO, __shim_Log_info);
-    natives.register_static(NATIVE_LOG_WARN, __shim_Log_warn);
-    natives.register_static(NATIVE_LOG_ERROR, __shim_Log_error);
+    // Task system (manual shim — VM access for event loop)
+    natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);
 
-    // JSON functions
-    natives.register_static(NATIVE_JSON_ENCODE, __shim_Json_encode);
-    natives.register_static(NATIVE_JSON_PARSE, __shim_Json_parse);
-    natives.register_static(NATIVE_JSON_PRETTIFY, __shim_Json_prettify);
-    natives.register_static(NATIVE_JSON_IS_VALID, __shim_Json_is_valid);
-    natives.register_static(NATIVE_JSON_GET, __shim_Json_get);
-    natives.register_static(NATIVE_JSON_GET_AT, __shim_Json_get_at);
-    natives.register_static(NATIVE_JSON_LEN, __shim_Json_len);
-    natives.register_static(NATIVE_JSON_TYPE, __shim_Json_type_of);
-    natives.register_static(NATIVE_JSON_AS_STRING, __shim_Json_as_string);
-    natives.register_static(NATIVE_JSON_AS_NUMBER, __shim_Json_as_number);
-    natives.register_static(NATIVE_JSON_AS_INT, __shim_Json_as_int);
-    natives.register_static(NATIVE_JSON_AS_BOOL, __shim_Json_as_bool);
-    natives.register_static(NATIVE_JSON_IS_NULL, __shim_Json_is_null);
-    natives.register_static(NATIVE_JSON_KEYS, __shim_Json_keys);
-    natives.register_static(NATIVE_JSON_HAS_KEY, __shim_Json_has_key);
-
-    // URL functions
-    natives.register_static(NATIVE_URL_ENCODE, __shim_Url_encode);
-    natives.register_static(NATIVE_URL_DECODE, __shim_Url_decode);
-    natives.register_static(NATIVE_URL_ENCODE_QUERY, __shim_Url_encode_query);
-    natives.register_static(NATIVE_URL_DECODE_QUERY, __shim_Url_decode_query);
-    natives.register_static(NATIVE_URL_JOIN_PATH, __shim_Url_join_path);
-    natives.register_static(NATIVE_URL_PARSE, __shim_Url_parse);
-    natives.register_static(NATIVE_URL_SCHEME, __shim_Url_scheme);
-    natives.register_static(NATIVE_URL_HOST, __shim_Url_host);
-    natives.register_static(NATIVE_URL_PORT, __shim_Url_port);
-    natives.register_static(NATIVE_URL_PATH, __shim_Url_path);
-    natives.register_static(NATIVE_URL_QUERY, __shim_Url_query);
-    natives.register_static(NATIVE_URL_FRAGMENT, __shim_Url_fragment);
-
-    // Net functions
-    natives.register_static(NATIVE_NET_TCP_BIND, shim_net_tcp_bind);
-    natives.register_static(NATIVE_NET_TCP_LISTENER_ACCEPT, shim_net_tcp_listener_accept);
-    natives.register_static(NATIVE_NET_TCP_LISTENER_LOCAL_ADDR, __shim_Net_tcp_listener_local_addr);
-    natives.register_static(NATIVE_NET_TCP_LISTENER_CLOSE, shim_net_tcp_listener_close);
-    natives.register_static(NATIVE_NET_TCP_CONNECT, shim_net_tcp_connect);
-    natives.register_static(NATIVE_NET_TCP_STREAM_READ, shim_net_tcp_stream_read);
-    natives.register_static(NATIVE_NET_TCP_STREAM_WRITE, shim_net_tcp_stream_write);
-    natives.register_static(NATIVE_NET_TCP_STREAM_READ_ALL, shim_net_tcp_stream_read_all);
-    natives.register_static(NATIVE_NET_TCP_STREAM_READ_LINE, __shim_Net_tcp_stream_read_line);
-    natives.register_static(NATIVE_NET_TCP_STREAM_WRITE_STR, shim_net_tcp_stream_write_str);
-    natives.register_static(NATIVE_NET_TCP_STREAM_CLOSE, shim_net_tcp_stream_close);
-    natives.register_static(NATIVE_NET_TCP_STREAM_PEER_ADDR, __shim_Net_tcp_stream_peer_addr);
-    natives.register_static(NATIVE_NET_TCP_STREAM_SET_READ_TIMEOUT, shim_net_tcp_stream_set_read_timeout);
-    natives.register_static(NATIVE_NET_TCP_STREAM_SET_WRITE_TIMEOUT, shim_net_tcp_stream_set_write_timeout);
-
-    // HTTP functions
-    natives.register_static(NATIVE_HTTP_SERVER, shim_http_server);
-    natives.register_static(NATIVE_HTTP_SERVER_GET, shim_http_server_get);
-    natives.register_static(NATIVE_HTTP_SERVER_POST, shim_http_server_post);
-    natives.register_static(NATIVE_HTTP_SERVER_PUT, shim_http_server_put);
-    natives.register_static(NATIVE_HTTP_SERVER_DELETE, shim_http_server_delete);
-    natives.register_static(NATIVE_HTTP_SERVER_STATIC, shim_http_server_static);
-    natives.register_static(NATIVE_HTTP_SERVER_LISTEN, shim_http_server_listen);
-    natives.register_static(NATIVE_HTTP_RESPONSE, shim_http_response);
-    natives.register_static(NATIVE_HTTP_RESPONSE_STATUS, shim_http_response_status);
-    natives.register_static(NATIVE_HTTP_RESPONSE_HEADER, shim_http_response_header);
-    natives.register_static(NATIVE_HTTP_RESPONSE_TEXT, shim_http_response_text);
-    natives.register_static(NATIVE_HTTP_RESPONSE_HTML, shim_http_response_html);
-    natives.register_static(NATIVE_HTTP_RESPONSE_BYTES, shim_http_response_bytes);
-    natives.register_static(NATIVE_HTTP_OK, __shim_Http_ok);
-    natives.register_static(NATIVE_HTTP_CREATED, __shim_Http_created);
-    natives.register_static(NATIVE_HTTP_BAD_REQUEST, __shim_Http_bad_request);
-    natives.register_static(NATIVE_HTTP_NOT_FOUND, __shim_Http_not_found);
-    natives.register_static(NATIVE_HTTP_INTERNAL_ERROR, __shim_Http_internal_error);
-    natives.register_static(NATIVE_HTTP_GET, shim_http_get);
-    natives.register_static(NATIVE_HTTP_POST, shim_http_post);
-    natives.register_static(NATIVE_HTTP_PUT, shim_http_put);
-    natives.register_static(NATIVE_HTTP_DELETE, shim_http_delete);
-
-    // Plan 195: RequestBuilder
-    natives.register_static(NATIVE_HTTP_REQUEST, shim_http_request);
-    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_HEADER, shim_request_builder_header);
-    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_BODY, shim_request_builder_body);
-    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_TIMEOUT, shim_request_builder_timeout);
-    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_JSON, shim_request_builder_json);
-    natives.register_static(NATIVE_HTTP_REQUEST_BUILDER_SEND, shim_request_builder_send);
-
-    // Plan 195: Response access
-    natives.register_static(NATIVE_RESPONSE_STATUS_CODE, shim_response_status_code);
-    natives.register_static(NATIVE_RESPONSE_HEADER_GET, shim_response_header_get);
-    natives.register_static(NATIVE_RESPONSE_BODY, shim_response_body);
-
-    // Plan 152: 流式 HTTP
-    natives.register_static(NATIVE_HTTP_GET_STREAM, shim_http_get_stream);
-    natives.register_static(NATIVE_HTTP_POST_STREAM, shim_http_post_stream);
-    natives.register_static(NATIVE_HTTP_STREAM_NEXT, shim_http_stream_next);
-    natives.register_static(NATIVE_HTTP_STREAM_IS_DONE, shim_http_stream_is_done);
-    natives.register_static(NATIVE_HTTP_STREAM_CLOSE, shim_http_stream_close);
-    // Plan 159: HTTP streaming with custom headers
-    natives.register_static(NATIVE_HTTP_POST_STREAM_WITH_HEADERS, shim_http_post_stream_with_headers);
-
-    // SSE Parser functions (Plan 152)
-    natives.register_static(NATIVE_SSE_PARSE, __shim_parse_sse);
-
-    // Regex functions (Plan 159)
-    natives.register_static(NATIVE_REGEX_IS_MATCH, __shim_Regex_is_match);
-    natives.register_static(NATIVE_REGEX_FIND_ALL, shim_regex_find_all);
-
-    // Task/Msg functions (Plan 121)
-    natives.register_static(NATIVE_TASK_SPAWN, __shim_Task_spawn);
-    natives.register_static(NATIVE_TASK_SEND, __shim_TaskHandle_send);
-    natives.register_static(NATIVE_TASK_HANDLE_IS_NULL, __shim_TaskHandle_is_null);
-    natives.register_static(NATIVE_TASK_HANDLE_TYPE, __shim_TaskHandle_task_type);
-    natives.register_static(NATIVE_TASK_HANDLE_ID, __shim_TaskHandle_instance_id);
-    natives.register_static(NATIVE_TASK_SYSTEM_START, __shim_TaskSystem_start);
-    natives.register_static(NATIVE_TASK_SYSTEM_RUN, shim_task_system_run); // Plan 224: manual shim with VM access
-    natives.register_static(NATIVE_TASK_SEND_AWAIT, __shim_TaskHandle_send_await); // Plan 124 Phase 2.2
-    natives.register_static(NATIVE_TASK_ASK, __shim_TaskHandle_ask); // Plan 124 Phase 2.3
-    natives.register_static(NATIVE_CTX_REPLY, __shim_ctx_reply); // Plan 127: ctx.reply()
-    natives.register_static(NATIVE_TASK_SINGLETON_SEND, __shim_Task_singleton_send); // Plan 127: Task.send for singleton tasks
-
-    // Plan 192: Rust stdlib dynamic dispatch
-    natives.register_static(NATIVE_RUST_STDLIB_DISPATCH, shim_rust_stdlib_dispatch);
+    // Plan 192: Rust stdlib dynamic dispatch (manual — uses heap objects)
+    natives.register_shim_by_name("auto.rust_stdlib.dispatch", shim_rust_stdlib_dispatch);
 }
 
 // ============================================================================

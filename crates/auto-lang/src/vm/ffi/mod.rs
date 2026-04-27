@@ -43,6 +43,17 @@ pub use error::FFIError;
 pub use stdlib::register_stdlib_ffi;
 pub use c_ffi::CFfiRuntime;
 
+/// Inventory-collected FFI registration entry (Plan 198).
+///
+/// Each `#[rust_fn("Name.method")]` annotated function generates one of these
+/// via `inventory::submit!`. At VM init, `build_from_inventory()` iterates
+/// all submissions and registers them by looking up the ID from BIGVM_NATIVES.
+pub struct StaticFFIRegistration {
+    pub name: &'static str,
+    pub shim: fn(&mut crate::vm::task::AutoTask, &crate::vm::engine::AutoVM) -> Result<(), crate::vm::engine::VMError>,
+}
+inventory::collect!(StaticFFIRegistration);
+
 /// Maximum ID for static FFI bindings
 pub const STATIC_ID_MAX: u16 = 10000;
 
