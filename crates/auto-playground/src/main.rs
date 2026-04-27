@@ -1,8 +1,11 @@
+mod debugger;
 mod error;
 mod routes;
 mod vm_runner;
 
+use axum::extract::ws::WebSocketUpgrade;
 use axum::http::{HeaderValue, Method};
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
 use std::path::PathBuf;
@@ -34,7 +37,8 @@ async fn main() {
     let api_routes = Router::new()
         .route("/api/run", post(routes::run::run_handler))
         .route("/api/trans", post(routes::trans::trans_handler))
-        .route("/api/examples", get(routes::examples::examples_handler));
+        .route("/api/examples", get(routes::examples::examples_handler))
+        .route("/api/debug/ws", get(debug_ws_handler));
 
     let app = if dist_dir.exists() {
         api_routes.fallback_service(tower_http::services::ServeDir::new(&dist_dir))
@@ -51,6 +55,10 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 
     drop(frontend_child);
+}
+
+async fn debug_ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(debugger::session::run_debug_session)
 }
 
 fn spawn_frontend_dev(frontend_dir: &std::path::Path) -> Option<tokio::process::Child> {

@@ -1012,6 +1012,119 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     Ok(String::new())
 }
 
+/// Plan 225: Compile source and create a VM with stdout capture ready for debugging.
+/// The caller is responsible for setting the debugger controller, spawning, and running tasks.
+pub fn create_vm_from_source(code: &str) -> AutoResult<(
+    crate::vm::engine::AutoVM,
+    std::sync::Arc<std::sync::RwLock<String>>,
+    usize,
+)> {
+    use crate::vm::codegen::Codegen;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::opcode::OpCode;
+    use crate::vm::loader::Linker;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let mut session = compile::CompileSession::new();
+    session.collect_rust_imports(code)?;
+    session.collect_py_imports(code)?;
+    session.resolve_deps(code)?;
+    session.resolve_uses(code)?;
+
+    let rust_ffi_native_interface = init_rust_ffi(&session);
+    let py_ffi_native_interface = init_py_ffi(&session);
+
+    let mut parser = Parser::new_with_type_store(code, session.type_store());
+    let mut ast = parser.parse()?;
+
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
+
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+    });
+
+    for stmt in &type_decls {
+        codegen.compile_stmt(stmt)?;
+    }
+
+    if !other_stmts.is_empty() {
+        let n_locals = 16;
+        codegen.emit_op(OpCode::FN_PROLOG);
+        codegen.emit_byte(0);
+        codegen.emit_byte(n_locals as u8);
+        codegen.emit_op(OpCode::RESERVE_STACK);
+        codegen.emit_byte(n_locals as u8);
+        for stmt in other_stmts.iter() {
+            codegen.compile_stmt(stmt)?;
+        }
+    }
+
+    codegen.code.push(OpCode::HALT as u8);
+
+    let strings = codegen.strings.clone();
+    let mut linker = Linker::new();
+    let dep_modules = session.take_compiled_modules();
+    for module in dep_modules {
+        linker.add_module(module);
+    }
+
+    let object_keys = codegen.object_keys.clone();
+    let object_types = codegen.object_types.clone();
+    let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    let main_module = codegen.finish("<main>".to_string());
+    linker.add_module(main_module);
+
+    let (linked_code, global_symbols) = linker.link().map_err(|e| {
+        let span = if let Some(pos) = e.source_pos {
+            crate::error::pos_to_span(pos)
+        } else {
+            find_use_symbol_span(code, &e.message)
+        };
+        let help = if e.source_pos.is_some() {
+            Some(format!("Use a `use` statement to import '{}' from a module, or check for typos", e.symbol))
+        } else {
+            extract_undefined_symbol(&e.message).map(|s| format!("Check if '{}' is defined and exported in the module", s))
+        };
+        crate::error::AutoError::MsgWithSource(crate::error::MsgWithSource {
+            source: miette::NamedSource::new("<script>", code.to_string()),
+            message: e.message.clone(),
+            span,
+            help,
+        })
+    })?;
+
+    let main_entry = if let Some(&addr) = global_symbols.get("main").or_else(|| global_symbols.get("test")) {
+        addr as usize
+    } else {
+        let dep_size: usize = linker.modules.iter().take(linker.modules.len() - 1)
+            .map(|m| m.code.len())
+            .sum();
+        dep_size
+    };
+
+    let flash = VirtualFlash::from_vec_with_metadata(
+        linked_code,
+        global_symbols,
+        object_keys,
+        object_types,
+    );
+
+    let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 1024);
+    vm.load_strings(strings);
+    vm.load_generic_registry(generic_registry);
+
+    if let Some(rust_ni) = rust_ffi_native_interface {
+        vm.merge_native_interface(&rust_ni);
+    }
+    if let Some(py_ni) = py_ffi_native_interface {
+        vm.merge_native_interface(&py_ni);
+    }
+
+    Ok((vm, output_buffer, main_entry))
+}
+
 /// Evaluate config code using AutoVM (Plan 081 Phase 2)
 ///
 /// **Replaces** `eval_config_with_scope` which uses the deprecated Interpreter.
