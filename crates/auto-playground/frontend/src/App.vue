@@ -11,6 +11,12 @@
     :live-compile="liveCompile"
     :highlight-lines="highlightedOutputLines"
     :on-run="run"
+    :is-debugging="debug.isDebugging.value"
+    :is-paused="debug.state.value?.status === 'paused'"
+    :bytecode="debug.bytecode.value"
+    :debug-state="debug.state.value"
+    :current-source-line="highlightedSourceLine"
+    :highlighted-offsets="highlightedBytecodeOffsets"
     @update:source="source = $event"
     @run="run"
     @trans="transpile(activeTab)"
@@ -19,6 +25,9 @@
     @toggle-live="liveCompile = !liveCompile"
     @line-click="highlightSourceLine"
     @share="share"
+    @toggle-debug="toggleDebug"
+    @debug-command="onDebugCommand"
+    @offset-click="onOffsetClick"
   />
   <div class="toast" :class="{ visible: shareToast.visible }">
     {{ shareToast.message }}
@@ -28,12 +37,41 @@
 <script setup lang="ts">
 import PlaygroundLayout from './components/PlaygroundLayout.vue';
 import { usePlayground } from './composables/usePlayground';
+import { useDebugger } from './composables/useDebugger';
+import { computed } from 'vue';
 
 const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
   activeTab, transpiledCode, liveCompile,
-  highlightedOutputLines, run, transpile, switchTab, loadExample, highlightSourceLine, share, shareToast,
+  highlightedOutputLines, highlightedSourceLine,
+  run, transpile, switchTab, loadExample, highlightSourceLine, share, shareToast,
 } = usePlayground();
+
+const debug = useDebugger();
+
+const highlightedBytecodeOffsets = computed(() => {
+  if (!highlightedSourceLine.value) return undefined;
+  return debug.lineToOffsets.value[highlightedSourceLine.value];
+});
+
+function toggleDebug() {
+  if (debug.isDebugging.value) {
+    debug.stop();
+  } else {
+    debug.connect(source.value);
+  }
+}
+
+function onDebugCommand(cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop') {
+  debug.sendCommand(cmd);
+}
+
+function onOffsetClick(offset: number) {
+  const line = debug.offsetToLine.value[offset];
+  if (line) {
+    highlightSourceLine(line);
+  }
+}
 </script>
 
 <style>

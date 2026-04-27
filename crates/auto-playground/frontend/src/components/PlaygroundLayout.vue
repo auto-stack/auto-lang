@@ -6,6 +6,21 @@
         <ExampleSelector @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
+        <button
+          :class="['debug-btn', { active: isDebugging }]"
+          @click="$emit('toggleDebug')"
+          :title="isDebugging ? 'Stop Debugging' : 'Start Debugging'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10"/>
+            <path d="M12 2a10 10 0 0 0-10 10"/>
+            <path d="M12 12l4-4"/>
+            <path d="M12 12l-4-4"/>
+            <path d="M12 12l4 4"/>
+            <path d="M12 12l-4 4"/>
+          </svg>
+          {{ isDebugging ? 'Stop' : 'Debug' }}
+        </button>
         <button class="share-btn" @click="$emit('share')" title="Copy shareable link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
@@ -36,9 +51,13 @@
             :transpiled-code="transpiledCode"
             :live-compile="liveCompile"
             :highlight-lines="highlightLines"
+            :bytecode="bytecode"
+            :current-ip="debugState?.ip"
+            :highlighted-offsets="highlightedOffsets"
             @tab-change="onTabChange"
             @trans="$emit('trans')"
             @toggle-live="$emit('toggleLive')"
+            @offset-click="$emit('offsetClick', $event)"
           />
         </div>
       </div>
@@ -68,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import type { OutputTab } from '../types';
+import type { OutputTab, BytecodeLine, DebugState } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import OutputPanel from './OutputPanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
@@ -86,6 +105,13 @@ defineProps<{
   liveCompile: boolean;
   highlightLines?: number[];
   onRun: () => void;
+  // Debug props
+  isDebugging?: boolean;
+  isPaused?: boolean;
+  bytecode?: BytecodeLine[];
+  debugState?: DebugState | null;
+  currentSourceLine?: number | null;
+  highlightedOffsets?: number[];
 }>();
 
 const emit = defineEmits<{
@@ -97,6 +123,10 @@ const emit = defineEmits<{
   toggleLive: [];
   lineClick: [line: number];
   share: [];
+  // Debug events
+  toggleDebug: [];
+  debugCommand: [cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop'];
+  offsetClick: [offset: number];
 }>();
 
 function onTabChange(tab: OutputTab) {
@@ -158,6 +188,29 @@ function onLoadExample(code: string) {
 .share-btn:hover {
   background: #4a4a4a;
   color: #fff;
+}
+.debug-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #3c3c3c;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.debug-btn:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+.debug-btn.active {
+  background: #b78e1c;
+  color: #fff;
+  border-color: #b78e1c;
 }
 
 .workspace {

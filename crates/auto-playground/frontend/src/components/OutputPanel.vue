@@ -44,7 +44,15 @@
       </button>
     </div>
     <div class="content">
+      <BytecodePanel
+        v-if="activeTab === 'bytecode'"
+        :bytecode="bytecode || []"
+        :current-ip="currentIp"
+        :highlighted-offsets="highlightedOffsets"
+        @offset-click="$emit('offsetClick', $event)"
+      />
       <CodePreview
+        v-else
         :code="transpiledCode"
         :language="activeTab"
         :highlight-lines="highlightLines"
@@ -55,20 +63,25 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { OutputTab } from '../types';
+import type { OutputTab, BytecodeLine } from '../types';
 import CodePreview from './CodePreview.vue';
+import BytecodePanel from './BytecodePanel.vue';
 
 const props = defineProps<{
   activeTab: OutputTab;
   transpiledCode: string;
   liveCompile: boolean;
   highlightLines?: number[];
+  bytecode?: BytecodeLine[];
+  currentIp?: number;
+  highlightedOffsets?: number[];
 }>();
 
 defineEmits<{
   tabChange: [tab: OutputTab];
   trans: [];
   toggleLive: [];
+  offsetClick: [offset: number];
 }>();
 
 const tabs: { id: OutputTab; label: string }[] = [
@@ -76,6 +89,7 @@ const tabs: { id: OutputTab; label: string }[] = [
   { id: 'c', label: 'C' },
   { id: 'python', label: 'Python' },
   { id: 'typescript', label: 'TS' },
+  { id: 'bytecode', label: 'Bytecode' },
 ];
 
 const copied = ref(false);
