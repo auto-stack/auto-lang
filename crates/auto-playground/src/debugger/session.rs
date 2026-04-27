@@ -16,7 +16,7 @@ pub async fn run_debug_session(mut ws: WebSocket) {
     // AutoVM is !Send due to GenericRegistry containing Rc, so we create and run it
     // entirely inside a single OS thread via block_on.
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Handle::current();
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime for debugger");
         rt.block_on(async move {
             run_debug_thread(ws, &source).await;
         });
@@ -37,6 +37,8 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
             return;
         }
     };
+
+    tracing::debug!("Debug session: compiling done, bytecode lines={}", vm.flash.memory.len());
 
     // 2. Disassemble bytecode and send to frontend
     let disasm = auto_lang::vm::disasm::Disassembler::new(&vm.flash);
@@ -62,20 +64,44 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
     // 3. Setup controller channels
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<DebugCommand>();
     let (state_tx, state_rx) = tokio::sync::mpsc::channel::<DebugState>(16);
+    let state_tx2 = state_tx.clone();
 
     let (controller, breakpoints) =
-        PlaygroundController::new(cmd_rx, state_tx, Some(output_buffer));
+        PlaygroundController::new(cmd_rx, state_tx, Some(output_buffer.clone()));
     vm.set_debugger(Box::new(controller));
 
     // 4. Spawn relay task on tokio runtime (handles WS ↔ controller messaging)
     let relay_handle = tokio::spawn(relay_task(ws, cmd_tx, state_rx, breakpoints));
 
     // 5. Run VM inline in this OS thread
+    tracing::debug!("Debug session: starting VM at entry_point={}", entry_point);
     vm.spawn_task(entry_point, 16384);
     vm.run_task_loop().await;
+    tracing::debug!("Debug session: VM finished");
 
-    // 6. VM finished — abort relay and close connection
-    relay_handle.abort();
+    // 6. Send finished state to frontend
+    let stdout = output_buffer.read().unwrap().clone();
+    let _ = state_tx2.send(DebugState {
+        status: super::controller::DebugStatus::Finished,
+        line: 0,
+        ip: 0,
+        op: String::new(),
+        stack: Vec::new(),
+        call_stack: Vec::new(),
+        locals: Vec::new(),
+        registers: super::controller::RegisterInfo { ip: 0, bp: 0, sp: 0 },
+        stdout,
+        stderr: String::new(),
+        result: None,
+    }).await;
+
+    // 7. Wait for relay task to finish gracefully instead of aborting
+    // (relay_task will close WebSocket after sending the final state)
+    match tokio::time::timeout(std::time::Duration::from_secs(5), relay_handle).await {
+        Ok(Ok(())) => tracing::debug!("Debug session: relay task finished gracefully"),
+        Ok(Err(e)) => tracing::warn!("Debug session: relay task panicked: {:?}", e),
+        Err(_) => tracing::warn!("Debug session: relay task timed out"),
+    }
 }
 
 async fn wait_for_source(ws: &mut WebSocket) -> Option<String> {
@@ -130,6 +156,9 @@ async fn relay_task(
                         if send_json(&mut ws, payload).await.is_err() {
                             break;
                         }
+                        if matches!(s.status, super::controller::DebugStatus::Finished | super::controller::DebugStatus::Error) {
+                            break;
+                        }
                     }
                     None => break,
                 }
@@ -147,6 +176,7 @@ async fn relay_task(
             }
         }
     }
+    let _ = ws.send(Message::Close(None)).await;
 }
 
 fn handle_client_message(

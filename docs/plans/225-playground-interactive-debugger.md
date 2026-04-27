@@ -1,6 +1,6 @@
 # Plan 225: Playground 交互式调试器 (Playground Interactive Debugger)
 
-## Status: 📋 PLANNED
+## Status: ✅ COMPLETED
 
 **Goal:** 在 auto-playground 中实现完整的 AutoVM 交互式调试体验。用户可以在浏览器中打开 Debug 模式，左侧编辑 Auto 源码、右侧查看对应字节码汇编，设置断点、单步执行（step into/over/out）、继续运行，并实时观察调用栈、局部变量和操作数栈的动态变化。
 

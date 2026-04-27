@@ -31,7 +31,7 @@ export function useDebugger() {
     return map;
   });
 
-  function connect(source: string) {
+  function connect(source: string, initialBreakpoints: number[] = []) {
     if (ws.value) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -42,6 +42,10 @@ export function useDebugger() {
       isDebugging.value = true;
       // Send source to start debug session
       socket.send(JSON.stringify({ type: 'debug.start', source }));
+      // Send initial breakpoints if any
+      if (initialBreakpoints.length > 0) {
+        socket.send(JSON.stringify({ type: 'breakpoints.set', lines: initialBreakpoints }));
+      }
     };
 
     socket.onmessage = (event) => {

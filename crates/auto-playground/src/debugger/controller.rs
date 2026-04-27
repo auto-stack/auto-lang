@@ -1,5 +1,6 @@
 use auto_lang::vm::debugger::{DebugContext, DebuggerAction, DebuggerController};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Commands sent from the WebSocket session to the controller
@@ -77,6 +78,7 @@ pub struct PlaygroundController {
     depth_at_pause: Arc<Mutex<usize>>,
     last_line: Arc<Mutex<u32>>,
     stop_requested: Arc<Mutex<bool>>,
+    has_started: Arc<AtomicBool>,
     output_buffer: Option<Arc<std::sync::RwLock<String>>>,
 }
 
@@ -95,6 +97,7 @@ impl PlaygroundController {
             depth_at_pause: Arc::new(Mutex::new(0)),
             last_line: Arc::new(Mutex::new(0)),
             stop_requested: Arc::new(Mutex::new(false)),
+            has_started: Arc::new(AtomicBool::new(false)),
             output_buffer,
         };
         (controller, breakpoints)
@@ -109,6 +112,15 @@ impl DebuggerController for PlaygroundController {
 
         match *self.mode.lock().unwrap() {
             DebugMode::Run => {
+                if !self.has_started.swap(true, Ordering::SeqCst) {
+                    // First instruction: pause to let frontend set breakpoints
+                    return true;
+                }
+                let mut last_line = self.last_line.lock().unwrap();
+                if ctx.line == *last_line || ctx.line == 0 {
+                    return false;
+                }
+                *last_line = ctx.line;
                 self.breakpoints.lock().unwrap().contains(&ctx.line)
             }
             DebugMode::Step => true,
@@ -141,7 +153,7 @@ impl DebuggerController for PlaygroundController {
     fn on_pause(&mut self, ctx: &DebugContext) -> DebuggerAction {
         // Build and send state to frontend
         let state = build_debug_state(ctx, self.output_buffer.clone());
-        let _ = self.state_tx.blocking_send(state);
+        let _ = self.state_tx.try_send(state);
 
         // Wait for next command from frontend
         let rx = self.cmd_rx.lock().unwrap();

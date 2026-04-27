@@ -4,7 +4,7 @@ mod routes;
 mod vm_runner;
 
 use axum::extract::ws::WebSocketUpgrade;
-use axum::http::{HeaderValue, Method};
+use axum::http::Method;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
@@ -27,10 +27,7 @@ async fn main() {
     }
 
     let cors = CorsLayer::new()
-        .allow_origin([
-            HeaderValue::from_static("http://localhost:5173"),
-            HeaderValue::from_static("http://localhost:3000"),
-        ])
+        .allow_origin(tower_http::cors::Any)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(tower_http::cors::Any);
 

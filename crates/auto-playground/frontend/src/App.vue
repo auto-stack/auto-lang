@@ -41,7 +41,7 @@
 import PlaygroundLayout from './components/PlaygroundLayout.vue';
 import { usePlayground } from './composables/usePlayground';
 import { useDebugger } from './composables/useDebugger';
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 
 const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
@@ -63,7 +63,7 @@ function toggleDebug() {
     debug.stop();
     breakpoints.value = [];
   } else {
-    debug.connect(source.value);
+    debug.connect(source.value, breakpoints.value);
   }
 }
 
@@ -82,6 +82,32 @@ function onBreakpointsChange(lines: number[]) {
   breakpoints.value = lines;
   debug.setBreakpoints(lines);
 }
+
+function onKeyDown(e: KeyboardEvent) {
+  if (!debug.isDebugging.value) return;
+  switch (e.key) {
+    case 'F5':
+      e.preventDefault();
+      onDebugCommand('continue');
+      break;
+    case 'F10':
+      e.preventDefault();
+      onDebugCommand('step_over');
+      break;
+    case 'F11':
+      e.preventDefault();
+      onDebugCommand(e.shiftKey ? 'step_out' : 'step');
+      break;
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown);
+});
 </script>
 
 <style>

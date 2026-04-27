@@ -936,7 +936,13 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
         codegen.emit_byte(n_locals as u8);
         codegen.emit_op(OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
-        for stmt in other_stmts.iter() {
+        for (i, stmt) in ast.stmts.iter().enumerate() {
+            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+                continue;
+            }
+            if i < ast.source_lines.len() {
+                codegen.emit_source_line(ast.source_lines[i]);
+            }
             codegen.compile_stmt(stmt)?;
         }
     }
@@ -1056,7 +1062,13 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
         codegen.emit_byte(n_locals as u8);
         codegen.emit_op(OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
-        for stmt in other_stmts.iter() {
+        for (i, stmt) in ast.stmts.iter().enumerate() {
+            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+                continue;
+            }
+            if i < ast.source_lines.len() {
+                codegen.emit_source_line(ast.source_lines[i]);
+            }
             codegen.compile_stmt(stmt)?;
         }
     }

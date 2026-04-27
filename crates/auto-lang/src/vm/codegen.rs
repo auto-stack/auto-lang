@@ -5973,7 +5973,7 @@ impl Codegen {
 
     /// Plan 199: Emit SOURCE_LINE opcode if line number changed.
     /// Avoids redundant emission for consecutive statements on the same line.
-    fn emit_source_line(&mut self, line: usize) {
+    pub(crate) fn emit_source_line(&mut self, line: usize) {
         let line = line as u32;
         if line > 0 && line != self.current_source_line {
             self.current_source_line = line;

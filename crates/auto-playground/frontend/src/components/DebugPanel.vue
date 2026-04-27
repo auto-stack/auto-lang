@@ -19,12 +19,16 @@
           </thead>
           <tbody>
             <tr
-              v-for="(val, idx) in reversedStack"
-              :key="idx"
-              :class="{ 'is-top': idx === 0 }"
+              v-for="item in stackDisplay"
+              :key="item.idx"
+              :class="{
+                'is-top': item.isTop,
+                'stack-pushed': item.isPushed,
+                'stack-popped': item.isPopped,
+              }"
             >
-              <td>{{ state.stack.length - 1 - idx }}</td>
-              <td>{{ val }}</td>
+              <td>{{ item.idx }}</td>
+              <td>{{ item.val }}</td>
             </tr>
           </tbody>
         </table>
@@ -72,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import type { DebugState } from '../types';
 
 const props = defineProps<{
@@ -88,7 +92,49 @@ const tabs = [
   { id: 'registers' as const, label: 'Registers' },
 ];
 
-const reversedStack = computed(() => [...props.state.stack].reverse());
+// Stack diff animation
+const pushedIndices = ref<Set<number>>(new Set());
+const poppedIndices = ref<Set<number>>(new Set());
+
+watch(() => props.state.stack, async (newStack, oldStack) => {
+  const oldArr = oldStack || [];
+  const newArr = newStack || [];
+  const added = new Set<number>();
+  const removed = new Set<number>();
+
+  // Find pushed items (present in new but not at same index in old)
+  for (let i = oldArr.length; i < newArr.length; i++) {
+    added.add(i);
+  }
+  // Find popped items (present in old but not in new)
+  for (let i = newArr.length; i < oldArr.length; i++) {
+    removed.add(i);
+  }
+
+  pushedIndices.value = added;
+  poppedIndices.value = removed;
+
+  await nextTick();
+  setTimeout(() => {
+    pushedIndices.value = new Set();
+    poppedIndices.value = new Set();
+  }, 600);
+}, { deep: true, flush: 'post' });
+
+const stackDisplay = computed(() => {
+  const arr = [...props.state.stack].reverse();
+  return arr.map((val, revIdx) => {
+    const idx = props.state.stack.length - 1 - revIdx;
+    return {
+      val,
+      idx,
+      isTop: revIdx === 0,
+      isPushed: pushedIndices.value.has(idx),
+      isPopped: poppedIndices.value.has(idx),
+    };
+  });
+});
+
 const reversedCallStack = computed(() => [...props.state.call_stack].reverse());
 
 function formatHex(n: number): string {
@@ -146,6 +192,20 @@ function formatHex(n: number): string {
 .stack-view .is-top td {
   background: #0e639c30;
   color: #fff;
+}
+.stack-view .stack-pushed td {
+  animation: flash-green 0.6s ease;
+}
+.stack-view .stack-popped td {
+  animation: flash-red 0.6s ease;
+}
+@keyframes flash-green {
+  0% { background: #4caf5040; }
+  100% { background: transparent; }
+}
+@keyframes flash-red {
+  0% { background: #f4433640; }
+  100% { background: transparent; }
 }
 .frame-item {
   padding: 4px;
