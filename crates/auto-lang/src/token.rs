@@ -370,7 +370,6 @@ impl Token {
             "alias" => Some(TokenKind::Alias),
             "break" => Some(TokenKind::Break),
             "continue" => Some(TokenKind::Continue),
-            "next" => Some(TokenKind::Continue), // Plan 200 Task 1.2: next → continue alias
             "return" => Some(TokenKind::Return),
             "ext" => Some(TokenKind::Ext),
             "static" => Some(TokenKind::Static),
@@ -451,11 +450,5 @@ mod tests {
     fn test_loop_keyword() {
         // Plan 200 Task 1.1: loop keyword
         assert_eq!(Token::keyword_kind("loop"), Some(TokenKind::Loop));
-    }
-
-    #[test]
-    fn test_next_keyword() {
-        // Plan 200 Task 1.2: next → continue alias
-        assert_eq!(Token::keyword_kind("next"), Some(TokenKind::Continue));
     }
 }

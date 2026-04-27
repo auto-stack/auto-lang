@@ -920,7 +920,7 @@ impl<'a> Lexer<'a> {
                     return Ok(self.str());
                 }
                 '`' => {
-                    return Ok(self.raw_str());
+                    return self.fstr();
                 }
                 '#' => {
                     // Plan 095: Check for comptime keywords (#if, #for, #is, #{)

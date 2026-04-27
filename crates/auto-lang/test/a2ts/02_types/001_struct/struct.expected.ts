@@ -23,11 +23,11 @@ class Circle {
 function main(): void {
     let p = Point(1, 2);
     p.x = 3;
-    console.log("P: ${p.x}, ${p.y}");
+    console.log(`P: ${p.x}, ${p.y}`);
     
 
     const circle = Circle(5, 1, new Point(50, 50));
-    console.log("C: ${circle.center.x}, ${circle.center.y}, ${circle.radius}");
+    console.log(`C: ${circle.center.x}, ${circle.center.y}, ${circle.radius}`);
 }
 
 main();

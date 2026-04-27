@@ -1,6 +1,6 @@
 int main(void) {
-    unknown (*)(int, int) add = closure_0;
-    unknown result = add(5, 3);
+    int (*)(int, int) add = closure_0;
+    int result = add(5, 3);
     return 0;
 }
 

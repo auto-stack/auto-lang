@@ -10,7 +10,7 @@ pub struct Message {
     content: &str,
 }
 
-pub fn load() -> Result<Vec<Message>, &str> {
+pub fn load() -> Result<Vec<Message>, String> {
     let mut messages = List::new();
     return Ok(messages);
 }

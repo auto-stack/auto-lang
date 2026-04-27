@@ -6387,7 +6387,7 @@ mod tests {
 
     #[test]
     fn test_shadcn_mode() {
-        let mut gen = VueGenerator::new_shadcn();
+        let gen = VueGenerator::new_shadcn();
         assert!(gen.is_shadcn());
 
         let gen = VueGenerator::new().with_mode(VueMode::Shadcn);

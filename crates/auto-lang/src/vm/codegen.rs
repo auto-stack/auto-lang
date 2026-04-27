@@ -3553,8 +3553,17 @@ impl Codegen {
                 }
 
                 // Plan 200: Check if this is tuple field access (t.0, t.1, ...)
-                if field.as_str().parse::<usize>().is_ok() {
-                    // Compile the tuple expression (pushes tuple_id onto stack)
+                // Only treat as tuple access if the object is known to be a tuple type,
+                // otherwise numeric fields like a.3 should be object field access
+                let is_tuple_field = field.as_str().parse::<usize>().is_ok()
+                    && if let Expr::Ident(var_name) = obj.as_ref() {
+                        self.var_types.get(var_name.as_ref())
+                            .map(|ty| matches!(ty, Type::Tuple(_)))
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    };
+                if is_tuple_field {
                     self.compile_expr(obj)?;
                     let field_index: u8 = field.as_str().parse().unwrap();
                     self.emit(OpCode::GET_TUPLE_FIELD);

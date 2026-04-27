@@ -23,5 +23,5 @@ impl std::fmt::Display for Color {
 
 fn main() {
     let color: Color = Color::BLUE;
-    println!("The color is ${color}");
+    println!("The color is {}", color);
 }
