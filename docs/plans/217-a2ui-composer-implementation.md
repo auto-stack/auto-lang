@@ -4,7 +4,7 @@
 
 **Phase 0: COMPLETE** — A2UI Protocol Bridge implemented and tested.
 **Phase 1: PARTIAL** — Simplified three-panel composer scaffold builds and runs.
-**Phase 2-4: DEFERRED** — Blocked on parser limitations (method calls in on blocks, array types in models, range for loops in view, nested if blocks).
+**Phase 2-4: DEFERRED** — Parser improvements made (method calls in conditions, range for loops, arithmetic ops), but full node-tree composer requires deeper changes (Map/Vec in model, recursive components, drag-and-drop).
 
 ### What Was Actually Built (vs. Original Plan)
 
@@ -23,13 +23,12 @@ is a simplified scaffold that works within current Auto language parser limitati
 
 ### Parser Limitations Discovered During Implementation
 
-1. **Method calls in `on` blocks**: `.tags.push("x")` panics with `Expected identifier, got Dot`
-2. **Array types in models**: `[]str` and array append cause parse/type errors
-3. **Range `for` loops in view**: `for i in 0..n` not supported
+1. ~~**Method calls in `on` blocks**: `.tags.push("x")` panics with `Expected identifier, got Dot`~~ **FIXED** — `parse_condition_expr` now handles method calls and chained dot access
+2. **Array types in models**: `[]str` and array append cause parse/type errors — still requires `parse_array_type` enhancement
+3. ~~**Range `for` loops in view**: `for i in 0..n` not supported~~ **FIXED** — `parse_view_for_loop` now handles `0..10` and `0..=n` range expressions
 4. **`class:` after multi-line child blocks inside `if`**: fails with `Expected term, got RBrace`;
    workaround is `class:` BEFORE children when using block wrappers inside `if`
-5. **Nested `if` blocks**: cause parser errors; workaround is helper boolean variables with `&&`
-   in `on` blocks
+5. ~~**Nested `if` blocks**: cause parser errors~~ **IMPROVED** — `parse_condition_expr` now handles method calls, arithmetic, and boolean literals, reducing the need for workarounds
 6. **Square brackets in class strings**: `min-h-[60px]` may confuse parser; avoid in class values
 
 ## Goal

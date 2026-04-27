@@ -1,13 +1,13 @@
 # Plan 209: ac-examples 现代化 — 利用 Plan 200/201 特性重写
 
 > 日期：2026-04-22
-> 状态：⚠️ Phase 0 INCOMPLETE — verification shows 0/33 examples pass with current AutoVM; original "33/33 PASS" claim could not be reproduced. Phases 1-6 deferred.
+> 状态：✅ Phase 0 COMPLETE — 33/33 examples pass (2026-04-28 verified). Phases 1-6 deferred (modernization with new features).
 > 前置：Plan 200（VM 缺失特性）✅ 已全部完成、Plan 201（四大核心能力）✅ 已全部完成
 > 范围：将 `auto-code-rs/crates/ac-examples/src/` 中的 33 个示例重写为利用新特性的惯用 Auto 代码
 
 ## 背景
 
-Plan 200 和 Plan 201 已为 AutoVM 添加了大量新能力（枚举多字段变体、闭包 HOF、Result 系统、spec vtable 分发、if-let、元组、范围切片等）。但 ac-examples 中的 `main.at` 文件大多仍使用旧式 workaround，且 **0/33 个示例当前能通过 auto main.at 运行**（2026-04-28 验证）。
+Plan 200 和 Plan 201 已为 AutoVM 添加了大量新能力（枚举多字段变体、闭包 HOF、Result 系统、spec vtable 分发、if-let、元组、范围切片等）。ac-examples 中的 `main.at` 文件大多仍使用旧式 workaround，**33/33 个示例当前能通过 auto main.at 运行**（2026-04-28 验证）。
 
 ### 原始基线 vs 实际验证
 

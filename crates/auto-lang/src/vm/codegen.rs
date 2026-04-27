@@ -6326,6 +6326,26 @@ impl Codegen {
         }
     }
 
+    /// Stdlib method return type for chained calls (e.g., str.slice().trim())
+    fn stdlib_method_return_type(&self, receiver_type: ObjectType, method: &str) -> ObjectType {
+        match (receiver_type, method) {
+            // String methods returning String
+            (ObjectType::String, "trim" | "slice" | "sub" | "repeat" | "to_upper" | "to_lower"
+                | "to_uppercase" | "to_lowercase" | "replace") => ObjectType::String,
+            // String methods returning Int
+            (ObjectType::String, "len" | "length" | "find" | "char_at" | "parse_int") => ObjectType::Int,
+            // String methods returning Bool
+            (ObjectType::String, "starts_with" | "ends_with" | "contains" | "is_empty") => ObjectType::Bool,
+            // Int/Uint methods returning String
+            (ObjectType::Int | ObjectType::Uint, "to_string" | "to_hex") => ObjectType::String,
+            // Array methods returning Int
+            (ObjectType::Array, "len" | "length") => ObjectType::Int,
+            // Array methods returning Array (chained)
+            (ObjectType::Array, "map" | "filter" | "slice" | "reverse") => ObjectType::Array,
+            _ => ObjectType::NestedObject,
+        }
+    }
+
     // Plan 073: Convert expression to ObjectType for object field tracking
     pub(crate) fn infer_object_type(&self, expr: &Expr) -> ObjectType {
         match expr {
@@ -6346,8 +6366,7 @@ impl Codegen {
                     if let Some(ret_ty) = self.fn_return_types.get(&fn_name) {
                         self.type_to_object_type(ret_ty)
                     } else {
-                        // Bug C fix: for chained calls, infer the obj's return type first,
-                        // then look up "{obj_type}.{method}" in fn_return_types
+                        // Infer the receiver's type first
                         let obj_type = self.infer_object_type(obj.as_ref());
                         let type_name = match obj_type {
                             ObjectType::NestedObject => {
@@ -6378,7 +6397,8 @@ impl Codegen {
                         if let Some(ret_ty) = self.fn_return_types.get(&qualified) {
                             self.type_to_object_type(ret_ty)
                         } else {
-                            ObjectType::NestedObject
+                            // Stdlib method return type inference for chained calls
+                            self.stdlib_method_return_type(obj_type, method.as_ref())
                         }
                     }
                 } else if let Expr::Ident(name) = call.name.as_ref() {

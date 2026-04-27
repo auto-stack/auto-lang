@@ -10020,7 +10020,7 @@ impl<'a> Parser<'a> {
         // Expect "in" keyword
         self.expect_ident("in")?;
 
-        // Parse iterable (e.g., .todos or .section.items)
+        // Parse iterable (e.g., .todos or .section.items or 0..10)
         let iterable = if self.is_kind(TokenKind::Dot) {
             self.next();
             let first_name = self.cur.text.to_string();
@@ -10033,6 +10033,23 @@ impl<'a> Parser<'a> {
                 let name = self.cur.text.to_string();
                 self.next();
                 result.push_str(&format!(".{}", name));
+            }
+            result
+        } else if self.is_kind(TokenKind::Int) {
+            // Range expression: 0..10 or 0..=n
+            let start = self.cur.text.to_string();
+            self.next();
+            let mut result = start;
+            if self.is_kind(TokenKind::Range) {
+                self.next();
+                result.push_str("..");
+                result.push_str(&self.cur.text.to_string());
+                self.next();
+            } else if self.is_kind(TokenKind::RangeEq) {
+                self.next();
+                result.push_str("..=");
+                result.push_str(&self.cur.text.to_string());
+                self.next();
             }
             result
         } else {
@@ -10217,7 +10234,30 @@ impl<'a> Parser<'a> {
             } else if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.to_string();
                 self.next();
-                parts.push(text);
+                // Handle method calls: ident.method(args)
+                if self.is_kind(TokenKind::Dot) {
+                    self.next();
+                    let method = self.cur.text.to_string();
+                    self.next();
+                    parts.push(format!("{}.{}", text, method));
+                    // Handle parentheses after method name
+                    if self.is_kind(TokenKind::LParen) {
+                        self.next();
+                        parts.push("(".to_string());
+                        while !self.is_kind(TokenKind::RParen)
+                            && !self.is_kind(TokenKind::LBrace)
+                        {
+                            parts.push(self.cur.text.to_string());
+                            self.next();
+                        }
+                        if self.is_kind(TokenKind::RParen) {
+                            self.next();
+                            parts.push(")".to_string());
+                        }
+                    }
+                } else {
+                    parts.push(text);
+                }
             } else if self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Gt)
                 || self.is_kind(TokenKind::Le) || self.is_kind(TokenKind::Ge)
                 || self.is_kind(TokenKind::Eq) || self.is_kind(TokenKind::Neq)
@@ -10232,7 +10272,6 @@ impl<'a> Parser<'a> {
                 self.next();
                 parts.push(num);
             } else if self.is_kind(TokenKind::Str) {
-                // Handle string literals like "button"
                 let s = format!("\"{}\"", self.cur.text);
                 self.next();
                 parts.push(s);
@@ -10246,6 +10285,17 @@ impl<'a> Parser<'a> {
                 let op = self.cur.text.to_string();
                 self.next();
                 parts.push(op);
+            } else if self.is_kind(TokenKind::Add) || self.is_kind(TokenKind::Sub)
+                || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Div)
+                || self.is_kind(TokenKind::Mod)
+            {
+                let op = self.cur.text.to_string();
+                self.next();
+                parts.push(op);
+            } else if self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) {
+                let text = self.cur.text.to_string();
+                self.next();
+                parts.push(text);
             } else {
                 break;
             }
