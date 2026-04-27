@@ -32,7 +32,7 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 197 | VM Enum/Data, Generic Lists, Pattern Debug | ✅ | All 5 phases done: string eq, method chaining, struct debug, enum data, List<UserType>, pattern destruct, Option<T> |
 | 198 | Native Metadata from Source | ✅ | Eliminate hardcoded native metadata by deriving from #[vm] source declarations |
 | 199 | VM Interactive Debugger | ✅ | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
-| 200 | VM Missing Features (Examples 14-33) | 🔧 | loop/continue/tuple/range slicing done; .map_err() closure and fs module aliases pending |
+| 200 | VM Missing Features (Examples 14-33) | ✅ | loop/continue/tuple/range slicing, .map_err() closure, fs module aliases — all done |
 | 201 | VM Four Pillars (Enum/Closure/Result/Spec) | ✅ | All 4 pillars complete: multi-field enum, closure HOF, Result heap objects, spec vtable dispatch |
 | 203 | Native Registry Namespace Unification | ✅ | QualifiedName + resolve_qualified + import_scope; ~137 short-name aliases eliminated; monomorphic dispatch refactored |
 | 206 | Closure HOF + call_closure API | ✅ | call_closure public API, List.map/filter/reduce/find/for_each shims |
@@ -41,9 +41,10 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 212b | Rust FFI E2E Dynamic Loading | ✅ | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
 | 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
 | 221 | Nanboxing Migration | ✅ | Migrate VM value representation to NaN-boxing for compact tagged values |
+| 224 | VM Async Runtime | ✅ | TaskSystem.run bridge, AWAIT_FUTURE reentrant execution, async FFI shim support |
 
 ## Status Summary
-- Completed: 20 | Partial: 5 | Planned: 1 | Deprecated: 0
+- Completed: 22 | Partial: 4 | Planned: 0 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity
@@ -52,4 +53,3 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 ## Remaining Work
 - File-based test framework (Plan 177) to replace 3000+ lines of inline tests with maintainable .expected.* files
-- Plan 200 remaining: .map_err() closure callback and fs module aliases

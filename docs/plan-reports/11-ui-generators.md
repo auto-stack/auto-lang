@@ -30,15 +30,15 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 175 | Migrate auto-ui into auto-lang | Planned | Move GPUI and ICED backend runners from standalone crate into auto-lang |
 | 180 | a2rust-ui Generator | Planned | Wire RustGenerator into auto gen for GPUI-based Rust UI |
 | 181 | a2vscode Generator | Planned | Generate VSCode extension projects from AURA widgets |
-| 205 | DynamicComponent VM UI | Partial | VM-driven dynamic UI rendering with VmBridge, AuraViewBuilder, and iced integration |
+| 205 | DynamicComponent VM UI | Complete | VM-driven dynamic UI rendering with VmBridge, AuraViewBuilder, and iced integration |
 | 212a | LSP + VSCode Extension Modernization | Complete | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
 | 217 | a2ui Composer Implementation | Partial | A2UI composer for visual widget assembly and code generation |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145 (8 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205 (9 plans fully complete)
 
-**Partial**: 099, 133, 144, 147, 205, 217 (6 plans with significant progress)
+**Partial**: 099, 133, 144, 147, 217 (5 plans with significant progress)
 
 **Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181 (10 plans not yet started or early stage)
 
@@ -132,6 +132,6 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - 175-migrate-auto-ui.md
 - 180-a2rust-ui-generator.md
 - 181-a2vscode-generator.md
-- [205-dynamic-component-vm-ui.md](../plans/205-dynamic-component-vm-ui.md)
+- [205-dynamic-component-vm-ui.md](../plans/old/205-dynamic-component-vm-ui.md)
 - [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
 - [217-a2ui-composer-implementation.md](../plans/217-a2ui-composer-implementation.md)

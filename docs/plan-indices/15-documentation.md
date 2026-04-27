@@ -29,8 +29,8 @@ Plans covering documentation infrastructure, example projects, component galleri
 | 188 | Tier 3 Blocker Resolution | ⏳ | Fix prerequisites blocking Tier 3 mini-app examples (011-016) |
 | 189 | Tier 4 Prerequisites | ⏳ | Resolve feature gaps for Tier 4 real-app examples (017-024) |
 | 196 | Plan Reports by Topic | ✅ | Create 16 summary report files in docs/plan-reports/ |
-| 202 | Auto Playground | 🔧 | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
-| 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
+| 202 | Auto Playground | ✅ | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 209 | ac-examples Modernization | ✅ | 33/33 examples pass; Phase 0 complete |
 | 210 | Book Listing Test Harness | ✅ | Auto-discovery test harness for 1136 code listings |
 | 218 | Plan Status Reconciliation | ✅ | Reconcile plan statuses across all plan-indices and plan-reports files |
 
@@ -47,5 +47,5 @@ Plans covering documentation infrastructure, example projects, component galleri
 - QuickStart Sprint A (Plan 141) is partially complete with remaining tutorial projects to implement
 - Unified UI Examples (Plan 183) and Tier blockers (Plans 188, 189) drive the progressive example roadmap
 - AI Mode (Plan 150) would enable better tooling integration for AI-assisted development
-- Plan 202: Auto Playground web-based code editor and transpilation viewer
-- Plan 209: Rewrite 33 ac-examples using modern language features
+- Plan 202: Auto Playground web-based code editor and transpilation viewer — DONE
+- Plan 209: Rewrite 33 ac-examples using modern language features — DONE (33/33 pass)

@@ -16,15 +16,16 @@ AutoLang's testing infrastructure evolved from inline Rust unit tests embedded i
 | 179 | Migrate vm_tests.rs to File-Based Tests | Partial | Migrate ~130 inline VM tests to file-based `.at` tests across 16 category directories |
 | 191 | Assert and Precise Linker Errors | Complete | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker errors |
 | 199 | VM Interactive Debugger | Complete | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
-| 209 | ac-examples Modernization | Partial | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
+| 209 | ac-examples Modernization | Complete | 33/33 examples pass; Phase 0 complete, Phases 1-6 (modernization) deferred |
 | 210 | Book Listing Test Harness | Complete | Auto-discovery test harness for 1136 code listings |
 | 211 | Stdlib Test Coverage 80%+ | Complete | VM + a2r tests for all stdlib modules (~85 new tests across 12 categories) |
+| 225 | Playground Interactive Debugger | Complete | Browser-based VM debugger with breakpoints, step controls, stack/locals panels |
 
 ## Status
 
 **Implemented:** All three transpiler test suites (a2r, a2c, a2ts) have been reorganized from chaotic flat-numbered directories into consistent categorized structures. The massive 270-test regression from the unified enum and parser refactoring has been fully resolved, bringing the codebase from 270 failures to zero across approximately 2,533 tests. The a2r suite expanded from ~60 active tests to 144 by recovering previously ignored tests and converting inline string-literal tests into file-based ones. The a2c suite was trimmed from 239 directories (88 orphaned, 21 redundant enum smoke tests, 3 duplicate question tests) down to roughly 90 well-organized test cases across 25 categories.
 
-**Partial:** The VM file-based test migration (Plan 179) has established the directory structure and framework across 16 categories, with roughly 167 file-based tests created. The inline `vm_tests.rs` file has been slimmed down but still retains tests that require direct bytecode construction, AST inspection, or config-mode parsing. The AutoDown test suite (Plan 110) has its directory structure and test runner pattern defined but needs completion of the full 88-test suite covering lexer, parser, transpiler snapshots, math, and error recovery phases. The ac-examples modernization (Plan 209) is in progress, rewriting 33 examples to use features from Plans 200/201 across Phases 0-6.
+**Partial:** The VM file-based test migration (Plan 179) has established the directory structure and framework across 16 categories, with roughly 167 file-based tests created. The inline `vm_tests.rs` file has been slimmed down but still retains tests that require direct bytecode construction, AST inspection, or config-mode parsing. The AutoDown test suite (Plan 110) has its directory structure and test runner pattern defined but needs completion of the full 88-test suite covering lexer, parser, transpiler snapshots, math, and error recovery phases.
 
 **Planned:** Plan 199 proposes SOURCE_LINE opcodes, call stack, disassembler, debug controller, and AI agent debug API for the VM. All phases complete — implemented as GDB-style interactive debugger with `auto debug` CLI.
 
@@ -88,6 +89,6 @@ The linker error precision improvement addresses the problem where "Undefined sy
 - `docs/plans/179-migrate-vm-tests-to-file-based.md`
 - `docs/plans/191-assert-and-precise-linker-errors.md`
 - `docs/plans/old/199-vm-interactive-debugger.md`
-- `docs/plans/209-example-modernization.md`
+- `docs/plans/old/209-example-modernization.md`
 - `docs/plans/210-book-listing-test-harness-design.md`
 - `docs/plans/211-stdlib-test-coverage.md`

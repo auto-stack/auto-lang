@@ -30,16 +30,16 @@ AutoLang's documentation and learning ecosystem spans 21 plans organized around 
 | 188 | Tier 3 Blocker Resolution | Planned | Fix prerequisites blocking Tier 3 mini-app examples |
 | 189 | Tier 4 Prerequisites | Planned | Resolve feature gaps for Tier 4 real-app examples |
 | 196 | Plan Reports by Topic | Complete | Create 16 summary report files in docs/plan-reports/ organized by topic area |
-| 202 | Auto Playground | Partial | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
-| 209 | ac-examples Modernization | Partial | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
+| 202 | Auto Playground | Complete | Web-based code editor + VM execution + transpilation viewer (Vue 3 + axum backend) |
+| 209 | ac-examples Modernization | Complete | 33/33 examples pass; Phase 0 complete, Phases 1-6 (modernization with new features) deferred |
 | 210 | Book Listing Test Harness | Complete | Auto-discovery test harness for 1136 code listings in the book |
 | 218 | Plan Status Reconciliation | Complete | Reconcile plan status across all tracking documents and reports |
 
 ## Status
 
-**Implemented**: Plans 097 (TodoMVC), 103 (Component Gallery), 137 (Comptime Examples), 145 (Jet Gallery), 148 (Navigation), 150 (AI Mode)
+**Implemented**: Plans 097 (TodoMVC), 103 (Component Gallery), 137 (Comptime Examples), 145 (Jet Gallery), 148 (Navigation), 150 (AI Mode), 202 (Playground), 209 (ac-examples)
 
-**Partial**: Plan 141 (QuickStart Sprint A -- Sprint A tutorials partially done, Sprints B-D remain), Plan 202 (Auto Playground -- partially implemented), Plan 209 (ac-examples modernization -- Phase 0 done, rewriting 33 examples)
+**Partial**: Plan 141 (QuickStart Sprint A -- Sprint A tutorials partially done, Sprints B-D remain)
 
 **Planned**: Plans 032, 104, 105, 106, 107, 108, 109, 132, 144, 149, 157, 183, 188, 189
 
@@ -119,7 +119,7 @@ The Comptime Example Codebase (Plan 137, completed) provides 16 working example 
 - 188-tier3-blocker-resolution.md
 - 189-tier4-prerequisites.md
 - [196-plan-reports.md](../plans/196-plan-reports.md)
-- [202-playground-design.md](../plans/202-playground-design.md)
-- [209-example-modernization.md](../plans/209-example-modernization.md)
+- [202-playground-design.md](../plans/old/202-playground-design.md)
+- [209-example-modernization.md](../plans/old/209-example-modernization.md)
 - [210-book-listing-test-harness-design.md](../plans/210-book-listing-test-harness-design.md)
 - [218-plan-status-reconciliation.md](../plans/218-plan-status-reconciliation.md)

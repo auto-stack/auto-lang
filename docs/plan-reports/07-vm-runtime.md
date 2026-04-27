@@ -41,10 +41,11 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
 | 212b | Rust FFI E2E Dynamic Loading | Complete | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
 | 221 | Nanboxing Migration | Complete | Migrate VM value representation to NaN-boxing for improved memory and performance |
+| 224 | VM Async Runtime | Complete | TaskSystem.run bridge, AWAIT_FUTURE reentrant execution, async FFI shim support |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -147,9 +148,10 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [199-vm-interactive-debugger.md](../plans/old/199-vm-interactive-debugger.md)
 - [200-vm-missing-features-examples-14-33.md](../plans/200-vm-missing-features-examples-14-33.md)
 - [201-vm-four-pillars-enum-closure-result-spec.md](../plans/201-vm-four-pillars-enum-closure-result-spec.md)
-- [203-native-registry-namespace.md](../plans/203-native-registry-namespace.md)
+- [203-native-registry-namespace.md](../plans/old/203-native-registry-namespace.md)
 - [206-closure-hof-call-closure-api.md](../plans/206-closure-hof-call-closure-api.md)
 - [207-enum-multi-field-destruct-construction.md](../plans/207-enum-multi-field-destruct-construction.md)
 - [208-result-heap-object.md](../plans/208-result-heap-object.md)
 - [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
 - [221-nanboxing-migration.md](../plans/221-nanboxing-migration.md)
+- [224-vm-async-runtime.md](../plans/old/224-vm-async-runtime.md)

@@ -30,7 +30,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 180 | a2rust-ui Generator | Planned | Wire RustGenerator into auto gen for Rust UI backend (GPUI examples) |
 | 181 | a2vscode Generator | Planned | VSCode extension generator from AURA widgets using a2vue + webview panel |
 | 187 | a2ts Vue Adapter | Planned | Replace Vue generator's inline JS with a2ts delegation for proper TypeScript output |
-| 204 | a2r Transpiler Completeness | Partial | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping |
+| 204 | a2r Transpiler Completeness | Complete | Close a2r feature gap: Result, spec, struct, enum, stdlib method mapping — all 6 phases done |
 | 213 | a2py Python Transpiler Maturation | Complete | Expand Python transpiler from 18% to 80%+ coverage (Option/Result, closures, generics) |
 | 215 | a2ts TypeScript Transpiler Maturation | Complete | Expand TypeScript transpiler from 24 to 80+ tests (Option/Result, collections, async) |
 | 216 | C FFI Bindgen | Complete | Auto-bindgen for C headers with libloading runtime, a2c auto-bind, CLI integration |
@@ -109,7 +109,7 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220.
 
-- [204-a2r-transpiler-completeness.md](../plans/204-a2r-transpiler-completeness.md)
+- [204-a2r-transpiler-completeness.md](../plans/old/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
 - [215-a2ts-maturation.md](../plans/215-a2ts-maturation.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)

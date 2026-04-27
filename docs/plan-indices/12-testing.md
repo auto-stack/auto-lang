@@ -15,7 +15,7 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 | 179 | Migrate vm_tests.rs to File-Based vm_file Tests | 🔧 | Migrate ~130 inline VM tests to file-based .at test files; ~167 file-based tests, vm_tests.rs slimmed |
 | 191 | Assert and Precise Linker Errors | ✅ | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
 | 199 | VM Interactive Debugger | ✅ | SOURCE_LINE opcodes, call stack, disassembler, GDB-style debugger, AI agent debug API |
-| 209 | ac-examples Modernization | 🔧 | Rewrite 33 examples using Plan 200/201 features; Phase 0 done |
+| 209 | ac-examples Modernization | ✅ | 33/33 examples pass; Phase 0 complete |
 | 210 | Book Listing Test Harness | ✅ | Auto-discovery test harness for 1136 code listings |
 | 211 | Stdlib Test Coverage 80%+ | ✅ | VM + a2r tests for all stdlib modules (~60 new tests) |
 
@@ -31,6 +31,6 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 - Complete AutoDown test suite with snapshot tests for Typst, HTML, and edge-case coverage
 - Finish VM file-based test migration for remaining inline tests that require AST inspection or bytecode-level verification
 - Add assert/assert_eq/assert_ne as native intrinsics and improve linker error spans to point to exact call sites (Plan 191)
-- Plan 209: Rewrite 33 ac-examples using modern language features
+- Plan 209: Rewrite 33 ac-examples using modern language features — DONE (33/33 pass)
 - Plan 210: Build auto-discovery test harness for 1136 book code listings
 - Plan 211: Add ~60 stdlib tests to reach 80%+ coverage
