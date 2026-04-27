@@ -145,6 +145,16 @@ Organized as a design reference book (originals preserved in `docs/design/raw/`)
 
 ## Common Development Tasks
 
+### ⚠️ CRITICAL: Never Discard Uncommitted Changes
+
+**NEVER use `git checkout --`, `git restore`, `git reset --hard`, or any destructive git operation on files you did not modify yourself.** If you see unexpected changes in the working tree:
+
+1. **Always back up first** — copy the changed files to `tmp/` or another safe location before taking any action
+2. **Ask the user** what to do with unexpected changes — they may be intentional work from another session
+3. **Use `git stash`** instead of `git checkout` if you need to temporarily set aside changes
+
+This rule applies especially to files outside the primary task scope (e.g., website/, docs/, config files).
+
 ### ⚠️ CRITICAL: Test Expectation Rules
 
 **IMPORTANT**: When fixing failing tests, you have two options:
