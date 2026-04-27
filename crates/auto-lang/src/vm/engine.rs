@@ -2001,10 +2001,17 @@ impl AutoVM {
                 }
                 // Plan 120: Result type constructor - Ok(value)
                 // Plan 208: Wrap value in a Result.Ok heap object
+                // Plan 204: type_tag operand (0=i32, 1=f64) for multi-type support
                 OpCode::CREATE_OK => {
                     use crate::vm::generic_registry::GenericInstanceData;
-                    let val = task.ram.pop_i32();
-                    let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![auto_val::Value::Int(val)]);
+                    let type_tag = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                    let val = if type_tag == 1 {
+                        auto_val::Value::Double(task.ram.pop_f64())
+                    } else {
+                        auto_val::Value::Int(task.ram.pop_i32())
+                    };
+                    let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
                     let instance_id = self.insert_heap_object(instance);
                     task.ram.push_i32(instance_id as i32);
                 }

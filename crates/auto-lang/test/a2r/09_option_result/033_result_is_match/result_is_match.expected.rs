@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-fn process(res: Result<i32, String>) -> i32 {
+fn process(res: Result<i32, Box<dyn Err>>) -> i32 {
     match res {
         Ok(v) => v,
         Err(e) => -1,
@@ -12,7 +12,7 @@ fn process(res: Result<i32, String>) -> i32 {
 }
 
 fn main() {
-    let r1: Result<i32, String> = Ok(42);
+    let r1: Result<i32, Box<dyn Err>> = Ok(42);
     let r2 = Err("bad value");
     let a = process(r1);
     let b = process(r2);

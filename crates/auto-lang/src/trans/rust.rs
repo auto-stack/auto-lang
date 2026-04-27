@@ -74,10 +74,10 @@ pub struct RustTrans {
     _current_fn: Option<AutoStr>,
     _current_scope: Option<crate::scope::Sid>,
 
-    // Plan 204 Phase 3: Track current function's return type for Err() handling.
-    // When a function returns !T (Type::Result), Err values need .to_string()
-    // because the error type is String. For custom Result<T, E> (GenericInstance),
-    // the error type is user-defined and .to_string() is not needed.
+    // Plan 204 Phase 3: Whether any function returns !T, requiring Err trait emission
+    needs_err_trait: bool,
+
+    // Plan 204 Phase 3: Whether current function returns !T (for Err boxing)
     current_fn_is_result: bool,
 
     // Cache for struct field names (for positional arg mapping)
@@ -107,6 +107,7 @@ impl RustTrans {
             edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
+            needs_err_trait: false,
             current_fn_is_result: false,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
@@ -125,6 +126,7 @@ impl RustTrans {
             edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
+            needs_err_trait: false,
             current_fn_is_result: false,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
@@ -328,7 +330,7 @@ impl RustTrans {
             Type::U64 => "u64".to_string(),
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
-            Type::Result(inner) => format!("Result<{}, String>", self.rust_type_name(inner)),
+            Type::Result(inner) => format!("Result<{}, Box<dyn Err>>", self.rust_type_name(inner)),
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
@@ -350,9 +352,9 @@ impl RustTrans {
             Type::Option(inner) => {
                 format!("Option<{}>", self.rust_return_type_name(inner))
             }
-            // Result<str> -> Result<String, String>
+            // Result<str> -> Result<String, Box<dyn Err>>
             Type::Result(inner) => {
-                format!("Result<{}, String>", self.rust_return_type_name(inner))
+                format!("Result<{}, Box<dyn Err>>", self.rust_return_type_name(inner))
             }
             // Fn type: use return type mapping for the return position
             Type::Fn(params, ret) => {
@@ -469,16 +471,16 @@ impl RustTrans {
                 write!(out, ")").map_err(Into::into)
             }
             Expr::Err(e) => {
-                // Plan 204 Phase 3: For !T functions (Type::Result), the error type
-                // is String, so wrap the expression with .to_string() to convert
-                // any value to String. For Result<T, E> with custom error type,
-                // emit as-is (the user is responsible for providing the correct type).
-                write!(out, "Err(")?;
-                self.expr(e, out)?;
+                // Plan 204 Phase 3: Box Err values inside !T functions
                 if self.current_fn_is_result {
-                    write!(out, ".to_string()")?;
+                    write!(out, "Err(Box::new(")?;
+                    self.expr(e, out)?;
+                    write!(out, "))").map_err(Into::into)
+                } else {
+                    write!(out, "Err(")?;
+                    self.expr(e, out)?;
+                    write!(out, ")").map_err(Into::into)
                 }
-                write!(out, ")").map_err(Into::into)
             }
             // Plan 6B-4.14: Smart pointer constructors
             Expr::BoxExpr(e) => {
@@ -2666,10 +2668,7 @@ impl RustTrans {
             return Ok(());
         }
 
-        // Plan 204 Phase 3: Track whether current function returns !T (Type::Result)
-        // This is used to decide whether Err(expr) needs .to_string() wrapping.
-        // Type::Result means !T (error type is String), while GenericInstance with
-        // base "Result" means Result<T, E> with custom error type (no .to_string()).
+        // Plan 204 Phase 3: Track whether current function returns !T (for Err boxing)
         self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_));
 
         // Emit doc comments
@@ -4545,6 +4544,21 @@ impl Trans for RustTrans {
 
         // Emit a2r standard library (List, May, etc.)
         self.emit_a2r_stdlib(&mut sink.body)?;
+
+        // Plan 204 Phase 3: Pre-scan for !T return types to determine Err trait need
+        for stmt in &ast.stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                if matches!(fn_decl.ret, Type::Result(_)) {
+                    self.needs_err_trait = true;
+                    break;
+                }
+            }
+        }
+
+        // Emit Err trait if any function returns !T
+        if self.needs_err_trait {
+            sink.body.write(b"trait Err {\n    fn msg(&self) -> String;\n}\n\n")?;
+        }
 
         // Phase 2: Split into declarations and main, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)

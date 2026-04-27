@@ -5809,11 +5809,18 @@ impl Codegen {
                 self.last_enum_variant_mono = Some(mono_name.to_string());
             }
             // Plan 120: Result type constructor - Ok(value)
+            // Plan 204: emit type_tag (0=i32, 1=f64) so engine pops correctly
             Expr::Ok(inner) => {
-                // Compile inner expression (pushes value onto stack)
                 self.compile_expr(inner)?;
-                // Emit CREATE_OK (wraps value in Ok)
+                let type_tag: u8 = match &self.current_fn_ret_type {
+                    Type::Result(inner) => match inner.as_ref() {
+                        Type::Float | Type::Double => 1,
+                        _ => 0,
+                    },
+                    _ => 0,
+                };
                 self.emit(OpCode::CREATE_OK);
+                self.code.push(type_tag);
             }
             // Plan 120: Result type constructor - Err(message)
             Expr::Err(msg) => {

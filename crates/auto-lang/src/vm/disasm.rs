@@ -80,7 +80,7 @@ impl<'a> Disassembler<'a> {
             // No operands
             OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
             | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
-            | OpCode::RET_D | OpCode::YIELD | OpCode::CREATE_NONE | OpCode::CREATE_OK
+            | OpCode::RET_D | OpCode::YIELD | OpCode::CREATE_NONE
             | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
             | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F
             | OpCode::NEG_D | OpCode::NOT | OpCode::TO_STR | OpCode::STR_CAT
@@ -247,6 +247,13 @@ impl<'a> Disassembler<'a> {
 
             // CREATE_SOME/CREATE_ERR
             OpCode::CREATE_SOME | OpCode::CREATE_ERR => (String::new(), 0),
+
+            // CREATE_OK: type_tag u8 operand (0=i32, 1=f64)
+            OpCode::CREATE_OK => {
+                let type_tag = self.flash.read_u8(ip);
+                let name = if type_tag == 1 { "f64" } else { "i32" };
+                (format!("type={}", name), 1)
+            }
 
             // Type casts and conversions (no operands)
             OpCode::TYPE_CAST_I32 | OpCode::TYPE_CAST_U32 | OpCode::TYPE_CAST_I64

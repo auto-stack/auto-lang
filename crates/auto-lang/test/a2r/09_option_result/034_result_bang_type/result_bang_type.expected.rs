@@ -4,14 +4,18 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-fn safe_divide(a: i32, b: i32) -> Result<i32, String> {
+trait Err {
+    fn msg(&self) -> String;
+}
+
+fn safe_divide(a: i32, b: i32) -> Result<i32, Box<dyn Err>> {
     if b == 0 {
-        return Err("division by zero".to_string());
+        return Err(Box::new("division by zero"));
     }
     Ok(a / b)
 }
 
-fn chain(a: i32) -> Result<i32, String> {
+fn chain(a: i32) -> Result<i32, Box<dyn Err>> {
     let x = safe_divide(a, 2)?;
     Ok(x + 1)
 }
