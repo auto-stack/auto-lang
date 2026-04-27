@@ -163,6 +163,8 @@ pub struct GdbController {
     started: bool,
     /// Plan 199 Phase 7: Function name -> address mapping for enhanced break syntax
     exports_by_name: std::collections::HashMap<String, u32>,
+    /// Line we last paused at — used to skip same-line hits on continue
+    paused_line: u32,
 }
 
 impl GdbController {
@@ -176,6 +178,7 @@ impl GdbController {
             flash: VirtualFlash::from_vec(flash_bytes),
             started: false,
             exports_by_name,
+            paused_line: 0,
         }
     }
 
@@ -271,11 +274,20 @@ impl DebuggerController for GdbController {
 
         match self.step_mode {
             StepMode::None => {
-                // Only pause at breakpoints
+                // Once we leave the paused line (to any other line, even 0), clear it
+                if self.paused_line > 0 && ctx.line != self.paused_line {
+                    self.paused_line = 0;
+                }
+                // Only pause at breakpoints, but skip AtLine if same as paused_line
                 self.breakpoints.iter().any(|bp| match bp {
                     Breakpoint::AtIp(ip) => *ip == ctx.ip,
-                    Breakpoint::AtLine(line) => *line == ctx.line,
+                    Breakpoint::AtLine(line) => {
+                        *line == ctx.line && ctx.line != self.paused_line
+                    }
                     Breakpoint::AtFunction(name) => {
+                        if self.paused_line > 0 {
+                            return false;
+                        }
                         ctx.call_stack
                             .last()
                             .and_then(|f| f.fn_name.as_ref())
@@ -307,6 +319,9 @@ impl DebuggerController for GdbController {
     }
 
     fn on_pause(&mut self, ctx: &DebugContext) -> DebuggerAction {
+        // Record paused line to skip same-line re-hits on continue
+        self.paused_line = ctx.line;
+
         // Show current position
         if ctx.line > 0 {
             let source_line = self.source_lines.get(ctx.line as usize - 1)
