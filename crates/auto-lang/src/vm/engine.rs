@@ -1995,8 +1995,6 @@ impl AutoVM {
                     let mut strings = self.strings.write().unwrap();
                     let result_idx = strings.len();
                     strings.push(result.into_bytes());
-                    drop(strings);
-
                     push_str_tag(&mut task.ram, result_idx as u32);
                 }
                 // Plan 120: Option type constructor - Some(value)

@@ -6336,6 +6336,25 @@ impl Codegen {
                 // Check inferred type for the variable
                 let ty = self.infer_ctx.type_env.get(name);
                 matches!(ty, Some(Type::Str(_)) | Some(Type::String))
+                    || matches!(self.var_types.get(name.as_ref()), Some(Type::Str(_)) | Some(Type::String) | Some(Type::CStr | Type::StrSlice))
+            }
+            Expr::Dot(obj, field) => {
+                // Field access: check if the field's type is string
+                if let Expr::Ident(var_name) = obj.as_ref() {
+                    if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                        let type_name = match var_type {
+                            Type::User(td) => td.name.to_string(),
+                            Type::GenericInstance(inst) => inst.base_name.to_string(),
+                            _ => return false,
+                        };
+                        if let Some(ct) = self.generic_registry.get_type(&type_name) {
+                            if let Some(ft) = ct.field_type(field.as_ref()) {
+                                return matches!(ft, Type::Str(_) | Type::String | Type::CStr | Type::StrSlice);
+                            }
+                        }
+                    }
+                }
+                false
             }
             _ => false,
         }
