@@ -8,10 +8,10 @@
 use crate::ui::view::View as AbstractView;
 use crate::ui::component::Component;
 use crate::ui::app::AppResult;
-use crate::ui::style::iced_adapter::IcedStyle;
+use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize};
 use crate::ui::style::Style;
 use std::fmt::Debug;
-use iced::widget::{button, checkbox, column, pick_list, row, text, text_input};
+use iced::widget::{button, checkbox, column, container, pick_list, row, text, text_input};
 
 /// Trait for converting abstract View<M> into Iced Element
 ///
@@ -93,13 +93,54 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Row { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
                 let eff_padding = effective_padding(padding, style.as_ref());
+                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 let mut row_widget = row([]);
                 row_widget = row_widget.spacing(eff_spacing);
                 row_widget = row_widget.padding(eff_padding);
 
+                // Apply width/height and cross-axis alignment
+                if let Some(ref is) = iced_style {
+                    if let Some(ref w) = is.width {
+                        row_widget = row_widget.width(iced_length(w));
+                    }
+                    if let Some(ref h) = is.height {
+                        row_widget = row_widget.height(iced_length(h));
+                    }
+                    // Row align_y = cross-axis alignment (items_center → vertical center)
+                    if let Some(align) = is.align_items {
+                        row_widget = row_widget.align_y(iced_alignment_vertical(align));
+                    }
+                }
+
                 for child in children {
                     row_widget = row_widget.push(child.into_iced());
+                }
+
+                // Check if we need to wrap in a container for justify/background
+                let needs_justify = iced_style.as_ref()
+                    .and_then(|is| is.justify_content)
+                    .is_some();
+                let bg_color = iced_style.as_ref()
+                    .and_then(|is| is.background_color);
+
+                if needs_justify || bg_color.is_some() {
+                    let mut cont = container(row_widget);
+                    if let Some(ref is) = iced_style {
+                        // Row: justify_center → center_x (main axis = horizontal)
+                        if let Some(justify) = is.justify_content {
+                            if matches!(justify, IcedJustify::Center) {
+                                cont = cont.center_x(iced::Length::Fill);
+                            }
+                        }
+                    }
+                    if let Some(bg) = bg_color {
+                        cont = cont.style(move |_| container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            ..Default::default()
+                        });
+                    }
+                    return cont.into();
                 }
 
                 row_widget.into()
@@ -108,13 +149,54 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Column { children, spacing, padding, style } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref());
                 let eff_padding = effective_padding(padding, style.as_ref());
+                let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 let mut col_widget = column([]);
                 col_widget = col_widget.spacing(eff_spacing);
                 col_widget = col_widget.padding(eff_padding);
 
+                // Apply width/height and cross-axis alignment
+                if let Some(ref is) = iced_style {
+                    if let Some(ref w) = is.width {
+                        col_widget = col_widget.width(iced_length(w));
+                    }
+                    if let Some(ref h) = is.height {
+                        col_widget = col_widget.height(iced_length(h));
+                    }
+                    // Column align_x = cross-axis alignment (items_center → horizontal center)
+                    if let Some(align) = is.align_items {
+                        col_widget = col_widget.align_x(iced_alignment_horizontal(align));
+                    }
+                }
+
                 for child in children {
                     col_widget = col_widget.push(child.into_iced());
+                }
+
+                // Check if we need to wrap in a container for justify/background
+                let needs_justify = iced_style.as_ref()
+                    .and_then(|is| is.justify_content)
+                    .is_some();
+                let bg_color = iced_style.as_ref()
+                    .and_then(|is| is.background_color);
+
+                if needs_justify || bg_color.is_some() {
+                    let mut cont = container(col_widget);
+                    if let Some(ref is) = iced_style {
+                        // Column: justify_center → center_y (main axis = vertical)
+                        if let Some(justify) = is.justify_content {
+                            if matches!(justify, IcedJustify::Center) {
+                                cont = cont.center_y(iced::Length::Fill);
+                            }
+                        }
+                    }
+                    if let Some(bg) = bg_color {
+                        cont = cont.style(move |_| container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            ..Default::default()
+                        });
+                    }
+                    return cont.into();
                 }
 
                 col_widget.into()
@@ -572,6 +654,32 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
     }
 }
 
+/// Convert IcedSize to iced::Length
+fn iced_length(size: &IcedSize) -> iced::Length {
+    match size {
+        IcedSize::Full => iced::Length::Fill,
+        IcedSize::Fixed(px) => iced::Length::Fixed(*px),
+    }
+}
+
+/// Convert IcedAlign to iced::alignment::Horizontal (for Column's align_x)
+fn iced_alignment_horizontal(align: IcedAlign) -> iced::alignment::Horizontal {
+    match align {
+        IcedAlign::Start => iced::alignment::Horizontal::Left,
+        IcedAlign::Center => iced::alignment::Horizontal::Center,
+        IcedAlign::End => iced::alignment::Horizontal::Right,
+    }
+}
+
+/// Convert IcedAlign to iced::alignment::Vertical (for Row's align_y)
+fn iced_alignment_vertical(align: IcedAlign) -> iced::alignment::Vertical {
+    match align {
+        IcedAlign::Start => iced::alignment::Vertical::Top,
+        IcedAlign::Center => iced::alignment::Vertical::Center,
+        IcedAlign::End => iced::alignment::Vertical::Bottom,
+    }
+}
+
 /// Extension trait for Component to add Iced-compatible view method
 ///
 /// This allows components to be used directly with `iced::run()`.
@@ -632,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_button_conversion() {
-        let view = AbstractView::button("Click me", TestMessage::Click);
+        let view = AbstractView::button(("Click me".to_string(), TestMessage::Click));
         let _element = view.into_iced();
     }
 
@@ -642,7 +750,7 @@ mod tests {
             .spacing(10)
             .padding(20)
             .child(AbstractView::text("Item 1"))
-            .child(AbstractView::button("Click", TestMessage::Click))
+            .child(AbstractView::button(("Click".to_string(), TestMessage::Click)))
             .build();
 
         let _element = view.into_iced();

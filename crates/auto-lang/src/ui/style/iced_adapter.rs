@@ -58,6 +58,10 @@ pub struct IcedStyle {
     pub overflow_x: Option<IcedOverflow>,
     pub overflow_y: Option<IcedOverflow>,
 
+    // Layout (L1 Core)
+    pub align_items: Option<IcedAlign>,
+    pub justify_content: Option<IcedJustify>,
+
     // Grid (L3)
     // NOTE: Iced doesn't support grid layout - these fields are ignored
     pub grid: bool,                 // Not supported by Iced
@@ -67,6 +71,21 @@ pub struct IcedStyle {
     pub row_span: Option<u8>,       // Not supported by Iced
     pub col_start: Option<u8>,      // Not supported by Iced
     pub row_start: Option<u8>,      // Not supported by Iced
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedAlign {
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedJustify {
+    Start,
+    Center,
+    End,
+    Between,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -155,6 +174,8 @@ impl IcedStyle {
             z_index: None,      // Not supported by Iced
             overflow_x: None,
             overflow_y: None,
+            align_items: None,
+            justify_content: None,
             grid: false,        // Not supported by Iced
             grid_cols: None,    // Not supported by Iced
             grid_rows: None,    // Not supported by Iced
@@ -406,10 +427,29 @@ impl IcedStyle {
             }
 
             // ========== Layout styles ==========
-            // Layout-related styles (flex, items-center, etc.) are handled differently in Iced
-            // They're applied through layout methods rather than style objects
-            _ => {
-                // Ignore layout classes - they're handled separately in Iced
+            StyleClass::Flex | StyleClass::Flex1 | StyleClass::FlexRow | StyleClass::FlexCol => {
+                // Flex is implicit in Iced's Column/Row — no extra action needed
+            }
+            StyleClass::ItemsCenter => {
+                self.align_items = Some(IcedAlign::Center);
+            }
+            StyleClass::ItemsStart => {
+                self.align_items = Some(IcedAlign::Start);
+            }
+            StyleClass::ItemsEnd => {
+                self.align_items = Some(IcedAlign::End);
+            }
+            StyleClass::JustifyCenter => {
+                self.justify_content = Some(IcedJustify::Center);
+            }
+            StyleClass::JustifyBetween => {
+                self.justify_content = Some(IcedJustify::Between);
+            }
+            StyleClass::JustifyStart => {
+                self.justify_content = Some(IcedJustify::Start);
+            }
+            StyleClass::JustifyEnd => {
+                self.justify_content = Some(IcedJustify::End);
             }
         }
     }

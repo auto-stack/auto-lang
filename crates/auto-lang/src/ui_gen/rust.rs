@@ -330,6 +330,19 @@ impl RustGenerator {
             AuraNode::Element { tag, props, events, children } => {
                 let view_fn = self.tag_to_view_fn(tag);
 
+                // For text elements with a "text" prop and no extra styling/events,
+                // emit View::text("content") directly (returns View, not ViewBuilder).
+                if tag == "text" && children.is_empty() && events.is_empty() {
+                    let style_count = props.keys()
+                        .filter(|k| *k != "text")
+                        .count();
+                    if style_count == 0 {
+                        if let Some(AuraPropValue::Expr(AuraExpr::Literal(s))) = props.get("text") {
+                            return format!("View::text(\"{}\")", s);
+                        }
+                    }
+                }
+
                 // Leaf tags (text, button) use ViewBuilder pattern: View::text(()).build()
                 // Layout tags (col, row) use View::col() directly (returns ViewBuilder)
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
@@ -1179,5 +1192,17 @@ mod tests {
             result,
             "View::row().w_full().h_full().justify_center().items_center().bg(\"white\")"
         );
+    }
+
+    #[test]
+    fn test_text_element_with_text_prop() {
+        // text "Hello, World!" parsed as Element { tag: "text", props: { text: "Hello, World!" } }
+        let node = AuraNode::element("text")
+            .with_prop("text", AuraExpr::Literal("Hello, World!".to_string()));
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate_view_tree(&node);
+        assert!(code.contains("View::text(\"Hello, World!\")"), "got: {}", code);
+        assert!(!code.contains(".build()"), "View::text(str) returns View directly, got: {}", code);
     }
 }

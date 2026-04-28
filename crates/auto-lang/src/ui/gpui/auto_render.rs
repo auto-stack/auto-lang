@@ -1385,7 +1385,7 @@ fn apply_style_to_div(div: Div, style: &Style) -> Div {
     if let Some(width) = gpui_style.width {
         match width {
             GpuiSize::Full => {
-                result = result.w(px(300.0)); // Arbitrary full size
+                result = result.w_full();
             }
             GpuiSize::Fixed(size) => {
                 result = result.w(px(size));
@@ -1395,7 +1395,7 @@ fn apply_style_to_div(div: Div, style: &Style) -> Div {
     if let Some(height) = gpui_style.height {
         match height {
             GpuiSize::Full => {
-                result = result.h(px(300.0)); // Arbitrary full size
+                result = result.h_full();
             }
             GpuiSize::Fixed(size) => {
                 result = result.h(px(size));
