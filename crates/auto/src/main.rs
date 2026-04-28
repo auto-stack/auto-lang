@@ -372,40 +372,41 @@ fn main() -> Result<()> {
     // Detect UI mode before spawning the helper thread so iced
     // gets the main thread it needs (especially on Windows).
     #[cfg(feature = "ui-iced")]
-    if let Some(ref path) = cli.file {
-        if let Ok(code) = std::fs::read_to_string(path) {
-            if auto_lang::has_ui_keywords(&code) {
-                // Run UI directly on main thread — iced requires this
-                let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
-                miette::set_hook(Box::new(move |_| {
-                    Box::new(MietteHandlerOpts::new().terminal_links(true).build())
-                })).ok();
-                if let Some(limit) = cli.error_limit {
-                    auto_lang::set_error_limit(limit);
-                }
-                if cli.debug {
-                    auto_lang::set_vm_debug(true);
-                }
-                if !ai_mode {
-                    println!("----------------------");
-                    println!("Running Auto {} ", path);
-                    println!("----------------------");
-                }
-                let result = auto_lang::run_file_dynamic_ui(&code);
-                match result {
-                    Ok(msg) => {
-                        if !ai_mode {
-                            println!("{}", msg);
-                            println!();
-                        }
-                        return Ok(());
+    {
+        if let Some(ref path) = cli.file {
+            if let Ok(code) = std::fs::read_to_string(path) {
+                if auto_lang::has_ui_keywords(&code) {
+                    let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
+                    miette::set_hook(Box::new(move |_| {
+                        Box::new(MietteHandlerOpts::new().terminal_links(true).build())
+                    })).ok();
+                    if let Some(limit) = cli.error_limit {
+                        auto_lang::set_error_limit(limit);
                     }
-                    Err(e) => {
-                        if ai_mode {
-                            eprintln!("{}", format_error_json(&e));
-                            std::process::exit(1);
+                    if cli.debug {
+                        auto_lang::set_vm_debug(true);
+                    }
+                    if !ai_mode {
+                        println!("----------------------");
+                        println!("Running Auto {} ", path);
+                        println!("----------------------");
+                    }
+                    let result = auto_lang::run_file_dynamic_ui(&code);
+                    match result {
+                        Ok(msg) => {
+                            if !ai_mode {
+                                println!("{}", msg);
+                                println!();
+                            }
+                            return Ok(());
                         }
-                        return Err(to_miette_err(e));
+                        Err(e) => {
+                            if ai_mode {
+                                eprintln!("{}", format_error_json(&e));
+                                std::process::exit(1);
+                            }
+                            return Err(to_miette_err(e));
+                        }
                     }
                 }
             }
