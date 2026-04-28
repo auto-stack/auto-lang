@@ -61,7 +61,7 @@ impl<'a> Disassembler<'a> {
             }
 
             let mnemonic = op.to_mnemonic();
-            let (operands, advance) = self.decode_operands(op, ip);
+            let (operands, advance) = self.decode_operands(op, ip, offset);
             ip += advance;
 
             lines.push(DisasmLine {
@@ -75,7 +75,7 @@ impl<'a> Disassembler<'a> {
     }
 
     /// Decode operands for an opcode, returning (operand_string, bytes_consumed)
-    fn decode_operands(&self, op: OpCode, ip: usize) -> (String, usize) {
+    fn decode_operands(&self, op: OpCode, ip: usize, offset: usize) -> (String, usize) {
         match op {
             // No operands
             OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
@@ -93,11 +93,22 @@ impl<'a> Disassembler<'a> {
             | OpCode::GT | OpCode::LE | OpCode::GE | OpCode::EQ_D | OpCode::NE_D
             | OpCode::LT_D | OpCode::GT_D | OpCode::LE_D | OpCode::GE_D
             | OpCode::I32_TO_F32 | OpCode::I64_TO_F64 | OpCode::U64_TO_F64
-            | OpCode::PROMOTE_F64 | OpCode::NULL_COALESCE | OpCode::ERROR_PROPAGATE
+            | OpCode::PROMOTE_F64 | OpCode::NULL_COALESCE
             | OpCode::TASK_ID | OpCode::SPAWN_GO | OpCode::REPLY | OpCode::HANDLE_MSG
-            | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED
-            | OpCode::TYPE_F64_TO_I32 | OpCode::TYPE_STR_TO_I64 | OpCode::TYPE_F32_TO_I32
-            | OpCode::TYPE_CAST_PTR => (String::new(), 0),
+            | OpCode::CALL_CLOSURE | OpCode::TYPE_F64_TO_I32 | OpCode::TYPE_STR_TO_I64
+            | OpCode::TYPE_F32_TO_I32 | OpCode::TYPE_CAST_PTR | OpCode::ARRAY_LEN
+            | OpCode::MOD_F | OpCode::MOD_D
+            | OpCode::CREATE_SOME | OpCode::CREATE_ERR
+            | OpCode::CREATE_RANGE | OpCode::CREATE_RANGE_EQ
+            | OpCode::CHAN_NEW | OpCode::RECV | OpCode::TRY_RECV
+            | OpCode::TASK_LOOP | OpCode::AWAIT_FUTURE | OpCode::POLL_FUTURE
+            | OpCode::CONSTRUCT_INSTANCE
+            | OpCode::CREATE_LIST_INT | OpCode::CREATE_LIST_STR | OpCode::CREATE_LIST_BOOL
+            | OpCode::CREATE_LIST_INT_INLINE | OpCode::CREATE_LIST_STR_INLINE
+            | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
+            | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
+            | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
+                => (String::new(), 0),
 
             // 1-byte operand
             OpCode::CONST_U8 => {
@@ -113,6 +124,10 @@ impl<'a> Disassembler<'a> {
                 (format!("{}", v), 1)
             }
             OpCode::RET => {
+                let v = self.flash.read_u8(ip);
+                (format!("n_args={}", v), 1)
+            }
+            OpCode::ERROR_PROPAGATE => {
                 let v = self.flash.read_u8(ip);
                 (format!("n_args={}", v), 1)
             }
@@ -135,18 +150,32 @@ impl<'a> Disassembler<'a> {
                 (format!("{}", v), 4)
             }
 
-            // 2-byte operand (u16)
+            // 4-byte operand (i32 / f32)
             OpCode::CONST_I32 => {
-                let v = i16::from_le_bytes([self.flash.read_u8(ip), self.flash.read_u8(ip + 1)]);
-                (format!("{}", v), 2)
+                let v = self.flash.read_i32(ip);
+                (format!("{}", v), 4)
             }
             OpCode::CONST_F32 => {
-                let bytes = [self.flash.read_u8(ip), self.flash.read_u8(ip + 1)];
-                let v = i16::from_le_bytes(bytes);
-                (format!("{}", v as f32), 2)
+                let v = self.flash.read_f32(ip);
+                (format!("{}", v), 4)
             }
-            OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL | OpCode::LOAD_REF | OpCode::STORE_REF
-            | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => {
+
+            // 8-byte operand (i64 / u64 / f64)
+            OpCode::CONST_I64 => {
+                let v = self.flash.read_i64(ip);
+                (format!("{}", v), 8)
+            }
+            OpCode::CONST_U64 => {
+                let v = self.flash.read_u64(ip);
+                (format!("{}", v), 8)
+            }
+            OpCode::CONST_F64 => {
+                let v = self.flash.read_f64(ip);
+                (format!("{}", v), 8)
+            }
+
+            // 1-byte local index
+            OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
             }
@@ -156,12 +185,16 @@ impl<'a> Disassembler<'a> {
             OpCode::STORE_LOC_0 => ("0".to_string(), 0),
             OpCode::STORE_LOC_1 => ("1".to_string(), 0),
 
-            // 4-byte operand (u32)
-            OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => {
-                let v = self.flash.read_u32(ip);
-                (format!("0x{:08x}", v), 4)
-            }
+            // 2-byte operand (u16)
             OpCode::LOAD_STR => {
+                let v = self.flash.read_u16(ip);
+                (format!("str[{}]", v), 2)
+            }
+            OpCode::CALL_NAT => {
+                let v = self.flash.read_u16(ip);
+                (format!("nat#{}", v), 2)
+            }
+            OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED => {
                 let v = self.flash.read_u16(ip);
                 (format!("str[{}]", v), 2)
             }
@@ -189,12 +222,6 @@ impl<'a> Disassembler<'a> {
                 (format!("0x{:04x}", v), 4)
             }
 
-            // CALL_NAT: u16 native_id
-            OpCode::CALL_NAT => {
-                let v = self.flash.read_u16(ip);
-                (format!("nat#{}", v), 2)
-            }
-
             // CALL_SPEC: u16 spec_name, u16 method_name
             OpCode::CALL_SPEC => {
                 let spec = self.flash.read_u16(ip);
@@ -202,53 +229,44 @@ impl<'a> Disassembler<'a> {
                 (format!("spec={}, method={}", spec, method), 4)
             }
 
-            // CREATE_OBJ/ARRAY: u8 count
-            OpCode::CREATE_OBJ | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE
-            | OpCode::BUILD_FSTR => {
+            // CREATE_ARRAY/CREATE_TUPLE: u8 count
+            OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE => {
                 let v = self.flash.read_u8(ip);
                 (format!("count={}", v), 1)
             }
 
-            // SLICE: 3 x i32
-            OpCode::SLICE => {
-                let start = i32::from_le_bytes([
-                    self.flash.read_u8(ip), self.flash.read_u8(ip+1),
-                    self.flash.read_u8(ip+2), self.flash.read_u8(ip+3),
-                ]);
-                let end = i32::from_le_bytes([
-                    self.flash.read_u8(ip+4), self.flash.read_u8(ip+5),
-                    self.flash.read_u8(ip+6), self.flash.read_u8(ip+7),
-                ]);
-                (format!("{}, {}", start, end), 8)
+            // CREATE_OBJ: u16 key_index, u8 field_count
+            OpCode::CREATE_OBJ => {
+                let key_index = self.flash.read_u16(ip);
+                let field_count = self.flash.read_u8(ip + 2);
+                (format!("keys={}, fields={}", key_index, field_count), 3)
             }
 
-            // SET_ELEM/GET_ELEM: u32 + i32
-            OpCode::SET_ELEM => {
-                let id = self.flash.read_u32(ip);
-                (format!("id={}", id), 4)
-            }
-            OpCode::GET_ELEM => {
-                let id = self.flash.read_u32(ip);
-                (format!("id={}", id), 4)
+            // BUILD_FSTR: u8 part_count, then part_count * u8 type_tags
+            OpCode::BUILD_FSTR => {
+                let part_count = self.flash.read_u8(ip);
+                let mut tags = Vec::new();
+                for i in 0..part_count {
+                    tags.push(self.flash.read_u8(ip + 1 + i as usize));
+                }
+                (format!("parts={}, tags={:?}", part_count, tags), 1 + part_count as usize)
             }
 
-            // SET_FIELD/GET_FIELD: field_name str idx
-            OpCode::SET_FIELD | OpCode::GET_FIELD => {
+            // GET_FIELD: u16 field_idx
+            OpCode::GET_FIELD => {
                 let v = self.flash.read_u16(ip);
                 (format!("field[{}]", v), 2)
             }
 
-            // CREATE_NODE: str_idx u16, arg_count u8
+            // CREATE_NODE: u16 name_idx, u8 argc, u16 id_idx
             OpCode::CREATE_NODE => {
                 let name = self.flash.read_u16(ip);
                 let argc = self.flash.read_u8(ip + 2);
-                (format!("name[{}], argc={}", name, argc), 3)
+                let id_idx = self.flash.read_u16(ip + 3);
+                (format!("name[{}], argc={}, id={}", name, argc, id_idx), 5)
             }
 
-            // CREATE_SOME/CREATE_ERR
-            OpCode::CREATE_SOME | OpCode::CREATE_ERR => (String::new(), 0),
-
-            // CREATE_OK: type_tag u8 operand (0=i32, 1=f64)
+            // CREATE_OK: type_tag u8
             OpCode::CREATE_OK => {
                 let type_tag = self.flash.read_u8(ip);
                 let name = if type_tag == 1 { "f64" } else { "i32" };
@@ -262,29 +280,29 @@ impl<'a> Disassembler<'a> {
             | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR | OpCode::TYPE_BOOL_TO_STR
             | OpCode::TYPE_F32_TO_STR => (String::new(), 0),
 
-            // Concurrency
-            OpCode::CHAN_NEW | OpCode::RECV | OpCode::TRY_RECV => (String::new(), 0),
-            OpCode::TASK_LOOP => (String::new(), 0),
-
             // Closures
             OpCode::CLOSURE => {
                 let addr = self.flash.read_u32(ip);
                 (format!("addr=0x{:04x}", addr), 4)
             }
-            OpCode::CALL_CLOSURE => (String::new(), 0),
-
-            // List opcodes
-            OpCode::CREATE_LIST_INT | OpCode::CREATE_LIST_STR | OpCode::CREATE_LIST_BOOL
-            | OpCode::CREATE_LIST_INT_INLINE | OpCode::CREATE_LIST_STR_INLINE
-            | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_POP_INT => (String::new(), 0),
-            OpCode::LIST_PUSH_INT | OpCode::LIST_SET_INT | OpCode::LIST_GET_INT => (String::new(), 0),
 
             // Generic instance
             OpCode::NEW_INSTANCE => {
-                let len = self.flash.read_u16(ip);
-                (format!("name_len={}", len), 2 + len as usize)
+                // NEW_INSTANCE reads name_len from stack, then name_bytes from bytecode.
+                // To disassemble, look backward for the preceding CONST_I32 that pushed the length.
+                let name_len = if offset >= 5 && self.flash.read_u8(offset - 5) == OpCode::CONST_I32 as u8 {
+                    self.flash.read_i32(offset - 4) as usize
+                } else {
+                    0
+                };
+                let mut bytes = Vec::new();
+                for i in 0..name_len {
+                    bytes.push(self.flash.read_u8(ip + i));
+                }
+                let name = String::from_utf8_lossy(&bytes);
+                (format!("\"{}\"", name), name_len)
             }
-            OpCode::CONSTRUCT_INSTANCE => (String::new(), 0),
+
             OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD => {
                 let idx = self.flash.read_u8(ip);
                 (format!("field={}", idx), 1)
@@ -293,35 +311,36 @@ impl<'a> Disassembler<'a> {
             // Enum variant check
             OpCode::IS_VARIANT => {
                 let len = self.flash.read_u16(ip);
-                (format!("name_len={}", len), 2 + len as usize)
+                let mut bytes = Vec::new();
+                for i in 0..len {
+                    bytes.push(self.flash.read_u8(ip + 2 + i as usize));
+                }
+                let name = String::from_utf8_lossy(&bytes);
+                (format!("\"{}\"", name), 2 + len as usize)
             }
 
             // Async
             OpCode::CREATE_FUTURE => {
-                let offset = self.flash.read_u32(ip);
-                (format!("body=0x{:04x}", offset), 4)
+                let offset_val = self.flash.read_u32(ip);
+                (format!("body=0x{:04x}", offset_val), 4)
             }
-            OpCode::AWAIT_FUTURE | OpCode::POLL_FUTURE => (String::new(), 0),
 
-            // Ranges
-            OpCode::CREATE_RANGE | OpCode::CREATE_RANGE_EQ => (String::new(), 0),
-
-            // Source line
+            // Source line (handled above, but needed for exhaustiveness)
             OpCode::SOURCE_LINE => {
                 let line = self.flash.read_u16(ip);
                 (format!("{}", line), 2)
             }
 
-            // Array length
-            OpCode::ARRAY_LEN => (String::new(), 0),
-
-            // Float operations
-            OpCode::MOD_F | OpCode::MOD_D => (String::new(), 0),
-
             // Tuple
             OpCode::GET_TUPLE_FIELD => {
                 let idx = self.flash.read_u8(ip);
                 (format!("idx={}", idx), 1)
+            }
+
+            // References: u32 var_index
+            OpCode::LOAD_REF | OpCode::STORE_REF | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => {
+                let v = self.flash.read_u32(ip);
+                (format!("{}", v), 4)
             }
         }
     }

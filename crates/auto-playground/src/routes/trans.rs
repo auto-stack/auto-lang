@@ -28,6 +28,7 @@ pub async fn trans_handler(
         "python" => transpile_python(&source),
         "javascript" => transpile_javascript(&source),
         "typescript" => transpile_typescript(&source),
+        "abt" | "bytecode" => transpile_abt(&source),
         _ => Err(AppError::Internal(format!("Unknown target: {target}"))),
     })
     .await
@@ -50,6 +51,14 @@ fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppErro
     let source_map = sink.source_map.clone();
     let output = sink.done().map_err(|e| AppError::Internal(e.to_string()))?;
     Ok((String::from_utf8_lossy(output).to_string(), source_map))
+}
+
+fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+    let (vm, _, _) = auto_lang::create_vm_from_source(source)
+        .map_err(|e| AppError::CompileError(e.to_string()))?;
+
+    let abt = auto_lang::vm::abt::disasm::disassemble_flash(&vm.flash);
+    Ok((abt.to_string(), Vec::new()))
 }
 
 fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {

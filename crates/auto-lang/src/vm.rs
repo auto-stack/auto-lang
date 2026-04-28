@@ -7,6 +7,7 @@ pub mod channel;
 pub mod codegen;
 pub mod context;
 pub mod debugger;
+pub mod abt;
 pub mod disasm;
 pub mod trace;
 // Plan 075: ConfigCodegen for config file compilation

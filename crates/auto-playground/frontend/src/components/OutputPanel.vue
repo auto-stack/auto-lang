@@ -89,7 +89,7 @@ const tabs: { id: OutputTab; label: string }[] = [
   { id: 'c', label: 'C' },
   { id: 'python', label: 'Python' },
   { id: 'typescript', label: 'TS' },
-  { id: 'bytecode', label: 'Bytecode' },
+  { id: 'abt', label: 'ABT' },
 ];
 
 const copied = ref(false);

@@ -209,7 +209,7 @@ export function usePlayground() {
   }, 100);
 
   async function transpileAll() {
-    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript'];
+    const targets: OutputTab[] = ['rust', 'c', 'python', 'typescript', 'abt'];
     isLoading.value = true;
     try {
       const results = await Promise.all(
