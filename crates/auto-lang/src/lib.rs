@@ -880,8 +880,66 @@ pub fn parse_preserve_error(code: &str) -> Result<ast::Code, error::AutoError> {
 // - eval_config() - use eval_config_with_vm() instead
 // - eval_config_with_scope() - use eval_config_with_vm() instead
 
+/// Quick string scan for UI keywords ("widget" or "app") at the start of a line.
+/// Returns true if found, signaling that the file should be parsed with UI scenario.
+/// False positives are harmless — the UI parse path will fail gracefully.
+#[cfg(feature = "ui-iced")]
+fn has_ui_keywords(code: &str) -> bool {
+    for line in code.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("widget ") || trimmed.starts_with("widget{") {
+            return true;
+        }
+        if trimmed.starts_with("app ") || trimmed.starts_with("app{") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Parse a .at file as UI scenario, extract AuraWidget, and run with iced.
+#[cfg(feature = "ui-iced")]
+fn run_file_dynamic_ui(code: &str) -> AutoResult<String> {
+    use crate::session::CompilerSession;
+    use crate::ui::dynamic::DynamicComponent;
+    use crate::ui::iced::run_dynamic_iced;
+
+    // 1. Parse with UI scenario
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(code).with_session(session);
+    let ast = parser.parse()?;
+
+    // 2. Extract first AuraWidget
+    let mut widget = None;
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+            widget = Some(
+                crate::aura::extract_widget_from_decl(decl)
+                    .map_err(|e| e.to_string())?
+            );
+            break;
+        }
+    }
+
+    let widget = widget.ok_or("No widget declaration found")?;
+
+    // 3. Create DynamicComponent
+    let comp = DynamicComponent::new(&widget)
+        .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
+
+    // 4. Run iced (blocks until window closes)
+    run_dynamic_iced(comp)
+        .map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))
+}
+
 pub fn run_file(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // Plan 227: Detect UI keywords and run with iced backend
+    #[cfg(feature = "ui-iced")]
+    if has_ui_keywords(&code) {
+        return run_file_dynamic_ui(&code);
+    }
 
     // Plan 088 Phase 4: Use AutoVM instead of deprecated Interpreter
     // This enables smart parameter passing and other AutoVM features
