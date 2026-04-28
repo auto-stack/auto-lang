@@ -39,6 +39,18 @@ pub enum Color {
     Hex(u32), // 0xRRGGBB or 0xRRGGBBAA
 }
 
+impl From<&str> for Color {
+    fn from(s: &str) -> Self {
+        Color::from_tailwind(s).unwrap_or(Color::Hex(0x000000))
+    }
+}
+
+impl From<String> for Color {
+    fn from(s: String) -> Self {
+        Color::from(s.as_str())
+    }
+}
+
 impl Color {
     /// Create a color from a hex string (e.g., "#ffffff" or "#ffffffff")
     pub fn from_hex(hex: &str) -> Result<Self, String> {

@@ -243,11 +243,15 @@ enum Commands {
         dir: Option<String>,
         #[arg(short, long)]
         port: Option<String>,
+        #[arg(short, long, help = "Backend to use (vue, rust, jet, arkts, tauri)")]
+        backend: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
         #[arg(short, long)]
         port: Option<String>,
+        #[arg(short, long, help = "Backend to use (vue, rust, jet, arkts, tauri)")]
+        backend: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -481,7 +485,7 @@ fn real_main() -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port }) => {
+        Some(Commands::Build { dir, port, backend }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -504,6 +508,9 @@ fn real_main() -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             }
+            if let Some(b) = backend {
+                am.set_backend(b);
+            }
             am.scan().map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
@@ -522,7 +529,7 @@ fn real_main() -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { port, args }) => {
+        Some(Commands::Run { port, backend, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -543,6 +550,9 @@ fn real_main() -> Result<()> {
                     }
                     miette::miette!("{}", e)
                 })?;
+            }
+            if let Some(b) = backend {
+                am.set_backend(b);
             }
             if !ai_mode {
                 info!("Running project ...");

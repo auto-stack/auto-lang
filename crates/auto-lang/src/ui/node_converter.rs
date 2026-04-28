@@ -285,7 +285,7 @@ fn convert_button(node: &Node) -> ConversionResult<View<String>> {
             style: Some(style),
         })
     } else {
-        Ok(View::button(label, onclick))
+        Ok(View::button((label, onclick)))
     }
 }
 

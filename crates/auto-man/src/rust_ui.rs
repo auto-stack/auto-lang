@@ -336,10 +336,15 @@ name = "{snake_name}"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+ui-gpui = ["auto-lang/ui-gpui"]
+ui-iced = ["auto-lang/ui-iced"]
+default = ["ui-gpui"]
+
 [workspace]
 
 [dependencies]
-auto-lang = {{ path = "{auto_lang_path}", features = ["ui-gpui"] }}
+auto-lang = {{ path = "{auto_lang_path}" }}
 "#
     )
 }

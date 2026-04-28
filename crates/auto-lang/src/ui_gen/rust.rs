@@ -219,6 +219,12 @@ impl RustGenerator {
         code.push_str("    }\n");
         code.push_str("}\n");
 
+        // Default impl delegates to new()
+        code.push_str(&format!(
+            "impl Default for {} {{\n    fn default() -> Self {{ Self::new() }}\n}}\n",
+            widget_name
+        ));
+
         code
     }
 
@@ -313,15 +319,28 @@ impl RustGenerator {
         code
     }
 
+    /// Check if a tag is a leaf element that has no children (text, button, etc.)
+    fn is_leaf_tag(&self, tag: &str) -> bool {
+        matches!(tag, "text" | "label" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "button")
+    }
+
     /// Generate view tree code
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children } => {
                 let view_fn = self.tag_to_view_fn(tag);
 
+                // Leaf tags (text, button) use ViewBuilder pattern: View::text(()).build()
+                // Layout tags (col, row) use View::col() directly (returns ViewBuilder)
+                let builder_start = if self.is_leaf_tag(tag.as_str()) {
+                    format!("View::{}(())", view_fn)
+                } else {
+                    format!("View::{}()", view_fn)
+                };
+
                 if children.is_empty() {
                     // Single element without children
-                    let mut builder = format!("View::{}()", view_fn);
+                    let mut builder = builder_start;
 
                     // Add props
                     for (key, value) in props {
@@ -336,7 +355,7 @@ impl RustGenerator {
                     format!("{}.build()", builder)
                 } else {
                     // Element with children
-                    let mut builder = format!("View::{}()", view_fn);
+                    let mut builder = builder_start;
 
                     // Add props and events
                     for (key, value) in props {

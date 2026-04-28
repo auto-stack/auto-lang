@@ -24,6 +24,7 @@ pub struct Automan {
     pac: Pac,
     index_store: IndexStore,
     cache: Option<AutoManCache>, // Optional cache for builds
+    backend_override: Option<String>, // --backend CLI override
 }
 
 // Static API
@@ -210,6 +211,7 @@ impl Automan {
             pac,
             index_store,
             cache: None,
+            backend_override: None,
         })
     }
 
@@ -277,6 +279,10 @@ impl Automan {
     pub fn pull(&mut self) -> AutoResult<()> {
         self.index_store.pull()?;
         self.pac.pull()
+    }
+
+    pub fn set_backend(&mut self, backend: String) {
+        self.backend_override = Some(backend);
     }
 
     pub fn set_port(&mut self, port: AutoStr) -> AutoResult<()> {
@@ -1269,7 +1275,18 @@ impl Automan {
         // Check backend configuration (Plan 130: support array form)
         if self.pac.has_backend_config() {
             let frontends = self.pac.frontend_types();
-            let idx = crate::util::select_backend(&frontends, "run")?;
+
+            // Use --backend override if provided
+            let idx = if let Some(ref backend_name) = self.backend_override {
+                let lower = backend_name.to_lowercase();
+                frontends.iter().position(|b| b.as_str().to_lowercase() == lower)
+                    .ok_or_else(|| format!("Backend '{}' not found in pac.at. Available: {}",
+                        backend_name,
+                        frontends.iter().map(|b| b.as_str()).collect::<Vec<_>>().join(", ")
+                    ))?
+            } else {
+                crate::util::select_backend(&frontends, "run")?
+            };
             return self.run_backend(&frontends[idx], args);
         }
 
