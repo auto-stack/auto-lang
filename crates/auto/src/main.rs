@@ -366,6 +366,53 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // iced/winit requires running on the OS main thread.
+    // Detect UI mode before spawning the helper thread so iced
+    // gets the main thread it needs (especially on Windows).
+    #[cfg(feature = "ui-iced")]
+    if let Some(ref path) = cli.file {
+        if let Ok(code) = std::fs::read_to_string(path) {
+            if auto_lang::has_ui_keywords(&code) {
+                // Run UI directly on main thread — iced requires this
+                let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
+                miette::set_hook(Box::new(move |_| {
+                    Box::new(MietteHandlerOpts::new().terminal_links(true).build())
+                })).ok();
+                if let Some(limit) = cli.error_limit {
+                    auto_lang::set_error_limit(limit);
+                }
+                if cli.debug {
+                    auto_lang::set_vm_debug(true);
+                }
+                if !ai_mode {
+                    println!("----------------------");
+                    println!("Running Auto {} ", path);
+                    println!("----------------------");
+                }
+                let result = auto_lang::run_file_dynamic_ui(&code);
+                match result {
+                    Ok(msg) => {
+                        if !ai_mode {
+                            println!("{}", msg);
+                            println!();
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&e));
+                            std::process::exit(1);
+                        }
+                        return Err(to_miette_err(e));
+                    }
+                }
+            }
+        }
+    }
+
+    // Non-UI path: spawn thread with larger stack for heavy compilation
     // Use a dedicated thread with 4MB stack to avoid stack overflow on Windows
     // (default main thread stack is only 1MB on Windows).
     // In debug builds, unoptimized stack frames are large enough that the
@@ -378,16 +425,14 @@ fn main() -> Result<()> {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(4 * 1024 * 1024);
     let builder = std::thread::Builder::new().stack_size(stack_size);
-    let handle = builder.spawn(real_main).expect("Failed to spawn main thread");
+    let handle = builder.spawn(|| real_main(cli)).expect("Failed to spawn main thread");
     match handle.join() {
         Ok(result) => result,
         Err(_) => std::process::exit(101),
     }
 }
 
-fn real_main() -> Result<()> {
-    let cli = Cli::parse();
-
+fn real_main(cli: Cli) -> Result<()> {
     // Determine AI mode: -ai flag or --format json
     let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
 

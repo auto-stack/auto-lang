@@ -880,11 +880,10 @@ pub fn parse_preserve_error(code: &str) -> Result<ast::Code, error::AutoError> {
 // - eval_config() - use eval_config_with_vm() instead
 // - eval_config_with_scope() - use eval_config_with_vm() instead
 
-/// Quick string scan for UI keywords ("widget" or "app") at the start of a line.
-/// Returns true if found, signaling that the file should be parsed with UI scenario.
-/// False positives are harmless — the UI parse path will fail gracefully.
+/// Check if source code contains UI keywords (widget/app).
+/// Used by CLI to decide whether to run on main thread for iced.
 #[cfg(feature = "ui-iced")]
-fn has_ui_keywords(code: &str) -> bool {
+pub fn has_ui_keywords(code: &str) -> bool {
     for line in code.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("widget ") || trimmed.starts_with("widget{") {
@@ -897,9 +896,10 @@ fn has_ui_keywords(code: &str) -> bool {
     false
 }
 
-/// Parse a .at file as UI scenario, extract AuraWidget, and run with iced.
+/// Run a .at file as dynamic UI with iced backend.
+/// MUST be called from the OS main thread (iced requirement).
 #[cfg(feature = "ui-iced")]
-fn run_file_dynamic_ui(code: &str) -> AutoResult<String> {
+pub fn run_file_dynamic_ui(code: &str) -> AutoResult<String> {
     use crate::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::iced::run_dynamic_iced;
