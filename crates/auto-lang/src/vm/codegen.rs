@@ -5874,6 +5874,22 @@ impl Codegen {
                 self.compile_expr(expr)?;
                 // Emit AWAIT_FUTURE to wait for the future's completion
                 self.emit(OpCode::AWAIT_FUTURE);
+                // Unwrap the inner type from Future<T> for type-aware dispatch
+                if let Type::GenericInstance(ref inst) = self.infer_expr_type(expr) {
+                    if inst.base_name.as_ref() == "Future" {
+                        if let Some(inner) = inst.args.first() {
+                            self.last_expr_type = match inner {
+                                Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                                Type::Float => ObjectType::Float,
+                                Type::Double => ObjectType::Double,
+                                Type::Int | Type::I64 => ObjectType::Int,
+                                Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                                Type::Bool => ObjectType::Bool,
+                                _ => ObjectType::NestedObject,
+                            };
+                        }
+                    }
+                }
             }
             // Plan 126: Go expression - expr.go (spawn background task)
             // Fire-and-forget semantics: spawn the future and discard the result
