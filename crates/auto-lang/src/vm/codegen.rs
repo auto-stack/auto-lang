@@ -1612,6 +1612,18 @@ impl Codegen {
                         );
                         // Ignore duplicate registration errors (e.g., if already registered)
                         let _ = self.generic_registry.register_template(template);
+                    } else if !item.payload_types.is_empty() {
+                        // Multi-field anonymous variant: ToolUse str str str -> fields _0, _1, _2
+                        let fields: Vec<FieldDef> = item.payload_types.iter().enumerate()
+                            .map(|(i, t)| FieldDef::new(&format!("_{}", i), t.clone()))
+                            .collect();
+                        let template = ClassTemplate::new(
+                            &variant_mono,
+                            vec![],
+                            fields,
+                            vec![],
+                        );
+                        let _ = self.generic_registry.register_template(template);
                     }
                 }
             }
@@ -2546,6 +2558,9 @@ impl Codegen {
                                                 self.emit_store_loc(var_idx);
                                             }
                                         }
+
+                                        // Pop the remaining instance_id left by DUP
+                                        self.emit(OpCode::POP);
 
                                         // Compile branch body with bindings in scope
                                         self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;

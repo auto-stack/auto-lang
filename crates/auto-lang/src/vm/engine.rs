@@ -350,6 +350,19 @@ impl AutoVM {
         }
     }
 
+    /// Decode a tagged value from the VM stack.
+    /// Negative values encode string indices (tag = -(idx+1)), positive values are plain ints.
+    fn decode_tagged_value(&self, raw: i32) -> auto_val::Value {
+        if raw < 0 {
+            let str_idx = (-raw - 1) as usize;
+            let strings = self.strings.read().unwrap();
+            if let Some(bytes) = strings.get(str_idx) {
+                return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+            }
+        }
+        auto_val::Value::Int(raw)
+    }
+
     /// Create VM with stdout capture for testing (Plan 177)
     pub fn new_with_capture(flash: VirtualFlash, ram_size: usize) -> (Self, Arc<RwLock<String>>) {
         let mut vm = Self::new(flash, ram_size);
@@ -2489,7 +2502,7 @@ impl AutoVM {
                     let value = if val_i32 >= 4000000 {
                         Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
                     } else {
-                        Value::Int(val_i32)
+                        self.decode_tagged_value(val_i32)
                     };
 
                     vm_debug!("DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={:?}",
@@ -3016,7 +3029,7 @@ impl AutoVM {
                                 field_name
                             )));
                         };
-                        obj.set(key, auto_val::Value::Int(value));
+                        obj.set(key, self.decode_tagged_value(value));
                     } else {
                         // Plan 118: Return error for invalid object IDs
                         return Err(VMError::RuntimeError(format!(
@@ -4406,14 +4419,10 @@ impl AutoVM {
                                 FutureState::Ready => {
                                     // Future is ready - return the result
                                     vm_debug!("DEBUG: AWAIT_FUTURE: id={} is ready", future_id);
-                                    if let Some(ref result) = future.result {
-                                        // Push the result value
-                                        // For Phase 2.1, we only support i32 results
-                                        match result {
-                                            auto_val::Value::Int(n) => task.ram.push_i32(*n as i32),
-                                            auto_val::Value::Nil => task.ram.push_i32(0),
-                                            _ => task.ram.push_i32(0), // Default to nil for unsupported types
-                                        }
+                                    let result = future.result.clone();
+                                    drop(future); // Release lock before push_value
+                                    if let Some(ref r) = result {
+                                        Self::push_value(&mut task.ram, r, &self.strings);
                                     } else {
                                         task.ram.push_i32(0); // No result = nil
                                     }
@@ -4421,12 +4430,14 @@ impl AutoVM {
                                 FutureState::Failed => {
                                     // Future failed - return nil
                                     vm_debug!("DEBUG: AWAIT_FUTURE: id={} failed", future_id);
+                                    drop(future);
                                     task.ram.push_i32(0);
                                 }
                                 FutureState::Pending => {
                                     // Plan 224: Return AwaitFuture signal for frame-level handling
                                     vm_debug!("DEBUG: AWAIT_FUTURE: id={} is pending, returning AwaitFuture signal", future_id);
                                     let body_offset = future.body_offset;
+                                    drop(future);
                                     return Ok(StepResult::AwaitFuture { future_id, body_offset });
                                 }
                             }
@@ -4459,24 +4470,24 @@ impl AutoVM {
                                     task.ram.push_i32(1);
 
                                     // Push the result value
-                                    if let Some(ref result) = future.result {
-                                        match result {
-                                            auto_val::Value::Int(n) => task.ram.push_i32(*n as i32),
-                                            auto_val::Value::Nil => task.ram.push_i32(0),
-                                            _ => task.ram.push_i32(0),
-                                        }
+                                    let result = future.result.clone();
+                                    drop(future); // Release lock before push_value
+                                    if let Some(ref r) = result {
+                                        Self::push_value(&mut task.ram, r, &self.strings);
                                     } else {
                                         task.ram.push_i32(0);
                                     }
                                 }
                                 FutureState::Failed => {
                                     // Push is_ready = 1 (failed is also "complete")
+                                    drop(future);
                                     task.ram.push_i32(1);
                                     // Push nil for failed
                                     task.ram.push_i32(0);
                                 }
                                 FutureState::Pending => {
                                     // Push is_ready = 0
+                                    drop(future);
                                     task.ram.push_i32(0);
                                     // Push nil (no value yet)
                                     task.ram.push_i32(0);
@@ -4574,7 +4585,7 @@ impl AutoVM {
                     // Body completed — read result from stack top
                     if task.ram.sp > task.bp + 1 {
                         let raw = task.ram.pop_i32();
-                        result_value = auto_val::Value::Int(raw);
+                        result_value = self.decode_tagged_value(raw);
                     }
                     break;
                 }
@@ -4613,11 +4624,7 @@ impl AutoVM {
         }
 
         // Push result onto caller's stack
-        match &result_value {
-            auto_val::Value::Int(n) => task.ram.push_i32(*n as i32),
-            auto_val::Value::Nil => task.ram.push_i32(0),
-            _ => task.ram.push_i32(0),
-        }
+        Self::push_value(&mut task.ram, &result_value, &self.strings);
 
         Ok(())
     }
