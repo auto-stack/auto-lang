@@ -135,6 +135,8 @@ export function usePlayground() {
     transpileTarget.value = target;
     if (transCache.value[target]) {
       transpiledCode.value = transCache.value[target];
+    } else if (liveCompile.value) {
+      transpile(target);
     } else {
       transpiledCode.value = '';
     }
