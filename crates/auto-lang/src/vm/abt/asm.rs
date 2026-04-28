@@ -26,24 +26,21 @@ pub fn assemble(program: &AbtProgram) -> Result<CompiledPackage, String> {
         current_offset += size;
     }
 
-    // Actually, let's build label_offsets properly
-    // For disassembled programs, labels already have byte offsets.
-    // For parsed programs, labels might have instruction indices.
-    // Let's handle both: if all label values are small (< program.code.len()),
-    // treat them as instruction indices; otherwise treat as byte offsets.
-
-    let max_label_value = program.labels.values().copied().max().unwrap_or(0);
-    let treat_as_indices = max_label_value < program.code.len();
-
+    // Build label_offsets from program.labels.
+    // The parser stores instruction indices (0, 1, 2, ...).
+    // The disassembler stores byte offsets (typically larger).
+    // If a label value is a valid instruction index, look up its byte offset.
+    // Otherwise, treat it as a byte offset directly.
     for (label, &idx_or_offset) in &program.labels {
-        let byte_offset = if treat_as_indices {
+        let byte_offset = if idx_or_offset < offsets.len() {
+            // Likely an instruction index from the parser
             offsets.get(idx_or_offset).copied().unwrap_or(0)
         } else {
+            // Likely a byte offset from the disassembler
             idx_or_offset
         };
         label_offsets.insert(label.clone(), byte_offset);
     }
-
     // === Pass 2: Emit bytecode ===
     let mut bytecode = Vec::new();
 
@@ -189,7 +186,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
 
 fn emit_operands(
     instr: &AbtInstruction,
-    _offset: usize,
+    offset: usize,
     label_offsets: &HashMap<String, usize>,
     bytecode: &mut Vec<u8>,
 ) -> Result<(), String> {
@@ -303,15 +300,17 @@ fn emit_operands(
 
         OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ => {
             let target = operand_label_or_u32(&instr.operands, 0, label_offsets, ResolveType::Rel16)?;
-            let rel = target as i16;
-            bytecode.extend_from_slice(&rel.to_le_bytes());
+            // Relative offset = target - (current_offset + opcode_size + operand_size)
+            let rel = (target as isize) - (offset as isize + 1 + 2);
+            bytecode.extend_from_slice(&(rel as i16).to_le_bytes());
             Ok(())
         }
 
         OpCode::JMP_L => {
             let target = operand_label_or_u32(&instr.operands, 0, label_offsets, ResolveType::Rel32)?;
-            let rel = target as i32;
-            bytecode.extend_from_slice(&rel.to_le_bytes());
+            // Relative offset = target - (current_offset + opcode_size + operand_size)
+            let rel = (target as isize) - (offset as isize + 1 + 4);
+            bytecode.extend_from_slice(&(rel as i32).to_le_bytes());
             Ok(())
         }
 
@@ -512,6 +511,7 @@ fn operand_u64(operands: &[AbtOperand], idx: usize) -> Result<u64, String> {
 fn operand_f32(operands: &[AbtOperand], idx: usize) -> Result<f32, String> {
     match operands.get(idx) {
         Some(AbtOperand::ImmF32(v)) => Ok(*v),
+        Some(AbtOperand::ImmF64(v)) => Ok(*v as f32),
         other => Err(format!("Expected f32 operand at {}, got {:?}", idx, other)),
     }
 }

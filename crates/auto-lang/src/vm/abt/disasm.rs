@@ -8,7 +8,10 @@ use crate::vm::virt_memory::VirtualFlash;
 use std::collections::{HashMap, HashSet};
 
 /// Disassemble a `VirtualFlash` into an `AbtProgram`.
-pub fn disassemble_flash(flash: &VirtualFlash) -> AbtProgram {
+///
+/// `strings` is the optional string constant pool (from `AutoVM.strings` or `CompiledPackage.string_pool`).
+/// If provided, the `.strings` section will be populated in the output.
+pub fn disassemble_flash(flash: &VirtualFlash, strings: Option<&[Vec<u8>]>) -> AbtProgram {
     let end = flash.memory.len();
 
     // === Pass 1: Collect all jump/call targets ===
@@ -39,9 +42,9 @@ pub fn disassemble_flash(flash: &VirtualFlash) -> AbtProgram {
     // Remaining targets get synthetic labels
     let mut sorted_targets: Vec<_> = targets.iter().copied().collect();
     sorted_targets.sort();
-    for target in sorted_targets {
-        if !labels.values().any(|&v| v == target) {
-            labels.insert(format!("L_{:04x}", target), target);
+    for target in &sorted_targets {
+        if !labels.values().any(|&v| v == *target) {
+            labels.insert(format!("L_{:04x}", target), *target);
         }
     }
 
@@ -92,7 +95,9 @@ pub fn disassemble_flash(flash: &VirtualFlash) -> AbtProgram {
     }
 
     // === Build metadata ===
-    let strings = Vec::new(); // TODO: populate from vm.strings if available
+    let strings: Vec<String> = strings
+        .map(|pool| pool.iter().map(|b| String::from_utf8_lossy(b).to_string()).collect())
+        .unwrap_or_default();
     let exports: Vec<(String, String)> = flash
         .exports_by_name
         .iter()

@@ -57,7 +57,8 @@ fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError
     let (vm, _, _) = auto_lang::create_vm_from_source(source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
 
-    let abt = auto_lang::vm::abt::disasm::disassemble_flash(&vm.flash);
+    let strings = vm.strings.read().map_err(|e| AppError::Internal(e.to_string()))?;
+    let abt = auto_lang::vm::abt::disasm::disassemble_flash(&vm.flash, Some(&strings));
     Ok((abt.to_string(), Vec::new()))
 }
 

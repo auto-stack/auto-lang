@@ -6,6 +6,9 @@ pub mod asm;
 pub mod disasm;
 pub mod parser;
 
+#[cfg(test)]
+mod tests;
+
 use crate::vm::opcode::OpCode;
 use crate::vm::codegen::ObjectType;
 use std::collections::HashMap;
@@ -118,17 +121,17 @@ impl std::fmt::Display for AbtProgram {
         writeln!(f, ".code")?;
         let mut current_line: Option<u32> = None;
         for instr in &self.code {
+            // Check if there's a label at this offset (print before .line)
+            for (label, &offset) in &self.labels {
+                if offset == instr.offset {
+                    writeln!(f, "\n{}:", label)?;
+                }
+            }
+
             if let Some(line) = instr.source_line {
                 if current_line != Some(line) {
                     writeln!(f, "  .line {}", line)?;
                     current_line = Some(line);
-                }
-            }
-
-            // Check if there's a label at this offset
-            for (label, &offset) in &self.labels {
-                if offset == instr.offset {
-                    writeln!(f, "\n{}:", label)?;
                 }
             }
 

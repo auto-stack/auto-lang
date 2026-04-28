@@ -11,6 +11,7 @@ use crate::vm::opcode::OpCode;
 pub fn parse(source: &str) -> Result<AbtProgram, String> {
     let mut program = AbtProgram::default();
     let mut section = Section::None;
+    let mut instr_idx = 0usize;
 
     for (line_no, raw) in source.lines().enumerate() {
         let line = raw.trim();
@@ -42,6 +43,12 @@ pub fn parse(source: &str) -> Result<AbtProgram, String> {
                 }
                 let name = parts[0].trim().to_string();
                 let target = parts[1].trim().to_string();
+                // Strip @ prefix from label references in exports
+                let target = if target.starts_with('@') {
+                    target[1..].to_string()
+                } else {
+                    target
+                };
                 program.exports.push((name, target));
             }
             Section::ObjectKeys => {
@@ -53,7 +60,7 @@ pub fn parse(source: &str) -> Result<AbtProgram, String> {
                 program.object_types.push(types);
             }
             Section::Code => {
-                parse_code_line(line, line_no + 1, &mut program)?;
+                parse_code_line(line, line_no + 1, &mut program, &mut instr_idx)?;
             }
             Section::None => {
                 return Err(format!("Line outside of section at {}: {}", line_no + 1, line));
@@ -131,11 +138,11 @@ fn parse_object_type(s: &str) -> Result<ObjectType, String> {
     }
 }
 
-fn parse_code_line(line: &str, line_no: usize, program: &mut AbtProgram) -> Result<(), String> {
+fn parse_code_line(line: &str, line_no: usize, program: &mut AbtProgram, instr_idx: &mut usize) -> Result<(), String> {
     // Label?
     if line.ends_with(':') {
         let label = line[..line.len()-1].trim().to_string();
-        program.labels.insert(label, 0); // placeholder, resolved during assembly
+        program.labels.insert(label, *instr_idx); // instruction index, resolved to byte offset during assembly
         return Ok(());
     }
 
@@ -148,6 +155,7 @@ fn parse_code_line(line: &str, line_no: usize, program: &mut AbtProgram) -> Resu
             operands: vec![AbtOperand::ImmU16(num as u16)],
             source_line: Some(num),
         });
+        *instr_idx += 1;
         return Ok(());
     }
 
@@ -178,6 +186,7 @@ fn parse_code_line(line: &str, line_no: usize, program: &mut AbtProgram) -> Resu
         operands,
         source_line: None,
     });
+    *instr_idx += 1;
 
     Ok(())
 }
