@@ -132,17 +132,42 @@ impl std::fmt::Display for AbtProgram {
                 }
             }
 
-            let ops = instr
-                .operands
-                .iter()
-                .map(|o| format!("{}", o))
-                .collect::<Vec<_>>()
-                .join(", ");
+            // Skip SOURCE_LINE pseudo-op — it's already printed above via source_line
+            if instr.opcode == OpCode::SOURCE_LINE {
+                continue;
+            }
 
-            if ops.is_empty() {
-                writeln!(f, "  {}", instr.opcode.to_mnemonic())?;
-            } else {
-                writeln!(f, "  {} {}", instr.opcode.to_mnemonic(), ops)?;
+            // Special-case opcodes with custom formatting
+            match instr.opcode {
+                OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
+                    if let Some(AbtOperand::ImmU8(v)) = instr.operands.first() {
+                        if *v >= 0x80 {
+                            writeln!(f, "  {} arg{}", instr.opcode.to_mnemonic(), v - 0x80)?;
+                        } else {
+                            writeln!(f, "  {} {}", instr.opcode.to_mnemonic(), v)?;
+                        }
+                    } else {
+                        writeln!(f, "  {}", instr.opcode.to_mnemonic())?;
+                    }
+                }
+                OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
+                | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => {
+                    writeln!(f, "  {}", instr.opcode.to_mnemonic())?;
+                }
+                _ => {
+                    let ops = instr
+                        .operands
+                        .iter()
+                        .map(|o| format!("{}", o))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    if ops.is_empty() {
+                        writeln!(f, "  {}", instr.opcode.to_mnemonic())?;
+                    } else {
+                        writeln!(f, "  {} {}", instr.opcode.to_mnemonic(), ops)?;
+                    }
+                }
             }
         }
 

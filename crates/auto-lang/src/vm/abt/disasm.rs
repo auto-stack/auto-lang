@@ -371,13 +371,16 @@ fn decode_operands(
 
         OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
             let v = flash.read_u8(ip);
-            (vec![AbtOperand::ImmU8(v)], 1)
+            // Plan 087/088: parameters encoded as 0x80 + param_index
+            let operand = if v >= 0x80 {
+                AbtOperand::ImmU8(v) // will be displayed as argN by formatter
+            } else {
+                AbtOperand::ImmU8(v)
+            };
+            (vec![operand], 1)
         }
-        OpCode::LOAD_LOC_0 => (vec![AbtOperand::ImmU8(0)], 0),
-        OpCode::LOAD_LOC_1 => (vec![AbtOperand::ImmU8(1)], 0),
-        OpCode::LOAD_LOC_2 => (vec![AbtOperand::ImmU8(2)], 0),
-        OpCode::STORE_LOC_0 => (vec![AbtOperand::ImmU8(0)], 0),
-        OpCode::STORE_LOC_1 => (vec![AbtOperand::ImmU8(1)], 0),
+        OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
+        | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => (vec![], 0),
 
         OpCode::LOAD_STR => {
             let v = flash.read_u16(ip);

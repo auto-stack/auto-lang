@@ -24,12 +24,14 @@ import rust from 'highlight.js/lib/languages/rust';
 import python from 'highlight.js/lib/languages/python';
 import typescript from 'highlight.js/lib/languages/typescript';
 import c from 'highlight.js/lib/languages/c';
+import abt from '../lang/abt';
 import 'highlight.js/styles/atom-one-dark.css';
 
 hljs.registerLanguage('rust', rust);
 hljs.registerLanguage('python', python);
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('c', c);
+hljs.registerLanguage('abt', abt);
 
 const props = defineProps<{
   code: string;
@@ -42,6 +44,7 @@ const hljsLanguageMap: Record<string, string> = {
   python: 'python',
   typescript: 'typescript',
   c: 'c',
+  abt: 'abt',
 };
 
 const highlightedLines = computed(() => {

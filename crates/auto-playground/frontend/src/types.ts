@@ -35,7 +35,7 @@ export interface ExamplesResponse {
   examples: Example[];
 }
 
-export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'abt';
+export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'bytecode' | 'abt';
 
 // Debug types
 export interface BytecodeLine {

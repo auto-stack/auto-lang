@@ -211,6 +211,15 @@ fn parse_operand(s: &str) -> Result<AbtOperand, String> {
         return Ok(AbtOperand::NatIdx(idx));
     }
 
+    // Parameter reference: argN (encoded as 0x80 + N)
+    if s.starts_with("arg") {
+        let num: u8 = s[3..].parse().map_err(|e| format!("Invalid arg ref: {}", e))?;
+        if num > 127 {
+            return Err(format!("arg index too large: {}", num));
+        }
+        return Ok(AbtOperand::ImmU8(0x80 + num));
+    }
+
     // Hex: 0xNN
     if s.starts_with("0x") || s.starts_with("0X") {
         let val = u32::from_str_radix(&s[2..], 16).map_err(|e| format!("Invalid hex: {}", e))?;
