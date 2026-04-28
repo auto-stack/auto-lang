@@ -18,6 +18,14 @@
       >
         Trans
       </button>
+      <button
+        v-if="activeTab === 'abt'"
+        class="run-abt-btn"
+        @click="$emit('runAbt')"
+        title="Run ABT bytecode directly"
+      >
+        Run ABT
+      </button>
       <label class="switch-widget" title="Toggle live transpile on edit">
         <span class="switch-label">Live</span>
         <span class="switch">
@@ -80,6 +88,7 @@ const props = defineProps<{
 defineEmits<{
   tabChange: [tab: OutputTab];
   trans: [];
+  runAbt: [];
   toggleLive: [];
   offsetClick: [offset: number];
 }>();
@@ -150,6 +159,21 @@ async function copyCode() {
 }
 .trans-btn:hover {
   background: #1177bb;
+}
+.run-abt-btn {
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  margin-right: 8px;
+  transition: background 0.15s;
+}
+.run-abt-btn:hover {
+  background: #2ea043;
 }
 
 /* Switch widget */

@@ -25,3 +25,21 @@ pub fn run_source(source: &str) -> RunResult {
         time_ms,
     }
 }
+
+pub fn run_abt(abt: &str) -> RunResult {
+    let start = Instant::now();
+
+    let runtime = auto_lang::get_global_runtime();
+    let stdout = match runtime.block_on(auto_lang::run_abt(abt)) {
+        Ok(out) => out,
+        Err(e) => format!("Error: {}", e),
+    };
+
+    let time_ms = start.elapsed().as_millis() as u64;
+
+    RunResult {
+        stdout,
+        result: String::new(),
+        time_ms,
+    }
+}

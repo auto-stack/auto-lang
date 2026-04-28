@@ -109,6 +109,33 @@ export function usePlayground() {
     }
   }
 
+  async function runAbt() {
+    isLoading.value = true;
+    stdout.value = '';
+    stderr.value = '';
+    resultCode.value = '';
+
+    try {
+      const abtCode = transCache.value['abt'] || '';
+      const res = await fetch(`${API_BASE}/run_abt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ abt: abtCode }),
+      });
+      const data: RunResponse = await res.json();
+      stdout.value = data.stdout || '';
+      stderr.value = data.stderr || '';
+      timeMs.value = data.time_ms || 0;
+      if (data.result !== undefined && data.result !== null && data.result !== '') {
+        resultCode.value = data.result;
+      }
+    } catch (e: any) {
+      stderr.value = `Network error: ${e.message}`;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   async function transpile(target: string) {
     isLoading.value = true;
     try {
@@ -244,7 +271,7 @@ export function usePlayground() {
     activeTab, transpiledCode, transpileTarget, liveCompile,
     sourceMap, highlightedSourceLine, highlightedOutputLines,
     shareToast,
-    run, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
+    run, runAbt, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
     share,
   };
 }

@@ -66,6 +66,7 @@
             :highlighted-offsets="highlightedOffsets"
             @tab-change="onTabChange"
             @trans="$emit('trans')"
+            @run-abt="$emit('runAbt')"
             @toggle-live="$emit('toggleLive')"
             @offset-click="$emit('offsetClick', $event)"
           />
@@ -147,6 +148,7 @@ defineProps<{
 const emit = defineEmits<{
   'update:source': [value: string];
   run: [];
+  runAbt: [];
   trans: [];
   tabChange: [tab: OutputTab];
   loadExample: [code: string];

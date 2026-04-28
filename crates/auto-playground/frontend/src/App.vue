@@ -21,6 +21,7 @@
     :current-debug-line="debug.state.value?.line ?? null"
     @update:source="source = $event"
     @run="run"
+    @run-abt="runAbt"
     @trans="transpile(activeTab)"
     @tab-change="switchTab"
     @load-example="loadExample"
@@ -47,7 +48,7 @@ const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
   activeTab, transpiledCode, liveCompile,
   highlightedOutputLines, highlightedSourceLine,
-  run, transpile, switchTab, loadExample, highlightSourceLine, share, shareToast,
+  run, runAbt, transpile, switchTab, loadExample, highlightSourceLine, share, shareToast,
 } = usePlayground();
 
 const debug = useDebugger();

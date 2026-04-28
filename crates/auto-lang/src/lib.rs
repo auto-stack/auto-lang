@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::sync::Arc;
 static GLOBAL_RT: OnceLock<Arc<tokio::runtime::Runtime>> = OnceLock::new();
 
-pub(crate) fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
+pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     GLOBAL_RT.get_or_init(|| {
         Arc::new(
             tokio::runtime::Builder::new_multi_thread()
