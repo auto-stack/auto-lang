@@ -32,7 +32,7 @@ nanbox = []
 ui = []
 ui-interpreter = ["ui"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced"]
+ui-iced = ["ui", "dep:iced", "ui-interpreter"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
