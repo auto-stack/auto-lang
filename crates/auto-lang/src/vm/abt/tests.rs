@@ -173,3 +173,89 @@ fn main() {
 }
 "#);
 }
+
+// ============================================================================
+// Plan 226 Phase 6b: Direct ABT execution tests
+// ============================================================================
+
+#[test]
+fn test_create_vm_from_abt_basic() {
+    let abt = r#"
+.exports
+  main -> @main
+
+.code
+main:
+  fn.prolog 0, 0
+  const.i32 42
+  call.nat nat#1
+  ret 0
+"#;
+    let (vm, output, main_entry) = crate::create_vm_from_abt(abt).expect("create_vm_from_abt failed");
+    assert_eq!(main_entry, 0, "main entry should be 0");
+
+    let task_id = vm.spawn_task(main_entry, 16384);
+    crate::get_global_runtime().block_on(async {
+        vm.run_task_loop().await;
+    });
+
+    let result = output.read().unwrap().clone();
+    assert_eq!(result, "42\n", "Expected '42\\n' in output, got: {:?}", result);
+}
+
+#[tokio::test]
+async fn test_run_abt_print_i32() {
+    let abt = r#"
+.exports
+  main -> @main
+
+.code
+main:
+  fn.prolog 0, 0
+  const.i32 42
+  call.nat nat#1
+  ret 0
+"#;
+    let output = crate::run_abt(abt).await.expect("run_abt failed");
+    assert_eq!(output, "42\n", "Expected '42\\n' in output, got: {:?}", output);
+}
+
+#[tokio::test]
+async fn test_run_abt_print_multiple() {
+    let abt = r#"
+.exports
+  main -> @main
+
+.code
+main:
+  fn.prolog 0, 0
+  const.i32 1
+  call.nat nat#1
+  const.i32 2
+  call.nat nat#1
+  const.i32 3
+  call.nat nat#1
+  ret 0
+"#;
+    let output = crate::run_abt(abt).await.expect("run_abt failed");
+    assert_eq!(output, "1\n2\n3\n", "Expected '1\\n2\\n3\\n' in output, got: {:?}", output);
+}
+
+#[tokio::test]
+async fn test_run_abt_arithmetic() {
+    let abt = r#"
+.exports
+  main -> @main
+
+.code
+main:
+  fn.prolog 0, 0
+  const.i32 10
+  const.i32 20
+  add
+  call.nat nat#1
+  ret 0
+"#;
+    let output = crate::run_abt(abt).await.expect("run_abt failed");
+    assert_eq!(output, "30\n", "Expected '30\\n' in output, got: {:?}", output);
+}

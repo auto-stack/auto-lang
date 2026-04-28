@@ -1137,6 +1137,74 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     Ok((vm, output_buffer, main_entry))
 }
 
+/// Plan 226 Phase 6: Create an AutoVM from ABT text, ready to run.
+///
+/// Parses ABT text, assembles it to bytecode, and constructs a VM with
+/// standard native shims (print, assert, etc.) loaded.
+///
+/// Returns `(vm, stdout_capture, main_entry_point)`.
+pub fn create_vm_from_abt(abt_text: &str) -> AutoResult<(
+    crate::vm::engine::AutoVM,
+    std::sync::Arc<std::sync::RwLock<String>>,
+    usize,
+)> {
+    use crate::vm::abt::{parser, asm};
+    use crate::vm::engine::AutoVM;
+    use crate::vm::native::NativeInterface;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    // 1. Parse ABT text
+    let abt_program = parser::parse(abt_text)
+        .map_err(|e| crate::error::AutoError::Msg(format!("ABT parse error: {}", e)))?;
+
+    // 2. Assemble to CompiledPackage
+    let pkg = asm::assemble(&abt_program)
+        .map_err(|e| crate::error::AutoError::Msg(format!("ABT assemble error: {}", e)))?;
+
+    // 3. Create VirtualFlash from CompiledPackage
+    let flash = VirtualFlash::from_vec_with_metadata(
+        pkg.bytecode,
+        pkg.exports.clone(),
+        pkg.object_keys,
+        pkg.object_types,
+    );
+
+    // 4. Ensure built-in natives are registered (normally done by TypeStore/CompileSession)
+    crate::vm::native_registry::register_builtin_natives();
+
+    // 5. Create VM with stdout capture
+    let (mut vm, output_buffer) = AutoVM::new_with_capture(flash, 1024);
+
+    // 6. Load string pool
+    vm.load_strings(pkg.string_pool);
+
+    // 7. Register standard native shims
+    let mut ni = NativeInterface::new();
+    ni.register_std_shims();
+    vm.merge_native_interface(&ni);
+
+    // 8. Determine entry point (main export, or start of bytecode)
+    let main_entry = pkg.exports.get("main")
+        .or_else(|| pkg.exports.get("test"))
+        .copied()
+        .unwrap_or(0) as usize;
+
+    Ok((vm, output_buffer, main_entry))
+}
+
+/// Plan 226 Phase 6: Run ABT text directly and return captured stdout.
+///
+/// Convenience wrapper around `create_vm_from_abt` + spawn + run loop.
+pub async fn run_abt(abt_text: &str) -> AutoResult<String> {
+    let (vm, output_buffer, main_entry) = create_vm_from_abt(abt_text)?;
+
+    let task_id = vm.spawn_task(main_entry, 16384);
+    vm.run_task_loop().await;
+
+    let result = output_buffer.read().unwrap().clone();
+    Ok(result)
+}
+
 /// Evaluate config code using AutoVM (Plan 081 Phase 2)
 ///
 /// **Replaces** `eval_config_with_scope` which uses the deprecated Interpreter.
