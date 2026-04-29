@@ -6,8 +6,8 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
-    env: std::collections::HashMap<&str, &str>,
-    provider: Option<&str>,
+    env: std::collections::HashMap<String, String>,
+    provider: Option<String>,
 }
 
 impl Settings {

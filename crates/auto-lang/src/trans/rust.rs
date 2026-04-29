@@ -250,8 +250,8 @@ impl RustTrans {
             Type::Bool => "bool".to_string(),
             Type::Char => "char".to_string(),
             Type::Str(_) => "String".to_string(),
-            Type::CStr => "&str".to_string(),
-            Type::StrSlice => "&str".to_string(), // Borrowed string slice (Phase 3)
+            Type::CStr => "String".to_string(),
+            Type::StrSlice => "String".to_string(),
             Type::String => "String".to_string(), // Owned dynamic string (Plan 155)
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
@@ -1107,7 +1107,9 @@ impl RustTrans {
                 for part in &fstr.parts {
                     match part {
                         Expr::Str(s) | Expr::CStr(s) => {
-                            write!(out, "{}", s.replace("\"", r##"\""##))?;
+                            let escaped = s.replace("\\", "\\\\").replace("\"", r##"\""##)
+                                .replace("{", "{{").replace("}", "}}");
+                            write!(out, "{}", escaped)?;
                         }
                         Expr::Char(c) => {
                             write!(out, "{}", c)?;
@@ -1625,15 +1627,18 @@ impl RustTrans {
                             }
                             write!(out, " => ")?;
                             self.write_body_inline(body, out)?;
+                            write!(out, ",")?;
                         }
                         crate::ast::IsBranch::IfBranch(cond, body) => {
                             self.expr(cond, out)?;
                             write!(out, " if true => ")?;
                             self.write_body_inline(body, out)?;
+                            write!(out, ",")?;
                         }
                         crate::ast::IsBranch::ElseBranch(body) => {
                             write!(out, "_ => ")?;
                             self.write_body_inline(body, out)?;
+                            write!(out, ",")?;
                         }
                     }
                 }
@@ -3055,10 +3060,14 @@ impl RustTrans {
     fn write_body_inline(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
         if body.stmts.len() == 1 {
             match &body.stmts[0] {
-                Stmt::Expr(expr) => self.expr(expr, out)?,
+                Stmt::Expr(expr) => {
+                    self.expr(expr, out)?;
+                    write!(out, ";")?;
+                }
                 Stmt::Return(ret) => {
                     write!(out, "return ")?;
                     self.expr(ret, out)?;
+                    write!(out, ";")?;
                 }
                 _ => write!(out, "{{ }}")?,
             }

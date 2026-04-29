@@ -6,12 +6,12 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Config {
-    env: std::collections::HashMap<&str, &str>,
+    env: std::collections::HashMap<String, String>,
     ports: Vec<i32>,
 }
 
 fn main() {
-    let headers: std::collections::HashMap<&str, &str> = {Authorization: "Bearer xxx", Content-Type: "application/json"};
-    let counts: std::collections::HashMap<&str, i32> = {hello: 3, world: 5};
+    let headers: std::collections::HashMap<String, String> = {Authorization: "Bearer xxx", Content-Type: "application/json"};
+    let counts: std::collections::HashMap<String, i32> = {hello: 3, world: 5};
     let x: i32 = 42;
 }

@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::collections::HashMap;
 fn main() {
-    let mut map: HashMap<&str, i32> = HashMap::new();
+    let mut map: HashMap<String, i32> = HashMap::new();
     map.insert("a", 1);
     map.insert("b", 2);
     let val = map.get("a");

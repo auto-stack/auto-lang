@@ -6,12 +6,12 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToolError {
-    ExecutionFailed(&str),
-    InvalidInput(&str),
+    ExecutionFailed(String),
+    InvalidInput(String),
 }
 
 
-pub fn execute(input: &str) -> Result<String, ToolError> {
+pub fn execute(input: String) -> Result<String, ToolError> {
     if input == "" {
         return Err(ToolError::InvalidInput("empty"));
     }

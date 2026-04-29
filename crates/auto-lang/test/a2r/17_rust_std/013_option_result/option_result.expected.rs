@@ -9,6 +9,6 @@ use std::result::Result;
 fn main() {
     let a: Option<i32> = Some(42);
     let b: Option<i32> = None;
-    let c: Result<i32, &str> = Ok(10);
-    let d: Result<i32, &str> = Err("fail");
+    let c: Result<i32, String> = Ok(10);
+    let d: Result<i32, String> = Err("fail");
 }

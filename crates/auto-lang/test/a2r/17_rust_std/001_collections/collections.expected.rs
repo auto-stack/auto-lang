@@ -6,16 +6,16 @@ use auto_lang::a2r_std::*;
 
 use std::collections::{HashMap, HashSet, BTreeMap, VecDeque};
 fn main() {
-    let mut scores: HashMap<&str, i32> = HashMap::new();
+    let mut scores: HashMap<String, i32> = HashMap::new();
     scores.insert("alice", 100);
     scores.insert("bob", 95);
     let alice_score = scores.get("alice");
 
-    let mut visited: HashSet<&str> = HashSet::new();
+    let mut visited: HashSet<String> = HashSet::new();
     visited.insert("home");
     visited.insert("about");
 
-    let mut timeline: BTreeMap<i32, &str> = BTreeMap::new();
+    let mut timeline: BTreeMap<i32, String> = BTreeMap::new();
     timeline.insert(1, "start");
     timeline.insert(2, "middle");
 

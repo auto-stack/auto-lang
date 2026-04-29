@@ -6,9 +6,9 @@ use auto_lang::a2r_std::*;
 
 const MAX_SIZE: i32 = 1024;
 
-const APP_NAME: &str = "AutoLang";
+const APP_NAME: String = "AutoLang";
 
-const VERSION: &str = "0.1.0";
+const VERSION: String = "0.1.0";
 
 fn main() {
     say(APP_NAME);

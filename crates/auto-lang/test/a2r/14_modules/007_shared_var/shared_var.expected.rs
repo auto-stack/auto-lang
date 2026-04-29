@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 static COUNTER: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
 
-static APP_NAME: Lazy<Mutex<&str>> = Lazy::new(|| Mutex::new("AutoLang"));
+static APP_NAME: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("AutoLang"));
 
 fn main() {
     *COUNTER.lock().unwrap() += 1;

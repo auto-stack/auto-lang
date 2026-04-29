@@ -6,8 +6,8 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Message {
-    role: &str,
-    content: &str,
+    role: String,
+    content: String,
 }
 
 pub fn load() -> Result<Vec<Message>, String> {

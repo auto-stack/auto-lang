@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Animal {
-    name: &str,
+    name: String,
 }
 
 impl Animal {
@@ -17,8 +17,8 @@ impl Animal {
 
 #[derive(Clone, Debug, PartialEq)]
 struct Dog {
-    name: &str,
-    breed: &str,
+    name: String,
+    breed: String,
 }
 
 impl Dog {

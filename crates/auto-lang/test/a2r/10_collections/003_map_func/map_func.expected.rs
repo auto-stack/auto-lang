@@ -4,16 +4,16 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-fn get_headers() -> std::collections::HashMap<&str, &str> {
-    let h: std::collections::HashMap<&str, &str> = {Accept: "application/json"};
+fn get_headers() -> std::collections::HashMap<String, String> {
+    let h: std::collections::HashMap<String, String> = {Accept: "application/json"};
     return h;
 }
 
-fn process(data: std::collections::HashMap<&str, i32>) -> i32 {
+fn process(data: std::collections::HashMap<String, i32>) -> i32 {
     return 0;
 }
 
 fn main() {
-    let m: std::collections::HashMap<&str, i32> = {count: 10, total: 100};
+    let m: std::collections::HashMap<String, i32> = {count: 10, total: 100};
     let result = process(m);
 }

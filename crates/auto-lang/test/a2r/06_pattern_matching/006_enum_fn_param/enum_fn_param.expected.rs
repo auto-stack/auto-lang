@@ -6,8 +6,8 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToolError {
-    ExecutionFailed(&str),
-    InvalidInput(&str),
+    ExecutionFailed(String),
+    InvalidInput(String),
 }
 
 

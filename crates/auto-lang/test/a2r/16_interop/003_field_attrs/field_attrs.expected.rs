@@ -9,7 +9,7 @@ struct Role {
     #[serde(rename = "role_id")]
     id: i32,
     #[serde(rename = "role_name")]
-    name: &str,
+    name: String,
 }
 
 fn main() {
