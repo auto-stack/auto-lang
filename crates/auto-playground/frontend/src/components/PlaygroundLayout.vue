@@ -41,7 +41,16 @@
     <div class="workspace">
       <div class="top-row">
         <div class="editor-pane">
-          <div class="pane-header">Auto</div>
+          <div class="pane-header">
+            <span>Auto</span>
+            <button
+              class="run-btn"
+              @click="$emit('run')"
+              :disabled="isLoading"
+            >
+              {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
+            </button>
+          </div>
           <div class="pane-body">
             <CodeEditor
               :model-value="source"
@@ -86,13 +95,6 @@
               @click="consoleTab = 'debug'"
             >Debug</button>
           </div>
-          <button
-            class="run-btn"
-            @click="$emit('run')"
-            :disabled="isLoading"
-          >
-            {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
-          </button>
         </div>
         <div class="pane-body">
           <ConsoleOutput
