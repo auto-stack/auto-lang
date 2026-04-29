@@ -13,6 +13,9 @@ use crate::ui::style::Style;
 use std::fmt::Debug;
 use iced::widget::{button, checkbox, column, container, pick_list, row, text, text_input};
 
+use crate::ui::dynamic::DynamicComponent;
+use crate::ui::interpreter::DynamicMessage;
+
 /// Trait for converting abstract View<M> into Iced Element
 ///
 /// This trait enables rendering the abstract view tree using the Iced framework
@@ -652,6 +655,280 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
         IcedFontSize::Xxl => 24.0,
         IcedFontSize::X3xl => 30.0,
     }
+}
+
+// ============================================================================
+// Plan 227: Send-safe IcedMessage wrapper for DynamicComponent
+// ============================================================================
+
+/// Send-safe message type for the iced boundary.
+///
+/// `DynamicMessage` contains `Vec<Value>` where `Value` uses `Rc<RefCell<T>>`
+/// internally, making it NOT `Send`. This wrapper carries only the event name
+/// and widget name — sufficient for all current AuraViewBuilder events (onclick
+/// handlers always have empty args).
+///
+/// Since `IcedMessage` only has `String` fields, it IS `Send` by default.
+#[derive(Clone, Debug)]
+pub struct IcedMessage {
+    pub widget: String,
+    pub event: String,
+}
+
+impl IcedMessage {
+    /// Convert a `DynamicMessage` reference into an `IcedMessage`,
+    /// discarding the non-Send `args`.
+    fn from_dynamic(msg: &DynamicMessage) -> Self {
+        match msg {
+            DynamicMessage::Typed {
+                widget_name,
+                event_name,
+                ..
+            } => IcedMessage {
+                widget: widget_name.clone(),
+                event: event_name.clone(),
+            },
+            DynamicMessage::String(name) => IcedMessage {
+                widget: String::new(),
+                event: name.clone(),
+            },
+        }
+    }
+
+    /// Convert back into a `DynamicMessage` with empty args.
+    fn to_dynamic(&self) -> DynamicMessage {
+        DynamicMessage::Typed {
+            widget_name: self.widget.clone(),
+            event_name: self.event.clone(),
+            args: vec![],
+        }
+    }
+}
+
+/// Recursively convert `View<DynamicMessage>` to `View<IcedMessage>`.
+///
+/// Each variant that carries a message is mapped through
+/// [`IcedMessage::from_dynamic`]. Variants without messages are passed through
+/// unchanged. Navigation callback variants (Accordion, Tabs, NavigationRail)
+/// and Slider use function-pointer or Arc-callback types that cannot be
+/// trivially converted, so they are mapped to `View::Empty` as fallback.
+fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<IcedMessage> {
+    match view {
+        AbstractView::Empty => AbstractView::Empty,
+
+        AbstractView::Text { content, style } => AbstractView::Text { content, style },
+
+        AbstractView::Button {
+            label,
+            onclick,
+            style,
+        } => AbstractView::Button {
+            label,
+            onclick: IcedMessage::from_dynamic(&onclick),
+            style,
+        },
+
+        AbstractView::Row {
+            children,
+            spacing,
+            padding,
+            style,
+        } => AbstractView::Row {
+            children: children
+                .into_iter()
+                .map(convert_view_messages)
+                .collect(),
+            spacing,
+            padding,
+            style,
+        },
+
+        AbstractView::Column {
+            children,
+            spacing,
+            padding,
+            style,
+        } => AbstractView::Column {
+            children: children
+                .into_iter()
+                .map(convert_view_messages)
+                .collect(),
+            spacing,
+            padding,
+            style,
+        },
+
+        AbstractView::Input {
+            placeholder,
+            value,
+            on_change,
+            width,
+            password,
+            style,
+        } => AbstractView::Input {
+            placeholder,
+            value,
+            on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            width,
+            password,
+            style,
+        },
+
+        AbstractView::Checkbox {
+            is_checked,
+            label,
+            on_toggle,
+            style,
+        } => AbstractView::Checkbox {
+            is_checked,
+            label,
+            on_toggle: on_toggle.map(|m| IcedMessage::from_dynamic(&m)),
+            style,
+        },
+
+        AbstractView::Container {
+            child,
+            padding,
+            width,
+            height,
+            center_x,
+            center_y,
+            style,
+        } => AbstractView::Container {
+            child: Box::new(convert_view_messages(*child)),
+            padding,
+            width,
+            height,
+            center_x,
+            center_y,
+            style,
+        },
+
+        AbstractView::Scrollable {
+            child,
+            width,
+            height,
+            style,
+        } => AbstractView::Scrollable {
+            child: Box::new(convert_view_messages(*child)),
+            width,
+            height,
+            style,
+        },
+
+        AbstractView::Radio {
+            label,
+            is_selected,
+            on_select,
+            style,
+        } => AbstractView::Radio {
+            label,
+            is_selected,
+            on_select: on_select.map(|m| IcedMessage::from_dynamic(&m)),
+            style,
+        },
+
+        AbstractView::List {
+            items,
+            spacing,
+            style,
+        } => AbstractView::List {
+            items: items.into_iter().map(convert_view_messages).collect(),
+            spacing,
+            style,
+        },
+
+        AbstractView::Table {
+            headers,
+            rows,
+            spacing,
+            col_spacing,
+            style,
+        } => AbstractView::Table {
+            headers: headers
+                .into_iter()
+                .map(convert_view_messages)
+                .collect(),
+            rows: rows
+                .into_iter()
+                .map(|r| r.into_iter().map(convert_view_messages).collect())
+                .collect(),
+            spacing,
+            col_spacing,
+            style,
+        },
+
+        AbstractView::ProgressBar { progress, style } => {
+            AbstractView::ProgressBar { progress, style }
+        }
+
+        // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use
+        // callback types (SelectCallback, fn pointers, Arc<...>) that
+        // cannot be trivially converted. Map them to Empty as fallback.
+        _ => AbstractView::Empty,
+    }
+}
+
+/// Wrapper holding `DynamicComponent` as iced's application state.
+struct DynamicState {
+    component: DynamicComponent,
+}
+
+/// Run a `DynamicComponent` in an iced window.
+///
+/// This is the main entry point for running AURA widgets with iced. It:
+/// 1. Wraps the `DynamicComponent` in a `DynamicState`
+/// 2. Uses `iced::application()` (which does NOT require `State: Default`)
+/// 3. Converts `View<DynamicMessage>` to `View<IcedMessage>` before rendering
+/// 4. Maps iced messages back to `DynamicMessage` on update
+///
+/// # Arguments
+///
+/// * `component` - A ready-to-use `DynamicComponent`
+///
+/// # Returns
+///
+/// `AppResult<String>` - Ok("UI closed") on normal exit, Err on failure.
+pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
+    let widget_name = component.widget_name().to_string();
+
+    // BootFn requires Fn (not FnOnce), so we use RefCell<Option<...>> to
+    // allow the boot closure to extract the component on the first (and only)
+    // call while still satisfying the Fn bound.
+    let init = std::cell::RefCell::new(Some(component));
+
+    let boot = move || -> DynamicState {
+        let comp = init.borrow_mut().take()
+            .expect("boot should only be called once");
+        DynamicState { component: comp }
+    };
+
+    let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        let dyn_msg = msg.to_dynamic();
+        state.component.on(dyn_msg);
+        iced::Task::none()
+    };
+
+    let title_fn = move |_state: &DynamicState| -> String {
+        format!("Auto - {}", widget_name)
+    };
+
+    iced::application(boot, update, dynamic_view)
+        .title(title_fn)
+        .window_size(iced::Size::new(800.0, 600.0))
+        .run()?;
+
+    Ok("UI closed".to_string())
+}
+
+/// View function for `DynamicState`, used as the view callback in `iced::application()`.
+///
+/// This is a standalone function (not a closure) so that Rust can correctly
+/// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
+fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
+    let view = state.component.view();
+    let converted = convert_view_messages(view);
+    converted.into_iced()
 }
 
 /// Convert IcedSize to iced::Length

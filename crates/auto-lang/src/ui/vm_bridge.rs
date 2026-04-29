@@ -132,6 +132,10 @@ impl VmBridge {
     ///
     /// Returns an error if state initialization fails.
     pub fn new(widget: &AuraWidget) -> Result<Self> {
+        // Ensure BIGVM_NATIVES is populated before AutoVM::new()
+        // (normal codegen path calls this via Codegen::new(), but dynamic UI skips codegen)
+        crate::vm::native_registry::register_builtin_natives();
+
         // 1. Create AutoVM instance with empty flash
         let flash = VirtualFlash::new(0);
         let vm = AutoVM::new(flash, 4096);
@@ -148,6 +152,9 @@ impl VmBridge {
     /// * `vm` - Pre-configured AutoVM instance
     /// * `widget` - The AuraWidget to create a bridge for
     pub fn new_with_vm(mut vm: AutoVM, widget: &AuraWidget) -> Result<Self> {
+        // Ensure BIGVM_NATIVES is populated (idempotent if already called)
+        crate::vm::native_registry::register_builtin_natives();
+
         let widget_name = widget.name.clone();
 
         // 2. Build state fields and default values

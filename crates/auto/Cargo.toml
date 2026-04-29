@@ -17,3 +17,6 @@ indicatif = "0.18.3"
 log = "0.4"
 simplelog = "0.12"
 colored = { workspace = true }
+
+[features]
+ui-iced = ["auto-lang/ui-iced"]
