@@ -330,7 +330,7 @@ impl RustTrans {
             Type::U64 => "u64".to_string(),
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
-            Type::Result(inner) => format!("Result<{}, Box<dyn Err>>", self.rust_type_name(inner)),
+            Type::Result(inner) => format!("Result<{}, Box<dyn std::error::Error>>", self.rust_type_name(inner)),
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
@@ -352,9 +352,9 @@ impl RustTrans {
             Type::Option(inner) => {
                 format!("Option<{}>", self.rust_return_type_name(inner))
             }
-            // Result<str> -> Result<String, Box<dyn Err>>
+            // Result<str> -> Result<String, Box<dyn std::error::Error>>
             Type::Result(inner) => {
-                format!("Result<{}, Box<dyn Err>>", self.rust_return_type_name(inner))
+                format!("Result<{}, Box<dyn std::error::Error>>", self.rust_return_type_name(inner))
             }
             // Fn type: use return type mapping for the return position
             Type::Fn(params, ret) => {
@@ -595,17 +595,17 @@ impl RustTrans {
                         self.expr(rhs, out)?;
                     }
                     Op::Add => {
-                        // Plan 220 Task 6: String concatenation via format!
-                        let lhs_is_str = matches!(lhs.as_ref(), Expr::Str(_));
-                        let rhs_is_str = matches!(rhs.as_ref(), Expr::Str(_));
-                        if lhs_is_str || rhs_is_str {
+                        // When either side is a string expression, use format! for safe concatenation
+                        // This handles: String + String, &str + String, String + &str
+                        let is_str_lhs = matches!(lhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
+                        let is_str_rhs = matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
+                        if is_str_lhs || is_str_rhs {
                             write!(out, "format!(\"{{}}{{}}\", ")?;
                             self.expr(&lhs, out)?;
                             write!(out, ", ")?;
                             self.expr(&rhs, out)?;
                             write!(out, ")")?;
                         } else {
-                            // Default: numeric addition
                             self.expr(&lhs, out)?;
                             write!(out, " + ")?;
                             self.expr(&rhs, out)?;
@@ -1670,9 +1670,9 @@ impl RustTrans {
             }
         }
 
-        // Plan 204 Phase 1A: Rust assert/assert_eq/assert_ne are macros, need ! suffix
+        // Plan 204 Phase 1A: Rust assert/assert_eq/assert_ne/panic are macros, need ! suffix
         if let Expr::Ident(name) = call.name.as_ref() {
-            if matches!(name.as_str(), "assert" | "assert_eq" | "assert_ne") {
+            if matches!(name.as_str(), "assert" | "assert_eq" | "assert_ne" | "panic") {
                 write!(out, "{}!(", name)?;
                 for (i, arg) in call.args.args.iter().enumerate() {
                     self.arg(arg, out)?;
@@ -1808,8 +1808,7 @@ impl RustTrans {
                             return Ok(());
                         }
                         "sub" => {
-                            // s.sub(start, end) -> &s[start..end]
-                            write!(out, "&")?;
+                            // s.sub(start, end) -> s[start..end].to_string()
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -1833,13 +1832,12 @@ impl RustTrans {
                                     }
                                 }
                             }
-                            write!(out, "]")?;
+                            write!(out, "].to_string()")?;
                             return Ok(());
                         }
                         "slice" => {
-                            // s.slice(n) -> &s[n..]
-                            // s.slice(start, end) -> &s[start..end]
-                            write!(out, "&")?;
+                            // s.slice(n) -> s[n..].to_string()
+                            // s.slice(start, end) -> s[start..end].to_string()
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             let args = &call.args.args;
@@ -1863,9 +1861,9 @@ impl RustTrans {
                                         self.expr(b, out)?;
                                     }
                                 }
-                                write!(out, "]")?;
+                                write!(out, "].to_string()")?;
                             } else {
-                                write!(out, "..]")?;
+                                write!(out, "..].to_string()")?;
                             }
                             return Ok(());
                         }
@@ -1881,13 +1879,13 @@ impl RustTrans {
                             return Ok(());
                         }
                         "find" => {
-                            // s.find(sub) -> s.find(sub).map(|i| i as i32).unwrap_or(-1)
+                            // s.find(sub) -> s.find(sub) (keep Option<usize>)
                             self.expr(lhs, out)?;
                             write!(out, ".find(")?;
                             if let Some(Arg::Pos(a)) = call.args.args.first() {
                                 self.expr(a, out)?;
                             }
-                            write!(out, ").map(|i| i as i32).unwrap_or(-1)")?;
+                            write!(out, ")")?;
                             return Ok(());
                         }
                         "to_hex" => {
@@ -1986,8 +1984,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "sub" => {
-                    // s.sub(start, end) -> &s[start..end]
-                    write!(out, "&")?;
+                    // s.sub(start, end) -> s[start..end].to_string()
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -2011,13 +2008,12 @@ impl RustTrans {
                             }
                         }
                     }
-                    write!(out, "]")?;
+                    write!(out, "].to_string()")?;
                     return Ok(());
                 }
                 "slice" => {
-                    // s.slice(n) -> &s[n..]
-                    // s.slice(start, end) -> &s[start..end]
-                    write!(out, "&")?;
+                    // s.slice(n) -> s[n..].to_string()
+                    // s.slice(start, end) -> s[start..end].to_string()
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     let args = &call.args.args;
@@ -2041,9 +2037,9 @@ impl RustTrans {
                                 self.expr(b, out)?;
                             }
                         }
-                        write!(out, "]")?;
+                        write!(out, "].to_string()")?;
                     } else {
-                        write!(out, "..]")?;
+                        write!(out, "..].to_string()")?;
                     }
                     return Ok(());
                 }
@@ -2059,13 +2055,13 @@ impl RustTrans {
                     return Ok(());
                 }
                 "find" => {
-                    // s.find(sub) -> s.find(sub).map(|i| i as i32).unwrap_or(-1)
+                    // s.find(sub) -> s.find(sub) (keep Option<usize>)
                     self.expr(object, out)?;
                     write!(out, ".find(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr(a, out)?;
                     }
-                    write!(out, ").map(|i| i as i32).unwrap_or(-1)")?;
+                    write!(out, ")")?;
                     return Ok(());
                 }
                 "to_hex" => {
@@ -2274,7 +2270,7 @@ impl RustTrans {
                         format!("field{}", i).into()
                     };
                     write!(out, "{}: ", field_name)?;
-                    self.expr(expr, out)?;
+                    self.write_expr_for_struct_field(expr, out)?;
                 }
                 Arg::Name(name) => {
                     // Named arg without value
@@ -2283,7 +2279,7 @@ impl RustTrans {
                 Arg::Pair(key, expr) => {
                     // Named argument: field: value
                     write!(out, "{}: ", key)?;
-                    self.expr(expr, out)?;
+                    self.write_expr_for_struct_field(expr, out)?;
                 }
             }
             if i < args.args.len() - 1 {
@@ -2299,6 +2295,31 @@ impl RustTrans {
             Arg::Name(name) => write!(out, "{}", name).map_err(Into::into),
             Arg::Pair(_, expr) => self.expr(expr, out),
         }
+    }
+
+    fn write_expr_for_struct_field(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        // Array literals in struct fields should be vec![] (fields are typically Vec<T>)
+        if let Expr::Array(elems) = expr {
+            write!(out, "vec![")?;
+            for (i, elem) in elems.iter().enumerate() {
+                self.expr(elem, out)?;
+                if i < elems.len() - 1 {
+                    write!(out, ", ")?;
+                }
+            }
+            write!(out, "]")?;
+        } else {
+            self.expr(expr, out)?;
+            // Auto str literals are &str but struct fields are String
+            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                write!(out, ".to_string()")?;
+            }
+        }
+        // self.field in &self context needs .clone()
+        if Self::is_self_dot(expr) {
+            write!(out, ".clone()")?;
+        }
+        Ok(())
     }
 
     fn print_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
@@ -2643,6 +2664,20 @@ impl RustTrans {
                     write!(out, "Box::new(")?;
                     self.expr(elem, out)?;
                     write!(out, ")")?;
+                    if i < elems.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "]")?;
+            } else {
+                self.expr(&store.expr, out)?;
+            }
+        } else if matches!(&store.ty, Type::List(_)) {
+            // List<T> (Vec<T>) with Array literal → vec![...]
+            if let Expr::Array(elems) = &store.expr {
+                write!(out, "vec![")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    self.expr(elem, out)?;
                     if i < elems.len() - 1 {
                         write!(out, ", ")?;
                     }
@@ -3062,12 +3097,10 @@ impl RustTrans {
             match &body.stmts[0] {
                 Stmt::Expr(expr) => {
                     self.expr(expr, out)?;
-                    write!(out, ";")?;
                 }
                 Stmt::Return(ret) => {
                     write!(out, "return ")?;
                     self.expr(ret, out)?;
-                    write!(out, ";")?;
                 }
                 _ => write!(out, "{{ }}")?,
             }
@@ -4455,6 +4488,10 @@ impl RustTrans {
         false
     }
 
+    fn is_self_dot(expr: &Expr) -> bool {
+        matches!(expr, Expr::Dot(obj, _) if matches!(obj.as_ref(), Expr::Ident(name) if name == "self"))
+    }
+
     /// Plan 163: Check if an expression contains await
     fn expr_has_await(expr: &Expr) -> bool {
         match expr {
@@ -4564,10 +4601,7 @@ impl Trans for RustTrans {
             }
         }
 
-        // Emit Err trait if any function returns !T
-        if self.needs_err_trait {
-            sink.body.write(b"trait Err {\n    fn msg(&self) -> String;\n}\n\n")?;
-        }
+        // No custom Err trait — use Box<dyn std::error::Error> for !T error types
 
         // Phase 2: Split into declarations and main, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)

@@ -34,7 +34,9 @@ pub fn parse(source: &str) -> Result<AbtProgram, String> {
 
         match section {
             Section::Strings => {
-                program.strings.push(parse_quoted_string(line)?);
+                // Strip leading index prefix like "0: " and parse the quoted string
+                let rest = line.find('"').map(|i| &line[i..]).unwrap_or(line);
+                program.strings.push(parse_quoted_string(rest)?);
             }
             Section::Exports => {
                 let parts: Vec<&str> = line.split("->").collect();

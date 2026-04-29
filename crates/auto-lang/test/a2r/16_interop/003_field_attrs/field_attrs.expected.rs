@@ -13,6 +13,6 @@ struct Role {
 }
 
 fn main() {
-    let r = Role { id: 1, name: "admin" };
+    let r = Role { id: 1, name: "admin".to_string() };
     println!("{}", r.id);
 }

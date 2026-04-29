@@ -4,10 +4,6 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-trait Err {
-    fn msg(&self) -> String;
-}
-
 fn maybe_value(x: i32) -> Option<i32> {
     if x > 0 {
         return Some(x);
@@ -15,7 +11,7 @@ fn maybe_value(x: i32) -> Option<i32> {
     return None;
 }
 
-fn divide(a: i32, b: i32) -> Result<i32, Box<dyn Err>> {
+fn divide(a: i32, b: i32) -> Result<i32, Box<dyn std::error::Error>> {
     if b == 0 {
         return Err(Box::new("division by zero"));
     }
@@ -25,7 +21,7 @@ fn divide(a: i32, b: i32) -> Result<i32, Box<dyn Err>> {
 fn main() {
     let a: Option<i32> = Some(42);
     let b = None;
-    let c: Result<i32, Box<dyn Err>> = Ok(100);
+    let c: Result<i32, Box<dyn std::error::Error>> = Ok(100);
     let d = Err("something went wrong");
 
     let result1 = maybe_value(10);

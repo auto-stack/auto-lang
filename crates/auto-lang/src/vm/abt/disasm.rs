@@ -440,7 +440,7 @@ fn decode_operands(
 
         OpCode::BUILD_FSTR => {
             let part_count = flash.read_u8(ip);
-            let mut tags = Vec::new();
+            let mut tags = vec![AbtOperand::ImmU8(part_count)];
             for i in 0..part_count {
                 tags.push(AbtOperand::ImmU8(flash.read_u8(ip + 1 + i as usize)));
             }

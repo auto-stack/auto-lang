@@ -152,8 +152,15 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
 
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
         | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
-        | OpCode::JMP_IF_NZ | OpCode::IS_VARIANT
+        | OpCode::JMP_IF_NZ
             => 2,
+
+        OpCode::IS_VARIANT => {
+            match instr.operands.first() {
+                Some(AbtOperand::Bytes(b)) => 2 + b.len(),
+                _ => 2,
+            }
+        }
 
         OpCode::JMP_L | OpCode::CALL_SPEC => 4,
 
@@ -291,7 +298,7 @@ fn emit_operands(
         }
 
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
-        | OpCode::STORE_CAPTURED | OpCode::IS_VARIANT
+        | OpCode::STORE_CAPTURED
             => {
                 let v = operand_u16(&instr.operands, 0)?;
                 bytecode.extend_from_slice(&v.to_le_bytes());
@@ -303,6 +310,15 @@ fn emit_operands(
             // Relative offset = target - (current_offset + opcode_size + operand_size)
             let rel = (target as isize) - (offset as isize + 1 + 2);
             bytecode.extend_from_slice(&(rel as i16).to_le_bytes());
+            Ok(())
+        }
+
+        OpCode::IS_VARIANT => {
+            let bytes = operand_bytes(&instr.operands, 0)?;
+            bytecode.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+            for b in bytes {
+                bytecode.push(*b);
+            }
             Ok(())
         }
 
