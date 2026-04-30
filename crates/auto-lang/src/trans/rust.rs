@@ -330,7 +330,7 @@ impl RustTrans {
             Type::U64 => "u64".to_string(),
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
-            Type::Result(inner) => format!("Result<{}, Box<dyn std::error::Error>>", self.rust_type_name(inner)),
+            Type::Result(inner) => format!("Result<{}, String>", self.rust_type_name(inner)),
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
@@ -352,9 +352,9 @@ impl RustTrans {
             Type::Option(inner) => {
                 format!("Option<{}>", self.rust_return_type_name(inner))
             }
-            // Result<str> -> Result<String, Box<dyn std::error::Error>>
+            // Result<str> -> Result<String, String>
             Type::Result(inner) => {
-                format!("Result<{}, Box<dyn std::error::Error>>", self.rust_return_type_name(inner))
+                format!("Result<{}, String>", self.rust_return_type_name(inner))
             }
             // Fn type: use return type mapping for the return position
             Type::Fn(params, ret) => {
@@ -471,16 +471,13 @@ impl RustTrans {
                 write!(out, ")").map_err(Into::into)
             }
             Expr::Err(e) => {
-                // Plan 204 Phase 3: Box Err values inside !T functions
-                if self.current_fn_is_result {
-                    write!(out, "Err(Box::new(")?;
-                    self.expr(e, out)?;
-                    write!(out, "))").map_err(Into::into)
-                } else {
-                    write!(out, "Err(")?;
-                    self.expr(e, out)?;
-                    write!(out, ")").map_err(Into::into)
+                // Result<T, String> — no Box needed
+                write!(out, "Err(")?;
+                self.expr(e, out)?;
+                if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                    write!(out, ".to_string()")?;
                 }
+                write!(out, ")").map_err(Into::into)
             }
             // Plan 6B-4.14: Smart pointer constructors
             Expr::BoxExpr(e) => {
@@ -740,7 +737,7 @@ impl RustTrans {
 
             // Collections
             Expr::Array(arr) => {
-                write!(out, "[")?;
+                write!(out, "vec![")?;
                 for (i, elem) in arr.iter().enumerate() {
                     self.expr(elem, out)?;
                     if i < arr.len() - 1 {
@@ -1047,7 +1044,7 @@ impl RustTrans {
                                     format!("field{}", i).into()
                                 };
                                 write!(out, "{}: ", field_name)?;
-                                self.expr(expr, out)?;
+                                self.write_expr_for_struct_field(expr, out)?;
                             }
                             Arg::Name(name) => {
                                 // Named arg without value
@@ -1056,7 +1053,7 @@ impl RustTrans {
                             Arg::Pair(key, expr) => {
                                 // Named argument: field: value
                                 write!(out, "{}: ", key)?;
-                                self.expr(expr, out)?;
+                                self.write_expr_for_struct_field(expr, out)?;
                             }
                         }
                         if i < node.args.args.len() - 1 || !node.body.stmts.is_empty() {
@@ -1069,7 +1066,7 @@ impl RustTrans {
                         match stmt {
                             Stmt::Store(store) => {
                                 write!(out, "{}: ", store.name)?;
-                                self.expr(&store.expr, out)?;
+                                self.write_expr_for_struct_field(&store.expr, out)?;
                             }
                             Stmt::Expr(Expr::Pair(pair)) => {
                                 // Named field initializer: x: 3
@@ -1080,7 +1077,7 @@ impl RustTrans {
                                     crate::ast::Key::StrKey(s) => s.clone(),
                                 };
                                 write!(out, "{}: ", field_name)?;
-                                self.expr(&pair.value, out)?;
+                                self.write_expr_for_struct_field(&pair.value, out)?;
                             }
                             _ => {}
                         }
@@ -1495,6 +1492,9 @@ impl RustTrans {
                 self.expr(lhs, out)?;
                 write!(out, ".unwrap_or(")?;
                 self.expr(rhs, out)?;
+                if matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                    write!(out, ".to_string()")?;
+                }
                 write!(out, ")")?;
                 Ok(())
             }
@@ -2115,6 +2115,34 @@ impl RustTrans {
 
             // Check for type name static method: Type.method(args) -> Type::method(args)
             if let Expr::Ident(type_name) = object.as_ref() {
+                // Auto FFI global objects -> Rust stdlib
+                match (type_name.as_str(), method_name.as_str()) {
+                    ("env", "get") => {
+                        // env.get("KEY") -> std::env::var("KEY").ok()
+                        write!(out, "std::env::var(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, ").ok()")?;
+                        return Ok(());
+                    }
+                    ("fs", "read_to_string") => {
+                        // fs.read_to_string(path) -> std::fs::read_to_string(path).ok()
+                        write!(out, "std::fs::read_to_string(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, ").ok()")?;
+                        return Ok(());
+                    }
+                    ("Map", "new") => {
+                        // Map.new() -> std::collections::HashMap::new()
+                        write!(out, "std::collections::HashMap::new()")?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
                 let is_type = type_name
                     .chars()
                     .next()
@@ -2291,9 +2319,21 @@ impl RustTrans {
 
     fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {
         match arg {
-            Arg::Pos(expr) => self.expr(expr, out),
+            Arg::Pos(expr) => {
+                self.expr(expr, out)?;
+                if Self::is_self_dot(expr) {
+                    write!(out, ".clone()")?;
+                }
+                Ok(())
+            }
             Arg::Name(name) => write!(out, "{}", name).map_err(Into::into),
-            Arg::Pair(_, expr) => self.expr(expr, out),
+            Arg::Pair(_, expr) => {
+                self.expr(expr, out)?;
+                if Self::is_self_dot(expr) {
+                    write!(out, ".clone()")?;
+                }
+                Ok(())
+            }
         }
     }
 
@@ -2696,6 +2736,11 @@ impl RustTrans {
             if let Expr::Str(_) = &store.expr {
                 write!(out, ".to_string()")?;
             }
+        }
+
+        // self.field assignment in &self context needs .clone()
+        if Self::is_self_dot(&store.expr) {
+            write!(out, ".clone()")?;
         }
 
         Ok(())
@@ -3141,6 +3186,9 @@ impl RustTrans {
                     for stmt in &body.stmts {
                         self.print_indent(&mut sink.body)?;
                         self.stmt(stmt, sink)?;
+                        if matches!(stmt, Stmt::Expr(_)) {
+                            sink.body.write(b";")?;
+                        }
                         sink.body.write(b"\n")?;
                     }
                     self.dedent();
@@ -3155,6 +3203,9 @@ impl RustTrans {
             for stmt in &body.stmts {
                 self.print_indent(&mut sink.body)?;
                 self.stmt(stmt, sink)?;
+                if matches!(stmt, Stmt::Expr(_)) {
+                    sink.body.write(b";")?;
+                }
                 sink.body.write(b"\n")?;
             }
             self.dedent();
@@ -3166,7 +3217,30 @@ impl RustTrans {
 
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"match ")?;
-        self.expr(&is_stmt.target, &mut sink.body)?;
+
+        // Check if any arm pattern is a string literal — if so, match on &str
+        let has_str_pattern = is_stmt.branches.iter().any(|branch| {
+            if let IsBranch::EqBranch(patterns, _) = branch {
+                patterns.iter().any(|p| matches!(p, Expr::Str(_) | Expr::CStr(_)))
+            } else {
+                false
+            }
+        });
+
+        // Check if scrutinee is self.field (needs .clone() in &self methods)
+        let is_self_field = Self::is_self_dot(&is_stmt.target);
+
+        if has_str_pattern {
+            // Use match target.as_str() to allow &str patterns against String
+            self.expr(&is_stmt.target, &mut sink.body)?;
+            sink.body.write(b".as_str()")?;
+        } else if is_self_field {
+            // self.field needs .clone() to avoid move in &self methods
+            self.expr(&is_stmt.target, &mut sink.body)?;
+            sink.body.write(b".clone()")?;
+        } else {
+            self.expr(&is_stmt.target, &mut sink.body)?;
+        }
         sink.body.write(b" {\n")?;
         self.indent();
 
@@ -4610,20 +4684,27 @@ impl Trans for RustTrans {
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
             let line = source_lines.get(i).copied().unwrap_or(0);
-            if stmt.is_decl() {
-                // Plan 151: Register global variables (top-level var declarations)
-                if let Stmt::Store(store) = &stmt {
+            // Plan 151 / Fix: top-level let must go into main(), not module scope
+            if let Stmt::Store(store) = &stmt {
+                if matches!(store.kind, StoreKind::Var)
+                    || matches!(store.kind, StoreKind::Shared)
+                    || matches!(store.kind, StoreKind::Const)
+                {
                     if matches!(store.kind, StoreKind::Var) || matches!(store.kind, StoreKind::Shared) {
                         self.register_global_var(store.name.clone());
                     }
+                    decls.push((stmt, line));
+                } else {
+                    // let → goes into main()
+                    main.push((stmt, line));
                 }
+            } else if stmt.is_decl() {
                 decls.push((stmt, line));
             } else {
                 match stmt {
                     Stmt::For(_) => main.push((stmt, line)),
                     Stmt::If(_) => main.push((stmt, line)),
                     Stmt::Expr(_) => main.push((stmt, line)),
-                    Stmt::Store(_) => main.push((stmt, line)),
                     Stmt::Break => main.push((stmt, line)),
                     Stmt::Use(use_stmt) => {
                         sink.set_source_line(line);

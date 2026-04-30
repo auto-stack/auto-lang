@@ -11,7 +11,7 @@ fn main() {
         0 => println!("zero"),
         1 => {
             let msg: String = "one".to_string();
-            println!("{}", msg)
+            println!("{}", msg);
         },
         _ => println!("other"),
     }

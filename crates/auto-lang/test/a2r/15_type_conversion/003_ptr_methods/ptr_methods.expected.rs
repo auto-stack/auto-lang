@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let buf: [i32; 10] = [0];
+    let buf: [i32; 10] = vec![0];
     let ptr: *mut i32 = buf.as_mut_ptr();
     if ptr.is_null() {
         println!("null");

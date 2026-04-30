@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::iter::Iterator;
 fn main() {
-    let nums: [i32; 3] = [1, 2, 3];
+    let nums: [i32; 3] = vec![1, 2, 3];
     let doubled = nums.iter().map(|x| x * 2);
     let total = nums.iter().fold(0, |acc, x| acc + x);
 }
