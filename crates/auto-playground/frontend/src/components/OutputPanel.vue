@@ -26,6 +26,14 @@
       >
         Run ABT
       </button>
+      <button
+        v-if="canRun(activeTab)"
+        class="run-code-btn"
+        @click="$emit('runCode', activeTab)"
+        :title="`Run ${activeTab} code`"
+      >
+        Run {{ tabLabel(activeTab) }}
+      </button>
       <label class="switch-widget" title="Toggle live transpile on edit">
         <span class="switch-label">Live</span>
         <span class="switch">
@@ -89,6 +97,7 @@ defineEmits<{
   tabChange: [tab: OutputTab];
   trans: [];
   runAbt: [];
+  runCode: [language: string];
   toggleLive: [];
   offsetClick: [offset: number];
 }>();
@@ -102,6 +111,20 @@ const tabs: { id: OutputTab; label: string }[] = [
 ];
 
 const copied = ref(false);
+
+function canRun(tab: OutputTab): boolean {
+  return ['rust', 'c', 'python', 'typescript'].includes(tab);
+}
+
+function tabLabel(tab: OutputTab): string {
+  const labels: Record<string, string> = {
+    rust: 'Rust',
+    c: 'C',
+    python: 'Python',
+    typescript: 'TS',
+  };
+  return labels[tab] || tab;
+}
 
 async function copyCode() {
   try {
@@ -173,6 +196,21 @@ async function copyCode() {
   transition: background 0.15s;
 }
 .run-abt-btn:hover {
+  background: #2ea043;
+}
+.run-code-btn {
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  margin-right: 8px;
+  transition: background 0.15s;
+}
+.run-code-btn:hover {
   background: #2ea043;
 }
 

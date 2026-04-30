@@ -86,6 +86,14 @@ pub struct RustTrans {
     // Cache for tag type names (for tag construction detection)
     tag_types: HashSet<AutoStr>,
 
+    // Cache for enum struct variants: (EnumName, VariantName) -> Vec<field_names>
+    // Used to emit correct struct pattern syntax in match arms
+    enum_struct_variants: HashMap<(AutoStr, AutoStr), Vec<AutoStr>>,
+
+    // Cache for enum tuple variants: (EnumName, VariantName) -> arity
+    // Used to emit (_) for bare tuple variant checks in match arms
+    enum_tuple_variants: HashSet<(AutoStr, AutoStr)>,
+
     // Plan 159 Phase 6B-2.2: Cache for spec declarations (for impl Trait for Type)
     spec_decls: HashMap<AutoStr, Vec<SpecMethod>>,
 
@@ -111,6 +119,8 @@ impl RustTrans {
             current_fn_is_result: false,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
+            enum_struct_variants: HashMap::new(),
+            enum_tuple_variants: HashSet::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
@@ -130,6 +140,8 @@ impl RustTrans {
             current_fn_is_result: false,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
+            enum_struct_variants: HashMap::new(),
+            enum_tuple_variants: HashSet::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
@@ -818,13 +830,49 @@ impl RustTrans {
                 // Cover expression for tagged unions
                 match cover {
                     crate::ast::Cover::Tag(tag_cover) => {
-                        // **Phase 1.3: Tag Types**
-                        // Tag patterns: Atom.Int(i) -> Atom::Int(i)
-                        // Empty variants (all bindings == "_"): Coin.Penny -> Coin::Penny
+                        let key = (tag_cover.kind.clone(), tag_cover.tag.clone());
+                        let is_struct = self.enum_struct_variants.contains_key(&key);
+                        let is_tuple = self.enum_tuple_variants.contains(&key);
+
+                        // Bare variant check (no bindings): Enum::Variant
                         if tag_cover.bindings.iter().all(|b| b.as_str() == "_") {
-                            write!(out, "{}::{}", tag_cover.kind, tag_cover.tag)
-                                .map_err(Into::into)
+                            if is_tuple {
+                                // Tuple variant needs (_): Enum::Variant(_)
+                                write!(out, "{}::{}(_)", tag_cover.kind, tag_cover.tag)
+                                    .map_err(Into::into)
+                            } else if is_struct {
+                                // Struct variant needs { .. }: Enum::Variant { .. }
+                                write!(out, "{}::{} {{ .. }}", tag_cover.kind, tag_cover.tag)
+                                    .map_err(Into::into)
+                            } else {
+                                write!(out, "{}::{}", tag_cover.kind, tag_cover.tag)
+                                    .map_err(Into::into)
+                            }
+                        } else if is_struct {
+                            // Struct variant: Enum::Variant { field1, field2 }
+                            let field_names = self.enum_struct_variants.get(&key)
+                                .map(|v| v.as_slice())
+                                .unwrap_or(&[]);
+                            write!(out, "{}::{} {{ ", tag_cover.kind, tag_cover.tag)?;
+                            for (i, binding) in tag_cover.bindings.iter()
+                                .filter(|b| b.as_str() != "_")
+                                .enumerate()
+                            {
+                                if i > 0 { write!(out, ", ")?; }
+                                // Use field name if available, otherwise binding name
+                                if let Some(field_name) = field_names.get(i) {
+                                    if field_name.as_str() == binding.as_str() {
+                                        write!(out, "{}", field_name)?;
+                                    } else {
+                                        write!(out, "{}: {}", field_name, binding)?;
+                                    }
+                                } else {
+                                    write!(out, "{}", binding)?;
+                                }
+                            }
+                            write!(out, " }}").map_err(Into::into)
                         } else {
+                            // Tuple variant or unknown: Enum::Variant(a, b)
                             let binding_str = tag_cover.bindings.iter()
                                 .filter(|b| b.as_str() != "_")
                                 .map(|b| b.as_str())
@@ -1879,7 +1927,7 @@ impl RustTrans {
                             return Ok(());
                         }
                         "find" => {
-                            // s.find(sub) -> s.find(sub) (keep Option<usize>)
+                            // s.find(sub) -> s.find(sub) (returns Option<usize>)
                             self.expr(lhs, out)?;
                             write!(out, ".find(")?;
                             if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -2055,7 +2103,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "find" => {
-                    // s.find(sub) -> s.find(sub) (keep Option<usize>)
+                    // s.find(sub) -> s.find(sub) (returns Option<usize>)
                     self.expr(object, out)?;
                     write!(out, ".find(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -4118,6 +4166,14 @@ impl RustTrans {
                 for item in &enum_decl.items {
                     self.print_indent(&mut sink.body)?;
                     if item.has_fields() {
+                        // Register struct variant for pattern matching
+                        let field_names: Vec<AutoStr> = item.fields.iter()
+                            .map(|f| f.name.clone())
+                            .collect();
+                        self.enum_struct_variants.insert(
+                            (enum_decl.name.clone(), item.name.clone()),
+                            field_names,
+                        );
                         // Multi-field struct variant: Name { field1: Type1, field2: Type2 }
                         write!(sink.body, "{} {{ ", item.name)?;
                         for (j, field) in item.fields.iter().enumerate() {
@@ -4128,6 +4184,10 @@ impl RustTrans {
                         }
                         writeln!(sink.body, " }},")?;
                     } else if item.has_tuple_payload() {
+                        // Register tuple variant for bare-match detection
+                        self.enum_tuple_variants.insert(
+                            (enum_decl.name.clone(), item.name.clone()),
+                        );
                         // Multi-arg tuple variant: ToolUse str str str → ToolUse(String, String, String)
                         write!(sink.body, "{}(", item.name)?;
                         for (j, pt) in item.payload_types.iter().enumerate() {
@@ -4138,6 +4198,10 @@ impl RustTrans {
                         }
                         writeln!(sink.body, "),")?;
                     } else if let Some(ref payload) = item.payload_type {
+                        // Register single-payload tuple variant
+                        self.enum_tuple_variants.insert(
+                            (enum_decl.name.clone(), item.name.clone()),
+                        );
                         // Single-payload tuple variant: Name(Type)
                         writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload))?;
                     } else {

@@ -1,5 +1,6 @@
 import { ref, watch, computed } from 'vue';
 import type { RunResponse, TransResponse, OutputTab, SourceMapEntry } from '../types';
+import { runTypeScript } from '../utils/tsRunner';
 
 const API_BASE = '/api';
 const DEBOUNCE_MS = 500;
@@ -128,6 +129,47 @@ export function usePlayground() {
       timeMs.value = data.time_ms || 0;
       if (data.result !== undefined && data.result !== null && data.result !== '') {
         resultCode.value = data.result;
+      }
+    } catch (e: any) {
+      stderr.value = `Network error: ${e.message}`;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function runCode(language: string) {
+    const code = transCache.value[language] || '';
+    if (!code.trim()) {
+      stderr.value = `No ${language} code to run. Make sure the transpilation succeeded.`;
+      return;
+    }
+
+    isLoading.value = true;
+    stdout.value = '';
+    stderr.value = '';
+    resultCode.value = '';
+
+    try {
+      if (language === 'typescript') {
+        // Run TypeScript directly in the browser
+        const result = await runTypeScript(code);
+        stdout.value = result.stdout;
+        stderr.value = result.stderr;
+        timeMs.value = 0;
+      } else {
+        // Run Python, Rust, C through backend
+        const res = await fetch(`${API_BASE}/run_code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language, code }),
+        });
+        const data: RunResponse = await res.json();
+        stdout.value = data.stdout || '';
+        stderr.value = data.stderr || '';
+        timeMs.value = data.time_ms || 0;
+        if (data.result !== undefined && data.result !== null && data.result !== '') {
+          resultCode.value = data.result;
+        }
       }
     } catch (e: any) {
       stderr.value = `Network error: ${e.message}`;
@@ -271,7 +313,7 @@ export function usePlayground() {
     activeTab, transpiledCode, transpileTarget, liveCompile,
     sourceMap, highlightedSourceLine, highlightedOutputLines,
     shareToast,
-    run, runAbt, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
+    run, runAbt, runCode, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight,
     share,
   };
 }

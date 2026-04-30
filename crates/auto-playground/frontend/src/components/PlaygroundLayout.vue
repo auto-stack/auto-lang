@@ -65,7 +65,23 @@
           </div>
         </div>
         <div class="transpile-pane">
+          <!-- Debug mode: show only Bytecode (ABT) panel -->
+          <template v-if="isDebugging">
+            <div class="pane-header">
+              <span>ABT</span>
+            </div>
+            <div class="pane-body">
+              <BytecodePanel
+                :bytecode="bytecode || []"
+                :current-ip="debugState?.ip"
+                :highlighted-offsets="highlightedOffsets"
+                @offset-click="$emit('offsetClick', $event)"
+              />
+            </div>
+          </template>
+          <!-- Normal mode: show transpile tabs -->
           <OutputPanel
+            v-else
             :active-tab="activeTab"
             :transpiled-code="transpiledCode"
             :live-compile="liveCompile"
@@ -76,6 +92,7 @@
             @tab-change="onTabChange"
             @trans="$emit('trans')"
             @run-abt="$emit('runAbt')"
+            @run-code="onRunCode"
             @toggle-live="$emit('toggleLive')"
             @offset-click="$emit('offsetClick', $event)"
           />
@@ -89,23 +106,18 @@
               :class="{ active: consoleTab === 'output' }"
               @click="consoleTab = 'output'"
             >Console</button>
-            <button
-              v-if="isDebugging"
-              :class="{ active: consoleTab === 'debug' }"
-              @click="consoleTab = 'debug'"
-            >Debug</button>
           </div>
         </div>
-        <div class="pane-body">
+        <div class="console-body">
           <ConsoleOutput
-            v-if="consoleTab === 'output'"
+            class="console-main"
             :stdout="stdout"
             :stderr="stderr"
             :result="resultCode"
             :time-ms="timeMs"
           />
-          <DebugPanel
-            v-else-if="consoleTab === 'debug' && debugState"
+          <DebugAuxPanel
+            v-if="isDebugging && debugState"
             :state="debugState"
           />
         </div>
@@ -119,10 +131,11 @@ import { ref } from 'vue';
 import type { OutputTab, BytecodeLine, DebugState } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import OutputPanel from './OutputPanel.vue';
+import BytecodePanel from './BytecodePanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
 import ExampleSelector from './ExampleSelector.vue';
 import DebugToolbar from './DebugToolbar.vue';
-import DebugPanel from './DebugPanel.vue';
+import DebugAuxPanel from './DebugAuxPanel.vue';
 
 defineProps<{
   source: string;
@@ -151,6 +164,7 @@ const emit = defineEmits<{
   'update:source': [value: string];
   run: [];
   runAbt: [];
+  runCode: [language: string];
   trans: [];
   tabChange: [tab: OutputTab];
   loadExample: [code: string];
@@ -166,6 +180,10 @@ const emit = defineEmits<{
 
 function onTabChange(tab: OutputTab) {
   emit('tabChange', tab);
+}
+
+function onRunCode(language: string) {
+  emit('runCode', language);
 }
 
 function onLoadExample(code: string) {
@@ -340,6 +358,17 @@ const consoleTab = ref<'output' | 'debug'>('output');
 .console-tabs button.active {
   background: #3c3c3c;
   color: #fff;
+}
+
+.console-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+.console-main {
+  flex: 1;
+  overflow: auto;
 }
 
 @media (max-width: 768px) {

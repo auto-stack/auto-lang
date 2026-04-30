@@ -2,6 +2,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use auto_lang::trans::SourceMapEntry;
+use std::io::Write;
 
 #[derive(Deserialize)]
 pub struct TransRequest {
@@ -64,14 +65,22 @@ fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError
 
 fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::c::transpile_c as auto_transpile_c;
-    use auto_lang::trans::Sink;
 
-    let mut sink: Sink = auto_transpile_c("playground", source)
+    let mut sink = auto_transpile_c("playground", source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
 
     let source_map = sink.source_map.clone();
-    let output = sink.done().map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok((String::from_utf8_lossy(output).to_string(), source_map))
+
+    // For single-file playground output, inline header content directly
+    // instead of generating a separate .h file with #include "playground.h"
+    let mut output = Vec::new();
+    if !sink.header.is_empty() {
+        output.append(&mut sink.header);
+        output.write(b"\n").unwrap();
+    }
+    output.append(&mut sink.body);
+
+    Ok((String::from_utf8_lossy(&output).to_string(), source_map))
 }
 
 fn transpile_python(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {

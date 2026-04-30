@@ -123,7 +123,16 @@ impl DebuggerController for PlaygroundController {
                 *last_line = ctx.line;
                 self.breakpoints.lock().unwrap().contains(&ctx.line)
             }
-            DebugMode::Step => true,
+            DebugMode::Step => {
+                // Step Into: pause when source line changes (enters new line or new function)
+                let mut last_line = self.last_line.lock().unwrap();
+                if ctx.line == *last_line || ctx.line == 0 {
+                    false
+                } else {
+                    *last_line = ctx.line;
+                    true
+                }
+            }
             DebugMode::StepOver => {
                 let target_depth = *self.depth_at_pause.lock().unwrap();
                 let current_depth = ctx.call_stack.len();
@@ -166,6 +175,7 @@ impl DebuggerController for PlaygroundController {
                 DebugCommand::Step => {
                     *self.mode.lock().unwrap() = DebugMode::Step;
                     *self.depth_at_pause.lock().unwrap() = ctx.call_stack.len();
+                    *self.last_line.lock().unwrap() = ctx.line;
                     return DebuggerAction::Step;
                 }
                 DebugCommand::StepOver => {

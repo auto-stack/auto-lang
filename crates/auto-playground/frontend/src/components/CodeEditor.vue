@@ -32,9 +32,7 @@ const debugCompartment = new Compartment();
 // Breakpoint Gutter
 // ============================================================================
 
-const breakpointEffect = StateEffect.define<number>({
-  map: (val, mapping) => mapping.mapPos(val),
-});
+const breakpointEffect = StateEffect.define<number>();
 
 const breakpointState = StateField.define<Set<number>>({
   create() { return new Set(); },
@@ -53,13 +51,42 @@ const breakpointState = StateField.define<Set<number>>({
 });
 
 class BreakpointMarker extends GutterMarker {
-  eq(other: GutterMarker): boolean { return this === other; }
-  override elementClass = 'cm-breakpoint-marker';
+  eq(other: GutterMarker): boolean { return other instanceof BreakpointMarker; }
+  override toDOM() {
+    const el = document.createElement('div');
+    el.style.width = '10px';
+    el.style.height = '10px';
+    el.style.borderRadius = '50%';
+    el.style.background = '#e51400';
+    el.className = 'cm-breakpoint-marker';
+    return el;
+  }
+}
+
+class EmptyCircleMarker extends GutterMarker {
+  eq(other: GutterMarker): boolean { return other instanceof EmptyCircleMarker; }
+  override toDOM() {
+    const el = document.createElement('div');
+    el.style.width = '10px';
+    el.style.height = '10px';
+    el.style.borderRadius = '50%';
+    el.style.border = '1.5px solid #e51400';
+    el.style.background = 'transparent';
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.15s ease';
+    el.className = 'cm-empty-circle-marker';
+    return el;
+  }
 }
 
 class SpacerMarker extends GutterMarker {
-  eq(other: GutterMarker): boolean { return this === other; }
-  override elementClass = 'cm-breakpoint-spacer';
+  eq(other: GutterMarker): boolean { return other instanceof SpacerMarker; }
+  override toDOM() {
+    const el = document.createElement('div');
+    el.style.width = '22px';
+    el.className = 'cm-breakpoint-spacer';
+    return el;
+  }
 }
 
 const breakpointGutter = [
@@ -69,9 +96,10 @@ const breakpointGutter = [
     markers(view) {
       const builder = new RangeSetBuilder<GutterMarker>();
       const bps = view.state.field(breakpointState);
-      for (const line of bps) {
-        const pos = view.state.doc.line(line).from;
-        builder.add(pos, pos, new BreakpointMarker());
+      for (let i = 1; i <= view.state.doc.lines; i++) {
+        const line = view.state.doc.line(i);
+        const marker = bps.has(i) ? new BreakpointMarker() : new EmptyCircleMarker();
+        builder.add(line.from, line.from, marker);
       }
       return builder.finish();
     },
@@ -101,7 +129,7 @@ const debugLineState = StateField.define<DecorationSet>({
   update(deco, tr) {
     for (const e of tr.effects) {
       if (e.is(debugLineEffect)) {
-        if (e.value === null) return Decoration.none;
+        if (e.value === null || e.value <= 0) return Decoration.none;
         const line = tr.state.doc.line(e.value);
         return Decoration.set([
           Decoration.line({ class: 'cm-debug-current-line' }).range(line.from),
@@ -119,17 +147,20 @@ const debugLineHighlight = [
       backgroundColor: '#0e639c40',
       borderLeft: '2px solid #0e639c',
     },
-    '.cm-breakpoint-marker::before': {
-      content: '""',
-      display: 'block',
-      width: '10px',
-      height: '10px',
-      borderRadius: '50%',
-      background: '#e51400',
-      margin: '0 auto',
+    '.cm-breakpoint-gutter': {
+      width: '22px',
     },
-    '.cm-breakpoint-spacer': {
-      width: '16px',
+    '.cm-breakpoint-gutter .cm-gutterElement': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    '.cm-empty-circle-marker, .cm-breakpoint-marker': {
+      marginTop: '1px',
+    },
+    '.cm-gutterElement:hover .cm-empty-circle-marker': {
+      opacity: '1 !important',
     },
   }),
 ];
@@ -160,7 +191,8 @@ onMounted(() => {
     EditorView.domEventHandlers({
       mousedown: (event, view) => {
         const target = event.target as HTMLElement;
-        if (target.closest('.cm-gutters') || target.closest('.cm-gutter')) {
+        // Click on lineNumbers gutter → highlight ABT
+        if (target.closest('.cm-lineNumbers')) {
           const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
           if (pos !== null) {
             const line = view.state.doc.lineAt(pos);
@@ -214,7 +246,6 @@ watch(() => props.currentDebugLine, (line) => {
 
 watch(() => props.breakpoints, (bps) => {
   if (!editorView) return;
-  // Sync external breakpoints into editor state
   const current = editorView.state.field(breakpointState, false);
   if (!current) return;
   const currentArr = Array.from(current);
@@ -248,6 +279,12 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 .editor-container :deep(.cm-gutters) {
+  cursor: default;
+}
+.editor-container :deep(.cm-lineNumbers) {
+  cursor: pointer;
+}
+.editor-container :deep(.cm-breakpoint-gutter) {
   cursor: pointer;
 }
 </style>

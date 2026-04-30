@@ -1,3 +1,4 @@
+mod code_runner;
 mod debugger;
 mod error;
 mod routes;
@@ -34,6 +35,7 @@ async fn main() {
     let api_routes = Router::new()
         .route("/api/run", post(routes::run::run_handler))
         .route("/api/run_abt", post(routes::run_abt::run_abt_handler))
+        .route("/api/run_code", post(routes::run_code::run_code_handler))
         .route("/api/trans", post(routes::trans::trans_handler))
         .route("/api/examples", get(routes::examples::examples_handler))
         .route("/api/debug/ws", get(debug_ws_handler));

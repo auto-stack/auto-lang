@@ -10,6 +10,11 @@ export interface RunResponse {
   result?: string;
 }
 
+export interface RunCodeRequest {
+  language: string;
+  code: string;
+}
+
 export interface TransRequest {
   source: string;
   target: string;
