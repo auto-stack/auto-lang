@@ -1800,6 +1800,31 @@ impl Codegen {
                             self.loop_continue_positions.pop();
                         } else if let Expr::Ident(_) = &for_stmt.range {
                             // Plan 089: Array-based for loop: for x in array_var { ... }
+                            // Infer element type before compiling range (for var_types tracking)
+                            let elem_type = {
+                                let range_type = self.infer_expr_type(&for_stmt.range);
+                                match &range_type {
+                                    Type::Array(arr) => (*arr.elem).clone(),
+                                    Type::RuntimeArray(rta) => (*rta.elem).clone(),
+                                    Type::Str(_) | Type::String => Type::Char,
+                                    _ => {
+                                        // Try var_types for the range variable
+                                        if let Expr::Ident(name) = &for_stmt.range {
+                                            self.var_types.get(name.as_str())
+                                                .and_then(|t| match t {
+                                                    Type::Array(arr) => Some((*arr.elem).clone()),
+                                                    Type::RuntimeArray(rta) => Some((*rta.elem).clone()),
+                                                    Type::List(elem) => Some((**elem).clone()),
+                                                    _ => None,
+                                                })
+                                                .unwrap_or(Type::Unknown)
+                                        } else {
+                                            Type::Unknown
+                                        }
+                                    }
+                                }
+                            };
+
                             // Load the array variable
                             self.compile_expr(&for_stmt.range)?;
 
@@ -1835,6 +1860,11 @@ impl Codegen {
 
                             // Create the actual loop variable slot (will be overwritten each iteration)
                             let var_index = self.add_var(&var_str);
+
+                            // Plan 201: Register element type for method dispatch on loop variable
+                            if !matches!(elem_type, Type::Unknown) {
+                                self.var_types.insert(var_str.clone(), elem_type);
+                            }
 
                             // Loop start label
                             let loop_start = self.code.len() as i16;
@@ -4981,7 +5011,7 @@ impl Codegen {
                                 }
                             }
                             _ => {
-                                // Complex expression (e.g., arr[0].push, foo().method)
+                                // Complex expression (e.g., arr[0].push, foo().method, self.field.method)
                                 // Or literal expressions (e.g., 1.str(), "hello".upper())
                                 // Plan 118 Phase 4: Handle literal method calls
                                 let inferred_type = self.infer_object_type(obj.as_ref());
@@ -5531,8 +5561,12 @@ impl Codegen {
                 // Use CALL_SPEC when:
                 // a) The receiver's declared type is a spec, OR
                 // b) The function name (e.g., "tool.fly") doesn't exist in exports — likely dynamic dispatch
+                // But NOT when it's a known native (e.g., str.find) — those use CALL_NAT
                 let resolved_func = func_name.as_ref().and_then(|name| self.exports.get(name).copied());
-                if is_spec_dispatch || (is_instance_method_call && resolved_func.is_none()) {
+                let is_native = func_name.as_ref()
+                    .map(|name| BIGVM_NATIVES.lock().unwrap().resolve_qualified(name).is_some())
+                    .unwrap_or(false);
+                if is_spec_dispatch || (is_instance_method_call && resolved_func.is_none() && !is_native) {
                     // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
                     self.emit(OpCode::CALL_SPEC);
                     let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
@@ -6484,6 +6518,33 @@ impl Codegen {
                     ObjectType::Int
                 }
             }
+            // Plan 201: Resolve field access type for self.field.method() chains
+            Expr::Dot(obj, field) => {
+                if let Expr::Ident(ident_name) = obj.as_ref() {
+                    if let Some(var_type) = self.var_types.get(ident_name.as_str()) {
+                        let field_type = self.resolve_field_type(var_type, field.as_str());
+                        self.type_to_object_type(&field_type)
+                    } else {
+                        ObjectType::Int
+                    }
+                } else {
+                    // Nested dot: try to resolve from outer expression type
+                    let outer_type = self.infer_object_type(obj.as_ref());
+                    match outer_type {
+                        ObjectType::NestedObject => {
+                            // Try fn_return_types for chained calls
+                            let obj_name = self.expr_to_name(obj.as_ref());
+                            if let Some(ret_ty) = self.fn_return_types.get(&obj_name) {
+                                let field_type = self.resolve_field_type(ret_ty, field.as_str());
+                                self.type_to_object_type(&field_type)
+                            } else {
+                                ObjectType::Int
+                            }
+                        }
+                        _ => ObjectType::Int,
+                    }
+                }
+            }
             // For other expressions, default to Int
             Expr::Cast { target_type, .. } => {
                 match target_type {
@@ -6541,6 +6602,37 @@ impl Codegen {
                 }
             }
             _ => "Unknown".to_string(),
+        }
+    }
+
+    /// Resolve a field's type from a parent type (for self.field lookups)
+    fn resolve_field_type(&self, parent_type: &Type, field_name: &str) -> Type {
+        match parent_type {
+            Type::User(td) => {
+                // First try TypeDecl members (may be empty for synthetic types)
+                for member in &td.members {
+                    if member.name.as_str() == field_name {
+                        return member.ty.clone();
+                    }
+                }
+                // Fallback: look up in generic_registry (has field types)
+                let type_name = td.name.to_string();
+                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                    if let Some(field_type) = class_type.field_type(field_name) {
+                        return field_type;
+                    }
+                }
+                Type::Unknown
+            }
+            Type::GenericInstance(inst) => {
+                if let Some(class_type) = self.generic_registry.get_type(&inst.base_name.to_string()) {
+                    if let Some(field_type) = class_type.field_type(field_name) {
+                        return field_type;
+                    }
+                }
+                Type::Unknown
+            }
+            _ => Type::Unknown,
         }
     }
 
@@ -7513,6 +7605,12 @@ impl Codegen {
         map.insert("int_str".to_string(), Type::String);
         map.insert("uint.to_hex".to_string(), Type::String);
         map.insert("List.join".to_string(), Type::String);
+        // str.split returns List<str>
+        map.insert("str.split".to_string(), Type::List(Box::new(Type::String)));
+        map.insert("auto.str.split".to_string(), Type::List(Box::new(Type::String)));
+        // Map.new → auto.hashmap.new (alias for Auto syntax)
+        map.insert("Map.new".to_string(), Type::Unknown);
+        map.insert("HashMap.new".to_string(), Type::Unknown);
 
         map
     }

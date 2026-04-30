@@ -433,6 +433,8 @@ pub fn register_builtin_natives() {
 
     // HashMap functions (IDs 119-128)
     registry.register_with_id("auto.hashmap.new", 119);
+    registry.register_with_id("Map.new", 119); // Alias for Auto syntax
+    registry.register_with_id("HashMap.new", 119); // Alias for Auto syntax
     registry.register_with_id("auto.hashmap.insert_str", 120);
     registry.register_with_id("auto.hashmap.insert_int", 121);
     registry.register_with_id("auto.hashmap.get_str", 122);
@@ -874,7 +876,7 @@ pub fn register_builtin_natives() {
     registry.register_return_type("auto.str.starts_with", NativeRetType::Bool);
     registry.register_return_type("auto.str.ends_with", NativeRetType::Bool);
     registry.register_return_type("auto.str.trim", NativeRetType::String);
-    registry.register_return_type("auto.str.split", NativeRetType::String);
+    registry.register_return_type("auto.str.split", NativeRetType::List);
     registry.register_return_type("auto.str.repeat", NativeRetType::String);
     registry.register_return_type("auto.str.replace", NativeRetType::String);
     registry.register_return_type("auto.str.to_upper", NativeRetType::String);
