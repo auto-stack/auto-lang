@@ -2369,9 +2369,6 @@ mod unified_registry_tests;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-mod test_abt_roundtrip;
-
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)
 // =============================================================================

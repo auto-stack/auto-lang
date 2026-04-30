@@ -173,6 +173,11 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         OpCode::BUILD_FSTR => {
             let part_count = match instr.operands.first() {
                 Some(AbtOperand::ImmU8(n)) => *n as usize,
+                Some(AbtOperand::ImmU16(n)) => *n as usize,
+                Some(AbtOperand::ImmU32(n)) => *n as usize,
+                Some(AbtOperand::ImmI32(n)) => *n as usize,
+                Some(AbtOperand::ImmI64(n)) => *n as usize,
+                Some(AbtOperand::ImmU64(n)) => *n as usize,
                 _ => 0,
             };
             1 + part_count
