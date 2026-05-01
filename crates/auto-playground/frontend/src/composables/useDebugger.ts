@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { BytecodeLine, DebugState, DebugCommand } from '../types';
+import type { BytecodeLine, DebugState, DebugCommand, DebugRecording } from '../types';
 
 export function useDebugger() {
   const ws = ref<WebSocket | null>(null);
@@ -8,6 +8,10 @@ export function useDebugger() {
   const bytecode = ref<BytecodeLine[]>([]);
   const state = ref<DebugState | null>(null);
   const error = ref<string | null>(null);
+
+  // Recording state
+  const isRecording = ref(false);
+  const recording = ref<DebugRecording | null>(null);
 
   // Maps derived from bytecode
   const lineToOffsets = computed(() => {
@@ -71,9 +75,15 @@ export function useDebugger() {
     switch (msg.type) {
       case 'bytecode':
         bytecode.value = msg.lines || [];
+        if (isRecording.value && recording.value) {
+          recording.value.bytecode = msg.lines || [];
+        }
         break;
       case 'state':
         state.value = msg.data;
+        if (isRecording.value && recording.value) {
+          recording.value.events.push({ type: 'state', state: msg.data });
+        }
         if (msg.data.status === 'finished' || msg.data.status === 'error') {
           isDebugging.value = false;
         }
@@ -89,11 +99,17 @@ export function useDebugger() {
     if (ws.value?.readyState === WebSocket.OPEN) {
       ws.value.send(JSON.stringify({ type: 'command', cmd }));
     }
+    if (isRecording.value && recording.value) {
+      recording.value.events.push({ type: 'command', cmd });
+    }
   }
 
   function setBreakpoints(lines: number[]) {
     if (ws.value?.readyState === WebSocket.OPEN) {
       ws.value.send(JSON.stringify({ type: 'breakpoints.set', lines }));
+    }
+    if (isRecording.value && recording.value) {
+      recording.value.events.push({ type: 'breakpoints', lines });
     }
   }
 
@@ -105,6 +121,35 @@ export function useDebugger() {
     state.value = null;
     bytecode.value = [];
     error.value = null;
+  }
+
+  // Recording controls
+  function startRecording(source: string, initialBreakpoints: number[]) {
+    recording.value = {
+      version: 1,
+      createdAt: new Date().toISOString(),
+      source,
+      initialBreakpoints: [...initialBreakpoints],
+      bytecode: [],
+      events: [],
+    };
+    isRecording.value = true;
+  }
+
+  function stopRecording() {
+    isRecording.value = false;
+    return recording.value;
+  }
+
+  function exportRecording() {
+    if (!recording.value) return;
+    const blob = new Blob([JSON.stringify(recording.value, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `replay_${Date.now()}.autoreplay`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return {
@@ -119,5 +164,11 @@ export function useDebugger() {
     sendCommand,
     setBreakpoints,
     stop,
+    // Recording
+    isRecording,
+    recording,
+    startRecording,
+    stopRecording,
+    exportRecording,
   };
 }

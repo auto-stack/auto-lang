@@ -6,6 +6,15 @@
         <ExampleSelector @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
+        <button
+          v-if="!isDebugging && !isReplayMode"
+          class="load-replay-btn"
+          @click="$emit('loadReplay')"
+          title="Load Replay File"
+        >
+          <span class="icon">📂</span>
+          <span class="label">Load Replay</span>
+        </button>
         <button class="share-btn" @click="$emit('share')" title="Copy shareable link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
@@ -17,22 +26,41 @@
       </div>
     </header>
 
+    <!-- Debug toolbar -->
     <DebugToolbar
-      v-if="isDebugging"
+      v-if="isDebugging || hasRecording"
       :is-paused="isPaused"
+      :is-recording="isRecording"
+      :has-recording="hasRecording"
       @command="$emit('debugCommand', $event)"
+      @toggle-record="$emit('toggleRecord')"
+      @export-recording="$emit('exportRecording')"
+    />
+
+    <!-- Replay toolbar -->
+    <ReplayToolbar
+      v-if="isReplayMode"
+      :is-playing="isReplayPlaying"
+      :current-index="replayCurrentIndex"
+      :total-frames="replayTotalFrames"
+      @play="$emit('replayPlay')"
+      @pause="$emit('replayPause')"
+      @step-forward="$emit('replayStepForward')"
+      @step-backward="$emit('replayStepBackward')"
+      @seek="$emit('replaySeek', $event)"
     />
 
     <div class="workspace">
       <div class="top-row">
         <div class="editor-pane">
           <div class="pane-header">
-            <span>Auto</span>
+            <span>{{ isReplayMode ? 'Replay' : 'Auto' }}</span>
             <div class="editor-actions">
               <button
                 :class="['debug-btn', { active: isDebugging }]"
                 @click="$emit('toggleDebug')"
                 :title="isDebugging ? 'Stop Debugging' : 'Start Debugging'"
+                :disabled="isReplayMode"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M12 2a10 10 0 0 1 10 10"/>
@@ -47,7 +75,7 @@
               <button
                 class="run-btn"
                 @click="$emit('run')"
-                :disabled="isLoading"
+                :disabled="isLoading || isReplayMode"
               >
                 {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
               </button>
@@ -58,18 +86,19 @@
               :model-value="source"
               @update:model-value="$emit('update:source', $event)"
               :on-run="onRun"
-              :is-debugging="isDebugging"
+              :is-debugging="isDebugging || isReplayMode"
               :breakpoints="breakpoints"
               :current-debug-line="currentDebugLine"
               :highlighted-source-line="currentSourceLine"
+              :read-only="isReplayMode"
               @line-click="$emit('lineClick', $event)"
               @breakpoints-change="$emit('breakpointsChange', $event)"
             />
           </div>
         </div>
         <div class="transpile-pane">
-          <!-- Debug mode: show only Bytecode (ABT) panel -->
-          <template v-if="isDebugging">
+          <!-- Debug/Replay mode: show only Bytecode (ABT) panel -->
+          <template v-if="isDebugging || isReplayMode">
             <div class="pane-header">
               <span>ABT</span>
             </div>
@@ -120,7 +149,7 @@
             :time-ms="timeMs"
           />
           <DebugAuxPanel
-            v-if="isDebugging && debugState"
+            v-if="(isDebugging || isReplayMode) && debugState"
             :state="debugState"
           />
         </div>
@@ -138,9 +167,10 @@ import BytecodePanel from './BytecodePanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
 import ExampleSelector from './ExampleSelector.vue';
 import DebugToolbar from './DebugToolbar.vue';
+import ReplayToolbar from './ReplayToolbar.vue';
 import DebugAuxPanel from './DebugAuxPanel.vue';
 
-defineProps<{
+const props = defineProps<{
   source: string;
   isLoading: boolean;
   activeTab: OutputTab;
@@ -155,12 +185,19 @@ defineProps<{
   // Debug props
   isDebugging?: boolean;
   isPaused?: boolean;
+  isRecording?: boolean;
+  hasRecording?: boolean;
   bytecode?: BytecodeLine[];
   debugState?: DebugState | null;
   currentSourceLine?: number | null;
   highlightedOffsets?: number[];
   breakpoints?: number[];
   currentDebugLine?: number | null;
+  // Replay props
+  isReplayMode?: boolean;
+  replayCurrentIndex: number;
+  replayTotalFrames: number;
+  isReplayPlaying?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -179,6 +216,15 @@ const emit = defineEmits<{
   debugCommand: [cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 'stop'];
   offsetClick: [offset: number];
   breakpointsChange: [lines: number[]];
+  toggleRecord: [];
+  exportRecording: [];
+  // Replay events
+  loadReplay: [];
+  replayPlay: [];
+  replayPause: [];
+  replayStepForward: [];
+  replayStepBackward: [];
+  replaySeek: [index: number];
 }>();
 
 function onTabChange(tab: OutputTab) {
@@ -244,6 +290,24 @@ const consoleTab = ref<'output' | 'debug'>('output');
   transition: background 0.15s;
 }
 .share-btn:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+.load-replay-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #3c3c3c;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.load-replay-btn:hover {
   background: #4a4a4a;
   color: #fff;
 }
@@ -326,6 +390,10 @@ const consoleTab = ref<'output' | 'debug'>('output');
   background: #b78e1c;
   color: #fff;
   border-color: #b78e1c;
+}
+.debug-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .run-btn {
   background: #0e639c;

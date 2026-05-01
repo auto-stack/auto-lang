@@ -17,6 +17,7 @@ const props = defineProps<{
   breakpoints?: number[];
   currentDebugLine?: number | null;
   highlightedSourceLine?: number | null;
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -210,13 +211,17 @@ onMounted(() => {
     autoLanguage,
     oneDark,
     EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
+      if (update.docChanged && !props.readOnly) {
         emit('update:modelValue', update.state.doc.toString());
       }
     }),
       // line-click is handled by direct DOM listener in onMounted below
     debugCompartment.of(props.isDebugging ? getDebugExtensions() : []),
   ];
+
+  if (props.readOnly) {
+    extensions.push(EditorView.editable.of(false));
+  }
 
   if (props.onRun) {
     extensions.push(keymap.of([{

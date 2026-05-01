@@ -13,12 +13,18 @@
     :on-run="run"
     :is-debugging="debug.isDebugging.value"
     :is-paused="debug.state.value?.status === 'paused'"
-    :bytecode="debug.bytecode.value"
-    :debug-state="debug.state.value"
+    :is-recording="debug.isRecording.value"
+    :has-recording="!!debug.recording.value"
+    :bytecode="activeBytecode"
+    :debug-state="activeDebugState"
     :current-source-line="highlightedSourceLine"
     :highlighted-offsets="highlightedBytecodeOffsets"
     :breakpoints="breakpoints"
-    :current-debug-line="debug.state.value?.line ?? null"
+    :current-debug-line="activeDebugState?.line ?? null"
+    :is-replay-mode="replay.isActive.value"
+    :replay-current-index="replay.currentIndex.value"
+    :replay-total-frames="replay.totalFrames.value"
+    :is-replay-playing="replay.isPlaying.value"
     @update:source="source = $event"
     @run="run"
     @run-abt="runAbt"
@@ -33,6 +39,14 @@
     @debug-command="onDebugCommand"
     @offset-click="onOffsetClick"
     @breakpoints-change="onBreakpointsChange"
+    @toggle-record="toggleRecord"
+    @export-recording="debug.exportRecording"
+    @load-replay="onLoadReplay"
+    @replay-play="replay.play"
+    @replay-pause="replay.pause"
+    @replay-step-forward="replay.stepForward"
+    @replay-step-backward="replay.stepBackward"
+    @replay-seek="replay.seek"
   />
   <div class="toast" :class="{ visible: shareToast.visible }">
     {{ shareToast.message }}
@@ -43,7 +57,9 @@
 import PlaygroundLayout from './components/PlaygroundLayout.vue';
 import { usePlayground } from './composables/usePlayground';
 import { useDebugger } from './composables/useDebugger';
+import { useReplayPlayer } from './composables/useReplayPlayer';
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import type { DebugRecording } from './types';
 
 const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
@@ -53,7 +69,31 @@ const {
 } = usePlayground();
 
 const debug = useDebugger();
+const replay = useReplayPlayer();
 const breakpoints = ref<number[]>([]);
+
+// When in replay mode, use replay state; otherwise use debug state
+const activeDebugState = computed(() => {
+  if (replay.isActive.value) {
+    return replay.currentState.value;
+  }
+  return debug.state.value;
+});
+
+const activeBytecode = computed(() => {
+  if (replay.isActive.value) {
+    return replay.bytecode.value;
+  }
+  return debug.bytecode.value;
+});
+
+const highlightedBytecodeOffsets = computed(() => {
+  if (!highlightedSourceLine.value) return undefined;
+  if (replay.isActive.value) {
+    return replay.lineToOffsets.value[highlightedSourceLine.value];
+  }
+  return debug.lineToOffsets.value[highlightedSourceLine.value];
+});
 
 // Sync debug finished state to main console so Run and Debug show the same result
 watch(() => debug.state.value, (state) => {
@@ -64,17 +104,25 @@ watch(() => debug.state.value, (state) => {
   }
 });
 
-const highlightedBytecodeOffsets = computed(() => {
-  if (!highlightedSourceLine.value) return undefined;
-  return debug.lineToOffsets.value[highlightedSourceLine.value];
-});
-
 function toggleDebug() {
   if (debug.isDebugging.value) {
     debug.stop();
+    if (debug.isRecording.value) {
+      debug.stopRecording();
+    }
     breakpoints.value = [];
   } else {
+    // Stop replay if active
+    replay.stop();
     debug.connect(source.value, breakpoints.value);
+  }
+}
+
+function toggleRecord() {
+  if (debug.isRecording.value) {
+    debug.stopRecording();
+  } else {
+    debug.startRecording(source.value, breakpoints.value);
   }
 }
 
@@ -83,7 +131,9 @@ function onDebugCommand(cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 's
 }
 
 function onOffsetClick(offset: number) {
-  const line = debug.offsetToLine.value[offset];
+  const line = replay.isActive.value
+    ? replay.offsetToLine.value[offset]
+    : debug.offsetToLine.value[offset];
   if (line) {
     highlightSourceLine(line);
   }
@@ -94,7 +144,44 @@ function onBreakpointsChange(lines: number[]) {
   debug.setBreakpoints(lines);
 }
 
+async function onLoadReplay() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.autoreplay,.json';
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as DebugRecording;
+      // Stop any active debug/replay
+      debug.stop();
+      replay.load(data);
+    } catch (e) {
+      alert('Failed to load replay file: ' + (e as Error).message);
+    }
+  };
+  input.click();
+}
+
 function onKeyDown(e: KeyboardEvent) {
+  if (replay.isActive.value) {
+    switch (e.key) {
+      case 'ArrowRight':
+        e.preventDefault();
+        replay.stepForward();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        replay.stepBackward();
+        break;
+      case ' ':
+        e.preventDefault();
+        replay.isPlaying.value ? replay.pause() : replay.play();
+        break;
+    }
+    return;
+  }
   if (!debug.isDebugging.value) return;
   switch (e.key) {
     case 'F5':
@@ -114,6 +201,10 @@ function onKeyDown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown);
+  // Test hook: expose replay loader for e2e tests
+  (window as any).__loadReplayForTest__ = (data: any) => {
+    replay.load(data);
+  };
 });
 
 onUnmounted(() => {

@@ -14,15 +14,43 @@
       <span class="icon">■</span>
       <span class="label">Stop</span>
     </button>
+
+    <div class="toolbar-divider" />
+
+    <!-- Recording controls -->
+    <button
+      :class="['record-btn', { recording: isRecording }]"
+      @click="$emit('toggleRecord')"
+      :title="isRecording ? 'Stop Recording' : 'Start Recording'"
+    >
+      <span class="icon">{{ isRecording ? '⏹' : '⏺' }}</span>
+      <span class="label">{{ isRecording ? 'Recording' : 'Record' }}</span>
+    </button>
+    <button
+      class="save-btn"
+      @click="$emit('exportRecording')"
+      :disabled="!hasRecording"
+      title="Export Replay File"
+    >
+      <span class="icon">💾</span>
+      <span class="label">Save</span>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { DebugCommand } from '../types';
 
-defineProps<{ isPaused: boolean }>();
+defineProps<{
+  isPaused: boolean;
+  isRecording: boolean;
+  hasRecording: boolean;
+}>();
+
 defineEmits<{
   command: [cmd: DebugCommand];
+  toggleRecord: [];
+  exportRecording: [];
 }>();
 
 const buttons: { cmd: DebugCommand; icon: string; label: string; title: string }[] = [
@@ -64,10 +92,26 @@ const buttons: { cmd: DebugCommand; icon: string; label: string; title: string }
   cursor: not-allowed;
 }
 .stop-btn {
-  margin-left: auto;
   color: #e51400 !important;
 }
 .stop-btn:hover {
   background: #4a1a1a !important;
+}
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: #555;
+  margin: 0 4px;
+}
+.record-btn {
+  color: #ccc;
+}
+.record-btn.recording {
+  background: #5c1a1a !important;
+  border-color: #e51400 !important;
+  color: #ff6b6b !important;
+}
+.save-btn {
+  color: #ccc;
 }
 </style>

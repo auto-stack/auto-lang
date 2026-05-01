@@ -91,3 +91,18 @@ export interface DebugState {
 }
 
 export type DebugCommand = 'continue' | 'step' | 'step_over' | 'step_out' | 'stop';
+
+// Replay types
+export interface DebugRecording {
+  version: number;
+  createdAt: string;
+  source: string;
+  initialBreakpoints: number[];
+  bytecode: BytecodeLine[];
+  events: RecordingEvent[];
+}
+
+export type RecordingEvent =
+  | { type: 'state'; state: DebugState }
+  | { type: 'command'; cmd: DebugCommand }
+  | { type: 'breakpoints'; lines: number[] };
