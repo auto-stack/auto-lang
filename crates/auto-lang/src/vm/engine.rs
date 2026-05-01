@@ -2373,6 +2373,7 @@ impl AutoVM {
                 }
                 OpCode::IS_VARIANT => {
                     // Plan 197 Task 15: Check if heap object is a GenericInstanceData with matching mono_name
+                    // Plan 229: Also handle primitive values (i32) for Option pattern compatibility
                     // Code layout: [opcode, name_len:u16, name_bytes...]
                     // Stack layout: [..., instance_id]
                     // Stack after: [..., bool] (instance_id consumed, bool pushed)
@@ -2404,6 +2405,15 @@ impl AutoVM {
                             instance.mono_name == expected_name
                         } else {
                             false
+                        }
+                    } else if instance_id < 1000000 {
+                        // Plan 229: Primitive value — Option compatibility
+                        // str.find returns i32: -1 = not found (None), >= 0 = found (Some)
+                        let val = instance_id as i32;
+                        match expected_name.as_str() {
+                            "Option.Some" => val >= 0,
+                            "Option.None" => val < 0,
+                            _ => false,
                         }
                     } else {
                         false
@@ -2469,6 +2479,11 @@ impl AutoVM {
                                 guard.type_tag()
                             )));
                         }
+                    } else if instance_id < 1000000 {
+                        // Plan 229: Primitive value — for Option.Some binding, return the value itself
+                        // Pop the instance_id and push it back as the field value
+                        let _ = task.ram.pop_i32();
+                        task.ram.push_i32(instance_id as i32);
                     } else {
                         return Err(VMError::RuntimeError(format!(
                             "Invalid instance ID: {}",

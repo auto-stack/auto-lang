@@ -2357,11 +2357,8 @@ impl Codegen {
                             // Use first pattern for special pattern types (Option/Result/Cover)
                             let pattern = &patterns[0];
                             match pattern {
-                                // Plan 197 Task 16: None as expression (backward compatibility)
                                 crate::ast::Expr::None => {
-                                    // Duplicate target for comparison
                                     self.emit(OpCode::DUP);
-                                    // Check if value is Option.None using IS_VARIANT
                                     self.emit(OpCode::IS_VARIANT);
                                     let variant_name = "Option.None";
                                     let name_bytes = variant_name.as_bytes();
@@ -2370,14 +2367,10 @@ impl Codegen {
                                         self.code.push(byte);
                                     }
                                 }
-                                // Plan 197 Task 16: OptionPattern - Some(x) or None in is statement
-                                // Uses IS_VARIANT("Option.Some"/"Option.None") + GET_GENERIC_FIELD
                                 crate::ast::Expr::OptionPattern(opt_cover) => {
                                     match opt_cover.variant {
                                         crate::ast::OptionVariant::Some => {
-                                            // Duplicate target for checking
                                             self.emit(OpCode::DUP);
-                                            // Check if value is Option.Some using IS_VARIANT
                                             self.emit(OpCode::IS_VARIANT);
                                             let variant_name = "Option.Some";
                                             let name_bytes = variant_name.as_bytes();
@@ -2386,49 +2379,36 @@ impl Codegen {
                                                 self.code.push(byte);
                                             }
 
-                                            // Jump to next branch if not matched
                                             self.emit(OpCode::JMP_IF_Z);
                                             let jump_to_next = self.emit_placeholder_i16();
 
-                                            // If we have a binding, extract the value and store it
                                             if let Some(binding) = &opt_cover.binding {
-                                                // The target is still on stack (IS_VARIANT consumed the DUP'd copy)
-                                                // Extract field _0 (index 0) from the Option.Some instance
                                                 self.emit(OpCode::DUP);
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
-                                                self.emit_u32(0); // field index 0 (_0)
+                                                self.emit_u32(0);
 
-                                                // Store in local variable
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
 
-                                                // Plan 197 Task 16: Track the binding's type in var_types
-                                                // Infer the inner type from the is target variable
                                                 if binding.as_str() != "_" {
                                                     let inner_type = self.infer_option_inner_type(&is_stmt.target);
                                                     self.var_types.insert(binding.to_string(), inner_type);
                                                 }
                                             } else {
-                                                // Pop the duplicated target (no binding needed)
                                                 self.emit(OpCode::POP);
                                             }
 
-                                            // Compile branch body
                                             self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
 
-                                            // Jump to end of is statement
                                             self.emit(OpCode::JMP);
                                             let jump_to_end = self.emit_placeholder_i16();
                                             end_jumps.push(jump_to_end);
 
-                                            // Patch jump to next branch
                                             self.patch_jump(jump_to_next);
-                                            continue; // Skip the default handling
+                                            continue;
                                         }
                                         crate::ast::OptionVariant::None => {
-                                            // Duplicate target for checking
                                             self.emit(OpCode::DUP);
-                                            // Check if value is Option.None using IS_VARIANT
                                             self.emit(OpCode::IS_VARIANT);
                                             let variant_name = "Option.None";
                                             let name_bytes = variant_name.as_bytes();
