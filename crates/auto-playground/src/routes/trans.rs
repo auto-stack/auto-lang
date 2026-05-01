@@ -55,7 +55,7 @@ fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppErro
 }
 
 fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    let (vm, _, _) = auto_lang::create_vm_from_source(source)
+    let (vm, _, _, _) = auto_lang::create_vm_from_source(source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
 
     let strings = vm.strings.read().map_err(|e| AppError::Internal(e.to_string()))?;

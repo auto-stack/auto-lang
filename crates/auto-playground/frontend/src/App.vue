@@ -43,7 +43,7 @@
 import PlaygroundLayout from './components/PlaygroundLayout.vue';
 import { usePlayground } from './composables/usePlayground';
 import { useDebugger } from './composables/useDebugger';
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 
 const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
@@ -54,6 +54,15 @@ const {
 
 const debug = useDebugger();
 const breakpoints = ref<number[]>([]);
+
+// Sync debug finished state to main console so Run and Debug show the same result
+watch(() => debug.state.value, (state) => {
+  if (state?.status === 'finished') {
+    stdout.value = state.stdout || '';
+    resultCode.value = state.result || '';
+    stderr.value = state.stderr || '';
+  }
+});
 
 const highlightedBytecodeOffsets = computed(() => {
   if (!highlightedSourceLine.value) return undefined;

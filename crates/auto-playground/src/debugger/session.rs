@@ -25,7 +25,7 @@ pub async fn run_debug_session(mut ws: WebSocket) {
 
 async fn run_debug_thread(mut ws: WebSocket, source: &str) {
     // 1. Compile and create VM
-    let (mut vm, output_buffer, entry_point) = match auto_lang::create_vm_from_source(source) {
+    let (mut vm, output_buffer, entry_point, result_type) = match auto_lang::create_vm_from_source(source) {
         Ok(v) => v,
         Err(e) => {
             send_json(
@@ -75,12 +75,13 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
 
     // 5. Run VM inline in this OS thread
     tracing::debug!("Debug session: starting VM at entry_point={}", entry_point);
-    vm.spawn_task(entry_point, 16384);
+    let task_id = vm.spawn_task(entry_point, 16384);
     vm.run_task_loop().await;
     tracing::debug!("Debug session: VM finished");
 
-    // 6. Send finished state to frontend
+    // 6. Extract result and send finished state to frontend
     let stdout = output_buffer.read().unwrap().clone();
+    let result = auto_lang::extract_autovm_result(&vm, task_id, Some(result_type)).await.ok();
     let _ = state_tx2.send(DebugState {
         status: super::controller::DebugStatus::Finished,
         line: 0,
@@ -93,7 +94,7 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
         registers: super::controller::RegisterInfo { ip: 0, bp: 0, sp: 0 },
         stdout,
         stderr: String::new(),
-        result: None,
+        result,
     }).await;
 
     // 7. Wait for relay task to finish gracefully instead of aborting

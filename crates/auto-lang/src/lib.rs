@@ -622,153 +622,157 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     vm.run_task_loop().await;
 
     // 6. Get result from stack
-    let result = if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
-        let mut task = task_arc.lock().await;
+    let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
 
-        // Plan 118: Check if task had an error
-        if let Some(error) = &task.last_error {
-            return Err(crate::error::AutoError::Msg(error.clone()));
+    Ok((result, get_stdout()))
+}
+
+/// Extract and format the result value from a VM task after execution.
+/// Plan 225: Shared between execute_autovm and debug sessions.
+pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64, result_type: Option<crate::vm::codegen::ObjectType>) -> AutoResult<String> {
+    use crate::vm::codegen::ObjectType;
+    use crate::vm::task::ResultType;
+
+    let task_arc = vm.tasks.get(&task_id)
+        .map(|r| r.value().clone())
+        .ok_or_else(|| crate::error::AutoError::Msg("Task not found after execution".to_string()))?;
+    let mut task = task_arc.lock().await;
+
+    // Check if task had an error
+    if let Some(error) = &task.last_error {
+        return Err(crate::error::AutoError::Msg(error.clone()));
+    }
+
+    if task.ram.sp == 0 {
+        return Ok("".to_string());
+    }
+
+    // Check VM runtime result type first (set during execution)
+    let result = match task.last_result_type {
+        ResultType::Float => {
+            let result = task.ram.pop_f32();
+            format!("{}", result)
         }
-
-        if task.ram.sp == 0 {
-            "".to_string()
-        } else {
-            // Plan 117/118: Check result type for proper formatting
-            use crate::vm::codegen::ObjectType;
-            use crate::vm::task::ResultType;
-
-            // Check VM runtime result type first (set during execution)
-            match task.last_result_type {
-                ResultType::Float => {
+        _ => {
+            // Then check codegen's compile-time result type if provided
+            match result_type {
+                Some(ObjectType::Float) | Some(ObjectType::Double) => {
                     let result = task.ram.pop_f32();
                     format!("{}", result)
                 }
+                Some(ObjectType::Byte) => {
+                    let result = task.ram.pop_i32();
+                    format!("0x{:02X}", result as u8)
+                }
+                Some(ObjectType::Uint) => {
+                    let result = task.ram.pop_i32();
+                    format!("{}u", result as u32)
+                }
+                Some(ObjectType::Char) => {
+                    let result = task.ram.pop_i32();
+                    if let Some(ch) = char::from_u32(result as u32) {
+                        format!("'{}'", ch)
+                    } else {
+                        format!("{}", result)
+                    }
+                }
+                Some(ObjectType::Bool) => {
+                    let result = task.ram.pop_i32();
+                    if result != 0 { "true".to_string() } else { "false".to_string() }
+                }
+                Some(ObjectType::Void) => {
+                    let _ = task.ram.pop_i32();
+                    "".to_string()
+                }
                 _ => {
-                    // Then check codegen's compile-time result type
-                    match result_type {
-                        ObjectType::Float | ObjectType::Double => {
-                            let result = task.ram.pop_f32();
+                    // Default: pop and format based on value
+                    let result = task.ram.pop_i32();
+                    let result_u64 = result as u64;
+
+                    // Check arrays registry
+                    if let Some(arr_arc) = vm.arrays.get(&result_u64) {
+                        let arr = arr_arc.read().unwrap();
+                        let strings = vm.strings.read().unwrap();
+                        let formatted: Vec<String> = arr.iter().map(|v| {
+                            if let auto_val::Value::Int(bits) = v {
+                                if *bits < 0 && *bits > -1000000 && *bits != -2147483648 && *bits != -2147483647 {
+                                    let str_idx = (-bits - 1) as usize;
+                                    if let Some(bytes) = strings.get(str_idx) {
+                                        return format!("\"{}\"", String::from_utf8_lossy(bytes));
+                                    }
+                                }
+                            }
+                            v.repr().to_string()
+                        }).collect();
+                        format!("[{}]", formatted.join(", "))
+                    }
+                    // Check heap objects
+                    else if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
+                        let obj = obj_arc.read().unwrap();
+                        if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                            let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+                            format!("[{}]", formatted.join(", "))
+                        } else if let Some(sb) = obj.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+                            sb.buffer.clone()
+                        } else {
                             format!("{}", result)
                         }
-                        ObjectType::Byte => {
-                            let result = task.ram.pop_i32();
-                            format!("0x{:02X}", result as u8)
+                    }
+                    // Check objects registry
+                    else if result >= 1000000 && result < 2000000 {
+                        if let Some(obj_arc) = vm.objects.get(&result_u64) {
+                            let obj = obj_arc.read().unwrap();
+                            let mut fields: Vec<(&auto_val::ValueKey, &Value)> = obj.fields.iter().collect();
+                            fields.sort_by(|(k1, _), (k2, _)| k1.to_string().cmp(&k2.to_string()));
+                            let formatted: Vec<String> = fields.iter().map(|(k, v)| {
+                                let key_str = k.to_string();
+                                let val_str = format_value_for_display(vm, v);
+                                format!("{}: {}", key_str, val_str)
+                            }).collect();
+                            format!("{{{}}}", formatted.join(", "))
+                        } else {
+                            format!("{}", result)
                         }
-                        ObjectType::Uint => {
-                            let result = task.ram.pop_i32();
-                            format!("{}u", result as u32)
+                    }
+                    // Check strings pool
+                    else if result < 0 && result > -1000000 && result != -2147483648 && result != -2147483647 {
+                        let str_idx = (-result - 1) as usize;
+                        let strings = vm.strings.read().unwrap();
+                        if let Some(bytes) = strings.get(str_idx) {
+                            String::from_utf8_lossy(bytes).to_string()
+                        } else {
+                            format!("{}", result)
                         }
-                        ObjectType::Char => {
-                            let result = task.ram.pop_i32();
-                            if let Some(ch) = char::from_u32(result as u32) {
-                                format!("'{}'", ch)
+                    }
+                    // Boolean markers
+                    else if result == -2147483648 {
+                        "true".to_string()
+                    } else if result == -2147483647 {
+                        "false".to_string()
+                    }
+                    // Range markers
+                    else if result <= -1000000 && result > -2000000 {
+                        let range_id = (result + 1000000) as usize;
+                        if range_id < task.ram.ranges.len() {
+                            let (start, end, is_inclusive) = task.ram.ranges[range_id];
+                            if is_inclusive {
+                                format!("{}..={}", start, end)
                             } else {
-                                format!("{}", result)
+                                format!("{}..{}", start, end)
                             }
+                        } else {
+                            format!("{}", result)
                         }
-                        ObjectType::Bool => {
-                            let result = task.ram.pop_i32();
-                            if result != 0 { "true".to_string() } else { "false".to_string() }
-                        }
-                        ObjectType::Void => {
-                            let _ = task.ram.pop_i32();
-                            "".to_string()
-                        }
-                        _ => {
-                            // Default: pop and format based on value
-                            let result = task.ram.pop_i32();
-                            let result_u64 = result as u64;
-
-                            // Check arrays registry
-                            if let Some(arr_arc) = vm.arrays.get(&result_u64) {
-                                let arr = arr_arc.read().unwrap();
-                                let strings = vm.strings.read().unwrap();
-                                let formatted: Vec<String> = arr.iter().map(|v| {
-                                    if let auto_val::Value::Int(bits) = v {
-                                        if *bits < 0 && *bits > -1000000 && *bits != -2147483648 && *bits != -2147483647 {
-                                            let str_idx = (-bits - 1) as usize;
-                                            if let Some(bytes) = strings.get(str_idx) {
-                                                return format!("\"{}\"", String::from_utf8_lossy(bytes));
-                                            }
-                                        }
-                                    }
-                                    v.repr().to_string()
-                                }).collect();
-                                format!("[{}]", formatted.join(", "))
-                            }
-                            // Check heap objects
-                            else if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
-                                let obj = obj_arc.read().unwrap();
-                                if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
-                                    let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
-                                    format!("[{}]", formatted.join(", "))
-                                } else if let Some(sb) = obj.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
-                                    sb.buffer.clone()
-                                } else {
-                                    format!("{}", result)
-                                }
-                            }
-                            // Check objects registry
-                            else if result >= 1000000 && result < 2000000 {
-                                if let Some(obj_arc) = vm.objects.get(&result_u64) {
-                                    let obj = obj_arc.read().unwrap();
-                                    let mut fields: Vec<(&auto_val::ValueKey, &Value)> = obj.fields.iter().collect();
-                                    fields.sort_by(|(k1, _), (k2, _)| k1.to_string().cmp(&k2.to_string()));
-                                    let formatted: Vec<String> = fields.iter().map(|(k, v)| {
-                                        let key_str = k.to_string();
-                                        let val_str = format_value_for_display(&vm, v);
-                                        format!("{}: {}", key_str, val_str)
-                                    }).collect();
-                                    format!("{{{}}}", formatted.join(", "))
-                                } else {
-                                    format!("{}", result)
-                                }
-                            }
-                            // Check strings pool
-                            else if result < 0 && result > -1000000 && result != -2147483648 && result != -2147483647 {
-                                let str_idx = (-result - 1) as usize;
-                                let strings = vm.strings.read().unwrap();
-                                if let Some(bytes) = strings.get(str_idx) {
-                                    String::from_utf8_lossy(bytes).to_string()
-                                } else {
-                                    format!("{}", result)
-                                }
-                            }
-                            // Boolean markers
-                            else if result == -2147483648 {
-                                "true".to_string()
-                            } else if result == -2147483647 {
-                                "false".to_string()
-                            }
-                            // Range markers
-                            else if result <= -1000000 && result > -2000000 {
-                                let range_id = (result + 1000000) as usize;
-                                if range_id < task.ram.ranges.len() {
-                                    let (start, end, is_inclusive) = task.ram.ranges[range_id];
-                                    if is_inclusive {
-                                        format!("{}..={}", start, end)
-                                    } else {
-                                        format!("{}..{}", start, end)
-                                    }
-                                } else {
-                                    format!("{}", result)
-                                }
-                            }
-                            else {
-                                format!("{}", result)
-                            }
-                        }
+                    }
+                    else {
+                        format!("{}", result)
                     }
                 }
             }
         }
-    } else {
-        return Err(crate::error::AutoError::Msg(
-            "Task not found after execution".to_string(),
-        ));
     };
 
-    Ok((result, get_stdout()))
+    Ok(result)
 }
 
 // run_with_errors() removed in Plan 091 - use run() with built-in error recovery
@@ -1016,6 +1020,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
 
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
+    let _result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
@@ -1078,10 +1083,12 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
 
 /// Plan 225: Compile source and create a VM with stdout capture ready for debugging.
 /// The caller is responsible for setting the debugger controller, spawning, and running tasks.
+/// Returns (vm, stdout_capture_buffer, entry_point, result_type)
 pub fn create_vm_from_source(code: &str) -> AutoResult<(
     crate::vm::engine::AutoVM,
     std::sync::Arc<std::sync::RwLock<String>>,
     usize,
+    crate::vm::codegen::ObjectType,
 )> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
@@ -1142,6 +1149,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
 
     let object_keys = codegen.object_keys.clone();
     let object_types = codegen.object_types.clone();
+    let result_type = codegen.last_expr_type.clone();
     let generic_registry = std::mem::take(&mut codegen.generic_registry);
     let main_module = codegen.finish("<main>".to_string());
     linker.add_module(main_module);
@@ -1192,7 +1200,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
         vm.merge_native_interface(&py_ni);
     }
 
-    Ok((vm, output_buffer, main_entry))
+    Ok((vm, output_buffer, main_entry, result_type))
 }
 
 /// Plan 226 Phase 6: Create an AutoVM from ABT text, ready to run.
@@ -1256,7 +1264,7 @@ pub fn create_vm_from_abt(abt_text: &str) -> AutoResult<(
 pub async fn run_abt(abt_text: &str) -> AutoResult<String> {
     let (vm, output_buffer, main_entry) = create_vm_from_abt(abt_text)?;
 
-    let task_id = vm.spawn_task(main_entry, 16384);
+    let _task_id = vm.spawn_task(main_entry, 16384);
     vm.run_task_loop().await;
 
     let result = output_buffer.read().unwrap().clone();
