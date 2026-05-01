@@ -17,12 +17,12 @@
       <input
         type="range"
         :min="0"
-        :max="Math.max(0, totalFrames - 1)"
-        :value="currentFrame"
+        :max="Math.max(0, safeTotalFrames - 1)"
+        :value="safeCurrentIndex"
         @input="onSeek"
         class="timeline-slider"
       />
-      <span class="frame-info">Frame {{ currentFrame + 1 }} / {{ totalFrames }}</span>
+      <span class="frame-info">Frame {{ safeCurrentIndex + 1 }} / {{ safeTotalFrames }}</span>
     </div>
 
     <div class="replay-badge">🔁 Replay Mode</div>
@@ -32,9 +32,15 @@
 <script setup lang="ts">
 const props = defineProps<{
   isPlaying: boolean;
-  currentIndex: number;
-  totalFrames: number;
+  currentIndex?: number;
+  totalFrames?: number;
 }>();
+
+const safeCurrentIndex = computed(() => props.currentIndex ?? 0);
+const safeTotalFrames = computed(() => props.totalFrames ?? 0);
+
+// suppress unused warning for currentFrame (was used before refactoring)
+void safeCurrentIndex;
 
 const emit = defineEmits<{
   play: [];
@@ -43,8 +49,6 @@ const emit = defineEmits<{
   stepBackward: [];
   seek: [index: number];
 }>();
-
-const currentFrame = computed(() => props.currentIndex);
 
 function onSeek(e: Event) {
   const val = parseInt((e.target as HTMLInputElement).value, 10);

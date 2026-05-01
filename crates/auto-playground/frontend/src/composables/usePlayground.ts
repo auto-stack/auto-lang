@@ -56,7 +56,11 @@ export function usePlayground() {
   const transpileTarget = ref('');
   const liveCompile = ref(saved.liveCompile ?? true);
 
-  const transCache = ref<Record<string, string>>({});
+  interface TransCacheEntry {
+    code: string;
+    sourceMap: SourceMapEntry[];
+  }
+  const transCache = ref<Record<string, TransCacheEntry>>({});
   const sourceMap = ref<SourceMapEntry[]>([]);
   const highlightedSourceLine = ref<number | null>(null);
   const highlightedOutputLines = ref<number[]>([]);
@@ -117,7 +121,7 @@ export function usePlayground() {
     resultCode.value = '';
 
     try {
-      const abtCode = transCache.value['abt'] || '';
+      const abtCode = transCache.value['abt']?.code || '';
       const res = await fetch(`${API_BASE}/run_abt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -138,7 +142,7 @@ export function usePlayground() {
   }
 
   async function runCode(language: string) {
-    const code = transCache.value[language] || '';
+    const code = transCache.value[language]?.code || '';
     if (!code.trim()) {
       stderr.value = `No ${language} code to run. Make sure the transpilation succeeded.`;
       return;
@@ -190,7 +194,7 @@ export function usePlayground() {
       transpiledCode.value = data.code || '';
       transpileTarget.value = target;
       sourceMap.value = data.source_map || [];
-      transCache.value[target] = transpiledCode.value;
+      transCache.value[target] = { code: transpiledCode.value, sourceMap: data.source_map || [] };
     } catch (e: any) {
       transpiledCode.value = `Error: ${e.message}`;
       transpileTarget.value = target;
@@ -202,14 +206,16 @@ export function usePlayground() {
   function switchTab(target: OutputTab) {
     activeTab.value = target;
     transpileTarget.value = target;
-    if (transCache.value[target]) {
-      transpiledCode.value = transCache.value[target];
+    const cached = transCache.value[target];
+    if (cached) {
+      transpiledCode.value = cached.code;
+      sourceMap.value = cached.sourceMap;
     } else if (liveCompile.value) {
       transpile(target);
     } else {
       transpiledCode.value = '';
+      sourceMap.value = [];
     }
-    sourceMap.value = [];
   }
 
   function loadExample(code: string) {
@@ -290,19 +296,20 @@ export function usePlayground() {
               body: JSON.stringify({ source: source.value, target }),
             });
             const data: TransResponse = await res.json();
-            return { target, code: data.code || '' };
+            return { target, code: data.code || '', sourceMap: data.source_map || [] };
           } catch (e: any) {
-            return { target, code: `Error: ${e.message}` };
+            return { target, code: `Error: ${e.message}`, sourceMap: [] };
           }
         })
       );
       for (const r of results) {
-        transCache.value[r.target] = r.code;
+        transCache.value[r.target] = { code: r.code, sourceMap: r.sourceMap || [] };
       }
       const current = activeTab.value;
-      transpiledCode.value = transCache.value[current] || '';
+      const cached = transCache.value[current];
+      transpiledCode.value = cached?.code || '';
       transpileTarget.value = current;
-      sourceMap.value = [];
+      sourceMap.value = cached?.sourceMap || [];
     } finally {
       isLoading.value = false;
     }

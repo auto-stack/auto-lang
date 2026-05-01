@@ -34,6 +34,8 @@
     @load-example="loadExample"
     @toggle-live="liveCompile = !liveCompile"
     @line-click="highlightSourceLine"
+    :on-highlight-line="highlightSourceLine"
+    :on-clear-highlight="clearHighlight"
     @share="share"
     @toggle-debug="toggleDebug"
     @debug-command="onDebugCommand"
@@ -65,7 +67,7 @@ const {
   source, stdout, stderr, resultCode, timeMs, isLoading,
   activeTab, transpiledCode, liveCompile,
   highlightedOutputLines, highlightedSourceLine,
-  run, runAbt, runCode, transpile, switchTab, loadExample, highlightSourceLine, share, shareToast,
+  run, runAbt, runCode, transpile, switchTab, loadExample, highlightSourceLine, clearHighlight, share, shareToast,
 } = usePlayground();
 
 const debug = useDebugger();

@@ -93,6 +93,8 @@
               :read-only="isReplayMode"
               @line-click="$emit('lineClick', $event)"
               @breakpoints-change="$emit('breakpointsChange', $event)"
+              @hover-line="props.onHighlightLine?.($event)"
+              @hover-line-leave="props.onClearHighlight?.()"
             />
           </div>
         </div>
@@ -195,9 +197,12 @@ const props = defineProps<{
   currentDebugLine?: number | null;
   // Replay props
   isReplayMode?: boolean;
-  replayCurrentIndex: number;
-  replayTotalFrames: number;
+  replayCurrentIndex?: number;
+  replayTotalFrames?: number;
   isReplayPlaying?: boolean;
+  // Highlight callbacks
+  onHighlightLine?: (line: number) => void;
+  onClearHighlight?: () => void;
 }>();
 
 const emit = defineEmits<{

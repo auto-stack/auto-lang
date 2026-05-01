@@ -24,6 +24,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
   'line-click': [line: number];
   'breakpointsChange': [lines: number[]];
+  'hover-line': [line: number];
+  'hover-line-leave': [];
 }>();
 
 const editorContainer = ref<HTMLDivElement>();
@@ -238,6 +240,24 @@ onMounted(() => {
   editorView = new EditorView({
     state,
     parent: editorContainer.value,
+  });
+
+  // Hover line highlight
+  let hoverLine = 0;
+  editorContainer.value.addEventListener('mousemove', (event) => {
+    if (!editorView) return;
+    const pos = editorView.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (pos !== null) {
+      const line = editorView.state.doc.lineAt(pos).number;
+      if (line !== hoverLine) {
+        hoverLine = line;
+        emit('hover-line', line);
+      }
+    }
+  });
+  editorContainer.value.addEventListener('mouseleave', () => {
+    hoverLine = 0;
+    emit('hover-line-leave');
   });
 
   // Direct DOM listener for lineNumbers gutter click (more reliable than CodeMirror domEventHandlers)
