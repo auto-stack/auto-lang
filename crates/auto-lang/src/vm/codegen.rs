@@ -1007,7 +1007,21 @@ impl Codegen {
                                 self.var_types.insert(name_str.clone(), store.ty.clone());
                             }
                         } else {
-                            self.var_types.insert(name_str.clone(), store.ty.clone());
+                            // Plan 202: When store.ty is a default (Int) but expr is Ident
+                            // with a more specific type, prefer the source type
+                            if let Expr::Ident(src_name) = &store.expr {
+                                if let Some(src_type) = self.var_types.get(src_name.as_str()) {
+                                    if !matches!(src_type, Type::Int | Type::Unknown) {
+                                        self.var_types.insert(name_str.clone(), src_type.clone());
+                                    } else {
+                                        self.var_types.insert(name_str.clone(), store.ty.clone());
+                                    }
+                                } else {
+                                    self.var_types.insert(name_str.clone(), store.ty.clone());
+                                }
+                            } else {
+                                self.var_types.insert(name_str.clone(), store.ty.clone());
+                            }
                         }
                     } else {
                         // Plan 118 Phase 4: Infer type from expression when annotation is Unknown
@@ -1038,52 +1052,74 @@ impl Codegen {
                             }
                             // Plan 158: Infer type from function call
                                 Expr::Call(call) => {
-                                    if let Expr::Ident(fn_name) = call.name.as_ref() {
-                                        self.fn_return_types.get(fn_name.as_ref())
-                                            .cloned()
-                                            .unwrap_or(Type::Unknown)
-                                    } else if let Expr::Dot(obj, method) = call.name.as_ref() {
-                                        // Instance method: try to infer from var_types + method return type
-                                        if let Expr::Ident(obj_name) = obj.as_ref() {
-                                            let full_name = format!("{}.{}", obj_name, method);
-                                            if let Some(ty) = self.fn_return_types.get(&full_name) {
-                                                ty.clone()
-                                            } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
-                                                let type_method = format!("{}.{}", type_name, method);
-                                                if let Some(ty) = self.fn_return_types.get(&type_method) {
+                                    match call.name.as_ref() {
+                                        Expr::Ident(fn_name) => {
+                                            self.fn_return_types.get(fn_name.as_ref())
+                                                .cloned()
+                                                .unwrap_or(Type::Unknown)
+                                        }
+                                        Expr::Dot(obj, method) => {
+                                            if let Expr::Ident(obj_name) = obj.as_ref() {
+                                                let full_name = format!("{}.{}", obj_name, method);
+                                                if let Some(ty) = self.fn_return_types.get(&full_name) {
                                                     ty.clone()
+                                                } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                                    let type_method = format!("{}.{}", type_name, method);
+                                                    if let Some(ty) = self.fn_return_types.get(&type_method) {
+                                                        ty.clone()
+                                                    } else {
+                                                        // Array HOF methods return arrays
+                                                        let hof_methods = ["map", "filter"];
+                                                        if (type_name == "Array" || type_name == "List") && hof_methods.contains(&method.as_str()) {
+                                                            Type::Array(crate::ast::ArrayType {
+                                                                elem: Box::new(Type::Int),
+                                                                len: 0,
+                                                            })
+                                                        } else {
+                                                            Type::Unknown
+                                                        }
+                                                    }
                                                 } else {
-                                                    // Array HOF methods return arrays
-                                                    let hof_methods = ["map", "filter"];
-                                                    if type_name == "Array" && hof_methods.contains(&method.as_str()) {
-                                                        Type::Array(crate::ast::ArrayType {
-                                                            elem: Box::new(Type::Int),
-                                                            len: 0, // dynamic size
-                                                        })
+                                                    Type::Unknown
+                                                }
+                                            } else {
+                                                let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
+                                                if let Some(ty) = self.fn_return_types.get(&fn_name) {
+                                                    ty.clone()
+                                                } else if let Some(type_name) = self.infer_user_type_name(obj.as_ref()) {
+                                                    let type_method = format!("{}.{}", type_name, method.as_ref());
+                                                    self.fn_return_types.get(&type_method)
+                                                        .cloned()
+                                                        .unwrap_or(Type::Unknown)
+                                                } else {
+                                                    // Plan 202: Try with receiver's type name (e.g., "str" for string literals)
+                                                    let obj_ot = self.infer_object_type(obj.as_ref());
+                                                    let type_name = match obj_ot {
+                                                        ObjectType::String => Some("str"),
+                                                        ObjectType::Int => Some("int"),
+                                                        ObjectType::Array => Some("List"),
+                                                        ObjectType::Float | ObjectType::Double => Some("float"),
+                                                        ObjectType::Bool => Some("bool"),
+                                                        ObjectType::Char => Some("char"),
+                                                        _ => None,
+                                                    };
+                                                    if let Some(tn) = type_name {
+                                                        let qualified = format!("auto.{}.{}", tn, method);
+                                                        self.fn_return_types.get(&qualified)
+                                                            .cloned()
+                                                            .unwrap_or_else(|| {
+                                                                let short = format!("{}.{}", tn, method);
+                                                                self.fn_return_types.get(&short)
+                                                                    .cloned()
+                                                                    .unwrap_or(Type::Unknown)
+                                                            })
                                                     } else {
                                                         Type::Unknown
                                                     }
                                                 }
-                                            } else {
-                                                Type::Unknown
-                                            }
-                                        } else {
-                                            // Plan 197 Task 3: Chained method call (e.g., Point.origin().to_str())
-                                            // Resolve the type of the inner expression via fn_return_types
-                                            let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
-                                            if let Some(ty) = self.fn_return_types.get(&fn_name) {
-                                                ty.clone()
-                                            } else if let Some(type_name) = self.infer_user_type_name(obj.as_ref()) {
-                                                let type_method = format!("{}.{}", type_name, method.as_ref());
-                                                self.fn_return_types.get(&type_method)
-                                                    .cloned()
-                                                    .unwrap_or(Type::Unknown)
-                                            } else {
-                                                Type::Unknown
                                             }
                                         }
-                                    } else {
-                                        Type::Unknown
+                                        _ => Type::Unknown,
                                     }
                                 }
                                 // Plan 197 Task 4: Infer type from field access (e.g., let v = r.value)
@@ -1113,6 +1149,12 @@ impl Codegen {
                                             len: elems.len(),
                                         })
                                     }
+                                }
+                                // Plan 202: Propagate type from source variable (e.g., let s = item)
+                                Expr::Ident(src_name) => {
+                                    self.var_types.get(src_name.as_str())
+                                        .cloned()
+                                        .unwrap_or_else(|| store.ty.clone())
                                 }
                                 _ => store.ty.clone(),
                         };
@@ -5032,11 +5074,26 @@ impl Codegen {
                                     ObjectType::String => "str".to_string(),
                                     ObjectType::Char => "char".to_string(),
                                     ObjectType::Bool => "bool".to_string(),
+                                    ObjectType::Array => "List".to_string(),
                                     _ => {
-                                        // Plan 197 Task 3: Try to resolve user-defined type name
-                                        // from fn_return_types for chained method calls
-                                        self.infer_user_type_name(obj.as_ref())
-                                            .unwrap_or_else(|| "Unknown".to_string())
+                                        // Plan 202 Step 3: Fallback to infer_expr_type when infer_object_type
+                                        // returns a non-specific type (NestedObject or default)
+                                        let fallback_type = self.infer_expr_type(obj.as_ref());
+                                        let fallback_ot = self.type_to_object_type(&fallback_type);
+                                        match fallback_ot {
+                                            ObjectType::String => "str".to_string(),
+                                            ObjectType::Array => "List".to_string(),
+                                            ObjectType::Int => "int".to_string(),
+                                            ObjectType::Uint => "uint".to_string(),
+                                            ObjectType::Float | ObjectType::Double => "float".to_string(),
+                                            ObjectType::Bool => "bool".to_string(),
+                                            ObjectType::Char => "char".to_string(),
+                                            _ => {
+                                                // Plan 197 Task 3: Try to resolve user-defined type name
+                                                self.infer_user_type_name(obj.as_ref())
+                                                    .unwrap_or_else(|| "Unknown".to_string())
+                                            }
+                                        }
                                     }
                                 };
                                 let native_name = format!("{}.{}", type_name, method);
@@ -5566,7 +5623,7 @@ impl Codegen {
                 let is_native = func_name.as_ref()
                     .map(|name| BIGVM_NATIVES.lock().unwrap().resolve_qualified(name).is_some())
                     .unwrap_or(false);
-                if is_spec_dispatch || (is_instance_method_call && resolved_func.is_none() && !is_native) {
+                if is_spec_dispatch || (func_name.is_some() && is_instance_method_call && resolved_func.is_none() && !is_native) {
                     // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
                     self.emit(OpCode::CALL_SPEC);
                     let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
@@ -6559,6 +6616,40 @@ impl Codegen {
                     _ => ObjectType::Int,
                 }
             }
+            Expr::Index(arr, _) => {
+                let arr_type = self.infer_object_type(arr.as_ref());
+                match arr_type {
+                    ObjectType::Array => ObjectType::Int,
+                    _ => ObjectType::Int,
+                }
+            }
+            Expr::Unary(_, inner) => self.infer_object_type(inner.as_ref()),
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => self.infer_object_type(inner.as_ref()),
+            Expr::To { target_type, .. } => self.type_to_object_type(target_type),
+            Expr::FStr(_) => ObjectType::String,
+            Expr::GenName(name) => {
+                self.var_types.get(name.as_str())
+                    .map(|t| self.type_to_object_type(t))
+                    .unwrap_or(ObjectType::Int)
+            }
+            Expr::Ref(name) => {
+                self.var_types.get(name.as_str())
+                    .map(|t| self.type_to_object_type(t))
+                    .unwrap_or(ObjectType::Int)
+            }
+            Expr::Block(body) => {
+                body.stmts.last()
+                    .and_then(|stmt| {
+                        if let crate::ast::Stmt::Expr(expr) = stmt {
+                            Some(self.infer_object_type(expr))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(ObjectType::Int)
+            }
+            Expr::Some(inner) | Expr::Ok(inner) => self.infer_object_type(inner.as_ref()),
+            Expr::None | Expr::Nil | Expr::Null => ObjectType::Int,
             _ => ObjectType::Int,
         }
     }
@@ -7594,7 +7685,8 @@ impl Codegen {
                 NativeRetType::Bool => Type::Bool,
                 NativeRetType::String => Type::String,
                 NativeRetType::I64 => Type::I64,
-                NativeRetType::List => Type::Unknown, // list types need more context
+                NativeRetType::List => Type::List(Box::new(Type::Unknown)),
+                NativeRetType::Map => Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)),
             };
             map.insert(name.clone(), ty);
         }
@@ -7695,7 +7787,7 @@ impl Codegen {
                 Type::Char => Some("char".to_string()),
                 Type::Str(_) | Type::String | Type::StrSlice => Some("str".to_string()),
                 Type::CStr => Some("str".to_string()),
-                Type::Array(_) => Some("Array".to_string()),
+                Type::Array(_) | Type::RuntimeArray(_) => Some("Array".to_string()),
                 Type::List(_) => Some("List".to_string()),
                 Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
                 Type::Option(_) => Some("Option".to_string()),
@@ -7757,13 +7849,15 @@ impl Codegen {
             }
         };
 
-        // HashMap insert/get have genuinely different shims for str vs int.
+        // HashMap insert/get/set have genuinely different shims for str vs int.
         // Try type-suffixed canonical first (e.g., auto.hashmap.insert_str).
-        if matches!(method, "insert" | "get") {
+        // Note: "set" maps to "insert" (Auto syntax uses map.set(), natives use insert_str/insert_int)
+        let dispatch_method = if method == "set" { "insert" } else { method };
+        if matches!(dispatch_method, "insert" | "get") {
             if !type_args.is_empty() {
                 let suffix = type_to_native_suffix(&type_args[type_args.len().saturating_sub(1)]);
                 if !suffix.is_empty() {
-                    let typed = format!("{}.{}{}", native_module, method, suffix);
+                    let typed = format!("{}.{}{}", native_module, dispatch_method, suffix);
                     if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&typed).is_some() {
                         vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, typed);
                         return Some(typed);

@@ -35,6 +35,7 @@ pub enum NativeRetType {
     String,
     I64,
     List,
+    Map,
 }
 
 pub struct AutoVMNativeRegistry {
@@ -49,6 +50,7 @@ pub struct AutoVMNativeRegistry {
 /// Maps short type name prefixes to canonical module path.
 /// Handles cases where to_lowercase() produces wrong module segment.
 const TYPE_CANONICAL_MAP: &[(&str, &str)] = &[
+    ("Array", "auto.list"),
     ("TaskHandle", "auto.task"),
     ("TaskSystem", "auto.task_system"),
     ("Result.Ok", "auto.result"),
@@ -413,27 +415,27 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.list.capacity", 205);
 
     // List higher-order functions (Plan 206)
-    registry.register_with_id("auto.list.map", 2060);
-    registry.register_with_id("auto.list.filter", 2061);
-    registry.register_with_id("auto.list.for_each", 2062);
-    registry.register_with_id("auto.list.find", 2063);
-    registry.register_with_id("auto.list.any", 2064);
-    registry.register_with_id("auto.list.all", 2065);
-    registry.register_with_id("auto.list.reduce", 2066);
+    registry.register_with_id_and_type("auto.list.map", 2060, NativeRetType::List);
+    registry.register_with_id_and_type("auto.list.filter", 2061, NativeRetType::List);
+    registry.register_with_id_and_type("auto.list.for_each", 2062, NativeRetType::Void);
+    registry.register_with_id_and_type("auto.list.find", 2063, NativeRetType::Void);
+    registry.register_with_id_and_type("auto.list.any", 2064, NativeRetType::Bool);
+    registry.register_with_id_and_type("auto.list.all", 2065, NativeRetType::Bool);
+    registry.register_with_id_and_type("auto.list.reduce", 2066, NativeRetType::Void);
 
     // Iterator functions (IDs 111-117)
     registry.register_with_id("auto.list.iter", 111);
     registry.register_with_id("auto.iterator.next", 112);
     registry.register_with_id("auto.iterator.map", 113);
     registry.register_with_id("auto.iterator.filter", 114);
-    registry.register_with_id("auto.iterator.collect", 115);
+    registry.register_with_id_and_type("auto.iterator.collect", 115, NativeRetType::List);
     registry.register_with_id("auto.iterator.reduce", 116);
     registry.register_with_id("auto.iterator.find", 117);
     registry.register_with_id("auto.iterator.enumerate", 118);
 
     // HashMap functions (IDs 119-128)
     registry.register_with_id("auto.hashmap.new", 119);
-    registry.register_with_id("Map.new", 119); // Alias for Auto syntax
+    registry.register_with_id_and_type("Map.new", 119, NativeRetType::Map); // Alias for Auto syntax
     registry.register_with_id("HashMap.new", 119); // Alias for Auto syntax
     registry.register_with_id("auto.hashmap.insert_str", 120);
     registry.register_with_id("auto.hashmap.insert_int", 121);
@@ -883,7 +885,7 @@ pub fn register_builtin_natives() {
     registry.register_return_type("auto.str.to_lower", NativeRetType::String);
     registry.register_return_type("auto.str.reverse", NativeRetType::String);
     registry.register_return_type("auto.str.find", NativeRetType::Int);
-    registry.register_return_type("auto.str.lines", NativeRetType::String);
+    registry.register_return_type("auto.str.lines", NativeRetType::List);
     registry.register_return_type("auto.str.parse_int", NativeRetType::Int);
     registry.register_return_type("auto.str.parse_float", NativeRetType::Float);
     registry.register_return_type("auto.math.abs", NativeRetType::Int);
