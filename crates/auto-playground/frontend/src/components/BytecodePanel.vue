@@ -13,7 +13,7 @@
       <span class="offset">{{ formatOffset(line.offset) }}</span>
       <span class="mnemonic">{{ line.mnemonic }}</span>
       <span class="operands">{{ line.operands }}</span>
-      <span v-if="line.line" class="line-info">; line {{ line.line }}</span>
+
     </div>
   </div>
 </template>
@@ -62,7 +62,8 @@ function formatOffset(offset: number): string {
   color: #fff;
 }
 .bytecode-line.is-highlighted {
-  background: #3c3c3c;
+  background: #7b4a0e;
+  border-left: 3px solid #ff9d00;
 }
 .offset {
   color: #858585;
@@ -77,8 +78,5 @@ function formatOffset(offset: number): string {
   color: #9cdcfe;
   flex: 1;
 }
-.line-info {
-  color: #6a9955;
-  font-style: italic;
-}
+
 </style>

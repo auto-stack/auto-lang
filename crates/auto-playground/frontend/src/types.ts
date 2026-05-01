@@ -54,9 +54,17 @@ export interface CallFrameInfo {
   fn_name: string | null;
   line: number;
   return_ip: number;
+  bp: number;
+  n_args: number;
+  n_locals: number;
 }
 
 export interface LocalInfo {
+  index: number;
+  value: number;
+}
+
+export interface ArgInfo {
   index: number;
   value: number;
 }
@@ -75,6 +83,7 @@ export interface DebugState {
   stack: string[];
   call_stack: CallFrameInfo[];
   locals: LocalInfo[];
+  args: ArgInfo[];
   registers: RegisterInfo;
   stdout: string;
   stderr: string;

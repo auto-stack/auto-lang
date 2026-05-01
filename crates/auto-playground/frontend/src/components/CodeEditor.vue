@@ -16,6 +16,7 @@ const props = defineProps<{
   isDebugging?: boolean;
   breakpoints?: number[];
   currentDebugLine?: number | null;
+  highlightedSourceLine?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -112,6 +113,7 @@ const breakpointGutter = [
         view.dispatch({ effects: breakpointEffect.of(lineNo) });
         const bps = view.state.field(breakpointState);
         emit('breakpointsChange', Array.from(bps));
+        emit('line-click', lineNo);
         return true;
       },
     },
@@ -123,6 +125,7 @@ const breakpointGutter = [
 // ============================================================================
 
 const debugLineEffect = StateEffect.define<number | null>();
+const crossHighlightEffect = StateEffect.define<number | null>();
 
 const debugLineState = StateField.define<DecorationSet>({
   create() { return Decoration.none; },
@@ -138,14 +141,37 @@ const debugLineState = StateField.define<DecorationSet>({
     }
     return deco.map(tr.changes);
   },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+const crossHighlightState = StateField.define<DecorationSet>({
+  create() { return Decoration.none; },
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(crossHighlightEffect)) {
+        if (e.value === null || e.value <= 0) return Decoration.none;
+        const line = tr.state.doc.line(e.value);
+        return Decoration.set([
+          Decoration.line({ class: 'cm-cross-highlight-line' }).range(line.from),
+        ]);
+      }
+    }
+    return deco.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
 });
 
 const debugLineHighlight = [
   debugLineState,
+  crossHighlightState,
   EditorView.baseTheme({
     '.cm-debug-current-line': {
       backgroundColor: '#0e639c40',
-      borderLeft: '2px solid #0e639c',
+      borderLeft: '3px solid #0e639c',
+    },
+    '.cm-cross-highlight-line': {
+      backgroundColor: '#7b4a0e40',
+      borderLeft: '3px solid #ff9d00',
     },
     '.cm-breakpoint-gutter': {
       width: '22px',
@@ -188,21 +214,7 @@ onMounted(() => {
         emit('update:modelValue', update.state.doc.toString());
       }
     }),
-    EditorView.domEventHandlers({
-      mousedown: (event, view) => {
-        const target = event.target as HTMLElement;
-        // Click on lineNumbers gutter → highlight ABT
-        if (target.closest('.cm-lineNumbers')) {
-          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
-          if (pos !== null) {
-            const line = view.state.doc.lineAt(pos);
-            emit('line-click', line.number);
-            return true;
-          }
-        }
-        return false;
-      },
-    }),
+      // line-click is handled by direct DOM listener in onMounted below
     debugCompartment.of(props.isDebugging ? getDebugExtensions() : []),
   ];
 
@@ -222,6 +234,20 @@ onMounted(() => {
     state,
     parent: editorContainer.value,
   });
+
+  // Direct DOM listener for lineNumbers gutter click (more reliable than CodeMirror domEventHandlers)
+  const lineNumbersGutter = editorContainer.value.querySelector('.cm-lineNumbers');
+  if (lineNumbersGutter) {
+    lineNumbersGutter.addEventListener('click', (event) => {
+      const gutterCell = (event.target as HTMLElement).closest('.cm-gutterElement');
+      if (gutterCell && gutterCell.textContent) {
+        const parsed = parseInt(gutterCell.textContent.trim(), 10);
+        if (!isNaN(parsed)) {
+          emit('line-click', parsed);
+        }
+      }
+    });
+  }
 });
 
 watch(() => props.modelValue, (newVal) => {
@@ -242,6 +268,11 @@ watch(() => props.isDebugging, (debugging) => {
 watch(() => props.currentDebugLine, (line) => {
   if (!editorView) return;
   editorView.dispatch({ effects: debugLineEffect.of(line ?? null) });
+});
+
+watch(() => props.highlightedSourceLine, (line) => {
+  if (!editorView) return;
+  editorView.dispatch({ effects: crossHighlightEffect.of(line ?? null) });
 });
 
 watch(() => props.breakpoints, (bps) => {

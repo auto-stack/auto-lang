@@ -6,21 +6,6 @@
         <ExampleSelector @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
-        <button
-          :class="['debug-btn', { active: isDebugging }]"
-          @click="$emit('toggleDebug')"
-          :title="isDebugging ? 'Stop Debugging' : 'Start Debugging'"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 0 1 10 10"/>
-            <path d="M12 2a10 10 0 0 0-10 10"/>
-            <path d="M12 12l4-4"/>
-            <path d="M12 12l-4-4"/>
-            <path d="M12 12l4 4"/>
-            <path d="M12 12l-4 4"/>
-          </svg>
-          {{ isDebugging ? 'Stop' : 'Debug' }}
-        </button>
         <button class="share-btn" @click="$emit('share')" title="Copy shareable link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
@@ -43,13 +28,30 @@
         <div class="editor-pane">
           <div class="pane-header">
             <span>Auto</span>
-            <button
-              class="run-btn"
-              @click="$emit('run')"
-              :disabled="isLoading"
-            >
-              {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
-            </button>
+            <div class="editor-actions">
+              <button
+                :class="['debug-btn', { active: isDebugging }]"
+                @click="$emit('toggleDebug')"
+                :title="isDebugging ? 'Stop Debugging' : 'Start Debugging'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a10 10 0 0 1 10 10"/>
+                  <path d="M12 2a10 10 0 0 0-10 10"/>
+                  <path d="M12 12l4-4"/>
+                  <path d="M12 12l-4-4"/>
+                  <path d="M12 12l4 4"/>
+                  <path d="M12 12l-4 4"/>
+                </svg>
+                {{ isDebugging ? 'Stop' : 'Debug' }}
+              </button>
+              <button
+                class="run-btn"
+                @click="$emit('run')"
+                :disabled="isLoading"
+              >
+                {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
+              </button>
+            </div>
           </div>
           <div class="pane-body">
             <CodeEditor
@@ -59,6 +61,7 @@
               :is-debugging="isDebugging"
               :breakpoints="breakpoints"
               :current-debug-line="currentDebugLine"
+              :highlighted-source-line="currentSourceLine"
               @line-click="$emit('lineClick', $event)"
               @breakpoints-change="$emit('breakpointsChange', $event)"
             />
@@ -244,30 +247,6 @@ const consoleTab = ref<'output' | 'debug'>('output');
   background: #4a4a4a;
   color: #fff;
 }
-.debug-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #3c3c3c;
-  color: #ccc;
-  border: 1px solid #555;
-  border-radius: 4px;
-  padding: 6px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.15s;
-}
-.debug-btn:hover {
-  background: #4a4a4a;
-  color: #fff;
-}
-.debug-btn.active {
-  background: #b78e1c;
-  color: #fff;
-  border-color: #b78e1c;
-}
-
 .workspace {
   flex: 1;
   display: flex;
@@ -320,6 +299,34 @@ const consoleTab = ref<'output' | 'debug'>('output');
   overflow: hidden;
 }
 
+.editor-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.debug-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #3c3c3c;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.debug-btn:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+.debug-btn.active {
+  background: #b78e1c;
+  color: #fff;
+  border-color: #b78e1c;
+}
 .run-btn {
   background: #0e639c;
   color: #fff;

@@ -89,6 +89,7 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
         stack: Vec::new(),
         call_stack: Vec::new(),
         locals: Vec::new(),
+        args: Vec::new(),
         registers: super::controller::RegisterInfo { ip: 0, bp: 0, sp: 0 },
         stdout,
         stderr: String::new(),
