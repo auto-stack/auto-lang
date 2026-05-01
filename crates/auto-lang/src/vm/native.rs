@@ -140,8 +140,35 @@ impl NativeInterface {
     }
 
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
+    ///
+    /// Supports canonical normalization: "List.push" → checks "auto.list.push" etc.
     pub fn resolve(&self, name: &str) -> Option<u16> {
-        self.name_to_id.get(name).copied()
+        // Direct lookup first
+        if let Some(id) = self.name_to_id.get(name).copied() {
+            return Some(id);
+        }
+        // Canonical normalization: "List.push" → "auto.list.push"
+        if !name.starts_with("auto.") && !name.starts_with("rust.") && !name.starts_with("py.") {
+            if let Some(canonical) = Self::to_canonical(name) {
+                if let Some(id) = self.name_to_id.get(&canonical).copied() {
+                    return Some(id);
+                }
+            }
+        }
+        None
+    }
+
+    /// Convert a short native name to its canonical "auto.X.Y" form.
+    fn to_canonical(name: &str) -> Option<String> {
+        let (prefix, rest) = name.split_once('.')?;
+        use crate::vm::native_registry::TYPE_CANONICAL_MAP;
+        for &(short, canonical_prefix) in TYPE_CANONICAL_MAP {
+            if prefix == short {
+                return Some(format!("{}.{}", canonical_prefix, rest));
+            }
+        }
+        let lower = prefix.to_lowercase();
+        Some(format!("auto.{}.{}", lower, rest))
     }
 
     /// Get the next available dynamic ID
@@ -256,6 +283,7 @@ impl NativeInterface {
         self.register(NATIVE_LIST_ANY, shim_list_any);
         self.register(NATIVE_LIST_ALL, shim_list_all);
         self.register(NATIVE_LIST_REDUCE, shim_list_reduce);
+        self.register(NATIVE_LIST_JOIN, shim_list_join);
 
         // Plan 200 Task 3.3: Result.map_err(closure)
         self.register(NATIVE_RESULT_MAP_ERR, shim_result_map_err);
@@ -392,6 +420,45 @@ impl NativeInterface {
         self.register(NATIVE_INT_BIT_ON, shim_int_bit_on);
         self.register(NATIVE_INT_BIT_OFF, shim_int_bit_off);
         self.register(NATIVE_INT_BIT_FLIP, shim_int_bit_flip);
+
+        // CALL_SPEC fallback: register canonical names for type.method dispatch
+        // These allow CALL_SPEC to resolve "List.push" → canonical "auto.list.push" → ID
+        self.register_name("auto.list.new", NATIVE_LIST_NEW);
+        self.register_name("auto.list.push", NATIVE_LIST_PUSH);
+        self.register_name("auto.list.pop", NATIVE_LIST_POP);
+        self.register_name("auto.list.len", NATIVE_LIST_LEN);
+        self.register_name("auto.list.is_empty", NATIVE_LIST_IS_EMPTY);
+        self.register_name("auto.list.clear", NATIVE_LIST_CLEAR);
+        self.register_name("auto.list.get", NATIVE_LIST_GET);
+        self.register_name("auto.list.set", NATIVE_LIST_SET);
+        self.register_name("auto.list.insert", NATIVE_LIST_INSERT);
+        self.register_name("auto.list.remove", NATIVE_LIST_REMOVE);
+        self.register_name("auto.list.drop", NATIVE_LIST_DROP);
+        self.register_name("auto.list.reserve", NATIVE_LIST_RESERVE);
+        self.register_name("auto.list.capacity", NATIVE_LIST_CAPACITY);
+        self.register_name("auto.list.map", NATIVE_LIST_MAP);
+        self.register_name("auto.list.filter", NATIVE_LIST_FILTER);
+        self.register_name("auto.list.for_each", NATIVE_LIST_FOREACH);
+        self.register_name("auto.list.find", NATIVE_LIST_FIND);
+        self.register_name("auto.list.any", NATIVE_LIST_ANY);
+        self.register_name("auto.list.all", NATIVE_LIST_ALL);
+        self.register_name("auto.list.reduce", NATIVE_LIST_REDUCE);
+        self.register_name("auto.list.iter", NATIVE_LIST_ITER);
+        self.register_name("auto.list.join", NATIVE_LIST_JOIN);
+
+        self.register_name("auto.hashmap.new", NATIVE_HASHMAP_NEW);
+        self.register_name("auto.hashmap.insert", NATIVE_HASHMAP_INSERT_STR);
+        self.register_name("auto.hashmap.set", NATIVE_HASHMAP_INSERT_STR); // Auto syntax: map.set()
+        self.register_name("auto.hashmap.insert_str", NATIVE_HASHMAP_INSERT_STR);
+        self.register_name("auto.hashmap.insert_int", NATIVE_HASHMAP_INSERT_INT);
+        self.register_name("auto.hashmap.get", NATIVE_HASHMAP_GET_STR);
+        self.register_name("auto.hashmap.get_str", NATIVE_HASHMAP_GET_STR);
+        self.register_name("auto.hashmap.get_int", NATIVE_HASHMAP_GET_INT);
+        self.register_name("auto.hashmap.contains", NATIVE_HASHMAP_CONTAINS);
+        self.register_name("auto.hashmap.remove", NATIVE_HASHMAP_REMOVE);
+        self.register_name("auto.hashmap.size", NATIVE_HASHMAP_SIZE);
+        self.register_name("auto.hashmap.clear", NATIVE_HASHMAP_CLEAR);
+        self.register_name("auto.hashmap.drop", NATIVE_HASHMAP_DROP);
     }
 }
 
@@ -576,6 +643,7 @@ pub const NATIVE_LIST_FIND: u16 = 2063;
 pub const NATIVE_LIST_ANY: u16 = 2064;
 pub const NATIVE_LIST_ALL: u16 = 2065;
 pub const NATIVE_LIST_REDUCE: u16 = 2066;
+pub const NATIVE_LIST_JOIN: u16 = 2080;
 
 // === Result HOF Native Functions ===
 // Plan 200 Task 3.3: .map_err() closure callback
@@ -1433,6 +1501,62 @@ pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     }
 
     task.ram.push_i32(acc);
+    Ok(())
+}
+
+/// List.join(separator) -> str
+/// Stack: separator (str tag), list_id -> joined_str (str tag)
+/// Joins string list elements with the given separator.
+pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // Pop separator (string pool tag)
+    let sep_bits = task.ram.pop_i32();
+    let sep_idx = decode_str_idx(sep_bits);
+    let separator = vm.strings.read().unwrap()
+        .get(sep_idx)
+        .map(|b| String::from_utf8_lossy(b).to_string())
+        .unwrap_or_default();
+
+    // Pop list_id
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        // Try ListData<Value> (FFI bridge uses this for Vec<String>)
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+            let parts: Vec<String> = list.elems.iter().filter_map(|v| {
+                if let auto_val::Value::Str(s) = v {
+                    Some(s.to_string())
+                } else {
+                    None
+                }
+            }).collect();
+            let joined = parts.join(&separator);
+            let str_idx = vm.add_string(joined.into_bytes());
+            task.ram.push_str_idx(str_idx as u32);
+            return Ok(());
+        }
+        // Try ListData<String>
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+            let joined = list.elems.join(&separator);
+            let str_idx = vm.add_string(joined.into_bytes());
+            task.ram.push_str_idx(str_idx as u32);
+            return Ok(());
+        }
+        // Try ListData<i32> as fallback
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            let parts: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+            let joined = parts.join(&separator);
+            let str_idx = vm.add_string(joined.into_bytes());
+            task.ram.push_str_idx(str_idx as u32);
+            return Ok(());
+        }
+    }
+
+    // Fallback: return empty string
+    let str_idx = vm.add_string(Vec::new());
+    task.ram.push_str_idx(str_idx as u32);
     Ok(())
 }
 
@@ -3570,4 +3694,48 @@ pub fn shim_list_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     }
     task.ram.push_i32(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_direct_lookup() {
+        let mut ni = NativeInterface::new();
+        ni.register_name("Result.map_err", 2070);
+        assert_eq!(ni.resolve("Result.map_err"), Some(2070));
+        assert_eq!(ni.resolve("nonexistent.method"), None);
+    }
+
+    #[test]
+    fn test_resolve_canonical_normalization() {
+        let mut ni = NativeInterface::new();
+        ni.register_name("auto.list.push", 101);
+        ni.register_name("auto.hashmap.insert", 120);
+        ni.register_name("auto.list.join", 2080);
+
+        assert_eq!(ni.resolve("List.push"), Some(101));
+        assert_eq!(ni.resolve("List.join"), Some(2080));
+        assert_eq!(ni.resolve("HashMap.insert"), Some(120));
+        assert_eq!(ni.resolve("Map.insert"), Some(120));
+    }
+
+    #[test]
+    fn test_resolve_no_canonical_for_qualified() {
+        let mut ni = NativeInterface::new();
+        ni.register_name("auto.list.push", 101);
+
+        assert_eq!(ni.resolve("auto.list.push"), Some(101));
+        assert_eq!(ni.resolve("rust.something"), None);
+    }
+
+    #[test]
+    fn test_to_canonical() {
+        assert_eq!(NativeInterface::to_canonical("List.push"), Some("auto.list.push".to_string()));
+        assert_eq!(NativeInterface::to_canonical("HashMap.get"), Some("auto.hashmap.get".to_string()));
+        assert_eq!(NativeInterface::to_canonical("Map.new"), Some("auto.hashmap.new".to_string()));
+        assert_eq!(NativeInterface::to_canonical("Array.len"), Some("auto.list.len".to_string()));
+        assert_eq!(NativeInterface::to_canonical("nopart"), None);
+    }
 }

@@ -3347,18 +3347,32 @@ impl AutoVM {
                     let receiver_pos = task.ram.sp - arg_count - 1;
                     let receiver = task.ram.read_i32(receiver_pos);
 
-                    // Look up the object's mono_name from heap
+                    // Look up the object's type name from all registries
                     let type_name = if receiver > 0 {
                         let obj_key = receiver as u64;
+                        // heap_objects (4000000+): ListData, HashMapData, GenericInstanceData, etc.
                         if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
                             let guard = obj_lock.read().unwrap();
                             if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
                                 inst.mono_name.split('_').next()
                                     .unwrap_or(&inst.mono_name).to_string()
                             } else {
-                                format!("<unknown:{}>", obj_key)
+                                // Fallback: use type_tag for ListData, HashMapData, etc.
+                                let tag_name = guard.type_tag().name();
+                                // Extract base type: "List<string>" → "List", "HashMap<String, int>" → "HashMap"
+                                tag_name.split('<').next()
+                                    .unwrap_or(&tag_name).to_string()
                             }
-                        } else {
+                        }
+                        // arrays (2000000+): Vec<Value> — treated as List
+                        else if self.arrays.contains_key(&obj_key) {
+                            "List".to_string()
+                        }
+                        // objects (1000000+): ObjectData (key-value map) — treated as HashMap
+                        else if self.objects.contains_key(&obj_key) {
+                            "HashMap".to_string()
+                        }
+                        else {
                             format!("<unknown:{}>", obj_key)
                         }
                     } else {

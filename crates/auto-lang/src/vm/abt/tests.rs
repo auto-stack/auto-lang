@@ -4,7 +4,7 @@
 
 /// Round-trip test helper: compile → disassemble → parse → assemble → compare.
 fn assert_roundtrip(source: &str) {
-    let (vm, _, _) = crate::create_vm_from_source(source).expect("compile failed");
+    let (vm, _, _, _) = crate::create_vm_from_source(source).expect("compile failed");
     let original_flash = &*vm.flash;
 
     // 1. Disassemble ABC → ABT

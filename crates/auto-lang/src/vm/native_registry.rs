@@ -49,8 +49,11 @@ pub struct AutoVMNativeRegistry {
 
 /// Maps short type name prefixes to canonical module path.
 /// Handles cases where to_lowercase() produces wrong module segment.
-const TYPE_CANONICAL_MAP: &[(&str, &str)] = &[
+pub const TYPE_CANONICAL_MAP: &[(&str, &str)] = &[
     ("Array", "auto.list"),
+    ("List", "auto.list"),
+    ("HashMap", "auto.hashmap"),
+    ("Map", "auto.hashmap"),
     ("TaskHandle", "auto.task"),
     ("TaskSystem", "auto.task_system"),
     ("Result.Ok", "auto.result"),
@@ -1001,6 +1004,11 @@ mod tests {
         assert_eq!(AutoVMNativeRegistry::to_canonical("Result.map_err"), Some("auto.result.map_err".to_string()));
         assert_eq!(AutoVMNativeRegistry::to_canonical("Http.get"), Some("auto.http.get".to_string()));
         assert_eq!(AutoVMNativeRegistry::to_canonical("Option.or"), Some("auto.option.or".to_string()));
+        // Plan 202: List/HashMap/Map canonical mapping
+        assert_eq!(AutoVMNativeRegistry::to_canonical("List.push"), Some("auto.list.push".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("List.join"), Some("auto.list.join".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("HashMap.insert"), Some("auto.hashmap.insert".to_string()));
+        assert_eq!(AutoVMNativeRegistry::to_canonical("Map.new"), Some("auto.hashmap.new".to_string()));
     }
 
     #[test]
