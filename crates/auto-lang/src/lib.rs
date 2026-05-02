@@ -1081,6 +1081,88 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     Ok(String::new())
 }
 
+/// Plan 199 Phase 8: Debug an Auto program with JSON agent-mode controller.
+/// Each pause emits a JSON state line to stdout; the driver reads commands
+/// from stdin as simple strings (continue / step / step_over / step_out / stop).
+pub fn debug_file_agent(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let rt = get_global_runtime();
+    rt.block_on(debug_autovm_agent(&code))
+}
+
+async fn debug_autovm_agent(code: &str) -> AutoResult<String> {
+    use crate::vm::debugger::{AgentCommand, AgentDebugState, AgentRegisters, JsonAgentController};
+
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AgentCommand>();
+    let (state_tx, state_rx) = std::sync::mpsc::channel::<AgentDebugState>();
+
+    let source = code.to_string();
+    std::thread::spawn(move || {
+        let (mut vm, _output_buffer, entry_point, _result_type) = match create_vm_from_source(&source) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = state_tx.send(AgentDebugState {
+                    status: "compile_error".to_string(),
+                    line: 0,
+                    ip: 0,
+                    op: format!("{:?}", e),
+                    stack: vec![],
+                    call_stack: vec![],
+                    locals: vec![],
+                    registers: AgentRegisters { ip: 0, bp: 0, sp: 0 },
+                    stdout: String::new(),
+                });
+                return;
+            }
+        };
+
+        let controller = JsonAgentController::new(cmd_rx, state_tx);
+        vm.set_debugger(Box::new(controller));
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime for agent debug");
+        rt.block_on(async move {
+            vm.spawn_task(entry_point, 16384);
+            vm.run_task_loop().await;
+        });
+    });
+
+    // JSON I/O loop on the main thread
+    loop {
+        match state_rx.recv() {
+            Ok(state) => {
+                match serde_json::to_string(&state) {
+                    Ok(json) => println!("{}", json),
+                    Err(e) => eprintln!("{{\"error\":\"serialize failed: {}\"}}", e),
+                }
+                std::io::Write::flush(&mut std::io::stdout()).ok();
+            }
+            Err(_) => break,
+        }
+
+        let mut input = String::new();
+        if std::io::stdin().read_line(&mut input).is_err() {
+            break;
+        }
+        let cmd = match input.trim() {
+            "continue" | "c" => AgentCommand::Continue,
+            "step" | "s" => AgentCommand::Step,
+            "step_over" | "next" | "n" => AgentCommand::StepOver,
+            "step_out" | "finish" | "fin" => AgentCommand::StepOut,
+            "stop" | "quit" | "q" => AgentCommand::Stop,
+            "" => continue,
+            other => {
+                eprintln!("{{\"error\":\"unknown command: {}\"}}", other);
+                continue;
+            }
+        };
+        if cmd_tx.send(cmd).is_err() {
+            break;
+        }
+    }
+
+    Ok(String::new())
+}
+
 /// Plan 225: Compile source and create a VM with stdout capture ready for debugging.
 /// The caller is responsible for setting the debugger controller, spawning, and running tasks.
 /// Returns (vm, stdout_capture_buffer, entry_point, result_type)

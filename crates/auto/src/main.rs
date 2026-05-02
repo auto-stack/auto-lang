@@ -354,6 +354,9 @@ enum Commands {
     Debug {
         /// Path to the .at file to debug
         file: String,
+        /// Agent-friendly JSON mode: each pause emits JSON state, read commands from stdin
+        #[arg(long = "agent", short = 'a')]
+        agent: bool,
     },
 
     // ========== C FFI Bindgen (Plan 216) ==========
@@ -1187,11 +1190,15 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Debug (Plan 199) ==========
-        Some(Commands::Debug { file }) => {
-            println!("----------------------");
-            println!("Debugging Auto {}", file);
-            println!("----------------------");
-            auto_lang::debug_file(&file).map_err(to_miette_err)?;
+        Some(Commands::Debug { file, agent }) => {
+            if agent {
+                auto_lang::debug_file_agent(&file).map_err(to_miette_err)?;
+            } else {
+                println!("----------------------");
+                println!("Debugging Auto {}", file);
+                println!("----------------------");
+                auto_lang::debug_file(&file).map_err(to_miette_err)?;
+            }
         }
 
         None => {

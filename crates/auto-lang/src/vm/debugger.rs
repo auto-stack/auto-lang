@@ -100,6 +100,211 @@ impl AgentController {
     }
 }
 
+/// Commands sent to the JsonAgentController from the CLI / external driver.
+#[derive(Debug, Clone)]
+pub enum AgentCommand {
+    Continue,
+    Step,
+    StepOver,
+    StepOut,
+    Stop,
+}
+
+/// Serializable snapshot of VM state for JSON agent mode.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AgentDebugState {
+    pub status: String,
+    pub line: u32,
+    pub ip: usize,
+    pub op: String,
+    pub stack: Vec<String>,
+    pub call_stack: Vec<AgentCallFrame>,
+    pub locals: Vec<AgentLocal>,
+    pub registers: AgentRegisters,
+    pub stdout: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AgentCallFrame {
+    pub fn_name: Option<String>,
+    pub line: u32,
+    pub return_ip: usize,
+    pub bp: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AgentLocal {
+    pub index: usize,
+    pub value: i32,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AgentRegisters {
+    pub ip: usize,
+    pub bp: usize,
+    pub sp: usize,
+}
+
+/// Blocking JSON-mode debugger controller for headless AI Agent use.
+///
+/// Communicates with the driver process via `std::sync::mpsc` channels:
+/// - `state_tx` sends JSON-serializable state snapshots on every pause.
+/// - `cmd_rx` receives `AgentCommand` values and blocks until one arrives.
+pub struct JsonAgentController {
+    breakpoints: HashSet<Breakpoint>,
+    mode: DebugMode,
+    last_line: u32,
+    depth_at_pause: usize,
+    cmd_rx: std::sync::mpsc::Receiver<AgentCommand>,
+    state_tx: std::sync::mpsc::Sender<AgentDebugState>,
+    has_started: bool,
+    stop_requested: bool,
+}
+
+impl JsonAgentController {
+    pub fn new(
+        cmd_rx: std::sync::mpsc::Receiver<AgentCommand>,
+        state_tx: std::sync::mpsc::Sender<AgentDebugState>,
+    ) -> Self {
+        Self {
+            breakpoints: HashSet::new(),
+            mode: DebugMode::Run,
+            last_line: 0,
+            depth_at_pause: 0,
+            cmd_rx,
+            state_tx,
+            has_started: false,
+            stop_requested: false,
+        }
+    }
+
+    pub fn add_breakpoint(&mut self, bp: Breakpoint) {
+        self.breakpoints.insert(bp);
+    }
+
+    fn build_state(&self, ctx: &DebugContext) -> AgentDebugState {
+        let stack: Vec<String> = ctx.task.ram.raw[..ctx.task.ram.sp.min(256)]
+            .iter()
+            .map(|v| v.to_string())
+            .collect();
+        let call_stack: Vec<AgentCallFrame> = ctx
+            .task
+            .call_stack
+            .iter()
+            .map(|f| AgentCallFrame {
+                fn_name: f.fn_name.clone(),
+                line: f.line,
+                return_ip: f.return_ip,
+                bp: f.old_bp,
+            })
+            .collect();
+        let locals: Vec<AgentLocal> = (0..ctx.task.current_fn_n_locals)
+            .map(|i| {
+                let val = ctx.task.ram.read_i32(ctx.task.bp + 1 + i);
+                AgentLocal { index: i, value: val }
+            })
+            .collect();
+        AgentDebugState {
+            status: "paused".to_string(),
+            line: ctx.line,
+            ip: ctx.ip,
+            op: ctx.current_op.to_mnemonic().to_string(),
+            stack,
+            call_stack,
+            locals,
+            registers: AgentRegisters {
+                ip: ctx.task.ip,
+                bp: ctx.task.bp,
+                sp: ctx.task.ram.sp,
+            },
+            stdout: String::new(),
+        }
+    }
+}
+
+impl DebuggerController for JsonAgentController {
+    fn should_pause(&mut self, ctx: &DebugContext) -> bool {
+        if self.stop_requested {
+            return true;
+        }
+        if !self.has_started {
+            self.has_started = true;
+            return true;
+        }
+        match self.mode {
+            DebugMode::Step => {
+                let changed = ctx.line != self.last_line && ctx.line > 0;
+                if changed {
+                    self.last_line = ctx.line;
+                }
+                changed
+            }
+            DebugMode::StepLine => {
+                let should = ctx.line != self.last_line && ctx.line > 0;
+                if should {
+                    self.last_line = ctx.line;
+                }
+                should
+            }
+            DebugMode::Run => {
+                let hit = self.breakpoints.iter().any(|bp| match bp {
+                    Breakpoint::AtIp(ip) => *ip == ctx.ip,
+                    Breakpoint::AtLine(line) => *line == ctx.line,
+                    Breakpoint::AtFunction(name) => {
+                        ctx.call_stack
+                            .last()
+                            .and_then(|f| f.fn_name.as_ref())
+                            .map(|n| n == name)
+                            .unwrap_or(false)
+                    }
+                });
+                if hit {
+                    self.last_line = ctx.line;
+                }
+                hit
+            }
+        }
+    }
+
+    fn on_pause(&mut self, ctx: &DebugContext) -> DebuggerAction {
+        let state = self.build_state(ctx);
+        let _ = self.state_tx.send(state);
+
+        while let Ok(cmd) = self.cmd_rx.recv() {
+            match cmd {
+                AgentCommand::Continue => {
+                    self.mode = DebugMode::Run;
+                    self.last_line = ctx.line;
+                    return DebuggerAction::Continue;
+                }
+                AgentCommand::Step => {
+                    self.mode = DebugMode::Step;
+                    self.depth_at_pause = ctx.call_stack.len();
+                    self.last_line = ctx.line;
+                    return DebuggerAction::Step;
+                }
+                AgentCommand::StepOver => {
+                    self.mode = DebugMode::StepLine;
+                    self.depth_at_pause = ctx.call_stack.len();
+                    self.last_line = ctx.line;
+                    return DebuggerAction::Step;
+                }
+                AgentCommand::StepOut => {
+                    self.mode = DebugMode::StepLine;
+                    self.depth_at_pause = ctx.call_stack.len();
+                    return DebuggerAction::Step;
+                }
+                AgentCommand::Stop => {
+                    self.stop_requested = true;
+                    return DebuggerAction::Quit;
+                }
+            }
+        }
+
+        DebuggerAction::Quit
+    }
+}
+
 impl DebuggerController for AgentController {
     fn should_pause(&mut self, ctx: &DebugContext) -> bool {
         match self.mode {
