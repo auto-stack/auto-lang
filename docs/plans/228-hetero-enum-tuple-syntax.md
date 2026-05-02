@@ -1,5 +1,14 @@
 # Plan 228: Hetero Enum 多参数变体要求括号元组语法
 
+## 状态: 已完成
+
+### 修改内容
+- `crates/auto-lang/src/parser.rs` ~L4007: 将贪婪 while 循环替换为两个互斥分支
+  - `LParen` → 解析括号内逗号分隔的类型列表（多参数变体）
+  - `Ident/Question/Not` → 只解析单个类型（单参数变体）
+- 无 .at 文件需要迁移（代码库中无多参数无括号 enum 变体）
+- 50 个 enum 测试 + 9 个 hetero 测试 + 117 个 a2c 测试 + 166 个 a2r 测试全部通过
+
 ## Context
 
 当前 Auto 的 hetero enum（tagged union）允许多参数变体使用无括号写法：

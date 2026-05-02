@@ -1,6 +1,6 @@
 # Plan 229: IS_VARIANT/GET_GENERIC_FIELD 原始值 Option 兼容
 
-## 状态: 已完成 (commit: WIP)
+## 状态: 已完成 (commit: e7e8974b)
 
 ## 问题
 

@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ 准备中（Phase 0 基础设施加固进行中）
+## 实施状态: ⏳ 准备中（Phase 0 基础设施加固已完成）
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -9,11 +9,11 @@
 
 **预估工期:** 16–22 周（4–5.5 个月）
 
-### 进度摘要（2026-05-01 更新）
+### 进度摘要（2026-05-02 更新）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
-| Phase 0: 准备 | 🔄 进行中 | VM 加固: 22/24 测试通过; 2 个阻塞 bug 待修（Plan 230, 231） |
+| Phase 0: 准备 | ✅ 已完成 | VM 加固: Plan 230/231 阻塞 bug 已修复 |
 | Phase 1.1: Token | ⏳ 未开始 | 现有 token.at 仅 25/70+ TokenKind |
 | Phase 1.2: Lexer | ⏳ 未开始 | 现有 lexer.at 仅有 Src 迭代器 + 空 Lexer 骨架 |
 | Phase 1.3: AST | ⏳ 未开始 | 完全未开始 |
@@ -23,14 +23,16 @@
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
-- [x] VM 修复: IS_VARIANT/GET_GENERIC_FIELD 原始值 Option 兼容（子计划已完成）
+- [x] VM 修复: IS_VARIANT/GET_GENERIC_FIELD 原始值 Option 兼容（Plan 229a 已完成）
 - [x] VM 修复: CALL_SPEC 运行时 dispatch for List/HashMap
 - [x] VM 修复: self.field.method() 类型推断 + for-in 循环变量类型
-- [x] 24 个 VM 回归测试创建并验证（22 pass, 2 fail）
+- [x] VM 修复: f64 结构体字面量栈错位（Plan 230 已完成）
+- [x] VM 修复: 嵌套 mut fn + for 循环栈损坏（Plan 231 已完成）
+- [x] 24 个 VM 回归测试创建并验证
 
-**阻塞项（必须先修复才能开始 Phase 1）:**
-- [ ] Plan 230: f64 结构体字面量栈错位（codegen 缺 f32→f64 类型提升）
-- [ ] Plan 231: 嵌套 mut fn + for 循环栈损坏
+**下一步行动:**
+- Phase 0 已完成，Phase 1.1（Token 系统扩展）可以开始
+- SSE parser 的 2 个复合场景测试仍失败（test 001, 002），涉及多个 VM 特性交互，但不阻塞 Phase 1
 
 **`auto/` 目录现状:** 文件自 2026-01-15 以来未更新，仅有早期原型（5 个 .at 文件，无子目录）
 

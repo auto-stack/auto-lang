@@ -1,5 +1,7 @@
 # Plan: ABT (Auto Byte Text) Implementation
 
+## 状态: 已完成 (Phase 1-3 全部完成，Phase 4 正确地被跳过)
+
 ## Background
 
 The AutoVM has a binary bytecode format (ABC) and a debugger-only disassembler (`disasm.rs`). The Playground has a "Bytecode" tab that only shows content when a Debug WebSocket session is active. There is no standalone Auto → ABT transpiler, no ABT → ABC assembler, and no formal ABT text format.

@@ -4004,25 +4004,31 @@ impl<'a> Parser<'a> {
                 self.expect_eos(false)?;
                 self.skip_empty_lines();
                 continue;
-            } else if self.is_kind(TokenKind::Ident)
-                || self.is_kind(TokenKind::LParen)
-            {
-                // Variant followed by one or more types (Heterogeneous form)
-                // Single: `Move Point` → payload_type = Some(Point)
-                // Multi:  `ToolUse str str str` → payload_types = [str, str, str]
-                let mut types = vec![self.parse_type()?];
-                while self.is_kind(TokenKind::Ident)
-                    || self.is_kind(TokenKind::LParen)
-                    || self.is_kind(TokenKind::Question)
-                    || self.is_kind(TokenKind::Not)
-                {
+            } else if self.is_kind(TokenKind::LParen) {
+                // Tuple variant: ToolUse(str, str, str)
+                self.next(); // consume '('
+                let mut types = vec![];
+                loop {
                     types.push(self.parse_type()?);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next(); // consume ','
+                    } else {
+                        break;
+                    }
                 }
+                self.expect(TokenKind::RParen)?;
                 if types.len() == 1 {
                     payload_type = Some(types.into_iter().next().unwrap());
                 } else {
                     payload_types = types;
                 }
+                has_any_payload = true;
+            } else if self.is_kind(TokenKind::Ident)
+                || self.is_kind(TokenKind::Question)
+                || self.is_kind(TokenKind::Not)
+            {
+                // Single-type variant: Text str, Some ?int, Err !str
+                payload_type = Some(self.parse_type()?);
                 has_any_payload = true;
             } else {
                 // No value, no type — plain variant, auto-increment for scalar
