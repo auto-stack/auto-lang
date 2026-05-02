@@ -1,0 +1,45 @@
+type SseParser {
+    buffer str
+
+    static fn new() SseParser {
+        return SseParser("")
+    }
+
+    mut fn push(chunk str) List<str> {
+        self.buffer = self.buffer + chunk
+        return self.drain_frames()
+    }
+
+    mut fn drain_frames() List<str> {
+        var events = []
+        var frame = self.next_frame()
+        for frame != None {
+            is frame {
+                Some(f) -> events.push(f),
+                None -> {}
+            }
+            frame = self.next_frame()
+        }
+        return events
+    }
+
+    mut fn next_frame() ?str {
+        let pos = self.buffer.find("\n\n")
+        is pos {
+            Some(p) -> {
+                let frame = self.buffer.sub(0, p)
+                self.buffer = self.buffer.slice(p + 2)
+                return Some(frame)
+            },
+            None -> {}
+        }
+        return None
+    }
+}
+
+fn main() {
+    var parser = SseParser.new()
+    let events = parser.push("event: ping\n\n")
+    print(f"events: ${events.len()}")
+    print("SSE parser OK")
+}

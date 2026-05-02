@@ -1,0 +1,32 @@
+// Minimal test: mut fn + for loop + Option
+type Counter {
+    count int
+
+    mut fn next() ?int {
+        if self.count > 0 {
+            self.count = self.count - 1
+            return Some(self.count + 1)
+        }
+        return None
+    }
+
+    mut fn drain() int {
+        var total = 0
+        var val = self.next()
+        for val != None {
+            is val {
+                Some(v) -> total = total + v,
+                None -> {}
+            }
+            val = self.next()
+        }
+        return total
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let result = c.drain()
+    print(f"total: $result")
+    print("for-option OK")
+}

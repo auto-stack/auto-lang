@@ -1,0 +1,18 @@
+// Test: mut fn returning int (no Option)
+type Counter {
+    count int
+
+    mut fn next() int {
+        self.count = self.count - 1
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let v1 = c.next()
+    print(f"v1: $v1")
+    let v2 = c.next()
+    print(f"v2: $v2")
+    print("mutfn int return OK")
+}

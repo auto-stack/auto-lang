@@ -4328,6 +4328,10 @@ impl Codegen {
                                 self.emit(OpCode::SET_FIELD);
                             }
                         }
+                        // SET_GENERIC_FIELD and SET_FIELD don't push a return value -
+                        // mark as void to prevent Stmt::Expr from emitting a POP
+                        // that would corrupt the stack
+                        self.last_expr_type = ObjectType::Void;
                     } else {
                         unimplemented!("Assignment to complex LHS not supported yet");
                     }

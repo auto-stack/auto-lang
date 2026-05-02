@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ PLANNED
+## 实施状态: ⏳ 准备中（Phase 0 基础设施加固进行中）
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -8,6 +8,31 @@
 - a2r 转译器已有 122 个测试用例（55 个可编译为 Rust）
 
 **预估工期:** 16–22 周（4–5.5 个月）
+
+### 进度摘要（2026-05-01 更新）
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| Phase 0: 准备 | 🔄 进行中 | VM 加固: 22/24 测试通过; 2 个阻塞 bug 待修（Plan 230, 231） |
+| Phase 1.1: Token | ⏳ 未开始 | 现有 token.at 仅 25/70+ TokenKind |
+| Phase 1.2: Lexer | ⏳ 未开始 | 现有 lexer.at 仅有 Src 迭代器 + 空 Lexer 骨架 |
+| Phase 1.3: AST | ⏳ 未开始 | 完全未开始 |
+| Phase 1.4: Parser | ⏳ 未开始 | 完全未开始 |
+| Phase 2: a2r | ⏳ 未开始 | 完全未开始 |
+| Phase 3: 自举 | ⏳ 未开始 | 完全未开始 |
+
+**已完成的基础工作:**
+- [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
+- [x] VM 修复: IS_VARIANT/GET_GENERIC_FIELD 原始值 Option 兼容（子计划已完成）
+- [x] VM 修复: CALL_SPEC 运行时 dispatch for List/HashMap
+- [x] VM 修复: self.field.method() 类型推断 + for-in 循环变量类型
+- [x] 24 个 VM 回归测试创建并验证（22 pass, 2 fail）
+
+**阻塞项（必须先修复才能开始 Phase 1）:**
+- [ ] Plan 230: f64 结构体字面量栈错位（codegen 缺 f32→f64 类型提升）
+- [ ] Plan 231: 嵌套 mut fn + for 循环栈损坏
+
+**`auto/` 目录现状:** 文件自 2026-01-15 以来未更新，仅有早期原型（5 个 .at 文件，无子目录）
 
 ---
 
@@ -100,21 +125,22 @@
 
 ### 0.1 VM 能力补全
 
-- [ ] 验证 VM 的字符串操作覆盖编译器所需（`char_at`, `byte_at`, `starts_with`, `ends_with`, `sub`, `slice`, `find`, `trim`, `split`, `replace`, `join`, `len`, `to_upper`, `to_lower`）
-- [ ] 验证 VM 的 `List<T>` 支持编译器所需操作（`push`, `pop`, `get`, `len`, `insert`, `remove`, `join`, 迭代）
-- [ ] 验证 VM 的 `Map<K,V>` 支持编译器所需操作（`new`, `set`, `get`, `has`, `remove`, `keys`, `values`, 迭代）
+- [x] 验证 VM 的字符串操作覆盖编译器所需（`char_at`, `byte_at`, `starts_with`, `ends_with`, `sub`, `slice`, `find`, `trim`, `split`, `replace`, `join`, `len`, `to_upper`, `to_lower`）
+- [x] 验证 VM 的 `List<T>` 支持编译器所需操作（`push`, `pop`, `get`, `len`, `insert`, `remove`, `join`, 迭代）
+- [x] 验证 VM 的 `Map<K,V>` 支持编译器所需操作（`new`, `set`, `get`, `has`, `remove`, `keys`, `values`, 迭代）
 - [ ] 确认文件 I/O 可用：`fs.read_to_string(path) → ?str` 和 `fs.write_string(path, content)`
-- [ ] 确认 `print()` 输出可用于调试
+- [x] 确认 `print()` 输出可用于调试
 
 ### 0.2 测试框架搭建
 
-- [ ] 在 `auto/tests/` 下建立测试目录结构
-- [ ] 确认可通过 VM 运行 `.at` 测试文件并获取 pass/fail 结果
-- [ ] 编写一个端到端测试模板
+- [x] 在 `auto/tests/` 下建立测试目录结构（已改为在 `snapshots/step-00-api-minimal/vmtest-*.at` 中验证）
+- [x] 确认可通过 VM 运行 `.at` 测试文件并获取 pass/fail 结果
+- [x] 编写一个端到端测试模板
 
 ### 成功标准
 
 - VM 能正确运行包含结构体、枚举、List、Map、字符串操作、文件读取的完整测试程序
+- **当前状态:** 22/24 VM 测试通过，2 个阻塞 bug（Plan 230, 231）
 
 ---
 

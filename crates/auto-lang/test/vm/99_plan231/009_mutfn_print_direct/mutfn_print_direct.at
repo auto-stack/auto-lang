@@ -1,0 +1,17 @@
+// Test: mut fn + direct print after calls (no f-string)
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+}
+
+fn main() {
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    print(c.count)
+    print("mutfn print direct OK")
+}

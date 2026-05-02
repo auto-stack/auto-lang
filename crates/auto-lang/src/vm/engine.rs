@@ -1485,6 +1485,84 @@ impl AutoVM {
                                             "true".to_string()
                                         } else if bits == i32::MIN + 1 {
                                             "false".to_string()
+                                        } else if bits >= 4000000 {
+                                            // Heap object — format as struct instance
+                                            use crate::vm::generic_registry::GenericInstanceData;
+                                            use crate::vm::heap_object::TypeTag;
+                                            let obj_id = bits as u64;
+                                            match self.get_heap_object(obj_id) {
+                                                Some(obj) => {
+                                                    let guard = obj.read().unwrap();
+                                                    if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                                        if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                                            // Special formatting for Option/Result types
+                                                            if inst.mono_name == "Option.None" {
+                                                                "None".to_string()
+                                                            } else if inst.mono_name.starts_with("Option.Some") {
+                                                                if let Some(val) = inst.fields.first() {
+                                                                    match val {
+                                                                        Value::Int(i) => i.to_string(),
+                                                                        Value::Str(s) => s.as_str().to_string(),
+                                                                        Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                                        _ => format!("{:?}", val),
+                                                                    }
+                                                                } else {
+                                                                    "Some".to_string()
+                                                                }
+                                                            } else if inst.mono_name == "Result.Err" || inst.mono_name.starts_with("Result.Err") {
+                                                                if let Some(val) = inst.fields.first() {
+                                                                    format!("Err({})", match val {
+                                                                        Value::Int(i) => i.to_string(),
+                                                                        Value::Str(s) => s.as_str().to_string(),
+                                                                        _ => format!("{:?}", val),
+                                                                    })
+                                                                } else {
+                                                                    "Err".to_string()
+                                                                }
+                                                            } else if inst.mono_name.starts_with("Result.Ok") {
+                                                                if let Some(val) = inst.fields.first() {
+                                                                    match val {
+                                                                        Value::Int(i) => i.to_string(),
+                                                                        Value::Str(s) => s.as_str().to_string(),
+                                                                        Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                                        _ => format!("{:?}", val),
+                                                                    }
+                                                                } else {
+                                                                    "Ok".to_string()
+                                                                }
+                                                            } else {
+                                                                let type_name = self.generic_registry
+                                                                    .get_type(&inst.mono_name)
+                                                                    .map(|ct| ct.base_name().to_string())
+                                                                    .unwrap_or_else(|| inst.mono_name.clone());
+                                                                let field_strs: Vec<String> = inst.field_names.iter()
+                                                                    .zip(inst.fields.iter())
+                                                                    .map(|(name, val)| {
+                                                                        let val_str = match val {
+                                                                            Value::Int(i) => i.to_string(),
+                                                                            Value::Uint(u) => u.to_string(),
+                                                                            Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                                            Value::Float(f) => f.to_string(),
+                                                                            Value::Double(d) => d.to_string(),
+                                                                            Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                                            Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                                            Value::Nil => "nil".to_string(),
+                                                                            _ => format!("{:?}", val),
+                                                                        };
+                                                                        format!("{}: {}", name, val_str)
+                                                                    })
+                                                                    .collect();
+                                                                format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                                            }
+                                                        } else {
+                                                            bits.to_string()
+                                                        }
+                                                    } else {
+                                                        bits.to_string()
+                                                    }
+                                                }
+                                                None => bits.to_string(),
+                                            }
                                         } else {
                                             bits.to_string()
                                         }
@@ -2978,7 +3056,6 @@ impl AutoVM {
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
                     let tagged = task.ram.pop_i32();
-                    // Decode negative-tagged string index
                     let field_idx = if tagged < 0 {
                         (-tagged - 1) as usize
                     } else {
@@ -4062,9 +4139,6 @@ impl AutoVM {
                         //                                    ^-BP-3 ^-BP-2 ^-BP-1  ^-BP
                         let actual_offset = offset + 1; // +1 for return_addr
                         let val = task.ram.read_i32(task.bp - actual_offset);
-                        vm_debug!("DEBUG: LOAD_LOCAL param {}: BP-{} (n_args={}, offset={}) = {}",
-                            param_idx, actual_offset, n_args, offset, val
-                        );
                         task.ram.push_i32(val);
                     } else {
                         // Local variable: load from bp+1+idx (bp+1 is first local variable)
@@ -4144,8 +4218,6 @@ impl AutoVM {
                     // Stack operations (push/pop) use SP which should be >= n_locals + 1 to avoid overlap
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
-
-                    vm_debug!("DEBUG RESERVE_STACK: n_locals={}, sp before={}", n_locals, task.ram.sp);
 
                     // Push n_locals+1 zeros to reserve space for local variables + 1 extra slot
                     // The extra slot ensures SP starts beyond all local variable addresses

@@ -1,0 +1,22 @@
+// Ultra-minimal: mut fn + for loop + Option comparison, no is matching
+type Counter {
+    count int
+
+    mut fn next() ?int {
+        if self.count > 0 {
+            self.count = self.count - 1
+            return Some(self.count + 1)
+        }
+        return None
+    }
+}
+
+fn main() {
+    var c = Counter(2)
+    var val = c.next()
+    for val != None {
+        print(f"got: $val")
+        val = c.next()
+    }
+    print("done")
+}

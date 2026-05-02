@@ -1,0 +1,22 @@
+// Test: mut fn returning void (should pass like vmtest-09)
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+
+    fn get_count() int {
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    let n = c.get_count()
+    print(f"count: $n")
+    print("mutfn void return OK")
+}

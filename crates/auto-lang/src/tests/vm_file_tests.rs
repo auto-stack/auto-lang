@@ -443,3 +443,15 @@ fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unw
 
 // === 99_slice ===
 #[test] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
+
+// === 99_plan231 (nested mut fn + for loop) ===
+#[test] fn test_99_plan231_001_nested_mutfn() { test_vm("99_plan231/001_nested_mutfn").unwrap(); }
+#[test] fn test_99_plan231_002_direct_drain() { test_vm("99_plan231/002_direct_drain").unwrap(); }
+#[test] fn test_99_plan231_003_simple_for_option() { test_vm("99_plan231/003_simple_for_option").unwrap(); }
+#[test] fn test_99_plan231_004_for_option_no_is() { test_vm("99_plan231/004_for_option_no_is").unwrap(); }
+#[test] fn test_99_plan231_005_mutfn_no_loop() { test_vm("99_plan231/005_mutfn_no_loop").unwrap(); }
+#[test] fn test_99_plan231_006_mutfn_int_return() { test_vm("99_plan231/006_mutfn_int_return").unwrap(); }
+#[test] fn test_99_plan231_007_mutfn_void_return() { test_vm("99_plan231/007_mutfn_void_return").unwrap(); }
+#[test] fn test_99_plan231_008_like_vmtest09() { test_vm("99_plan231/008_like_vmtest09").unwrap(); }
+#[test] fn test_99_plan231_009_mutfn_print_direct() { test_vm("99_plan231/009_mutfn_print_direct").unwrap(); }
+#[test] fn test_99_plan231_010_mutfn_int_no_fstr() { test_vm("99_plan231/010_mutfn_int_no_fstr").unwrap(); }
