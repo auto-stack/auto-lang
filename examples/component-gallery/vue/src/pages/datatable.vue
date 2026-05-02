@@ -1,7 +1,5 @@
-<!-- DatatablePage component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
-import Prism from 'prismjs'
+import { ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -9,45 +7,17 @@ import { DropdownMenu } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import ComponentDocPage from '@/components/ComponentDocPage.vue'
+import DemoSection from '@/components/DemoSection.vue'
 
-
-const activeTab = ref<string>('preview')
 const sortColumn = ref<string>('')
 const sortDirection = ref<string>('asc')
 const filterText = ref<string>('')
 const selectedRows = ref<number>(0)
 const currentPage = ref<number>(1)
-
-const copiedCode = ref<string>('')
-const showDatatableBasicCode = ref<boolean>(true)
-const activeDatatableBasicTab = ref<string>('auto')
-const showDatatableSortingCode = ref<boolean>(true)
-const activeDatatableSortingTab = ref<string>('auto')
-const showDatatableFilteringCode = ref<boolean>(true)
-const activeDatatableFilteringTab = ref<string>('auto')
-const showDatatablePaginationCode = ref<boolean>(true)
-const activeDatatablePaginationTab = ref<string>('auto')
-const showDatatableSelectionCode = ref<boolean>(true)
-const activeDatatableSelectionTab = ref<string>('auto')
-const showDatatableActionsCode = ref<boolean>(true)
-const activeDatatableActionsTab = ref<string>('auto')
-const showDatatableVisibilityCode = ref<boolean>(true)
-const activeDatatableVisibilityTab = ref<string>('auto')
-const showDatatableCompleteCode = ref<boolean>(true)
-const activeDatatableCompleteTab = ref<string>('auto')
-
-// Copy to clipboard function
-async function copyCode(code: string, id: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(code)
-    copiedCode.value = id
-    setTimeout(() => {
-      copiedCode.value = ''
-    }, 2000)
-  } catch (err) {
-    console.error('Failed to copy:', err)
-  }
-}
+function onToggleSortStatus() {}
+function onToggleSortEmail() {}
+function onToggleSortAmount() {}
 
 const datatableBasicAutoCode = `table {
     table-header {
@@ -1285,84 +1255,14 @@ const datatableCompleteVueCode = `<div class="flex flex-col gap-4">
   </div>
 </div>
 `
-const codeblock1Code = `npx shadcn-vue@latest add table`
 const codeblock2Code = `npm install @tanstack/vue-table`
-watch(activeDatatableBasicTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatableSortingTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatableFilteringTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatablePaginationTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatableSelectionTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatableActionsTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatableVisibilityTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-watch(activeDatatableCompleteTab, () => {
-  nextTick(() => Prism.highlightAll())
-})
-onMounted(() => {
-  nextTick(() => Prism.highlightAll())
-})
-
-
 </script>
 
 <template>
-  <div class="flex flex-col">
-    <div class="flex flex-col gap-4">
-      <h1 class="text-4xl font-bold tracking-tight">Data Table</h1>
-      Powerful table and datagrids built using TanStack Table.
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Introduction</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">The Data Table is not a single component but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table component. This allows for maximum flexibility with sorting, filtering, pagination, and more.</span>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Installation</h2>
-      <span class="text-muted-foreground leading-7 font-medium">1. Add the Table component:</span>
-      <div class="relative rounded-lg border overflow-hidden">
-        <div class="flex items-center justify-between px-4 py-3 bg-muted border-b">
-          <span class="text-xs text-muted-foreground font-medium">bash</span>
-          <button
-            @click="copyCode(codeblock1Code, 'codeblock1')"
-            class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-          >
-            <svg v-if="copiedCode !== 'codeblock1'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            {{ copiedCode === 'codeblock1' ? 'Copied!' : 'Copy' }}
-          </button>
-        </div>
-        <pre class="p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))] overflow-x-auto"><code class="block font-mono !p-0 language-bash">{{ codeblock1Code }}</code></pre>
-      </div>
-      <span class="text-muted-foreground leading-7 font-medium">2. Add TanStack Table dependency:</span>
-      <div class="relative rounded-lg border overflow-hidden">
-        <div class="flex items-center justify-between px-4 py-3 bg-muted border-b">
-          <span class="text-xs text-muted-foreground font-medium">bash</span>
-          <button
-            @click="copyCode(codeblock2Code, 'codeblock2')"
-            class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-          >
-            <svg v-if="copiedCode !== 'codeblock2'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            {{ copiedCode === 'codeblock2' ? 'Copied!' : 'Copy' }}
-          </button>
-        </div>
-        <pre class="p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))] overflow-x-auto"><code class="block font-mono !p-0 language-bash">{{ codeblock2Code }}</code></pre>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Basic Table</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Start with a basic table to display your data.</span>
-      <!-- Merged DatatableBasic Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <Table>
+  <ComponentDocPage title="Data Table" description="Powerful table and datagrids built using TanStack Table." installCommand="npx shadcn-vue@latest add table">
+    <DemoSection title="Basic Table" id="datatable-basic" :autoCode="datatableBasicAutoCode" :vueCode="datatableBasicVueCode">
+      <template #preview>
+        <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Status</TableHead>
@@ -1394,63 +1294,11 @@ onMounted(() => {
                 </TableRow>
               </TableBody>
             </Table>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableBasicCode = !showDatatableBasicCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableBasicCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableBasicCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableBasicTab = 'auto'"
-                  :class="activeDatatableBasicTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableBasicTab = 'vue'"
-                  :class="activeDatatableBasicTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableBasicTab === 'auto' ? datatableBasicAutoCode : datatableBasicVueCode, 'datatable-basic')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-basic'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-basic' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableBasicTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableBasicTab === 'auto' ? datatableBasicAutoCode : datatableBasicVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Sorting</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Click column headers to sort ascending or descending. Try clicking on each column!</span>
-      <!-- Merged DatatableSorting Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <Table>
+      </template>
+    </DemoSection>
+    <DemoSection title="Sorting" id="datatable-sorting" :autoCode="datatableSortingAutoCode" :vueCode="datatableSortingVueCode">
+      <template #preview>
+        <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>
@@ -1673,122 +1521,11 @@ onMounted(() => {
                 </template>
               </TableBody>
             </Table>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableSortingCode = !showDatatableSortingCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableSortingCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableSortingCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableSortingTab = 'auto'"
-                  :class="activeDatatableSortingTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableSortingTab = 'vue'"
-                  :class="activeDatatableSortingTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableSortingTab === 'auto' ? datatableSortingAutoCode : datatableSortingVueCode, 'datatable-sorting')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-sorting'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-sorting' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableSortingTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableSortingTab === 'auto' ? datatableSortingAutoCode : datatableSortingVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <div>
-        <ToggleSortStatus />
-        <div>
-          <template v-if="sortColumn == 'status'">
-            <div />
-            <div />
-            <template v-if="sortDirection == 'asc'">
-              <div />
-            </template>
-            <template v-else>
-              <div />
-            </template>
-          </template>
-          <template v-else>
-            <div />
-            <div>status</div>
-            <div />
-            <div>asc</div>
-          </template>
-        </div>
-        <ToggleSortEmail />
-        <div>
-          <template v-if="sortColumn == 'email'">
-            <div />
-            <div />
-            <template v-if="sortDirection == 'asc'">
-              <div />
-            </template>
-            <template v-else>
-              <div />
-            </template>
-          </template>
-          <template v-else>
-            <div />
-            <div>email</div>
-            <div />
-            <div>asc</div>
-          </template>
-        </div>
-        <ToggleSortAmount />
-        <div>
-          <template v-if="sortColumn == 'amount'">
-            <div />
-            <div />
-            <template v-if="sortDirection == 'asc'">
-              <div />
-            </template>
-            <template v-else>
-              <div />
-            </template>
-          </template>
-          <template v-else>
-            <div />
-            <div>amount</div>
-            <div />
-            <div>asc</div>
-          </template>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Filtering</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Search and filter data across columns.</span>
-      <!-- Merged DatatableFiltering Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <div class="flex flex-col gap-4">
+      </template>
+    </DemoSection>
+    <DemoSection title="Filtering" id="datatable-filtering" :autoCode="datatableFilteringAutoCode" :vueCode="datatableFilteringVueCode">
+      <template #preview>
+        <div class="flex flex-col gap-4">
               <div class="flex flex-row gap-4 flex items-center gap-2">
                 <span class="text-muted-foreground leading-7 text-sm font-medium">Filter:</span>
                 <Input placeholder="Search by email..." />
@@ -1819,63 +1556,11 @@ onMounted(() => {
                 </TableBody>
               </Table>
             </div>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableFilteringCode = !showDatatableFilteringCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableFilteringCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableFilteringCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableFilteringTab = 'auto'"
-                  :class="activeDatatableFilteringTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableFilteringTab = 'vue'"
-                  :class="activeDatatableFilteringTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableFilteringTab === 'auto' ? datatableFilteringAutoCode : datatableFilteringVueCode, 'datatable-filtering')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-filtering'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-filtering' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableFilteringTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableFilteringTab === 'auto' ? datatableFilteringAutoCode : datatableFilteringVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Pagination</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Navigate through large datasets with page controls.</span>
-      <!-- Merged DatatablePagination Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <div class="flex flex-col gap-4">
+      </template>
+    </DemoSection>
+    <DemoSection title="Pagination" id="datatable-pagination" :autoCode="datatablePaginationAutoCode" :vueCode="datatablePaginationVueCode">
+      <template #preview>
+        <div class="flex flex-col gap-4">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1921,63 +1606,11 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatablePaginationCode = !showDatatablePaginationCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatablePaginationCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatablePaginationCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatablePaginationTab = 'auto'"
-                  :class="activeDatatablePaginationTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatablePaginationTab = 'vue'"
-                  :class="activeDatatablePaginationTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatablePaginationTab === 'auto' ? datatablePaginationAutoCode : datatablePaginationVueCode, 'datatable-pagination')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-pagination'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-pagination' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatablePaginationTab === 'auto' ? 'auto' : 'html')">{{ activeDatatablePaginationTab === 'auto' ? datatablePaginationAutoCode : datatablePaginationVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Row Selection</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Select rows with checkboxes for bulk operations.</span>
-      <!-- Merged DatatableSelection Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <div class="flex flex-col gap-4">
+      </template>
+    </DemoSection>
+    <DemoSection title="Row Selection" id="datatable-selection" :autoCode="datatableSelectionAutoCode" :vueCode="datatableSelectionVueCode">
+      <template #preview>
+        <div class="flex flex-col gap-4">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -2030,63 +1663,11 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableSelectionCode = !showDatatableSelectionCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableSelectionCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableSelectionCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableSelectionTab = 'auto'"
-                  :class="activeDatatableSelectionTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableSelectionTab = 'vue'"
-                  :class="activeDatatableSelectionTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableSelectionTab === 'auto' ? datatableSelectionAutoCode : datatableSelectionVueCode, 'datatable-selection')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-selection'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-selection' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableSelectionTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableSelectionTab === 'auto' ? datatableSelectionAutoCode : datatableSelectionVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Row Actions</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Add action menus to each row.</span>
-      <!-- Merged DatatableActions Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <Table>
+      </template>
+    </DemoSection>
+    <DemoSection title="Row Actions" id="datatable-actions" :autoCode="datatableActionsAutoCode" :vueCode="datatableActionsVueCode">
+      <template #preview>
+        <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Invoice</TableHead>
@@ -2140,63 +1721,11 @@ onMounted(() => {
                 </TableRow>
               </TableBody>
             </Table>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableActionsCode = !showDatatableActionsCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableActionsCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableActionsCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableActionsTab = 'auto'"
-                  :class="activeDatatableActionsTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableActionsTab = 'vue'"
-                  :class="activeDatatableActionsTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableActionsTab === 'auto' ? datatableActionsAutoCode : datatableActionsVueCode, 'datatable-actions')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-actions'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-actions' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableActionsTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableActionsTab === 'auto' ? datatableActionsAutoCode : datatableActionsVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Column Visibility</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Toggle column visibility with a dropdown menu.</span>
-      <!-- Merged DatatableVisibility Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <div class="flex flex-col gap-4">
+      </template>
+    </DemoSection>
+    <DemoSection title="Column Visibility" id="datatable-visibility" :autoCode="datatableVisibilityAutoCode" :vueCode="datatableVisibilityVueCode">
+      <template #preview>
+        <div class="flex flex-col gap-4">
               <div class="flex flex-row gap-4 flex items-center justify-between">
                 <Input placeholder="Search..." />
                 <DropdownMenu>
@@ -2232,63 +1761,11 @@ onMounted(() => {
                 </TableBody>
               </Table>
             </div>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableVisibilityCode = !showDatatableVisibilityCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableVisibilityCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableVisibilityCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableVisibilityTab = 'auto'"
-                  :class="activeDatatableVisibilityTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableVisibilityTab = 'vue'"
-                  :class="activeDatatableVisibilityTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableVisibilityTab === 'auto' ? datatableVisibilityAutoCode : datatableVisibilityVueCode, 'datatable-visibility')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-visibility'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-visibility' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableVisibilityTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableVisibilityTab === 'auto' ? datatableVisibilityAutoCode : datatableVisibilityVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Complete Example</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">A full-featured data table with all features combined.</span>
-      <!-- Merged DatatableComplete Component -->
-      <div class="rounded-lg border overflow-hidden">
-        <!-- Preview Area -->
-        <div class="flex items-center justify-center p-4 min-h-[100px] bg-[hsl(var(--preview-bg))]">
-                      <div class="flex flex-col gap-4">
+      </template>
+    </DemoSection>
+    <DemoSection title="Complete Example" id="datatable-complete" :autoCode="datatableCompleteAutoCode" :vueCode="datatableCompleteVueCode">
+      <template #preview>
+        <div class="flex flex-col gap-4">
               <div class="flex flex-row gap-4 flex items-center justify-between">
                 <Input placeholder="Filter emails..." />
                 <div class="flex flex-row gap-2">
@@ -2423,142 +1900,10 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-        </div>
-        <!-- Toggle Code Footer -->
-        <div class="border-t">
-          <button
-            @click="showDatatableCompleteCode = !showDatatableCompleteCode"
-            class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-          >
-            <span class="font-medium">Code</span>
-            <svg
-              :class="showDatatableCompleteCode ? 'rotate-180' : ''"
-              xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="transition-transform duration-200"
-            >
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
-          </button>
-          <!-- Expandable Code Block -->
-          <div v-if="showDatatableCompleteCode" class="border-t">
-            <!-- Tabs (gray title bar) -->
-            <div class="flex items-center justify-between bg-muted">
-              <div class="flex">
-                <button
-                  @click="activeDatatableCompleteTab = 'auto'"
-                  :class="activeDatatableCompleteTab === 'auto' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Auto
-                </button>
-                <button
-                  @click="activeDatatableCompleteTab = 'vue'"
-                  :class="activeDatatableCompleteTab === 'vue' ? 'bg-background text-foreground border-b-2 border-primary -mb-px' : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent'"
-                  class="px-4 py-2 text-xs font-medium transition-colors"
-                >
-                  Vue
-                </button>
-              </div>
-              <button
-                @click="copyCode(activeDatatableCompleteTab === 'auto' ? datatableCompleteAutoCode : datatableCompleteVueCode, 'datatable-complete')"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                <svg v-if="copiedCode !== 'datatable-complete'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {{ copiedCode === 'datatable-complete' ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <!-- Code content with syntax highlighting -->
-            <pre class="overflow-x-auto p-4 text-sm bg-[hsl(var(--code-bg))] text-[hsl(var(--code-fg))]"><code :class="'block font-mono !p-0 language-' + (activeDatatableCompleteTab === 'auto' ? 'auto' : 'html')">{{ activeDatatableCompleteTab === 'auto' ? datatableCompleteAutoCode : datatableCompleteVueCode }}</code></pre>
-          </div>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Features</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">The Data Table guide covers:</span>
-      <div class="flex flex-col gap-2 py-2">
-        <div class="flex flex-row gap-2">
-          <Badge>Sorting</Badge>
-          <Badge>Filtering</Badge>
-          <Badge>Pagination</Badge>
-        </div>
-        <div class="flex flex-row gap-2">
-          <Badge>Row Selection</Badge>
-          <Badge>Column Visibility</Badge>
-          <Badge>Row Actions</Badge>
-        </div>
-      </div>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Table Components</h2>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Component</TableHead>
-            <TableHead>Description</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow>
-            <TableCell>Table</TableCell>
-            <TableCell>Main table container</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>TableHeader</TableCell>
-            <TableCell>Header section</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>TableBody</TableCell>
-            <TableCell>Body section</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>TableRow</TableCell>
-            <TableCell>Table row</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>TableHead</TableCell>
-            <TableCell>Header cell</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>TableCell</TableCell>
-            <TableCell>Data cell</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">TanStack Table API</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">Key API methods from @tanstack/vue-table:</span>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Method</TableHead>
-            <TableHead>Description</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow>
-            <TableCell class="font-mono text-sm">useVueTable</TableCell>
-            <TableCell>Main composable to create table instance</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell class="font-mono text-sm">getCoreRowModel</TableCell>
-            <TableCell>Returns core row model</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell class="font-mono text-sm">getPaginationRowModel</TableCell>
-            <TableCell>Returns pagination row model</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell class="font-mono text-sm">getSortedRowModel</TableCell>
-            <TableCell>Returns sorted row model</TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell class="font-mono text-sm">getFilteredRowModel</TableCell>
-            <TableCell>Returns filtered row model</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-      <h2 class="text-2xl font-semibold tracking-tight mt-8">Documentation</h2>
-      <span class="text-muted-foreground leading-7 text-muted-foreground">For the complete guide with code examples, see the shadcn-vue Data Table documentation.</span>
-    </div>
-  </div>
+      </template>
+    </DemoSection>
 
+  </ComponentDocPage>
 </template>
 
 <style scoped>
@@ -2570,5 +1915,4 @@ pre[class*="language-"] {
 /* Component styles */
 
 </style>
-
 

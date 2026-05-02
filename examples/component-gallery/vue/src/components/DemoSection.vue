@@ -4,8 +4,8 @@ import Prism from 'prismjs'
 
 const props = defineProps<{
   title: string
-  autoCode: string
-  vueCode: string
+  autoCode?: string
+  vueCode?: string
   id: string
 }>()
 
@@ -14,7 +14,7 @@ const activeTab = ref<'auto' | 'vue'>('auto')
 const copied = ref(false)
 
 async function copy() {
-  const code = activeTab.value === 'auto' ? props.autoCode : props.vueCode
+  const code = activeTab.value === 'auto' ? (props.autoCode ?? '') : (props.vueCode ?? '')
   try {
     await navigator.clipboard.writeText(code)
     copied.value = true

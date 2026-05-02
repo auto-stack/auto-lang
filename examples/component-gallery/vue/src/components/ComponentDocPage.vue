@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-
-const props = defineProps<{
+defineProps<{
   title: string
   description: string
   installCommand: string
