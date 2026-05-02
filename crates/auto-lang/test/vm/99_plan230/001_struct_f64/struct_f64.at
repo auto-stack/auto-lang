@@ -1,0 +1,11 @@
+// Plan 230: Struct literal with f64 fields - minimal test
+type Point {
+    x f64
+    y f64
+}
+
+fn main() {
+    let p = Point(1.0, 2.0)
+    // Verify the struct was created (no crash = f64 promotion works)
+    print("struct f64 OK")
+}

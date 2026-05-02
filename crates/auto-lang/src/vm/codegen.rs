@@ -3295,9 +3295,17 @@ impl Codegen {
 
                         // 1. Compile each field value expression (pushes values onto stack)
                         // Stack: ..., value1, value2, ..., valueN
+                        let field_defs = class_type.fields();
                         for (i, value_expr) in field_values.iter().enumerate() {
                             vm_debug!("DEBUG codegen: Compiling field value {}", i);
                             self.compile_expr(value_expr)?;
+                            // Plan 230: promote f32 -> f64 when field type is Double
+                            if let Some(field_def) = field_defs.get(i) {
+                                if matches!(field_def.field_type, Type::Double) &&
+                                   self.last_expr_type == ObjectType::Float {
+                                    self.emit(OpCode::PROMOTE_F64);
+                                }
+                            }
                             vm_debug!("DEBUG codegen: code.len() = 0x{:04x} after field value {}",
                                 self.code.len(),
                                 i
@@ -4584,7 +4592,8 @@ impl Codegen {
 
                                 // Compile arguments (push values onto stack)
                                 // Stack: ..., arg1, arg2, ..., argN
-                                for arg in &args_to_compile {
+                                let field_defs = class_type.fields();
+                                for (i, arg) in args_to_compile.iter().enumerate() {
                                     match arg {
                                         crate::ast::Arg::Pos(expr) => {
                                             self.compile_expr(expr)?;
@@ -4600,6 +4609,13 @@ impl Codegen {
                                             let s_idx = self.strings.len() as u16;
                                             self.strings.push(s_bytes);
                                             self.code.extend_from_slice(&s_idx.to_le_bytes());
+                                        }
+                                    }
+                                    // Plan 230: promote f32 -> f64 when field type is Double
+                                    if let Some(field_def) = field_defs.get(i) {
+                                        if matches!(field_def.field_type, Type::Double) &&
+                                           self.last_expr_type == ObjectType::Float {
+                                            self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
                                 }
@@ -4686,7 +4702,8 @@ impl Codegen {
                                 };
 
                                 // Compile arguments (push values onto stack)
-                                for arg in &args_to_compile {
+                                let field_defs = class_type.fields();
+                                for (i, arg) in args_to_compile.iter().enumerate() {
                                     match arg {
                                         crate::ast::Arg::Pos(expr) => {
                                             self.compile_expr(expr)?;
@@ -4700,6 +4717,13 @@ impl Codegen {
                                             let s_idx = self.strings.len() as u16;
                                             self.strings.push(s_bytes);
                                             self.code.extend_from_slice(&s_idx.to_le_bytes());
+                                        }
+                                    }
+                                    // Plan 230: promote f32 -> f64 when field type is Double
+                                    if let Some(field_def) = field_defs.get(i) {
+                                        if matches!(field_def.field_type, Type::Double) &&
+                                           self.last_expr_type == ObjectType::Float {
+                                            self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
                                 }
@@ -4763,7 +4787,16 @@ impl Codegen {
 
                         // Compile arguments (push values onto stack)
                         let arg_count = call.args.args.len() as u8;
-                        for arg in &call.args.args {
+                        // Plan 230: Get field types for f32→f64 promotion
+                        let constructor_field_types: Option<Vec<Type>> =
+                            if self.generic_registry.has_template(&type_name_str) {
+                                self.generic_registry.get_or_create_type(&type_name_str, Vec::new())
+                                    .ok()
+                                    .map(|ct| ct.fields().into_iter().map(|f| f.field_type).collect())
+                            } else {
+                                None
+                            };
+                        for (i, arg) in call.args.args.iter().enumerate() {
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
                                     self.compile_expr(expr)?;
@@ -4773,6 +4806,15 @@ impl Codegen {
                                 }
                                 crate::ast::Arg::Name(_) => {
                                     // Name-only arg - placeholder
+                                }
+                            }
+                            // Plan 230: promote f32 -> f64 when field type is Double
+                            if let Some(ref field_types) = constructor_field_types {
+                                if let Some(field_type) = field_types.get(i) {
+                                    if matches!(field_type, Type::Double) &&
+                                       self.last_expr_type == ObjectType::Float {
+                                        self.emit(OpCode::PROMOTE_F64);
+                                    }
                                 }
                             }
                         }
@@ -5543,6 +5585,18 @@ impl Codegen {
 
                 if !call.args.is_empty() {
                     let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
+                    // Plan 230: Get field types for f32→f64 promotion
+                    let constructor_field_types: Option<Vec<Type>> = if let Expr::Ident(name) = call.name.as_ref() {
+                        if self.generic_registry.has_template(name.as_ref()) {
+                            self.generic_registry.get_or_create_type(name.as_ref(), Vec::new())
+                                .ok()
+                                .map(|ct| ct.fields().into_iter().map(|f| f.field_type).collect())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     for (i, arg) in call.args.args.iter().enumerate() {
                         match arg {
                             crate::ast::Arg::Pos(expr) => {
@@ -5557,6 +5611,15 @@ impl Codegen {
                                 } else {
                                     vm_debug!("DEBUG:   Arg {}: normal compile", param_index);
                                     self.compile_expr(expr)?;
+                                }
+                                // Plan 230: promote f32 -> f64 for type constructor args
+                                if let Some(ref field_types) = constructor_field_types {
+                                    if let Some(field_type) = field_types.get(i) {
+                                        if matches!(field_type, Type::Double) &&
+                                           self.last_expr_type == ObjectType::Float {
+                                            self.emit(OpCode::PROMOTE_F64);
+                                        }
+                                    }
                                 }
                             }
                             crate::ast::Arg::Pair(_, expr) => {
@@ -5573,6 +5636,15 @@ impl Codegen {
                                 } else {
                                     vm_debug!("DEBUG:   Named arg {}: normal compile", param_index);
                                     self.compile_expr(expr)?;
+                                }
+                                // Plan 230: promote f32 -> f64 for type constructor args
+                                if let Some(ref field_types) = constructor_field_types {
+                                    if let Some(field_type) = field_types.get(i) {
+                                        if matches!(field_type, Type::Double) &&
+                                           self.last_expr_type == ObjectType::Float {
+                                            self.emit(OpCode::PROMOTE_F64);
+                                        }
+                                    }
                                 }
                             }
                             crate::ast::Arg::Name(name) => {
@@ -5593,6 +5665,15 @@ impl Codegen {
                                 } else {
                                     vm_debug!("DEBUG:   Named arg {}: normal compile", param_index);
                                     self.compile_expr(&Expr::Ident(name.clone()))?;
+                                }
+                                // Plan 230: promote f32 -> f64 for type constructor args
+                                if let Some(ref field_types) = constructor_field_types {
+                                    if let Some(field_type) = field_types.get(i) {
+                                        if matches!(field_type, Type::Double) &&
+                                           self.last_expr_type == ObjectType::Float {
+                                            self.emit(OpCode::PROMOTE_F64);
+                                        }
+                                    }
                                 }
                             }
                         }

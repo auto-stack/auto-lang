@@ -455,3 +455,6 @@ fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unw
 #[test] fn test_99_plan231_008_like_vmtest09() { test_vm("99_plan231/008_like_vmtest09").unwrap(); }
 #[test] fn test_99_plan231_009_mutfn_print_direct() { test_vm("99_plan231/009_mutfn_print_direct").unwrap(); }
 #[test] fn test_99_plan231_010_mutfn_int_no_fstr() { test_vm("99_plan231/010_mutfn_int_no_fstr").unwrap(); }
+
+// === 99_plan230 ===
+#[test] fn test_99_plan230_001_struct_f64() { test_vm("99_plan230/001_struct_f64").unwrap(); }
