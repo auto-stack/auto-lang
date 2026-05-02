@@ -2,10 +2,9 @@
 
 name: "component-gallery-front"
 version: "1.0.0"
-description: "Component Gallery Frontend - Documentation site components"
+description: "Component Gallery Frontend - Modern responsive documentation site"
 
 // IMPORTANT: This marks the package as an AURA UI package
-// When scene is "ui", the compiler treats .at files as AURA components
 scene: "ui"
 
 // Supported backends: Vue (web) and Tauri (desktop)
@@ -20,16 +19,12 @@ entry: "app.at"
 // Dependencies
 deps: {
     vue: "^3.4.0"
-    // shadcn-vue components for styling
     shadcn: "@/components/ui"
 }
 
 // Component registry
-// Note: Most UI components (Button, Input, Text, Card, Badge, Accordion, Tabs, etc.)
-// are now auto-imported from stdlib/aura/widgets. Only gallery-specific components
-// that don't exist in stdlib are registered here.
 components: {
-    // Gallery-specific components (not in stdlib)
+    // Gallery-specific components
     Carousel: "./components/carousel.at"
     CodeBlock: "./components/code_block.at"
     Combobox: "./components/combobox.at"
@@ -38,6 +33,8 @@ components: {
     DatePicker: "./components/datepicker.at"
     Toggle: "./components/toggle.at"
     ToggleGroup: "./components/togglegroup.at"
+    ThemeToggle: "./components/theme_toggle.at"
+    NavLink: "./components/nav_link.at"
 }
 
 // Pages

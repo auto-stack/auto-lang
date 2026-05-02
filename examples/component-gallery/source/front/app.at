@@ -1,8 +1,8 @@
 // source/front/app.at - Component Gallery Documentation Site
-// A shadcn-vue style documentation site with Vue Router integration
+// Responsive layout with mobile drawer, theme switching, and categorized navigation
 
 widget App {
-    // Route definitions - maps URLs to page modules (Plan 106 syntax)
+    // Route definitions
     routes {
         "/" -> use index
         "/accordion" -> use accordion
@@ -54,188 +54,162 @@ widget App {
         "/tooltip" -> use tooltip
     }
 
+    model {
+        sidebarOpen bool = false
+        searchOpen bool = false
+        searchQuery str = ""
+    }
+
     view {
-        // Main container with full height - no page scroll
         col (style: "h-screen overflow-hidden") {
-            // Header Banner - full width
-            header (style: "sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur") {
-                row (style: "h-14 items-center px-6 w-full") {
-                    // Logo with icon and title
-                    row (style: "items-center gap-2 mr-8") {
-                        text (text: "Auto UI", style: "text-lg font-bold") {}
+            // Header: responsive with mobile menu, search, theme toggle
+            header (style: "sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur") {
+                row (style: "h-14 items-center px-4 md:px-6 w-full gap-3") {
+                    // Mobile hamburger (hidden on md+)
+                    button (style: "md:hidden -ml-2", icon: "menu", onClick: openSidebar) {}
+
+                    // Logo
+                    row (style: "items-center gap-2 mr-4 shrink-0") {
+                        icon (name: "layers", style: "h-5 w-5 text-primary") {}
+                        text (text: "Auto UI", style: "font-bold text-lg hidden sm:inline") {}
                     }
-                    // Navigation menu - header links
-                    row (style: "items-center gap-6 text-sm") {
+
+                    // Desktop nav
+                    row (style: "hidden md:flex items-center gap-1 text-sm") {
                         link (to: "/") {
-                            text (text: "Docs", style: "text-muted-foreground hover:text-foreground") {}
+                            text (text: "Docs", style: "px-3 py-1.5 rounded-md transition-colors") {}
                         }
                         link (to: "/button") {
-                            text (text: "Components", style: "text-muted-foreground hover:text-foreground") {}
+                            text (text: "Components", style: "px-3 py-1.5 rounded-md transition-colors") {}
+                        }
+                    }
+
+                    // Right actions
+                    row (style: "ml-auto items-center gap-1") {
+                        button (style: "hidden md:flex h-9 w-9", icon: "search", onClick: openSearch) {}
+                        theme-toggle {}
+                    }
+                }
+            }
+
+            // Search overlay
+            drawer (open: searchOpen, onClose: closeSearch) {
+                // Global search dialog
+            }
+
+            // Main layout: sidebar + content
+            row (style: "flex-1 overflow-hidden") {
+                // Desktop sidebar (hidden on mobile)
+                aside (style: "hidden md:flex w-64 lg:w-72 border-r bg-background flex-col shrink-0") {
+                    scroll (style: "flex-1 px-3 py-4") {
+                        // Overview group
+                        text (text: "Overview", style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        link (to: "/") {
+                            row (style: "items-center gap-2 rounded-md px-2 py-1.5 text-sm") {
+                                icon (name: "home", style: "h-4 w-4") {}
+                                text (text: "Home") {}
+                            }
+                        }
+
+                        // Form group
+                        text (text: "Form", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/button", icon: "mouse-pointer-click", label: "Button") {}
+                        nav-link (to: "/input", icon: "type", label: "Input") {}
+                        nav-link (to: "/textarea", icon: "type", label: "Textarea") {}
+                        nav-link (to: "/checkbox", icon: "square-stack", label: "Checkbox") {}
+                        nav-link (to: "/switch", icon: "square-stack", label: "Switch") {}
+                        nav-link (to: "/select", icon: "layout-grid", label: "Select") {}
+                        nav-link (to: "/combobox", icon: "command", label: "Combobox") {}
+                        nav-link (to: "/label", icon: "type", label: "Label") {}
+                        nav-link (to: "/form", icon: "layout-grid", label: "Form") {}
+                        nav-link (to: "/slider", icon: "layout-grid", label: "Slider") {}
+                        nav-link (to: "/calendar", icon: "layout-grid", label: "Calendar") {}
+                        nav-link (to: "/datepicker", icon: "layout-grid", label: "DatePicker") {}
+
+                        // Display group
+                        text (text: "Display", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/card", icon: "square-stack", label: "Card") {}
+                        nav-link (to: "/badge", icon: "bell", label: "Badge") {}
+                        nav-link (to: "/avatar", icon: "image", label: "Avatar") {}
+                        nav-link (to: "/skeleton", icon: "layout-grid", label: "Skeleton") {}
+                        nav-link (to: "/aspectratio", icon: "image", label: "AspectRatio") {}
+                        nav-link (to: "/carousel", icon: "layout-grid", label: "Carousel") {}
+                        nav-link (to: "/table", icon: "layout-grid", label: "Table") {}
+                        nav-link (to: "/datatable", icon: "layout-grid", label: "DataTable") {}
+
+                        // Feedback group
+                        text (text: "Feedback", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/alert", icon: "bell", label: "Alert") {}
+                        nav-link (to: "/progress", icon: "layout-grid", label: "Progress") {}
+                        nav-link (to: "/sonner", icon: "bell", label: "Sonner") {}
+                        nav-link (to: "/toast", icon: "bell", label: "Toast") {}
+                        nav-link (to: "/tooltip", icon: "bell", label: "Tooltip") {}
+
+                        // Navigation group
+                        text (text: "Navigation", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/breadcrumb", icon: "navigation", label: "Breadcrumb") {}
+                        nav-link (to: "/tabs", icon: "layout-grid", label: "Tabs") {}
+                        nav-link (to: "/menubar", icon: "layout-grid", label: "Menubar") {}
+                        nav-link (to: "/pagination", icon: "layout-grid", label: "Pagination") {}
+                        nav-link (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu") {}
+                        nav-link (to: "/sidebar", icon: "layout-grid", label: "Sidebar") {}
+                        nav-link (to: "/command", icon: "command", label: "Command") {}
+                        nav-link (to: "/scrollarea", icon: "layout-grid", label: "ScrollArea") {}
+                        nav-link (to: "/separator", icon: "layout-grid", label: "Separator") {}
+
+                        // Overlay group
+                        text (text: "Overlay", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/dialog", icon: "square-stack", label: "Dialog") {}
+                        nav-link (to: "/alertdialog", icon: "bell", label: "AlertDialog") {}
+                        nav-link (to: "/drawer", icon: "layout-grid", label: "Drawer") {}
+                        nav-link (to: "/sheet", icon: "square-stack", label: "Sheet") {}
+                        nav-link (to: "/popover", icon: "layout-grid", label: "Popover") {}
+                        nav-link (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu") {}
+                        nav-link (to: "/contextmenu", icon: "layout-grid", label: "ContextMenu") {}
+                        nav-link (to: "/collapsible", icon: "layout-grid", label: "Collapsible") {}
+                        nav-link (to: "/accordion", icon: "layout-grid", label: "Accordion") {}
+                    }
+                }
+
+                // Mobile sidebar drawer
+                drawer (open: sidebarOpen, onClose: closeSidebar) {
+                    // Mobile navigation
+                }
+
+                // Main content
+                main (style: "flex-1 overflow-hidden") {
+                    scroll (style: "h-full") {
+                        div (style: "p-4 md:p-8 lg:p-10 max-w-5xl mx-auto pb-24 md:pb-10") {
+                            outlet
                         }
                     }
                 }
             }
 
-            // Main content area: sidebar + content
-            row (style: "flex-1 overflow-hidden") {
-                // Sidebar - on the left with scrollable content
-                aside (style: "w-64 border-r bg-background flex flex-col h-[calc(100vh-3.5rem)]") {
-                    // Components section header (fixed)
-                    text (text: "Components", style: "text-sm font-semibold text-muted-foreground px-4 pt-4 pb-2") {}
-
-                    // Scrollable navigation area
-                    scroll (style: "flex-1 px-2") {
-                        col (gap: "0") {
-                            // Navigation links using router-link
-                            link (to: "/accordion") {
-                                text (text: "Accordion", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/alert") {
-                                text (text: "Alert", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/alertdialog") {
-                                text (text: "AlertDialog", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/aspectratio") {
-                                text (text: "AspectRatio", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/avatar") {
-                                text (text: "Avatar", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/badge") {
-                                text (text: "Badge", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/breadcrumb") {
-                                text (text: "Breadcrumb", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/button") {
-                                text (text: "Button", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/calendar") {
-                                text (text: "Calendar", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/card") {
-                                text (text: "Card", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/carousel") {
-                                text (text: "Carousel", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/checkbox") {
-                                text (text: "Checkbox", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/collapsible") {
-                                text (text: "Collapsible", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/combobox") {
-                                text (text: "Combobox", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/command") {
-                                text (text: "Command", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/contextmenu") {
-                                text (text: "ContextMenu", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/datatable") {
-                                text (text: "DataTable", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/datepicker") {
-                                text (text: "DatePicker", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/dialog") {
-                                text (text: "Dialog", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/drawer") {
-                                text (text: "Drawer", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/dropdownmenu") {
-                                text (text: "DropdownMenu", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/form") {
-                                text (text: "Form", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/hovercard") {
-                                text (text: "HoverCard", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/input") {
-                                text (text: "Input", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/label") {
-                                text (text: "Label", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/menubar") {
-                                text (text: "Menubar", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/navigationmenu") {
-                                text (text: "NavigationMenu", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/pagination") {
-                                text (text: "Pagination", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/popover") {
-                                text (text: "Popover", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/progress") {
-                                text (text: "Progress", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/radiogroup") {
-                                text (text: "RadioGroup", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/scrollarea") {
-                                text (text: "ScrollArea", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/select") {
-                                text (text: "Select", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/separator") {
-                                text (text: "Separator", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/sheet") {
-                                text (text: "Sheet", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/sidebar") {
-                                text (text: "Sidebar", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/skeleton") {
-                                text (text: "Skeleton", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/slider") {
-                                text (text: "Slider", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/sonner") {
-                                text (text: "Sonner", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/switch") {
-                                text (text: "Switch", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/table") {
-                                text (text: "Table", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/tabs") {
-                                text (text: "Tabs", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/textarea") {
-                                text (text: "Textarea", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/toast") {
-                                text (text: "Toast", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/toggle") {
-                                text (text: "Toggle", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/togglegroup") {
-                                text (text: "ToggleGroup", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                            link (to: "/tooltip") {
-                                text (text: "Tooltip", style: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                            }
-                        }
+            // Mobile bottom nav (hidden on md+)
+            row (style: "md:hidden fixed bottom-0 left-0 right-0 h-16 bg-background/95 backdrop-blur border-t z-40 items-center justify-around") {
+                link (to: "/") {
+                    col (style: "items-center gap-0.5 py-2 px-3") {
+                        icon (name: "home", style: "h-5 w-5") {}
+                        text (text: "Home", style: "text-[10px]") {}
                     }
                 }
-
-                // Route outlet - renders the matched page component
-                main (style: "flex-1 p-8 h-[calc(100vh-3.5rem)] overflow-hidden") {
-                    scroll (style: "h-full pr-4") {
-                        outlet
+                button (onClick: openSidebar) {
+                    col (style: "items-center gap-0.5 py-2 px-3") {
+                        icon (name: "layout-grid", style: "h-5 w-5") {}
+                        text (text: "Components", style: "text-[10px]") {}
+                    }
+                }
+                button (onClick: openSearch) {
+                    col (style: "items-center gap-0.5 py-2 px-3") {
+                        icon (name: "search", style: "h-5 w-5") {}
+                        text (text: "Search", style: "text-[10px]") {}
+                    }
+                }
+                button (onClick: cycleTheme) {
+                    col (style: "items-center gap-0.5 py-2 px-3") {
+                        icon (name: "palette", style: "h-5 w-5") {}
+                        text (text: "Theme", style: "text-[10px]") {}
                     }
                 }
             }

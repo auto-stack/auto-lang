@@ -1,272 +1,119 @@
-// pages/index.at - Documentation home page
+// pages/index.at - Documentation home page with Hero, search, and categorized component grid
 
 widget IndexPage {
     msg Msg { Navigate }
 
     model {
-        activeTab str = "preview"
+        searchQuery str = ""
     }
 
     view {
-        col (style: "gap-8") {
-            // Hero section
-            col (style: "gap-4 text-center py-12") {
-                h1 (text: "Auto UI", style: "text-5xl font-bold tracking-tight") {}
-                text (text: "A collection of beautifully designed components", style: "text-xl text-muted-foreground") {}
-                text (text: "Built with Auto, styled with Tailwind CSS", style: "text-muted-foreground") {}
-            }
+        col (style: "gap-10") {
+            // Hero section with gradient background
+            col (style: "relative overflow-hidden rounded-2xl md:rounded-3xl") {
+                div (style: "absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/10") {}
+                div (style: "absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/5 blur-3xl") {}
+                div (style: "absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-accent/5 blur-3xl") {}
 
-            // Component grid - link buttons to each page
-            col (style: "gap-4") {
-                row (style: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4") {
-                    // Row 1
-                    link (to: "/accordion") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Accordion"
-                        }
+                col (style: "relative px-4 py-12 md:py-20 lg:py-24 text-center gap-4") {
+                    badge (variant: "outline", style: "mx-auto mb-2") {
+                        icon (name: "layers", style: "h-3 w-3 mr-1.5") {}
+                        text "v1.0 — 46 Components"
                     }
-                    link (to: "/alert") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Alert"
-                        }
+
+                    h1 (text: "Auto UI", style: "text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-accent bg-clip-text text-transparent") {}
+
+                    text (style: "text-base md:text-lg text-muted-foreground max-w-2xl mx-auto") {
+                        "A collection of beautifully designed, fully responsive components."
                     }
-                    link (to: "/alertdialog") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "AlertDialog"
-                        }
+                    text (style: "text-sm md:text-base text-muted-foreground/80 max-w-xl mx-auto") {
+                        "Built with Auto language, styled with Tailwind CSS, powered by Reka UI."
                     }
-                    link (to: "/avatar") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Avatar"
+
+                    row (style: "flex-wrap justify-center gap-3 mt-4") {
+                        button (text: "Get Started", size: "lg", style: "shadow-lg shadow-primary/25") {
+                            icon (name: "arrow-right", style: "h-4 w-4") {}
                         }
-                    }
-                    link (to: "/aspectratio") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "AspectRatio"
-                        }
-                    }
-                    // Row 2
-                    link (to: "/badge") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Badge"
-                        }
-                    }
-                    link (to: "/breadcrumb") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Breadcrumb"
-                        }
-                    }
-                    link (to: "/button") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Button"
-                        }
-                    }
-                    link (to: "/calendar") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Calendar"
-                        }
-                    }
-                    // Row 3
-                    link (to: "/card") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Card"
-                        }
-                    }
-                    link (to: "/carousel") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Carousel"
-                        }
-                    }
-                    link (to: "/checkbox") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Checkbox"
-                        }
-                    }
-                    link (to: "/collapsible") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Collapsible"
-                        }
-                    }
-                    // Row 4
-                    link (to: "/combobox") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Combobox"
-                        }
-                    }
-                    link (to: "/command") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Command"
-                        }
-                    }
-                    link (to: "/contextmenu") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "ContextMenu"
-                        }
-                    }
-                    link (to: "/datatable") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "DataTable"
-                        }
-                    }
-                    // Row 5
-                    link (to: "/datepicker") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "DatePicker"
-                        }
-                    }
-                    link (to: "/dialog") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Dialog"
-                        }
-                    }
-                    link (to: "/drawer") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Drawer"
-                        }
-                    }
-                    link (to: "/dropdownmenu") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "DropdownMenu"
-                        }
-                    }
-                    // Row 6
-                    link (to: "/form") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Form"
-                        }
-                    }
-                    link (to: "/hovercard") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "HoverCard"
-                        }
-                    }
-                    link (to: "/input") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Input"
-                        }
-                    }
-                    link (to: "/label") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Label"
-                        }
-                    }
-                    // Row 7
-                    link (to: "/menubar") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Menubar"
-                        }
-                    }
-                    link (to: "/navigationmenu") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "NavigationMenu"
-                        }
-                    }
-                    link (to: "/pagination") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Pagination"
-                        }
-                    }
-                    link (to: "/popover") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Popover"
-                        }
-                    }
-                    // Row 8
-                    link (to: "/progress") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Progress"
-                        }
-                    }
-                    link (to: "/radiogroup") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "RadioGroup"
-                        }
-                    }
-                    link (to: "/scrollarea") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "ScrollArea"
-                        }
-                    }
-                    link (to: "/select") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Select"
-                        }
-                    }
-                    // Row 9
-                    link (to: "/separator") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Separator"
-                        }
-                    }
-                    link (to: "/sheet") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Sheet"
-                        }
-                    }
-                    link (to: "/sidebar") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Sidebar"
-                        }
-                    }
-                    link (to: "/skeleton") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Skeleton"
-                        }
-                    }
-                    // Row 10
-                    link (to: "/slider") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Slider"
-                        }
-                    }
-                    link (to: "/sonner") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Sonner"
-                        }
-                    }
-                    link (to: "/switch") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Switch"
-                        }
-                    }
-                    link (to: "/table") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Table"
-                        }
-                    }
-                    // Row 11
-                    link (to: "/tabs") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Tabs"
-                        }
-                    }
-                    link (to: "/textarea") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Textarea"
-                        }
-                    }
-                    link (to: "/toast") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Toast"
-                        }
-                    }
-                    link (to: "/toggle") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Toggle"
-                        }
-                    }
-                    // Row 12
-                    link (to: "/togglegroup") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "ToggleGroup"
-                        }
-                    }
-                    link (to: "/tooltip") {
-                        div (style: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                            text "Tooltip"
-                        }
+                        button (text: "Browse Components", variant: "outline", size: "lg") {}
                     }
                 }
+            }
+
+            // Search bar
+            div (style: "max-w-xl mx-auto w-full relative") {
+                icon (name: "search", style: "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground") {}
+                input (placeholder: "Search components...", style: "pl-10 h-11 rounded-xl") {}
+            }
+
+            // Component categories grid
+            col (style: "gap-10") {
+                // Form category
+                category-section (name: "Form", color: "blue", count: 12) {
+                    component-card (to: "/button", name: "Button", desc: "Clickable actions", icon: "mouse-pointer-click") {}
+                    component-card (to: "/input", name: "Input", desc: "Text fields", icon: "type") {}
+                    component-card (to: "/textarea", name: "Textarea", desc: "Multi-line text", icon: "type") {}
+                    component-card (to: "/checkbox", name: "Checkbox", desc: "Boolean toggles", icon: "square-stack") {}
+                    component-card (to: "/switch", name: "Switch", desc: "Slide toggles", icon: "square-stack") {}
+                    component-card (to: "/select", name: "Select", desc: "Dropdown choices", icon: "layout-grid") {}
+                    component-card (to: "/combobox", name: "Combobox", desc: "Searchable select", icon: "command") {}
+                    component-card (to: "/label", name: "Label", desc: "Form labels", icon: "type") {}
+                    component-card (to: "/form", name: "Form", desc: "Form layouts", icon: "layout-grid") {}
+                    component-card (to: "/slider", name: "Slider", desc: "Range values", icon: "layout-grid") {}
+                    component-card (to: "/calendar", name: "Calendar", desc: "Date display", icon: "layout-grid") {}
+                    component-card (to: "/datepicker", name: "DatePicker", desc: "Date selection", icon: "layout-grid") {}
+                }
+
+                // Display category
+                category-section (name: "Display", color: "emerald", count: 8) {
+                    component-card (to: "/card", name: "Card", desc: "Content containers", icon: "square-stack") {}
+                    component-card (to: "/badge", name: "Badge", desc: "Status labels", icon: "bell") {}
+                    component-card (to: "/avatar", name: "Avatar", desc: "User pictures", icon: "image") {}
+                    component-card (to: "/skeleton", name: "Skeleton", desc: "Loading states", icon: "layout-grid") {}
+                    component-card (to: "/aspectratio", name: "AspectRatio", desc: "Media ratios", icon: "image") {}
+                    component-card (to: "/carousel", name: "Carousel", desc: "Slideshows", icon: "layout-grid") {}
+                    component-card (to: "/table", name: "Table", desc: "Data grids", icon: "layout-grid") {}
+                    component-card (to: "/datatable", name: "DataTable", desc: "Advanced tables", icon: "layout-grid") {}
+                }
+
+                // Feedback category
+                category-section (name: "Feedback", color: "amber", count: 7) {
+                    component-card (to: "/alert", name: "Alert", desc: "Callout messages", icon: "bell") {}
+                    component-card (to: "/progress", name: "Progress", desc: "Progress bars", icon: "layout-grid") {}
+                    component-card (to: "/sonner", name: "Sonner", desc: "Toast notifications", icon: "bell") {}
+                    component-card (to: "/toast", name: "Toast", desc: "Brief alerts", icon: "bell") {}
+                    component-card (to: "/tooltip", name: "Tooltip", desc: "Context hints", icon: "bell") {}
+                }
+
+                // Navigation category
+                category-section (name: "Navigation", color: "purple", count: 9) {
+                    component-card (to: "/breadcrumb", name: "Breadcrumb", desc: "Path navigation", icon: "navigation") {}
+                    component-card (to: "/tabs", name: "Tabs", desc: "Tab panels", icon: "layout-grid") {}
+                    component-card (to: "/menubar", name: "Menubar", desc: "Menu bars", icon: "layout-grid") {}
+                    component-card (to: "/pagination", name: "Pagination", desc: "Page controls", icon: "layout-grid") {}
+                    component-card (to: "/navigationmenu", name: "NavigationMenu", desc: "Site navigation", icon: "navigation") {}
+                    component-card (to: "/sidebar", name: "Sidebar", desc: "Side panels", icon: "layout-grid") {}
+                    component-card (to: "/command", name: "Command", desc: "Command palettes", icon: "command") {}
+                    component-card (to: "/scrollarea", name: "ScrollArea", desc: "Scrollable regions", icon: "layout-grid") {}
+                    component-card (to: "/separator", name: "Separator", desc: "Dividers", icon: "layout-grid") {}
+                }
+
+                // Overlay category
+                category-section (name: "Overlay", color: "rose", count: 10) {
+                    component-card (to: "/dialog", name: "Dialog", desc: "Modal windows", icon: "square-stack") {}
+                    component-card (to: "/alertdialog", name: "AlertDialog", desc: "Alert modals", icon: "bell") {}
+                    component-card (to: "/drawer", name: "Drawer", desc: "Slide panels", icon: "layout-grid") {}
+                    component-card (to: "/sheet", name: "Sheet", desc: "Bottom sheets", icon: "square-stack") {}
+                    component-card (to: "/popover", name: "Popover", desc: "Floating panels", icon: "layout-grid") {}
+                    component-card (to: "/dropdownmenu", name: "DropdownMenu", desc: "Context menus", icon: "layout-grid") {}
+                    component-card (to: "/contextmenu", name: "ContextMenu", desc: "Right-click menus", icon: "layout-grid") {}
+                    component-card (to: "/collapsible", name: "Collapsible", desc: "Expand/collapse", icon: "layout-grid") {}
+                    component-card (to: "/accordion", name: "Accordion", desc: "Collapsible sections", icon: "layout-grid") {}
+                }
+            }
+
+            // Footer
+            col (style: "border-t pt-8 pb-4 text-center text-sm text-muted-foreground") {
+                text "Auto UI Component Gallery — Built with Auto Language"
             }
         }
     }
