@@ -1024,6 +1024,84 @@ impl<'a> Lexer<'a> {
                 '\n' => {
                     self.line += 1;
                     self.at = 0;
+                    // After } + newline, suppress Newline if next non-ws/comment content is "else"
+                    if let Some(last) = &self.last {
+                        if last.kind == TokenKind::RBrace {
+                            // Peek ahead: skip whitespace, comments, and newlines
+                            let mut iter = self.chars.clone();
+                            let found_else = loop {
+                                // Skip spaces/tabs/\r
+                                while let Some(&nc) = iter.peek() {
+                                    if nc == ' ' || nc == '\t' || nc == '\r' { iter.next(); }
+                                    else { break; }
+                                }
+                                // Skip // line comments
+                                if iter.peek() == Some(&'/') {
+                                    let mut ci = iter.clone();
+                                    ci.next();
+                                    if ci.peek() == Some(&'/') {
+                                        // It's a // comment — skip to end of line
+                                        iter.next(); iter.next(); // skip //
+                                        while let Some(&nc) = iter.peek() {
+                                            if nc == '\n' { break; }
+                                            iter.next();
+                                        }
+                                        // Skip the newline after comment
+                                        if iter.peek() == Some(&'\n') { iter.next(); }
+                                        continue;
+                                    }
+                                }
+                                // Skip newlines
+                                if iter.peek() == Some(&'\n') { iter.next(); continue; }
+                                // Check if next word is "else"
+                                let peek_text: String = iter.clone().take(4).collect();
+                                if peek_text == "else" {
+                                    // Check that 'else' is a complete word
+                                    let mut ci = iter.clone();
+                                    ci.next(); ci.next(); ci.next(); ci.next();
+                                    let is_complete = ci.peek().map_or(true, |&c|
+                                        !c.is_alphanumeric() && c != '_'
+                                    );
+                                    break is_complete;
+                                }
+                                break false;
+                            };
+                            if found_else {
+                                // Skip whitespace/comments/newlines until we reach "else"
+                                loop {
+                                    self.skip_whitespace();
+                                    // Check for // comments
+                                    if self.chars.peek() == Some(&'/') {
+                                        let mut ci = self.chars.clone();
+                                        ci.next();
+                                        if ci.peek() == Some(&'/') {
+                                            // Skip the comment line
+                                            self.chars.next(); self.chars.next();
+                                            while let Some(&nc) = self.chars.peek() {
+                                                if nc == '\n' { break; }
+                                                self.chars.next();
+                                            }
+                                            if self.chars.peek() == Some(&'\n') {
+                                                self.chars.next();
+                                                self.line += 1;
+                                                self.at = 0;
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                    // Check for newlines
+                                    if self.chars.peek() == Some(&'\n') {
+                                        self.chars.next();
+                                        self.line += 1;
+                                        self.at = 0;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                return self.next_step();
+                            }
+                        }
+                    }
                     return Ok(self.single(TokenKind::Newline, c));
                 }
                 '+' => {

@@ -467,3 +467,90 @@ fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unw
 #[test] fn test_99_bootstrap_005_str_slice_concat() { test_vm("99_bootstrap/005_str_slice_concat").unwrap(); }
 #[test] fn test_99_bootstrap_006_bool_compare() { test_vm("99_bootstrap/006_bool_compare").unwrap(); }
 #[test] fn test_99_bootstrap_007_nested_control_flow() { test_vm("99_bootstrap/007_nested_control_flow").unwrap(); }
+
+// =============================================================================
+// Plan 229b Phase 1.2: AAVM (Auto AutoVM) Test Runner
+// =============================================================================
+// Tests the self-hosted compiler code (auto/lib/*.at) by merging it with test
+// cases and running through the AutoVM. Future: transpile via a2r → compile → run.
+//
+// Test cases reuse the same format as VM file tests (.at + .expected.out).
+// The AAVM runner prepends auto/lib/*.at code before the test case code.
+
+/// Auto library files to prepend for AAVM tests (order matters: dependencies first)
+const AUTO_LIB_FILES: &[&str] = &[
+    "auto/lib/pos.at",
+    "auto/lib/token.at",
+    "auto/lib/error.at",
+    "auto/lib/lexer.at",
+];
+
+/// Read and concatenate all auto/lib/*.at files
+fn read_auto_lib() -> AutoResult<String> {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut lib_code = String::new();
+    for file in AUTO_LIB_FILES {
+        let path = d.join(file);
+        if path.exists() {
+            lib_code.push_str(&read_to_string(&path)?);
+            lib_code.push('\n');
+        }
+    }
+    Ok(lib_code)
+}
+
+/// AAVM test runner: merges auto/lib code with test case, runs through VM
+fn test_aavm(case: &str) -> AutoResult<()> {
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+    let name = parts[1..].join("_");
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    // Read test case source
+    let test_src = read_to_string(d.join(format!("test/vm/{}/{}.at", case, name)))?;
+
+    // Merge: auto/lib code first, then test case (which may override main())
+    let lib_code = read_auto_lib()?;
+    let merged = format!("{}\n{}", lib_code, test_src);
+
+    // Check .expected.error — expect runtime error
+    let err_path = d.join(format!("test/vm/{}/{}.expected.error", case, name));
+    if err_path.is_file() {
+        let result = run(&merged);
+        assert!(
+            result.is_err(),
+            "Expected error but got: {:?}",
+            result
+        );
+        return Ok(());
+    }
+
+    // Execute with stdout capture
+    let (_result, stdout) = run_with_capture(&merged)?;
+
+    // Check .expected.out — stdout output
+    let out_path = d.join(format!("test/vm/{}/{}.expected.out", case, name));
+    if out_path.is_file() {
+        let expected_out = read_to_string(&out_path)?;
+        if stdout != expected_out {
+            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.out", case, name));
+            std::fs::write(&wrong_path, &stdout)?;
+        }
+        assert_eq!(stdout, expected_out);
+    }
+
+    // Check .expected.result — return value
+    let res_path = d.join(format!("test/vm/{}/{}.expected.result", case, name));
+    if res_path.is_file() {
+        let expected_res = read_to_string(&res_path)?;
+        let result = _result;
+        if result != expected_res {
+            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.result", case, name));
+            std::fs::write(&wrong_path, &result)?;
+        }
+        assert_eq!(result, expected_res);
+    }
+
+    Ok(())
+}

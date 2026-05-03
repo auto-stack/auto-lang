@@ -5257,25 +5257,41 @@ impl<'a> Parser<'a> {
                     init: None,
                 }));
             } else if self.is_kind(TokenKind::LParen) {
-                // for call(args) { ... }
                 let args = self.args()?;
-                let call = self.call(Expr::Ident(ident), args)?;
-                let Expr::Call(call) = call else {
-                    return Err(SyntaxError::Generic {
-                        message: "Strange call in for statement".to_string(),
-                        span: pos_to_span(self.cur.pos),
-                    }
-                    .into());
-                };
-                self.expect(TokenKind::Question)?;
-                self.enter_scope();
+                let call_expr = self.call(Expr::Ident(ident.clone()), args)?;
+
+                // Check if this is an iterator call: for call(args)? { ... }
+                if self.is_kind(TokenKind::Question) {
+                    self.next(); // skip '?'
+                    let Expr::Call(call) = call_expr else {
+                        return Err(SyntaxError::Generic {
+                            message: "Strange call in for statement".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    };
+                    self.enter_scope();
+                    let body = self.body()?;
+                    self.exit_scope();
+                    return Ok(Stmt::For(For {
+                        iter: Iter::Call(call),
+                        range: Expr::Nil,
+                        body,
+                        new_line: false,
+                        init: None,
+                    }));
+                }
+
+                // Otherwise it's a conditional loop: for call(args) { ... }
+                // or for call(args) || other { ... }
+                let condition = self.expr_pratt_with_left(call_expr, 0)?;
                 let body = self.body()?;
-                self.exit_scope();
+                let has_new_line = body.has_new_line;
                 return Ok(Stmt::For(For {
-                    iter: Iter::Call(call),
-                    range: Expr::Nil,
+                    iter: Iter::Cond,
+                    range: condition,
                     body,
-                    new_line: false,
+                    new_line: has_new_line,
                     init: None,
                 }));
             }
