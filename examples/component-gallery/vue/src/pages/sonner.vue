@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
+import { Toaster } from '@/components/ui/sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -17,7 +18,7 @@ const sonnerBasicVueCode = `<div class="flex flex-col gap-4">
     <Button variant="outline">Show Toast</Button>
     <Button variant="outline">Show Success</Button>
   </div>
-  <div />
+  <Toaster />
 </div>
 `
 const codeblock2Code = `import { toast } from 'vue-sonner'
@@ -31,12 +32,12 @@ toast.error('Failed to create event')`
     <DemoSection title="Simple" id="sonner-basic" :autoCode="sonnerBasicAutoCode" :vueCode="sonnerBasicVueCode">
       <template #preview>
         <div class="flex flex-col gap-4">
-              <div class="flex flex-row gap-2">
-                <Button variant="outline">Show Toast</Button>
-                <Button variant="outline">Show Success</Button>
-              </div>
-              <div />
-            </div>
+          <div class="flex flex-row gap-2">
+            <Button variant="outline">Show Toast</Button>
+            <Button variant="outline">Show Success</Button>
+          </div>
+          <Toaster />
+        </div>
       </template>
     </DemoSection>
     <template #properties>

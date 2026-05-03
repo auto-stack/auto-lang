@@ -53,12 +53,33 @@ const inputButtonVueCode = `<div class="flex flex-row gap-2 w-full max-w-sm item
         <Input type="email" placeholder="Email" />
       </template>
     </DemoSection>
-    <DemoSection title="Examples" id="input-file" :autoCode="inputFileAutoCode" :vueCode="inputFileVueCode">
+    <DemoSection title="File" id="input-file" :autoCode="inputFileAutoCode" :vueCode="inputFileVueCode">
       <template #preview>
         <div class="flex flex-col gap-1.5 w-full max-w-sm">
-              <Label for="picture">Picture</Label>
-              <Input type="file" />
-            </div>
+          <Label for="picture">Picture</Label>
+          <Input type="file" />
+        </div>
+      </template>
+    </DemoSection>
+    <DemoSection title="Disabled" id="input-disabled" :autoCode="inputDisabledAutoCode" :vueCode="inputDisabledVueCode">
+      <template #preview>
+        <Input type="email" placeholder="Email" disabled />
+      </template>
+    </DemoSection>
+    <DemoSection title="With Label" id="input-label" :autoCode="inputLabelAutoCode" :vueCode="inputLabelVueCode">
+      <template #preview>
+        <div class="flex flex-col gap-1.5 w-full max-w-sm">
+          <Label for="email">Email</Label>
+          <Input type="email" placeholder="Email" />
+        </div>
+      </template>
+    </DemoSection>
+    <DemoSection title="With Button" id="input-button" :autoCode="inputButtonAutoCode" :vueCode="inputButtonVueCode">
+      <template #preview>
+        <div class="flex flex-row gap-2 w-full max-w-sm items-center">
+          <Input type="email" placeholder="Email" />
+          <Button>Subscribe</Button>
+        </div>
       </template>
     </DemoSection>
     <template #properties>
@@ -115,11 +136,7 @@ const inputButtonVueCode = `<div class="flex flex-row gap-2 w-full max-w-sm item
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>

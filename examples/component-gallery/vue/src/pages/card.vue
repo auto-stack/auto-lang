@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { Avatar } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Form } from '@/components/ui/form'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Switch } from '@/components/ui/switch'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
 
@@ -25,25 +24,22 @@ const cardBasicAutoCode = `card {
 }
 `
 const cardBasicVueCode = `<Card>
-  <div class="flex flex-col space-y-1.5 p-6">
-    <div class="text-lg font-semibold leading-none tracking-tight">Card Title</div>
-    <div class="text-sm text-muted-foreground">Card Description</div>
-  </div>
-  <div>
-    Card Content
-  </div>
-  <div class="flex items-center p-6 pt-0">
-    Card Footer
-  </div>
+  <CardHeader>
+    <CardTitle>Card Title</CardTitle>
+    <CardDescription>Card Description</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <p>Card Content</p>
+  </CardContent>
+  <CardFooter>
+    <p>Card Footer</p>
+  </CardFooter>
 </Card>
 `
 const cardLoginAutoCode = `card (class: "w-full max-w-sm") {
     card-header {
         card-title (text: "Login to your account") {}
         card-description (text: "Enter your email below to login to your account.") {}
-        card-action {
-            button (text: "Sign Up", variant: "link") {}
-        }
     }
     card-content {
         form {
@@ -68,35 +64,34 @@ const cardLoginAutoCode = `card (class: "w-full max-w-sm") {
     }
 }
 `
-const cardLoginVueCode = `<Card>
-  <div class="flex flex-col space-y-1.5 p-6">
-    <div class="text-lg font-semibold leading-none tracking-tight">Login to your account</div>
-    <div class="text-sm text-muted-foreground">Enter your email below to login to your account.</div>
-    <div>
-      <Button variant="link">Sign Up</Button>
-    </div>
-  </div>
-  <div>
-    <Form>
-      <div class="flex flex-col gap-6">
-        <div class="flex flex-col gap-2">
+const cardLoginVueCode = `<Card class="w-full max-w-sm">
+  <CardHeader>
+    <CardTitle>Login to your account</CardTitle>
+    <CardDescription>Enter your email below to login to your account.</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <form>
+      <div class="grid w-full items-center gap-4">
+        <div class="flex flex-col space-y-1.5">
           <Label for="email">Email</Label>
-          <Input type="email" placeholder="m@example.com" />
+          <Input id="email" type="email" placeholder="m@example.com" />
         </div>
-        <div class="flex flex-col gap-2">
-          <div class="flex flex-row gap-4 flex items-center">
+        <div class="flex flex-col space-y-1.5">
+          <div class="flex items-center">
             <Label for="password">Password</Label>
-            <a href="#">Forgot your password?</a>
+            <a href="#" class="ml-auto inline-block text-sm underline">
+              Forgot your password?
+            </a>
           </div>
-          <Input type="password" />
+          <Input id="password" type="password" />
         </div>
       </div>
-    </Form>
-  </div>
-  <div class="flex items-center p-6 pt-0 flex-col gap-2">
-    <Button>Login</Button>
-    <Button variant="outline">Login with Google</Button>
-  </div>
+    </form>
+  </CardContent>
+  <CardFooter class="flex flex-col gap-2">
+    <Button class="w-full">Login</Button>
+    <Button variant="outline" class="w-full">Login with Google</Button>
+  </CardFooter>
 </Card>
 `
 const cardProjectAutoCode = `card {
@@ -133,36 +128,36 @@ const cardProjectAutoCode = `card {
 }
 `
 const cardProjectVueCode = `<Card>
-  <div class="flex flex-col space-y-1.5 p-6">
-    <div class="text-lg font-semibold leading-none tracking-tight">Create project</div>
-    <div class="text-sm text-muted-foreground">Deploy your new project in one-click.</div>
-  </div>
-  <div>
-    <div class="flex flex-col gap-4">
+  <CardHeader>
+    <CardTitle>Create project</CardTitle>
+    <CardDescription>Deploy your new project in one-click.</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <form class="flex flex-col gap-4">
       <div class="flex flex-col gap-2">
-        <Label>Name</Label>
-        <Input placeholder="Name of your project" />
+        <Label for="name">Name</Label>
+        <Input id="name" placeholder="Name of your project" />
       </div>
       <div class="flex flex-col gap-2">
-        <Label>Framework</Label>
+        <Label for="framework">Framework</Label>
         <Select>
-          <div>
-            <div placeholder="Select" />
-          </div>
-          <div>
-            <div value="next">Next.js</div>
-            <div value="sveltekit">SvelteKit</div>
-            <div value="astro">Astro</div>
-            <div value="nuxt">Nuxt</div>
-          </div>
+          <SelectTrigger>
+            <SelectValue placeholder="Select" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="next">Next.js</SelectItem>
+            <SelectItem value="sveltekit">SvelteKit</SelectItem>
+            <SelectItem value="astro">Astro</SelectItem>
+            <SelectItem value="nuxt">Nuxt</SelectItem>
+          </SelectContent>
         </Select>
       </div>
-    </div>
-  </div>
-  <div class="flex items-center p-6 pt-0 flex justify-between">
+    </form>
+  </CardContent>
+  <CardFooter class="flex justify-between">
     <Button variant="outline">Cancel</Button>
     <Button>Deploy</Button>
-  </div>
+  </CardFooter>
 </Card>
 `
 const cardNotificationsAutoCode = `card {
@@ -219,58 +214,48 @@ const cardNotificationsAutoCode = `card {
     }
 }
 `
-const cardNotificationsVueCode = `<Card>
-  <div class="flex flex-col space-y-1.5 p-6">
-    <div class="text-lg font-semibold leading-none tracking-tight">Notifications</div>
-    <div class="text-sm text-muted-foreground">You have 3 unread messages.</div>
-  </div>
-  <div class="grid gap-4">
-    <div class="flex flex-col gap-4">
-      <div class="flex flex-row gap-4 flex items-center justify-between">
-        <div class="flex flex-col gap-1">
-          <span class="text-muted-foreground leading-7 text-sm font-medium">Push Notifications</span>
-          <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">Send notifications to device.</span>
-        </div>
-        <div />
+const cardNotificationsVueCode = `<Card class="w-full max-w-sm">
+  <CardHeader>
+    <CardTitle>Notifications</CardTitle>
+    <CardDescription>You have 3 unread messages.</CardDescription>
+  </CardHeader>
+  <CardContent class="grid gap-4">
+    <div class="flex items-center space-x-4 rounded-md border p-4">
+      <div class="flex-1 space-y-1">
+        <p class="text-sm font-medium leading-none">Push Notifications</p>
+        <p class="text-sm text-muted-foreground">Send notifications to device.</p>
       </div>
-      <Separator />
-      <div class="flex flex-col gap-4">
-        <div class="flex flex-row gap-4 flex items-start gap-4">
-          <Avatar>
-            <div src="/avatars/01.png" alt="Avatar" />
-            <div>OM</div>
-          </Avatar>
-          <div class="flex flex-col gap-1 grid gap-1">
-            <span class="text-muted-foreground leading-7 text-sm">Your call has been confirmed.</span>
-            <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">1 hour ago</span>
-          </div>
+      <Switch />
+    </div>
+    <div>
+      <div class="mb-4 grid grid-cols-[25px_1fr] items-start pb-4 last:mb-0 last:pb-0">
+        <span class="flex h-2 w-2 translate-y-1 rounded-full bg-sky-500" />
+        <div class="space-y-1">
+          <p class="text-sm font-medium leading-none">Your call has been confirmed.</p>
+          <p class="text-sm text-muted-foreground">1 hour ago</p>
         </div>
-        <div class="flex flex-row gap-4 flex items-start gap-4">
-          <Avatar>
-            <div src="/avatars/02.png" alt="Avatar" />
-            <div>JD</div>
-          </Avatar>
-          <div class="flex flex-col gap-1 grid gap-1">
-            <span class="text-muted-foreground leading-7 text-sm">You have a new message!</span>
-            <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">1 hour ago</span>
-          </div>
+      </div>
+      <div class="mb-4 grid grid-cols-[25px_1fr] items-start pb-4 last:mb-0 last:pb-0">
+        <span class="flex h-2 w-2 translate-y-1 rounded-full bg-sky-500" />
+        <div class="space-y-1">
+          <p class="text-sm font-medium leading-none">You have a new message!</p>
+          <p class="text-sm text-muted-foreground">1 hour ago</p>
         </div>
-        <div class="flex flex-row gap-4 flex items-start gap-4">
-          <Avatar>
-            <div alt="Avatar" src="/avatars/03.png" />
-            <div>WW</div>
-          </Avatar>
-          <div class="flex flex-col gap-1 grid gap-1">
-            <span class="text-muted-foreground leading-7 text-sm">Your subscription is expiring soon!</span>
-            <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">2 hours ago</span>
-          </div>
+      </div>
+      <div class="mb-4 grid grid-cols-[25px_1fr] items-start pb-4 last:mb-0 last:pb-0">
+        <span class="flex h-2 w-2 translate-y-1 rounded-full bg-sky-500" />
+        <div class="space-y-1">
+          <p class="text-sm font-medium leading-none">Your subscription is expiring soon!</p>
+          <p class="text-sm text-muted-foreground">2 hours ago</p>
         </div>
       </div>
     </div>
-  </div>
-  <div class="flex items-center p-6 pt-0">
-    <Button variant="outline">Mark all as read</Button>
-  </div>
+  </CardContent>
+  <CardFooter>
+    <Button variant="outline" class="w-full">
+      <CheckIcon /> Mark all as read
+    </Button>
+  </CardFooter>
 </Card>
 `
 </script>
@@ -279,157 +264,148 @@ const cardNotificationsVueCode = `<Card>
   <ComponentDocPage title="Card" description="Displays a card with header, content, and footer." installCommand="npx shadcn-vue@latest add card">
     <DemoSection title="Basic" id="card-basic" :autoCode="cardBasicAutoCode" :vueCode="cardBasicVueCode">
       <template #preview>
-        <Card>
-              <div class="flex flex-col space-y-1.5 p-6">
-                <div class="text-lg font-semibold leading-none tracking-tight">Card Title</div>
-                <div class="text-sm text-muted-foreground">Card Description</div>
-              </div>
-              <div>
-                Card Content
-              </div>
-              <div class="flex items-center p-6 pt-0">
-                Card Footer
-              </div>
-            </Card>
+        <Card class="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Card Title</CardTitle>
+            <CardDescription>Card Description</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p>Card Content</p>
+          </CardContent>
+          <CardFooter>
+            <p>Card Footer</p>
+          </CardFooter>
+        </Card>
       </template>
     </DemoSection>
     <DemoSection title="Login Form" id="card-login" :autoCode="cardLoginAutoCode" :vueCode="cardLoginVueCode">
       <template #preview>
-        <Card>
-              <div class="flex flex-col space-y-1.5 p-6">
-                <div class="text-lg font-semibold leading-none tracking-tight">Login to your account</div>
-                <div class="text-sm text-muted-foreground">Enter your email below to login to your account.</div>
-                <div>
-                  <Button variant="link">Sign Up</Button>
+        <Card class="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Login to your account</CardTitle>
+            <CardDescription>Enter your email below to login to your account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form>
+              <div class="grid w-full items-center gap-4">
+                <div class="flex flex-col space-y-1.5">
+                  <Label for="email">Email</Label>
+                  <Input id="email" type="email" placeholder="m@example.com" />
+                </div>
+                <div class="flex flex-col space-y-1.5">
+                  <div class="flex items-center">
+                    <Label for="password">Password</Label>
+                    <a href="#" class="ml-auto inline-block text-sm underline">Forgot your password?</a>
+                  </div>
+                  <Input id="password" type="password" />
                 </div>
               </div>
-              <div>
-                <Form>
-                  <div class="flex flex-col gap-6">
-                    <div class="flex flex-col gap-2">
-                      <Label for="email">Email</Label>
-                      <Input type="email" placeholder="m@example.com" />
-                    </div>
-                    <div class="flex flex-col gap-2">
-                      <div class="flex flex-row gap-4 flex items-center">
-                        <Label for="password">Password</Label>
-                        <a href="#">Forgot your password?</a>
-                      </div>
-                      <Input type="password" />
-                    </div>
-                  </div>
-                </Form>
-              </div>
-              <div class="flex items-center p-6 pt-0 flex-col gap-2">
-                <Button>Login</Button>
-                <Button variant="outline">Login with Google</Button>
-              </div>
-            </Card>
+            </form>
+          </CardContent>
+          <CardFooter class="flex flex-col gap-2">
+            <Button class="w-full">Login</Button>
+            <Button variant="outline" class="w-full">Login with Google</Button>
+          </CardFooter>
+        </Card>
       </template>
     </DemoSection>
     <DemoSection title="Create Project" id="card-project" :autoCode="cardProjectAutoCode" :vueCode="cardProjectVueCode">
       <template #preview>
-        <Card>
-              <div class="flex flex-col space-y-1.5 p-6">
-                <div class="text-lg font-semibold leading-none tracking-tight">Create project</div>
-                <div class="text-sm text-muted-foreground">Deploy your new project in one-click.</div>
+        <Card class="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Create project</CardTitle>
+            <CardDescription>Deploy your new project in one-click.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form class="flex flex-col gap-4">
+              <div class="flex flex-col gap-2">
+                <Label for="name">Name</Label>
+                <Input id="name" placeholder="Name of your project" />
               </div>
-              <div>
-                <div class="flex flex-col gap-4">
-                  <div class="flex flex-col gap-2">
-                    <Label>Name</Label>
-                    <Input placeholder="Name of your project" />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <Label>Framework</Label>
-                    <Select>
-                      <div>
-                        <div placeholder="Select" />
-                      </div>
-                      <div>
-                        <div value="next">Next.js</div>
-                        <div value="sveltekit">SvelteKit</div>
-                        <div value="astro">Astro</div>
-                        <div value="nuxt">Nuxt</div>
-                      </div>
-                    </Select>
-                  </div>
-                </div>
+              <div class="flex flex-col gap-2">
+                <Label for="framework">Framework</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="next">Next.js</SelectItem>
+                    <SelectItem value="sveltekit">SvelteKit</SelectItem>
+                    <SelectItem value="astro">Astro</SelectItem>
+                    <SelectItem value="nuxt">Nuxt</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div class="flex items-center p-6 pt-0 flex justify-between">
-                <Button variant="outline">Cancel</Button>
-                <Button>Deploy</Button>
-              </div>
-            </Card>
+            </form>
+          </CardContent>
+          <CardFooter class="flex justify-between">
+            <Button variant="outline">Cancel</Button>
+            <Button>Deploy</Button>
+          </CardFooter>
+        </Card>
       </template>
     </DemoSection>
     <DemoSection title="Notifications" id="card-notifications" :autoCode="cardNotificationsAutoCode" :vueCode="cardNotificationsVueCode">
       <template #preview>
-        <Card>
-              <div class="flex flex-col space-y-1.5 p-6">
-                <div class="text-lg font-semibold leading-none tracking-tight">Notifications</div>
-                <div class="text-sm text-muted-foreground">You have 3 unread messages.</div>
+        <Card class="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Notifications</CardTitle>
+            <CardDescription>You have 3 unread messages.</CardDescription>
+          </CardHeader>
+          <CardContent class="grid gap-4">
+            <div class="flex items-center space-x-4 rounded-md border p-4">
+              <div class="flex-1 space-y-1">
+                <p class="text-sm font-medium leading-none">Push Notifications</p>
+                <p class="text-sm text-muted-foreground">Send notifications to device.</p>
               </div>
-              <div class="grid gap-4">
-                <div class="flex flex-col gap-4">
-                  <div class="flex flex-row gap-4 flex items-center justify-between">
-                    <div class="flex flex-col gap-1">
-                      <span class="text-muted-foreground leading-7 text-sm font-medium">Push Notifications</span>
-                      <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">Send notifications to device.</span>
-                    </div>
-                    <div />
-                  </div>
-                  <Separator />
-                  <div class="flex flex-col gap-4">
-                    <div class="flex flex-row gap-4 flex items-start gap-4">
-                      <Avatar>
-                        <div src="/avatars/01.png" alt="Avatar" />
-                        <div>OM</div>
-                      </Avatar>
-                      <div class="flex flex-col gap-1 grid gap-1">
-                        <span class="text-muted-foreground leading-7 text-sm">Your call has been confirmed.</span>
-                        <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">1 hour ago</span>
-                      </div>
-                    </div>
-                    <div class="flex flex-row gap-4 flex items-start gap-4">
-                      <Avatar>
-                        <div src="/avatars/02.png" alt="Avatar" />
-                        <div>JD</div>
-                      </Avatar>
-                      <div class="flex flex-col gap-1 grid gap-1">
-                        <span class="text-muted-foreground leading-7 text-sm">You have a new message!</span>
-                        <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">1 hour ago</span>
-                      </div>
-                    </div>
-                    <div class="flex flex-row gap-4 flex items-start gap-4">
-                      <Avatar>
-                        <div alt="Avatar" src="/avatars/03.png" />
-                        <div>WW</div>
-                      </Avatar>
-                      <div class="flex flex-col gap-1 grid gap-1">
-                        <span class="text-muted-foreground leading-7 text-sm">Your subscription is expiring soon!</span>
-                        <span class="text-muted-foreground leading-7 text-sm text-muted-foreground">2 hours ago</span>
-                      </div>
-                    </div>
-                  </div>
+              <Switch />
+            </div>
+            <div class="space-y-3">
+              <div class="flex items-start gap-4">
+                <Avatar class="h-9 w-9">
+                  <AvatarImage src="https://github.com/shadcn.png" alt="Avatar" />
+                  <AvatarFallback>OM</AvatarFallback>
+                </Avatar>
+                <div class="space-y-1">
+                  <p class="text-sm font-medium leading-none">Your call has been confirmed.</p>
+                  <p class="text-sm text-muted-foreground">1 hour ago</p>
                 </div>
               </div>
-              <div class="flex items-center p-6 pt-0">
-                <Button variant="outline">Mark all as read</Button>
+              <Separator />
+              <div class="flex items-start gap-4">
+                <Avatar class="h-9 w-9">
+                  <AvatarImage src="https://github.com/evilrabbit.png" alt="Avatar" />
+                  <AvatarFallback>JD</AvatarFallback>
+                </Avatar>
+                <div class="space-y-1">
+                  <p class="text-sm font-medium leading-none">You have a new message!</p>
+                  <p class="text-sm text-muted-foreground">1 hour ago</p>
+                </div>
               </div>
-            </Card>
+              <Separator />
+              <div class="flex items-start gap-4">
+                <Avatar class="h-9 w-9">
+                  <AvatarImage src="https://github.com/leerob.png" alt="Avatar" />
+                  <AvatarFallback>WW</AvatarFallback>
+                </Avatar>
+                <div class="space-y-1">
+                  <p class="text-sm font-medium leading-none">Your subscription is expiring soon!</p>
+                  <p class="text-sm text-muted-foreground">2 hours ago</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button variant="outline" class="w-full">Mark all as read</Button>
+          </CardFooter>
+        </Card>
       </template>
     </DemoSection>
-
   </ComponentDocPage>
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>

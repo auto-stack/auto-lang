@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Avatar } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -29,30 +30,26 @@ const hovercardBasicAutoCode = `row (gap: "4") {
     }
 }
 `
-const hovercardBasicVueCode = `<div class="flex flex-row gap-4">
-  <div>
-    <div>
+const hovercardBasicVueCode = `<HoverCard>
+  <HoverCardTrigger as-child>
+    <Avatar class="h-10 w-10 cursor-pointer">
+      <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+      <AvatarFallback>SC</AvatarFallback>
+    </Avatar>
+  </HoverCardTrigger>
+  <HoverCardContent class="w-80">
+    <div class="flex justify-between space-x-4">
       <Avatar>
-        <div src="https://github.com/shadcn.png" />
-        <div>SC</div>
+        <AvatarImage src="https://github.com/shadcn.png" />
+        <AvatarFallback>SC</AvatarFallback>
       </Avatar>
-    </div>
-    <div>
-      <div class="flex flex-col gap-3 w-80">
-        <div class="flex flex-row gap-4">
-          <Avatar>
-            <div src="https://github.com/shadcn.png" />
-            <div>SC</div>
-          </Avatar>
-          <div class="flex flex-col gap-1">
-            <h4>@shadcn</h4>
-            Vue component library
-          </div>
-        </div>
+      <div class="space-y-1">
+        <h4 class="text-sm font-semibold">@shadcn</h4>
+        <p class="text-sm">Vue component library</p>
       </div>
     </div>
-  </div>
-</div>
+  </HoverCardContent>
+</HoverCard>
 `
 </script>
 
@@ -60,30 +57,26 @@ const hovercardBasicVueCode = `<div class="flex flex-row gap-4">
   <ComponentDocPage title="HoverCard" description="A card that appears when hovering over an element, useful for displaying additional context." installCommand="npx shadcn-vue@latest add hover-card">
     <DemoSection title="Simple" id="hovercard-basic" :autoCode="hovercardBasicAutoCode" :vueCode="hovercardBasicVueCode">
       <template #preview>
-        <div class="flex flex-row gap-4">
-              <div>
-                <div>
-                  <Avatar>
-                    <div src="https://github.com/shadcn.png" />
-                    <div>SC</div>
-                  </Avatar>
-                </div>
-                <div>
-                  <div class="flex flex-col gap-3 w-80">
-                    <div class="flex flex-row gap-4">
-                      <Avatar>
-                        <div src="https://github.com/shadcn.png" />
-                        <div>SC</div>
-                      </Avatar>
-                      <div class="flex flex-col gap-1">
-                        <h4>@shadcn</h4>
-                        Vue component library
-                      </div>
-                    </div>
-                  </div>
-                </div>
+        <HoverCard>
+          <HoverCardTrigger as-child>
+            <Avatar class="h-10 w-10 cursor-pointer">
+              <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+              <AvatarFallback>SC</AvatarFallback>
+            </Avatar>
+          </HoverCardTrigger>
+          <HoverCardContent class="w-80">
+            <div class="flex justify-between space-x-4">
+              <Avatar>
+                <AvatarImage src="https://github.com/shadcn.png" />
+                <AvatarFallback>SC</AvatarFallback>
+              </Avatar>
+              <div class="space-y-1">
+                <h4 class="text-sm font-semibold">@shadcn</h4>
+                <p class="text-sm">Vue component library</p>
               </div>
             </div>
+          </HoverCardContent>
+        </HoverCard>
       </template>
     </DemoSection>
     <template #properties>
@@ -126,11 +119,7 @@ const hovercardBasicVueCode = `<div class="flex flex-row gap-4">
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>

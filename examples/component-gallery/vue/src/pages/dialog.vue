@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -8,10 +10,22 @@ const dialogBasicAutoCode = `row (gap: "4") {
     dialog-trigger (text: "Open Dialog") {}
 }
 `
-const dialogBasicVueCode = `<div class="flex flex-row gap-4">
-  <div />
-  <div>Open Dialog</div>
-</div>
+const dialogBasicVueCode = `<Dialog>
+  <DialogTrigger>
+    <Button variant="outline">Open Dialog</Button>
+  </DialogTrigger>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Dialog Title</DialogTitle>
+      <DialogDescription>This is a dialog description.</DialogDescription>
+    </DialogHeader>
+    <DialogFooter>
+      <DialogClose>
+        <Button variant="outline">Close</Button>
+      </DialogClose>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 `
 </script>
 
@@ -19,10 +33,22 @@ const dialogBasicVueCode = `<div class="flex flex-row gap-4">
   <ComponentDocPage title="Dialog" description="A modal dialog that displays content on top of the page." installCommand="npx shadcn-vue@latest add dialog">
     <DemoSection title="Simple" id="dialog-basic" :autoCode="dialogBasicAutoCode" :vueCode="dialogBasicVueCode">
       <template #preview>
-        <div class="flex flex-row gap-4">
-              <div />
-              <div>Open Dialog</div>
-            </div>
+        <Dialog>
+          <DialogTrigger>
+            <Button variant="outline">Open Dialog</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Dialog Title</DialogTitle>
+              <DialogDescription>This is a dialog description.</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </template>
     </DemoSection>
     <template #properties>

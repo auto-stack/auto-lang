@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from '@/components/ui/navigation-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -7,9 +8,22 @@ const navigationmenuBasicAutoCode = `row (gap: "4") {
     navigation-menu {}
 }
 `
-const navigationmenuBasicVueCode = `<div class="flex flex-row gap-4">
-  <div />
-</div>
+const navigationmenuBasicVueCode = `<NavigationMenu>
+  <NavigationMenuList>
+    <NavigationMenuItem>
+      <NavigationMenuTrigger>Getting Started</NavigationMenuTrigger>
+      <NavigationMenuContent>
+        <NavigationMenuLink href="/docs">Introduction</NavigationMenuLink>
+      </NavigationMenuContent>
+    </NavigationMenuItem>
+    <NavigationMenuItem>
+      <NavigationMenuTrigger>Components</NavigationMenuTrigger>
+      <NavigationMenuContent>
+        <NavigationMenuLink href="/docs/components">All Components</NavigationMenuLink>
+      </NavigationMenuContent>
+    </NavigationMenuItem>
+  </NavigationMenuList>
+</NavigationMenu>
 `
 </script>
 
@@ -17,9 +31,22 @@ const navigationmenuBasicVueCode = `<div class="flex flex-row gap-4">
   <ComponentDocPage title="NavigationMenu" description="A collection of navigation links with dropdown support." installCommand="npx shadcn-vue@latest add navigation-menu">
     <DemoSection title="Simple" id="navigationmenu-basic" :autoCode="navigationmenuBasicAutoCode" :vueCode="navigationmenuBasicVueCode">
       <template #preview>
-        <div class="flex flex-row gap-4">
-              <div />
-            </div>
+        <NavigationMenu>
+          <NavigationMenuList>
+            <NavigationMenuItem>
+              <NavigationMenuTrigger>Getting Started</NavigationMenuTrigger>
+              <NavigationMenuContent>
+                <NavigationMenuLink href="/docs">Introduction</NavigationMenuLink>
+              </NavigationMenuContent>
+            </NavigationMenuItem>
+            <NavigationMenuItem>
+              <NavigationMenuTrigger>Components</NavigationMenuTrigger>
+              <NavigationMenuContent>
+                <NavigationMenuLink href="/docs/components">All Components</NavigationMenuLink>
+              </NavigationMenuContent>
+            </NavigationMenuItem>
+          </NavigationMenuList>
+        </NavigationMenu>
       </template>
     </DemoSection>
     <template #properties>

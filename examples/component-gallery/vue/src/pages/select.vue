@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -22,19 +22,19 @@ const selectBasicAutoCode = `select {
 }
 `
 const selectBasicVueCode = `<Select>
-  <div>
-    <div placeholder="Select a fruit" />
-  </div>
-  <div>
-    <div>
-      <div>Fruits</div>
-      <div value="apple">Apple</div>
-      <div value="banana">Banana</div>
-      <div value="blueberry">Blueberry</div>
-      <div value="grapes">Grapes</div>
-      <div value="pineapple">Pineapple</div>
-    </div>
-  </div>
+  <SelectTrigger class="w-[180px]">
+    <SelectValue placeholder="Select a fruit" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectGroup>
+      <SelectLabel>Fruits</SelectLabel>
+      <SelectItem value="apple">Apple</SelectItem>
+      <SelectItem value="banana">Banana</SelectItem>
+      <SelectItem value="blueberry">Blueberry</SelectItem>
+      <SelectItem value="grapes">Grapes</SelectItem>
+      <SelectItem value="pineapple">Pineapple</SelectItem>
+    </SelectGroup>
+  </SelectContent>
 </Select>
 `
 const selectScrollableAutoCode = `select {
@@ -58,23 +58,23 @@ const selectScrollableAutoCode = `select {
 }
 `
 const selectScrollableVueCode = `<Select>
-  <div class="w-[280px]">
-    <div placeholder="Select a timezone" />
-  </div>
-  <div>
+  <SelectTrigger class="w-[280px]">
+    <SelectValue placeholder="Select a timezone" />
+  </SelectTrigger>
+  <SelectContent>
     <ScrollArea class="h-[200px]">
-      <div value="pst">Pacific Standard Time</div>
-      <div value="mst">Mountain Standard Time</div>
-      <div value="cst">Central Standard Time</div>
-      <div value="est">Eastern Standard Time</div>
-      <div value="ast">Atlantic Standard Time</div>
-      <div value="gmt">Greenwich Mean Time</div>
-      <div value="cet">Central European Time</div>
-      <div value="eet">Eastern European Time</div>
-      <div value="jst">Japan Standard Time</div>
-      <div value="aet">Australian Eastern Time</div>
+      <SelectItem value="pst">Pacific Standard Time</SelectItem>
+      <SelectItem value="mst">Mountain Standard Time</SelectItem>
+      <SelectItem value="cst">Central Standard Time</SelectItem>
+      <SelectItem value="est">Eastern Standard Time</SelectItem>
+      <SelectItem value="ast">Atlantic Standard Time</SelectItem>
+      <SelectItem value="gmt">Greenwich Mean Time</SelectItem>
+      <SelectItem value="cet">Central European Time</SelectItem>
+      <SelectItem value="eet">Eastern European Time</SelectItem>
+      <SelectItem value="jst">Japan Standard Time</SelectItem>
+      <SelectItem value="aet">Australian Eastern Time</SelectItem>
     </ScrollArea>
-  </div>
+  </SelectContent>
 </Select>
 `
 </script>
@@ -84,43 +84,43 @@ const selectScrollableVueCode = `<Select>
     <DemoSection title="Simple" id="select-basic" :autoCode="selectBasicAutoCode" :vueCode="selectBasicVueCode">
       <template #preview>
         <Select>
-              <div>
-                <div placeholder="Select a fruit" />
-              </div>
-              <div>
-                <div>
-                  <div>Fruits</div>
-                  <div value="apple">Apple</div>
-                  <div value="banana">Banana</div>
-                  <div value="blueberry">Blueberry</div>
-                  <div value="grapes">Grapes</div>
-                  <div value="pineapple">Pineapple</div>
-                </div>
-              </div>
-            </Select>
+          <SelectTrigger class="w-[180px]">
+            <SelectValue placeholder="Select a fruit" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel>Fruits</SelectLabel>
+              <SelectItem value="apple">Apple</SelectItem>
+              <SelectItem value="banana">Banana</SelectItem>
+              <SelectItem value="blueberry">Blueberry</SelectItem>
+              <SelectItem value="grapes">Grapes</SelectItem>
+              <SelectItem value="pineapple">Pineapple</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </template>
     </DemoSection>
     <DemoSection title="Scrollable" id="select-scrollable" :autoCode="selectScrollableAutoCode" :vueCode="selectScrollableVueCode">
       <template #preview>
         <Select>
-              <div class="w-[280px]">
-                <div placeholder="Select a timezone" />
-              </div>
-              <div>
-                <ScrollArea class="h-[200px]">
-                  <div value="pst">Pacific Standard Time</div>
-                  <div value="mst">Mountain Standard Time</div>
-                  <div value="cst">Central Standard Time</div>
-                  <div value="est">Eastern Standard Time</div>
-                  <div value="ast">Atlantic Standard Time</div>
-                  <div value="gmt">Greenwich Mean Time</div>
-                  <div value="cet">Central European Time</div>
-                  <div value="eet">Eastern European Time</div>
-                  <div value="jst">Japan Standard Time</div>
-                  <div value="aet">Australian Eastern Time</div>
-                </ScrollArea>
-              </div>
-            </Select>
+          <SelectTrigger class="w-[280px]">
+            <SelectValue placeholder="Select a timezone" />
+          </SelectTrigger>
+          <SelectContent>
+            <ScrollArea class="h-[200px]">
+              <SelectItem value="pst">Pacific Standard Time</SelectItem>
+              <SelectItem value="mst">Mountain Standard Time</SelectItem>
+              <SelectItem value="cst">Central Standard Time</SelectItem>
+              <SelectItem value="est">Eastern Standard Time</SelectItem>
+              <SelectItem value="ast">Atlantic Standard Time</SelectItem>
+              <SelectItem value="gmt">Greenwich Mean Time</SelectItem>
+              <SelectItem value="cet">Central European Time</SelectItem>
+              <SelectItem value="eet">Eastern European Time</SelectItem>
+              <SelectItem value="jst">Japan Standard Time</SelectItem>
+              <SelectItem value="aet">Australian Eastern Time</SelectItem>
+            </ScrollArea>
+          </SelectContent>
+        </Select>
       </template>
     </DemoSection>
     <template #properties>
@@ -156,11 +156,7 @@ const selectScrollableVueCode = `<Select>
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>
