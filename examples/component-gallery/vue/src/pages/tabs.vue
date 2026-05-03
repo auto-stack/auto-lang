@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
 
@@ -17,17 +17,51 @@ const tabsBasicAutoCode = `tabs (class: "w-64", default: "account") {
     }
 }
 `
-const tabsBasicVueCode = `<Tabs default-value="account">
-  <div class="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
-    <div class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" value="account">Account</div>
-    <div class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" value="password">Password</div>
-  </div>
-  <div class="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" value="account">
+const tabsBasicVueCode = `<Tabs default-value="account" class="w-64">
+  <TabsList>
+    <TabsTrigger value="account">Account</TabsTrigger>
+    <TabsTrigger value="password">Password</TabsTrigger>
+  </TabsList>
+  <TabsContent value="account">
     Make changes to your account here.
-  </div>
-  <div class="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" value="password">
+  </TabsContent>
+  <TabsContent value="password">
     Change your password here.
-  </div>
+  </TabsContent>
+</Tabs>
+`
+const tabsThreeAutoCode = `tabs (default: "music", class: "w-96") {
+    tabs-list {
+        tabs-trigger (value: "music", text: "Music") {}
+        tabs-trigger (value: "podcasts", text: "Podcasts") {}
+        tabs-trigger (value: "live", text: "Live") {}
+    }
+    tabs-content (value: "music") {
+        "Explore your music library."
+    }
+    tabs-content (value: "podcasts") {
+        "Discover new podcasts."
+    }
+    tabs-content (value: "live") {
+        "Watch live streams."
+    }
+}
+`
+const tabsThreeVueCode = `<Tabs default-value="music" class="w-96">
+  <TabsList>
+    <TabsTrigger value="music">Music</TabsTrigger>
+    <TabsTrigger value="podcasts">Podcasts</TabsTrigger>
+    <TabsTrigger value="live">Live</TabsTrigger>
+  </TabsList>
+  <TabsContent value="music">
+    Explore your music library.
+  </TabsContent>
+  <TabsContent value="podcasts">
+    Discover new podcasts.
+  </TabsContent>
+  <TabsContent value="live">
+    Watch live streams.
+  </TabsContent>
 </Tabs>
 `
 </script>
@@ -36,18 +70,38 @@ const tabsBasicVueCode = `<Tabs default-value="account">
   <ComponentDocPage title="Tabs" description="A set of layered sections of content, known as tab panels, that display one panel of content at a time." installCommand="npx shadcn-vue@latest add tabs">
     <DemoSection title="Simple" id="tabs-basic" :autoCode="tabsBasicAutoCode" :vueCode="tabsBasicVueCode">
       <template #preview>
-        <Tabs default-value="account">
-              <div class="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
-                <div class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" value="account">Account</div>
-                <div class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" value="password">Password</div>
-              </div>
-              <div class="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" value="account">
-                Make changes to your account here.
-              </div>
-              <div class="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" value="password">
-                Change your password here.
-              </div>
-            </Tabs>
+        <Tabs default-value="account" class="w-64">
+          <TabsList>
+            <TabsTrigger value="account">Account</TabsTrigger>
+            <TabsTrigger value="password">Password</TabsTrigger>
+          </TabsList>
+          <TabsContent value="account">
+            Make changes to your account here.
+          </TabsContent>
+          <TabsContent value="password">
+            Change your password here.
+          </TabsContent>
+        </Tabs>
+      </template>
+    </DemoSection>
+    <DemoSection title="Three Tabs" id="tabs-three" :autoCode="tabsThreeAutoCode" :vueCode="tabsThreeVueCode">
+      <template #preview>
+        <Tabs default-value="music" class="w-96">
+          <TabsList>
+            <TabsTrigger value="music">Music</TabsTrigger>
+            <TabsTrigger value="podcasts">Podcasts</TabsTrigger>
+            <TabsTrigger value="live">Live</TabsTrigger>
+          </TabsList>
+          <TabsContent value="music">
+            Explore your music library.
+          </TabsContent>
+          <TabsContent value="podcasts">
+            Discover new podcasts.
+          </TabsContent>
+          <TabsContent value="live">
+            Watch live streams.
+          </TabsContent>
+        </Tabs>
       </template>
     </DemoSection>
     <template #properties>
@@ -83,11 +137,7 @@ const tabsBasicVueCode = `<Tabs default-value="account">
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>

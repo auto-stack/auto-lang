@@ -37,6 +37,41 @@ const alertdialogBasicVueCode = `<AlertDialog>
   </AlertDialogContent>
 </AlertDialog>
 `
+
+const alertdialogDestructiveAutoCode = `alert-dialog {
+    alert-dialog-trigger {
+        button (variant: "destructive", text: "Delete Account") {}
+    }
+    alert-dialog-content {
+        alert-dialog-header {
+            alert-dialog-title (text: "Are you absolutely sure?") {}
+            alert-dialog-description (text: "This action cannot be undone. This will permanently delete your account and remove your data from our servers.") {}
+        }
+        alert-dialog-footer {
+            alert-dialog-cancel (text: "Cancel") {}
+            alert-dialog-action (text: "Delete", class: "bg-destructive text-destructive-foreground hover:bg-destructive/90") {}
+        }
+    }
+}
+`
+const alertdialogDestructiveVueCode = `<AlertDialog>
+  <AlertDialogTrigger>
+    <Button variant="destructive">Delete Account</Button>
+  </AlertDialogTrigger>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+      <AlertDialogDescription>This action cannot be undone. This will permanently delete your account and remove your data from our servers.</AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+        Delete
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+`
 </script>
 
 <template>
@@ -44,22 +79,45 @@ const alertdialogBasicVueCode = `<AlertDialog>
     <DemoSection title="Simple" id="alertdialog-basic" :autoCode="alertdialogBasicAutoCode" :vueCode="alertdialogBasicVueCode">
       <template #preview>
         <AlertDialog>
-              <AlertDialogTrigger>
-                <Button variant="outline">Show Dialog</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>This action cannot be undone. This will permanently delete your account and remove your data from our servers.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction>Continue</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+          <AlertDialogTrigger>
+            <Button variant="outline">Show Dialog</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>This action cannot be undone. This will permanently delete your account and remove your data from our servers.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction>Continue</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </template>
     </DemoSection>
+
+    <DemoSection title="Destructive" id="alertdialog-destructive" :autoCode="alertdialogDestructiveAutoCode" :vueCode="alertdialogDestructiveVueCode">
+      <template #preview>
+        <AlertDialog>
+          <AlertDialogTrigger>
+            <Button variant="destructive">Delete Account</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>This action cannot be undone. This will permanently delete your account and remove your data from our servers.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </template>
+    </DemoSection>
+
     <template #properties>
       <Table>
         <TableHeader>

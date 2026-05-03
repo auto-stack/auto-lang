@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
 
-const isOpen = ref<boolean>(false)
+const isOpen = ref(false)
+const isOpen2 = ref(false)
 
 const collapsibleBasicAutoCode = `collapsible (open: .isOpen) {
     collapsible-trigger (class: "flex items-center justify-between w-full py-4 font-medium [&[data-state=open]>span:last-child]:rotate-180") {
@@ -27,6 +29,27 @@ const collapsibleBasicVueCode = `<Collapsible v-model:open="isOpen">
   </CollapsibleContent>
 </Collapsible>
 `
+
+const collapsibleButtonAutoCode = `collapsible (open: .isOpen2) {
+    collapsible-trigger (as: "button") {
+        button (variant: "outline", text: "Toggle Content") {}
+    }
+    collapsible-content {
+        "This content can be expanded and collapsed by clicking the button above."
+    }
+}
+`
+const collapsibleButtonVueCode = `<Collapsible v-model:open="isOpen2">
+  <CollapsibleTrigger as-child>
+    <Button variant="outline">
+      {{ isOpen2 ? 'Hide Content' : 'Show Content' }}
+    </Button>
+  </CollapsibleTrigger>
+  <CollapsibleContent class="mt-2 text-muted-foreground">
+    This content can be expanded and collapsed by clicking the button above.
+  </CollapsibleContent>
+</Collapsible>
+`
 </script>
 
 <template>
@@ -34,16 +57,32 @@ const collapsibleBasicVueCode = `<Collapsible v-model:open="isOpen">
     <DemoSection title="Example" id="collapsible-basic" :autoCode="collapsibleBasicAutoCode" :vueCode="collapsibleBasicVueCode">
       <template #preview>
         <Collapsible v-model:open="isOpen">
-              <CollapsibleTrigger class="flex items-center justify-between w-full py-4 font-medium [&[data-state=open]>span:last-child]:rotate-180">
-                Can I use this in my project?
-                <span class="text-muted-foreground leading-7 transition-transform duration-200">▸</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent class="pb-4">
-                Yes. Free to use for personal and commercial projects. No attribution required.
-              </CollapsibleContent>
-            </Collapsible>
+          <CollapsibleTrigger class="flex items-center justify-between w-full py-4 font-medium [&[data-state=open]>span:last-child]:rotate-180">
+            Can I use this in my project?
+            <span class="text-muted-foreground leading-7 transition-transform duration-200">▸</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent class="pb-4">
+            Yes. Free to use for personal and commercial projects. No attribution required.
+          </CollapsibleContent>
+        </Collapsible>
       </template>
     </DemoSection>
+
+    <DemoSection title="With Button" id="collapsible-button" :autoCode="collapsibleButtonAutoCode" :vueCode="collapsibleButtonVueCode">
+      <template #preview>
+        <Collapsible v-model:open="isOpen2">
+          <CollapsibleTrigger as-child>
+            <Button variant="outline">
+              {{ isOpen2 ? 'Hide Content' : 'Show Content' }}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent class="mt-2 text-muted-foreground">
+            This content can be expanded and collapsed by clicking the button above.
+          </CollapsibleContent>
+        </Collapsible>
+      </template>
+    </DemoSection>
+
     <template #properties>
       <Table>
         <TableHeader>

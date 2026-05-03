@@ -27,6 +27,60 @@ const radiogroupBasicVueCode = `<RadioGroup default-value="option-one">
   </div>
 </RadioGroup>
 `
+
+const radiogroupDisabledAutoCode = `radiogroup (default: "option-one") {
+    row (gap: "2", class: "items-center") {
+        radioitem (id: "option-one", value: "option-one") {}
+        label (text: "Option One", for: "option-one") {}
+    }
+    row (gap: "2", class: "items-center") {
+        radioitem (disabled: "true", value: "option-two", id: "option-two") {}
+        label (text: "Option Two (Disabled)", for: "option-two", class: "text-muted-foreground") {}
+    }
+}
+`
+const radiogroupDisabledVueCode = `<RadioGroup default-value="option-one">
+  <div class="flex items-center space-x-2">
+    <RadioGroupItem id="option-one" value="option-one" />
+    <Label for="option-one">Option One</Label>
+  </div>
+  <div class="flex items-center space-x-2">
+    <RadioGroupItem id="option-two" value="option-two" disabled />
+    <Label for="option-two" class="text-muted-foreground">Option Two (Disabled)</Label>
+  </div>
+</RadioGroup>
+`
+
+const radiogroupVerticalAutoCode = `radiogroup (default: "option-one", class: "flex flex-col gap-3") {
+    row (gap: "2", class: "items-center") {
+        radioitem (id: "option-one", value: "option-one") {}
+        label (text: "Option One", for: "option-one") {}
+    }
+    row (gap: "2", class: "items-center") {
+        radioitem (id: "option-two", value: "option-two") {}
+        label (text: "Option Two", for: "option-two") {}
+    }
+    row (gap: "2", class: "items-center") {
+        radioitem (id: "option-three", value: "option-three") {}
+        label (text: "Option Three", for: "option-three") {}
+    }
+}
+`
+const radiogroupVerticalVueCode = `<RadioGroup default-value="option-one" class="flex flex-col gap-3">
+  <div class="flex items-center space-x-2">
+    <RadioGroupItem id="option-one" value="option-one" />
+    <Label for="option-one">Option One</Label>
+  </div>
+  <div class="flex items-center space-x-2">
+    <RadioGroupItem id="option-two" value="option-two" />
+    <Label for="option-two">Option Two</Label>
+  </div>
+  <div class="flex items-center space-x-2">
+    <RadioGroupItem id="option-three" value="option-three" />
+    <Label for="option-three">Option Three</Label>
+  </div>
+</RadioGroup>
+`
 </script>
 
 <template>
@@ -45,6 +99,41 @@ const radiogroupBasicVueCode = `<RadioGroup default-value="option-one">
         </RadioGroup>
       </template>
     </DemoSection>
+
+    <DemoSection title="Disabled Item" id="radiogroup-disabled" :autoCode="radiogroupDisabledAutoCode" :vueCode="radiogroupDisabledVueCode">
+      <template #preview>
+        <RadioGroup default-value="option-one">
+          <div class="flex items-center space-x-2">
+            <RadioGroupItem id="option-one" value="option-one" />
+            <Label for="option-one">Option One</Label>
+          </div>
+          <div class="flex items-center space-x-2">
+            <RadioGroupItem id="option-two" value="option-two" disabled />
+            <Label for="option-two" class="text-muted-foreground">Option Two (Disabled)</Label>
+          </div>
+        </RadioGroup>
+      </template>
+    </DemoSection>
+
+    <DemoSection title="Vertical" id="radiogroup-vertical" :autoCode="radiogroupVerticalAutoCode" :vueCode="radiogroupVerticalVueCode">
+      <template #preview>
+        <RadioGroup default-value="option-one" class="flex flex-col gap-3">
+          <div class="flex items-center space-x-2">
+            <RadioGroupItem id="option-one" value="option-one" />
+            <Label for="option-one">Option One</Label>
+          </div>
+          <div class="flex items-center space-x-2">
+            <RadioGroupItem id="option-two" value="option-two" />
+            <Label for="option-two">Option Two</Label>
+          </div>
+          <div class="flex items-center space-x-2">
+            <RadioGroupItem id="option-three" value="option-three" />
+            <Label for="option-three">Option Three</Label>
+          </div>
+        </RadioGroup>
+      </template>
+    </DemoSection>
+
     <template #properties>
       <Table>
         <TableHeader>

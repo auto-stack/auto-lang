@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -32,30 +33,6 @@ const tableBasicAutoCode = `table {
             table-cell (text: "Bank Transfer") {}
             table-cell (class: "text-right", text: "$350.00") {}
         }
-        table-row {
-            table-cell (text: "INV004", class: "font-medium") {}
-            table-cell (text: "Paid") {}
-            table-cell (text: "Credit Card") {}
-            table-cell (text: "$450.00", class: "text-right") {}
-        }
-        table-row {
-            table-cell (class: "font-medium", text: "INV005") {}
-            table-cell (text: "Paid") {}
-            table-cell (text: "PayPal") {}
-            table-cell (text: "$550.00", class: "text-right") {}
-        }
-        table-row {
-            table-cell (class: "font-medium", text: "INV006") {}
-            table-cell (text: "Pending") {}
-            table-cell (text: "Bank Transfer") {}
-            table-cell (class: "text-right", text: "$200.00") {}
-        }
-        table-row {
-            table-cell (text: "INV007", class: "font-medium") {}
-            table-cell (text: "Unpaid") {}
-            table-cell (text: "Credit Card") {}
-            table-cell (class: "text-right", text: "$300.00") {}
-        }
     }
 }
 `
@@ -88,29 +65,60 @@ const tableBasicVueCode = `<Table>
       <TableCell>Bank Transfer</TableCell>
       <TableCell class="text-right">$350.00</TableCell>
     </TableRow>
+  </TableBody>
+</Table>
+`
+
+const tableWithBadgesAutoCode = `table {
+    table-header {
+        table-row {
+            table-head (text: "Invoice") {}
+            table-head (text: "Status") {}
+            table-head (text: "Amount", class: "text-right") {}
+        }
+    }
+    table-body {
+        table-row {
+            table-cell (text: "INV001", class: "font-medium") {}
+            table-cell { badge (variant: "default", text: "Paid") {} }
+            table-cell (text: "$250.00", class: "text-right") {}
+        }
+        table-row {
+            table-cell (text: "INV002", class: "font-medium") {}
+            table-cell { badge (variant: "secondary", text: "Pending") {} }
+            table-cell (text: "$150.00", class: "text-right") {}
+        }
+        table-row {
+            table-cell (text: "INV003", class: "font-medium") {}
+            table-cell { badge (variant: "destructive", text: "Unpaid") {} }
+            table-cell (text: "$350.00", class: "text-right") {}
+        }
+    }
+}
+`
+const tableWithBadgesVueCode = `<Table>
+  <TableHeader>
     <TableRow>
-      <TableCell class="font-medium">INV004</TableCell>
-      <TableCell>Paid</TableCell>
-      <TableCell>Credit Card</TableCell>
-      <TableCell class="text-right">$450.00</TableCell>
+      <TableHead>Invoice</TableHead>
+      <TableHead>Status</TableHead>
+      <TableHead class="text-right">Amount</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    <TableRow>
+      <TableCell class="font-medium">INV001</TableCell>
+      <TableCell><Badge>Paid</Badge></TableCell>
+      <TableCell class="text-right">$250.00</TableCell>
     </TableRow>
     <TableRow>
-      <TableCell class="font-medium">INV005</TableCell>
-      <TableCell>Paid</TableCell>
-      <TableCell>PayPal</TableCell>
-      <TableCell class="text-right">$550.00</TableCell>
+      <TableCell class="font-medium">INV002</TableCell>
+      <TableCell><Badge variant="secondary">Pending</Badge></TableCell>
+      <TableCell class="text-right">$150.00</TableCell>
     </TableRow>
     <TableRow>
-      <TableCell class="font-medium">INV006</TableCell>
-      <TableCell>Pending</TableCell>
-      <TableCell>Bank Transfer</TableCell>
-      <TableCell class="text-right">$200.00</TableCell>
-    </TableRow>
-    <TableRow>
-      <TableCell class="font-medium">INV007</TableCell>
-      <TableCell>Unpaid</TableCell>
-      <TableCell>Credit Card</TableCell>
-      <TableCell class="text-right">$300.00</TableCell>
+      <TableCell class="font-medium">INV003</TableCell>
+      <TableCell><Badge variant="destructive">Unpaid</Badge></TableCell>
+      <TableCell class="text-right">$350.00</TableCell>
     </TableRow>
   </TableBody>
 </Table>
@@ -122,62 +130,70 @@ const tableBasicVueCode = `<Table>
     <DemoSection title="Example" id="table-basic" :autoCode="tableBasicAutoCode" :vueCode="tableBasicVueCode">
       <template #preview>
         <Table>
-              <TableCaption>A list of your recent invoices.</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead class="w-[100px]">Invoice</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead class="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell class="font-medium">INV001</TableCell>
-                  <TableCell>Paid</TableCell>
-                  <TableCell>Credit Card</TableCell>
-                  <TableCell class="text-right">$250.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell class="font-medium">INV002</TableCell>
-                  <TableCell>Pending</TableCell>
-                  <TableCell>PayPal</TableCell>
-                  <TableCell class="text-right">$150.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell class="font-medium">INV003</TableCell>
-                  <TableCell>Unpaid</TableCell>
-                  <TableCell>Bank Transfer</TableCell>
-                  <TableCell class="text-right">$350.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell class="font-medium">INV004</TableCell>
-                  <TableCell>Paid</TableCell>
-                  <TableCell>Credit Card</TableCell>
-                  <TableCell class="text-right">$450.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell class="font-medium">INV005</TableCell>
-                  <TableCell>Paid</TableCell>
-                  <TableCell>PayPal</TableCell>
-                  <TableCell class="text-right">$550.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell class="font-medium">INV006</TableCell>
-                  <TableCell>Pending</TableCell>
-                  <TableCell>Bank Transfer</TableCell>
-                  <TableCell class="text-right">$200.00</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell class="font-medium">INV007</TableCell>
-                  <TableCell>Unpaid</TableCell>
-                  <TableCell>Credit Card</TableCell>
-                  <TableCell class="text-right">$300.00</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+          <TableCaption>A list of your recent invoices.</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead class="w-[100px]">Invoice</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Method</TableHead>
+              <TableHead class="text-right">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell class="font-medium">INV001</TableCell>
+              <TableCell>Paid</TableCell>
+              <TableCell>Credit Card</TableCell>
+              <TableCell class="text-right">$250.00</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell class="font-medium">INV002</TableCell>
+              <TableCell>Pending</TableCell>
+              <TableCell>PayPal</TableCell>
+              <TableCell class="text-right">$150.00</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell class="font-medium">INV003</TableCell>
+              <TableCell>Unpaid</TableCell>
+              <TableCell>Bank Transfer</TableCell>
+              <TableCell class="text-right">$350.00</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       </template>
     </DemoSection>
+
+    <DemoSection title="With Badges" id="table-badges" :autoCode="tableWithBadgesAutoCode" :vueCode="tableWithBadgesVueCode">
+      <template #preview>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Invoice</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead class="text-right">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell class="font-medium">INV001</TableCell>
+              <TableCell><Badge>Paid</Badge></TableCell>
+              <TableCell class="text-right">$250.00</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell class="font-medium">INV002</TableCell>
+              <TableCell><Badge variant="secondary">Pending</Badge></TableCell>
+              <TableCell class="text-right">$150.00</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell class="font-medium">INV003</TableCell>
+              <TableCell><Badge variant="destructive">Unpaid</Badge></TableCell>
+              <TableCell class="text-right">$350.00</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </template>
+    </DemoSection>
+
     <template #properties>
       <Table>
         <TableHeader>

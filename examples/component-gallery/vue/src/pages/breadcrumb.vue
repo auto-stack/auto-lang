@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
+import { Slash } from 'lucide-vue-next'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
 import DemoSection from '@/components/DemoSection.vue'
@@ -36,6 +37,47 @@ const breadcrumbBasicVueCode = `<Breadcrumb>
   </BreadcrumbList>
 </Breadcrumb>
 `
+
+const breadcrumbCustomAutoCode = `breadcrumb {
+    breadcrumb-list {
+        breadcrumb-item {
+            breadcrumb-link (text: "Home", href: "/") {}
+        }
+        breadcrumb-separator {
+            slash-icon (class: "h-4 w-4") {}
+        }
+        breadcrumb-item {
+            breadcrumb-link (text: "Components", href: "/components") {}
+        }
+        breadcrumb-separator {
+            slash-icon (class: "h-4 w-4") {}
+        }
+        breadcrumb-item {
+            breadcrumb-page (text: "Breadcrumb") {}
+        }
+    }
+}
+`
+const breadcrumbCustomVueCode = `<Breadcrumb>
+  <BreadcrumbList>
+    <BreadcrumbItem>
+      <BreadcrumbLink href="/">Home</BreadcrumbLink>
+    </BreadcrumbItem>
+    <BreadcrumbSeparator>
+      <Slash class="h-4 w-4" />
+    </BreadcrumbSeparator>
+    <BreadcrumbItem>
+      <BreadcrumbLink href="/components">Components</BreadcrumbLink>
+    </BreadcrumbItem>
+    <BreadcrumbSeparator>
+      <Slash class="h-4 w-4" />
+    </BreadcrumbSeparator>
+    <BreadcrumbItem>
+      <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+    </BreadcrumbItem>
+  </BreadcrumbList>
+</Breadcrumb>
+`
 </script>
 
 <template>
@@ -43,22 +85,47 @@ const breadcrumbBasicVueCode = `<Breadcrumb>
     <DemoSection title="Simple" id="breadcrumb-basic" :autoCode="breadcrumbBasicAutoCode" :vueCode="breadcrumbBasicVueCode">
       <template #preview>
         <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink href="/">Home</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbLink href="/components">Components</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/components">Components</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
       </template>
     </DemoSection>
+
+    <DemoSection title="Custom Separator" id="breadcrumb-custom" :autoCode="breadcrumbCustomAutoCode" :vueCode="breadcrumbCustomVueCode">
+      <template #preview>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator>
+              <Slash class="h-4 w-4" />
+            </BreadcrumbSeparator>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/components">Components</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator>
+              <Slash class="h-4 w-4" />
+            </BreadcrumbSeparator>
+            <BreadcrumbItem>
+              <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </template>
+    </DemoSection>
+
     <template #properties>
       <Table>
         <TableHeader>

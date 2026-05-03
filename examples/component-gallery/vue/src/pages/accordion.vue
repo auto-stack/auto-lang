@@ -46,32 +46,98 @@ const accordionBasicVueCode = `<Accordion type="single" :collapsible="true">
   </AccordionItem>
 </Accordion>
 `
+const accordionMultipleAutoCode = `accordion (type: "multiple", class: "w-full") {
+    accordion-item (value: "item-1") {
+        accordion-trigger (text: "Product Information") {}
+        accordion-content {
+            "Our flagship product combines cutting-edge technology with sleek design."
+        }
+    }
+    accordion-item (value: "item-2") {
+        accordion-trigger (text: "Shipping Details") {}
+        accordion-content {
+            "We offer worldwide shipping through trusted courier partners."
+        }
+    }
+    accordion-item (value: "item-3") {
+        accordion-trigger (text: "Return Policy") {}
+        accordion-content {
+            "We stand behind our products with a comprehensive 30-day return policy."
+        }
+    }
+}
+`
+const accordionMultipleVueCode = `<Accordion type="multiple">
+  <AccordionItem value="item-1">
+    <AccordionTrigger>Product Information</AccordionTrigger>
+    <AccordionContent>
+      Our flagship product combines cutting-edge technology with sleek design.
+    </AccordionContent>
+  </AccordionItem>
+  <AccordionItem value="item-2">
+    <AccordionTrigger>Shipping Details</AccordionTrigger>
+    <AccordionContent>
+      We offer worldwide shipping through trusted courier partners.
+    </AccordionContent>
+  </AccordionItem>
+  <AccordionItem value="item-3">
+    <AccordionTrigger>Return Policy</AccordionTrigger>
+    <AccordionContent>
+      We stand behind our products with a comprehensive 30-day return policy.
+    </AccordionContent>
+  </AccordionItem>
+</Accordion>
+`
 </script>
 
 <template>
   <ComponentDocPage title="Accordion" description="A vertically stacked set of interactive headings that each reveal a section of content." installCommand="npx shadcn-vue@latest add accordion">
-    <DemoSection title="Simple" id="accordion-basic" :autoCode="accordionBasicAutoCode" :vueCode="accordionBasicVueCode">
+    <DemoSection title="Single" id="accordion-single" :autoCode="accordionBasicAutoCode" :vueCode="accordionBasicVueCode">
       <template #preview>
         <Accordion type="single" :collapsible="true">
-              <AccordionItem value="item-1">
-                <AccordionTrigger>Is it accessible?</AccordionTrigger>
-                <AccordionContent>
-                  Yes. It adheres to the WAI-ARIA design pattern.
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="item-2">
-                <AccordionTrigger>Is it styled?</AccordionTrigger>
-                <AccordionContent>
-                  Yes. It comes with default styles that match the other components.
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="item-3">
-                <AccordionTrigger>Is it animated?</AccordionTrigger>
-                <AccordionContent>
-                  Yes. It's animated by default, but you can disable it if you prefer.
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+          <AccordionItem value="item-1">
+            <AccordionTrigger>Is it accessible?</AccordionTrigger>
+            <AccordionContent>
+              Yes. It adheres to the WAI-ARIA design pattern.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-2">
+            <AccordionTrigger>Is it styled?</AccordionTrigger>
+            <AccordionContent>
+              Yes. It comes with default styles that match the other components.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-3">
+            <AccordionTrigger>Is it animated?</AccordionTrigger>
+            <AccordionContent>
+              Yes. It's animated by default, but you can disable it if you prefer.
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </template>
+    </DemoSection>
+    <DemoSection title="Multiple" id="accordion-multiple" :autoCode="accordionMultipleAutoCode" :vueCode="accordionMultipleVueCode">
+      <template #preview>
+        <Accordion type="multiple">
+          <AccordionItem value="item-1">
+            <AccordionTrigger>Product Information</AccordionTrigger>
+            <AccordionContent>
+              Our flagship product combines cutting-edge technology with sleek design.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-2">
+            <AccordionTrigger>Shipping Details</AccordionTrigger>
+            <AccordionContent>
+              We offer worldwide shipping through trusted courier partners.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-3">
+            <AccordionTrigger>Return Policy</AccordionTrigger>
+            <AccordionContent>
+              We stand behind our products with a comprehensive 30-day return policy.
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </template>
     </DemoSection>
     <template #properties>
@@ -107,11 +173,7 @@ const accordionBasicVueCode = `<Accordion type="single" :collapsible="true">
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>

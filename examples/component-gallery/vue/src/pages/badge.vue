@@ -17,9 +17,21 @@ const badgeVariantsAutoCode = `row (gap: "2") {
 `
 const badgeVariantsVueCode = `<div class="flex flex-row gap-2">
   <Badge>Default</Badge>
-  <Badge>Secondary</Badge>
-  <Badge>Destructive</Badge>
-  <Badge>Outline</Badge>
+  <Badge variant="secondary">Secondary</Badge>
+  <Badge variant="destructive">Destructive</Badge>
+  <Badge variant="outline">Outline</Badge>
+</div>
+`
+const badgeOutlineAutoCode = `row (gap: "2") {
+    badge (variant: "outline", text: "Feature") {}
+    badge (text: "Bug", variant: "outline") {}
+    badge (text: "Docs", variant: "outline") {}
+}
+`
+const badgeOutlineVueCode = `<div class="flex flex-row gap-2">
+  <Badge variant="outline">Feature</Badge>
+  <Badge variant="outline">Bug</Badge>
+  <Badge variant="outline">Docs</Badge>
 </div>
 `
 </script>
@@ -34,11 +46,20 @@ const badgeVariantsVueCode = `<div class="flex flex-row gap-2">
     <DemoSection title="Variants" id="badge-variants" :autoCode="badgeVariantsAutoCode" :vueCode="badgeVariantsVueCode">
       <template #preview>
         <div class="flex flex-row gap-2">
-              <Badge>Default</Badge>
-              <Badge>Secondary</Badge>
-              <Badge>Destructive</Badge>
-              <Badge>Outline</Badge>
-            </div>
+          <Badge>Default</Badge>
+          <Badge variant="secondary">Secondary</Badge>
+          <Badge variant="destructive">Destructive</Badge>
+          <Badge variant="outline">Outline</Badge>
+        </div>
+      </template>
+    </DemoSection>
+    <DemoSection title="Outline Tags" id="badge-outline" :autoCode="badgeOutlineAutoCode" :vueCode="badgeOutlineVueCode">
+      <template #preview>
+        <div class="flex flex-row gap-2">
+          <Badge variant="outline">Feature</Badge>
+          <Badge variant="outline">Bug</Badge>
+          <Badge variant="outline">Docs</Badge>
+        </div>
       </template>
     </DemoSection>
     <template #properties>
@@ -74,11 +95,7 @@ const badgeVariantsVueCode = `<div class="flex flex-row gap-2">
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>

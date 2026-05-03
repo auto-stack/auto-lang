@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import ComponentDocPage from '@/components/ComponentDocPage.vue'
@@ -51,6 +52,50 @@ const hovercardBasicVueCode = `<HoverCard>
   </HoverCardContent>
 </HoverCard>
 `
+
+const hovercardButtonAutoCode = `hovercard {
+    hovercard-trigger (as: "button") {
+        button (variant: "outline", text: "@shadcn") {}
+    }
+    hovercard-content (class: "w-80") {
+        col (gap: "2") {
+            h4 (text: "@shadcn") {}
+            "The Vue component library built on top of Radix UI."
+        }
+    }
+}
+`
+const hovercardButtonVueCode = `<HoverCard>
+  <HoverCardTrigger as-child>
+    <Button variant="outline">@shadcn</Button>
+  </HoverCardTrigger>
+  <HoverCardContent class="w-80">
+    <div class="flex flex-col gap-2">
+      <h4 class="text-sm font-semibold">@shadcn</h4>
+      <p class="text-sm">The Vue component library built on top of Radix UI.</p>
+    </div>
+  </HoverCardContent>
+</HoverCard>
+`
+
+const hovercardDelayAutoCode = `hovercard (open-delay: "0") {
+    hovercard-trigger (as: "button") {
+        button (variant: "outline", text: "Instant") {}
+    }
+    hovercard-content (class: "w-60") {
+        "This card appears immediately with no delay."
+    }
+}
+`
+const hovercardDelayVueCode = `<HoverCard :open-delay="0">
+  <HoverCardTrigger as-child>
+    <Button variant="outline">Instant</Button>
+  </HoverCardTrigger>
+  <HoverCardContent class="w-60">
+    <p>This card appears immediately with no delay.</p>
+  </HoverCardContent>
+</HoverCard>
+`
 </script>
 
 <template>
@@ -79,6 +124,36 @@ const hovercardBasicVueCode = `<HoverCard>
         </HoverCard>
       </template>
     </DemoSection>
+
+    <DemoSection title="With Button" id="hovercard-button" :autoCode="hovercardButtonAutoCode" :vueCode="hovercardButtonVueCode">
+      <template #preview>
+        <HoverCard>
+          <HoverCardTrigger as-child>
+            <Button variant="outline">@shadcn</Button>
+          </HoverCardTrigger>
+          <HoverCardContent class="w-80">
+            <div class="flex flex-col gap-2">
+              <h4 class="text-sm font-semibold">@shadcn</h4>
+              <p class="text-sm">The Vue component library built on top of Radix UI.</p>
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+      </template>
+    </DemoSection>
+
+    <DemoSection title="No Delay" id="hovercard-delay" :autoCode="hovercardDelayAutoCode" :vueCode="hovercardDelayVueCode">
+      <template #preview>
+        <HoverCard :open-delay="0">
+          <HoverCardTrigger as-child>
+            <Button variant="outline">Instant</Button>
+          </HoverCardTrigger>
+          <HoverCardContent class="w-60">
+            <p>This card appears immediately with no delay.</p>
+          </HoverCardContent>
+        </HoverCard>
+      </template>
+    </DemoSection>
+
     <template #properties>
       <Table>
         <TableHeader>

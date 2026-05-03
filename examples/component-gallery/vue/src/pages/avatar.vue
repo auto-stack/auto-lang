@@ -9,12 +9,56 @@ const avatarBasicAutoCode = `row (gap: "4") {
     avatar (fallback: "CN") {}
 }
 `
-const avatarBasicVueCode = `<div class="flex flex-row gap-4">
+const avatarBasicVueCode = `<div class="flex gap-4">
   <Avatar>
     <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+    <AvatarFallback>CN</AvatarFallback>
   </Avatar>
   <Avatar>
-    <AvatarFallback>CN</AvatarFallback>  </Avatar>
+    <AvatarFallback>JD</AvatarFallback>
+  </Avatar>
+</div>
+`
+const avatarSizesAutoCode = `row (gap: "4", class: "items-center") {
+    avatar (size: "sm", src: "https://github.com/shadcn.png") {}
+    avatar (src: "https://github.com/shadcn.png") {}
+    avatar (size: "lg", src: "https://github.com/shadcn.png") {}
+}
+`
+const avatarSizesVueCode = `<div class="flex items-center gap-4">
+  <Avatar class="h-8 w-8">
+    <AvatarImage src="https://github.com/shadcn.png" />
+    <AvatarFallback>SM</AvatarFallback>
+  </Avatar>
+  <Avatar class="h-10 w-10">
+    <AvatarImage src="https://github.com/shadcn.png" />
+    <AvatarFallback>MD</AvatarFallback>
+  </Avatar>
+  <Avatar class="h-14 w-14">
+    <AvatarImage src="https://github.com/shadcn.png" />
+    <AvatarFallback>LG</AvatarFallback>
+  </Avatar>
+</div>
+`
+const avatarStackedAutoCode = `row (class: "-space-x-2") {
+    avatar (src: "https://github.com/shadcn.png") {}
+    avatar (src: "https://github.com/leerob.png") {}
+    avatar (src: "https://github.com/evilrabbit.png") {}
+}
+`
+const avatarStackedVueCode = `<div class="flex -space-x-2">
+  <Avatar class="border-2 border-background">
+    <AvatarImage src="https://github.com/shadcn.png" />
+    <AvatarFallback>CN</AvatarFallback>
+  </Avatar>
+  <Avatar class="border-2 border-background">
+    <AvatarImage src="https://github.com/leerob.png" />
+    <AvatarFallback>LR</AvatarFallback>
+  </Avatar>
+  <Avatar class="border-2 border-background">
+    <AvatarImage src="https://github.com/evilrabbit.png" />
+    <AvatarFallback>ER</AvatarFallback>
+  </Avatar>
 </div>
 `
 </script>
@@ -23,13 +67,51 @@ const avatarBasicVueCode = `<div class="flex flex-row gap-4">
   <ComponentDocPage title="Avatar" description="An image element with a fallback for representing the user." installCommand="npx shadcn-vue@latest add avatar">
     <DemoSection title="Simple" id="avatar-basic" :autoCode="avatarBasicAutoCode" :vueCode="avatarBasicVueCode">
       <template #preview>
-        <div class="flex flex-row gap-4">
-              <Avatar>
-                <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-              </Avatar>
-              <Avatar>
-                <AvatarFallback>CN</AvatarFallback>              </Avatar>
-            </div>
+        <div class="flex gap-4">
+          <Avatar>
+            <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+            <AvatarFallback>CN</AvatarFallback>
+          </Avatar>
+          <Avatar>
+            <AvatarFallback>JD</AvatarFallback>
+          </Avatar>
+        </div>
+      </template>
+    </DemoSection>
+    <DemoSection title="Sizes" id="avatar-sizes" :autoCode="avatarSizesAutoCode" :vueCode="avatarSizesVueCode">
+      <template #preview>
+        <div class="flex items-center gap-4">
+          <Avatar class="h-8 w-8">
+            <AvatarImage src="https://github.com/shadcn.png" />
+            <AvatarFallback>SM</AvatarFallback>
+          </Avatar>
+          <Avatar class="h-10 w-10">
+            <AvatarImage src="https://github.com/shadcn.png" />
+            <AvatarFallback>MD</AvatarFallback>
+          </Avatar>
+          <Avatar class="h-14 w-14">
+            <AvatarImage src="https://github.com/shadcn.png" />
+            <AvatarFallback>LG</AvatarFallback>
+          </Avatar>
+        </div>
+      </template>
+    </DemoSection>
+    <DemoSection title="Stacked" id="avatar-stacked" :autoCode="avatarStackedAutoCode" :vueCode="avatarStackedVueCode">
+      <template #preview>
+        <div class="flex -space-x-2">
+          <Avatar class="border-2 border-background">
+            <AvatarImage src="https://github.com/shadcn.png" />
+            <AvatarFallback>CN</AvatarFallback>
+          </Avatar>
+          <Avatar class="border-2 border-background">
+            <AvatarImage src="https://github.com/leerob.png" />
+            <AvatarFallback>LR</AvatarFallback>
+          </Avatar>
+          <Avatar class="border-2 border-background">
+            <AvatarImage src="https://github.com/evilrabbit.png" />
+            <AvatarFallback>ER</AvatarFallback>
+          </Avatar>
+        </div>
       </template>
     </DemoSection>
     <template #properties>
@@ -72,11 +154,7 @@ const avatarBasicVueCode = `<div class="flex flex-row gap-4">
 </template>
 
 <style scoped>
-/* Override Prism.js default styles */
 pre[class*="language-"] {
   margin: 0;
 }
-
-/* Component styles */
-
 </style>
