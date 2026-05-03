@@ -28,6 +28,8 @@ pub struct CallFrame {
     pub old_bp: usize,
     pub fn_name: Option<String>,
     pub line: u32,
+    pub old_fn_n_args: usize,
+    pub old_fn_n_locals: usize,
 }
 
 /// Represents a single concurrent task in the AutoVM

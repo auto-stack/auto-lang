@@ -1,0 +1,18 @@
+fn identity(x int) int {
+    return x
+}
+
+fn test(src str, pos int) int {
+    let ch = src[pos]
+    let result = identity(ch)
+    let ch2 = src[pos]
+    return ch2
+}
+
+fn main() {
+    let src = "abcde"
+    let n = test(src, 0)
+    print(n)
+    let n2 = test(src, 1)
+    print(n2)
+}

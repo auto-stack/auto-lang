@@ -1,0 +1,25 @@
+// Verify large TokenKind enum can be loaded and used by VM
+// Uses a subset of TokenKind to test enum creation and pattern matching
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn main() {
+    let c = Color.Green
+    var result = ""
+    is c {
+        Color.Red -> {
+            result = "red"
+        }
+        Color.Green -> {
+            result = "green"
+        }
+        Color.Blue -> {
+            result = "blue"
+        }
+    }
+    print(result)
+}

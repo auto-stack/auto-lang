@@ -1,0 +1,135 @@
+// Verify keyword_kind and is_keyword helper functions
+
+enum TokenKind {
+    Int
+    Ident
+    True
+    False
+    Nil
+    If
+    Else
+    For
+    Loop
+    Is
+    Fn
+    Type
+    Let
+    Var
+    Mut
+    Return
+    Break
+    Continue
+    Enum
+    Ext
+    Use
+    Spec
+    Const
+    On
+    Go
+}
+
+fn keyword_kind(text str) TokenKind {
+    if text == "true" { return TokenKind.True }
+    if text == "false" { return TokenKind.False }
+    if text == "nil" { return TokenKind.Nil }
+    if text == "if" { return TokenKind.If }
+    if text == "else" { return TokenKind.Else }
+    if text == "for" { return TokenKind.For }
+    if text == "loop" { return TokenKind.Loop }
+    if text == "is" { return TokenKind.Is }
+    if text == "fn" { return TokenKind.Fn }
+    if text == "type" { return TokenKind.Type }
+    if text == "let" { return TokenKind.Let }
+    if text == "var" { return TokenKind.Var }
+    if text == "mut" { return TokenKind.Mut }
+    if text == "return" { return TokenKind.Return }
+    if text == "break" { return TokenKind.Break }
+    if text == "continue" { return TokenKind.Continue }
+    if text == "enum" { return TokenKind.Enum }
+    if text == "ext" { return TokenKind.Ext }
+    if text == "use" { return TokenKind.Use }
+    if text == "spec" { return TokenKind.Spec }
+    if text == "const" { return TokenKind.Const }
+    if text == "on" { return TokenKind.On }
+    if text == "go" { return TokenKind.Go }
+    return TokenKind.Ident
+}
+
+fn is_keyword(kind TokenKind) bool {
+    is kind {
+        TokenKind.True -> true
+        TokenKind.False -> true
+        TokenKind.Nil -> true
+        TokenKind.If -> true
+        TokenKind.Else -> true
+        TokenKind.For -> true
+        TokenKind.Loop -> true
+        TokenKind.Is -> true
+        TokenKind.Fn -> true
+        TokenKind.Type -> true
+        TokenKind.Let -> true
+        TokenKind.Var -> true
+        TokenKind.Mut -> true
+        TokenKind.Return -> true
+        TokenKind.Break -> true
+        TokenKind.Continue -> true
+        TokenKind.Enum -> true
+        TokenKind.Ext -> true
+        TokenKind.Use -> true
+        TokenKind.Spec -> true
+        TokenKind.Const -> true
+        TokenKind.On -> true
+        TokenKind.Go -> true
+        else -> false
+    }
+}
+
+fn main() {
+    // Test keyword recognition
+    var count = 0
+
+    // keyword_kind should return correct enum for keywords
+    let k1 = keyword_kind("if")
+    is k1 {
+        TokenKind.If -> count = count + 1
+        else -> print("FAIL: if not recognized")
+    }
+
+    let k2 = keyword_kind("fn")
+    is k2 {
+        TokenKind.Fn -> count = count + 1
+        else -> print("FAIL: fn not recognized")
+    }
+
+    let k3 = keyword_kind("hello")
+    is k3 {
+        TokenKind.Ident -> count = count + 1
+        else -> print("FAIL: hello should be Ident")
+    }
+
+    let k4 = keyword_kind("loop")
+    is k4 {
+        TokenKind.Loop -> count = count + 1
+        else -> print("FAIL: loop not recognized")
+    }
+
+    // is_keyword should return true for keywords, false for others
+    if is_keyword(TokenKind.If) {
+        count = count + 1
+    }
+
+    if is_keyword(TokenKind.Ident) == false {
+        count = count + 1
+    }
+
+    if is_keyword(TokenKind.Int) == false {
+        count = count + 1
+    }
+
+    if is_keyword(TokenKind.Go) {
+        count = count + 1
+    }
+
+    // 8 tests, expect count == 8
+    print(count)
+}

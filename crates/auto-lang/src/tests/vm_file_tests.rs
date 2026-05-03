@@ -458,3 +458,12 @@ fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unw
 
 // === 99_plan230 ===
 #[test] fn test_99_plan230_001_struct_f64() { test_vm("99_plan230/001_struct_f64").unwrap(); }
+
+// === 99_bootstrap (Plan 229b: self-hosting compiler) ===
+#[test] fn test_99_bootstrap_001_token_enum() { test_vm("99_bootstrap/001_token_enum").unwrap(); }
+#[test] fn test_99_bootstrap_002_keyword_map() { test_vm("99_bootstrap/002_keyword_map").unwrap(); }
+#[test] fn test_99_bootstrap_003_lexer_basic() { test_vm("99_bootstrap/003_lexer_basic").unwrap(); }
+#[test] fn test_99_bootstrap_004_str_slice_let() { test_vm("99_bootstrap/004_str_slice_let").unwrap(); }
+#[test] fn test_99_bootstrap_005_str_slice_concat() { test_vm("99_bootstrap/005_str_slice_concat").unwrap(); }
+#[test] fn test_99_bootstrap_006_bool_compare() { test_vm("99_bootstrap/006_bool_compare").unwrap(); }
+#[test] fn test_99_bootstrap_007_nested_control_flow() { test_vm("99_bootstrap/007_nested_control_flow").unwrap(); }

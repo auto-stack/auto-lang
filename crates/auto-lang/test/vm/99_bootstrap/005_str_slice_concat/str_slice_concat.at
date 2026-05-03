@@ -1,0 +1,7 @@
+fn main() {
+    let src = "hello world"
+    let text = src[0..5]
+    print(text)
+    print("prefix:" + src[0..5])
+    print("a" + "b")
+}

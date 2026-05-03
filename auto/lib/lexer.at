@@ -1,0 +1,441 @@
+// Lexer for the Auto self-hosted compiler
+// Converts source text into a list of Tokens
+
+// --- Character constants (Unicode codepoints) ---
+const CHAR_EOF = -1
+const CHAR_TAB = 9
+const CHAR_NEWLINE = 10
+const CHAR_SPACE = 32
+const CHAR_DOUBLE_QUOTE = 34
+const CHAR_HASH = 35
+const CHAR_SINGLE_QUOTE = 39
+const CHAR_LPAREN = 40
+const CHAR_RPAREN = 41
+const CHAR_STAR = 42
+const CHAR_PLUS = 43
+const CHAR_COMMA = 44
+const CHAR_MINUS = 45
+const CHAR_DOT = 46
+const CHAR_SLASH = 47
+const CHAR_0 = 48
+const CHAR_9 = 57
+const CHAR_COLON = 58
+const CHAR_SEMI = 59
+const CHAR_LT = 60
+const CHAR_EQ = 61
+const CHAR_GT = 62
+const CHAR_QUESTION = 63
+const CHAR_AT = 64
+const CHAR_LBRACKET = 91
+const CHAR_BACKSLASH = 92
+const CHAR_RBRACKET = 93
+const CHAR_CARET = 94
+const CHAR_UNDERSCORE = 95
+const CHAR_BACKTICK = 96
+const CHAR_LBRACE = 123
+const CHAR_PIPE = 124
+const CHAR_RBRACE = 125
+const CHAR_TILDE = 126
+
+const CHAR_a = 97
+const CHAR_z = 122
+const CHAR_A = 65
+const CHAR_Z = 90
+const CHAR_f = 102
+const CHAR_x = 120
+const CHAR_b = 98
+const CHAR_n = 110
+const CHAR_r = 114
+const CHAR_t = 116
+
+// Check if codepoint is a digit 0-9
+fn is_digit(c int) bool {
+    c >= CHAR_0 && c <= CHAR_9
+}
+
+// Check if codepoint is alphabetic or underscore
+fn is_alpha(c int) bool {
+    (c >= CHAR_a && c <= CHAR_z) || (c >= CHAR_A && c <= CHAR_Z) || c == CHAR_UNDERSCORE
+}
+
+// Check if codepoint is alphanumeric or underscore
+fn is_alnum(c int) bool {
+    is_digit(c) || is_alpha(c)
+}
+
+// Get current character at position (returns CHAR_EOF if past end)
+fn cur_char(source str, pos uint) int {
+    if pos >= source.len() {
+        return CHAR_EOF
+    }
+    return source[pos]
+}
+
+// Skip whitespace (space and tab, NOT newline)
+fn skip_ws(source str, pos uint) uint {
+    var p = pos
+    var c = cur_char(source, p)
+    for c == CHAR_SPACE || c == CHAR_TAB {
+        p = p + 1
+        c = cur_char(source, p)
+    }
+    return p
+}
+
+// Check if next char matches expected (1-char lookahead)
+fn peek_char(source str, pos uint, expected int) bool {
+    cur_char(source, pos + 1) == expected
+}
+
+// Read a number token starting at pos
+fn lex_number(source str, pos uint) Token {
+    var p = pos
+    var start = p
+    var text = ""
+    var has_dot = false
+    var is_hex = false
+    var is_binary = false
+    var c = cur_char(source, p)
+
+    // Check for 0x (hex) or 0b (binary) prefix
+    if c == CHAR_0 {
+        text = text + "0"
+        p = p + 1
+        c = cur_char(source, p)
+        if c == CHAR_x {
+            text = text + "x"
+            p = p + 1
+            is_hex = true
+            c = cur_char(source, p)
+        } else if c == CHAR_b {
+            text = text + "b"
+            p = p + 1
+            is_binary = true
+            c = cur_char(source, p)
+        }
+    }
+
+    // Read digits
+    for true {
+        if is_binary && (c == CHAR_0 || c == CHAR_1) {
+            text = text + source[p..p + 1]
+            p = p + 1
+            c = cur_char(source, p)
+        } else if is_hex && is_hex_digit(c) {
+            text = text + source[p..p + 1]
+            p = p + 1
+            c = cur_char(source, p)
+        } else if is_digit(c) && !is_binary {
+            text = text + source[p..p + 1]
+            p = p + 1
+            c = cur_char(source, p)
+        } else if c == CHAR_UNDERSCORE {
+            p = p + 1
+            c = cur_char(source, p)
+        } else if c == CHAR_DOT && !has_dot && !is_hex && !is_binary {
+            // Check if char after dot is a digit (otherwise it's a method call like 10.str())
+            var next = cur_char(source, p + 1)
+            if !is_digit(next) {
+                break
+            }
+            has_dot = true
+            text = text + "."
+            p = p + 1
+            c = cur_char(source, p)
+        } else {
+            break
+        }
+    }
+
+    // Check type suffixes
+    var kind = TokenKind.Int
+    if has_dot {
+        kind = TokenKind.Float
+        var next = cur_char(source, p)
+        if next == CHAR_f {
+            p = p + 1
+            kind = TokenKind.Float
+        } else if next == CHAR_d {
+            p = p + 1
+            kind = TokenKind.Double
+        }
+    } else {
+        var next = cur_char(source, p)
+        if next == CHAR_f {
+            p = p + 1
+            kind = TokenKind.Float
+        } else if next == CHAR_d {
+            p = p + 1
+            kind = TokenKind.Double
+        } else if next == 'u' {
+            p = p + 1
+            if peek_char(source, p, CHAR_9 - CHAR_0 + CHAR_0 + 8) {
+                // '8' = 56 = CHAR_0 + 8
+                p = p + 1
+                kind = TokenKind.U8
+            } else {
+                kind = TokenKind.Uint
+            }
+        } else if next == 'i' {
+            p = p + 1
+            if peek_char(source, p, CHAR_9 - CHAR_0 + CHAR_0 + 8) {
+                p = p + 1
+                kind = TokenKind.I8
+            }
+        }
+    }
+
+    return Token(kind, Pos(1, start, p - start), text)
+}
+
+// Check if codepoint is a hex digit
+fn is_hex_digit(c int) bool {
+    is_digit(c) || (c >= CHAR_a && c <= CHAR_f) || (c >= CHAR_A && c <= 'F')
+}
+
+// Read an identifier or keyword
+fn lex_ident(source str, pos uint) Token {
+    var p = pos
+    var start = p
+    var c = cur_char(source, p)
+    for is_alnum(c) || c == '-' {
+        // Allow hyphenated identifiers like preview-card
+        // but only if the next char after - is alpha
+        if c == '-' {
+            var next = cur_char(source, p + 1)
+            if !is_alpha(next) {
+                break
+            }
+        }
+        p = p + 1
+        c = cur_char(source, p)
+    }
+    var text = source[start..p]
+    var kind = keyword_kind(text)
+    return Token(kind, Pos(1, start, p - start), text)
+}
+
+// Read a string literal "..."
+fn lex_string(source str, pos uint) Token {
+    var p = pos + 1 // skip opening "
+    var text = ""
+    var c = cur_char(source, p)
+    for c != CHAR_DOUBLE_QUOTE && c != CHAR_EOF {
+        if c == CHAR_BACKSLASH {
+            p = p + 1
+            var esc = cur_char(source, p)
+            if esc == 'n' {
+                text = text + "\n"
+            } else if esc == 't' {
+                text = text + "\t"
+            } else if esc == 'r' {
+                text = text + "\r"
+            } else if esc == '0' {
+                text = text + "\0"
+            } else if esc == CHAR_BACKSLASH {
+                text = text + "\\"
+            } else if esc == CHAR_DOUBLE_QUOTE {
+                text = text + "\""
+            } else {
+                text = text + "\\" + source[p..p + 1]
+            }
+            p = p + 1
+        } else {
+            text = text + source[p..p + 1]
+            p = p + 1
+        }
+        c = cur_char(source, p)
+    }
+    p = p + 1 // skip closing "
+    return Token(TokenKind.Str, Pos(1, pos, p - pos), text)
+}
+
+// Read an operator or punctuation token
+fn lex_operator(source str, pos uint) Token {
+    var c = cur_char(source, pos)
+    var p = pos
+
+    // Single-char tokens
+    if c == CHAR_LPAREN { return Token(TokenKind.LParen, Pos(1, p, 1), "(") }
+    if c == CHAR_RPAREN { return Token(TokenKind.RParen, Pos(1, p, 1), ")") }
+    if c == CHAR_LBRACKET { return Token(TokenKind.LSquare, Pos(1, p, 1), "[") }
+    if c == CHAR_RBRACKET { return Token(TokenKind.RSquare, Pos(1, p, 1), "]") }
+    if c == CHAR_LBRACE { return Token(TokenKind.LBrace, Pos(1, p, 1), "{") }
+    if c == CHAR_RBRACE { return Token(TokenKind.RBrace, Pos(1, p, 1), "}") }
+    if c == CHAR_COMMA { return Token(TokenKind.Comma, Pos(1, p, 1), ",") }
+    if c == CHAR_SEMI { return Token(TokenKind.Semi, Pos(1, p, 1), ";") }
+    if c == CHAR_COLON { return Token(TokenKind.Colon, Pos(1, p, 1), ":") }
+    if c == CHAR_AT { return Token(TokenKind.At, Pos(1, p, 1), "@") }
+    if c == CHAR_TILDE { return Token(TokenKind.Tilde, Pos(1, p, 1), "~") }
+    if c == CHAR_HASH { return Token(TokenKind.Hash, Pos(1, p, 1), "#") }
+    if c == CHAR_BACKTICK { return Token(TokenKind.FStrStart, Pos(1, p, 1), "`") }
+
+    // Two-char operators
+    if c == CHAR_PLUS {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.AddEq, Pos(1, p, 2), "+=")
+        }
+        return Token(TokenKind.Add, Pos(1, p, 1), "+")
+    }
+    if c == CHAR_MINUS {
+        if peek_char(source, p, '>') {
+            return Token(TokenKind.Arrow, Pos(1, p, 2), "->")
+        }
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.SubEq, Pos(1, p, 2), "-=")
+        }
+        return Token(TokenKind.Sub, Pos(1, p, 1), "-")
+    }
+    if c == CHAR_STAR {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.MulEq, Pos(1, p, 2), "*=")
+        }
+        return Token(TokenKind.Star, Pos(1, p, 1), "*")
+    }
+    if c == CHAR_SLASH {
+        if peek_char(source, p, CHAR_SLASH) {
+            // Line comment — skip to end of line
+            return Token(TokenKind.CommentLine, Pos(1, p, 2), "//")
+        }
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.DivEq, Pos(1, p, 2), "/=")
+        }
+        return Token(TokenKind.Div, Pos(1, p, 1), "/")
+    }
+    if c == CHAR_CARET {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.ModEq, Pos(1, p, 2), "^=")
+        }
+        return Token(TokenKind.Mod, Pos(1, p, 1), "^")
+    }
+    if c == '%' {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.ModEq, Pos(1, p, 2), "%=")
+        }
+        return Token(TokenKind.Mod, Pos(1, p, 1), "%")
+    }
+    if c == CHAR_LT {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.Le, Pos(1, p, 2), "<=")
+        }
+        return Token(TokenKind.Lt, Pos(1, p, 1), "<")
+    }
+    if c == CHAR_GT {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.Ge, Pos(1, p, 2), ">=")
+        }
+        return Token(TokenKind.Gt, Pos(1, p, 1), ">")
+    }
+    if c == CHAR_EQ {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.Eq, Pos(1, p, 2), "==")
+        }
+        if peek_char(source, p, '>') {
+            return Token(TokenKind.DoubleArrow, Pos(1, p, 2), "=>")
+        }
+        return Token(TokenKind.Asn, Pos(1, p, 1), "=")
+    }
+    if c == '!' {
+        if peek_char(source, p, CHAR_EQ) {
+            return Token(TokenKind.Neq, Pos(1, p, 2), "!=")
+        }
+        return Token(TokenKind.Not, Pos(1, p, 1), "!")
+    }
+    if c == CHAR_DOT {
+        if peek_char(source, p, CHAR_DOT) {
+            if peek_char(source, p + 1, CHAR_EQ) {
+                return Token(TokenKind.RangeEq, Pos(1, p, 3), "..=")
+            }
+            return Token(TokenKind.Range, Pos(1, p, 2), "..")
+        }
+        if peek_char(source, p, '?') {
+            return Token(TokenKind.DotQuest, Pos(1, p, 2), ".?")
+        }
+        return Token(TokenKind.Dot, Pos(1, p, 1), ".")
+    }
+    if c == CHAR_QUESTION {
+        if peek_char(source, p, CHAR_QUESTION) {
+            return Token(TokenKind.QuestionQuestion, Pos(1, p, 2), "??")
+        }
+        return Token(TokenKind.Question, Pos(1, p, 1), "?")
+    }
+    if c == CHAR_PIPE {
+        if peek_char(source, p, CHAR_PIPE) {
+            return Token(TokenKind.Or, Pos(1, p, 2), "||")
+        }
+        return Token(TokenKind.VBar, Pos(1, p, 1), "|")
+    }
+    if c == '&' {
+        if peek_char(source, p, '&') {
+            return Token(TokenKind.And, Pos(1, p, 2), "&&")
+        }
+        return Token(TokenKind.Amp, Pos(1, p, 1), "&")
+    }
+
+    // Unknown character — skip it
+    return Token(TokenKind.EOF, Pos(1, p, 1), "")
+}
+
+// Tokenize a source string, returning a list of token kinds (as display strings)
+// P0: simplified tokenizer for basic testing
+fn tokenize(source str) str {
+    var p = 0
+    var result = ""
+    var len = source.len()
+
+    for p < len {
+        p = skip_ws(source, p)
+        if p >= len {
+            break
+        }
+
+        var c = cur_char(source, p)
+
+        // Newline
+        if c == CHAR_NEWLINE {
+            result = result + "<nl>"
+            p = p + 1
+        }
+        // Number
+        else if is_digit(c) {
+            var tok = lex_number(source, p)
+            result = result + tok.text
+            // advance past the token text
+            p = p + tok.pos.total
+        }
+        // Identifier or keyword
+        else if is_alpha(c) {
+            var tok = lex_ident(source, p)
+            if is_keyword(tok.kind) {
+                result = result + "<" + tok.text + ">"
+            } else {
+                result = result + tok.text
+            }
+            p = p + tok.pos.total
+        }
+        // String
+        else if c == CHAR_DOUBLE_QUOTE {
+            var tok = lex_string(source, p)
+            result = result + "\"" + tok.text + "\""
+            p = p + tok.pos.total
+        }
+        // Operators and punctuation
+        else {
+            var tok = lex_operator(source, p)
+            if tok.kind != TokenKind.EOF {
+                result = result + tok.text
+                p = p + tok.pos.total
+            } else {
+                p = p + 1
+            }
+        }
+    }
+
+    return result
+}
+
+fn main() {
+    let src = "let x = 42"
+    let result = tokenize(src)
+    print(result)
+}

@@ -3400,11 +3400,16 @@ impl AutoVM {
                         .cloned();
 
                     // Plan 199: Push structured call frame for debugging
+                    // Save current function metadata for restoration on RET
+                    let saved_n_args = task.current_fn_n_args;
+                    let saved_n_locals = task.current_fn_n_locals;
                     task.call_stack.push(crate::vm::task::CallFrame {
                         return_ip: task.ip,
                         old_bp: task.bp,
                         fn_name,
                         line: task.current_line,
+                        old_fn_n_args: saved_n_args,
+                        old_fn_n_locals: saved_n_locals,
                     });
 
                     vm_debug!("DEBUG CALL: Stack depth after setup = {}, BP = {}",
@@ -3542,8 +3547,11 @@ impl AutoVM {
                     task.ram.sp = new_sp;
                     task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
 
-                    // Plan 199: Pop structured call frame
-                    task.call_stack.pop();
+                    // Plan 199: Pop structured call frame and restore function metadata
+                    if let Some(frame) = task.call_stack.pop() {
+                        task.current_fn_n_args = frame.old_fn_n_args;
+                        task.current_fn_n_locals = frame.old_fn_n_locals;
+                    }
                 }
                 // RET_D: Return with 2-slot value (f64, u64, i64)
                 OpCode::RET_D => {
@@ -4211,11 +4219,6 @@ impl AutoVM {
                 }
                 OpCode::RESERVE_STACK => {
                     // Reserve stack space for n_locals to prevent stack from overwriting locals
-                    // Layout: [local_0, local_1, ..., local_n-1, stack..., return_addr, old_bp, args...]
-                    //           0          1          n_locals-1  n_locals         ...
-                    // BP points to saved BP location (in normal function calls), or 0 in main task
-                    // STORE_LOC_0 writes to BP+1, STORE_LOC_1 writes to BP+2, etc.
-                    // Stack operations (push/pop) use SP which should be >= n_locals + 1 to avoid overlap
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
@@ -4345,12 +4348,18 @@ impl AutoVM {
                 OpCode::AND => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(a & b);
+                    // Logical AND: both true → push true (i32::MIN), else false (i32::MIN+1)
+                    let a_true = a != 0 && a != -2147483647;
+                    let b_true = b != 0 && b != -2147483647;
+                    task.ram.push_i32(if a_true && b_true { -2147483648 } else { -2147483647 });
                 }
                 OpCode::OR => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(a | b);
+                    // Logical OR: either true → push true (i32::MIN), else false (i32::MIN+1)
+                    let a_true = a != 0 && a != -2147483647;
+                    let b_true = b != 0 && b != -2147483647;
+                    task.ram.push_i32(if a_true || b_true { -2147483648 } else { -2147483647 });
                 }
                 OpCode::XOR => {
                     let b = task.ram.pop_i32();

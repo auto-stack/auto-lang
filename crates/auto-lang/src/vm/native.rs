@@ -818,6 +818,14 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
+    // Boolean sentinel values: i32::MIN = true, i32::MIN+1 = false
+    if val == -2147483648 {
+        vm_print(vm, "1");
+        return Ok(());
+    } else if val == -2147483647 {
+        vm_print(vm, "0");
+        return Ok(());
+    }
     // Check if it's a Rust stdlib heap handle
     let handle = val as u64;
     if let Some(obj) = vm.get_heap_object(handle) {

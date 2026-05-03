@@ -1007,9 +1007,19 @@ impl Codegen {
                                 self.var_types.insert(name_str.clone(), store.ty.clone());
                             }
                         } else {
-                            // Plan 202: When store.ty is a default (Int) but expr is Ident
-                            // with a more specific type, prefer the source type
-                            if let Expr::Ident(src_name) = &store.expr {
+                            // String range slice: e.g., let text = src[0..2]
+                            // Parser may infer Char, but range slice on string produces string
+                            if let Expr::Index(container, idx) = &store.expr {
+                                if let Expr::Range(_) = idx.as_ref() {
+                                    if self.is_string_expr(container) {
+                                        self.var_types.insert(name_str.clone(), Type::Str(0));
+                                    } else {
+                                        self.var_types.insert(name_str.clone(), store.ty.clone());
+                                    }
+                                } else {
+                                    self.var_types.insert(name_str.clone(), store.ty.clone());
+                                }
+                            } else if let Expr::Ident(src_name) = &store.expr {
                                 if let Some(src_type) = self.var_types.get(src_name.as_str()) {
                                     if !matches!(src_type, Type::Int | Type::Unknown) {
                                         self.var_types.insert(name_str.clone(), src_type.clone());
@@ -1127,8 +1137,17 @@ impl Codegen {
                                     self.infer_expr_type(&store.expr)
                                 }
                                 // Plan 197 Task 14: Infer type from array indexing (e.g., let first = list[0])
-                                Expr::Index(_, _) => {
-                                    self.infer_expr_type(&store.expr)
+                                Expr::Index(container, idx) => {
+                                    // Range slice on a string container produces a string, not char
+                                    if let Expr::Range(_) = idx.as_ref() {
+                                        if self.is_string_expr(container) {
+                                            Type::Str(0)
+                                        } else {
+                                            self.infer_expr_type(&store.expr)
+                                        }
+                                    } else {
+                                        self.infer_expr_type(&store.expr)
+                                    }
                                 }
                                 // Plan 197 Task 14: Infer type from array literal (e.g., let list = [a, b])
                                 Expr::Array(elems) => {
@@ -4487,7 +4506,9 @@ impl Codegen {
                     let is_comparison = matches!(op, Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge);
                     if !is_comparison {
                         // Check operand types to determine result type
-                        if is_double {
+                        if is_string {
+                            self.last_expr_type = ObjectType::String;
+                        } else if is_double {
                             self.last_expr_type = ObjectType::Double;
                         } else if is_float {
                             self.last_expr_type = ObjectType::Float;
@@ -6509,6 +6530,10 @@ impl Codegen {
                 let ty = self.infer_ctx.type_env.get(name);
                 matches!(ty, Some(Type::Str(_)) | Some(Type::String))
                     || matches!(self.var_types.get(name.as_ref()), Some(Type::Str(_)) | Some(Type::String) | Some(Type::CStr | Type::StrSlice))
+            }
+            Expr::Index(container, _index) => {
+                // String slicing: "hello"[0..2] produces a string
+                self.is_string_expr(container)
             }
             Expr::Dot(obj, field) => {
                 // Field access: check if the field's type is string

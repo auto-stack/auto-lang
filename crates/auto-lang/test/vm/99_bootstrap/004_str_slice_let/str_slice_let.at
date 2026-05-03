@@ -1,0 +1,5 @@
+fn main() {
+    let src = "hello"
+    let text = src[0..2]
+    print(text)
+}

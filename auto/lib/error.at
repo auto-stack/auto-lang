@@ -1,0 +1,7 @@
+// Error type for the Auto self-hosted compiler
+
+type Error {
+    message str
+    line uint
+    at uint
+}

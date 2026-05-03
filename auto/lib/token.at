@@ -1,0 +1,302 @@
+// Token types for the Auto self-hosted compiler
+// Covers all 129 TokenKind variants from the Rust reference implementation
+
+// Token kinds — mirrors crates/auto-lang/src/token.rs TokenKind enum
+enum TokenKind {
+    // Literals
+    Int
+    Uint
+    U8
+    I8
+    Bool
+    Byte
+    Float
+    Double
+    Str
+    CStr
+    Char
+    Ident
+
+    // Delimiters
+    LParen
+    RParen
+    LSquare
+    RSquare
+    LBrace
+    RBrace
+    Comma
+    Semi
+    Newline
+
+    // Operators
+    Add
+    Sub
+    Star
+    Div
+    Mod
+    Not
+    Lt
+    Gt
+    Le
+    Ge
+    Asn
+    Eq
+    Neq
+    AddEq
+    SubEq
+    MulEq
+    DivEq
+    ModEq
+    Dot
+    Range
+    RangeEq
+    Colon
+    VBar
+    Amp
+    Arrow
+    DoubleArrow
+    Question
+    QuestionQuestion
+    DotQuestion
+    DotQuest
+    At
+    Hash
+    Tilde
+
+    // Comments
+    CommentLine
+    CommentContent
+    CommentStart
+    CommentEnd
+    DocComment
+
+    // Comptime keywords (Plan 095)
+    HashIf
+    HashFor
+    HashIs
+    HashBrace
+
+    // Keywords — control flow
+    True
+    False
+    Nil
+    Null
+    If
+    Else
+    For
+    Loop
+    Break
+    Continue
+    Return
+    Is
+
+    // Keywords — declarations
+    Fn
+    Type
+    Union
+    Tag
+    Let
+    Var
+    Mut
+    Move
+    Copy
+    Const
+    View
+    Take
+    Hold
+
+    // Keywords — types & traits
+    Spec
+    Use
+    Pac
+    Super
+    As
+    To
+    Enum
+    On
+    Alias
+    Node
+    Ext
+    Static
+    Shared
+    Impl
+    Has
+    Dep
+
+    // Keywords — router
+    Routes
+    Outlet
+    Link
+    Route
+    Nav
+
+    // Keywords — Option/Result constructors
+    NoneKW
+    SomeKW
+    OkKW
+    ErrKW
+
+    // Keywords — concurrency
+    Task
+    Spawn
+    Await
+    Reply
+    Go
+
+    // Postfix property keywords
+    DotView
+    DotMut
+    DotMove
+    DotTake
+
+    // Logical operators (reserved)
+    And
+    Or
+
+    // F-String tokens
+    FStrStart
+    FStrPart
+    FStrEnd
+    FStrNote
+
+    // AutoData
+    Grid
+
+    // End of file
+    EOF
+}
+
+// Token with position information
+type Token {
+    kind TokenKind
+    pos Pos
+    text str
+}
+
+// Check if a TokenKind is a keyword variant
+fn is_keyword(kind TokenKind) bool {
+    is kind {
+        TokenKind.True -> true
+        TokenKind.False -> true
+        TokenKind.Nil -> true
+        TokenKind.Null -> true
+        TokenKind.If -> true
+        TokenKind.Else -> true
+        TokenKind.For -> true
+        TokenKind.Loop -> true
+        TokenKind.Break -> true
+        TokenKind.Continue -> true
+        TokenKind.Return -> true
+        TokenKind.Is -> true
+        TokenKind.Fn -> true
+        TokenKind.Type -> true
+        TokenKind.Union -> true
+        TokenKind.Tag -> true
+        TokenKind.Let -> true
+        TokenKind.Var -> true
+        TokenKind.Mut -> true
+        TokenKind.Move -> true
+        TokenKind.Copy -> true
+        TokenKind.Const -> true
+        TokenKind.View -> true
+        TokenKind.Take -> true
+        TokenKind.Hold -> true
+        TokenKind.Spec -> true
+        TokenKind.Use -> true
+        TokenKind.Pac -> true
+        TokenKind.Super -> true
+        TokenKind.As -> true
+        TokenKind.To -> true
+        TokenKind.Enum -> true
+        TokenKind.On -> true
+        TokenKind.Alias -> true
+        TokenKind.Node -> true
+        TokenKind.Ext -> true
+        TokenKind.Static -> true
+        TokenKind.Shared -> true
+        TokenKind.Impl -> true
+        TokenKind.Has -> true
+        TokenKind.Dep -> true
+        TokenKind.Routes -> true
+        TokenKind.Outlet -> true
+        TokenKind.Link -> true
+        TokenKind.Route -> true
+        TokenKind.Nav -> true
+        TokenKind.NoneKW -> true
+        TokenKind.SomeKW -> true
+        TokenKind.OkKW -> true
+        TokenKind.ErrKW -> true
+        TokenKind.Task -> true
+        TokenKind.Spawn -> true
+        TokenKind.Await -> true
+        TokenKind.Reply -> true
+        TokenKind.Go -> true
+        TokenKind.Grid -> true
+        TokenKind.And -> true
+        TokenKind.Or -> true
+        else -> false
+    }
+}
+
+// Map identifier text to keyword TokenKind.
+// Returns TokenKind.Ident if the text is not a keyword.
+fn keyword_kind(text str) TokenKind {
+    if text == "true" { return TokenKind.True }
+    if text == "false" { return TokenKind.False }
+    if text == "nil" { return TokenKind.Nil }
+    if text == "null" { return TokenKind.Null }
+    if text == "if" { return TokenKind.If }
+    if text == "else" { return TokenKind.Else }
+    if text == "for" { return TokenKind.For }
+    if text == "loop" { return TokenKind.Loop }
+    if text == "is" { return TokenKind.Is }
+    if text == "var" { return TokenKind.Var }
+    if text == "fn" { return TokenKind.Fn }
+    if text == "type" { return TokenKind.Type }
+    if text == "union" { return TokenKind.Union }
+    if text == "tag" { return TokenKind.Tag }
+    if text == "let" { return TokenKind.Let }
+    if text == "mut" { return TokenKind.Mut }
+    if text == "move" { return TokenKind.Move }
+    if text == "copy" { return TokenKind.Copy }
+    if text == "hold" { return TokenKind.Hold }
+    if text == "has" { return TokenKind.Has }
+    if text == "spec" { return TokenKind.Spec }
+    if text == "use" { return TokenKind.Use }
+    if text == "pac" { return TokenKind.Pac }
+    if text == "super" { return TokenKind.Super }
+    if text == "as" { return TokenKind.As }
+    if text == "to" { return TokenKind.To }
+    if text == "enum" { return TokenKind.Enum }
+    if text == "grid" { return TokenKind.Grid }
+    if text == "alias" { return TokenKind.Alias }
+    if text == "break" { return TokenKind.Break }
+    if text == "continue" { return TokenKind.Continue }
+    if text == "return" { return TokenKind.Return }
+    if text == "ext" { return TokenKind.Ext }
+    if text == "static" { return TokenKind.Static }
+    if text == "shared" { return TokenKind.Shared }
+    if text == "impl" { return TokenKind.Impl }
+    if text == "const" { return TokenKind.Const }
+    if text == "dep" { return TokenKind.Dep }
+    if text == "routes" { return TokenKind.Routes }
+    if text == "outlet" { return TokenKind.Outlet }
+    if text == "link" { return TokenKind.Link }
+    if text == "route" { return TokenKind.Route }
+    if text == "nav" { return TokenKind.Nav }
+    if text == "None" { return TokenKind.NoneKW }
+    if text == "Some" { return TokenKind.SomeKW }
+    if text == "Ok" { return TokenKind.OkKW }
+    if text == "Err" { return TokenKind.ErrKW }
+    if text == "task" { return TokenKind.Task }
+    if text == "spawn" { return TokenKind.Spawn }
+    if text == "await" { return TokenKind.Await }
+    if text == "reply" { return TokenKind.Reply }
+    if text == "go" { return TokenKind.Go }
+    if text == "on" { return TokenKind.On }
+    if text == "in" { return TokenKind.In }
+    if text == "node" { return TokenKind.Node }
+    if text == "view" { return TokenKind.View }
+    if text == "take" { return TokenKind.Take }
+    return TokenKind.Ident
+}

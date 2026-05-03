@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ 准备中（Phase 0 基础设施加固已完成）
+## 实施状态: ⏳ Phase 1.3 AST 待开始
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -14,8 +14,9 @@
 | 阶段 | 状态 | 说明 |
 |------|------|------|
 | Phase 0: 准备 | ✅ 已完成 | VM 加固: Plan 230/231 阻塞 bug 已修复 |
-| Phase 1.1: Token | ⏳ 未开始 | 现有 token.at 仅 25/70+ TokenKind |
-| Phase 1.2: Lexer | ⏳ 未开始 | 现有 lexer.at 仅有 Src 迭代器 + 空 Lexer 骨架 |
+| Phase 0.5: VM Bug | ✅ 已完成 | 4 个字符串/bool/nesting VM bug 已修复 + 5 个回归测试 |
+| Phase 1.1: Token | ✅ 已完成 | 129 种 TokenKind + keyword_kind + is_keyword |
+| Phase 1.2: Lexer | ✅ 已完成 | auto/lib/lexer.at P0 实现 + VM 核心逻辑测试 |
 | Phase 1.3: AST | ⏳ 未开始 | 完全未开始 |
 | Phase 1.4: Parser | ⏳ 未开始 | 完全未开始 |
 | Phase 2: a2r | ⏳ 未开始 | 完全未开始 |
@@ -29,10 +30,113 @@
 - [x] VM 修复: f64 结构体字面量栈错位（Plan 230 已完成）
 - [x] VM 修复: 嵌套 mut fn + for 循环栈损坏（Plan 231 已完成）
 - [x] 24 个 VM 回归测试创建并验证
+- [x] Phase 1.1: auto/lib/token.at — 129 种 TokenKind + keyword_kind + is_keyword
+- [x] Phase 1.2: auto/lib/lexer.at — P0 Lexer 实现 + 3 个 bootstrap VM 测试通过
+- [x] Phase 0.5 Bug 1: PRINT_I32 布尔 sentinel 值输出垃圾值 → native.rs 中检测 i32::MIN/i32::MIN+1 输出 1/0
+- [x] Phase 0.5 Bug 2: let 绑定字符串切片丢失类型 → codegen.rs 中 Expr::Index+Range 的 string range slice 类型推断
+- [x] Phase 0.5 Bug 3: STR_CAT 后 last_expr_type 被设为 Int → codegen.rs binary expr 结果类型追踪加 is_string 检查
+- [x] Phase 0.5 Bug 4: RET 不恢复 current_fn_n_args → engine.rs CallFrame 中保存/恢复函数元数据 + AND/OR 改为逻辑操作
 
 **下一步行动:**
-- Phase 0 已完成，Phase 1.1（Token 系统扩展）可以开始
+- Phase 1.3: 实现 AST 类型定义
 - SSE parser 的 2 个复合场景测试仍失败（test 001, 002），涉及多个 VM 特性交互，但不阻塞 Phase 1
+
+---
+
+## Phase 0.5: VM 字符串/Bool Bug 修复
+
+Phase 1.2 实施中发现的 4 个 VM 运行时 bug，阻塞了 Lexer 的 VM 内集成测试。
+这些 bug 的共同根源是 VM 的 tagged value 系统在字符串操作和布尔比较时丢失类型信息。
+
+### Bug 1: `bool == false` 比较结果不正确 ✅ 已修复
+
+**现象:** `check_alpha(97) == false` 返回垃圾值（`-2147483647`）
+**根因:** 比较运算符使用布尔 sentinel 编码（`i32::MIN`=true, `i32::MIN+1`=false），PRINT_I32 直接将 sentinel 当整数打印
+**修复:** native.rs 中 `shim_print_i32` 检测 sentinel 值输出 `1`/`0`；engine.rs 中 AND/OR 从按位操作改为逻辑操作
+**文件:** `crates/auto-lang/src/vm/native.rs`, `crates/auto-lang/src/vm/engine.rs`
+
+### Bug 2: `let` 绑定字符串切片后丢失类型信息 ✅ 已修复
+
+**现象:** `let text = src[0..2]; print(text)` 输出负数垃圾值
+**根因:** parser 将 `src[0..2]` 推断为 `Char` 类型（非 `Unknown`），codegen 在非 Unknown 分支直接使用 `store.ty`
+**修复:** codegen.rs 中 `Expr::Index(container, idx)` 当 `idx` 是 `Range` 且 container 是 string 时，覆盖为 `Type::Str(0)`
+**文件:** `crates/auto-lang/src/vm/codegen.rs`
+
+### Bug 3: 字符串字面量 + 字符串切片拼接产生垃圾值 ✅ 已修复
+
+**现象:** `"a" + "b"` 输出 `-3`，`"prefix:" + src[0..2]` 输出负数
+**根因:** STR_CAT 正确发出后，binary expression 的 `last_expr_type` 在 `is_comparison` 分支中被设为 `ObjectType::Int`，导致 print 选择 PRINT_I32
+**修复:** codegen.rs binary expr 结果类型追踪中，在 is_double/is_float/is_u64 检查前加 `is_string` 检查
+**文件:** `crates/auto-lang/src/vm/codegen.rs`
+
+### Bug 4: 嵌套函数调用导致参数读取错误 ✅ 已修复
+
+**现象:** 函数内调用另一个函数后，再次读取参数值变为垃圾值
+**根因:** `FN_PROLOG` 设置 `task.current_fn_n_args`，但 `RET` 不恢复，导致嵌套调用后 LOAD_LOCAL 使用错误的 n_args 计算参数地址
+**修复:** CallFrame 增加 `old_fn_n_args`/`old_fn_n_locals` 字段，CALL 时保存，RET 时恢复
+**文件:** `crates/auto-lang/src/vm/task.rs`, `crates/auto-lang/src/vm/engine.rs`
+
+### 修复优先级
+
+1. **Bug 3**（STR_CONCAT）— 最高优先，直接阻塞 Lexer 输出格式化
+2. **Bug 2**（let 绑定切片）— 高优先，阻塞所有基于字符串切片的中间结果存储
+3. **Bug 1**（bool == false）— 中优先，有 != true 绕过方案
+4. **Bug 4**（嵌套控制流）— 低优先，有 for 替代方案，但表明深层 VM 栈管理问题
+
+### 验证
+
+每个 bug 修复后，在 `crates/auto-lang/test/vm/99_bootstrap/` 下创建对应的回归测试：
+- [x] `004_str_slice_let/` — 验证 `let text = src[0..2]` 正确保存字符串切片
+- [x] `005_str_slice_concat/` — 验证 `"prefix:" + src[0..2]` 正确拼接 + `"a" + "b"` 字面量拼接
+- [x] `006_bool_compare/` — 验证 `bool == false` / `bool == true` / `bool != true` 正确工作
+- [x] `007_nested_control_flow/` — 验证嵌套函数调用 + loop + string index 不损坏参数
+
+全部修复后，运行完整的 Lexer tokenize 测试（将 `003_lexer_basic` 升级为完整的 tokenize_print 测试）。
+
+---
+
+## Phase 1.1+1.2 详细实施计划
+
+### 新建文件
+
+| 文件 | 内容 |
+|------|------|
+| `auto/lib/pos.at` | Pos 位置类型（从 auto/pos.at 移入） |
+| `auto/lib/token.at` | 完整 TokenKind 枚举 (129 种) + Token 类型 + keyword_kind/is_keyword/token_display 辅助函数 |
+| `auto/lib/error.at` | Error 错误类型定义 |
+| `auto/lib/lexer.at` | 完整 Lexer 实现（P0 优先） |
+| `crates/auto-lang/test/vm/99_bootstrap/` | VM 测试验证 token + lexer |
+
+### TokenKind 覆盖范围（基于 Rust token.rs 129 种）
+
+- 字面量 (12): Int, Uint, I8, U8, Float, Double, Bool, Byte, Str, CStr, Char, Ident
+- 分隔符 (9): LParen..RBrace, Comma, Semi, Newline
+- 运算符 (24): Add..Tilde + Arrow, DoubleArrow, Question, QuestionQuestion, DotQuestion, DotQuest
+- 注释 (5): CommentLine/Content/Start/End, DocComment
+- Comptime (4): HashIf/For/Is/Brace
+- 关键字 (~55): True..DotTake
+- F-String (4): FStrStart/Part/End/Note
+- EOF (1)
+
+### Lexer P0 实现范围
+
+```auto
+type Lexer {
+    source str
+    len uint
+    pos Pos
+    cur char       // 当前字符 (-1 = EOF)
+    errors List<Error>
+}
+```
+
+核心方法: `new()`, `advance()`, `peek()`, `skip_whitespace()`, `next_token()`, `number()`, `ident_or_keyword()`, `string()`, `operator()`, `tokenize_all()`
+
+支持: 十进制/十六进制/二进制数字、类型后缀、标识符/关键字、字符串转义、单/双/三字符运算符
+
+### P1 延后项
+
+F-string、多行字符串、C 字符串、块注释、Comptime 关键字、连字符标识符、属性关键字 (.view/.mut/.move/.take)、.? 错误传播
 
 **`auto/` 目录现状:** 文件自 2026-01-15 以来未更新，仅有早期原型（5 个 .at 文件，无子目录）
 

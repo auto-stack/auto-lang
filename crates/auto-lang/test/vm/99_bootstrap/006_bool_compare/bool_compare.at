@@ -1,0 +1,10 @@
+fn main() {
+    let a = true
+    let b = false
+    print(a == false)
+    print(b == false)
+    print(a != true)
+    print(b != true)
+    print(a == true)
+    print(b == true)
+}
