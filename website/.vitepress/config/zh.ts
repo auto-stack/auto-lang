@@ -34,6 +34,7 @@ function nav(): DefaultTheme.NavItem[] {
     { text: '文档', link: '/zh/docs/' },
     { text: '教程', link: '/zh/books/' },
     { text: 'Playground', link: '/zh/playground' },
+    { text: 'UI 画廊', link: '/zh/ui-gallery' },
     {
       text: 'v0.2',
       items: [

@@ -34,6 +34,7 @@ function nav(): DefaultTheme.NavItem[] {
     { text: 'Docs', link: '/docs/' },
     { text: 'Tutorials', link: '/books/' },
     { text: 'Playground', link: '/playground' },
+    { text: 'UI Gallery', link: '/ui-gallery' },
     {
       text: 'v0.2',
       items: [
