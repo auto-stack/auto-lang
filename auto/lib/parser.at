@@ -1,0 +1,677 @@
+// Parser for the Auto self-hosted compiler
+// Converts List<Token> into AST nodes
+// Uses Pratt parsing for expressions, recursive descent for statements
+
+// Parser state
+type Parser {
+    tokens List
+    pos int
+    len int
+}
+
+// Create a new parser from a token list
+fn parser_new(tokens List) Parser {
+    Parser(tokens, 0, tokens.len())
+}
+
+// Get current token
+fn parser_cur(p Parser) Token {
+    if p.pos >= p.len {
+        return Token(TokenKind.EOF, Pos(0, 0, 0), "")
+    }
+    return p.tokens.get(p.pos)
+}
+
+// Get current token kind
+fn parser_kind(p Parser) TokenKind {
+    return parser_cur(p).kind
+}
+
+// Get current token text
+fn parser_text(p Parser) str {
+    return parser_cur(p).text
+}
+
+// Check if current token matches a kind
+fn parser_is(p Parser, kind TokenKind) bool {
+    return parser_kind(p) == kind
+}
+
+// Look ahead at the next token kind (1-token lookahead)
+fn parser_peek_kind(p Parser) TokenKind {
+    var next = p.pos + 1
+    if next >= p.len {
+        return TokenKind.EOF
+    }
+    return p.tokens.get(next).kind
+}
+
+// Skip newline tokens
+fn parser_skip_newlines(p Parser) {
+    for parser_kind(p) == TokenKind.Newline {
+        p.pos = p.pos + 1
+    }
+}
+
+// Skip semicolons
+fn parser_skip_semi(p Parser) {
+    for parser_kind(p) == TokenKind.Semi {
+        p.pos = p.pos + 1
+    }
+}
+
+// Skip newlines and semicolons
+fn parser_skip_nl_semi(p Parser) {
+    for true {
+        var k = parser_kind(p)
+        if k == TokenKind.Newline || k == TokenKind.Semi {
+            p.pos = p.pos + 1
+        } else {
+            break
+        }
+    }
+}
+
+// ---- Operator Precedence ----
+
+fn infix_prec(kind TokenKind) int {
+    is kind {
+        TokenKind.Asn -> 1
+        TokenKind.AddEq -> 1
+        TokenKind.SubEq -> 1
+        TokenKind.MulEq -> 1
+        TokenKind.DivEq -> 1
+        TokenKind.Or -> 2
+        TokenKind.And -> 3
+        TokenKind.Eq -> 4
+        TokenKind.Neq -> 4
+        TokenKind.Lt -> 5
+        TokenKind.Gt -> 5
+        TokenKind.Le -> 5
+        TokenKind.Ge -> 5
+        TokenKind.Range -> 5
+        TokenKind.RangeEq -> 5
+        TokenKind.Add -> 6
+        TokenKind.Sub -> 6
+        TokenKind.Star -> 7
+        TokenKind.Div -> 7
+        TokenKind.Mod -> 7
+        TokenKind.Dot -> 8
+        TokenKind.LParen -> 8
+        TokenKind.LSquare -> 8
+        else -> 0
+    }
+}
+
+// Check if token kind is a stop token (not an infix operator)
+fn is_stop_token(kind TokenKind) bool {
+    is kind {
+        TokenKind.EOF -> true
+        TokenKind.Newline -> true
+        TokenKind.Semi -> true
+        TokenKind.RBrace -> true
+        TokenKind.RParen -> true
+        TokenKind.RSquare -> true
+        TokenKind.Comma -> true
+        TokenKind.Colon -> true
+        TokenKind.Arrow -> true
+        else -> false
+    }
+}
+
+// ---- Entry Points ----
+
+// Parse a full program
+fn parse_program(p Parser) List {
+    var stmts = empty_list()
+    parser_skip_nl_semi(p)
+
+    for parser_kind(p) != TokenKind.EOF {
+        var stmt = parse_top_stmt(p)
+        if stmt.kind != NodeKind.NilNode {
+            stmts.push(stmt)
+        }
+        parser_skip_nl_semi(p)
+    }
+    return stmts
+}
+
+// Parse a top-level statement
+fn parse_top_stmt(p Parser) ASTNode {
+    var kind = parser_kind(p)
+    is kind {
+        TokenKind.Fn -> parse_fn_decl(p)
+        TokenKind.Type -> parse_type_decl(p)
+        else -> parse_stmt(p)
+    }
+}
+
+// Parse a block body: { stmts }
+// Returns S-expression string of the body
+fn parse_body(p Parser) str {
+    p.pos = p.pos + 1  // skip '{'
+    parser_skip_nl_semi(p)
+
+    var result = ""
+    for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+        var stmt = parse_stmt(p)
+        if stmt.kind != NodeKind.NilNode {
+            if result != "" {
+                result = result + " "
+            }
+            result = result + stmt.value
+        }
+        parser_skip_nl_semi(p)
+    }
+
+    if parser_kind(p) == TokenKind.RBrace {
+        p.pos = p.pos + 1  // skip '}'
+    }
+    return result
+}
+
+// ---- Statement Parsers ----
+
+// Parse a statement
+fn parse_stmt(p Parser) ASTNode {
+    var kind = parser_kind(p)
+    is kind {
+        TokenKind.Fn -> parse_fn_decl(p)
+        TokenKind.Let -> parse_let_stmt(p)
+        TokenKind.Var -> parse_var_stmt(p)
+        TokenKind.Return -> parse_return_stmt(p)
+        TokenKind.If -> parse_if_stmt(p)
+        TokenKind.For -> parse_for_stmt(p)
+        TokenKind.Break -> {
+            p.pos = p.pos + 1
+            nil_node()
+        }
+        TokenKind.Continue -> {
+            p.pos = p.pos + 1
+            nil_node()
+        }
+        TokenKind.LBrace -> {
+            var body = parse_body(p)
+            block_node(body)
+        }
+        else -> parse_expr_stmt(p)
+    }
+}
+
+// Parse function declaration: fn name(params) [ret_type] { body }
+fn parse_fn_decl(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'fn'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+
+    // Parameters
+    var params = empty_list()
+    if parser_kind(p) == TokenKind.LParen {
+        p.pos = p.pos + 1  // skip '('
+        parser_skip_nl_semi(p)
+        for parser_kind(p) != TokenKind.RParen && parser_kind(p) != TokenKind.EOF {
+            var param_name = parser_text(p)
+            p.pos = p.pos + 1  // skip param name
+
+            var param_type = ""
+            // Check if next is an ident (type annotation) not comma/rparen
+            var pk = parser_kind(p)
+            if pk != TokenKind.RParen && pk != TokenKind.Comma && pk != TokenKind.Newline {
+                param_type = parser_text(p)
+                p.pos = p.pos + 1  // skip type name
+            }
+            params.push(Param(param_name, param_type))
+
+            parser_skip_nl_semi(p)
+            if parser_kind(p) == TokenKind.Comma {
+                p.pos = p.pos + 1
+                parser_skip_nl_semi(p)
+            }
+        }
+        if parser_kind(p) == TokenKind.RParen {
+            p.pos = p.pos + 1  // skip ')'
+        }
+    }
+
+    // Optional return type: either ident or arrow+ident
+    var ret_type = ""
+    parser_skip_nl_semi(p)
+    var pk2 = parser_kind(p)
+    if pk2 == TokenKind.Arrow {
+        p.pos = p.pos + 1  // skip '->'
+        parser_skip_nl_semi(p)
+        ret_type = parser_text(p)
+        p.pos = p.pos + 1
+    } else if pk2 == TokenKind.Ident {
+        // Check if this is a return type or '{' start
+        // If peek is '{', this is a return type
+        var peek = parser_peek_kind(p)
+        if peek == TokenKind.LBrace {
+            ret_type = parser_text(p)
+            p.pos = p.pos + 1
+        }
+    }
+
+    parser_skip_nl_semi(p)
+    var body = parse_body(p)
+    return fn_node(name, params.len(), ret_type, body)
+}
+
+// Parse let statement: let name [type] = expr
+fn parse_let_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'let'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+
+    // Check for type annotation
+    var type_name = ""
+    var pk = parser_kind(p)
+    if pk == TokenKind.Ident {
+        // Peek: if next is '=', this ident IS the value, not a type
+        var peek = parser_peek_kind(p)
+        if peek != TokenKind.Asn {
+            type_name = parser_text(p)
+            p.pos = p.pos + 1
+        }
+    }
+
+    // Expect '='
+    if parser_kind(p) == TokenKind.Asn {
+        p.pos = p.pos + 1
+    }
+
+    var expr = parse_expr(p)
+    return store_node(NodeKind.LetStmt, name, type_name, expr)
+}
+
+// Parse var statement: var name [type] = expr
+fn parse_var_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'var'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+
+    // Optional type annotation
+    var type_name = ""
+    if parser_kind(p) == TokenKind.Ident {
+        var peek = parser_peek_kind(p)
+        if peek != TokenKind.Asn {
+            type_name = parser_text(p)
+            p.pos = p.pos + 1
+        }
+    }
+
+    // Optional uint type annotation
+    if parser_kind(p) == TokenKind.Uint {
+        type_name = "uint"
+        p.pos = p.pos + 1
+    }
+
+    if parser_kind(p) == TokenKind.Asn {
+        p.pos = p.pos + 1
+    }
+
+    var expr = parse_expr(p)
+    return store_node(NodeKind.VarStmt, name, type_name, expr)
+}
+
+// Parse return statement: return [expr]
+fn parse_return_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'return'
+
+    // Check if there's an expression after return
+    var k = parser_kind(p)
+    if k == TokenKind.Newline || k == TokenKind.RBrace || k == TokenKind.Semi || k == TokenKind.EOF {
+        return return_node_empty()
+    }
+
+    var expr = parse_expr(p)
+    return return_node(expr)
+}
+
+// Parse if statement: if cond { body } [else { body }]
+fn parse_if_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'if'
+    parser_skip_nl_semi(p)
+
+    var cond = parse_expr(p)
+    parser_skip_nl_semi(p)
+    var body_str = parse_body(p)
+
+    var else_str = ""
+    parser_skip_nl_semi(p)
+    if parser_kind(p) == TokenKind.Else {
+        p.pos = p.pos + 1  // skip 'else'
+        parser_skip_nl_semi(p)
+        if parser_kind(p) == TokenKind.If {
+            var else_if = parse_if_stmt(p)
+            else_str = else_if.value
+        } else {
+            else_str = parse_body(p)
+        }
+    }
+
+    return if_node(cond, body_str, else_str)
+}
+
+// Parse for statement
+fn parse_for_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'for'
+
+    // for { body } -- infinite loop
+    if parser_kind(p) == TokenKind.LBrace {
+        var body = parse_body(p)
+        return for_node(nil_node(), body)
+    }
+
+    // for ident in range { body }
+    if parser_kind(p) == TokenKind.Ident {
+        var name = parser_text(p)
+        var pk = parser_peek_kind(p)
+        if pk == TokenKind.In {
+            p.pos = p.pos + 1  // skip name
+            p.pos = p.pos + 1  // skip 'in'
+            parser_skip_nl_semi(p)
+            var range = parse_expr(p)
+            parser_skip_nl_semi(p)
+            var body = parse_body(p)
+            return forin_node(name, range, body)
+        }
+    }
+
+    // for condition { body }
+    var cond = parse_expr(p)
+    parser_skip_nl_semi(p)
+    var body = parse_body(p)
+    return for_node(cond, body)
+}
+
+// Parse type declaration: type Name { fields }
+fn parse_type_decl(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'type'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+    parser_skip_nl_semi(p)
+
+    var fields = empty_list()
+    if parser_kind(p) == TokenKind.LBrace {
+        p.pos = p.pos + 1  // skip '{'
+        parser_skip_nl_semi(p)
+        for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Fn {
+                // Skip method declarations for P0
+                var depth = 1
+                p.pos = p.pos + 1  // skip fn
+                for depth > 0 && parser_kind(p) != TokenKind.EOF {
+                    var k = parser_kind(p)
+                    if k == TokenKind.LBrace {
+                        depth = depth + 1
+                    } else if k == TokenKind.RBrace {
+                        depth = depth - 1
+                    }
+                    p.pos = p.pos + 1
+                }
+            } else if parser_kind(p) == TokenKind.Ident {
+                var field_name = parser_text(p)
+                p.pos = p.pos + 1
+                var field_type = ""
+                if parser_kind(p) == TokenKind.Ident {
+                    field_type = parser_text(p)
+                    p.pos = p.pos + 1
+                }
+                fields.push(Param(field_name, field_type))
+            } else {
+                p.pos = p.pos + 1
+            }
+            parser_skip_nl_semi(p)
+        }
+        if parser_kind(p) == TokenKind.RBrace {
+            p.pos = p.pos + 1  // skip '}'
+        }
+    }
+
+    return type_node(name, fields.len())
+}
+
+// Parse expression statement
+fn parse_expr_stmt(p Parser) ASTNode {
+    var expr = parse_expr(p)
+    return expr_stmt_node(expr)
+}
+
+// ---- Pratt Expression Parser ----
+
+fn parse_expr(p Parser) ASTNode {
+    return parse_expr_prec(p, 1)
+}
+
+fn parse_expr_prec(p Parser, min_prec int) ASTNode {
+    // Parse prefix / atom
+    var lhs = parse_atom(p)
+
+    // Parse infix/postfix with precedence climbing
+    for true {
+        var kind = parser_kind(p)
+
+        // Stop tokens
+        if is_stop_token(kind) {
+            break
+        }
+
+        var prec = infix_prec(kind)
+        if prec == 0 || prec < min_prec {
+            break
+        }
+
+        // Assignment (right-associative)
+        if kind == TokenKind.Asn {
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec)
+            lhs = bin_node("=", lhs, rhs)
+            continue
+        }
+
+        // Compound assignment
+        if kind == TokenKind.AddEq || kind == TokenKind.SubEq || kind == TokenKind.MulEq || kind == TokenKind.DivEq {
+            var op_text = parser_text(p)
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec)
+            lhs = bin_node(op_text, lhs, rhs)
+            continue
+        }
+
+        // Logical OR
+        if kind == TokenKind.Or {
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node("||", lhs, rhs)
+            continue
+        }
+
+        // Logical AND
+        if kind == TokenKind.And {
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node("&&", lhs, rhs)
+            continue
+        }
+
+        // Equality
+        if kind == TokenKind.Eq || kind == TokenKind.Neq {
+            var op_text = parser_text(p)
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node(op_text, lhs, rhs)
+            continue
+        }
+
+        // Comparison / Range
+        if kind == TokenKind.Lt || kind == TokenKind.Gt || kind == TokenKind.Le || kind == TokenKind.Ge {
+            var op_text = parser_text(p)
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node(op_text, lhs, rhs)
+            continue
+        }
+
+        if kind == TokenKind.Range || kind == TokenKind.RangeEq {
+            var op_text = parser_text(p)
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node(op_text, lhs, rhs)
+            continue
+        }
+
+        // Additive
+        if kind == TokenKind.Add || kind == TokenKind.Sub {
+            var op_text = parser_text(p)
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node(op_text, lhs, rhs)
+            continue
+        }
+
+        // Multiplicative
+        if kind == TokenKind.Star || kind == TokenKind.Div || kind == TokenKind.Mod {
+            var op_text = parser_text(p)
+            p.pos = p.pos + 1
+            var rhs = parse_expr_prec(p, prec + 1)
+            lhs = bin_node(op_text, lhs, rhs)
+            continue
+        }
+
+        // Postfix: dot access
+        if kind == TokenKind.Dot {
+            p.pos = p.pos + 1  // skip '.'
+            var field = parser_text(p)
+            p.pos = p.pos + 1  // skip field name
+            lhs = dot_node(lhs, field)
+            continue
+        }
+
+        // Postfix: function call
+        if kind == TokenKind.LParen {
+            var args_str = ""
+            p.pos = p.pos + 1  // skip '('
+            parser_skip_nl_semi(p)
+            for parser_kind(p) != TokenKind.RParen && parser_kind(p) != TokenKind.EOF {
+                var arg = parse_expr_prec(p, 1)
+                if args_str != "" {
+                    args_str = args_str + " "
+                }
+                args_str = args_str + arg.value
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Comma {
+                    p.pos = p.pos + 1
+                    parser_skip_nl_semi(p)
+                }
+            }
+            if parser_kind(p) == TokenKind.RParen {
+                p.pos = p.pos + 1  // skip ')'
+            }
+            lhs = call_node(lhs, args_str)
+            continue
+        }
+
+        // Postfix: index
+        if kind == TokenKind.LSquare {
+            p.pos = p.pos + 1  // skip '['
+            var index = parse_expr(p)
+            if parser_kind(p) == TokenKind.RSquare {
+                p.pos = p.pos + 1  // skip ']'
+            }
+            lhs = bin_node("[]", lhs, index)
+            continue
+        }
+
+        // Unknown infix — break
+        break
+    }
+
+    return lhs
+}
+
+// ---- Atom (Primary) Expressions ----
+
+fn parse_atom(p Parser) ASTNode {
+    var kind = parser_kind(p)
+    var tok = parser_cur(p)
+
+    is kind {
+        TokenKind.Int -> {
+            p.pos = p.pos + 1
+            return int_node(tok.text)
+        }
+        TokenKind.Uint -> {
+            p.pos = p.pos + 1
+            return int_node(tok.text)
+        }
+        TokenKind.Float -> {
+            p.pos = p.pos + 1
+            return str_node(tok.text)
+        }
+        TokenKind.Str -> {
+            p.pos = p.pos + 1
+            return str_node(tok.text)
+        }
+        TokenKind.True -> {
+            p.pos = p.pos + 1
+            return bool_node("true")
+        }
+        TokenKind.False -> {
+            p.pos = p.pos + 1
+            return bool_node("false")
+        }
+        TokenKind.Nil -> {
+            p.pos = p.pos + 1
+            return nil_node()
+        }
+        TokenKind.Ident -> {
+            p.pos = p.pos + 1
+            return ident_node(tok.text)
+        }
+        TokenKind.LParen -> {
+            p.pos = p.pos + 1  // skip '('
+            var expr = parse_expr(p)
+            if parser_kind(p) == TokenKind.RParen {
+                p.pos = p.pos + 1  // skip ')'
+            }
+            return expr
+        }
+        TokenKind.LSquare -> {
+            p.pos = p.pos + 1  // skip '['
+            var elems_str = ""
+            parser_skip_nl_semi(p)
+            for parser_kind(p) != TokenKind.RSquare && parser_kind(p) != TokenKind.EOF {
+                var elem = parse_expr(p)
+                if elems_str != "" {
+                    elems_str = elems_str + " "
+                }
+                elems_str = elems_str + elem.value
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Comma {
+                    p.pos = p.pos + 1
+                    parser_skip_nl_semi(p)
+                }
+            }
+            if parser_kind(p) == TokenKind.RSquare {
+                p.pos = p.pos + 1  // skip ']'
+            }
+            return block_node(elems_str)
+        }
+        TokenKind.Sub -> {
+            p.pos = p.pos + 1
+            var operand = parse_atom(p)
+            return unary_node("-", operand)
+        }
+        TokenKind.Not -> {
+            p.pos = p.pos + 1
+            var operand = parse_atom(p)
+            return unary_node("!", operand)
+        }
+        else -> {
+            // Unexpected token — skip and return nil
+            p.pos = p.pos + 1
+            return nil_node()
+        }
+    }
+}

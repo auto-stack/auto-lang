@@ -1,38 +1,37 @@
 // Lexer for the Auto self-hosted compiler
 // Converts source text into a list of Tokens
-// All character operations use 'char' type for type-safe a2r output
+// char_at returns UTF-32 codepoint (int), matching char literal comparison
 
 // Check if char is a digit 0-9
-fn is_digit(c char) bool {
+fn is_digit(c int) bool {
     c >= '0' && c <= '9'
 }
 
 // Check if char is alphabetic or underscore
-fn is_alpha(c char) bool {
+fn is_alpha(c int) bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
 }
 
 // Check if char is alphanumeric or underscore
-fn is_alnum(c char) bool {
+fn is_alnum(c int) bool {
     is_digit(c) || is_alpha(c)
 }
 
 // Check if char is a hex digit
-fn is_hex_digit(c char) bool {
+fn is_hex_digit(c int) bool {
     is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
-// Get current character at position (returns '\0' if past end)
-// Uses char_at for a2r compatibility (generates .chars().nth() as usize)
-fn cur_char(source str, pos uint) char {
-    if pos >= source.len().as(uint) {
-        return '\0'
+// Get current character at position (returns 0 if past end)
+fn cur_char(source str, pos int) int {
+    if pos >= source.len() {
+        return 0
     }
     return source.char_at(pos)
 }
 
 // Skip whitespace (space and tab, NOT newline)
-fn skip_ws(source str, pos uint) uint {
+fn skip_ws(source str, pos int) int {
     var p = pos
     var c = cur_char(source, p)
     for c == ' ' || c == '\t' {
@@ -43,12 +42,12 @@ fn skip_ws(source str, pos uint) uint {
 }
 
 // Check if next char matches expected (1-char lookahead)
-fn peek_char(source str, pos uint, expected char) bool {
+fn peek_char(source str, pos int, expected int) bool {
     cur_char(source, pos + 1) == expected
 }
 
 // Read a number token starting at pos
-fn lex_number(source str, pos uint) Token {
+fn lex_number(source str, pos int) Token {
     var p = pos
     var start = p
     var text = ""
@@ -148,7 +147,7 @@ fn lex_number(source str, pos uint) Token {
 }
 
 // Read an identifier or keyword
-fn lex_ident(source str, pos uint) Token {
+fn lex_ident(source str, pos int) Token {
     var p = pos
     var start = p
     var c = cur_char(source, p)
@@ -170,11 +169,11 @@ fn lex_ident(source str, pos uint) Token {
 }
 
 // Read a string literal "..."
-fn lex_string(source str, pos uint) Token {
-    var p uint = pos + 1 // skip opening "
+fn lex_string(source str, pos int) Token {
+    var p int = pos + 1 // skip opening "
     var text = ""
     var c = cur_char(source, p)
-    for c != '"' && c != '\0' {
+    for c != '"' && c != 0 {
         if c == '\\' {
             p = p + 1
             var esc = cur_char(source, p)
@@ -205,7 +204,7 @@ fn lex_string(source str, pos uint) Token {
 }
 
 // Read an operator or punctuation token
-fn lex_operator(source str, pos uint) Token {
+fn lex_operator(source str, pos int) Token {
     var c = cur_char(source, pos)
     var p = pos
 
@@ -333,9 +332,9 @@ fn lex_operator(source str, pos uint) Token {
 // Tokenize a source string, returning a list of token kinds (as display strings)
 // P0: simplified tokenizer for basic testing
 fn tokenize(source str) str {
-    var p uint = 0
+    var p int = 0
     var result = ""
-    var len = source.len().as(uint)
+    var len = source.len()
 
     for p < len {
         p = skip_ws(source, p)
@@ -386,4 +385,50 @@ fn tokenize(source str) str {
     }
 
     return result
+}
+
+// Tokenize a source string, returning a list of tokens
+// Used by the parser to consume tokens one at a time
+fn tokenize_list(source str) {
+    var p int = 0
+    var list = List.new()
+    var len = source.len()
+
+    for p < len {
+        p = skip_ws(source, p)
+        if p >= len {
+            break
+        }
+
+        var c = cur_char(source, p)
+
+        if c == '\n' {
+            list.push(Token(TokenKind.Newline, Pos(1, p, 1), "<nl>"))
+            p = p + 1
+        } else if is_digit(c) {
+            var tok = lex_number(source, p)
+            list.push(tok)
+            p = p + tok.pos.total
+        } else if is_alpha(c) {
+            var tok = lex_ident(source, p)
+            list.push(tok)
+            p = p + tok.pos.total
+        } else if c == '"' {
+            var tok = lex_string(source, p)
+            list.push(tok)
+            p = p + tok.pos.total
+        } else {
+            var tok = lex_operator(source, p)
+            if tok.kind != TokenKind.EOF {
+                list.push(tok)
+                p = p + tok.pos.total
+            } else {
+                p = p + 1
+            }
+        }
+    }
+
+    // Append EOF sentinel
+    list.push(Token(TokenKind.EOF, Pos(0, p, 0), ""))
+    return list
 }

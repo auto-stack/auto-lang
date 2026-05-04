@@ -3060,6 +3060,7 @@ impl AutoVM {
                 }
                 // Plan 075: Object field assignment (obj.field = value)
                 OpCode::SET_FIELD => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
                     let tagged = task.ram.pop_i32();
@@ -3127,6 +3128,25 @@ impl AutoVM {
                             )));
                         };
                         obj.set(key, self.decode_tagged_value(value));
+                    } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
+                        // Heap objects (type instances, 4000000+): GenericInstanceData
+                        let mut heap_obj = heap_ref.write().unwrap();
+                        if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                            let field_idx = inst.field_names.iter().position(|n| n == &field_name);
+                            if let Some(idx) = field_idx {
+                                inst.set_field(idx, self.decode_tagged_value(value)).map_err(|e| VMError::RuntimeError(e))?;
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on type instance {}",
+                                    field_name, inst.mono_name
+                                )));
+                            }
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Invalid object ID: {}",
+                                obj_id
+                            )));
+                        }
                     } else {
                         // Plan 118: Return error for invalid object IDs
                         return Err(VMError::RuntimeError(format!(
@@ -3137,6 +3157,7 @@ impl AutoVM {
                 }
                 // Plan 073: Object field access (obj.field)
                 OpCode::GET_FIELD => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     let field_idx = self.flash.read_u16(task.ip);
                     task.ip += 2;
 
@@ -3209,6 +3230,50 @@ impl AutoVM {
                                 "Field '{}' not found on object",
                                 field_name
                             )));
+                        }
+                    } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
+                        // Heap objects (type instances, 4000000+): GenericInstanceData
+                        let heap_obj = heap_ref.read().unwrap();
+                        if let Some(inst) = heap_obj.as_any().downcast_ref::<GenericInstanceData>() {
+                            let field_idx = inst.field_names.iter().position(|n| n == &field_name);
+                            if let Some(idx) = field_idx {
+                                if let Some(value) = inst.get_field(idx) {
+                                    match value {
+                                        auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                        auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
+                                        auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
+                                        auto_val::Value::Double(d) => task.ram.push_f64(*d),
+                                        auto_val::Value::Bool(b) => {
+                                            task.ram.push_i32(if *b { 1 } else { 0 })
+                                        }
+                                        auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
+                                        auto_val::Value::Str(s) => {
+                                            let str_bytes = s.as_bytes().to_vec();
+                                            let mut strings = self.strings.write().unwrap();
+                                            let str_idx = strings.len();
+                                            strings.push(str_bytes);
+                                            drop(strings);
+                                            push_str_tag(&mut task.ram, str_idx as u32);
+                                        }
+                                        auto_val::Value::Nil => task.ram.push_i32(0),
+                                        auto_val::Value::VmRef(vm_ref) => {
+                                            task.ram.push_i32(vm_ref.id as i32);
+                                        }
+                                        _ => {
+                                            task.ram.push_i32(0);
+                                        }
+                                    }
+                                } else {
+                                    task.ram.push_i32(0);
+                                }
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on type instance {}",
+                                    field_name, inst.mono_name
+                                )));
+                            }
+                        } else {
+                            task.ram.push_i32(0);
                         }
                     } else {
                         // Object not found - push 0 as error sentinel
@@ -4297,26 +4362,87 @@ impl AutoVM {
                 OpCode::LT => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram
-                        .push_i32(if a < b { -2147483648 } else { -2147483647 });
+                    // Plan 233: String comparison support for self-hosted lexer
+                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
+                        let a_idx = ((-a) - 1) as u16;
+                        let b_idx = ((-b) - 1) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa < sb
+                            }
+                            _ => a < b,
+                        }
+                    } else {
+                        a < b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                 }
                 OpCode::GT => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram
-                        .push_i32(if a > b { -2147483648 } else { -2147483647 });
+                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
+                        let a_idx = ((-a) - 1) as u16;
+                        let b_idx = ((-b) - 1) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa > sb
+                            }
+                            _ => a > b,
+                        }
+                    } else {
+                        a > b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                 }
                 OpCode::LE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram
-                        .push_i32(if a <= b { -2147483648 } else { -2147483647 });
+                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
+                        let a_idx = ((-a) - 1) as u16;
+                        let b_idx = ((-b) - 1) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa <= sb
+                            }
+                            _ => a <= b,
+                        }
+                    } else {
+                        a <= b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                 }
                 OpCode::GE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram
-                        .push_i32(if a >= b { -2147483648 } else { -2147483647 });
+                    let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
+                        let a_idx = ((-a) - 1) as u16;
+                        let b_idx = ((-b) - 1) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa >= sb
+                            }
+                            _ => a >= b,
+                        }
+                    } else {
+                        a >= b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
                 }
 
                 // f64 comparison opcodes (each pops 2+2 slots, pushes 1 bool)

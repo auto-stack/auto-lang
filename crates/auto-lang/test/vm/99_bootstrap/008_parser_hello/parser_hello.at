@@ -1,0 +1,8 @@
+// Test: parse "fn main() { print("hello") }" and output AST
+fn main() {
+    let source = "fn main() {\n    print(\"hello\")\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    print(ast_to_string(stmts.get(0)))
+}

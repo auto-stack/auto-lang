@@ -1,0 +1,191 @@
+// AST node types for the Auto self-hosted compiler
+// P0 design: value field stores pre-computed S-expression string
+// This avoids List.get() type inference issues in VM codegen
+
+// AST node kind discriminator
+enum NodeKind {
+    IntExpr
+    StrExpr
+    BoolExpr
+    IdentExpr
+    BinExpr
+    UnaryExpr
+    CallExpr
+    DotExpr
+    FnStmt
+    LetStmt
+    VarStmt
+    ReturnStmt
+    IfStmt
+    ForStmt
+    ForInStmt
+    ExprStmt
+    BlockStmt
+    TypeStmt
+    NilNode
+}
+
+// Function parameter
+type Param {
+    name str
+    type_name str
+}
+
+// Universal AST node — value stores pre-computed S-expression string
+type ASTNode {
+    kind NodeKind
+    value str
+    children List
+    left List
+    right List
+    op str
+    params List
+    type_name str
+    cond List
+    else_body List
+}
+
+// Helper: create an empty list
+fn empty_list() List {
+    List.new()
+}
+
+// Constructor helpers — value field stores S-expression representation
+fn int_node(val str) ASTNode {
+    ASTNode(NodeKind.IntExpr, val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn str_node(val str) ASTNode {
+    ASTNode(NodeKind.StrExpr, "\"" + val + "\"", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn bool_node(val str) ASTNode {
+    ASTNode(NodeKind.BoolExpr, val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn ident_node(name str) ASTNode {
+    ASTNode(NodeKind.IdentExpr, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn nil_node() ASTNode {
+    ASTNode(NodeKind.NilNode, "nil", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn bin_node(op str, left ASTNode, right ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(left)
+    var r = empty_list()
+    r.push(right)
+    var s = "(" + op + " " + left.value + " " + right.value + ")"
+    ASTNode(NodeKind.BinExpr, s, empty_list(), l, r, op, empty_list(), "", empty_list(), empty_list())
+}
+
+fn unary_node(op str, operand ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(operand)
+    var s = "(" + op + " " + operand.value + ")"
+    ASTNode(NodeKind.UnaryExpr, s, empty_list(), l, empty_list(), op, empty_list(), "", empty_list(), empty_list())
+}
+
+fn call_node(callee ASTNode, args_str str) ASTNode {
+    var s = "(" + callee.value
+    if args_str != "" {
+        s = s + " " + args_str
+    }
+    s = s + ")"
+    ASTNode(NodeKind.CallExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn dot_node(obj ASTNode, field str) ASTNode {
+    var l = empty_list()
+    l.push(obj)
+    var s = obj.value + "." + field
+    ASTNode(NodeKind.DotExpr, s, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn fn_node(name str, params_count int, ret str, body_str str) ASTNode {
+    var s = "(fn " + name + " (params"
+    var i = 0
+    for i < params_count {
+        s = s + " param"
+        i = i + 1
+    }
+    s = s + ")"
+    if ret != "" {
+        s = s + " " + ret
+    }
+    s = s + " (body " + body_str + "))"
+    ASTNode(NodeKind.FnStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), ret, empty_list(), empty_list())
+}
+
+fn store_node(kind NodeKind, name str, type_name str, expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    var prefix = ""
+    is kind {
+        NodeKind.LetStmt -> prefix = "let"
+        NodeKind.VarStmt -> prefix = "var"
+        else -> prefix = "store"
+    }
+    var s = "(" + prefix + " " + name
+    if type_name != "" {
+        s = s + " " + type_name
+    }
+    s = s + " " + expr.value + ")"
+    ASTNode(kind, s, empty_list(), l, empty_list(), "", empty_list(), type_name, empty_list(), empty_list())
+}
+
+fn return_node(expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    var s = "(return " + expr.value + ")"
+    ASTNode(NodeKind.ReturnStmt, s, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn return_node_empty() ASTNode {
+    ASTNode(NodeKind.ReturnStmt, "(return)", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn if_node(cond ASTNode, body_str str, else_str str) ASTNode {
+    var s = "(if " + cond.value + " (body " + body_str + "))"
+    if else_str != "" {
+        s = "(if " + cond.value + " (body " + body_str + ") (else " + else_str + "))"
+    }
+    ASTNode(NodeKind.IfStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn forin_node(name str, range ASTNode, body_str str) ASTNode {
+    var s = "(for " + name + " in " + range.value + " (body " + body_str + "))"
+    ASTNode(NodeKind.ForInStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn for_node(cond ASTNode, body_str str) ASTNode {
+    var s = "(for " + cond.value + " (body " + body_str + "))"
+    ASTNode(NodeKind.ForStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn expr_stmt_node(expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    ASTNode(NodeKind.ExprStmt, expr.value, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn block_node(body_str str) ASTNode {
+    ASTNode(NodeKind.BlockStmt, "(block " + body_str + ")", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn type_node(name str, fields_count int) ASTNode {
+    var s = "(type " + name
+    var i = 0
+    for i < fields_count {
+        s = s + " field"
+        i = i + 1
+    }
+    s = s + ")"
+    ASTNode(NodeKind.TypeStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+// Simply return the pre-computed S-expression string
+fn ast_to_string(node ASTNode) str {
+    node.value
+}

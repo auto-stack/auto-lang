@@ -483,11 +483,13 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/token.at",
     "auto/lib/error.at",
     "auto/lib/lexer.at",
+    "auto/lib/ast.at",
+    "auto/lib/parser.at",
 ];
 
 /// Read and concatenate all auto/lib/*.at files
 fn read_auto_lib() -> AutoResult<String> {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let mut lib_code = String::new();
     for file in AUTO_LIB_FILES {
         let path = d.join(file);
@@ -554,3 +556,6 @@ fn test_aavm(case: &str) -> AutoResult<()> {
 
     Ok(())
 }
+
+// Plan 233: AAVM Parser tests
+#[test] fn test_99_bootstrap_008_parser_hello() { test_aavm("99_bootstrap/008_parser_hello").unwrap(); }

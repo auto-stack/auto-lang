@@ -1091,7 +1091,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let elem = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
@@ -1196,7 +1196,7 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 

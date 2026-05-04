@@ -664,13 +664,13 @@ pub fn shim_str_is_empty(s: String) -> bool {
 
 /// Get character at byte index (returns single-char string)
 #[auto_macros::rust_fn("Str.char_at")]
-pub fn shim_str_char_at(s: String, index: i32) -> String {
+pub fn shim_str_char_at(s: String, index: i32) -> i32 {
     if index < 0 || index as usize >= s.len() {
-        return String::new();
+        return 0
     }
     match s[index as usize..].chars().next() {
-        Some(c) => c.to_string(),
-        None => String::new(),
+        Some(c) => c as i32,
+        None => 0,
     }
 }
 

@@ -875,7 +875,7 @@ pub fn register_builtin_natives() {
     registry.register_return_type("auto.time.sleep_ms", NativeRetType::Void);
     registry.register_return_type("auto.str.len", NativeRetType::Int);
     registry.register_return_type("auto.str.is_empty", NativeRetType::Bool);
-    registry.register_return_type("auto.str.char_at", NativeRetType::String);
+    registry.register_return_type("auto.str.char_at", NativeRetType::Int);
     registry.register_return_type("auto.str.substr", NativeRetType::String);
     registry.register_return_type("auto.str.contains", NativeRetType::Bool);
     registry.register_return_type("auto.str.starts_with", NativeRetType::Bool);
