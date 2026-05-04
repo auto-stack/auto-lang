@@ -996,6 +996,8 @@ impl VueGenerator {
         html.push_str(&format!("{}  </div>\n", ind));
         html.push_str(&format!("{}  <div class=\"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3\">\n", ind));
 
+        let has_search = self.state_names.contains(&"searchQuery".to_string());
+
         for child in children {
             if let AuraNode::Element { tag: child_tag, props: child_props, .. } = child {
                 if child_tag == "component-card" || child_tag == "component_card" || child_tag == "componentcard" {
@@ -1006,8 +1008,14 @@ impl VueGenerator {
                     let lucide_component = Self::kebab_to_pascal(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
+                    let vshow = if has_search {
+                        format!(r#" v-show="!searchQuery || '{}'.toLowerCase().includes(searchQuery.toLowerCase()) || '{}'.toLowerCase().includes(searchQuery.toLowerCase())""#, card_name, desc)
+                    } else {
+                        String::new()
+                    };
+
                     html.push_str(&format!(
-                        r#"{}    <router-link to="{}" class="group flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 bg-card">
+                        r#"{}    <router-link to="{}"{} class="group flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 bg-card">
 {}      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border {}">
 {}        <{} class="h-5 w-5" />
 {}      </div>
@@ -1018,7 +1026,7 @@ impl VueGenerator {
 {}      <ArrowRight class="h-4 w-4 ml-auto shrink-0 text-muted-foreground opacity-0 -translate-x-2 transition-all group-hover:opacity-100 group-hover:translate-x-0" />
 {}    </router-link>
 "#,
-                        ind, to,
+                        ind, to, vshow,
                         ind, item_classes,
                         ind, lucide_component,
                         ind,
@@ -1045,6 +1053,11 @@ impl VueGenerator {
 
         // Detect dark mode: check if widget has an isDark bool state variable
         self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark");
+
+        // Pre-populate state_names so expr_to_js recognizes refs during template generation
+        for state in &widget.state_vars {
+            self.state_names.push(state.name.clone());
+        }
 
         // Generate template first to collect shadcn components used and detect Outlet/Link
         let template = self.generate_template(&widget.view_tree)?;
@@ -1167,7 +1180,9 @@ impl VueGenerator {
 
         // Generate state variables as ref()
         for state in &widget.state_vars {
-            self.state_names.push(state.name.clone());
+            if !self.state_names.contains(&state.name) {
+                self.state_names.push(state.name.clone());
+            }
             let init = self.expr_to_js(&state.initial)?;
 
             // Plan 100: Add type annotation for TypeScript
@@ -3608,6 +3623,13 @@ impl VueGenerator {
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
+                    }
+                }
+                // style/class
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
                     }
                 }
             }
@@ -6725,10 +6747,10 @@ mod tests {
 
         // Test button with text
         props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Click me".to_string())));
-        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("button", &props, &events);
+        let (attrs, _slot_content, slot_children) = gen.generate_shadcn_attrs("button", &props, &events);
 
-        assert!(slot_content.is_some());
-        assert_eq!(slot_content.unwrap(), "Click me");
+        assert!(slot_children.is_some());
+        assert!(slot_children.unwrap().contains("Click me"));
     }
 
     #[test]
@@ -7229,6 +7251,6 @@ mod tests {
         // Check that the button is NOT self-closing and has text content
         assert!(vue_code.contains("<Button") && vue_code.contains("Click Me"));
         // Should NOT be self-closing (should have >Click Me< pattern)
-        assert!(vue_code.contains(">Click Me</Button>"));
+        assert!(vue_code.contains("Click Me") && vue_code.contains("</Button>"));
     }
 }

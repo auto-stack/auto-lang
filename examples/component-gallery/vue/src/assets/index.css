@@ -251,3 +251,10 @@
     transition-duration: 0.2s;
   }
 }
+
+/* Sidebar active link highlighting */
+aside .router-link-exact-active {
+  background-color: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-weight: 500;
+}

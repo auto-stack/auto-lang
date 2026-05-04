@@ -297,7 +297,8 @@ impl WidgetRegistry {
 
         // ScrollArea
         let mut scroll_area = WidgetSpec::new("ScrollArea", WidgetCategory::Layout)
-            .with_alias("scroll-area");
+            .with_alias("scroll-area")
+            .with_alias("scroll");
         scroll_area.has_children = true;
         scroll_area.backends.insert("ark".to_string(), BackendMapping {
             component: "Scroll".to_string(),

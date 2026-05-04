@@ -42,7 +42,7 @@ widget IndexPage {
             // Search bar
             div (style: "max-w-xl mx-auto w-full relative") {
                 icon (name: "search", style: "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground") {}
-                input (placeholder: "Search components...", style: "pl-10 h-11 rounded-xl") {}
+                input (placeholder: "Search components...", style: "pl-10 h-11 rounded-xl", value: .searchQuery) {}
             }
 
             // Component categories grid
