@@ -89,6 +89,7 @@ enum TokenKind {
     Continue
     Return
     Is
+    In
 
     // Keywords — declarations
     Fn

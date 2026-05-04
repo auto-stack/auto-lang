@@ -449,8 +449,14 @@ impl RustTrans {
                 write!(out, "'\\n'")
             } else if *c == '\t' {
                 write!(out, "'\\t'")
+            } else if *c == '\r' {
+                write!(out, "'\\r'")
+            } else if *c == '\0' {
+                write!(out, "'\\0'")
             } else if *c == '\\' {
                 write!(out, "'\\\\'")
+            } else if *c == '\'' {
+                write!(out, "'\\''")
             } else {
                 write!(out, "'{}'", c)
             }

@@ -241,6 +241,16 @@ impl<'a> Lexer<'a> {
                             self.advance(); // skip '
                             return Ok(Token::char(self.pos_from_bytes(), '\0'.into()));
                         }
+                        '\\' => {
+                            self.advance(); // skip char
+                            self.advance(); // skip '
+                            return Ok(Token::char(self.pos_from_bytes(), '\\'.into()));
+                        }
+                        '\'' => {
+                            self.advance(); // skip char
+                            self.advance(); // skip '
+                            return Ok(Token::char(self.pos_from_bytes(), '\''.into()));
+                        }
                         _ => {
                             let seq = format!("\\{}", esc_char);
                             let span = crate::error::span_from(start_pos, seq.len());

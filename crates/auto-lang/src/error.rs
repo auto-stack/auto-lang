@@ -500,7 +500,7 @@ pub enum LexerError {
     #[error("unknown escape sequence")]
     #[diagnostic(
         code(auto_lexer_E0001),
-        help("Valid escape sequences are: \\n, \\t, \\r, \\0")
+        help("Valid escape sequences are: \\n, \\t, \\r, \\0, \\\\, \\'")
     )]
     UnknownEscapeSequence {
         sequence: String,
