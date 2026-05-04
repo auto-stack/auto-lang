@@ -9,7 +9,7 @@ const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
 </script>
 
 <HomeHero
-  badge="v0.2 现已发布"
+  badge="v0.3 现已发布"
   title="：AI操作系统编程语言"
   description="一门现代编程语言，可转译为 C、Rust、TypeScript 和 Python。<br>支持脚本运行、Actor 并发、编译期元编程和零成本抽象。"
   primary-text="快速开始"

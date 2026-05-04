@@ -57,7 +57,7 @@ interface Props {
 }
 
 withDefaults(defineProps<Props>(), {
-  badge: 'v0.2 is now available',
+  badge: 'v0.3 is now available',
   title: ': Language for AI & OS',
   description: 'A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions.',
   primaryText: 'Get Started',

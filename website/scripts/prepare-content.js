@@ -552,6 +552,7 @@ const ZH_TITLE_MAP = {
   // Releases
   'V0.1': 'v0.1',
   'V0.2': 'v0.2',
+  'V0.3': 'v0.3',
   // Tutorials
   'Array return types': '数组返回类型',
   'Atom api guide': 'Atom API 指南',

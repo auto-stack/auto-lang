@@ -36,9 +36,11 @@ function nav(): DefaultTheme.NavItem[] {
     { text: 'Playground', link: '/playground' },
     { text: 'UI Gallery', link: '/ui-gallery' },
     {
-      text: 'v0.2',
+      text: 'v0.3',
       items: [
-        { text: 'Release Notes', link: '/releases/v0.2' },
+        { text: 'v0.3 Release Notes', link: '/docs/releases/v0.3' },
+        { text: 'v0.2 Release Notes', link: '/docs/releases/v0.2' },
+        { text: 'v0.1 Release Notes', link: '/docs/releases/v0.1' },
         { text: 'Contributing', link: '/docs/' },
       ],
     },

@@ -36,9 +36,11 @@ function nav(): DefaultTheme.NavItem[] {
     { text: 'Playground', link: '/zh/playground' },
     { text: 'UI 画廊', link: '/zh/ui-gallery' },
     {
-      text: 'v0.2',
+      text: 'v0.3',
       items: [
-        { text: '发布说明', link: '/zh/releases/v0.2' },
+        { text: 'v0.3 发布说明', link: '/zh/docs/releases/v0.3' },
+        { text: 'v0.2 发布说明', link: '/zh/docs/releases/v0.2' },
+        { text: 'v0.1 发布说明', link: '/zh/docs/releases/v0.1' },
         { text: '参与贡献', link: '/zh/docs/' },
       ],
     },
