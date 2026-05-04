@@ -14,8 +14,15 @@ widget DrawerPage {
             h2 "Simple"
             preview-card (id: "drawer-basic") {
                 row (gap: "4") {
-                    drawer {}
-                    drawer-trigger "Open Drawer"
+                    drawer {
+                        drawer-trigger "Open Drawer"
+                        drawer-content {
+                            drawer-header {
+                                drawer-title "Edit Profile"
+                                drawer-description "Make changes to your profile here."
+                            }
+                        }
+                    }
                 }
             }
 

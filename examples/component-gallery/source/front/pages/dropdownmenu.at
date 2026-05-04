@@ -14,7 +14,22 @@ widget DropdownmenuPage {
             h2 "Simple"
             preview-card (id: "dropdownmenu-basic") {
                 row (gap: "4") {
-                    dropdown-menu {}
+                    dropdown-menu {
+                        dropdown-menu-trigger {
+                            button (text: "Open", variant: "outline") {}
+                        }
+                        dropdown-menu-content {
+                            dropdown-menu-item "Profile"
+                            dropdown-menu-item "Billing"
+                            dropdown-menu-item "Settings"
+                            dropdown-menu-item "Keyboard shortcuts"
+                            dropdown-menu-separator {}
+                            dropdown-menu-item "Team"
+                            dropdown-menu-item "New Team"
+                            dropdown-menu-separator {}
+                            dropdown-menu-item "Log out"
+                        }
+                    }
                 }
             }
 

@@ -104,6 +104,10 @@ pub struct RustTrans {
     // Plan 167: Multi-file mode — local module names for mod declarations
     local_modules: HashSet<String>,
 
+    // Plan 232: Track current function's str-type parameter names
+    // Used to add .to_string() when returning a &str param as String
+    current_fn_str_params: HashSet<AutoStr>,
+
 }
 
 impl RustTrans {
@@ -124,6 +128,7 @@ impl RustTrans {
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
+            current_fn_str_params: HashSet::new(),
         }
     }
 
@@ -145,6 +150,7 @@ impl RustTrans {
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
+            current_fn_str_params: HashSet::new(),
         }
     }
 
@@ -402,6 +408,16 @@ impl RustTrans {
         }
     }
 
+    /// Plan 232: Parameter type mapping for function parameter positions.
+    /// Auto `str` in parameter position -> Rust `&str` (borrowed, Copy).
+    /// This avoids String ownership transfer on repeated function calls.
+    fn rust_param_type_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Str(_) | Type::StrSlice | Type::CStr => "&str".to_string(),
+            _ => self.rust_type_name(ty),
+        }
+    }
+
     /// Emit a2r standard library import
     /// Uses the crate's a2r_std module instead of embedding
     fn emit_a2r_stdlib(&self, out: &mut impl Write) -> AutoResult<()> {
@@ -614,7 +630,10 @@ impl RustTrans {
                         // This handles: String + String, &str + String, String + &str
                         let is_str_lhs = matches!(lhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
                         let is_str_rhs = matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
-                        if is_str_lhs || is_str_rhs {
+                        // Plan 232: Also use format! when lhs is an Ident (likely String variable)
+                        // to avoid String + String type mismatch in generated Rust
+                        let is_var_lhs = matches!(lhs.as_ref(), Expr::Ident(_));
+                        if is_str_lhs || is_str_rhs || is_var_lhs {
                             write!(out, "format!(\"{{}}{{}}\", ")?;
                             self.expr(&lhs, out)?;
                             write!(out, ", ")?;
@@ -768,12 +787,34 @@ impl RustTrans {
             Expr::Index(arr, idx) => {
                 self.expr(arr, out)?;
                 write!(out, "[")?;
-                if Self::needs_usize_cast(idx) {
-                    write!(out, "(")?;
-                    self.expr(idx, out)?;
-                    write!(out, ") as usize")?;
-                } else {
-                    self.expr(idx, out)?;
+                match idx.as_ref() {
+                    Expr::Range(range) => {
+                        // source[p..p+1] -> source[(p) as usize..(p + 1) as usize]
+                        if Self::needs_usize_cast(&range.start) {
+                            write!(out, "(")?;
+                            self.expr(&range.start, out)?;
+                            write!(out, ") as usize")?;
+                        } else {
+                            self.expr(&range.start, out)?;
+                        }
+                        write!(out, "{}", if range.eq { "..=" } else { ".." })?;
+                        if Self::needs_usize_cast(&range.end) {
+                            write!(out, "(")?;
+                            self.expr(&range.end, out)?;
+                            write!(out, ") as usize")?;
+                        } else {
+                            self.expr(&range.end, out)?;
+                        }
+                    }
+                    _ => {
+                        if Self::needs_usize_cast(idx) {
+                            write!(out, "(")?;
+                            self.expr(idx, out)?;
+                            write!(out, ") as usize")?;
+                        } else {
+                            self.expr(idx, out)?;
+                        }
+                    }
                 }
                 write!(out, "]").map_err(Into::into)
             }
@@ -1862,7 +1903,8 @@ impl RustTrans {
                             return Ok(());
                         }
                         "sub" => {
-                            // s.sub(start, end) -> s[start..end].to_string()
+                            // s.sub(start, end) -> &s[start..end]
+                            write!(out, "&")?;
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -2038,7 +2080,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "sub" => {
-                    // s.sub(start, end) -> s[start..end].to_string()
+                    // s.sub(start, end) -> &s[start..end]
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -2062,12 +2104,12 @@ impl RustTrans {
                             }
                         }
                     }
-                    write!(out, "].to_string()")?;
+                    write!(out, "]")?;
                     return Ok(());
                 }
                 "slice" => {
-                    // s.slice(n) -> s[n..].to_string()
-                    // s.slice(start, end) -> s[start..end].to_string()
+                    // s.slice(n) -> s[n..]
+                    // s.slice(start, end) -> s[start..end]
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     let args = &call.args.args;
@@ -2618,6 +2660,14 @@ impl RustTrans {
 
             Stmt::Return(expr) => {
                 sink.body.write(b"return ")?;
+                // Plan 232: If returning a &str parameter, add .to_string()
+                if let Expr::Ident(name) = expr.as_ref() {
+                    if self.current_fn_str_params.contains(name) {
+                        write!(sink.body, "{}.to_string()", name)?;
+                        sink.body.write(b";")?;
+                        return Ok(true);
+                    }
+                }
                 self.expr(expr, &mut sink.body)?;
                 sink.body.write(b";")?;
                 Ok(true)
@@ -2897,13 +2947,21 @@ impl RustTrans {
                 sink.body,
                 "{}: {}",
                 param.name,
-                self.rust_type_name(&param.ty)
+                self.rust_param_type_name(&param.ty)
             )?;
             if i < fn_decl.params.len() - 1 {
                 write!(sink.body, ", ")?;
             }
         }
         write!(sink.body, ")")?;
+
+        // Plan 232: Track str-type parameter names for .to_string() on return
+        self.current_fn_str_params.clear();
+        for param in &fn_decl.params {
+            if matches!(param.ty, Type::Str(_) | Type::StrSlice | Type::CStr) {
+                self.current_fn_str_params.insert(param.name.clone());
+            }
+        }
 
         // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
@@ -3012,30 +3070,40 @@ impl RustTrans {
             }
             Iter::Cond => {
                 // Conditional loop: while condition { ... }
-                // Check if there's an init statement
-                if let Some(init_stmt) = &for_stmt.init {
-                    // Emit init statement before the loop
-                    match &**init_stmt {
-                        Stmt::Store(store) => {
-                            self.store(store, &mut sink.body)?;
-                            sink.body.write(b";\n")?;
-                        }
-                        _ => {
-                            self.stmt(&**init_stmt, sink)?;
-                            sink.body.write(b"\n")?;
+                // Optimize: for true { ... } -> loop { ... }
+                if let Expr::Bool(true) = &for_stmt.range {
+                    sink.body.write(b"loop {\n")?;
+                    self.indent();
+                    self.emit_loop_body(&for_stmt.body, sink)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                } else {
+                    // Check if there's an init statement
+                    if let Some(init_stmt) = &for_stmt.init {
+                        // Emit init statement before the loop
+                        match &**init_stmt {
+                            Stmt::Store(store) => {
+                                self.store(store, &mut sink.body)?;
+                                sink.body.write(b";\n")?;
+                            }
+                            _ => {
+                                self.stmt(&**init_stmt, sink)?;
+                                sink.body.write(b"\n")?;
+                            }
                         }
                     }
+
+                    sink.body.write(b"while ")?;
+                    self.expr(&for_stmt.range, &mut sink.body)?;
+                    sink.body.write(b" {\n")?;
+
+                    self.indent();
+                    self.emit_loop_body(&for_stmt.body, sink)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
                 }
-
-                sink.body.write(b"while ")?;
-                self.expr(&for_stmt.range, &mut sink.body)?;
-                sink.body.write(b" {\n")?;
-
-                self.indent();
-                self.emit_loop_body(&for_stmt.body, sink)?;
-                self.dedent();
-                self.print_indent(&mut sink.body)?;
-                sink.body.write(b"}")?;
             }
             _ => {}
         }
@@ -4625,11 +4693,20 @@ impl RustTrans {
     ///
     /// Integer literals do NOT need a cast -- Rust infers the correct type
     /// automatically in index position (e.g., `arr[0]` just works).
-    /// Only non-trivial expressions like variables or binary ops may need it,
-    /// but we cannot reliably determine the type at the AST level, so we
-    /// return `false` here and let Rust's type inference handle it.
-    fn needs_usize_cast(_expr: &Expr) -> bool {
-        false
+    /// Non-trivial expressions (variables, binary ops, calls) may be u32/i32
+    /// and need explicit `as usize` for Rust indexing and range bounds.
+    fn needs_usize_cast(expr: &Expr) -> bool {
+        match expr {
+            // Integer literals: Rust infers correct type in index position
+            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
+            | Expr::I64(_) | Expr::U64(_) | Expr::Byte(_) => false,
+            // Range: bounds are handled individually, not the range itself
+            Expr::Range(_) => false,
+            // Non-integer literals: not used as indices
+            Expr::Bool(_) | Expr::Nil | Expr::Null => false,
+            // Variables, binary ops, calls, dot access, etc. may be u32/i32
+            _ => true,
+        }
     }
 
     fn is_self_dot(expr: &Expr) -> bool {

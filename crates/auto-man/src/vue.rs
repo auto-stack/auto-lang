@@ -249,8 +249,8 @@ fn generate_tsconfig() -> String {
     "noEmit": true,
     "jsx": "preserve",
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["./src/*"]
@@ -930,6 +930,13 @@ impl VueProject {
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
         println!("{}", "  ✓ Regenerated main.ts".bright_green());
 
+        // Regenerate tsconfig.json
+        let tsconfig_path = self.output_dir.join("tsconfig.json");
+        let tsconfig = generate_tsconfig();
+        fs::write(&tsconfig_path, &tsconfig)
+            .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
+        println!("{}", "  ✓ Regenerated tsconfig.json".bright_green());
+
         // Regenerate package.json if outdated (e.g., missing @types/prismjs)
         let pkg_path = self.output_dir.join("package.json");
         if pkg_path.exists() {
@@ -1030,12 +1037,33 @@ impl VueProject {
         }
     }
 
+    /// Fix known compatibility issues in shadcn-vue installed components
+    fn fix_shadcn_compatibility_issues(&self) {
+        // Fix Sonner.vue: lucide-vue-next icon naming changed in newer versions
+        let sonner_path = self.output_dir.join("src/components/ui/sonner/Sonner.vue");
+        if sonner_path.exists() {
+            if let Ok(content) = fs::read_to_string(&sonner_path) {
+                let fixed = content
+                    .replace("CircleCheckIcon", "CheckCircle")
+                    .replace("OctagonXIcon", "XOctagon")
+                    .replace("TriangleAlertIcon", "AlertTriangle");
+                if fixed != content {
+                    let _ = fs::write(&sonner_path, fixed);
+                    println!("{}", "  ✓ Fixed Sonner.vue icon names for lucide-vue-next compatibility".bright_green());
+                }
+            }
+        }
+    }
+
     /// Install shadcn-vue components
     pub fn install_shadcn_components(&self) -> AutoResult<()> {
         if self.shadcn_components.is_empty() {
             println!("{} {}", "▶".bright_cyan(), "No shadcn-vue components needed".bright_white());
             return Ok(());
         }
+
+        // Fix known compatibility issues regardless of whether components are already installed
+        self.fix_shadcn_compatibility_issues();
 
         // Check if already installed
         if are_shadcn_components_installed(&self.output_dir, &self.shadcn_components) {
@@ -1055,6 +1083,8 @@ impl VueProject {
         match crate::pkg::exec("shadcn-vue@latest", &pkg_args, &self.output_dir) {
             Ok(_) => {
                 println!("{}", "  ✓ shadcn-vue components added".bright_green());
+                // Fix known compatibility issues in installed components
+                self.fix_shadcn_compatibility_issues();
                 Ok(())
             }
             Err(e) => {
@@ -1168,6 +1198,27 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     if let Err(e) = crate::api_gen::generate_api(root_dir, "vue") {
         // API generation is optional - only warn on failure
         println!("  ⚠ API generation skipped: {}", e);
+    }
+
+    // Copy handmade theme assets if available
+    let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
+    let gen_css = root_dir.join("gen").join("vue").join("src").join("assets").join("index.css");
+    if handmade_css.exists() && gen_css.exists() {
+        if let Ok(content) = fs::read_to_string(&handmade_css) {
+            fs::write(&gen_css, content)
+                .map_err(|e| format!("Failed to copy handmade index.css: {}", e))?;
+            println!("{}", "  ✓ Copied handmade theme CSS".bright_green());
+        }
+    }
+    let handmade_theme_toggle = root_dir.join("vue").join("src").join("components").join("ThemeToggle.vue");
+    let gen_components_dir = root_dir.join("gen").join("vue").join("src").join("components");
+    if handmade_theme_toggle.exists() {
+        let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
+        if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
+            fs::write(&gen_theme_toggle, content)
+                .map_err(|e| format!("Failed to copy ThemeToggle.vue: {}", e))?;
+            println!("{}", "  ✓ Copied ThemeToggle.vue".bright_green());
+        }
     }
 
     // Step 3: npm install
@@ -1389,6 +1440,27 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         // This handles the case where output files are missing but source hasn't changed
         println!("▶ Step {}/{}: Checking source files...", current_step, total_steps);
         // Skip regeneration if we already did incremental updates
+    }
+
+    // Copy handmade theme assets if available
+    let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
+    let gen_css = root_dir.join("gen").join("vue").join("src").join("assets").join("index.css");
+    if handmade_css.exists() && gen_css.exists() {
+        if let Ok(content) = fs::read_to_string(&handmade_css) {
+            fs::write(&gen_css, content)
+                .map_err(|e| format!("Failed to copy handmade index.css: {}", e))?;
+            println!("{}", "  ✓ Copied handmade theme CSS".bright_green());
+        }
+    }
+    let handmade_theme_toggle = root_dir.join("vue").join("src").join("components").join("ThemeToggle.vue");
+    let gen_components_dir = root_dir.join("gen").join("vue").join("src").join("components");
+    if handmade_theme_toggle.exists() {
+        let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
+        if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
+            fs::write(&gen_theme_toggle, content)
+                .map_err(|e| format!("Failed to copy ThemeToggle.vue: {}", e))?;
+            println!("{}", "  ✓ Copied ThemeToggle.vue".bright_green());
+        }
     }
 
     // Step 2: Generate API client code (if api.at exists)

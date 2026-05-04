@@ -1741,6 +1741,19 @@ impl WidgetRegistry {
         });
         self.register(dialog_desc);
 
+        // DialogClose
+        let mut dialog_close = WidgetSpec::new("DialogClose", WidgetCategory::Overlay)
+            .with_alias("dialog-close");
+        dialog_close.has_children = true;
+        dialog_close.backends.insert("vue".to_string(), BackendMapping {
+            component: "DialogClose".to_string(),
+            import: Some("@/components/ui/dialog".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(dialog_close);
+
         // AlertDialog
         let mut alert_dialog = WidgetSpec::new("AlertDialog", WidgetCategory::Overlay)
             .with_alias("alert-dialog");
@@ -2289,8 +2302,8 @@ impl WidgetRegistry {
             .with_alias("toast-provider");
         toast_provider.has_children = true;
         toast_provider.backends.insert("vue".to_string(), BackendMapping {
-            component: "ToastProvider".to_string(),
-            import: Some("@/components/ui/toast".to_string()),
+            component: "Toaster".to_string(),
+            import: Some("@/components/ui/sonner".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),

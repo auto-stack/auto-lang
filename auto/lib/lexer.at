@@ -23,11 +23,12 @@ fn is_hex_digit(c char) bool {
 }
 
 // Get current character at position (returns '\0' if past end)
+// Uses char_at for a2r compatibility (generates .chars().nth() as usize)
 fn cur_char(source str, pos uint) char {
-    if pos >= source.len() {
+    if pos >= source.len().as(uint) {
         return '\0'
     }
-    return source[pos]
+    return source.char_at(pos)
 }
 
 // Skip whitespace (space and tab, NOT newline)
@@ -77,15 +78,15 @@ fn lex_number(source str, pos uint) Token {
     // Read digits
     for true {
         if is_binary && (c == '0' || c == '1') {
-            text = text + source[p..p + 1]
+            text = text + source.sub(p, p + 1)
             p = p + 1
             c = cur_char(source, p)
         } else if is_hex && is_hex_digit(c) {
-            text = text + source[p..p + 1]
+            text = text + source.sub(p, p + 1)
             p = p + 1
             c = cur_char(source, p)
         } else if is_digit(c) && !is_binary {
-            text = text + source[p..p + 1]
+            text = text + source.sub(p, p + 1)
             p = p + 1
             c = cur_char(source, p)
         } else if c == '_' {
@@ -163,14 +164,14 @@ fn lex_ident(source str, pos uint) Token {
         p = p + 1
         c = cur_char(source, p)
     }
-    var text = source[start..p]
+    var text = source.sub(start, p)
     var kind = keyword_kind(text)
     return Token(kind, Pos(1, start, p - start), text)
 }
 
 // Read a string literal "..."
 fn lex_string(source str, pos uint) Token {
-    var p = pos + 1 // skip opening "
+    var p uint = pos + 1 // skip opening "
     var text = ""
     var c = cur_char(source, p)
     for c != '"' && c != '\0' {
@@ -190,11 +191,11 @@ fn lex_string(source str, pos uint) Token {
             } else if esc == '"' {
                 text = text + "\""
             } else {
-                text = text + "\\" + source[p..p + 1]
+                text = text + "\\" + source.sub(p, p + 1)
             }
             p = p + 1
         } else {
-            text = text + source[p..p + 1]
+            text = text + source.sub(p, p + 1)
             p = p + 1
         }
         c = cur_char(source, p)
@@ -332,9 +333,9 @@ fn lex_operator(source str, pos uint) Token {
 // Tokenize a source string, returning a list of token kinds (as display strings)
 // P0: simplified tokenizer for basic testing
 fn tokenize(source str) str {
-    var p = 0
+    var p uint = 0
     var result = ""
-    var len = source.len()
+    var len = source.len().as(uint)
 
     for p < len {
         p = skip_ws(source, p)
@@ -385,10 +386,4 @@ fn tokenize(source str) str {
     }
 
     return result
-}
-
-fn main() {
-    let src = "let x = 42"
-    let result = tokenize(src)
-    print(result)
 }

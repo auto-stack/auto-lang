@@ -14,7 +14,7 @@ widget PaginationPage {
             h2 "Simple"
             preview-card (id: "pagination-basic") {
                 row (gap: "2", style: "items-center") {
-                    pagination {}
+                    pagination (total: 100, itemsPerPage: 10) {}
                 }
             }
 

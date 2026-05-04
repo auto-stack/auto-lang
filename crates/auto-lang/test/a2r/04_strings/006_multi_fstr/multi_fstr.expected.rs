@@ -4,16 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-let name: String = "World".to_string();
-
-let age: i32 = 25;
-
-let msg: String = format!("Hello {},
-you are {} years old.", name, age);
-
-let result: String = format!("Sum: {}", age + 1);
-
 fn main() {
+    let name: String = "World".to_string();;
+    let age: i32 = 25;;
+    let msg: String = format!("Hello {},
+you are {} years old.", name, age);;
     println!("{}", msg);
+    let result: String = format!("Sum: {}", age + 1);;
     println!("{}", result);
 }

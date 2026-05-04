@@ -787,6 +787,9 @@ pub struct VueGenerator {
     /// Component references (other widgets)
     component_refs: Vec<String>,
 
+    /// Lucide icon components used (for import collection)
+    lucide_icons: HashSet<String>,
+
     /// Tailwind classes for wrapper
     wrapper_classes: String,
 
@@ -829,6 +832,9 @@ pub struct VueGenerator {
 
     /// Whether the widget has an isDark state var (dark mode toggle)
     has_dark_mode: bool,
+
+    /// Whether theme-toggle component is used
+    use_theme_toggle: bool,
 }
 
 /// Data for generating interactive preview cards
@@ -865,6 +871,7 @@ impl VueGenerator {
             emit_events: Vec::new(),
             has_emit: false,
             component_refs: Vec::new(),
+            lucide_icons: HashSet::new(),
             wrapper_classes: String::new(),
             mode: VueMode::Plain,
             widget_registry: WidgetRegistry::with_defaults(),
@@ -879,6 +886,7 @@ impl VueGenerator {
             api_functions_used: HashSet::new(),
             used_handlers: HashSet::new(),
             has_dark_mode: false,
+            use_theme_toggle: false,
         }
     }
 
@@ -921,6 +929,7 @@ impl VueGenerator {
         self.emit_events.clear();
         self.has_emit = false;
         self.component_refs.clear();
+        self.lucide_icons.clear();
         self.wrapper_classes.clear();
         self.shadcn_components_used.clear();
         self.previewcard_counter = 0;
@@ -932,6 +941,101 @@ impl VueGenerator {
         self.api_functions_used.clear();
         self.used_handlers.clear();
         self.has_dark_mode = false;
+        self.use_theme_toggle = false;
+    }
+
+    /// Convert kebab-case icon name to PascalCase Lucide component name
+    fn kebab_to_pascal(s: &str) -> String {
+        s.split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            })
+            .collect()
+    }
+
+    /// Get Tailwind color classes for category section
+    fn category_color_classes(color: &str) -> (&'static str, &'static str) {
+        match color {
+            "blue" => ("bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800", "bg-blue-500"),
+            "emerald" => ("bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800", "bg-emerald-500"),
+            "amber" => ("bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800", "bg-amber-500"),
+            "purple" => ("bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800", "bg-purple-500"),
+            "rose" => ("bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800", "bg-rose-500"),
+            _ => ("bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800", "bg-gray-500"),
+        }
+    }
+
+    /// Generate category-section HTML (component grid with heading)
+    fn generate_category_section_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let name = props.get("name").and_then(|v| self.extract_string_value(v)).unwrap_or("Category");
+        let color = props.get("color").and_then(|v| self.extract_string_value(v)).unwrap_or("gray");
+        let count = props.get("count")
+            .and_then(|v| self.extract_int_value(v).map(|n| n.to_string()))
+            .or_else(|| props.get("count").and_then(|v| self.extract_string_value(v)).map(|s| s.to_string()))
+            .unwrap_or_default();
+
+        let (item_classes, dot_class) = Self::category_color_classes(color);
+        self.lucide_icons.insert("ArrowRight".to_string());
+
+        let mut html = String::new();
+        html.push_str(&format!("{}<div>\n", ind));
+        html.push_str(&format!("{}  <div class=\"flex items-center gap-2 mb-4\">\n", ind));
+        html.push_str(&format!("{}    <span class=\"h-2.5 w-2.5 rounded-full {}\" />\n", ind, dot_class));
+        html.push_str(&format!("{}    <h2 class=\"text-sm font-semibold uppercase tracking-wider text-muted-foreground\">{}</h2>\n", ind, name));
+        html.push_str(&format!("{}    <span class=\"text-xs text-muted-foreground/60\">({})</span>\n", ind, count));
+        html.push_str(&format!("{}  </div>\n", ind));
+        html.push_str(&format!("{}  <div class=\"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3\">\n", ind));
+
+        for child in children {
+            if let AuraNode::Element { tag: child_tag, props: child_props, .. } = child {
+                if child_tag == "component-card" || child_tag == "component_card" || child_tag == "componentcard" {
+                    let to = child_props.get("to").and_then(|v| self.extract_string_value(v)).unwrap_or("#");
+                    let card_name = child_props.get("name").and_then(|v| self.extract_string_value(v)).unwrap_or("");
+                    let desc = child_props.get("desc").and_then(|v| self.extract_string_value(v)).unwrap_or("");
+                    let icon_name = child_props.get("icon").and_then(|v| self.extract_string_value(v)).unwrap_or("");
+                    let lucide_component = Self::kebab_to_pascal(icon_name);
+                    self.lucide_icons.insert(lucide_component.clone());
+
+                    html.push_str(&format!(
+                        r#"{}    <router-link to="{}" class="group flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 bg-card">
+{}      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border {}">
+{}        <{} class="h-5 w-5" />
+{}      </div>
+{}      <div class="min-w-0">
+{}        <div class="font-medium text-sm truncate">{}</div>
+{}        <div class="text-xs text-muted-foreground truncate">{}</div>
+{}      </div>
+{}      <ArrowRight class="h-4 w-4 ml-auto shrink-0 text-muted-foreground opacity-0 -translate-x-2 transition-all group-hover:opacity-100 group-hover:translate-x-0" />
+{}    </router-link>
+"#,
+                        ind, to,
+                        ind, item_classes,
+                        ind, lucide_component,
+                        ind,
+                        ind,
+                        ind, card_name,
+                        ind, desc,
+                        ind,
+                        ind,
+                        ind
+                    ));
+                }
+            }
+        }
+
+        html.push_str(&format!("{}  </div>\n", ind));
+        html.push_str(&format!("{}</div>\n", ind));
+        Ok(html)
     }
 
     /// Generate complete Vue3 SFC
@@ -1035,6 +1139,20 @@ impl VueGenerator {
             script.push('\n');
         }
 
+        // Generate lucide-vue-next imports (if any icons were used)
+        if !self.lucide_icons.is_empty() {
+            let mut icons: Vec<String> = self.lucide_icons.iter().cloned().collect();
+            icons.sort();
+            script.push_str(&format!("import {{ {} }} from 'lucide-vue-next'\n", icons.join(", ")));
+            script.push('\n');
+        }
+
+        // Import ThemeToggle custom component if used
+        if self.use_theme_toggle {
+            script.push_str("import ThemeToggle from '@/components/ThemeToggle.vue'\n");
+            script.push('\n');
+        }
+
         // Plan 132: Scan handlers for API function calls
         for (_pattern, payload) in &widget.handlers {
             self.extract_api_calls_from_payload(payload);
@@ -1117,13 +1235,15 @@ impl VueGenerator {
         // Plan 100: Add return type annotation for TypeScript
         // Plan 132: Add async keyword for handlers with API calls
         // Only output handlers that are actually used in the template
+        let mut generated_handlers: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (handler_name, handler_body, is_async) in &self.handlers {
             // Skip unused handlers to avoid TypeScript warnings
             if !self.used_handlers.contains(handler_name) {
                 continue;
             }
+            generated_handlers.insert(handler_name.clone());
             // Check if this handler has typed params
-            let pattern_key = format!(".{}", handler_name.trim_start_matches("on"));
+            let pattern_key = format!(".{}", handler_name);
             let params_str = widget.handler_params.get(&pattern_key)
                 .map(|params| params.join(": any, "))
                 .map(|p| if p.is_empty() { String::new() } else { format!("{}: any", p) })
@@ -1140,6 +1260,15 @@ impl VueGenerator {
             } else {
                 script.push_str(&format!("{}function {}({}){} {{\n  {}\n}}\n\n", async_kw, handler_name, params_str, return_type, handler_body));
             }
+        }
+
+        // Generate stub functions for handlers referenced in template but not defined in on-block
+        for handler_name in &self.used_handlers {
+            if generated_handlers.contains(handler_name) {
+                continue;
+            }
+            let return_type = if self.use_typescript { ": void" } else { "" };
+            script.push_str(&format!("function {}(){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, return_type));
         }
 
         // Generate timer/tick mechanism (setInterval + onUnmounted cleanup)
@@ -1404,6 +1533,38 @@ impl VueGenerator {
                 // Special handling for codeblock element (with copy button)
                 if tag == "codeblock" || tag == "code-block" {
                     return self.generate_codeblock_html(props, events, children, indent);
+                }
+
+                // Special handling for icon element - render as Lucide Vue component
+                if tag == "icon" || tag == "Icon" {
+                    let icon_name = props.get("name")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or("circle");
+                    let lucide_component = Self::kebab_to_pascal(icon_name);
+                    self.lucide_icons.insert(lucide_component.clone());
+
+                    let (static_classes, _dynamic_classes) = self.extract_classes(tag, props);
+                    let class_str = if static_classes.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" class=\"{}\"", static_classes)
+                    };
+
+                    if children.is_empty() {
+                        return Ok(format!("{}<{}{} />\n", ind, lucide_component, class_str));
+                    } else {
+                        let mut html = format!("{}<{}{}>\n", ind, lucide_component, class_str);
+                        for child in children {
+                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        html.push_str(&format!("{}</{}>\n", ind, lucide_component));
+                        return Ok(html);
+                    }
+                }
+
+                // Special handling for category-section element
+                if tag == "category-section" || tag == "category_section" {
+                    return self.generate_category_section_html(props, children, indent);
                 }
 
                 let html_tag = self.map_tag(tag, children.is_empty());
@@ -2229,6 +2390,26 @@ impl VueGenerator {
     fn map_tag(&mut self, tag: &str, self_closing: bool) -> String {
         // If in shadcn mode and tag has a shadcn component, use it
         if self.is_shadcn() {
+            // nav-link maps to router-link (not a shadcn component)
+            if tag == "nav-link" {
+                return "router-link".to_string();
+            }
+            // theme-toggle maps to ThemeToggle custom component
+            if tag == "theme-toggle" || tag == "theme_toggle" {
+                self.component_refs.push("ThemeToggle".to_string());
+                self.use_theme_toggle = true;
+                return "ThemeToggle".to_string();
+            }
+            // Toast sub-components map to plain HTML (vue-sonner uses Toaster only)
+            if tag == "toast" {
+                return "div".to_string();
+            }
+            if tag == "toast-title" {
+                return "span".to_string();
+            }
+            if tag == "toast-description" {
+                return "span".to_string();
+            }
             if let Some(component_name) = self.shadcn_component_name(tag) {
                 self.register_shadcn_component(tag);
                 return component_name.to_string();
@@ -3215,9 +3396,20 @@ impl VueGenerator {
                         attrs.push(format!("class=\"{}\"", class));
                     }
                 }
-                // Text becomes slot content
+                // Build slot children for icon + text
+                let mut button_children = Vec::new();
+                if let Some(icon_name) = props.get("icon").and_then(|v| self.extract_string_value(v)) {
+                    let lucide_component = Self::kebab_to_pascal(icon_name);
+                    self.lucide_icons.insert(lucide_component.clone());
+                    button_children.push(format!(r#"<{} class="h-4 w-4" />"#, lucide_component));
+                }
                 if let Some(value) = props.get("text") {
-                    slot_content = self.prop_to_text_content(value).ok();
+                    if let Ok(text) = self.prop_to_text_content(value) {
+                        button_children.push(text);
+                    }
+                }
+                if !button_children.is_empty() {
+                    slot_children = Some(button_children.join(""));
                 }
             }
 
@@ -3335,6 +3527,27 @@ impl VueGenerator {
                 if let Some(value) = props.get("href") {
                     let href = self.extract_string_value(value).unwrap_or("#");
                     attrs.push(format!("href=\"{}\"", href));
+                }
+            }
+
+            // === Nav Link (Sidebar navigation item) ===
+            "nav_link" => {
+                if let Some(value) = props.get("to") {
+                    let to = self.extract_string_value(value).unwrap_or("#");
+                    attrs.push(format!("to=\"{}\"", to));
+                }
+                if let Some(label) = props.get("label").and_then(|v| self.extract_string_value(v)) {
+                    let icon_name = props.get("icon").and_then(|v| self.extract_string_value(v));
+                    if let Some(icon) = icon_name {
+                        let lucide_component = Self::kebab_to_pascal(icon);
+                        self.lucide_icons.insert(lucide_component.clone());
+                        slot_children = Some(format!(
+                            r#"<div class="flex flex-row items-center gap-2 rounded-md px-2 py-1.5 text-sm"><{} class="h-4 w-4 shrink-0" /><span>{}</span></div>"#,
+                            lucide_component, label
+                        ));
+                    } else {
+                        slot_children = Some(format!(r#"<span>{}</span>"#, label));
+                    }
                 }
             }
 
@@ -3523,7 +3736,7 @@ impl VueGenerator {
             }
 
             // === SelectItem ===
-            "selectitem" | "select-item" => {
+            "selectitem" | "select_item" => {
                 // value for selection
                 if let Some(value) = props.get("value") {
                     let val = self.extract_string_value(value).unwrap_or("");
@@ -3542,7 +3755,7 @@ impl VueGenerator {
             }
 
             // === SelectValue ===
-            "selectvalue" | "select-value" => {
+            "selectvalue" | "select_value" => {
                 // placeholder
                 if let Some(value) = props.get("placeholder") {
                     let placeholder = self.extract_string_value(value).unwrap_or("");
@@ -3551,7 +3764,7 @@ impl VueGenerator {
             }
 
             // === SelectTrigger ===
-            "selecttrigger" | "select-trigger" => {
+            "selecttrigger" | "select_trigger" => {
                 // class
                 if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
@@ -3560,7 +3773,7 @@ impl VueGenerator {
             }
 
             // === SelectLabel ===
-            "selectlabel" | "select-label" => {
+            "selectlabel" | "select_label" => {
                 // text becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
@@ -3616,9 +3829,16 @@ impl VueGenerator {
             // === Badge ===
             "badge" => {
                 // variant
-                if let Some(value) = props.get("type") {
+                if let Some(value) = props.get("variant") {
                     let variant = self.extract_string_value(value).unwrap_or("default");
                     attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // Handle style/class prop
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
                 }
                 // Text becomes slot content
                 if let Some(value) = props.get("text") {
@@ -3697,7 +3917,7 @@ impl VueGenerator {
             }
 
             // === AlertDialog Sub-components ===
-            "alertdialog" | "alert-dialog" => {
+            "alertdialog" | "alert_dialog" => {
                 // v-model:open for dialog state
                 if let Some(value) = props.get("open") {
                     if let Some(model) = self.extract_state_ref(value) {
@@ -3751,6 +3971,41 @@ impl VueGenerator {
                 }
             }
 
+            // === Dialog Sub-components ===
+            "dialogtrigger" | "dialog_trigger" | "dialog-trigger" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "dialogcontent" | "dialog_content" | "dialog-content" => {
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+            "dialogheader" | "dialog_header" | "dialog-header" | "dialogfooter" | "dialog_footer" | "dialog-footer" => {
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+            "dialogtitle" | "dialog_title" | "dialog-title" => {
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "dialogdescription" | "dialog_description" | "dialog-description" => {
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "dialogclose" | "dialog_close" | "dialog-close" => {
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
             // === Card Sub-components ===
             "cardheader" | "cardcontent" | "cardfooter" => {
                 // These are container components - class is handled by extract_classes
@@ -3763,10 +4018,10 @@ impl VueGenerator {
             }
 
             // === Tabs Sub-components ===
-            "tabslist" | "tabs-list" => {
+            "tabslist" | "tabs_list" => {
                 // TabsList is a container - class handled by extract_classes
             }
-            "tabstrigger" | "tabs-trigger" => {
+            "tabstrigger" | "tabs_trigger" => {
                 // value is required for TabsTrigger
                 if let Some(value) = props.get("value") {
                     let val = self.extract_string_value(value).unwrap_or("");
@@ -3777,7 +4032,7 @@ impl VueGenerator {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
             }
-            "tabscontent" | "tabs-content" => {
+            "tabscontent" | "tabs_content" => {
                 // value is required for TabsContent
                 if let Some(value) = props.get("value") {
                     let val = self.extract_string_value(value).unwrap_or("");
@@ -3821,13 +4076,39 @@ impl VueGenerator {
                 }
             }
 
+            // === AvatarImage (when used as standalone element) ===
+            "avatarimage" | "avatar_image" => {
+                if let Some(value) = props.get("src") {
+                    let src = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("src=\"{}\"", src));
+                }
+                if let Some(value) = props.get("alt") {
+                    let alt = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("alt=\"{}\"", alt));
+                }
+            }
+
+            // === AvatarFallback (when used as standalone element) ===
+            "avatarfallback" | "avatar_fallback" => {
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
             // === AspectRatio ===
-            "aspectratio" | "aspect-ratio" => {
+            "aspectratio" | "aspect_ratio" => {
                 // ratio prop (e.g., 16/9 = 1.777)
                 if let Some(value) = props.get("ratio") {
                     if let Some(ratio) = self.extract_float_value(value) {
                         attrs.push(format!(":ratio=\"{}\"", ratio));
+                    } else if let Some(ratio) = self.extract_int_value(value) {
+                        attrs.push(format!(":ratio=\"{}\"", ratio));
                     }
+                }
+                // class
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
                 }
             }
 
@@ -4107,6 +4388,10 @@ impl VueGenerator {
                         attrs.push("as-child".to_string());
                     }
                 }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
             }
 
             "dropdown_content" => {
@@ -4172,6 +4457,10 @@ impl VueGenerator {
                         attrs.push("as-child".to_string());
                     }
                 }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
             }
 
             "popover_content" => {
@@ -4208,6 +4497,10 @@ impl VueGenerator {
                     if self.extract_bool_value(value) {
                         attrs.push("as-child".to_string());
                     }
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
                 }
             }
 
@@ -4327,16 +4620,6 @@ impl VueGenerator {
                 if let Some(value) = self.get_style_class(props) {
                     let class = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("class=\"{}\"", class));
-                }
-            }
-
-            // === Alert Dialog ===
-            "alert_dialog" => {
-                // v-model:open for dialog state
-                if let Some(value) = props.get("open") {
-                    if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!("v-model:open=\"{}\"", model));
-                    }
                 }
             }
 
@@ -5082,6 +5365,10 @@ impl VueGenerator {
                         attrs.push("as-child".to_string());
                     }
                 }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
             }
 
             "drawer_content" => {
@@ -5235,6 +5522,11 @@ impl VueGenerator {
                 if let Some(value) = props.get("per_page") {
                     if let Some(per_page) = self.extract_int_value(value) {
                         attrs.push(format!(":items-per-page=\"{}\"", per_page));
+                    }
+                }
+                if let Some(value) = props.get("itemsPerPage") {
+                    if let Some(items) = self.extract_int_value(value) {
+                        attrs.push(format!(":items-per-page=\"{}\"", items));
                     }
                 }
                 // sibling-count
@@ -5410,21 +5702,6 @@ impl VueGenerator {
             // ========================================
             // Phase 11: Low Priority Components
             // ========================================
-
-            // === Aspect Ratio ===
-            "aspect_ratio" => {
-                // ratio (default 16/9 = 1.777...)
-                if let Some(value) = props.get("ratio") {
-                    if let Some(ratio) = self.extract_int_value(value) {
-                        attrs.push(format!(":ratio=\"{}\"", ratio));
-                    }
-                }
-                // class
-                if let Some(value) = self.get_style_class(props) {
-                    let class = self.extract_string_value(value).unwrap_or("");
-                    attrs.push(format!("class=\"{}\"", class));
-                }
-            }
 
             // === Button Group ===
             "button_group" => {
@@ -5888,7 +6165,8 @@ impl VueGenerator {
     fn pattern_to_handler_name(&self, pattern: &str) -> String {
         // Check for dot prefix first (e.g., ".Inc")
         if pattern.starts_with('.') {
-            format!("on{}", &pattern[1..])
+            // Dot-prefixed handlers map directly to function name (Vue convention)
+            pattern[1..].to_string()
         } else if let Some(variant) = pattern.split("::").last() {
             // Pattern like "Msg::Inc" -> "onInc"
             format!("on{}", variant)
@@ -5901,7 +6179,8 @@ impl VueGenerator {
     fn handler_to_function_call(&self, handler: &str) -> String {
         // Check for dot prefix first
         if handler.starts_with('.') {
-            format!("on{}", &handler[1..])
+            // Dot-prefixed handlers map directly to function name (Vue convention)
+            handler[1..].to_string()
         } else if let Some(variant) = handler.split("::").last() {
             // Handler like "Msg::Inc" -> "onInc"
             format!("on{}", variant)
@@ -6381,7 +6660,8 @@ mod tests {
         let gen = VueGenerator::new();
 
         assert_eq!(gen.pattern_to_handler_name("Msg::Inc"), "onInc");
-        assert_eq!(gen.pattern_to_handler_name(".Inc"), "onInc");
+        assert_eq!(gen.pattern_to_handler_name(".Inc"), "Inc");
+        assert_eq!(gen.pattern_to_handler_name(".openSidebar"), "openSidebar");
         assert_eq!(gen.pattern_to_handler_name("Dec"), "onDec");
     }
 

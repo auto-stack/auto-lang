@@ -60,13 +60,20 @@ widget App {
         searchQuery str = ""
     }
 
+    on {
+        .openSidebar -> { sidebarOpen = true }
+        .closeSidebar -> { sidebarOpen = false }
+        .openSearch -> { searchOpen = true }
+        .closeSearch -> { searchOpen = false }
+    }
+
     view {
         col (style: "h-screen overflow-hidden") {
             // Header: responsive with mobile menu, search, theme toggle
             header (style: "sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur") {
                 row (style: "h-14 items-center px-4 md:px-6 w-full gap-3") {
                     // Mobile hamburger (hidden on md+)
-                    button (style: "md:hidden -ml-2", icon: "menu", onClick: openSidebar) {}
+                    button (style: "md:hidden -ml-2", icon: "menu", onClick: .openSidebar) {}
 
                     // Logo
                     row (style: "items-center gap-2 mr-4 shrink-0") {
@@ -86,14 +93,14 @@ widget App {
 
                     // Right actions
                     row (style: "ml-auto items-center gap-1") {
-                        button (style: "hidden md:flex h-9 w-9", icon: "search", onClick: openSearch) {}
+                        button (variant: "ghost", style: "hidden md:flex h-9 w-9", icon: "search", onClick: .openSearch) {}
                         theme-toggle {}
                     }
                 }
             }
 
             // Search overlay
-            drawer (open: searchOpen, onClose: closeSearch) {
+            drawer (open: .searchOpen, onClose: .closeSearch) {
                 // Global search dialog
             }
 
@@ -172,7 +179,7 @@ widget App {
                 }
 
                 // Mobile sidebar drawer
-                drawer (open: sidebarOpen, onClose: closeSidebar) {
+                drawer (open: .sidebarOpen, onClose: .closeSidebar) {
                     // Mobile navigation
                 }
 
@@ -194,19 +201,19 @@ widget App {
                         text (text: "Home", style: "text-[10px]") {}
                     }
                 }
-                button (onClick: openSidebar) {
+                button (onClick: .openSidebar) {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "layout-grid", style: "h-5 w-5") {}
                         text (text: "Components", style: "text-[10px]") {}
                     }
                 }
-                button (onClick: openSearch) {
+                button (onClick: .openSearch) {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "search", style: "h-5 w-5") {}
                         text (text: "Search", style: "text-[10px]") {}
                     }
                 }
-                button (onClick: cycleTheme) {
+                theme-toggle {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "palette", style: "h-5 w-5") {}
                         text (text: "Theme", style: "text-[10px]") {}

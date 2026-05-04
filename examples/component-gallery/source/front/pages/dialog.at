@@ -12,8 +12,18 @@ widget DialogPage {
             h2 "Simple"
             preview-card (id: "dialog-basic") {
                 row (gap: "4") {
-                    dialog {}
-                    dialog-trigger "Open Dialog"
+                    dialog {
+                        dialog-trigger "Open Dialog"
+                        dialog-content {
+                            dialog-header {
+                                dialog-title "Edit Profile"
+                                dialog-description "Make changes to your profile here. Click save when you're done."
+                            }
+                            dialog-footer {
+                                dialog-close "Save changes"
+                            }
+                        }
+                    }
                 }
             }
             h2 "Properties"
