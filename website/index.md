@@ -18,7 +18,7 @@ onMounted(() => {
 
 <HomeHero
   badge="v0.2 is now available"
-  title=": The language for AI &amp; OS"
+  title=": Language for AI &amp; OS"
   description="A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions."
   primary-text="Get Started"
   primary-link="/docs/"

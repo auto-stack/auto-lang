@@ -12,7 +12,7 @@
           {{ badge }}
         </div>
         <h1 class="title">
-          <span class="gradient-text">Auto</span>
+          <span class="gradient-text">Auto:</span>
           <span class="subtitle">{{ title }}</span>
         </h1>
         <p class="description" v-html="description" />
@@ -81,7 +81,7 @@ interface Props {
 
 withDefaults(defineProps<Props>(), {
   badge: 'Language as OS',
-  title: ': The System in Syntax',
+  title: 'Language as OS',
   description: 'Auto blurs the line between language and operating system. Compile-time execution, multi-target transpilers, and a unified runtime from MCU to cloud.',
   primaryText: 'Read the Docs',
   primaryLink: '/docs/os',

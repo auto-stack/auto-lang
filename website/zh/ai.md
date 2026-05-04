@@ -11,7 +11,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 
 <AIHero
   badge="Made BY AI · Made FOR AI · Made of AI"
-  title="：为 AI 而生的语言"
+  title="为 AI 而生的语言"
   description="一门由 AI 构建、为 AI 优化、由 AI 构成的编程语言。从极低解析熵的语法到原生 Agent 架构。"
   primary-text="阅读文档"
   primary-link="/zh/docs/ai"

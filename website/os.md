@@ -11,7 +11,7 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 
 <OSHero
   badge="Language as OS"
-  title=": The OS in Your Code"
+  title="Language as OS"
   description="Auto blurs the line between language and operating system. Compile-time execution, multi-target transpilers, and a unified runtime from MCU to cloud."
   primary-text="Read the Docs"
   primary-link="/docs/os"

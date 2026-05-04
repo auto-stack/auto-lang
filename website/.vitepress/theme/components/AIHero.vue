@@ -12,7 +12,7 @@
           {{ badge }}
         </div>
         <h1 class="title">
-          <span class="gradient-text">Auto</span>
+          <span class="gradient-text">Auto:</span>
           <span class="subtitle">{{ title }}</span>
         </h1>
         <p class="description" v-html="description" />
@@ -69,7 +69,7 @@ interface Props {
 
 withDefaults(defineProps<Props>(), {
   badge: 'AI-Native Architecture',
-  title: ': Designed for Intelligence',
+  title: 'Designed for Intelligence',
   description: 'A programming language built with AI, optimized for AI, and composed of AI. From token-efficient syntax to agent-native architecture.',
   primaryText: 'Read the Docs',
   primaryLink: '/docs/ai',
@@ -190,6 +190,7 @@ withDefaults(defineProps<Props>(), {
 .subtitle {
   display: block;
   margin-top: 0.25rem;
+  white-space: nowrap;
 }
 
 .description {

@@ -11,7 +11,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 
 <OSHero
   badge="Language as OS"
-  title="：代码中的操作系统"
+  title="语言即操作系统"
   description="Auto 模糊了语言与操作系统的边界。编译期执行、多目标转译器、从 MCU 到云端的全平台统一运行时。"
   primary-text="阅读文档"
   primary-link="/zh/docs/os"

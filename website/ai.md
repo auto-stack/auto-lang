@@ -11,7 +11,7 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 
 <AIHero
   badge="Made BY AI · Made FOR AI · Made of AI"
-  title=": AI-Native by Design"
+  title="AI-Native by Design"
   description="A programming language built with AI, optimized for AI, and composed of AI. From token-efficient syntax to agent-native architecture."
   primary-text="Read the Docs"
   primary-link="/docs/ai"
