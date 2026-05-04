@@ -6551,7 +6551,7 @@ export function cn(...inputs: ClassValue[]) {
         // No static imports needed - using lazy loading
 
         format!(
-            r#"import {{ createRouter, createWebHistory }} from 'vue-router'
+            r#"import {{ createRouter, createWebHashHistory }} from 'vue-router'
 import type {{ RouteRecordRaw }} from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
@@ -6559,7 +6559,7 @@ const routes: RouteRecordRaw[] = [
 ]
 
 const router = createRouter({{
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes,
 }})
 
@@ -7184,7 +7184,7 @@ mod tests {
         let output = VueGenerator::generate_router_file(&routes);
 
         // Check imports
-        assert!(output.contains("import { createRouter, createWebHistory }"));
+        assert!(output.contains("import { createRouter, createWebHashHistory }"));
 
         // Check lazy loading imports (Plan 106)
         assert!(output.contains("component: () => import('@/pages/index.vue')"));
@@ -7206,7 +7206,7 @@ mod tests {
         let output = VueGenerator::generate_router_file(&routes);
 
         // Should still generate valid router structure
-        assert!(output.contains("import { createRouter, createWebHistory }"));
+        assert!(output.contains("import { createRouter, createWebHashHistory }"));
         assert!(output.contains("const routes: RouteRecordRaw[] = ["));
         assert!(output.contains("export default router"));
     }
