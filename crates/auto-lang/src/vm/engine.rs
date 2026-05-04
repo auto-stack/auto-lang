@@ -1092,6 +1092,13 @@ impl AutoVM {
                 OpCode::POP => {
                     task.ram.pop_i32();
                 }
+                OpCode::POP_N => {
+                    let n = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                    for _ in 0..n {
+                        task.ram.pop_i32();
+                    }
+                }
                 OpCode::DUP => {
                     let val = task.ram.top().unwrap_or(0);
                     task.ram.push_i32(val);

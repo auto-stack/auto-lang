@@ -27,7 +27,7 @@ fn cur_char(source str, pos uint) char {
     if pos >= source.len() {
         return '\0'
     }
-    return source.char_at(pos)
+    return source[pos]
 }
 
 // Skip whitespace (space and tab, NOT newline)
