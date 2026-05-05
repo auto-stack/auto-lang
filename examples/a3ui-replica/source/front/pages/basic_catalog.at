@@ -1,0 +1,202 @@
+// pages/basic_catalog.at - Basic Catalog Page
+// Documentation for A2UI basic components — pure Auto-generated page
+
+widget BasicCatalogPage {
+    view {
+        col (style: "p-8 gap-8") {
+            col (style: "gap-2") {
+                h1 (style: "text-2xl font-semibold text-slate-900") {
+                    text (text: "Basic Catalog") {}
+                }
+                text (style: "text-slate-500") {
+                    text (text: "Reference documentation for all A2UI basic components with live previews.") {}
+                }
+            }
+
+            // Layout Components
+            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
+                text (text: "Layout") {}
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Row") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Horizontal flex container with gap, align and justify.") {} }
+                    A2Demo (demo: "Row") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Column") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Vertical flex container with gap and align.") {} }
+                    A2Demo (demo: "Column") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "List") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Vertical list of items with gap spacing.") {} }
+                    A2Demo (demo: "List") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Card") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Rounded container with optional child content.") {} }
+                    A2Demo (demo: "Card") {}
+                }
+            }
+
+            // Content Components
+            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
+                text (text: "Content") {}
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Text") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Text display with variants: h1, h2, h3, h4, body, caption.") {} }
+                    A2Demo (demo: "Text") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Image") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Image display with width, height and borderRadius.") {} }
+                    A2Demo (demo: "Image") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Icon") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Icon display using Lucide icon names and size.") {} }
+                    A2Demo (demo: "Icon") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Title") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Semantic title element with h1-h3 variants.") {} }
+                    A2Demo (demo: "Title") {}
+                }
+            }
+
+            // Input Components
+            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
+                text (text: "Input") {}
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Button") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Clickable button with primary/secondary/ghost variants.") {} }
+                    A2Demo (demo: "Button") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Tabs") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Tab navigation with active tab state.") {} }
+                    A2Demo (demo: "Tabs") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "TextField") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Single-line text input with placeholder and value.") {} }
+                    A2Demo (demo: "TextField") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "CheckBox") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Boolean toggle with label and checked state.") {} }
+                    A2Demo (demo: "CheckBox") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Slider") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Range slider with min, max and value.") {} }
+                    A2Demo (demo: "Slider") {}
+                }
+            }
+
+            // Display Components
+            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
+                text (text: "Display") {}
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Badge") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Small status label with color variants.") {} }
+                    A2Demo (demo: "Badge") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Metric") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Key metric with label, value and trend indicator.") {} }
+                    A2Demo (demo: "Metric") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Divider") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Horizontal separator with spacing.") {} }
+                    A2Demo (demo: "Divider") {}
+                }
+            }
+
+            // Data Components
+            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
+                text (text: "Data") {}
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "PieChart") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Donut chart showing proportional data.") {} }
+                    A2Demo (demo: "PieChart") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "BarChart") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Bar chart for comparing categorical values.") {} }
+                    A2Demo (demo: "BarChart") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "DataTable") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Structured data table with columns and rows.") {} }
+                    A2Demo (demo: "DataTable") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "DashboardCard") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Metric card with title for dashboards.") {} }
+                    A2Demo (demo: "DashboardCard") {}
+                }
+            }
+        }
+    }
+}

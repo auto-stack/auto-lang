@@ -1,0 +1,16 @@
+// pages/icons.at - Icons Page
+// Grid of available icons
+
+widget IconsPage {
+    view {
+        col (style: "p-8 gap-6") {
+            h1 (style: "text-2xl font-semibold text-slate-900") {
+                text (text: "Icons") {}
+            }
+            text (style: "text-slate-500") {
+                text (text: "Available Lucide icons for A2UI components. Click to copy name.") {}
+            }
+            IconsGrid {}
+        }
+    }
+}

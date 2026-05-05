@@ -1,0 +1,31 @@
+// pac.at - A3UI Replica Workspace Config
+// A2UI Composer clone built with Auto language and a2vue backend
+
+name: "a3ui-replica"
+version: "0.1.0"
+description: "A2UI Composer clone - Auto language replica of the a3ui Vue project"
+
+scene: "ui"
+
+// Supported backends: Vue (web)
+backend: ["vue"]
+
+// Workspace structure
+workspace: {
+    front: "./source/front"
+}
+
+// Build targets
+targets: {
+    vue: {
+        frontend: "vue"
+        backend: "none"
+    }
+}
+
+// Development commands
+scripts: {
+    dev: "npm run dev"
+    build: "npm run build"
+    preview: "npm run preview"
+}

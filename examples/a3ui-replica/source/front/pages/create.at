@@ -1,0 +1,99 @@
+widget CreatePage {
+    model {
+        prompt str = ""
+    }
+
+    view {
+        col (style: "flex flex-col items-center justify-center min-h-screen px-4") {
+            h1 (style: "text-[32px] font-light text-slate-900 mb-6 text-center") {
+                text (text: "What would you like to build?") {}
+            }
+
+            div (style: "w-full max-w-[640px] relative") {
+                textarea (
+                    style: "w-full bg-white border border-slate-300 rounded-xl px-5 py-4 text-base shadow-sm resize-none focus:outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all duration-200",
+                    rows: "3",
+                    placeholder: "Describe your A2UI widget...",
+                    value: .prompt
+                ) {}
+                button (
+                    style: "absolute right-2 bottom-3 bg-violet-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-violet-700 transition-colors",
+                    onclick: .Create
+                ) {
+                    text (text: "Create") {}
+                }
+            }
+
+            p (style: "text-xs text-slate-400 mt-3 text-center") {
+                text (text: "Powered by CopilotKit") {}
+            }
+            button (
+                style: "text-sm text-violet-600 mt-2 hover:underline",
+                onclick: .CreateBlank
+            ) {
+                text (text: "or Start Blank") {}
+            }
+        }
+    }
+
+    on {
+        .Create -> {
+            let name = .prompt
+            if name == "" {
+                name = "Untitled widget"
+            }
+            let id = date.now()
+            let widget = {
+                id: id,
+                name: name,
+                components: [
+                    { id: "root", component: "Card", child: "content" },
+                    { id: "content", component: "Text", value: "Hello World", variant: "body" }
+                ],
+                dataModel: {},
+                createdAt: date.now(),
+                updatedAt: date.now()
+            }
+            let raw = storage.get("a2ui-widgets")
+            let widgets = []
+            if raw != null {
+                if raw != "" {
+                    widgets = json.parse(raw)
+                }
+            }
+            widgets.push(widget)
+            storage.set("a2ui-widgets", json.stringify(widgets))
+            event.dispatch("a2ui-widgets-changed")
+            let url = "/widget/" + id
+            if .prompt != "" {
+                url = url + "?prompt=" + .prompt
+            }
+            router.push(url)
+        }
+        .CreateBlank -> {
+            let id = date.now()
+            let widget = {
+                id: id,
+                name: "Untitled widget",
+                components: [
+                    { id: "root", component: "Card", child: "content" },
+                    { id: "content", component: "Text", value: "Hello World", variant: "body" }
+                ],
+                dataModel: {},
+                createdAt: date.now(),
+                updatedAt: date.now()
+            }
+            let raw = storage.get("a2ui-widgets")
+            let widgets = []
+            if raw != null {
+                if raw != "" {
+                    widgets = json.parse(raw)
+                }
+            }
+            widgets.push(widget)
+            storage.set("a2ui-widgets", json.stringify(widgets))
+            event.dispatch("a2ui-widgets-changed")
+            router.push("/widget/" + id)
+        }
+    }
+}

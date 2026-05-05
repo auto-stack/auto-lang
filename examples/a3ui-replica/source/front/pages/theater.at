@@ -1,0 +1,8 @@
+// pages/theater.at - Theater Page
+// JSONL streaming playback with controls
+
+widget TheaterPage {
+    view {
+        TheaterPlayer {}
+    }
+}

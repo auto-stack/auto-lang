@@ -1,0 +1,8 @@
+// pages/widget_editor.at - Widget Editor Page
+// Three-panel layout using embedded WidgetEditor Vue component
+
+widget WidgetEditorPage {
+    view {
+        WidgetEditor {}
+    }
+}

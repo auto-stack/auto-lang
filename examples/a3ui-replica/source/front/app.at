@@ -1,0 +1,114 @@
+// source/front/app.at - A3UI Replica Root App
+// A2UI Composer clone built with Auto language
+
+widget App {
+    // Route definitions
+    routes {
+        "/" -> use create
+        "/gallery" -> use gallery
+        "/widget/:id" -> use widget_editor
+        "/basic-catalog" -> use basic_catalog
+        "/custom-catalog" -> use custom_catalog
+        "/icons" -> use icons
+        "/theater" -> use theater
+    }
+
+    model {
+        sidebarOpen bool = false
+    }
+
+    on {
+        .toggleSidebar -> { sidebarOpen = !sidebarOpen }
+    }
+
+    view {
+        row (style: "min-h-screen bg-slate-100") {
+            // Sidebar
+            col (style: "fixed left-0 top-0 h-screen w-[220px] z-50 flex flex-col border-r border-slate-200/50") {
+                // Logo area
+                row (style: "h-14 items-center px-4 border-b border-slate-200 gap-2") {
+                    text (style: "text-[13px] font-bold text-violet-600 tracking-wide") {
+                        "A2UI COMPOSER"
+                    }
+                }
+
+                // Navigation
+                col (style: "flex-1 py-2 overflow-y-auto gap-0.5") {
+                    // Create
+                    link (to: "/") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "plus-square", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Create") {}
+                            }
+                        }
+                    }
+                    // Gallery
+                    link (to: "/gallery") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "layout-grid", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Gallery") {}
+                            }
+                        }
+                    }
+                    // Basic Catalog
+                    link (to: "/basic-catalog") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "atom", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Basic Catalog") {}
+                            }
+                        }
+                    }
+                    // Custom Catalog
+                    link (to: "/custom-catalog") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "blocks", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Custom Catalog") {}
+                            }
+                        }
+                    }
+                    // Icons
+                    link (to: "/icons") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "shapes", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Icons") {}
+                            }
+                        }
+                    }
+                    // Theater
+                    link (to: "/theater") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "play", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Theater") {}
+                                text (style: "text-[11px] text-slate-400 -mt-0.5") { "JSONL Playback" }
+                            }
+                        }
+                    }
+                    // Tutorial (external)
+                    link (href: "https://docs.copilotkit.ai/") {
+                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150") {
+                            icon (name: "external-link", style: "h-5 w-5 mr-3 shrink-0") {}
+                            col {
+                                text (text: "Tutorial") {}
+                                text (style: "text-[11px] text-slate-400 -mt-0.5") { "CopilotKit + A2UI" }
+                            }
+                        }
+                    }
+
+                    // Widgets section
+                    WidgetList {}
+                }
+            }
+
+            // Main content area
+            col (style: "flex-1 ml-[220px] min-h-screen") {
+                outlet
+            }
+        }
+    }
+}

@@ -1,0 +1,12 @@
+# Override parent .gitignore: a3ui-replica/vue/ contains handmade components
+!vue/
+
+# Generated files
+gen/
+.am/
+
+# Node.js
+node_modules/
+
+# Build artifacts
+dist/

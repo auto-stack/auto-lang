@@ -1,0 +1,33 @@
+// pages/custom_catalog.at - Custom Catalog Page
+// Pre-built composed components and design patterns — pure Auto-generated page
+
+widget CustomCatalogPage {
+    view {
+        col (style: "p-8 gap-8") {
+            col (style: "gap-2") {
+                h1 (style: "text-2xl font-semibold text-slate-900") {
+                    text (text: "Custom Catalog") {}
+                }
+                text (style: "text-slate-500") {
+                    text (text: "Pre-built composed components and design patterns built from basic A2UI blocks.") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Flight Card") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Airline flight status card with route, times and status badge.") {} }
+                    A2Demo (demo: "FlightCard") {}
+                }
+            }
+
+            card (style: "p-4") {
+                col (style: "gap-2") {
+                    text (style: "font-medium text-slate-800") { text (text: "Sales Dashboard") {} }
+                    text (style: "text-sm text-slate-500") { text (text: "Metrics row with bar chart for sales overview.") {} }
+                    A2Demo (demo: "SalesDashboard") {}
+                }
+            }
+        }
+    }
+}

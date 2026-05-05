@@ -1,0 +1,31 @@
+// pages/gallery.at - Gallery Page
+// Masonry grid displaying gallery widgets using embedded GalleryGrid component
+
+widget GalleryPage {
+    model {
+        searchQuery str = ""
+    }
+
+    view {
+        col (style: "p-8 gap-6") {
+            h1 (style: "text-2xl font-semibold text-slate-900") {
+                text (text: "Gallery") {}
+            }
+            text (style: "text-slate-500") {
+                text (text: "Browse pre-built A2UI widgets. Click any card to open it in the editor.") {}
+            }
+
+            // Search
+            div (style: "max-w-md w-full") {
+                input (
+                    placeholder: "Search widgets...",
+                    style: "w-full h-10 px-4 rounded-lg border border-slate-200 focus:outline-none focus:border-violet-500",
+                    value: .searchQuery
+                ) {}
+            }
+
+            // Gallery grid via embedded Vue component
+            GalleryGrid {}
+        }
+    }
+}
