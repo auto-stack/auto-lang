@@ -40,14 +40,29 @@ pub fn encode_f64(f: f64) -> NanoValue { f.to_bits() }
 #[inline(always)]
 pub fn encode_i32(i: i32) -> NanoValue { NANBOX_BASE | TAG_I32 | ((i as u32) as u64) }
 
+// String payload stores the NEGATIVE i32 tag (-(idx+1)) so that
+// decode_i32() on a string NanoValue returns the same negative value
+// that the non-nanbox encoding uses. This allows pop_i32/push_i32
+// round-trips to preserve string identity for code paths that
+// move values through ListData<i32> or other i32-only containers.
 #[inline(always)]
-pub fn encode_string(idx: u32) -> NanoValue { NANBOX_BASE | TAG_STRING | (idx as u64) }
+pub fn encode_string(idx: u32) -> NanoValue {
+    let neg_tag = (-(idx as i32) - 1i32) as u32;
+    NANBOX_BASE | TAG_STRING | (neg_tag as u64)
+}
 
+// Bool payload uses the same sentinel values as non-nanbox mode:
+// true  = i32::MIN      = -2147483648
+// false = i32::MIN + 1  = -2147483647
 #[inline(always)]
-pub fn encode_bool(b: bool) -> NanoValue { NANBOX_BASE | TAG_BOOL | (b as u64) }
+pub fn encode_bool(b: bool) -> NanoValue {
+    let sentinel = if b { i32::MIN } else { i32::MIN + 1 };
+    NANBOX_BASE | TAG_BOOL | (sentinel as u32 as u64)
+}
 
+// Null payload uses the same sentinel as non-nanbox false: i32::MIN + 1
 #[inline(always)]
-pub fn encode_null() -> NanoValue { NANBOX_BASE | TAG_NULL }
+pub fn encode_null() -> NanoValue { NANBOX_BASE | TAG_NULL | ((i32::MIN + 1) as u32 as u64) }
 
 #[inline(always)]
 pub fn encode_object(id: u32) -> NanoValue { NANBOX_BASE | TAG_OBJECT | (id as u64) }
@@ -66,11 +81,19 @@ pub fn decode_f64(v: NanoValue) -> f64 { f64::from_bits(v) }
 #[inline(always)]
 pub fn decode_i32(v: NanoValue) -> i32 { (v & PAYLOAD_MASK) as i32 }
 
+// Reverse of encode_string: neg_tag -> pool index
+// neg_tag = -(idx+1), so idx = -neg_tag - 1
 #[inline(always)]
-pub fn decode_string(v: NanoValue) -> u32 { (v & PAYLOAD_MASK) as u32 }
+pub fn decode_string(v: NanoValue) -> u32 {
+    let neg_tag = (v & PAYLOAD_MASK) as i32;
+    (-neg_tag - 1) as u32
+}
 
 #[inline(always)]
-pub fn decode_bool(v: NanoValue) -> bool { (v & PAYLOAD_MASK) != 0 }
+pub fn decode_bool(v: NanoValue) -> bool {
+    let sentinel = (v & PAYLOAD_MASK) as i32;
+    sentinel == i32::MIN  // true = i32::MIN
+}
 
 #[inline(always)]
 pub fn decode_object(v: NanoValue) -> u32 { (v & PAYLOAD_MASK) as u32 }

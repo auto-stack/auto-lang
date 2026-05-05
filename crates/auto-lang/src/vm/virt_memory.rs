@@ -8,7 +8,7 @@
 use crate::vm::codegen::ObjectType;
 use std::collections::HashMap;
 #[cfg(feature = "nanbox")]
-use auto_val::{NanoValue, encode_i32, decode_i32, encode_f64, decode_f64,
+use auto_val::{NanoValue, encode_i32, decode_i32,
     encode_f32, decode_f32, encode_string, decode_string};
 
 /// A 32-bit word in the virtual machine
@@ -352,8 +352,12 @@ impl VirtualRAM {
     #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn push_f64(&mut self, val: f64) {
-        if self.sp >= self.raw_nv.len() { panic!("Stack Overflow"); }
-        self.raw_nv[self.sp] = encode_f64(val);
+        if self.sp + 1 >= self.raw_nv.len() { panic!("Stack Overflow"); }
+        // Slot 1: raw f64 bits
+        self.raw_nv[self.sp] = val.to_bits();
+        self.sp += 1;
+        // Slot 2: padding (encode_null as marker, matches codegen's 2-slot expectation)
+        self.raw_nv[self.sp] = auto_val::encode_null();
         self.sp += 1;
     }
 
@@ -369,9 +373,12 @@ impl VirtualRAM {
     #[cfg(feature = "nanbox")]
     #[inline(always)]
     pub fn pop_f64(&mut self) -> f64 {
-        if self.sp == 0 { panic!("Stack Underflow"); }
+        if self.sp < 2 { panic!("Stack Underflow"); }
+        // Slot 2: padding marker (discard)
         self.sp -= 1;
-        decode_f64(self.raw_nv[self.sp])
+        // Slot 1: raw f64 bits
+        self.sp -= 1;
+        f64::from_bits(self.raw_nv[self.sp])
     }
 
     // Plan 073 Stage A: Unsigned integer support
@@ -518,6 +525,7 @@ impl VirtualRAM {
             panic!("Stack Overflow (nanbox)");
         }
         self.raw_nv[self.sp] = val;
+        self.sp += 1;
     }
 
     #[cfg(feature = "nanbox")]
@@ -528,6 +536,20 @@ impl VirtualRAM {
         }
         self.sp -= 1;
         self.raw_nv[self.sp]
+    }
+
+    /// Write a raw NanoValue at an address (preserves type tag).
+    #[cfg(feature = "nanbox")]
+    #[inline(always)]
+    pub fn write_nv(&mut self, addr: usize, val: NanoValue) {
+        self.raw_nv[addr] = val;
+    }
+
+    /// Read a raw NanoValue from an address (preserves type tag).
+    #[cfg(feature = "nanbox")]
+    #[inline(always)]
+    pub fn read_nv(&self, addr: usize) -> NanoValue {
+        self.raw_nv[addr]
     }
 
     #[cfg(feature = "nanbox")]

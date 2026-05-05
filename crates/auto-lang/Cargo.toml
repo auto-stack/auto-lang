@@ -10,7 +10,7 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-default = ["with-file-history"]
+default = ["with-file-history", "nanbox"]
 with-file-history = []
 # Plan 081: AutoVM is now the default execution engine (no feature flag required)
 # DEPRECATED: The use-bigvm feature is kept for compatibility but has no effect

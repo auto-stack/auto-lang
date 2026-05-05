@@ -363,6 +363,27 @@ impl AutoVM {
         auto_val::Value::Int(raw)
     }
 
+    /// Decode a tagged NanoValue into a Value (nanbox mode).
+    #[cfg(feature = "nanbox")]
+    fn decode_tagged_nv(&self, nv: auto_val::NanoValue) -> auto_val::Value {
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv) as usize;
+            let strings = self.strings.read().unwrap();
+            if let Some(bytes) = strings.get(str_idx) {
+                return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+            }
+        } else if auto_val::is_i32(nv) {
+            return auto_val::Value::Int(auto_val::decode_i32(nv));
+        } else if auto_val::is_bool(nv) {
+            return auto_val::Value::Bool(auto_val::decode_bool(nv));
+        } else if auto_val::is_f64(nv) {
+            return auto_val::Value::Double(auto_val::decode_f64(nv));
+        } else if auto_val::is_object(nv) {
+            return auto_val::Value::Int(auto_val::decode_object(nv) as i32);
+        }
+        auto_val::Value::Int(0)
+    }
+
     /// Create VM with stdout capture for testing (Plan 177)
     pub fn new_with_capture(flash: VirtualFlash, ram_size: usize) -> (Self, Arc<RwLock<String>>) {
         let mut vm = Self::new(flash, ram_size);
@@ -1100,8 +1121,10 @@ impl AutoVM {
                     }
                 }
                 OpCode::DUP => {
-                    let val = task.ram.top().unwrap_or(0);
-                    task.ram.push_i32(val);
+                    #[cfg(not(feature = "nanbox"))]
+                    { let val = task.ram.top().unwrap_or(0); task.ram.push_i32(val); }
+                    #[cfg(feature = "nanbox")]
+                    { if task.ram.sp > 0 { task.ram.push_nv(task.ram.raw_nv[task.ram.sp - 1]); } }
                 }
 
                 // === Constants ===
@@ -1777,14 +1800,14 @@ impl AutoVM {
                 // Plan 162: Explicit type conversion (.to) opcodes
                 // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
                 OpCode::TYPE_TO_STR => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let value_bits = task.ram.pop_i32();
                     if value_bits < 0 {
                         task.ram.push_i32(value_bits);
                     } else if value_bits >= 4000000 {
-                        // Plan 197 Task 10: Heap object — format struct instance
                         use crate::vm::generic_registry::GenericInstanceData;
                         use crate::vm::heap_object::TypeTag;
-
                         let obj_id = value_bits as u64;
                         let string_value = match self.get_heap_object(obj_id) {
                             Some(obj) => {
@@ -1795,7 +1818,6 @@ impl AutoVM {
                                             .get_type(&inst.mono_name)
                                             .map(|ct| ct.base_name().to_string())
                                             .unwrap_or_else(|| inst.mono_name.clone());
-
                                         let field_strs: Vec<String> = inst.field_names.iter()
                                             .zip(inst.fields.iter())
                                             .map(|(name, val)| {
@@ -1814,18 +1836,12 @@ impl AutoVM {
                                                 format!("{}: {}", name, val_str)
                                             })
                                             .collect();
-
                                         format!("{} {{ {} }}", type_name, field_strs.join(", "))
-                                    } else {
-                                        format!("<heap:{}>", value_bits)
-                                    }
-                                } else {
-                                    format!("<heap:{}>", value_bits)
-                                }
+                                    } else { format!("<heap:{}>", value_bits) }
+                                } else { format!("<heap:{}>", value_bits) }
                             }
                             None => format!("<heap:{}>", value_bits),
                         };
-
                         let mut strings = self.strings.write().unwrap();
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
@@ -1838,6 +1854,97 @@ impl AutoVM {
                         strings.push(string_value.into_bytes());
                         drop(strings);
                         push_str_tag(&mut task.ram, str_idx as u32);
+                    }
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        task.ram.push_nv(nv);
+                    } else if auto_val::is_object(nv) {
+                        use crate::vm::generic_registry::GenericInstanceData;
+                        use crate::vm::heap_object::TypeTag;
+                        let obj_id = auto_val::decode_object(nv) as u64;
+                        let value_bits = auto_val::decode_object(nv) as i32;
+                        let string_value = match self.get_heap_object(obj_id) {
+                            Some(obj) => {
+                                let guard = obj.read().unwrap();
+                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                        let type_name = self.generic_registry
+                                            .get_type(&inst.mono_name)
+                                            .map(|ct| ct.base_name().to_string())
+                                            .unwrap_or_else(|| inst.mono_name.clone());
+                                        let field_strs: Vec<String> = inst.field_names.iter()
+                                            .zip(inst.fields.iter())
+                                            .map(|(name, val)| {
+                                                let val_str = match val {
+                                                    Value::Int(i) => i.to_string(),
+                                                    Value::Uint(u) => u.to_string(),
+                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                    Value::Float(f) => f.to_string(),
+                                                    Value::Double(d) => d.to_string(),
+                                                    Value::Char(c) => format!("'{}'", c),
+                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                    Value::Nil => "nil".to_string(),
+                                                    _ => format!("{:?}", val),
+                                                };
+                                                format!("{}: {}", name, val_str)
+                                            })
+                                            .collect();
+                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                    } else { format!("<heap:{}>", value_bits) }
+                                } else { format!("<heap:{}>", value_bits) }
+                            }
+                            None => format!("<heap:{}>", value_bits),
+                        };
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_bool(nv) {
+                        let b = auto_val::decode_bool(nv);
+                        let string_value = if b { "true" } else { "false" }.to_string();
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_f64(nv) {
+                        let d = auto_val::decode_f64(nv);
+                        let string_value = format!("{}", d);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_f32(nv) {
+                        let f = auto_val::decode_f32(nv);
+                        let string_value = format!("{}", f);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_bool(nv) {
+                        let b = auto_val::decode_bool(nv);
+                        let string_value = if b { "true" } else { "false" };
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.as_bytes().to_vec());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else {
+                        let value_bits = auto_val::decode_i32(nv);
+                        let string_value = format!("{}", value_bits);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    }
                     }
                 }
                 OpCode::TYPE_TO_I32 => {
@@ -1953,35 +2060,24 @@ impl AutoVM {
                 // Plan 075: Convert any value to string
                 // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
                 OpCode::TO_STR => {
-                    // Pop value from stack
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let value_bits = task.ram.pop_i32();
-
-                    // If already a tagged string, just push it back
                     if value_bits < 0 {
                         task.ram.push_i32(value_bits);
                     } else if value_bits >= 4000000 {
-                        // Plan 197 Task 10: Heap object — format struct instance
                         use crate::vm::generic_registry::GenericInstanceData;
                         use crate::vm::heap_object::TypeTag;
-
                         let obj_id = value_bits as u64;
                         let string_value = match self.get_heap_object(obj_id) {
                             Some(obj) => {
                                 let guard = obj.read().unwrap();
                                 if let TypeTag::GenericInstance(_) = guard.type_tag() {
                                     if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
-                                        // Extract the base type name from mono_name
-                                        // mono_name is like "Point" or "Pair_int_str"
-                                        // We want just the base name before the first '_' that
-                                        // starts a type parameter, but for non-generic types
-                                        // the mono_name IS the base name.
-                                        // Use base_name from generic_registry if available.
                                         let type_name = self.generic_registry
                                             .get_type(&inst.mono_name)
                                             .map(|ct| ct.base_name().to_string())
                                             .unwrap_or_else(|| inst.mono_name.clone());
-
-                                        // Format each field
                                         let field_strs: Vec<String> = inst.field_names.iter()
                                             .zip(inst.fields.iter())
                                             .map(|(name, val)| {
@@ -2000,87 +2096,168 @@ impl AutoVM {
                                                 format!("{}: {}", name, val_str)
                                             })
                                             .collect();
-
                                         format!("{} {{ {} }}", type_name, field_strs.join(", "))
-                                    } else {
-                                        format!("<heap:{}>", value_bits)
-                                    }
-                                } else {
-                                    format!("<heap:{}>", value_bits)
-                                }
+                                    } else { format!("<heap:{}>", value_bits) }
+                                } else { format!("<heap:{}>", value_bits) }
                             }
                             None => format!("<heap:{}>", value_bits),
                         };
-
-                        // Add to strings pool and push tagged index
                         let mut strings = self.strings.write().unwrap();
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-
                         push_str_tag(&mut task.ram, str_idx as u32);
                     } else {
-                        // Convert integer to its string representation
                         let string_value = format!("{}", value_bits);
-
-                        // Add to strings pool and push tagged index
                         let mut strings = self.strings.write().unwrap();
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-
                         push_str_tag(&mut task.ram, str_idx as u32);
+                    }
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        task.ram.push_nv(nv);
+                    } else if auto_val::is_object(nv) {
+                        use crate::vm::generic_registry::GenericInstanceData;
+                        use crate::vm::heap_object::TypeTag;
+                        let obj_id = auto_val::decode_object(nv) as u64;
+                        let value_bits = auto_val::decode_object(nv) as i32;
+                        let string_value = match self.get_heap_object(obj_id) {
+                            Some(obj) => {
+                                let guard = obj.read().unwrap();
+                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                        let type_name = self.generic_registry
+                                            .get_type(&inst.mono_name)
+                                            .map(|ct| ct.base_name().to_string())
+                                            .unwrap_or_else(|| inst.mono_name.clone());
+                                        let field_strs: Vec<String> = inst.field_names.iter()
+                                            .zip(inst.fields.iter())
+                                            .map(|(name, val)| {
+                                                let val_str = match val {
+                                                    Value::Int(i) => i.to_string(),
+                                                    Value::Uint(u) => u.to_string(),
+                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                    Value::Float(f) => f.to_string(),
+                                                    Value::Double(d) => d.to_string(),
+                                                    Value::Char(c) => format!("'{}'", c),
+                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                    Value::Nil => "nil".to_string(),
+                                                    _ => format!("{:?}", val),
+                                                };
+                                                format!("{}: {}", name, val_str)
+                                            })
+                                            .collect();
+                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                    } else { format!("<heap:{}>", value_bits) }
+                                } else { format!("<heap:{}>", value_bits) }
+                            }
+                            None => format!("<heap:{}>", value_bits),
+                        };
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_bool(nv) {
+                        let b = auto_val::decode_bool(nv);
+                        let string_value = if b { "true" } else { "false" }.to_string();
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_f64(nv) {
+                        let d = auto_val::decode_f64(nv);
+                        let string_value = format!("{}", d);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else if auto_val::is_f32(nv) {
+                        let f = auto_val::decode_f32(nv);
+                        let string_value = format!("{}", f);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    } else {
+                        let value_bits = auto_val::decode_i32(nv);
+                        let string_value = format!("{}", value_bits);
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
+                        push_str_tag(&mut task.ram, str_idx as u32);
+                    }
                     }
                 }
                 // Plan 075: Check if value is nil
                 OpCode::IS_NIL => {
-                    // Pop value from stack
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let value_bits = task.ram.pop_i32();
-
-                    // Check if nil (-1 represents nil in May<T> implementation)
                     let is_nil = if value_bits == -1 { 1 } else { 0 };
-
                     task.ram.push_i32(is_nil);
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let nv = task.ram.pop_nv();
+                    let is_nil = if auto_val::is_null(nv) { 1 }
+                                 else if auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1 { 1 }
+                                 else { 0 };
+                    task.ram.push_i32(is_nil);
+                    }
                 }
                 // Plan 075: Concatenate two strings
                 OpCode::STR_CAT => {
-                    // Pop right value first (top of stack)
-                    let right_bits = task.ram.pop_i32();
-                    // Pop left value
-                    let left_bits = task.ram.pop_i32();
-
-                    // Decode values: negative = tagged string index, non-negative = integer
-                    let strings = self.strings.read().unwrap();
-
-                    let left_str = if left_bits < 0 {
-                        let idx = (-left_bits - 1) as usize;
-                        strings
-                            .get(idx)
-                            .map(|b| String::from_utf8_lossy(b).to_string())
-                            .unwrap_or_default()
-                    } else {
-                        left_bits.to_string()
-                    };
-
-                    let right_str = if right_bits < 0 {
-                        let idx = (-right_bits - 1) as usize;
-                        strings
-                            .get(idx)
-                            .map(|b| String::from_utf8_lossy(b).to_string())
-                            .unwrap_or_default()
-                    } else {
-                        right_bits.to_string()
-                    };
-                    drop(strings);
-
-                    // Concatenate strings
-                    let result = format!("{}{}", left_str, right_str);
-
-                    // Add result to strings pool and push tagged index
-                    let mut strings = self.strings.write().unwrap();
-                    let result_idx = strings.len();
-                    strings.push(result.into_bytes());
-                    push_str_tag(&mut task.ram, result_idx as u32);
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        let right_bits = task.ram.pop_i32();
+                        let left_bits = task.ram.pop_i32();
+                        let strings = self.strings.read().unwrap();
+                        let left_str = if left_bits < 0 {
+                            let idx = (-left_bits - 1) as usize;
+                            strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                        } else { left_bits.to_string() };
+                        let right_str = if right_bits < 0 {
+                            let idx = (-right_bits - 1) as usize;
+                            strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                        } else { right_bits.to_string() };
+                        drop(strings);
+                        let result = format!("{}{}", left_str, right_str);
+                        let mut strings = self.strings.write().unwrap();
+                        let result_idx = strings.len();
+                        strings.push(result.into_bytes());
+                        push_str_tag(&mut task.ram, result_idx as u32);
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let right_nv = task.ram.pop_nv();
+                        let left_nv = task.ram.pop_nv();
+                        let strings = self.strings.read().unwrap();
+                        let left_str = if auto_val::is_string(left_nv) {
+                            let idx = auto_val::decode_string(left_nv) as usize;
+                            strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                        } else { auto_val::decode_i32(left_nv).to_string() };
+                        let right_str = if auto_val::is_string(right_nv) {
+                            let idx = auto_val::decode_string(right_nv) as usize;
+                            strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                        } else { auto_val::decode_i32(right_nv).to_string() };
+                        drop(strings);
+                        let result = format!("{}{}", left_str, right_str);
+                        let mut strings = self.strings.write().unwrap();
+                        let result_idx = strings.len();
+                        strings.push(result.into_bytes());
+                        push_str_tag(&mut task.ram, result_idx as u32);
+                    }
                 }
                 // Plan 120: Option type constructor - Some(value)
                 OpCode::CREATE_SOME => {
@@ -2122,10 +2299,20 @@ impl AutoVM {
                 }
                 // Plan 120: Check if Option is Some
                 OpCode::IS_SOME => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let value = task.ram.pop_i32();
-                    // Some: value >= 0, None: value == -1
                     let is_some = if value >= 0 { 1 } else { 0 };
                     task.ram.push_i32(is_some);
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let nv = task.ram.pop_nv();
+                    let is_some = if auto_val::is_null(nv) { 0 }
+                                  else if auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1 { 0 }
+                                  else { 1 };
+                    task.ram.push_i32(is_some);
+                    }
                 }
                 // Plan 120: Check if Result is Ok
                 // Plan 208: Check heap object mono_name instead of sign
@@ -2153,13 +2340,22 @@ impl AutoVM {
                 }
                 // Plan 120: Unwrap Option (panic if None)
                 OpCode::UNWRAP_SOME => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let value = task.ram.pop_i32();
                     if value == -1 {
-                        // Panic on None
                         return Err(VMError::RuntimeError("called unwrap on None".to_string()));
                     }
-                    // Push the unwrapped value back
                     task.ram.push_i32(value);
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_null(nv) || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1) {
+                        return Err(VMError::RuntimeError("called unwrap on None".to_string()));
+                    }
+                    task.ram.push_nv(nv);
+                    }
                 }
                 // Plan 120: Unwrap Result (panic if Err)
                 // Plan 208: Extract field[0] from Result.Ok heap object
@@ -2827,8 +3023,9 @@ impl AutoVM {
                     task.ip += 1;
                     let mut fields = Vec::with_capacity(elem_count as usize);
                     for _ in 0..elem_count {
+                        #[cfg(not(feature = "nanbox"))]
+                        {
                         let val_i32 = task.ram.pop_i32();
-                        // Detect string (negative tagged) or int
                         let val = if val_i32 < 0 && val_i32 > -1000000 && val_i32 != -2147483648 {
                             let str_idx = (-val_i32 - 1) as usize;
                             let strings = self.strings.read().unwrap();
@@ -2841,6 +3038,13 @@ impl AutoVM {
                             auto_val::Value::Int(val_i32)
                         };
                         fields.push(val);
+                        }
+                        #[cfg(feature = "nanbox")]
+                        {
+                        let nv = task.ram.pop_nv();
+                        let val = self.decode_tagged_nv(nv);
+                        fields.push(val);
+                        }
                     }
                     fields.reverse();
                     let mut data = GenericInstanceData::new(
@@ -2891,7 +3095,10 @@ impl AutoVM {
                     // Pop index first (top of stack)
                     let index_i32 = task.ram.pop_i32();
                     // Pop array_id/list_id or str_id (tagged)
+                    #[cfg(not(feature = "nanbox"))]
                     let obj_or_str_bits = task.ram.pop_i32();
+                    #[cfg(feature = "nanbox")]
+                    let obj_or_str_nv = task.ram.pop_nv();
 
                     // Helper function to convert negative index to actual index
                     // e.g., for array of length 3: -1 -> 2, -2 -> 1, -3 -> 0
@@ -2906,12 +3113,24 @@ impl AutoVM {
                         }
                     };
 
-                    vm_debug!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}", obj_or_str_bits, index_i32);
+                    vm_debug!("DEBUG GET_ELEM: obj_or_str_bits={}, index={}",
+                        {
+                            #[cfg(not(feature = "nanbox"))] { obj_or_str_bits }
+                            #[cfg(feature = "nanbox")] { auto_val::decode_i32(obj_or_str_nv) }
+                        }, index_i32);
 
-                    // Check if this is a tagged string index (negative value)
-                    if obj_or_str_bits < 0 && obj_or_str_bits > -1000000 && obj_or_str_bits != -2147483648 {
+                    // Check if this is a tagged string index
+                    #[cfg(not(feature = "nanbox"))]
+                    let is_string_val = obj_or_str_bits < 0 && obj_or_str_bits > -1000000 && obj_or_str_bits != -2147483648;
+                    #[cfg(feature = "nanbox")]
+                    let is_string_val = auto_val::is_string(obj_or_str_nv);
+
+                    if is_string_val {
                         // This is a tagged string index - string indexing operation
+                        #[cfg(not(feature = "nanbox"))]
                         let str_idx = (-obj_or_str_bits - 1) as usize;
+                        #[cfg(feature = "nanbox")]
+                        let str_idx = auto_val::decode_string(obj_or_str_nv) as usize;
                         let strings = self.strings.read().unwrap();
                         if let Some(bytes) = strings.get(str_idx) {
                             // Get the character at the specified index
@@ -2937,7 +3156,10 @@ impl AutoVM {
                         }
                     } else {
                         // Regular array/list access
+                        #[cfg(not(feature = "nanbox"))]
                         let obj_id = obj_or_str_bits as u64;
+                        #[cfg(feature = "nanbox")]
+                        let obj_id = auto_val::decode_i32(obj_or_str_nv) as u64;
 
                         // First, try heap_objects registry (Plan 077 unified registry)
                         if let Some(obj) = self.get_heap_object(obj_id) {
@@ -3063,16 +3285,24 @@ impl AutoVM {
                     use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
-                    let tagged = task.ram.pop_i32();
-                    let field_idx = if tagged < 0 {
-                        (-tagged - 1) as usize
-                    } else {
-                        tagged as usize
+                    #[cfg(not(feature = "nanbox"))]
+                    let field_idx = {
+                        let tagged = task.ram.pop_i32();
+                        if tagged < 0 { (-tagged - 1) as usize } else { tagged as usize }
+                    };
+                    #[cfg(feature = "nanbox")]
+                    let field_idx = {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_string(nv) { auto_val::decode_string(nv) as usize }
+                        else { auto_val::decode_i32(nv) as usize }
                     };
                     // Pop object_id
                     let obj_id = task.ram.pop_i32() as u64;
                     // Pop value (bottom of stack)
+                    #[cfg(not(feature = "nanbox"))]
                     let value = task.ram.pop_i32();
+                    #[cfg(feature = "nanbox")]
+                    let value_nv = task.ram.pop_nv();
 
                     // Get field name from strings pool
                     let strings = self.strings.read().unwrap();
@@ -3127,14 +3357,24 @@ impl AutoVM {
                                 field_name
                             )));
                         };
-                        obj.set(key, self.decode_tagged_value(value));
+                        obj.set(key, {
+                            #[cfg(not(feature = "nanbox"))]
+                            { self.decode_tagged_value(value) }
+                            #[cfg(feature = "nanbox")]
+                            { self.decode_tagged_nv(value_nv) }
+                        });
                     } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
                         // Heap objects (type instances, 4000000+): GenericInstanceData
                         let mut heap_obj = heap_ref.write().unwrap();
                         if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
-                                inst.set_field(idx, self.decode_tagged_value(value)).map_err(|e| VMError::RuntimeError(e))?;
+                                inst.set_field(idx, {
+                                    #[cfg(not(feature = "nanbox"))]
+                                    { self.decode_tagged_value(value) }
+                                    #[cfg(feature = "nanbox")]
+                                    { self.decode_tagged_nv(value_nv) }
+                                }).map_err(|e| VMError::RuntimeError(e))?;
                             } else {
                                 return Err(VMError::RuntimeError(format!(
                                     "Field '{}' not found on type instance {}",
@@ -3598,8 +3838,11 @@ impl AutoVM {
                         return Ok(StepResult::Terminated);
                     }
 
-                    // Expect Result on Top of Stack
+                    // Under nanbox: preserve NanoValue type tag for string/bool/etc.
+                    #[cfg(not(feature = "nanbox"))]
                     let result = task.ram.pop_i32();
+                    #[cfg(feature = "nanbox")]
+                    let result_nv = task.ram.pop_nv();
 
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
@@ -3616,14 +3859,22 @@ impl AutoVM {
                         // Assuming simple verification for now.
                     }
 
-                    task.ram.write_i32(new_sp - 1, result);
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        task.ram.write_i32(new_sp - 1, result);
+                        task.ram.sp = new_sp;
+                        task.ram.write_i32(new_sp - 1, result);
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                        task.ram.write_nv(new_sp - 1, result_nv);
+                        task.ram.sp = new_sp;
+                        task.ram.write_nv(new_sp - 1, result_nv);
+                    }
 
                     task.bp = old_bp;
                     task.ip = ret_ip;
-                    task.ram.sp = new_sp;
-                    task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
 
-                    // Plan 199: Pop structured call frame and restore function metadata
                     if let Some(frame) = task.call_stack.pop() {
                         task.current_fn_n_args = frame.old_fn_n_args;
                         task.current_fn_n_locals = frame.old_fn_n_locals;
@@ -4209,70 +4460,76 @@ impl AutoVM {
                     // Plan 087 Phase 3: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
                         // Parameter: decode parameter index
-                        let param_idx = idx - 0x80; // 0x80 -> param 0, 0x81 -> param 1, etc.
-                                                    // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
-                                                    //                        ^- BP-n_args           ^- BP-1    ^- BP
-
-                        // Plan 088 Phase 4: Read n_args from function metadata (set by FN_PROLOG)
+                        let param_idx = idx - 0x80;
                         let n_args = task.current_fn_n_args;
-                        let offset = n_args - param_idx; // For n_args=1, param 0: offset=1
-
-                        // Stack layout for n_args=1: [arg0, ret_addr, old_bp, ...]
-                        //                                    ^-BP-2 ^-BP-1  ^-BP
-                        // For n_args=2:             [arg0, arg1, ret_addr, old_bp, ...]
-                        //                                    ^-BP-3 ^-BP-2 ^-BP-1  ^-BP
-                        let actual_offset = offset + 1; // +1 for return_addr
-                        let val = task.ram.read_i32(task.bp - actual_offset);
-                        task.ram.push_i32(val);
+                        let offset = n_args - param_idx;
+                        let actual_offset = offset + 1;
+                        #[cfg(not(feature = "nanbox"))]
+                        task.ram.push_i32(task.ram.read_i32(task.bp - actual_offset));
+                        #[cfg(feature = "nanbox")]
+                        task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
                     } else {
-                        // Local variable: load from bp+1+idx (bp+1 is first local variable)
-                        let val = task.ram.read_i32(task.bp + 1 + idx);
-                        task.ram.push_i32(val);
+                        // Local variable: load from bp+1+idx
+                        #[cfg(not(feature = "nanbox"))]
+                        task.ram.push_i32(task.ram.read_i32(task.bp + 1 + idx));
+                        #[cfg(feature = "nanbox")]
+                        task.ram.push_nv(task.ram.read_nv(task.bp + 1 + idx));
                     }
                 }
                 OpCode::STORE_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
+                    #[cfg(not(feature = "nanbox"))]
                     let val = task.ram.pop_i32();
+                    #[cfg(feature = "nanbox")]
+                    let val_nv = task.ram.pop_nv();
 
                     // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
-                        // Parameter: decode parameter index
-                        let param_idx = idx - 0x80; // 0x80 -> param 0, 0x81 -> param 1, etc.
+                        let param_idx = idx - 0x80;
                         let n_args = task.current_fn_n_args;
                         let offset = n_args - param_idx;
-                        let actual_offset = offset + 1; // +1 for return_addr
-
-                        // Store to parameter location
+                        let actual_offset = offset + 1;
+                        #[cfg(not(feature = "nanbox"))]
                         task.ram.write_i32(task.bp - actual_offset, val);
-                        vm_debug!("DEBUG: STORE_LOCAL param {}: BP-{} = {}",
-                            param_idx, actual_offset, val
-                        );
+                        #[cfg(feature = "nanbox")]
+                        task.ram.write_nv(task.bp - actual_offset, val_nv);
                     } else {
-                        // Local variable: store to bp+1+idx (bp+1 is first local variable)
+                        #[cfg(not(feature = "nanbox"))]
                         task.ram.write_i32(task.bp + 1 + idx, val);
+                        #[cfg(feature = "nanbox")]
+                        task.ram.write_nv(task.bp + 1 + idx, val_nv);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
-                    let addr = task.bp + 1;
-                    let val = task.ram.read_i32(addr);
-                    task.ram.push_i32(val);
+                    #[cfg(not(feature = "nanbox"))]
+                    task.ram.push_i32(task.ram.read_i32(task.bp + 1));
+                    #[cfg(feature = "nanbox")]
+                    task.ram.push_nv(task.ram.read_nv(task.bp + 1));
                 }
                 OpCode::LOAD_LOC_1 => {
-                    let val = task.ram.read_i32(task.bp + 2);
-                    task.ram.push_i32(val);
+                    #[cfg(not(feature = "nanbox"))]
+                    task.ram.push_i32(task.ram.read_i32(task.bp + 2));
+                    #[cfg(feature = "nanbox")]
+                    task.ram.push_nv(task.ram.read_nv(task.bp + 2));
                 }
                 OpCode::LOAD_LOC_2 => {
-                    let val = task.ram.read_i32(task.bp + 3);
-                    task.ram.push_i32(val);
+                    #[cfg(not(feature = "nanbox"))]
+                    task.ram.push_i32(task.ram.read_i32(task.bp + 3));
+                    #[cfg(feature = "nanbox")]
+                    task.ram.push_nv(task.ram.read_nv(task.bp + 3));
                 }
                 OpCode::STORE_LOC_0 => {
-                    let val = task.ram.pop_i32();
-                    task.ram.write_i32(task.bp + 1, val);
+                    #[cfg(not(feature = "nanbox"))]
+                    { let v = task.ram.pop_i32(); task.ram.write_i32(task.bp + 1, v); }
+                    #[cfg(feature = "nanbox")]
+                    { let v = task.ram.pop_nv(); task.ram.write_nv(task.bp + 1, v); }
                 }
                 OpCode::STORE_LOC_1 => {
-                    let val = task.ram.pop_i32();
-                    task.ram.write_i32(task.bp + 2, val);
+                    #[cfg(not(feature = "nanbox"))]
+                    { let v = task.ram.pop_i32(); task.ram.write_i32(task.bp + 2, v); }
+                    #[cfg(feature = "nanbox")]
+                    { let v = task.ram.pop_nv(); task.ram.write_nv(task.bp + 2, v); }
                 }
 
                 // === Stack ===
@@ -4312,6 +4569,8 @@ impl AutoVM {
 
                 // === Comparison ===
                 OpCode::EQ => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     // Plan 091: Use special values for boolean results
@@ -4321,10 +4580,8 @@ impl AutoVM {
                     let result = if a == b {
                         true
                     } else if a >= 4000000 && b >= 4000000 {
-                        // Heap objects — structural equality
                         self.struct_eq(a, b)
                     } else if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        // Both are tagged string indices — compare actual string contents
                         let a_idx = ((-a) - 1) as u16;
                         let b_idx = ((-b) - 1) as u16;
                         let a_str = self.get_string(a_idx);
@@ -4337,19 +4594,50 @@ impl AutoVM {
                         false
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if a_nv == b_nv {
+                        true
+                    } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
+                        let a = auto_val::decode_object(a_nv) as i32;
+                        let b = auto_val::decode_object(b_nv) as i32;
+                        self.struct_eq(a, b)
+                    } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv) as u16;
+                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => sa == sb,
+                            _ => false,
+                        }
+                    } else if auto_val::is_i32(a_nv) && auto_val::is_i32(b_nv) {
+                        let a_val = auto_val::decode_i32(a_nv);
+                        let b_val = auto_val::decode_i32(b_nv);
+                        if a_val >= 4000000 && b_val >= 4000000 {
+                            self.struct_eq(a_val, b_val)
+                        } else {
+                            a_val == b_val
+                        }
+                    } else {
+                        false
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
                 OpCode::NE => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    // Plan 197 Task 2: Content-aware string comparison
-                    // Plan 197 Task 7: Structural equality for heap objects
                     let result = if a == b {
                         false
                     } else if a >= 4000000 && b >= 4000000 {
-                        // Heap objects — structural inequality
                         !self.struct_eq(a, b)
                     } else if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
-                        // Both are tagged string indices — compare actual string contents
                         let a_idx = ((-a) - 1) as u16;
                         let b_idx = ((-b) - 1) as u16;
                         let a_str = self.get_string(a_idx);
@@ -4362,11 +4650,46 @@ impl AutoVM {
                         true
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if a_nv == b_nv {
+                        false
+                    } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
+                        let a = auto_val::decode_object(a_nv) as i32;
+                        let b = auto_val::decode_object(b_nv) as i32;
+                        !self.struct_eq(a, b)
+                    } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv) as u16;
+                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => sa != sb,
+                            _ => true,
+                        }
+                    } else if auto_val::is_i32(a_nv) && auto_val::is_i32(b_nv) {
+                        let a_val = auto_val::decode_i32(a_nv);
+                        let b_val = auto_val::decode_i32(b_nv);
+                        // Both values >= 4000000 are heap object IDs stored as i32 — use struct_eq
+                        if a_val >= 4000000 && b_val >= 4000000 {
+                            !self.struct_eq(a_val, b_val)
+                        } else {
+                            a_val != b_val
+                        }
+                    } else {
+                        true
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
                 OpCode::LT => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    // Plan 233: String comparison support for self-hosted lexer
                     let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
                         let a_idx = ((-a) - 1) as u16;
                         let b_idx = ((-b) - 1) as u16;
@@ -4384,8 +4707,35 @@ impl AutoVM {
                         a < b
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv) as u16;
+                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa < sb
+                            }
+                            _ => false,
+                        }
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        a < b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
                 OpCode::GT => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
@@ -4405,8 +4755,35 @@ impl AutoVM {
                         a > b
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv) as u16;
+                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa > sb
+                            }
+                            _ => false,
+                        }
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        a > b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
                 OpCode::LE => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
@@ -4426,8 +4803,35 @@ impl AutoVM {
                         a <= b
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv) as u16;
+                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa <= sb
+                            }
+                            _ => true,
+                        }
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        a <= b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
                 OpCode::GE => {
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     let result = if a < 0 && b < 0 && a > i32::MIN && b > i32::MIN {
@@ -4447,6 +4851,31 @@ impl AutoVM {
                         a >= b
                     };
                     task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(feature = "nanbox")]
+                    {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv) as u16;
+                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa >= sb
+                            }
+                            _ => true,
+                        }
+                    } else {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        a >= b
+                    };
+                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
 
                 // f64 comparison opcodes (each pops 2+2 slots, pushes 1 bool)

@@ -1,8 +1,9 @@
 # Plan 221: AutoVM NaN-boxing Migration
 
-> **Status: ✅ DONE (Tasks 1-8, Task 9 no-op) — nanbox feature flag compiles, non-nanbox path green (3084 pass, 36 pre-existing failures)**
+> **Status: ✅ COMPLETE — nanbox is now the default feature (362/365 tests pass, 3 baseline failures)**
 >
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Migration complete:** nanbox feature flag enabled by default in Cargo.toml.
+> All nanbox-specific bugs fixed: f64 2-slot handling, f32→f64 FFI promotion, heap object ID comparison in EQ/NE.
 
 **Goal:** Replace AutoVM's `Vec<i32>` stack with NaN-boxed `Vec<u64>` (NanoValue), providing unified 8-byte value representation for all types — int, float, string, bool, null, object, list.
 

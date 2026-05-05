@@ -811,20 +811,33 @@ fn vm_print(vm: &AutoVM, s: &str) {
 /// If the value is a tagged string index (negative), prints the string.
 /// Otherwise prints as an integer.
 pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
-
-    // Check if it's a tagged string index (negative value from LOAD_STR)
-    if val < 0 {
-        let str_index = ((-val) - 1) as u16;
-        if let Some(bytes) = vm.get_string(str_index) {
-            let s = String::from_utf8_lossy(&bytes);
-            vm_print(vm, &s);
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let val = task.ram.pop_i32();
+        if val < 0 {
+            let str_index = ((-val) - 1) as u16;
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
         } else {
-            vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            vm_print(vm, &val.to_string());
         }
-    } else {
-        // Regular integer
-        vm_print(vm, &val.to_string());
+    }
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv) as u16;
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else {
+            vm_print(vm, &auto_val::decode_i32(nv).to_string());
+        }
     }
     Ok(())
 }
@@ -853,6 +866,29 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        // In nanbox mode, f64 occupies 2 slots (value at sp-2, marker at sp-1).
+        // Check sp-2 for f64 bits, then sp-1 for f32.
+        if task.ram.sp >= 2 {
+            let nv = task.ram.raw_nv[task.ram.sp - 2];
+            if auto_val::is_f64(nv) {
+                task.ram.sp -= 2; // consume both slots
+                let val = f64::from_bits(nv);
+                vm_print(vm, &val.to_string());
+                return Ok(());
+            }
+        }
+        if task.ram.sp >= 1 {
+            let nv = task.ram.raw_nv[task.ram.sp - 1];
+            if auto_val::is_f32(nv) {
+                task.ram.sp -= 1;
+                let val = auto_val::decode_f32(nv);
+                vm_print(vm, &val.to_string());
+                return Ok(());
+            }
+        }
+    }
     let val_bits = task.ram.pop_i32() as u32;
     let val = f32::from_bits(val_bits);
     vm_print(vm, &val.to_string());
@@ -889,33 +925,57 @@ fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
 /// Expects tagged string index on TOS (LOAD_STR pushes -(idx+1)).
 /// If the value is non-negative and not a valid string index, prints as integer.
 pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let tagged = task.ram.pop_i32();
-    // Decode tagged string index: LOAD_STR pushes -(idx+1)
-    let str_index = if tagged < 0 {
-        ((-tagged) - 1) as u16
-    } else {
-        tagged as u16
-    };
-    // Try to get string - only valid if it was a tagged (negative) index
-    if tagged < 0 {
-        if let Some(bytes) = vm.get_string(str_index) {
-            let s = String::from_utf8_lossy(&bytes);
-            vm_print(vm, &s);
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let tagged = task.ram.pop_i32();
+        let str_index = if tagged < 0 {
+            ((-tagged) - 1) as u16
         } else {
-            vm_print(vm, &format!("<invalid string index: {}>", str_index));
-        }
-    } else {
-        // Non-tagged value - check if it's a Rust stdlib heap handle
-        let handle = tagged as u64;
-        if let Some(obj) = vm.get_heap_object(handle) {
-            let guard = obj.read().unwrap();
-            if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+            tagged as u16
+        };
+        if tagged < 0 {
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else {
+            let handle = tagged as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                } else {
+                    vm_print(vm, &tagged.to_string());
+                }
             } else {
                 vm_print(vm, &tagged.to_string());
             }
+        }
+    }
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv) as u16;
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
         } else {
-            vm_print(vm, &tagged.to_string());
+            let val = auto_val::decode_i32(nv);
+            let handle = val as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            } else {
+                vm_print(vm, &val.to_string());
+            }
         }
     }
     Ok(())
@@ -934,14 +994,29 @@ pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 /// Runtime panic: pops a string (tagged index) from stack and returns it as an error.
 /// Used by #[vm] function stubs when no matching native implementation is found.
 pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let tagged = task.ram.pop_i32();
-    let msg = if tagged < 0 {
-        let idx = ((-tagged) - 1) as u16;
-        vm.get_string(idx)
-            .map(|b| String::from_utf8_lossy(&b).to_string())
-            .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
-    } else {
-        format!("Runtime panic (unexpected stack value: {})", tagged)
+    #[cfg(not(feature = "nanbox"))]
+    let msg = {
+        let tagged = task.ram.pop_i32();
+        if tagged < 0 {
+            let idx = ((-tagged) - 1) as u16;
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
+        } else {
+            format!("Runtime panic (unexpected stack value: {})", tagged)
+        }
+    };
+    #[cfg(feature = "nanbox")]
+    let msg = {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as u16;
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
+        } else {
+            format!("Runtime panic (unexpected stack value: {:?})", nv)
+        }
     };
     Err(VMError::RuntimeError(msg))
 }
@@ -1532,8 +1607,10 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     // Pop separator (string pool tag)
-    let sep_bits = task.ram.pop_i32();
-    let sep_idx = decode_str_idx(sep_bits);
+    #[cfg(not(feature = "nanbox"))]
+    let sep_idx = decode_str_idx(task.ram.pop_i32());
+    #[cfg(feature = "nanbox")]
+    let sep_idx = decode_str_idx_nv(task.ram.pop_nv());
     let separator = vm.strings.read().unwrap()
         .get(sep_idx)
         .map(|b| String::from_utf8_lossy(b).to_string())
@@ -2148,45 +2225,63 @@ pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// The value is auto-detected: negative (but not bool sentinels) = string tag,
 /// positive/zero/bool sentinels = int.
 pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let value_bits = task.ram.pop_i32();
-    let key_bits = task.ram.pop_i32();
-    let map_id = task.ram.pop_i32() as u64;
-
-    if let Some(obj) = vm.get_heap_object(map_id) {
-        // Decode key string tag
-        let key_str_idx = ((-key_bits) - 1) as usize;
-        let strings = vm.strings.read().unwrap();
-        let key_bytes = strings.get(key_str_idx).cloned()
-            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
-        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
-
-        // Detect value type from bits
-        let value = if value_bits < 0 && value_bits > i32::MIN + 1 {
-            // String tag: -(idx + 1)
-            let str_idx = ((-value_bits) - 1) as usize;
-            if let Some(bytes) = strings.get(str_idx) {
-                Value::Str(auto_val::AutoStr::from(String::from_utf8_lossy(bytes).as_ref()))
-            } else {
-                Value::Int(0)
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let value_bits = task.ram.pop_i32();
+        let key_bits = task.ram.pop_i32();
+        let map_id = task.ram.pop_i32() as u64;
+        if let Some(obj) = vm.get_heap_object(map_id) {
+            let key_str_idx = ((-key_bits) - 1) as usize;
+            let strings = vm.strings.read().unwrap();
+            let key_bytes = strings.get(key_str_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            let value = if value_bits < 0 && value_bits > i32::MIN + 1 {
+                let str_idx = ((-value_bits) - 1) as usize;
+                if let Some(bytes) = strings.get(str_idx) {
+                    Value::Str(auto_val::AutoStr::from(String::from_utf8_lossy(bytes).as_ref()))
+                } else { Value::Int(0) }
+            } else if value_bits == i32::MIN { Value::Bool(true) }
+            else if value_bits == i32::MIN + 1 { Value::Bool(false) }
+            else { Value::Int(value_bits) };
+            drop(strings);
+            let mut guard = obj.write().unwrap();
+            if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                map.insert(key_str, value).map_err(|e| VMError::RuntimeError(e))?;
             }
-        } else if value_bits == i32::MIN {
-            Value::Bool(true)
-        } else if value_bits == i32::MIN + 1 {
-            Value::Bool(false)
-        } else {
-            Value::Int(value_bits)
-        };
-        drop(strings);
-
-        let mut guard = obj.write().unwrap();
-        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
-            map.insert(key_str, value)
-                .map_err(|e| VMError::RuntimeError(e))?;
         }
+        task.ram.push_i32(0);
+        return Ok(());
     }
-
-    task.ram.push_i32(0);
-    Ok(())
+    #[cfg(feature = "nanbox")]
+    {
+        let value_nv = task.ram.pop_nv();
+        let key_idx = task.ram.pop_str_idx();
+        let map_id = task.ram.pop_i32() as u64;
+        if let Some(obj) = vm.get_heap_object(map_id) {
+            let strings = vm.strings.read().unwrap();
+            let key_bytes = strings.get(key_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            let value = if auto_val::is_string(value_nv) {
+                let str_idx = auto_val::decode_string(value_nv) as usize;
+                if let Some(bytes) = strings.get(str_idx) {
+                    Value::Str(auto_val::AutoStr::from(String::from_utf8_lossy(bytes).as_ref()))
+                } else { Value::Int(0) }
+            } else if auto_val::is_bool(value_nv) {
+                Value::Bool(auto_val::decode_bool(value_nv))
+            } else {
+                Value::Int(auto_val::decode_i32(value_nv))
+            };
+            drop(strings);
+            let mut guard = obj.write().unwrap();
+            if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                map.insert(key_str, value).map_err(|e| VMError::RuntimeError(e))?;
+            }
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
 }
 
 /// Insert a string key with i32 value
@@ -2246,9 +2341,10 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                     auto_val::Value::Str(s) => {
                         let mut strings = vm.strings.write().unwrap();
-                        let str_idx = strings.len() as u16;
+                        let str_idx = strings.len() as u32;
                         strings.push(s.as_bytes().to_vec());
-                        task.ram.push_i32(-((str_idx as i32) + 1));
+                        drop(strings);
+                        task.ram.push_str_idx(str_idx);
                         return Ok(());
                     }
                     auto_val::Value::VmRef(vm_ref) => {
