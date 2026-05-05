@@ -1222,6 +1222,96 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
         }
     }
 
+    // Plan 234: Copy all handmade Vue components from vue/src/components/
+    let handmade_components_dir = root_dir.join("vue").join("src").join("components");
+    if handmade_components_dir.exists() && handmade_components_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&handmade_components_dir) {
+            let mut copied_count = 0;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = entry.file_name();
+                // Skip ThemeToggle.vue (already handled above)
+                if file_name == "ThemeToggle.vue" {
+                    continue;
+                }
+                let dest = gen_components_dir.join(&file_name);
+                if path.is_dir() {
+                    // Copy subdirectories recursively (e.g. a2ui-renderers/)
+                    if let Err(e) = copy_dir_all(&path, &dest) {
+                        println!("  ⚠ Failed to copy handmade component dir {}: {}", file_name.to_string_lossy(), e);
+                    } else {
+                        copied_count += 1;
+                    }
+                } else if path.extension().map(|e| e == "vue").unwrap_or(false) {
+                    if let Err(e) = fs::copy(&path, &dest) {
+                        println!("  ⚠ Failed to copy handmade component {}: {}", file_name.to_string_lossy(), e);
+                    } else {
+                        copied_count += 1;
+                    }
+                }
+            }
+            if copied_count > 0 {
+                println!("{}", format!("  ✓ Copied {} handmade component(s)", copied_count).bright_green());
+            }
+        }
+    }
+
+    // Plan 234: Copy handmade composables
+    let handmade_composables_dir = root_dir.join("vue").join("src").join("composables");
+    let gen_composables_dir = root_dir.join("gen").join("vue").join("src").join("composables");
+    if handmade_composables_dir.exists() && handmade_composables_dir.is_dir() {
+        fs::create_dir_all(&gen_composables_dir).ok();
+        if let Ok(entries) = fs::read_dir(&handmade_composables_dir) {
+            let mut copied_count = 0;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = entry.file_name();
+                let dest = gen_composables_dir.join(&file_name);
+                if path.is_dir() {
+                    if let Err(e) = copy_dir_all(&path, &dest) {
+                        println!("  ⚠ Failed to copy composable dir {}: {}", file_name.to_string_lossy(), e);
+                    } else {
+                        copied_count += 1;
+                    }
+                } else {
+                    if let Err(e) = fs::copy(&path, &dest) {
+                        println!("  ⚠ Failed to copy composable {}: {}", file_name.to_string_lossy(), e);
+                    } else {
+                        copied_count += 1;
+                    }
+                }
+            }
+            if copied_count > 0 {
+                println!("{}", format!("  ✓ Copied {} composable(s)", copied_count).bright_green());
+            }
+        }
+    }
+
+    // Plan 234: Copy handmade types
+    let handmade_types_dir = root_dir.join("vue").join("src").join("types");
+    let gen_types_dir = root_dir.join("gen").join("vue").join("src").join("types");
+    if handmade_types_dir.exists() && handmade_types_dir.is_dir() {
+        fs::create_dir_all(&gen_types_dir).ok();
+        if let Ok(entries) = fs::read_dir(&handmade_types_dir) {
+            let mut copied_count = 0;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = entry.file_name();
+                let dest = gen_types_dir.join(&file_name);
+                if path.is_file() {
+                    if let Err(e) = fs::copy(&path, &dest) {
+                        println!("  ⚠ Failed to copy type file {}: {}", file_name.to_string_lossy(), e);
+                    } else {
+                        copied_count += 1;
+                    }
+                }
+            }
+            if copied_count > 0 {
+                println!("{}", format!("  ✓ Copied {} type file(s)", copied_count).bright_green());
+            }
+        }
+    }
+
     // Step 3: npm install
     current_step += 1;
     println!();

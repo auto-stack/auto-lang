@@ -67,7 +67,7 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         // Variable declarations — AURA-aware value rewriting
         Stmt::Store(store) => {
             let kw = match store.kind {
-                StoreKind::Let => "const",
+                StoreKind::Let => "let",
                 StoreKind::Var => "let",
                 StoreKind::Const => "const",
                 _ => "let", // Shared, CVar, Field — shouldn't appear in handlers
@@ -338,6 +338,67 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             };
             write!(out, "{}", op_str).ok();
             transpile_expr(operand, ctx, out);
+        }
+
+        // Array literals
+        Expr::Array(elems) => {
+            write!(out, "[").ok();
+            for (i, elem) in elems.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ").ok();
+                }
+                transpile_expr(elem, ctx, out);
+            }
+            write!(out, "]").ok();
+        }
+
+        // Object literals — recurse values through transpile_expr so builtins work
+        Expr::Object(pairs) => {
+            write!(out, "{{ ").ok();
+            for (i, pair) in pairs.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ").ok();
+                }
+                match &pair.key {
+                    Key::NamedKey(name) => {
+                        write!(out, "{}: ", name.as_str()).ok();
+                    }
+                    Key::IntKey(n) => {
+                        write!(out, "{}: ", n).ok();
+                    }
+                    Key::BoolKey(b) => {
+                        write!(out, "{}: ", b).ok();
+                    }
+                    Key::StrKey(s) => {
+                        write!(out, "\"{}\": ", s).ok();
+                    }
+                }
+                transpile_expr(&pair.value, ctx, out);
+            }
+            write!(out, " }}").ok();
+        }
+
+        // If expression (appears when parser treats if as RHS of let)
+        Expr::If(if_expr) => {
+            // Convert to IIFE so it works in expression position
+            write!(out, "(() => {{ ").ok();
+            if let Some(first) = if_expr.branches.first() {
+                write!(out, "if (").ok();
+                transpile_expr(&first.cond, ctx, out);
+                write!(out, ") {{ ").ok();
+                for stmt in &first.body.stmts {
+                    transpile_stmt(stmt, ctx, out);
+                }
+                write!(out, " }}").ok();
+            }
+            if let Some(else_body) = &if_expr.else_ {
+                write!(out, " else {{ ").ok();
+                for stmt in &else_body.stmts {
+                    transpile_stmt(stmt, ctx, out);
+                }
+                write!(out, " }}").ok();
+            }
+            write!(out, " }})()").ok();
         }
 
         // === Delegate to a2ts for everything else ===
@@ -624,6 +685,43 @@ pub fn stmts_have_route_access(stmts: &[Stmt]) -> bool {
                     }
                 }
                 walk_expr(object)
+            }
+            Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
+            Expr::Unary(_, e) => walk_expr(e),
+            Expr::Array(items) => items.iter().any(walk_expr),
+            _ => false,
+        }
+    }
+
+    fn walk_stmt(stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(expr) => walk_expr(expr),
+            Stmt::Store(store) => walk_expr(&store.expr),
+            Stmt::If(if_stmt) => if_stmt
+                .branches
+                .iter()
+                .any(|b| walk_expr(&b.cond) || b.body.stmts.iter().any(walk_stmt)),
+            _ => false,
+        }
+    }
+
+    stmts.iter().any(walk_stmt)
+}
+
+/// Check if Auto statements contain router navigation (Plan 235)
+/// Detects router.push() or router.replace() calls to trigger useRouter import.
+pub fn stmts_have_router_nav(stmts: &[Stmt]) -> bool {
+    fn walk_expr(expr: &Expr) -> bool {
+        match expr {
+            Expr::Call(call) => {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    if let Expr::Ident(name) = object.as_ref() {
+                        if name.as_str() == "router" && (method.as_str() == "push" || method.as_str() == "replace") {
+                            return true;
+                        }
+                    }
+                }
+                call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
             }
             Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
             Expr::Unary(_, e) => walk_expr(e),

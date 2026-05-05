@@ -1074,13 +1074,22 @@ impl VueGenerator {
         if Self::widget_needs_route(widget) {
             self.needs_route = true;
         }
-        // Plan 235: Pre-analyze handlers for route access fallback
+        // Plan 235: Pre-analyze handlers for route access and navigation
         // (ts_adapter builtins like router.param() emit useRoute() which we need to import)
         for payload in widget.handlers.values() {
             if let Ok(body) = self.generate_handler_body(payload) {
                 if body.contains("useRoute") {
                     self.needs_route = true;
                 }
+            }
+            // Also check raw AST for router.push / router.replace
+            match payload {
+                LogicPayload::AstStmts(stmts) => {
+                    if crate::ui_gen::ts_adapter::stmts_have_router_nav(stmts) {
+                        self.needs_router = true;
+                    }
+                }
+                _ => {}
             }
         }
 
