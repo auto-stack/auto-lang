@@ -43,6 +43,28 @@
       </div>
     </div>
 
+    <!-- Blocks Panel -->
+    <div v-else-if="activeTab === 'blocks'" class="panel">
+      <div class="panel-header">
+        <div class="panel-info">
+          <h3>{{ isZh ? 'Blocks' : 'Blocks' }}</h3>
+          <p>{{ isZh ? '24 个 shadcn-vue  building blocks 复刻' : '24 shadcn-vue building block replicas' }}</p>
+        </div>
+        <a :href="webUrl" target="_blank" class="open-link">
+          {{ t.openNew }} ↗
+        </a>
+      </div>
+      <div class="iframe-wrapper">
+        <iframe
+          :src="webUrl"
+          title="Blocks"
+          frameborder="0"
+          loading="lazy"
+          allow="clipboard-write"
+        />
+      </div>
+    </div>
+
     <!-- Desktop Panel -->
     <div v-else-if="activeTab === 'desktop'" class="panel placeholder-panel">
       <div class="placeholder-content">
@@ -150,18 +172,24 @@ const tabs = computed(() =>
   isZh.value
     ? [
         { key: 'web', label: 'Web', icon: '🌐', badge: 'Live' },
+        { key: 'blocks', label: 'Blocks', icon: '🔲', badge: '24' },
         { key: 'desktop', label: '桌面端', icon: '🖥️', badge: null },
         { key: 'mobile', label: '移动端', icon: '📱', badge: null },
       ]
     : [
         { key: 'web', label: 'Web', icon: '🌐', badge: 'Live' },
+        { key: 'blocks', label: 'Blocks', icon: '🔲', badge: '24' },
         { key: 'desktop', label: 'Desktop', icon: '🖥️', badge: null },
         { key: 'mobile', label: 'Mobile', icon: '📱', badge: null },
       ]
 )
 
 const activeTab = ref('web')
-const webUrl = '/ui-gallery/web/index.html'
+const webUrl = computed(() =>
+  activeTab.value === 'blocks'
+    ? '/ui-gallery/web/index.html#/blocks'
+    : '/ui-gallery/web/index.html'
+)
 </script>
 
 <style scoped>
