@@ -23,6 +23,14 @@ impl Call {
             _ => panic!("Expected identifier, got {:?}", self.name),
         }
     }
+
+    /// Non-panicking version that returns None for complex names (e.g. method calls).
+    pub fn get_name_text_safe(&self) -> Option<AutoStr> {
+        match &self.name.as_ref() {
+            Expr::Ident(name) => Some(name.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Call {

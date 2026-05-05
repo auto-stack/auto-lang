@@ -172,8 +172,18 @@ fn transpile_for(for_loop: &For, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         Iter::Call(call) => {
             // for func(args) { ... } → while (func(args)) { ... }
             write!(out, "while (").ok();
-            let func_name = call.get_name_text().to_string();
-            write!(out, "{}(", func_name).ok();
+            match call.name.as_ref() {
+                Expr::Dot(object, method) => {
+                    transpile_expr(object, ctx, out);
+                    write!(out, ".{}(", method.as_str()).ok();
+                }
+                Expr::Ident(name) => {
+                    write!(out, "{}(", name.as_str()).ok();
+                }
+                _ => {
+                    write!(out, "/* complex call */(").ok();
+                }
+            }
             for (i, arg) in call.args.args.iter().enumerate() {
                 if i > 0 {
                     write!(out, ", ").ok();
@@ -198,6 +208,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // StateRef: `.count` is parsed as Expr::Dot(Ident("self"), "count")
         // → `count.value` for Vue reactive refs
+        // General field access: object.field → transpile object, then emit .field
         Expr::Dot(obj, field) => {
             if let Expr::Ident(name) = obj.as_ref() {
                 if name.as_str() == "self" {
@@ -210,8 +221,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     return;
                 }
             }
-            // Regular field access — delegate to a2ts
-            delegate_expr(expr, ctx, out);
+            // General field access: object.field
+            transpile_expr(obj, ctx, out);
+            write!(out, ".{}", field.as_str()).ok();
         }
 
         // Identifier — check if it's a reactive state variable
@@ -225,27 +237,46 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             }
         }
 
-        // Function call — API detection, print, len mapping
+        // Function call — API detection, print, builtins, method calls
         Expr::Call(call) => {
-            let func_name = call.get_name_text().to_string();
-
-            // API calls need `await`
-            if ctx.is_api(&func_name) {
-                write!(out, "await {}", func_name).ok();
-            } else if func_name == "print" {
-                write!(out, "console.log").ok();
-            } else {
-                write!(out, "{}", func_name).ok();
-            }
-
-            write!(out, "(").ok();
-            for (i, arg) in call.args.args.iter().enumerate() {
-                if i > 0 {
-                    write!(out, ", ").ok();
+            match call.name.as_ref() {
+                // Method call: object.method(args)
+                Expr::Dot(object, method) => {
+                    transpile_expr(object, ctx, out);
+                    write!(out, ".{}", method.as_str()).ok();
+                    write!(out, "(").ok();
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, ")").ok();
                 }
-                transpile_expr(&arg.get_expr(), ctx, out);
+                // Regular function call
+                Expr::Ident(name) => {
+                    let func_name = name.as_str();
+                    // API calls need `await`
+                    if ctx.is_api(func_name) {
+                        write!(out, "await {}", func_name).ok();
+                    } else if func_name == "print" {
+                        write!(out, "console.log").ok();
+                    } else {
+                        write!(out, "{}", func_name).ok();
+                    }
+
+                    write!(out, "(").ok();
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, ")").ok();
+                }
+                // Fallback — delegate to a2ts for complex call names
+                _ => delegate_expr(expr, ctx, out),
             }
-            write!(out, ")").ok();
         }
 
         // Binary ops — AURA-aware on both sides
@@ -362,9 +393,12 @@ pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
     fn walk_expr(expr: &Expr, api_fns: &[&str]) -> bool {
         match expr {
             Expr::Call(call) => {
-                let name = call.get_name_text().to_string();
-                api_fns.contains(&name.as_str())
-                    || call.args.args.iter().any(|a| walk_expr(&a.get_expr(), api_fns))
+                // Only simple identifier calls can be API functions;
+                // method calls (Dot names) are never API calls.
+                let is_api = call.get_name_text_safe()
+                    .map(|name| api_fns.contains(&name.as_str()))
+                    .unwrap_or(false);
+                is_api || call.args.args.iter().any(|a| walk_expr(&a.get_expr(), api_fns))
             }
             Expr::Bina(l, _, r) => walk_expr(l, api_fns) || walk_expr(r, api_fns),
             Expr::Unary(_, e) => walk_expr(e, api_fns),
