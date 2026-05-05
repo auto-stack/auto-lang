@@ -1,0 +1,5 @@
+// Test: eval — string variable binding and print
+fn main() {
+    var r1 = run_eval("let x = \"hello\"\nprint(x)")
+    print("r1:" + r1)
+}

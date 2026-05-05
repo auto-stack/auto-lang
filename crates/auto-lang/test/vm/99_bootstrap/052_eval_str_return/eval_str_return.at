@@ -1,0 +1,5 @@
+// Test: eval — string return value
+fn main() {
+    var r1 = run_eval("fn get() {\n  return \"ok\"\n}\nprint(get())")
+    print("r1:" + r1)
+}

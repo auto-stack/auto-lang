@@ -1,0 +1,14 @@
+// Test: eval — debug Map round-trip with IDs
+fn main() {
+    var p_list = empty_list()
+    p_list.push(Param("name", ""))
+    var node = fn_node("greet", 1, "", "")
+    node.params = p_list
+    print("direct_params=" + int_to_str(node.params.len()))
+
+    var defs = Map.new()
+    defs.insert("greet", node)
+    var fn_def = defs.get("greet")
+    var params = fn_def.params
+    print("map_params=" + int_to_str(params.len()))
+}

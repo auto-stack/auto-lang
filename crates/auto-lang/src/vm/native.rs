@@ -1222,7 +1222,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
+
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -2270,6 +2270,10 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
                 } else { Value::Int(0) }
             } else if auto_val::is_bool(value_nv) {
                 Value::Bool(auto_val::decode_bool(value_nv))
+            } else if auto_val::is_object(value_nv) {
+                Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(value_nv) as usize })
+            } else if auto_val::is_list(value_nv) {
+                Value::VmRef(auto_val::VmRef { id: auto_val::decode_list(value_nv) as usize })
             } else {
                 Value::Int(auto_val::decode_i32(value_nv))
             };
@@ -2287,7 +2291,6 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Insert a string key with i32 value
 /// Stack: hashmap_id, key_str_id, value -> result (0)
 pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-
     let value = task.ram.pop_i32();
     let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
@@ -2367,7 +2370,6 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Get value by string key (returns i32)
 /// Stack: hashmap_id, key_str_id -> value (0 if not found)
 pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-
     let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
 
@@ -3182,14 +3184,46 @@ pub fn shim_btreemap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
 /// Get the length of a string from the constant pool.
 /// Stack: str_idx (tagged) -> length (as i32)
 pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
-
-    if let Some(bytes) = vm.get_string(str_idx) {
-        task.ram.push_i32(bytes.len() as i32);
-    } else {
-        task.ram.push_i32(0);
+    // When compiler can't determine receiver type, it may call str.len on a List heap ID.
+    // Detect this and dispatch to list.len instead.
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_i32(nv) {
+            let i = auto_val::decode_i32(nv);
+            if i >= 4000000 {
+                // Looks like a heap object ID — try list.len
+                use crate::vm::types::ListData;
+                if let Some(obj) = vm.get_heap_object(i as u64) {
+                    let guard = obj.read().unwrap();
+                    if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                        task.ram.push_i32(list.len() as i32);
+                        return Ok(());
+                    }
+                }
+                task.ram.push_i32(0);
+                return Ok(());
+            }
+        }
+        // Normal string path
+        let str_idx = auto_val::decode_string(nv) as u16;
+        if let Some(bytes) = vm.get_string(str_idx) {
+            task.ram.push_i32(bytes.len() as i32);
+        } else {
+            task.ram.push_i32(0);
+        }
+        return Ok(());
     }
-    Ok(())
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let str_idx = task.ram.pop_str_idx() as u16;
+        if let Some(bytes) = vm.get_string(str_idx) {
+            task.ram.push_i32(bytes.len() as i32);
+        } else {
+            task.ram.push_i32(0);
+        }
+        Ok(())
+    }
 }
 
 /// Get the length of a string (String.len).

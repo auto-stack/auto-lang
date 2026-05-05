@@ -373,13 +373,19 @@ impl AutoVM {
                 return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
             }
         } else if auto_val::is_i32(nv) {
-            return auto_val::Value::Int(auto_val::decode_i32(nv));
+            let i = auto_val::decode_i32(nv);
+            if i >= 4000000 {
+                return auto_val::Value::VmRef(auto_val::VmRef { id: i as usize });
+            }
+            return auto_val::Value::Int(i);
         } else if auto_val::is_bool(nv) {
             return auto_val::Value::Bool(auto_val::decode_bool(nv));
         } else if auto_val::is_f64(nv) {
             return auto_val::Value::Double(auto_val::decode_f64(nv));
         } else if auto_val::is_object(nv) {
-            return auto_val::Value::Int(auto_val::decode_object(nv) as i32);
+            return auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize });
+        } else if auto_val::is_list(nv) {
+            return auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_list(nv) as usize });
         }
         auto_val::Value::Int(0)
     }
@@ -2791,12 +2797,19 @@ impl AutoVM {
                     let instance_id = task.ram.pop_i32() as u64;
 
                     // Pop value (below instance_id)
-                    let val_i32 = task.ram.pop_i32();
-                    // Check if value is a heap object reference (>= 4000000)
-                    let value = if val_i32 >= 4000000 {
-                        Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
-                    } else {
-                        self.decode_tagged_value(val_i32)
+                    #[cfg(feature = "nanbox")]
+                    let value = {
+                        let nv = task.ram.pop_nv();
+                        self.decode_tagged_nv(nv)
+                    };
+                    #[cfg(not(feature = "nanbox"))]
+                    let value = {
+                        let val_i32 = task.ram.pop_i32();
+                        if val_i32 >= 4000000 {
+                            Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
+                        } else {
+                            self.decode_tagged_value(val_i32)
+                        }
                     };
 
                     vm_debug!("DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={:?}",

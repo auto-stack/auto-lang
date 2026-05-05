@@ -14,6 +14,58 @@ fn eval_new() EvalEnv {
     EvalEnv(Map.new(), List.new(), Map.new(), "")
 }
 
+// ---- Side Channel ----
+// Use globals Map to store string values and type tags
+// Key "__last_str__"  → last evaluated string (stored via insert_str)
+// Key "__last_type__" → 0=int, 1=str, 2=bool (stored as int)
+
+fn eval_set_last_str(env EvalEnv, s str) {
+    env.globals.insert_str("__last_str__", s)
+}
+
+fn eval_get_last_str(env EvalEnv) str {
+    if env.globals.contains("__last_str__") {
+        return env.globals.get("__last_str__")
+    }
+    return ""
+}
+
+fn eval_set_last_type(env EvalEnv, t int) {
+    env.globals.insert("__last_type__", t)
+}
+
+fn eval_get_last_type(env EvalEnv) int {
+    if env.globals.contains("__last_type__") {
+        return env.globals.get_int("__last_type__")
+    }
+    return 0
+}
+
+// ---- Variable Type Tracking ----
+// Store str variables with "__s__" prefix, int variables without prefix
+// This avoids needing a separate var_types Map
+
+fn eval_str_key(name str) str {
+    return "__s__" + name
+}
+
+fn eval_is_str_var(env EvalEnv, name str) int {
+    var skey = eval_str_key(name)
+    // Check scopes
+    var i = env.scopes.len() - 1
+    for i >= 0 {
+        var scope = env.scopes.get(i)
+        if scope.contains(skey) {
+            return 1
+        }
+        i = i - 1
+    }
+    if env.globals.contains(skey) {
+        return 1
+    }
+    return 0
+}
+
 // ---- Scope Management ----
 
 fn eval_push_scope(env EvalEnv) {
@@ -37,6 +89,27 @@ fn eval_bind(env EvalEnv, name str, value) {
     }
 }
 
+// Bind int variable
+fn eval_bind_int(env EvalEnv, name str, value int) {
+    if env.scopes.len() > 0 {
+        var scope = env.scopes.get(env.scopes.len() - 1)
+        scope.insert(name, value)
+    } else {
+        env.globals.insert(name, value)
+    }
+}
+
+// Bind string variable — stores with __s__ prefix
+fn eval_bind_str(env EvalEnv, name str, value str) {
+    var skey = eval_str_key(name)
+    if env.scopes.len() > 0 {
+        var scope = env.scopes.get(env.scopes.len() - 1)
+        scope.insert_str(skey, value)
+    } else {
+        env.globals.insert_str(skey, value)
+    }
+}
+
 // Look up a variable by name — returns int value
 fn eval_lookup_int(env EvalEnv, name str) int {
     var i = env.scopes.len() - 1
@@ -53,6 +126,23 @@ fn eval_lookup_int(env EvalEnv, name str) int {
     return 0
 }
 
+// Look up a string variable by name (using __s__ prefix)
+fn eval_lookup_str_var(env EvalEnv, name str) str {
+    var skey = eval_str_key(name)
+    var i = env.scopes.len() - 1
+    for i >= 0 {
+        var scope = env.scopes.get(i)
+        if scope.contains(skey) {
+            return scope.get(skey)
+        }
+        i = i - 1
+    }
+    if env.globals.contains(skey) {
+        return env.globals.get(skey)
+    }
+    return ""
+}
+
 // Look up a variable by name — returns str value
 fn eval_lookup_str(env EvalEnv, name str) str {
     var i = env.scopes.len() - 1
@@ -67,6 +157,15 @@ fn eval_lookup_str(env EvalEnv, name str) str {
         return env.globals.get(name)
     }
     return ""
+}
+
+// ---- String Concat Helper ----
+// Needed because AutoVM may not detect the type of ASTNode fields
+// so the compiler won't emit STR_CAT for `left_node.name + right_node.name`.
+// This function forces str-typed args so the compiler emits STR_CAT.
+
+fn eval_str_cat(a str, b str) str {
+    return a + b
 }
 
 // ---- String to Int Conversion ----
@@ -171,7 +270,11 @@ fn eval_exec_stmt(env EvalEnv, node ASTNode) int {
     if kind == NodeKind.LetStmt || kind == NodeKind.VarStmt {
         var expr = node.left.get(0)
         var val = eval_expr(env, expr)
-        eval_bind(env, node.name, val)
+        if eval_get_last_type(env) == 1 {
+            eval_bind_str(env, node.name, eval_get_last_str(env))
+        } else {
+            eval_bind_int(env, node.name, val)
+        }
         return 0
     }
 
@@ -216,6 +319,10 @@ fn eval_exec_body(env EvalEnv, body List) int {
                 val = eval_expr(env, stmt.left.get(0))
             }
             env.globals.insert("__ret__", val)
+            env.globals.insert("__ret_type__", eval_get_last_type(env))
+            if eval_get_last_type(env) == 1 {
+                env.globals.insert_str("__ret_str__", eval_get_last_str(env))
+            }
             return 1
         }
         var ret = eval_exec_stmt(env, stmt)
@@ -227,6 +334,10 @@ fn eval_exec_body(env EvalEnv, body List) int {
             if stmt.kind == NodeKind.ExprStmt {
                 var val2 = eval_expr(env, stmt.left.get(0))
                 env.globals.insert("__ret__", val2)
+                env.globals.insert("__ret_type__", eval_get_last_type(env))
+                if eval_get_last_type(env) == 1 {
+                    env.globals.insert_str("__ret_str__", eval_get_last_str(env))
+                }
             }
         }
         i = i + 1
@@ -241,21 +352,32 @@ fn eval_expr(env EvalEnv, node ASTNode) int {
     var kind = node.kind
 
     if kind == NodeKind.IntExpr {
+        eval_set_last_type(env, 0)
         return str_to_int(node.name)
     }
 
     if kind == NodeKind.StrExpr {
+        eval_set_last_str(env, node.name)
+        eval_set_last_type(env, 1)
         return 0
     }
 
     if kind == NodeKind.BoolExpr {
         if node.name == "true" {
+            eval_set_last_type(env, 2)
             return 1
         }
+        eval_set_last_type(env, 2)
         return 0
     }
 
     if kind == NodeKind.IdentExpr {
+        if eval_is_str_var(env, node.name) == 1 {
+            eval_set_last_str(env, eval_lookup_str_var(env, node.name))
+            eval_set_last_type(env, 1)
+            return 0
+        }
+        eval_set_last_type(env, 0)
         return eval_lookup_int(env, node.name)
     }
 
@@ -290,10 +412,50 @@ fn eval_expr(env EvalEnv, node ASTNode) int {
 
 fn eval_binop(env EvalEnv, node ASTNode) int {
     var op = node.op
+
+    // String concatenation: "a" + "b"
+    if op == "+" {
+        var left_node = node.left.get(0)
+        var right_node = node.right.get(0)
+        // Both sides are string literals
+        if left_node.kind == NodeKind.StrExpr && right_node.kind == NodeKind.StrExpr {
+            eval_set_last_str(env, eval_str_cat(left_node.name, right_node.name))
+            eval_set_last_type(env, 1)
+            return 0
+        }
+        // Left is string literal, right needs eval
+        if left_node.kind == NodeKind.StrExpr {
+            var right_val = eval_expr(env, right_node)
+            if eval_get_last_type(env) == 1 {
+                eval_set_last_str(env, eval_str_cat(left_node.name, eval_get_last_str(env)))
+            } else {
+                eval_set_last_str(env, eval_str_cat(left_node.name, int_to_str(right_val)))
+            }
+            eval_set_last_type(env, 1)
+            return 0
+        }
+        // Left is str variable
+        if left_node.kind == NodeKind.IdentExpr {
+            if eval_is_str_var(env, left_node.name) == 1 {
+                var left_str = eval_lookup_str_var(env, left_node.name)
+                var right_val = eval_expr(env, right_node)
+                if eval_get_last_type(env) == 1 {
+                    eval_set_last_str(env, eval_str_cat(left_str, eval_get_last_str(env)))
+                } else {
+                    eval_set_last_str(env, eval_str_cat(left_str, int_to_str(right_val)))
+                }
+                eval_set_last_type(env, 1)
+                return 0
+            }
+        }
+        var left = eval_expr(env, left_node)
+        var right = eval_expr(env, right_node)
+        return left + right
+    }
+
     var left = eval_expr(env, node.left.get(0))
     var right = eval_expr(env, node.right.get(0))
 
-    if op == "+" { return left + right }
     if op == "-" { return left - right }
     if op == "*" { return left * right }
     if op == "/" { return left / right }
@@ -323,7 +485,11 @@ fn eval_binop(env EvalEnv, node ASTNode) int {
     if op == "=" {
         // Assignment: bind right value to left's name
         var left_node = node.left.get(0)
-        eval_bind(env, left_node.name, right)
+        if eval_get_last_type(env) == 1 {
+            eval_bind_str(env, left_node.name, eval_get_last_str(env))
+        } else {
+            eval_bind_int(env, left_node.name, right)
+        }
         return right
     }
 
@@ -353,22 +519,30 @@ fn eval_call(env EvalEnv, node ASTNode) int {
     // Built-in: print — evaluate arg and append to output
     if callee_name == "print" {
         if node.params.len() == 0 {
-            env.output = env.output + "\n"
+            env.output = eval_str_cat(env.output, "\n")
             return 0
         }
         // Check arg type for proper formatting
         var arg_node = node.params.get(0)
         if arg_node.kind == NodeKind.BoolExpr {
             if arg_node.name == "true" {
-                env.output = env.output + "true\n"
+                env.output = eval_str_cat(env.output, "true\n")
             } else {
-                env.output = env.output + "false\n"
+                env.output = eval_str_cat(env.output, "false\n")
             }
+            return 0
+        }
+        if arg_node.kind == NodeKind.StrExpr {
+            env.output = eval_str_cat(env.output, eval_str_cat(arg_node.name, "\n"))
             return 0
         }
         // Evaluate the arg expression
         var result = eval_expr(env, arg_node)
-        env.output = env.output + int_to_str(result) + "\n"
+        if eval_get_last_type(env) == 1 {
+            env.output = eval_str_cat(env.output, eval_str_cat(eval_get_last_str(env), "\n"))
+        } else {
+            env.output = eval_str_cat(env.output, eval_str_cat(int_to_str(result), "\n"))
+        }
         return result
     }
 
@@ -406,7 +580,12 @@ fn eval_fn_call(env EvalEnv, call_node ASTNode, fn_name str) int {
         if i < call_node.params.len() {
             var arg_val = eval_expr(env, call_node.params.get(i))
             var param_node = params.get(i)
-            eval_bind(env, param_node.name, arg_val)
+            var lt = eval_get_last_type(env)
+            if lt == 1 {
+                eval_bind_str(env, param_node.name, eval_get_last_str(env))
+            } else {
+                eval_bind_int(env, param_node.name, arg_val)
+            }
         }
         i = i + 1
     }
@@ -417,6 +596,13 @@ fn eval_fn_call(env EvalEnv, call_node ASTNode, fn_name str) int {
 
     // Get return value
     var result = 0
+    if env.globals.contains("__ret_type__") {
+        var ret_type = env.globals.get_int("__ret_type__")
+        if ret_type == 1 && env.globals.contains("__ret_str__") {
+            eval_set_last_str(env, env.globals.get("__ret_str__"))
+            eval_set_last_type(env, 1)
+        }
+    }
     if env.globals.contains("__ret__") {
         result = env.globals.get_int("__ret__")
     }

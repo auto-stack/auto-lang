@@ -1,0 +1,5 @@
+// Test: eval — string concatenation
+fn main() {
+    var r1 = run_eval("print(\"a\" + \"b\")")
+    print("r1:" + r1)
+}
