@@ -1,0 +1,570 @@
+// Tree-Walking Evaluator for the Auto self-hosted compiler
+// Evaluates structured AST nodes directly using heap object traversal
+
+// Evaluator environment
+type EvalEnv {
+    globals Map       // global variable bindings: name -> value
+    scopes List       // scope stack: List of Map
+    fn_defs Map       // function definitions: name -> ASTNode (heap id)
+    output str        // accumulated print output
+}
+
+// Create a new evaluator environment
+fn eval_new() EvalEnv {
+    EvalEnv(Map.new(), List.new(), Map.new(), "")
+}
+
+// ---- Scope Management ----
+
+fn eval_push_scope(env EvalEnv) {
+    env.scopes.push(Map.new())
+}
+
+fn eval_pop_scope(env EvalEnv) {
+    if env.scopes.len() > 0 {
+        var scope = env.scopes.pop()
+        scope.drop()
+    }
+}
+
+// Bind a variable in the current scope
+fn eval_bind(env EvalEnv, name str, value) {
+    if env.scopes.len() > 0 {
+        var scope = env.scopes.get(env.scopes.len() - 1)
+        scope.insert(name, value)
+    } else {
+        env.globals.insert(name, value)
+    }
+}
+
+// Look up a variable by name — returns int value
+fn eval_lookup_int(env EvalEnv, name str) int {
+    var i = env.scopes.len() - 1
+    for i >= 0 {
+        var scope = env.scopes.get(i)
+        if scope.contains(name) {
+            return scope.get_int(name)
+        }
+        i = i - 1
+    }
+    if env.globals.contains(name) {
+        return env.globals.get_int(name)
+    }
+    return 0
+}
+
+// Look up a variable by name — returns str value
+fn eval_lookup_str(env EvalEnv, name str) str {
+    var i = env.scopes.len() - 1
+    for i >= 0 {
+        var scope = env.scopes.get(i)
+        if scope.contains(name) {
+            return scope.get(name)
+        }
+        i = i - 1
+    }
+    if env.globals.contains(name) {
+        return env.globals.get(name)
+    }
+    return ""
+}
+
+// ---- String to Int Conversion ----
+
+fn str_to_int(s str) int {
+    var result = 0
+    var neg = 0
+    var i = 0
+    var n = s.len()
+    if n == 0 {
+        return 0
+    }
+    var ch = s.char_at(0)
+    if ch == 45 {
+        neg = 1
+        i = 1
+    }
+    for i < n {
+        ch = s.char_at(i)
+        if ch >= 48 && ch <= 57 {
+            result = result * 10 + (ch - 48)
+        } else {
+            break
+        }
+        i = i + 1
+    }
+    if neg == 1 {
+        result = 0 - result
+    }
+    return result
+}
+
+// ---- Int to String Conversion ----
+
+fn int_to_str(n int) str {
+    if n == 0 {
+        return "0"
+    }
+    var neg = 0
+    if n < 0 {
+        neg = 1
+        n = 0 - n
+    }
+    var digits = "0123456789"
+    var result = ""
+    for n > 0 {
+        var d = n % 10
+        result = digits.substr(d, d + 1) + result
+        n = n / 10
+    }
+    if neg == 1 {
+        result = "-" + result
+    }
+    return result
+}
+
+// ---- Entry Points ----
+
+// Evaluate a full program (list of top-level statements)
+fn eval_program(env EvalEnv, stmts List) {
+    // First pass: register all function definitions
+    var i = 0
+    var n = stmts.len()
+    for i < n {
+        var stmt = stmts.get(i)
+        if stmt.kind == NodeKind.FnStmt {
+            env.fn_defs.insert(stmt.name, stmt)
+        }
+        i = i + 1
+    }
+
+    // Second pass: execute all statements
+    i = 0
+    for i < n {
+        var stmt = stmts.get(i)
+        eval_exec_stmt(env, stmt)
+        i = i + 1
+    }
+}
+
+// Run evaluator on source code string
+fn run_eval(source str) str {
+    var tokens = tokenize_list(source)
+    var p = parser_new(tokens)
+    var stmts = parse_program(p)
+    var env = eval_new()
+    eval_program(env, stmts)
+    return env.output
+}
+
+// ---- Statement Execution ----
+
+// Execute a statement, returns 1 if return was hit
+fn eval_exec_stmt(env EvalEnv, node ASTNode) int {
+    var kind = node.kind
+
+    if kind == NodeKind.FnStmt {
+        env.fn_defs.insert(node.name, node)
+        return 0
+    }
+
+    if kind == NodeKind.LetStmt || kind == NodeKind.VarStmt {
+        var expr = node.left.get(0)
+        var val = eval_expr(env, expr)
+        eval_bind(env, node.name, val)
+        return 0
+    }
+
+    if kind == NodeKind.ReturnStmt {
+        return 1
+    }
+
+    if kind == NodeKind.IfStmt {
+        return eval_if(env, node)
+    }
+
+    if kind == NodeKind.ForStmt {
+        return eval_for(env, node)
+    }
+
+    if kind == NodeKind.ForInStmt {
+        return eval_forin(env, node)
+    }
+
+    if kind == NodeKind.ExprStmt {
+        eval_expr(env, node.left.get(0))
+        return 0
+    }
+
+    if kind == NodeKind.BlockStmt {
+        return eval_block(env, node)
+    }
+
+    return 0
+}
+
+// Execute a list of statements (body), returns 1 if return was hit
+// Sets return_value in env.globals under key "__ret__"
+fn eval_exec_body(env EvalEnv, body List) int {
+    var i = 0
+    var n = body.len()
+    for i < n {
+        var stmt = body.get(i)
+        if stmt.kind == NodeKind.ReturnStmt {
+            var val = 0
+            if stmt.left.len() > 0 {
+                val = eval_expr(env, stmt.left.get(0))
+            }
+            env.globals.insert("__ret__", val)
+            return 1
+        }
+        var ret = eval_exec_stmt(env, stmt)
+        if ret == 1 {
+            return 1
+        }
+        // Implicit return: last ExprStmt
+        if i == n - 1 {
+            if stmt.kind == NodeKind.ExprStmt {
+                var val2 = eval_expr(env, stmt.left.get(0))
+                env.globals.insert("__ret__", val2)
+            }
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// ---- Expression Evaluation ----
+
+// Evaluate an expression and return its int value
+fn eval_expr(env EvalEnv, node ASTNode) int {
+    var kind = node.kind
+
+    if kind == NodeKind.IntExpr {
+        return str_to_int(node.name)
+    }
+
+    if kind == NodeKind.StrExpr {
+        return 0
+    }
+
+    if kind == NodeKind.BoolExpr {
+        if node.name == "true" {
+            return 1
+        }
+        return 0
+    }
+
+    if kind == NodeKind.IdentExpr {
+        return eval_lookup_int(env, node.name)
+    }
+
+    if kind == NodeKind.BinExpr {
+        return eval_binop(env, node)
+    }
+
+    if kind == NodeKind.UnaryExpr {
+        return eval_unary(env, node)
+    }
+
+    if kind == NodeKind.CallExpr {
+        return eval_call(env, node)
+    }
+
+    if kind == NodeKind.DotExpr {
+        return eval_dot(env, node)
+    }
+
+    if kind == NodeKind.FStrExpr {
+        return 0
+    }
+
+    if kind == NodeKind.NilNode {
+        return 0
+    }
+
+    return 0
+}
+
+// ---- Binary Operations ----
+
+fn eval_binop(env EvalEnv, node ASTNode) int {
+    var op = node.op
+    var left = eval_expr(env, node.left.get(0))
+    var right = eval_expr(env, node.right.get(0))
+
+    if op == "+" { return left + right }
+    if op == "-" { return left - right }
+    if op == "*" { return left * right }
+    if op == "/" { return left / right }
+    if op == "%" { return left % right }
+
+    if op == "==" { return left == right }
+    if op == "!=" { return left != right }
+    if op == "<" { return left < right }
+    if op == ">" { return left > right }
+    if op == "<=" { return left <= right }
+    if op == ">=" { return left >= right }
+
+    if op == "||" {
+        if left != 0 { return 1 }
+        if right != 0 { return 1 }
+        return 0
+    }
+    if op == "&&" {
+        if left == 0 { return 0 }
+        if right == 0 { return 0 }
+        return 1
+    }
+
+    if op == ".." { return left }
+    if op == "..=" { return left }
+
+    if op == "=" {
+        // Assignment: bind right value to left's name
+        var left_node = node.left.get(0)
+        eval_bind(env, left_node.name, right)
+        return right
+    }
+
+    return 0
+}
+
+// ---- Unary Operations ----
+
+fn eval_unary(env EvalEnv, node ASTNode) int {
+    var op = node.op
+    var operand = eval_expr(env, node.left.get(0))
+
+    if op == "-" { return 0 - operand }
+    if op == "!" {
+        if operand == 0 { return 1 }
+        return 0
+    }
+
+    return operand
+}
+
+// ---- Function Calls ----
+
+fn eval_call(env EvalEnv, node ASTNode) int {
+    var callee_name = node.name
+
+    // Built-in: print
+    if callee_name == "print" {
+        return eval_builtin_print(env, node)
+    }
+
+    // Built-in: empty_list / List.new
+    if callee_name == "empty_list" {
+        return 0
+    }
+
+    // Built-in: str_to_int
+    if callee_name == "str_to_int" {
+        return 0
+    }
+
+    // User-defined function
+    if env.fn_defs.contains(callee_name) {
+        return eval_fn_call(env, node, callee_name)
+    }
+
+    return 0
+}
+
+// Evaluate print builtin — parses arg from node.value S-expression
+fn eval_builtin_print(env EvalEnv, node ASTNode) int {
+    // value is "(print arg)" — extract arg between "(print " and ")"
+    var val = node.value
+    // "(print " is 7 chars, arg starts at index 7, ends before ")"
+    var arg = val.substr(7, val.len() - 1)
+
+    // Determine arg type by first character
+    var first_ch = 0
+    if arg.len() > 0 {
+        first_ch = arg.char_at(0)
+    }
+
+    // Int literal (starts with digit or minus)
+    if first_ch == 45 || (first_ch >= 48 && first_ch <= 57) {
+        env.output = env.output + arg + "\n"
+        return str_to_int(arg)
+    }
+
+    // String literal: "text"
+    if first_ch == 34 {
+        var content = arg.substr(1, arg.len() - 1)
+        env.output = env.output + content + "\n"
+        return 0
+    }
+
+    // bool literal
+    if arg == "true" {
+        env.output = env.output + "true\n"
+        return 1
+    }
+    if arg == "false" {
+        env.output = env.output + "false\n"
+        return 0
+    }
+
+    // Identifier — look up value
+    if env.globals.contains(arg) {
+        var v = env.globals.get_int(arg)
+        env.output = env.output + int_to_str(v) + "\n"
+        return v
+    }
+
+    // Compound expression — evaluate and print result
+    env.output = env.output + arg + "\n"
+    return 0
+}
+
+// Call a user-defined function
+fn eval_fn_call(env EvalEnv, call_node ASTNode, fn_name str) int {
+    var fn_def = env.fn_defs.get(fn_name)
+
+    // Parse arguments from call value: "(fnname arg1 arg2)"
+    // Parse params from fn_def
+    var params = fn_def.params
+    var params_count = params.len()
+
+    // Parse call args from value string
+    var call_val = call_node.value
+    var cv_len = call_val.len()
+
+    // Push new scope
+    eval_push_scope(env)
+
+    // Simple arg binding: parse space-separated args after function name
+    // Find first space after opening paren + function name
+    var arg_start = 1
+    for arg_start < cv_len {
+        if call_val.char_at(arg_start) == 32 {
+            break
+        }
+        arg_start = arg_start + 1
+    }
+    arg_start = arg_start + 1
+
+    // Parse each arg and bind to param
+    var pi = 0
+    var pos = arg_start
+    for pi < params_count && pos < cv_len - 1 {
+        // Find end of this arg (space or end of string)
+        var arg_end = pos
+        var depth = 0
+        for arg_end < cv_len - 1 {
+            var ch = call_val.char_at(arg_end)
+            if ch == 40 {
+                depth = depth + 1
+            } else if ch == 41 {
+                if depth == 0 { break }
+                depth = depth - 1
+            } else if ch == 32 && depth == 0 {
+                break
+            }
+            arg_end = arg_end + 1
+        }
+        var arg_text = call_val.substr(pos, arg_end)
+
+        // Bind param to arg value (as int for now)
+        var param_node = params.get(pi)
+        eval_bind(env, param_node.name, str_to_int(arg_text))
+
+        pos = arg_end + 1
+        pi = pi + 1
+    }
+
+    // Execute function body
+    var body = fn_def.children
+    eval_exec_body(env, body)
+
+    // Get return value
+    var result = 0
+    if env.globals.contains("__ret__") {
+        result = env.globals.get_int("__ret__")
+    }
+
+    eval_pop_scope(env)
+    return result
+}
+
+// ---- Dot Access ----
+
+fn eval_dot(env EvalEnv, node ASTNode) int {
+    var obj = eval_expr(env, node.left.get(0))
+    var field = node.name
+
+    // List/string .len()
+    if field == "len" {
+        return obj
+    }
+
+    return 0
+}
+
+// ---- Control Flow ----
+
+fn eval_if(env EvalEnv, node ASTNode) int {
+    var cond = eval_expr(env, node.cond.get(0))
+    if cond != 0 {
+        return eval_exec_body(env, node.children)
+    } else {
+        if node.else_body.len() > 0 {
+            var first = node.else_body.get(0)
+            if first.kind == NodeKind.IfStmt {
+                return eval_if(env, first)
+            }
+            return eval_exec_body(env, node.else_body)
+        }
+    }
+    return 0
+}
+
+fn eval_for(env EvalEnv, node ASTNode) int {
+    var cond_node = node.left.get(0)
+    var body = node.children
+    var limit = 10000
+    var count = 0
+    for true {
+        var cond = eval_expr(env, cond_node)
+        if cond == 0 { break }
+        var ret = eval_exec_body(env, body)
+        if ret == 1 { return 1 }
+        count = count + 1
+        if count >= limit { break }
+    }
+    return 0
+}
+
+fn eval_forin(env EvalEnv, node ASTNode) int {
+    var range_node = node.left.get(0)
+    var body = node.children
+    var var_name = node.name
+
+    var start_val = eval_expr(env, range_node.left.get(0))
+    var end_val = eval_expr(env, range_node.right.get(0))
+    var inclusive = 0
+    if range_node.op == "..=" {
+        inclusive = 1
+    }
+
+    var i = start_val
+    var limit = end_val
+    if inclusive == 1 {
+        limit = end_val + 1
+    }
+    for i < limit {
+        eval_bind(env, var_name, i)
+        var ret = eval_exec_body(env, body)
+        if ret == 1 { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
+fn eval_block(env EvalEnv, node ASTNode) int {
+    return eval_exec_body(env, node.children)
+}

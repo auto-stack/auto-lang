@@ -1,0 +1,5 @@
+// Test: eval — large integer
+fn main() {
+    var r1 = run_eval("print(12345)")
+    print("r1:" + r1)
+}

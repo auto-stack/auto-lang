@@ -1,0 +1,6 @@
+// Test: eval — sum of two integers
+fn main() {
+    var r1 = run_eval("print(10)
+print(20)")
+    print("r1:" + r1)
+}

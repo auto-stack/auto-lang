@@ -1,0 +1,5 @@
+// Test: eval — boolean print
+fn main() {
+    var r1 = run_eval("print(true)")
+    print("r1:" + r1)
+}

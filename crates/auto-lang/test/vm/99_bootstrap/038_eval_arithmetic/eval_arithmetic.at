@@ -1,0 +1,6 @@
+// Test: eval — basic print via run_eval
+fn main() {
+    // Test 1: print integer literal
+    var r1 = run_eval("print(42)")
+    print("r1:" + r1)
+}

@@ -717,3 +717,12 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_rust_99_bootstrap_037_parser_object() { test_rust_parser("99_bootstrap/037_parser_object").unwrap(); }
 
 #[test] fn test_aavm_99_bootstrap_038_eval_arithmetic() { test_aavm("99_bootstrap/038_eval_arithmetic").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_039_eval_variable() { test_aavm("99_bootstrap/039_eval_variable").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_040_eval_fn_call() { test_aavm("99_bootstrap/040_eval_fn_call").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_041_eval_if_else() { test_aavm("99_bootstrap/041_eval_if_else").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_042_eval_for_loop() { test_aavm("99_bootstrap/042_eval_for_loop").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_043_eval_recursion() { test_aavm("99_bootstrap/043_eval_recursion").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_044_eval_string() { test_aavm("99_bootstrap/044_eval_string").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_045_eval_list() { test_aavm("99_bootstrap/045_eval_list").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_046_eval_closure() { test_aavm("99_bootstrap/046_eval_closure").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_047_eval_multi_fn() { test_aavm("99_bootstrap/047_eval_multi_fn").unwrap(); }

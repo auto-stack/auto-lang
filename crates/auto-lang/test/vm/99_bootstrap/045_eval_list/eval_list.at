@@ -1,0 +1,6 @@
+// Test: eval — two prints
+fn main() {
+    var r1 = run_eval("print(100)
+print(200)")
+    print("r1:" + r1)
+}

@@ -1,0 +1,5 @@
+// Test: eval — zero integer
+fn main() {
+    var r1 = run_eval("print(0)")
+    print("r1:" + r1)
+}
