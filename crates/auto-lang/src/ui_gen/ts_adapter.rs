@@ -242,6 +242,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             match call.name.as_ref() {
                 // Method call: object.method(args)
                 Expr::Dot(object, method) => {
+                    if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
+                        return;
+                    }
                     transpile_expr(object, ctx, out);
                     write!(out, ".{}", method.as_str()).ok();
                     write!(out, "(").ok();
@@ -373,6 +376,120 @@ fn transpile_assign_target(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) 
 fn delegate_expr(expr: &Expr, _ctx: &AuraTsContext, out: &mut Vec<u8>) {
     let mut ts = TypeScriptTrans::new("fragment".into());
     let _ = ts.expr(expr, out);
+}
+
+// ---------------------------------------------------------------------------
+// Builtin module transpilation (Plan 235: storage, event, json, math, date)
+// ---------------------------------------------------------------------------
+
+/// Try to transpile a method call on a builtin module (e.g. `json.parse(x)`).
+/// Returns true if the call was handled, false otherwise.
+fn try_transpile_builtin_call(
+    object: &Expr,
+    method: &str,
+    args: &Args,
+    ctx: &AuraTsContext,
+    out: &mut Vec<u8>,
+) -> bool {
+    // Extract the module name from the object expression
+    let module = match object {
+        Expr::Ident(name) => name.as_str(),
+        _ => return false,
+    };
+
+    match module {
+        // json.parse(x) → JSON.parse(x); json.stringify(x) → JSON.stringify(x)
+        "json" => {
+            let js_method = match method {
+                "parse" => "parse",
+                "stringify" => "stringify",
+                _ => return false,
+            };
+            write!(out, "JSON.{}(", js_method).ok();
+            for (i, arg) in args.args.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ").ok();
+                }
+                transpile_expr(&arg.get_expr(), ctx, out);
+            }
+            write!(out, ")").ok();
+            true
+        }
+        // storage.get(x) → localStorage.getItem(x); storage.set(x, y) → localStorage.setItem(x, y)
+        "storage" => {
+            let js_method = match method {
+                "get" => "getItem",
+                "set" => "setItem",
+                "remove" => "removeItem",
+                "clear" => "clear",
+                _ => return false,
+            };
+            write!(out, "localStorage.{}(", js_method).ok();
+            for (i, arg) in args.args.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ").ok();
+                }
+                transpile_expr(&arg.get_expr(), ctx, out);
+            }
+            write!(out, ")").ok();
+            true
+        }
+        // event.dispatch(name) → window.dispatchEvent(new CustomEvent(name))
+        // event.dispatch(name, detail) → window.dispatchEvent(new CustomEvent(name, detail))
+        "event" => {
+            match method {
+                "dispatch" => {
+                    write!(out, "window.dispatchEvent(new CustomEvent(").ok();
+                    for (i, arg) in args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, "))").ok();
+                    true
+                }
+                "listen" => {
+                    // event.listen(name, handler) → window.addEventListener(name, handler)
+                    write!(out, "window.addEventListener(").ok();
+                    for (i, arg) in args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, ")").ok();
+                    true
+                }
+                _ => false,
+            }
+        }
+        // math.random() → Math.random(); math.floor(x) → Math.floor(x)
+        "math" => {
+            write!(out, "Math.{}(", method).ok();
+            for (i, arg) in args.args.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ").ok();
+                }
+                transpile_expr(&arg.get_expr(), ctx, out);
+            }
+            write!(out, ")").ok();
+            true
+        }
+        // date.now() → Date.now()
+        "date" => {
+            write!(out, "Date.{}(", method).ok();
+            for (i, arg) in args.args.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ").ok();
+                }
+                transpile_expr(&arg.get_expr(), ctx, out);
+            }
+            write!(out, ")").ok();
+            true
+        }
+        _ => false,
+    }
 }
 
 // ---------------------------------------------------------------------------
