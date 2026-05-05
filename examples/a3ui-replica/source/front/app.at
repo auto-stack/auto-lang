@@ -11,31 +11,6 @@ widget App {
         "/custom-catalog" -> use custom_catalog
         "/icons" -> use icons
         "/theater" -> use theater
-        "/blocks" -> use blocks
-        "/blocks/login-01" -> use login_01
-        "/blocks/login-02" -> use login_02
-        "/blocks/login-03" -> use login_03
-        "/blocks/login-04" -> use login_04
-        "/blocks/login-05" -> use login_05
-        "/blocks/dashboard-01" -> use dashboard_01
-        "/blocks/products-01" -> use products_01
-        "/blocks/sidebar-01" -> use sidebar_01
-        "/blocks/sidebar-02" -> use sidebar_02
-        "/blocks/sidebar-03" -> use sidebar_03
-        "/blocks/sidebar-04" -> use sidebar_04
-        "/blocks/sidebar-05" -> use sidebar_05
-        "/blocks/sidebar-06" -> use sidebar_06
-        "/blocks/sidebar-07" -> use sidebar_07
-        "/blocks/sidebar-08" -> use sidebar_08
-        "/blocks/sidebar-09" -> use sidebar_09
-        "/blocks/sidebar-10" -> use sidebar_10
-        "/blocks/sidebar-11" -> use sidebar_11
-        "/blocks/sidebar-12" -> use sidebar_12
-        "/blocks/sidebar-13" -> use sidebar_13
-        "/blocks/sidebar-14" -> use sidebar_14
-        "/blocks/sidebar-15" -> use sidebar_15
-        "/blocks/sidebar-16" -> use sidebar_16
-        "/blocks/sidebar-demo" -> use sidebar_demo
     }
 
     model {
@@ -112,16 +87,6 @@ widget App {
                             col {
                                 text (text: "Theater") {}
                                 text (style: "text-[11px] text-slate-400 -mt-0.5") { "JSONL Playback" }
-                            }
-                        }
-                    }
-                    // Blocks
-                    link (to: "/blocks") {
-                        row (style: "items-center mx-2 px-3 h-10 rounded-md text-sm font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-600 transition-all duration-150 group-[.router-link-exact-active]:bg-violet-50 group-[.router-link-exact-active]:text-violet-600") {
-                            icon (name: "layout-template", style: "h-5 w-5 mr-3 shrink-0") {}
-                            col {
-                                text (text: "Blocks") {}
-                                text (style: "text-[11px] text-slate-400 -mt-0.5") { "shadcn-vue replicas" }
                             }
                         }
                     }
