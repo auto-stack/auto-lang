@@ -100,13 +100,15 @@ fn unary_node(op str, operand ASTNode) ASTNode {
     ASTNode(NodeKind.UnaryExpr, s, "", empty_list(), l, empty_list(), op, empty_list(), "", empty_list(), empty_list())
 }
 
-fn call_node(callee ASTNode, args_str str) ASTNode {
+fn call_node(callee ASTNode, args_str str, args List) ASTNode {
     var s = "(" + callee.value
     if args_str != "" {
         s = s + " " + args_str
     }
     s = s + ")"
-    ASTNode(NodeKind.CallExpr, s, callee.value, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var l = empty_list()
+    l.push(callee)
+    ASTNode(NodeKind.CallExpr, s, callee.value, empty_list(), l, empty_list(), "", args, "", empty_list(), empty_list())
 }
 
 fn dot_node(obj ASTNode, field str) ASTNode {

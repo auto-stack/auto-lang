@@ -162,7 +162,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
             }
         }
 
-        OpCode::JMP_L | OpCode::CALL_SPEC => 4,
+        OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
 
         OpCode::SPAWN => 5,
 
@@ -327,7 +327,7 @@ fn emit_operands(
             Ok(())
         }
 
-        OpCode::JMP_L => {
+        OpCode::JMP_L | OpCode::JMP_FAR => {
             let target = operand_label_or_u32(&instr.operands, 0, label_offsets, ResolveType::Rel32)?;
             // Relative offset = target - (current_offset + opcode_size + operand_size)
             let rel = (target as isize) - (offset as isize + 1 + 4);

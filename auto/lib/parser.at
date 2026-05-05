@@ -609,6 +609,7 @@ fn parse_expr_prec(p Parser, min_prec int) ASTNode {
         // Postfix: function call
         if kind == TokenKind.LParen {
             var args_str = ""
+            var args = empty_list()
             p.pos = p.pos + 1  // skip '('
             parser_skip_nl_semi(p)
             for parser_kind(p) != TokenKind.RParen && parser_kind(p) != TokenKind.EOF {
@@ -617,6 +618,7 @@ fn parse_expr_prec(p Parser, min_prec int) ASTNode {
                     args_str = args_str + " "
                 }
                 args_str = args_str + arg.value
+                args.push(arg)
                 parser_skip_nl_semi(p)
                 if parser_kind(p) == TokenKind.Comma {
                     p.pos = p.pos + 1
@@ -626,7 +628,7 @@ fn parse_expr_prec(p Parser, min_prec int) ASTNode {
             if parser_kind(p) == TokenKind.RParen {
                 p.pos = p.pos + 1  // skip ')'
             }
-            lhs = call_node(lhs, args_str)
+            lhs = call_node(lhs, args_str, args)
             continue
         }
 

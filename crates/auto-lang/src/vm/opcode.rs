@@ -155,6 +155,7 @@ pub enum OpCode {
     JMP_IF_Z = 0x61,
     JMP_IF_NZ = 0x62,
     JMP_L = 0x63,
+    JMP_FAR = 0x64,
 
     // === Function Call ===
     CALL = 0x70,
@@ -289,7 +290,7 @@ impl OpCode {
         // Control flow
         0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58,
         // Jump
-        0x60, 0x61, 0x62, 0x63,
+        0x60, 0x61, 0x62, 0x63, 0x64,
         // Objects/Strings
         0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79,
         0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
@@ -443,6 +444,7 @@ impl OpCode {
             Self::JMP_IF_Z => "jmp.z",
             Self::JMP_IF_NZ => "jmp.nz",
             Self::JMP_L => "jmp.l",
+            Self::JMP_FAR => "jmp.far",
             Self::CALL => "call",
             Self::RET => "ret",
             Self::CALL_NAT => "call.nat",
@@ -615,6 +617,7 @@ impl OpCode {
             "jmp.z" => Some(Self::JMP_IF_Z),
             "jmp.nz" => Some(Self::JMP_IF_NZ),
             "jmp.l" => Some(Self::JMP_L),
+            "jmp.far" => Some(Self::JMP_FAR),
             "call" => Some(Self::CALL),
             "ret" => Some(Self::RET),
             "call.nat" => Some(Self::CALL_NAT),

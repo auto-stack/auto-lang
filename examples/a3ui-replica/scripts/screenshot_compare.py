@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).parent.parent  # examples/a3ui-replica
 OUTPUT_DIR = BASE_DIR / "analysis" / "screenshots"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-LOCAL_BASE = "http://localhost:3458/#"
+LOCAL_BASE = "http://localhost:3458"
 REMOTE_BASE = "https://a2ui-composer.ag-ui.com"
 
 PAGES = [
@@ -37,12 +37,22 @@ VIEWPORT = {"width": 1440, "height": 900}
 
 def capture_page(browser, url: str, out_path: Path):
     page = browser.new_page(viewport=VIEWPORT)
-    page.goto(url, wait_until="networkidle", timeout=30000)
-    # Give extra time for animations / lazy content
-    page.wait_for_timeout(1500)
-    page.screenshot(path=str(out_path), full_page=True)
-    page.close()
-    print(f"  [OK] {out_path.name}")
+    try:
+        page.goto(url, wait_until="networkidle", timeout=60000)
+        # Give extra time for animations / lazy content
+        page.wait_for_timeout(1500)
+        page.screenshot(path=str(out_path), full_page=True)
+        print(f"  [OK] {out_path.name}")
+    except Exception as e:
+        print(f"  [ERR] {out_path.name}: {e}")
+        # Try to capture anyway
+        try:
+            page.screenshot(path=str(out_path), full_page=True)
+            print(f"  [OK] {out_path.name} (partial)")
+        except:
+            pass
+    finally:
+        page.close()
 
 def create_side_by_side(left_path: Path, right_path: Path, out_path: Path):
     from PIL import Image

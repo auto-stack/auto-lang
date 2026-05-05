@@ -21,13 +21,13 @@ const variantClass = computed(() => {
   const v = props.component.variant || 'primary'
   switch (v) {
     case 'primary':
-      return 'bg-accent-purple text-white hover:bg-[#6b4fd8]'
+      return 'bg-violet-600 text-white hover:bg-violet-700'
     case 'secondary':
-      return 'bg-bg-card text-text-primary border border-border-default hover:bg-bg-input'
+      return 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
     case 'ghost':
-      return 'bg-transparent text-text-secondary hover:bg-black/[0.04] hover:text-text-primary'
+      return 'bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700'
     default:
-      return 'bg-accent-purple text-white'
+      return 'bg-violet-600 text-white hover:bg-violet-700'
   }
 })
 </script>

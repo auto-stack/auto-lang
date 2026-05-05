@@ -33,6 +33,48 @@ widget GalleryPage {
                 dataModel: {}
             },
             {
+                id: "chat-message",
+                name: "Chat Message",
+                description: "Chat interface with avatars and messages",
+                components: [
+                    { id: "root", component: "Card", child: "content" },
+                    { id: "content", component: "Column", children: ["chat1", "chat2"], gap: 12 },
+                    { id: "chat1", component: "Row", children: ["avatar1", "msg1"], gap: 8, align: "start" },
+                    { id: "avatar1", component: "Image", src: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah", width: 40, height: 40, borderRadius: "full" },
+                    { id: "msg1", component: "Column", children: ["name1", "text1"], gap: 2 },
+                    { id: "name1", component: "Text", value: "Sarah Chen", variant: "body" },
+                    { id: "text1", component: "Text", value: "Hey! Are we still on for lunch tomorrow?", variant: "caption", color: "text-secondary" },
+                    { id: "chat2", component: "Row", children: ["avatar2", "msg2"], gap: 8, align: "start" },
+                    { id: "avatar2", component: "Image", src: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex", width: 40, height: 40, borderRadius: "full" },
+                    { id: "msg2", component: "Column", children: ["name2", "text2"], gap: 2 },
+                    { id: "name2", component: "Text", value: "Alex Rivera", variant: "body" },
+                    { id: "text2", component: "Text", value: "Yes! Looking forward to it.", variant: "caption", color: "text-secondary" }
+                ],
+                dataModel: {}
+            },
+            {
+                id: "recipe-card",
+                name: "Recipe Card",
+                description: "Recipe display with image, rating, and metadata",
+                components: [
+                    { id: "root", component: "Card", child: "content" },
+                    { id: "content", component: "Column", children: ["img", "title", "meta", "rating"], gap: 8 },
+                    { id: "img", component: "Image", src: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=250&fit=crop", width: 400, height: 160, borderRadius: "lg" },
+                    { id: "title", component: "Text", value: "Mediterranean Quinoa Bowl", variant: "h4" },
+                    { id: "meta", component: "Row", children: ["time", "diff"], gap: 12 },
+                    { id: "time", component: "Text", value: "25 min", variant: "caption", color: "text-secondary" },
+                    { id: "diff", component: "Text", value: "Easy", variant: "caption", color: "text-secondary" },
+                    { id: "rating", component: "Row", children: ["star1", "star2", "star3", "star4", "star5", "score"], gap: 2, align: "center" },
+                    { id: "star1", component: "Icon", name: "star", size: 14 },
+                    { id: "star2", component: "Icon", name: "star", size: 14 },
+                    { id: "star3", component: "Icon", name: "star", size: 14 },
+                    { id: "star4", component: "Icon", name: "star", size: 14 },
+                    { id: "star5", component: "Icon", name: "star_half", size: 14 },
+                    { id: "score", component: "Text", value: "4.5 (128)", variant: "caption", color: "text-secondary" }
+                ],
+                dataModel: {}
+            },
+            {
                 id: "email-compose",
                 name: "Email Compose",
                 description: "Email composition form",
@@ -56,88 +98,45 @@ widget GalleryPage {
                 dataModel: {}
             },
             {
-                id: "calendar-day",
-                name: "Calendar Day",
-                description: "Day view calendar",
+                id: "coffee-order",
+                name: "Coffee Order",
+                description: "Coffee shop order card with items and pricing",
                 components: [
                     { id: "root", component: "Card", child: "content" },
-                    { id: "content", component: "Column", children: ["day-header", "events"], gap: 12 },
-                    { id: "day-header", component: "Column", children: ["day-name", "day-num"], align: "center" },
-                    { id: "day-name", component: "Text", value: "Sunday", variant: "caption", color: "text-secondary" },
-                    { id: "day-num", component: "Text", value: "28", variant: "h2" },
-                    { id: "events", component: "List", children: ["evt1", "evt2", "evt3"], gap: 8 },
-                    { id: "evt1", component: "Row", children: ["evt1-title", "evt1-time"], justify: "spaceBetween", align: "center" },
-                    { id: "evt1-title", component: "Text", value: "Lunch", variant: "body" },
-                    { id: "evt1-time", component: "Text", value: "12:00 - 12:45 PM", variant: "caption", color: "text-secondary" },
-                    { id: "evt2", component: "Row", children: ["evt2-title", "evt2-time"], justify: "spaceBetween", align: "center" },
-                    { id: "evt2-title", component: "Text", value: "Q1 roadmap review", variant: "body" },
-                    { id: "evt2-time", component: "Text", value: "1:00 - 2:00 PM", variant: "caption", color: "text-secondary" },
-                    { id: "evt3", component: "Row", children: ["evt3-title", "evt3-time"], justify: "spaceBetween", align: "center" },
-                    { id: "evt3-title", component: "Text", value: "Team standup", variant: "body" },
-                    { id: "evt3-time", component: "Text", value: "3:30 - 4:00 PM", variant: "caption", color: "text-secondary" }
+                    { id: "content", component: "Column", children: ["header", "items", "total-row"], gap: 12 },
+                    { id: "header", component: "Row", children: ["shop-name", "status"], justify: "spaceBetween", align: "center" },
+                    { id: "shop-name", component: "Text", value: "Sunrise Coffee", variant: "h4" },
+                    { id: "status", component: "Badge", label: "Preparing", variant: "info" },
+                    { id: "items", component: "Column", children: ["item1", "item2"], gap: 8 },
+                    { id: "item1", component: "Row", children: ["item1-name", "item1-price"], justify: "spaceBetween" },
+                    { id: "item1-name", component: "Text", value: "Oat Milk Latte", variant: "body" },
+                    { id: "item1-price", component: "Text", value: "$6.45", variant: "body" },
+                    { id: "item2", component: "Row", children: ["item2-name", "item2-price"], justify: "spaceBetween" },
+                    { id: "item2-name", component: "Text", value: "Chocolate Croissant", variant: "body" },
+                    { id: "item2-price", component: "Text", value: "$4.25", variant: "body" },
+                    { id: "total-row", component: "Row", children: ["total-label", "total-price"], justify: "spaceBetween" },
+                    { id: "total-label", component: "Text", value: "Total", variant: "body", color: "text-secondary" },
+                    { id: "total-price", component: "Text", value: "$10.70", variant: "h4" }
                 ],
                 dataModel: {}
             },
             {
-                id: "weather",
-                name: "Weather",
-                description: "Current weather display",
+                id: "contact-card",
+                name: "Contact Card",
+                description: "Contact information card with avatar",
                 components: [
                     { id: "root", component: "Card", child: "content" },
-                    { id: "content", component: "Column", children: ["header", "temps", "location", "desc"], align: "center", gap: 8 },
-                    { id: "header", component: "Text", value: "Current", variant: "caption", color: "text-secondary" },
-                    { id: "temps", component: "Row", children: ["high", "low"], gap: 16, align: "center", justify: "center" },
-                    { id: "high", component: "Text", value: "72°", variant: "h2" },
-                    { id: "low", component: "Text", value: "58°", variant: "h4", color: "text-secondary" },
-                    { id: "location", component: "Text", value: "Austin, TX", variant: "body" },
-                    { id: "desc", component: "Text", value: "Clear skies with light breeze", variant: "caption", color: "text-secondary" }
-                ],
-                dataModel: {}
-            },
-            {
-                id: "user-profile",
-                name: "User Profile",
-                description: "Social profile card",
-                components: [
-                    { id: "root", component: "Card", child: "content" },
-                    { id: "content", component: "Column", children: ["avatar", "name", "handle", "bio", "stats", "follow-btn"], align: "center", gap: 8 },
-                    { id: "avatar", component: "Image", src: "https://i.pravatar.cc/150?img=5", width: 64, height: 64, borderRadius: "full" },
-                    { id: "name", component: "Text", value: "Sarah Chen", variant: "h4" },
-                    { id: "handle", component: "Text", value: "@sarahchen", variant: "caption", color: "text-secondary" },
-                    { id: "bio", component: "Text", value: "Product Designer at Tech Co.", variant: "body", align: "center" },
-                    { id: "stats", component: "Row", children: ["followers", "following", "posts"], gap: 24, justify: "center" },
-                    { id: "followers", component: "Column", children: ["f-num", "f-label"], align: "center", gap: 2 },
-                    { id: "f-num", component: "Text", value: "12,400", variant: "h4" },
-                    { id: "f-label", component: "Text", value: "Followers", variant: "caption", color: "text-secondary" },
-                    { id: "following", component: "Column", children: ["fg-num", "fg-label"], align: "center", gap: 2 },
-                    { id: "fg-num", component: "Text", value: "892", variant: "h4" },
-                    { id: "fg-label", component: "Text", value: "Following", variant: "caption", color: "text-secondary" },
-                    { id: "posts", component: "Column", children: ["p-num", "p-label"], align: "center", gap: 2 },
-                    { id: "p-num", component: "Text", value: "347", variant: "h4" },
-                    { id: "p-label", component: "Text", value: "Posts", variant: "caption", color: "text-secondary" },
-                    { id: "follow-btn", component: "Button", label: "Follow", variant: "primary" }
-                ],
-                dataModel: {}
-            },
-            {
-                id: "login-form",
-                name: "Login Form",
-                description: "Authentication form",
-                components: [
-                    { id: "root", component: "Card", child: "content" },
-                    { id: "content", component: "Column", children: ["title", "subtitle", "email-field", "pw-field", "signin-btn", "signup-row"], align: "center", gap: 12 },
-                    { id: "title", component: "Text", value: "Welcome back", variant: "h4" },
-                    { id: "subtitle", component: "Text", value: "Sign in to your account", variant: "caption", color: "text-secondary" },
-                    { id: "email-field", component: "Column", children: ["email-label", "email-input"], gap: 4 },
-                    { id: "email-label", component: "Text", value: "Email", variant: "caption", color: "text-secondary" },
-                    { id: "email-input", component: "TextField", placeholder: "Email", value: "" },
-                    { id: "pw-field", component: "Column", children: ["pw-label", "pw-input"], gap: 4 },
-                    { id: "pw-label", component: "Text", value: "Password", variant: "caption", color: "text-secondary" },
-                    { id: "pw-input", component: "TextField", placeholder: "Password", type: "password", value: "" },
-                    { id: "signin-btn", component: "Button", label: "Sign in", variant: "primary" },
-                    { id: "signup-row", component: "Row", children: ["no-account", "signup-link"], gap: 4, justify: "center" },
-                    { id: "no-account", component: "Text", value: "Don't have an account?", variant: "caption", color: "text-secondary" },
-                    { id: "signup-link", component: "Text", value: "Sign up", variant: "caption", color: "accent-purple" }
+                    { id: "content", component: "Column", children: ["avatar", "name", "role", "info"], align: "center", gap: 8 },
+                    { id: "avatar", component: "Image", src: "https://api.dicebear.com/7.x/avataaars/svg?seed=David", width: 64, height: 64, borderRadius: "full" },
+                    { id: "name", component: "Text", value: "David Park", variant: "h4" },
+                    { id: "role", component: "Text", value: "Engineering Manager", variant: "caption", color: "text-secondary" },
+                    { id: "info", component: "Column", children: ["email", "phone"], gap: 4, align: "center" },
+                    { id: "email", component: "Row", children: ["email-icon", "email-text"], gap: 4, align: "center" },
+                    { id: "email-icon", component: "Icon", name: "mail", size: 14 },
+                    { id: "email-text", component: "Text", value: "david@acme.com", variant: "caption", color: "text-secondary" },
+                    { id: "phone", component: "Row", children: ["phone-icon", "phone-text"], gap: 4, align: "center" },
+                    { id: "phone-icon", component: "Icon", name: "phone", size: 14 },
+                    { id: "phone-text", component: "Text", value: "+1 (555) 234-5678", variant: "caption", color: "text-secondary" }
                 ],
                 dataModel: {}
             }
@@ -153,10 +152,10 @@ widget GalleryPage {
                 text (text: "Browse pre-built A2UI widgets. Click any card to open it in the editor.") {}
             }
 
-            div (style: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4") {
+            div (style: "columns-1 md:columns-2 xl:columns-3 gap-4 space-y-4") {
                 for widget in .galleryWidgets {
                     div (
-                        style: "bg-white rounded-xl border border-slate-200 p-4 cursor-pointer hover:shadow-md transition-shadow",
+                        style: "break-inside-avoid bg-white rounded-xl border border-slate-200 p-4 cursor-pointer hover:shadow-md transition-shadow",
                         onclick: .OpenWidget(widget)
                     ) {
                         div (style: "font-medium text-slate-800 mb-1") {
@@ -165,7 +164,7 @@ widget GalleryPage {
                         div (style: "text-sm text-slate-500 mb-3") {
                             text (text: widget.description) {}
                         }
-                        div (style: "h-48 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden") {
+                        div (style: "bg-slate-50 rounded-lg border border-slate-100 overflow-hidden") {
                             A2UIRenderer (components: widget.components, dataModel: widget.dataModel) {}
                         }
                     }

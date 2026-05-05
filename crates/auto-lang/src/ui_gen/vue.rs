@@ -1902,7 +1902,7 @@ impl VueGenerator {
                     } else {
                         text.clone()
                     };
-                    Ok(format!("{}<router-link to=\"{}\">\n{}{}</router-link>\n", ind, to, children_html, ind))
+                    Ok(format!("{}<router-link to=\"{}\" class=\"group block\" active-class=\"\" exact-active-class=\"router-link-exact-active\">\n{}{}</router-link>\n", ind, to, children_html, ind))
                 }
             }
         }
@@ -3827,6 +3827,13 @@ impl VueGenerator {
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
+                    }
+                }
+                // style/class
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
                     }
                 }
             }
@@ -6679,7 +6686,7 @@ export function cn(...inputs: ClassValue[]) {
         // No static imports needed - using lazy loading
 
         format!(
-            r#"import {{ createRouter, createWebHashHistory }} from 'vue-router'
+            r#"import {{ createRouter, createWebHistory }} from 'vue-router'
 import type {{ RouteRecordRaw }} from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
@@ -6687,7 +6694,7 @@ const routes: RouteRecordRaw[] = [
 ]
 
 const router = createRouter({{
-  history: createWebHashHistory(),
+  history: createWebHistory(),
   routes,
 }})
 
@@ -7312,7 +7319,7 @@ mod tests {
         let output = VueGenerator::generate_router_file(&routes);
 
         // Check imports
-        assert!(output.contains("import { createRouter, createWebHashHistory }"));
+        assert!(output.contains("import { createRouter, createWebHistory }"));
 
         // Check lazy loading imports (Plan 106)
         assert!(output.contains("component: () => import('@/pages/index.vue')"));
@@ -7334,7 +7341,7 @@ mod tests {
         let output = VueGenerator::generate_router_file(&routes);
 
         // Should still generate valid router structure
-        assert!(output.contains("import { createRouter, createWebHashHistory }"));
+        assert!(output.contains("import { createRouter, createWebHistory }"));
         assert!(output.contains("const routes: RouteRecordRaw[] = ["));
         assert!(output.contains("export default router"));
     }

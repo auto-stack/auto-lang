@@ -1,14 +1,22 @@
 // pages/icons.at - Icons Page
-// Grid of available icons
+// Grid of available Material Icons
 
 widget IconsPage {
     view {
         col (style: "p-8 gap-6") {
-            h1 (style: "text-2xl font-semibold text-slate-900") {
-                text (text: "Icons") {}
+            row (style: "items-center justify-between") {
+                h1 (style: "text-2xl font-semibold text-slate-900") {
+                    text (text: "Icons") {}
+                }
+                link (href: "https://fonts.google.com/icons") {
+                    row (style: "items-center gap-1 text-sm text-violet-600 hover:underline") {
+                        text (text: "Browse all icons") {}
+                        icon (name: "external-link", style: "h-4 w-4") {}
+                    }
+                }
             }
             text (style: "text-slate-500") {
-                text (text: "Available Lucide icons for A2UI components. Click to copy name.") {}
+                text (text: "A2UI uses Material Icons. Showing 100 most commonly used icons.") {}
             }
             IconsGrid {}
         }

@@ -1,20 +1,31 @@
 <template>
   <div class="flex flex-col h-screen">
-    <!-- Control bar -->
+    <!-- Top control bar -->
     <div class="h-14 flex items-center px-4 border-b border-slate-200 gap-4 bg-white shrink-0">
       <h1 class="text-lg font-semibold text-slate-900">Theater</h1>
-      <div class="ml-auto flex gap-2">
+      <div class="ml-auto flex items-center gap-3">
+        <!-- Tabs -->
+        <div class="flex rounded-lg border border-slate-200 overflow-hidden">
+          <button
+            v-for="tab in ['Events', 'Data', 'Config']"
+            :key="tab"
+            class="px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === tab ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'"
+            @click="activeTab = tab"
+          >
+            {{ tab }}
+          </button>
+        </div>
+        <!-- Playback controls -->
         <button
-          class="px-3 py-1.5 rounded-md border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-900 text-white hover:bg-slate-700 transition-colors"
           @click="togglePlay"
         >
-          {{ isPlaying ? 'Pause' : 'Play' }}
+          <component :is="isPlaying ? Pause : Play" class="w-4 h-4" />
         </button>
-        <button
-          class="px-3 py-1.5 rounded-md border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-          @click="reset"
-        >
-          Reset
+        <!-- Speed -->
+        <button class="px-2 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
+          1x
         </button>
       </div>
     </div>
@@ -23,12 +34,12 @@
     <div class="flex flex-1 overflow-hidden">
       <!-- Left: JSONL stream -->
       <div class="w-1/2 border-r border-slate-200 flex flex-col bg-slate-900">
-        <div class="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700">
-          JSONL Stream
+        <div class="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700 flex items-center gap-2">
+          <span class="text-amber-400">⚡</span> JSONL Stream
         </div>
         <div class="flex-1 p-4 font-mono text-sm text-slate-300 overflow-auto">
-          <div v-if="streamLines.length === 0" class="text-slate-500">
-            Click Play to start streaming...
+          <div v-if="streamLines.length === 0" class="text-slate-500 italic">
+            Press play to stream JSONL chunks...
           </div>
           <div v-for="(line, i) in streamLines" :key="i" class="mb-1">
             {{ line }}
@@ -36,20 +47,37 @@
         </div>
       </div>
 
-      <!-- Right: Preview -->
+      <!-- Right: Preview with browser chrome -->
       <div class="w-1/2 flex flex-col bg-slate-50">
-        <div class="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 bg-white">
-          Live Preview
+        <!-- Browser chrome -->
+        <div class="px-3 py-2 bg-white border-b border-slate-200 flex items-center gap-3">
+          <!-- Traffic lights -->
+          <div class="flex gap-1.5">
+            <div class="w-3 h-3 rounded-full bg-red-400" />
+            <div class="w-3 h-3 rounded-full bg-amber-400" />
+            <div class="w-3 h-3 rounded-full bg-green-400" />
+          </div>
+          <!-- Address bar -->
+          <div class="flex-1 bg-slate-100 rounded-md px-3 py-1 text-xs text-slate-500 flex items-center gap-2">
+            <span class="text-slate-400">&lt;/&gt;</span>
+            React Renderer
+          </div>
+          <!-- URL -->
+          <div class="text-xs text-slate-400">restaurant_finder</div>
         </div>
         <div class="flex-1 p-4 overflow-auto">
-          <div class="h-full bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div class="h-full bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
             <A2UIRenderer
               v-if="accumulatedComponents.length > 0"
               :components="accumulatedComponents"
               :data-model="{}"
             />
-            <div v-else class="flex items-center justify-center h-full text-slate-400 text-sm">
-              Waiting for stream...
+            <div v-else class="flex flex-col items-center justify-center h-full text-slate-400 text-sm gap-3">
+              <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                <Code class="w-6 h-6 text-slate-400" />
+              </div>
+              <div>&lt;A2UIRenderer /&gt;</div>
+              <div class="text-xs text-slate-300">Press play to start streaming</div>
             </div>
           </div>
         </div>
@@ -59,10 +87,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
+import { Play, Pause, Code } from 'lucide-vue-next'
 import A2UIRenderer from './A2UIRenderer.vue'
 
 const isPlaying = ref(false)
+const activeTab = ref('Events')
 const streamLines = ref<string[]>([])
 const accumulatedComponents = ref<any[]>([])
 
@@ -106,12 +136,5 @@ function pause() {
     clearInterval(intervalId)
     intervalId = null
   }
-}
-
-function reset() {
-  pause()
-  currentIndex = 0
-  streamLines.value = []
-  accumulatedComponents.value = []
 }
 </script>

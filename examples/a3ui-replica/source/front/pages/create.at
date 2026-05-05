@@ -25,10 +25,10 @@ widget CreatePage {
             }
 
             p (style: "text-xs text-slate-400 mt-3 text-center") {
-                text (text: "Powered by CopilotKit") {}
+                text (text: "Powered by ✨ CopilotKit") {}
             }
-            button (
-                style: "text-sm text-violet-600 mt-2 hover:underline",
+            div (
+                style: "text-sm text-violet-600 mt-2 cursor-pointer hover:underline transition-colors",
                 onclick: .CreateBlank
             ) {
                 text (text: "or Start Blank") {}

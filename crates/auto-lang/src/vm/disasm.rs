@@ -205,6 +205,11 @@ impl<'a> Disassembler<'a> {
                 let target = (ip + 2) as isize + v as isize;
                 (format!("-> 0x{:04x}", target), 2)
             }
+            OpCode::JMP_FAR => {
+                let v = self.flash.read_i32(ip);
+                let target = (ip + 4) as isize + v as isize;
+                (format!("-> 0x{:04x}", target), 4)
+            }
             OpCode::JMP_L => {
                 let v = i32::from_le_bytes([
                     self.flash.read_u8(ip),

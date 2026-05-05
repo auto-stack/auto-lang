@@ -151,7 +151,7 @@ fn collect_targets(flash: &VirtualFlash, start: usize, end: usize, targets: &mut
                 let rel = i16::from_le_bytes([flash.read_u8(ip), flash.read_u8(ip + 1)]);
                 targets.insert((ip + 2).wrapping_add(rel as usize));
             }
-            OpCode::JMP_L => {
+            OpCode::JMP_L | OpCode::JMP_FAR => {
                 let rel = i32::from_le_bytes([
                     flash.read_u8(ip),
                     flash.read_u8(ip + 1),
@@ -239,7 +239,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         | OpCode::JMP_IF_NZ | OpCode::IS_VARIANT
             => 2,
 
-        OpCode::JMP_L | OpCode::CALL_SPEC => 4,
+        OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
 
         OpCode::SPAWN => 5,
 
@@ -405,7 +405,7 @@ fn decode_operands(
             let target = (ip + 2).wrapping_add(rel as usize);
             (vec![label(target)], 2)
         }
-        OpCode::JMP_L => {
+        OpCode::JMP_L | OpCode::JMP_FAR => {
             let rel = i32::from_le_bytes([
                 flash.read_u8(ip),
                 flash.read_u8(ip + 1),

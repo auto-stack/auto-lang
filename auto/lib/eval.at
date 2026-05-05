@@ -350,9 +350,16 @@ fn eval_unary(env EvalEnv, node ASTNode) int {
 fn eval_call(env EvalEnv, node ASTNode) int {
     var callee_name = node.name
 
-    // Built-in: print
+    // Built-in: print — evaluate arg and append to output
     if callee_name == "print" {
-        return eval_builtin_print(env, node)
+        if node.params.len() == 0 {
+            env.output = env.output + "\n"
+            return 0
+        }
+        // Evaluate the arg expression
+        var result = eval_expr(env, node.params.get(0))
+        env.output = env.output + int_to_str(result) + "\n"
+        return result
     }
 
     // Built-in: empty_list / List.new
@@ -373,108 +380,25 @@ fn eval_call(env EvalEnv, node ASTNode) int {
     return 0
 }
 
-// Evaluate print builtin — parses arg from node.value S-expression
-fn eval_builtin_print(env EvalEnv, node ASTNode) int {
-    // value is "(print arg)" — extract arg between "(print " and ")"
-    var val = node.value
-    // "(print " is 7 chars, arg starts at index 7, ends before ")"
-    var arg = val.substr(7, val.len() - 1)
-
-    // Determine arg type by first character
-    var first_ch = 0
-    if arg.len() > 0 {
-        first_ch = arg.char_at(0)
-    }
-
-    // Int literal (starts with digit or minus)
-    if first_ch == 45 || (first_ch >= 48 && first_ch <= 57) {
-        env.output = env.output + arg + "\n"
-        return str_to_int(arg)
-    }
-
-    // String literal: "text"
-    if first_ch == 34 {
-        var content = arg.substr(1, arg.len() - 1)
-        env.output = env.output + content + "\n"
-        return 0
-    }
-
-    // bool literal
-    if arg == "true" {
-        env.output = env.output + "true\n"
-        return 1
-    }
-    if arg == "false" {
-        env.output = env.output + "false\n"
-        return 0
-    }
-
-    // Identifier — look up value
-    if env.globals.contains(arg) {
-        var v = env.globals.get_int(arg)
-        env.output = env.output + int_to_str(v) + "\n"
-        return v
-    }
-
-    // Compound expression — evaluate and print result
-    env.output = env.output + arg + "\n"
-    return 0
-}
-
 // Call a user-defined function
 fn eval_fn_call(env EvalEnv, call_node ASTNode, fn_name str) int {
     var fn_def = env.fn_defs.get(fn_name)
 
-    // Parse arguments from call value: "(fnname arg1 arg2)"
-    // Parse params from fn_def
     var params = fn_def.params
     var params_count = params.len()
-
-    // Parse call args from value string
-    var call_val = call_node.value
-    var cv_len = call_val.len()
 
     // Push new scope
     eval_push_scope(env)
 
-    // Simple arg binding: parse space-separated args after function name
-    // Find first space after opening paren + function name
-    var arg_start = 1
-    for arg_start < cv_len {
-        if call_val.char_at(arg_start) == 32 {
-            break
+    // Evaluate each arg and bind to param
+    var i = 0
+    for i < params_count {
+        if i < call_node.params.len() {
+            var arg_val = eval_expr(env, call_node.params.get(i))
+            var param_node = params.get(i)
+            eval_bind(env, param_node.name, arg_val)
         }
-        arg_start = arg_start + 1
-    }
-    arg_start = arg_start + 1
-
-    // Parse each arg and bind to param
-    var pi = 0
-    var pos = arg_start
-    for pi < params_count && pos < cv_len - 1 {
-        // Find end of this arg (space or end of string)
-        var arg_end = pos
-        var depth = 0
-        for arg_end < cv_len - 1 {
-            var ch = call_val.char_at(arg_end)
-            if ch == 40 {
-                depth = depth + 1
-            } else if ch == 41 {
-                if depth == 0 { break }
-                depth = depth - 1
-            } else if ch == 32 && depth == 0 {
-                break
-            }
-            arg_end = arg_end + 1
-        }
-        var arg_text = call_val.substr(pos, arg_end)
-
-        // Bind param to arg value (as int for now)
-        var param_node = params.get(pi)
-        eval_bind(env, param_node.name, str_to_int(arg_text))
-
-        pos = arg_end + 1
-        pi = pi + 1
+        i = i + 1
     }
 
     // Execute function body

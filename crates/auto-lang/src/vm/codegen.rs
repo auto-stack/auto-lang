@@ -2212,8 +2212,15 @@ impl Codegen {
 
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
-                        let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start as i16 - current_pos - 2);
+                        let current_pos = self.code.len();
+                        if current_pos > 32765 {
+                            // Use JMP_FAR (i32 offset) for large code
+                            self.code.pop(); // remove JMP opcode
+                            self.emit(OpCode::JMP_FAR);
+                            self.emit_i32(loop_start as i32 - current_pos as i32 - 4);
+                        } else {
+                            self.emit_i16(loop_start as i16 - current_pos as i16 - 2);
+                        }
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -3747,19 +3754,7 @@ impl Codegen {
                                     // Plan 118 Phase 7: Set last_expr_type based on field type
                                     // This is crucial for nested field access (obj.inner.x)
                                     if let Some(field_type) = class_type.field_type(&field_str) {
-                                        self.last_expr_type = match field_type {
-                                            Type::User(_) | Type::GenericInstance(_) => ObjectType::NestedObject,
-                                            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
-                                            Type::Char => ObjectType::Char,
-                                            Type::Int | Type::I64 => ObjectType::Int,
-                                            Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
-                                            Type::Byte => ObjectType::Byte,
-                                            Type::Float => ObjectType::Float,
-                                            Type::Double => ObjectType::Double,
-                                            Type::Bool => ObjectType::Bool,
-                                            Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
-                                            _ => ObjectType::Int,
-                                        };
+                                        self.last_expr_type = self.type_to_object_type(&field_type);
                                         vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
                                             field, field_type, self.last_expr_type);
                                     }
@@ -3862,19 +3857,7 @@ impl Codegen {
 
                                 // Set last_expr_type based on field type
                                 if let Some(field_type) = class_type.field_type(&field_str) {
-                                    self.last_expr_type = match field_type {
-                                        Type::User(_) | Type::GenericInstance(_) => ObjectType::NestedObject,
-                                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
-                                        Type::Char => ObjectType::Char,
-                                        Type::Int | Type::I64 => ObjectType::Int,
-                                        Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
-                                        Type::Byte => ObjectType::Byte,
-                                        Type::Float => ObjectType::Float,
-                                        Type::Double => ObjectType::Double,
-                                        Type::Bool => ObjectType::Bool,
-                                        Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
-                                        _ => ObjectType::Int,
-                                    };
+                                    self.last_expr_type = self.type_to_object_type(&field_type);
                                 }
                             } else {
                                 eprintln!("Warning: Field '{}' not found in type '{}' (nested access)",
@@ -6649,18 +6632,7 @@ impl Codegen {
             Expr::Ident(name) => {
                 let name_str = name.to_string();
                 if let Some(var_type) = self.var_types.get(&name_str) {
-                    match var_type {
-                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
-                        Type::Char => ObjectType::Char,
-                        Type::Int | Type::I64 => ObjectType::Int,
-                        Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
-                        Type::Byte => ObjectType::Byte,
-                        Type::Float => ObjectType::Float,
-                        Type::Double => ObjectType::Double,
-                        Type::Bool => ObjectType::Bool,
-                        Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
-                        _ => ObjectType::Int,
-                    }
+                    self.type_to_object_type(var_type)
                 } else {
                     ObjectType::Int
                 }

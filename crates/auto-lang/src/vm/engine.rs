@@ -4516,6 +4516,18 @@ impl AutoVM {
 
                     task.ip = new_ip as usize;
                 }
+                OpCode::JMP_FAR => {
+                    let offset = self.flash.read_i32(task.ip) as isize;
+                    task.ip += 4;
+
+                    let new_ip = (task.ip as isize) + offset;
+
+                    if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
+                        return Err(VMError::InvalidOpCode(0xFF));
+                    }
+
+                    task.ip = new_ip as usize;
+                }
                 OpCode::JMP_IF_Z => {
                     let offset = self.flash.read_i16(task.ip) as isize;
                     task.ip += 2;

@@ -1,8 +1,5 @@
 <template>
-  <div class="mt-4 pt-4 border-t border-slate-200 mx-2">
-    <div class="px-3 mb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-      Widgets
-    </div>
+  <div class="mt-2 mx-2">
     <div v-if="widgets.length === 0" class="px-3 text-[13px] text-slate-400 italic">
       No widgets yet
     </div>
@@ -10,6 +7,8 @@
       v-for="widget in widgets"
       :key="widget.id"
       :to="`/widget/${widget.id}`"
+      exact-active-class="router-link-exact-active"
+      active-class=""
       :class="[
         'flex items-center mx-2 px-3 py-2 rounded-md text-[13px] transition-all duration-150',
         isActive(widget.id)
