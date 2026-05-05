@@ -823,6 +823,8 @@ pub struct VueGenerator {
 
     /// Whether router is needed (has outlet, link, or nav() calls) - Plan 105
     needs_router: bool,
+    /// Whether useRoute is needed (has route.param/query/path access) - Plan 235
+    needs_route: bool,
 
     /// API functions used in handlers (Plan 132)
     api_functions_used: HashSet<String>,
@@ -883,6 +885,7 @@ impl VueGenerator {
             codeblock_counter: 0,
             codeblock_data: Vec::new(),
             needs_router: false,
+            needs_route: false,
             api_functions_used: HashSet::new(),
             used_handlers: HashSet::new(),
             has_dark_mode: false,
@@ -938,6 +941,7 @@ impl VueGenerator {
         self.codeblock_counter = 0;
         self.codeblock_data.clear();
         self.needs_router = false;
+        self.needs_route = false;
         self.api_functions_used.clear();
         self.used_handlers.clear();
         self.has_dark_mode = false;
@@ -1066,6 +1070,19 @@ impl VueGenerator {
         if self.widget_needs_router(widget) {
             self.needs_router = true;
         }
+        // Plan 235: Check handlers for route access
+        if Self::widget_needs_route(widget) {
+            self.needs_route = true;
+        }
+        // Plan 235: Pre-analyze handlers for route access fallback
+        // (ts_adapter builtins like router.param() emit useRoute() which we need to import)
+        for payload in widget.handlers.values() {
+            if let Ok(body) = self.generate_handler_body(payload) {
+                if body.contains("useRoute") {
+                    self.needs_route = true;
+                }
+            }
+        }
 
         // Then generate script (which can now include shadcn imports and router)
         let script = self.generate_script(widget)?;
@@ -1144,6 +1161,11 @@ impl VueGenerator {
             script.push_str("import { useRouter } from 'vue-router'\n");
             script.push_str("const router = useRouter()\n\n");
         }
+        // Plan 235: Add useRoute import if needed
+        if self.needs_route {
+            script.push_str("import { useRoute } from 'vue-router'\n");
+            script.push_str("const route = useRoute()\n\n");
+        }
 
         // Generate shadcn-vue imports (if any components were used in template)
         let shadcn_imports = self.generate_shadcn_imports();
@@ -1163,6 +1185,29 @@ impl VueGenerator {
         // Import ThemeToggle custom component if used
         if self.use_theme_toggle {
             script.push_str("import ThemeToggle from '@/components/ThemeToggle.vue'\n");
+        }
+
+        // Plan 234: Import custom PascalCase components referenced in template
+        // (e.g. A2UIRenderer and other embedded Vue components)
+        let mut custom_imports = Vec::new();
+        for comp in &self.component_refs {
+            if *comp == "ThemeToggle" {
+                continue; // Already handled above
+            }
+            // Skip shadcn components (already imported via generate_shadcn_imports)
+            if self.shadcn_components_used.contains(comp) {
+                continue;
+            }
+            custom_imports.push(format!("import {} from '@/components/{}.vue'\n", comp, comp));
+        }
+        if !custom_imports.is_empty() {
+            custom_imports.sort();
+            custom_imports.dedup();
+            for imp in &custom_imports {
+                script.push_str(imp);
+            }
+        }
+        if self.use_theme_toggle || !custom_imports.is_empty() {
             script.push('\n');
         }
 
@@ -2818,6 +2863,71 @@ impl VueGenerator {
         // Check handlers for NavCall
         for payload in widget.handlers.values() {
             if Self::payload_has_nav_call(payload) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if an AURA expression accesses router (Plan 235)
+    fn expr_has_route_access(expr: &AuraExpr) -> bool {
+        match expr {
+            AuraExpr::MethodCall { object, .. } => {
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if name == "router" {
+                        return true;
+                    }
+                }
+                Self::expr_has_route_access(object)
+            }
+            AuraExpr::FieldAccess { object, .. } => {
+                if let AuraExpr::StateRef(name) = object.as_ref() {
+                    if name == "router" {
+                        return true;
+                    }
+                }
+                Self::expr_has_route_access(object)
+            }
+            AuraExpr::Binary { left, right, .. } => {
+                Self::expr_has_route_access(left) || Self::expr_has_route_access(right)
+            }
+            AuraExpr::Unary { operand, .. } => Self::expr_has_route_access(operand),
+            AuraExpr::Array(elems) => elems.iter().any(Self::expr_has_route_access),
+            AuraExpr::Object(fields) => fields.values().any(Self::expr_has_route_access),
+            AuraExpr::Lambda { body, .. } => Self::expr_has_route_access(body),
+            _ => false,
+        }
+    }
+
+    /// Check if a statement contains router access (Plan 235)
+    fn stmt_has_route_access(stmt: &AuraStmt) -> bool {
+        match stmt {
+            AuraStmt::Assign { value, .. } => Self::expr_has_route_access(value),
+            AuraStmt::Update { value, .. } => Self::expr_has_route_access(value),
+            AuraStmt::MethodCall { object, args, .. } => {
+                if object == "router" {
+                    return true;
+                }
+                args.iter().any(Self::expr_has_route_access)
+            }
+        }
+    }
+
+    /// Check if LogicPayload contains route access (Plan 235)
+    fn payload_has_route_access(payload: &LogicPayload) -> bool {
+        match payload {
+            LogicPayload::AstBlock(stmts) => stmts.iter().any(Self::stmt_has_route_access),
+            LogicPayload::AstStmts(stmts) => {
+                crate::ui_gen::ts_adapter::stmts_have_route_access(stmts)
+            }
+            LogicPayload::Bytecode(_) => false,
+        }
+    }
+
+    /// Check if widget uses route features (Plan 235)
+    fn widget_needs_route(widget: &AuraWidget) -> bool {
+        for payload in widget.handlers.values() {
+            if Self::payload_has_route_access(payload) {
                 return true;
             }
         }

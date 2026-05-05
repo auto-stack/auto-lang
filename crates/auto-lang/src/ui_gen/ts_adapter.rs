@@ -222,6 +222,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 }
             }
             // General field access: object.field
+            if try_transpile_builtin_field(obj, field.as_str(), ctx, out) {
+                return;
+            }
             transpile_expr(obj, ctx, out);
             write!(out, ".{}", field.as_str()).ok();
         }
@@ -464,6 +467,35 @@ fn try_transpile_builtin_call(
                 _ => false,
             }
         }
+        // router.param("id") → (useRoute().params as any)["id"]
+        // router.query("q") → (useRoute().query as any)["q"]
+        "router" => {
+            match method {
+                "param" => {
+                    write!(out, "(useRoute().params as any)[").ok();
+                    for (i, arg) in args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, "]").ok();
+                    true
+                }
+                "query" => {
+                    write!(out, "(useRoute().query as any)[").ok();
+                    for (i, arg) in args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, "]").ok();
+                    true
+                }
+                _ => false,
+            }
+        }
         // math.random() → Math.random(); math.floor(x) → Math.floor(x)
         "math" => {
             write!(out, "Math.{}(", method).ok();
@@ -487,6 +519,33 @@ fn try_transpile_builtin_call(
             }
             write!(out, ")").ok();
             true
+        }
+        _ => false,
+    }
+}
+
+/// Try to transpile a field access on a builtin module (e.g. `route.path`).
+/// Returns true if handled, false otherwise.
+fn try_transpile_builtin_field(
+    object: &Expr,
+    field: &str,
+    _ctx: &AuraTsContext,
+    out: &mut Vec<u8>,
+) -> bool {
+    let module = match object {
+        Expr::Ident(name) => name.as_str(),
+        _ => return false,
+    };
+
+    match module {
+        "router" => {
+            match field {
+                "path" => {
+                    write!(out, "useRoute().path").ok();
+                    true
+                }
+                _ => false,
+            }
         }
         _ => false,
     }
@@ -538,4 +597,52 @@ pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
     }
 
     check_stmts(stmts, API_FNS)
+}
+
+// ---------------------------------------------------------------------------
+// Route access detection (for useRoute import)
+// ---------------------------------------------------------------------------
+
+/// Check if Auto statements contain route access (Plan 235)
+pub fn stmts_have_route_access(stmts: &[Stmt]) -> bool {
+    fn walk_expr(expr: &Expr) -> bool {
+        match expr {
+            Expr::Call(call) => {
+                if let Expr::Dot(object, _) = call.name.as_ref() {
+                    if let Expr::Ident(name) = object.as_ref() {
+                        if name.as_str() == "route" {
+                            return true;
+                        }
+                    }
+                }
+                call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
+            }
+            Expr::Dot(object, _) => {
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "route" {
+                        return true;
+                    }
+                }
+                walk_expr(object)
+            }
+            Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
+            Expr::Unary(_, e) => walk_expr(e),
+            Expr::Array(items) => items.iter().any(walk_expr),
+            _ => false,
+        }
+    }
+
+    fn walk_stmt(stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(expr) => walk_expr(expr),
+            Stmt::Store(store) => walk_expr(&store.expr),
+            Stmt::If(if_stmt) => if_stmt
+                .branches
+                .iter()
+                .any(|b| walk_expr(&b.cond) || b.body.stmts.iter().any(walk_stmt)),
+            _ => false,
+        }
+    }
+
+    stmts.iter().any(walk_stmt)
 }
