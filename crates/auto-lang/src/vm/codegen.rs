@@ -6800,7 +6800,8 @@ impl Codegen {
             Type::Float => ObjectType::Float,
             Type::Double => ObjectType::Double,
             Type::Bool => ObjectType::Bool,
-            Type::Array(_) | Type::RuntimeArray(_) => ObjectType::Array,
+            Type::Array(_) | Type::RuntimeArray(_) | Type::List(_) => ObjectType::Array,
+            Type::Map(_, _) => ObjectType::NestedObject,
             _ => ObjectType::NestedObject,
         }
     }

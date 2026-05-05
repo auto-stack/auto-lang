@@ -3169,9 +3169,10 @@ impl AutoVM {
                     let field_name = if let Some(field_bytes) = strings.get(field_idx as usize) {
                         String::from_utf8_lossy(field_bytes).to_string()
                     } else {
+                        drop(strings);
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}",
-                            field_idx
+                            "Invalid string index: {} (pool size={}, obj_id={}, ip={})",
+                            field_idx, self.strings.read().unwrap().len(), obj_id, task.ip
                         )));
                     };
                     drop(strings); // Release lock before potentially writing below

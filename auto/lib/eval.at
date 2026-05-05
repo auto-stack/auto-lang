@@ -356,8 +356,18 @@ fn eval_call(env EvalEnv, node ASTNode) int {
             env.output = env.output + "\n"
             return 0
         }
+        // Check arg type for proper formatting
+        var arg_node = node.params.get(0)
+        if arg_node.kind == NodeKind.BoolExpr {
+            if arg_node.name == "true" {
+                env.output = env.output + "true\n"
+            } else {
+                env.output = env.output + "false\n"
+            }
+            return 0
+        }
         // Evaluate the arg expression
-        var result = eval_expr(env, node.params.get(0))
+        var result = eval_expr(env, arg_node)
         env.output = env.output + int_to_str(result) + "\n"
         return result
     }

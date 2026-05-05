@@ -837,26 +837,31 @@ impl<'a> Parser<'a> {
         // Only preserve names that look like external types (not common collection names)
         // Common collection names without parameters should return Unknown
         let common_collection_types = ["List", "Map", "Set", "Array", "Vec", "HashMap", "HashSet", "Option", "Result"];
-        if !common_collection_types.contains(&name) {
-            // Return Type::User with just the name so generators can use it
-            return shared(Type::User(TypeDecl {
-                name: Name::from(name),
-                kind: TypeDeclKind::UserType,
-                parent: None,
-                has: Vec::new(),
-                specs: Vec::new(),
-                spec_impls: Vec::new(),
-                generic_params: Vec::new(),
-                members: Vec::new(),
-                delegations: Vec::new(),
-                methods: Vec::new(),
-                attrs: vec![],
-                doc: None,
-                is_pub: false,
-            }));
+        if common_collection_types.contains(&name) {
+            // Return typed version for bare collection names (e.g., List -> Type::List(Unknown))
+            match name {
+                "List" => return shared(Type::List(Box::new(Type::Unknown))),
+                "Map" => return shared(Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown))),
+                _ => return shared(Type::Unknown),
+            }
         }
 
-        shared(Type::Unknown)
+        // Return Type::User with just the name so generators can use it
+        shared(Type::User(TypeDecl {
+            name: Name::from(name),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            spec_impls: Vec::new(),
+            generic_params: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+            attrs: vec![],
+            doc: None,
+            is_pub: false,
+        }))
     }
 
     /// 获取所有已定义的名称（用于错误提示）
