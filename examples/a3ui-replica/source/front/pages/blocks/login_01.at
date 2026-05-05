@@ -1,0 +1,57 @@
+// login_01.at - shadcn-vue login-01 block replica
+// Simple centered login form
+
+widget Login01Page {
+    model {
+        email str = ""
+        password str = ""
+    }
+
+    view {
+        col (style: "min-h-screen w-full items-center justify-center bg-slate-50 p-6") {
+            card (style: "w-full max-w-sm") {
+                col (style: "gap-6 p-6") {
+                    col (style: "gap-2 text-center") {
+                        h1 (style: "text-2xl font-bold tracking-tight") {
+                            text (text: "Login to your account") {}
+                        }
+                        text (style: "text-sm text-slate-500") {
+                            text (text: "Enter your email below to login to your account") {}
+                        }
+                    }
+                    col (style: "gap-4") {
+                        col (style: "gap-2") {
+                            label (for: "email", text: "Email") {}
+                            input (type: "email", placeholder: "m@example.com", value: .email) {}
+                        }
+                        col (style: "gap-2") {
+                            row (style: "items-center justify-between") {
+                                label (for: "password", text: "Password") {}
+                                link (href: "#", text: "Forgot your password?") {}
+                            }
+                            input (type: "password", value: .password) {}
+                        }
+                        button (variant: "default", text: "Login", style: "w-full") {}
+                    }
+                    col (style: "gap-4") {
+                        div (style: "relative") {
+                            div (style: "absolute inset-0 flex items-center") {
+                                span (style: "w-full border-t border-slate-200") {}
+                            }
+                            div (style: "relative flex justify-center text-xs uppercase") {
+                                span (style: "bg-white px-2 text-slate-500") {
+                                    text (text: "Or continue with") {}
+                                }
+                            }
+                        }
+                        button (variant: "outline", text: "GitHub", style: "w-full") {}
+                    }
+                    text (style: "text-center text-sm text-slate-500") {
+                        text (text: "Don't have an account? ") {}
+                        link (href: "#", text: "Sign up") {}
+                    }
+                }
+            }
+        }
+    }
+}

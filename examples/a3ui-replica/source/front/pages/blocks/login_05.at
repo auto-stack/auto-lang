@@ -1,0 +1,47 @@
+// login_05.at - Email-only login (magic link)
+
+widget Login05Page {
+    model {
+        email str = ""
+        sent bool = false
+    }
+    view {
+        col (style: "min-h-screen w-full items-center justify-center bg-white p-6") {
+            card (style: "w-full max-w-sm border-0 shadow-none") {
+                col (style: "gap-6 py-8") {
+                    col (style: "gap-2 text-center") {
+                        icon (name: "mail", style: "h-10 w-10 mx-auto text-slate-700") {}
+                        h1 (style: "text-2xl font-bold tracking-tight") {
+                            text (text: "Magic Link Sign In") {}
+                        }
+                        text (style: "text-sm text-slate-500") {
+                            text (text: "Enter your email and we'll send you a sign-in link.") {}
+                        }
+                    }
+                    if .sent {
+                        col (style: "gap-4 text-center p-4 bg-green-50 rounded-lg") {
+                            icon (name: "check-circle", style: "h-8 w-8 mx-auto text-green-600") {}
+                            text (style: "text-sm font-medium text-green-700") {
+                                text (text: "Check your inbox!") {}
+                            }
+                            text (style: "text-xs text-green-600") {
+                                text (text: "A sign-in link has been sent to your email address.") {}
+                            }
+                        }
+                    } else {
+                        col (style: "gap-4") {
+                            col (style: "gap-2") {
+                                label (for: "email", text: "Email") {}
+                                input (value: .email, type: "email", placeholder: "m@example.com") {}
+                            }
+                            button (text: "Send Magic Link", style: "w-full") {}
+                        }
+                    }
+                    text (style: "text-xs text-slate-400 text-center mt-4") {
+                        text (text: "No password required. One-click sign in.") {}
+                    }
+                }
+            }
+        }
+    }
+}

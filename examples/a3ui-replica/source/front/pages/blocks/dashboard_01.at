@@ -1,0 +1,95 @@
+// dashboard_01.at - Analytics dashboard with stats cards and chart area
+
+widget Dashboard01Page {
+    model {
+        stats = [
+            { label: "Total Revenue", value: "$45,231.89", change: "+20.1%", trend: "up" },
+            { label: "Subscriptions", value: "+2350", change: "+180.1%", trend: "up" },
+            { label: "Bounce Rate", value: "12.23%", change: "+4.1%", trend: "up" },
+            { label: "Active Now", value: "+573", change: "+201", trend: "up" }
+        ]
+        users = [
+            { name: "User 1", email: "user1@example.com", amount: "+$42.00", initial: "U1" },
+            { name: "User 2", email: "user2@example.com", amount: "+$84.00", initial: "U2" },
+            { name: "User 3", email: "user3@example.com", amount: "+$126.00", initial: "U3" },
+            { name: "User 4", email: "user4@example.com", amount: "+$168.00", initial: "U4" },
+            { name: "User 5", email: "user5@example.com", amount: "+$210.00", initial: "U5" }
+        ]
+    }
+    view {
+        col (style: "min-h-screen w-full bg-slate-50 p-6 gap-6") {
+            col (style: "gap-1") {
+                h1 (style: "text-3xl font-bold tracking-tight") {
+                    text (text: "Dashboard") {}
+                }
+                text (style: "text-sm text-slate-500") {
+                    text (text: "Overview of your business metrics") {}
+                }
+            }
+            // Stats grid
+            div (style: "grid gap-4 md:grid-cols-2 lg:grid-cols-4") {
+                for stat in .stats {
+                    card {
+                        col (style: "p-6 gap-2") {
+                            text (style: "text-sm font-medium text-slate-500") {
+                                text (text: stat.label) {}
+                            }
+                            text (style: "text-2xl font-bold") {
+                                text (text: stat.value) {}
+                            }
+                            text (style: "text-xs text-green-600") {
+                                text (text: stat.change) {}
+                            }
+                        }
+                    }
+                }
+            }
+            // Main content area
+            row (style: "gap-4 flex-col lg:flex-row") {
+                // Chart area
+                card (style: "flex-1") {
+                    col (style: "p-6 gap-4") {
+                        text (style: "text-base font-semibold") {
+                            text (text: "Revenue Overview") {}
+                        }
+                        div (style: "h-[300px] bg-slate-100 rounded-md flex items-center justify-center") {
+                            text (style: "text-sm text-slate-400") {
+                                text (text: "Chart placeholder") {}
+                            }
+                        }
+                    }
+                }
+                // Recent activity
+                card (style: "lg:w-[380px]") {
+                    col (style: "p-6 gap-4") {
+                        text (style: "text-base font-semibold") {
+                            text (text: "Recent Sales") {}
+                        }
+                        col (style: "gap-3") {
+                            for user in .users {
+                                row (style: "items-center justify-between") {
+                                    row (style: "items-center gap-3") {
+                                        avatar (style: "h-9 w-9") {
+                                            text (text: user.initial) {}
+                                        }
+                                        col (style: "gap-0.5") {
+                                            text (style: "text-sm font-medium") {
+                                                text (text: user.name) {}
+                                            }
+                                            text (style: "text-xs text-slate-500") {
+                                                text (text: user.email) {}
+                                            }
+                                        }
+                                    }
+                                    text (style: "text-sm font-medium") {
+                                        text (text: user.amount) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

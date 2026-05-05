@@ -1,0 +1,59 @@
+// login_04.at - Login with form and decorative image
+
+widget Login04Page {
+    model {
+        email str = ""
+        password str = ""
+    }
+    view {
+        col (style: "min-h-screen w-full items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-6") {
+            card (style: "w-full max-w-md overflow-hidden") {
+                row (style: "flex-col md:flex-row") {
+                    // Form side
+                    col (style: "flex-1 gap-6 p-6 md:p-8") {
+                        col (style: "gap-1") {
+                            h1 (style: "text-2xl font-bold tracking-tight") {
+                                text (text: "Login") {}
+                            }
+                            text (style: "text-sm text-slate-500") {
+                                text (text: "Enter your details below") {}
+                            }
+                        }
+                        col (style: "gap-4") {
+                            col (style: "gap-2") {
+                                label (for: "email", text: "Email") {}
+                                input (value: .email, type: "email", placeholder: "m@example.com") {}
+                            }
+                            col (style: "gap-2") {
+                                row (style: "items-center justify-between") {
+                                    label (for: "password", text: "Password") {}
+                                    link (href: "#", text: "Forgot?") {}
+                                }
+                                input (value: .password, type: "password") {}
+                            }
+                            button (text: "Login", style: "w-full") {}
+                        }
+                        col (style: "gap-2 text-center") {
+                            text (style: "text-sm text-slate-500") {
+                                text (text: "New here?") {}
+                            }
+                            link (href: "#", text: "Create an account") {}
+                        }
+                    }
+                    // Decorative side
+                    col (style: "hidden md:flex md:w-48 bg-slate-900 items-center justify-center p-8") {
+                        col (style: "gap-4 text-center") {
+                            icon (name: "shield-check", style: "h-12 w-12 text-white mx-auto") {}
+                            text (style: "text-white font-semibold") {
+                                text (text: "Secure Login") {}
+                            }
+                            text (style: "text-slate-400 text-xs") {
+                                text (text: "256-bit encryption") {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

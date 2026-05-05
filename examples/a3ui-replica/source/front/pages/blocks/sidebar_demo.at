@@ -1,0 +1,139 @@
+// sidebar_demo.at - Full sidebar demo block
+
+widget SidebarDemoPage {
+    model {
+        activeItem str = "inbox"
+    }
+    view {
+        sidebar-provider {
+            sidebar {
+                sidebar-header {
+                    row (style: "items-center gap-2 px-4 h-14") {
+                        icon (name: "command", style: "h-6 w-6") {}
+                        text (style: "font-semibold") {
+                            text (text: "Acme Inc") {}
+                        }
+                    }
+                }
+                sidebar-content {
+                    col (style: "gap-2 px-2") {
+                        text (style: "text-xs font-medium text-slate-500 px-2 py-1") {
+                            text (text: "Platform") {}
+                        }
+                        sidebar-menu {
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "inbox", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Inbox") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "file-text", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Drafts") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "send", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Sent") {}
+                                }
+                            }
+                        }
+                        separator (style: "my-2") {}
+                        text (style: "text-xs font-medium text-slate-500 px-2 py-1") {
+                            text (text: "Settings") {}
+                        }
+                        sidebar-menu {
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "user", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Profile") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "bell", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Notifications") {}
+                                }
+                            }
+                        }
+                    }
+                }
+                sidebar-footer {
+                    row (style: "items-center gap-3 px-4 py-3") {
+                        avatar (style: "h-8 w-8") {
+                            text (text: "JD") {}
+                        }
+                        col (style: "gap-0.5") {
+                            text (style: "text-sm font-medium") {
+                                text (text: "John Doe") {}
+                            }
+                            text (style: "text-xs text-slate-500") {
+                                text (text: "john@example.com") {}
+                            }
+                        }
+                    }
+                }
+            }
+            // Main content
+            col (style: "flex-1") {
+                header (style: "h-14 border-b border-slate-200 flex items-center px-6") {
+                    row (style: "items-center gap-2") {
+                        breadcrumb {
+                            breadcrumb-list {
+                                breadcrumb-item {
+                                    link (href: "#", text: "Home") {}
+                                }
+                                breadcrumb-separator {}
+                                breadcrumb-item {
+                                    link (href: "#", text: "Dashboard") {}
+                                }
+                            }
+                        }
+                    }
+                }
+                col (style: "p-6 gap-6") {
+                    h1 (style: "text-2xl font-bold tracking-tight") {
+                        text (text: "Dashboard") {}
+                    }
+                    div (style: "grid gap-4 md:grid-cols-2 lg:grid-cols-3") {
+                        card {
+                            col (style: "p-6 gap-2") {
+                                text (style: "text-sm font-medium text-slate-500") {
+                                    text (text: "Total Revenue") {}
+                                }
+                                text (style: "text-2xl font-bold") {
+                                    text (text: "$45,231.89") {}
+                                }
+                            }
+                        }
+                        card {
+                            col (style: "p-6 gap-2") {
+                                text (style: "text-sm font-medium text-slate-500") {
+                                    text (text: "Active Users") {}
+                                }
+                                text (style: "text-2xl font-bold") {
+                                    text (text: "2,350") {}
+                                }
+                            }
+                        }
+                        card {
+                            col (style: "p-6 gap-2") {
+                                text (style: "text-sm font-medium text-slate-500") {
+                                    text (text: "Bounce Rate") {}
+                                }
+                                text (style: "text-2xl font-bold") {
+                                    text (text: "12.23%") {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .SetActive(item) -> { activeItem = item }
+    }
+}

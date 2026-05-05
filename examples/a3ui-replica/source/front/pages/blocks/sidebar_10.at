@@ -1,0 +1,62 @@
+// sidebar_10.at - Sidebar block 10
+
+widget Sidebar10Page {
+    view {
+        sidebar-provider {
+            sidebar {
+                sidebar-header {
+                    row (style: "items-center gap-2 px-4 h-14") {
+                        icon (name: "command", style: "h-6 w-6") {}
+                        text (style: "font-semibold") {
+                            text (text: "Acme Inc") {}
+                        }
+                    }
+                }
+                sidebar-content {
+                    col (style: "gap-2 px-2") {
+                        sidebar-menu {
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "home", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Home") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "inbox", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Inbox") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "calendar", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Calendar") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "search", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Search") {}
+                                }
+                            }
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    icon (name: "settings", style: "h-4 w-4 mr-2") {}
+                                    text (text: "Settings") {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            col (style: "flex-1 p-8") {
+                h1 (style: "text-2xl font-bold tracking-tight") {
+                    text (text: "Sidebar 10") {}
+                }
+                text (style: "text-sm text-slate-500 mt-2") {
+                    text (text: "Sidebar layout variation 10.") {}
+                }
+            }
+        }
+    }
+}

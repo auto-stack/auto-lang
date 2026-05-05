@@ -1,0 +1,82 @@
+// products_01.at - Product table with search and pagination
+
+widget Products01Page {
+    model {
+        products = [
+            { id: "1", name: "Premium Headphones", status: "In Stock", price: "$299.00", stock: 143, category: "Electronics" },
+            { id: "2", name: "Mechanical Keyboard", status: "In Stock", price: "$149.00", stock: 89, category: "Electronics" },
+            { id: "3", name: "Wireless Mouse", status: "Low Stock", price: "$79.00", stock: 12, category: "Electronics" },
+            { id: "4", name: "USB-C Hub", status: "In Stock", price: "$59.00", stock: 234, category: "Accessories" },
+            { id: "5", name: "Monitor Stand", status: "Out of Stock", price: "$89.00", stock: 0, category: "Furniture" },
+            { id: "6", name: "Desk Lamp LED", status: "In Stock", price: "$45.00", stock: 67, category: "Furniture" }
+        ]
+        search str = ""
+    }
+    view {
+        col (style: "min-h-screen w-full bg-slate-50 p-6 gap-6") {
+            col (style: "gap-1") {
+                h1 (style: "text-3xl font-bold tracking-tight") {
+                    text (text: "Products") {}
+                }
+                text (style: "text-sm text-slate-500") {
+                    text (text: "Manage your product inventory") {}
+                }
+            }
+            // Search and actions
+            row (style: "items-center justify-between gap-4") {
+                input (value: .search, placeholder: "Search products...", style: "max-w-sm") {}
+                button (text: "Add Product") {}
+            }
+            // Products table
+            card {
+                col (style: "p-0") {
+                    table (style: "w-full") {
+                        thead {
+                            tr (style: "border-b border-slate-200") {
+                                th (style: "h-12 px-4 text-left text-sm font-medium text-slate-500") { text (text: "Name") {} }
+                                th (style: "h-12 px-4 text-left text-sm font-medium text-slate-500") { text (text: "Status") {} }
+                                th (style: "h-12 px-4 text-left text-sm font-medium text-slate-500") { text (text: "Price") {} }
+                                th (style: "h-12 px-4 text-left text-sm font-medium text-slate-500") { text (text: "Stock") {} }
+                                th (style: "h-12 px-4 text-left text-sm font-medium text-slate-500") { text (text: "Category") {} }
+                                th (style: "h-12 px-4 text-left text-sm font-medium text-slate-500") { text (text: "Actions") {} }
+                            }
+                        }
+                        tbody {
+                            for product in .products {
+                                tr (style: "border-b border-slate-100") {
+                                    td (style: "p-4 text-sm font-medium") { text (text: product.name) {} }
+                                    td (style: "p-4") {
+                                        if product.status == "In Stock" {
+                                            badge (style: "bg-green-100 text-green-700") {
+                                                text (text: product.status) {}
+                                            }
+                                        }
+                                        if product.status == "Low Stock" {
+                                            badge (style: "bg-yellow-100 text-yellow-700") {
+                                                text (text: product.status) {}
+                                            }
+                                        }
+                                        if product.status == "Out of Stock" {
+                                            badge (style: "bg-red-100 text-red-700") {
+                                                text (text: product.status) {}
+                                            }
+                                        }
+                                    }
+                                    td (style: "p-4 text-sm") { text (text: product.price) {} }
+                                    td (style: "p-4 text-sm") { text (text: product.stock) {} }
+                                    td (style: "p-4 text-sm") { text (text: product.category) {} }
+                                    td (style: "p-4") {
+                                        row (style: "gap-2") {
+                                            button (text: "Edit", style: "h-8 px-2 text-xs") {}
+                                            button (text: "Delete", style: "h-8 px-2 text-xs bg-red-600 hover:bg-red-700") {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

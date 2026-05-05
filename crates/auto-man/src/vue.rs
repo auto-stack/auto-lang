@@ -6,7 +6,7 @@
 //! 3. Install shadcn-vue components
 //! 4. Build (bun run build) or Run dev server (bun run dev)
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -675,6 +675,61 @@ pub struct VueProject {
 }
 
 impl VueProject {
+    /// Generate router file with support for nested page directories.
+    /// Maps route modules to actual file paths under src/pages/.
+    pub fn generate_router_file(&self) -> String {
+        // Build a map from file stem -> pages subdirectory path
+        // e.g., "login_01" -> "blocks/login_01"
+        let mut page_paths: HashMap<String, String> = HashMap::new();
+        for (relative_dir, name, _code, _widget_name) in &self.components {
+            if relative_dir.starts_with("pages/") || relative_dir == "pages" {
+                let sub_path = if relative_dir == "pages" {
+                    name.clone()
+                } else {
+                    let dir_part = relative_dir.strip_prefix("pages/").unwrap_or(relative_dir);
+                    format!("{}/{}", dir_part, name)
+                };
+                page_paths.insert(name.clone(), sub_path);
+            }
+        }
+
+        let mut route_defs = Vec::new();
+        for route in &self.routes {
+            let path = &route.path;
+            let module = &route.module;
+            let import_path = page_paths.get(module).cloned().unwrap_or_else(|| module.clone());
+
+            if route.params.is_empty() {
+                route_defs.push(format!(
+                    "  {{ path: '{}', name: '{}', component: () => import('@/pages/{}.vue') }}",
+                    path, module, import_path
+                ));
+            } else {
+                route_defs.push(format!(
+                    "  {{ path: '{}', name: '{}', component: () => import('@/pages/{}.vue'), props: true }}",
+                    path, module, import_path
+                ));
+            }
+        }
+
+        format!(
+            r#"import {{ createRouter, createWebHistory }} from 'vue-router'
+import type {{ RouteRecordRaw }} from 'vue-router'
+
+const routes: RouteRecordRaw[] = [
+{}
+]
+
+const router = createRouter({{
+  history: createWebHistory(),
+  routes,
+}})
+
+export default router
+"#,
+            route_defs.join(",\n")
+        )
+    }
     /// Create a new Vue project context from a workspace directory
     pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
         let pac_path = root_dir.join("pac.at");
@@ -746,19 +801,30 @@ impl VueProject {
             }
         }
 
-        // Process pages/ directory
-        let pages_dir = front_dir.join("pages");
-        if pages_dir.exists() {
-            for entry in fs::read_dir(&pages_dir)
+        // Process pages/ directory recursively
+        fn scan_pages_dir(
+            dir: &Path,
+            front_dir: &Path,
+            all_components: &mut Vec<(String, String, String, String)>,
+            all_shadcn_components: &mut HashSet<String>,
+            all_routes: &mut Vec<AuraRoute>,
+        ) -> Result<(), String> {
+            for entry in fs::read_dir(dir)
                 .map_err(|e| format!("Failed to read pages directory: {}", e))?
             {
                 let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
                 let path = entry.path();
 
-                if path.extension().map(|e| e == "at").unwrap_or(false) {
+                if path.is_dir() {
+                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes)?;
+                } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("page");
+
+                    let rel_path = path.strip_prefix(front_dir)
+                        .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
+                        .unwrap_or_else(|_| "pages".to_string());
 
                     match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                         Ok((vue_code, widgets)) => {
@@ -772,7 +838,7 @@ impl VueProject {
                                 }
                             }
                             let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or(file_stem);
-                            all_components.push(("pages".to_string(), file_stem.to_string(), vue_code, widget_name.to_string()));
+                            all_components.push((rel_path, file_stem.to_string(), vue_code, widget_name.to_string()));
                         }
                         Err(e) => {
                             println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
@@ -780,6 +846,13 @@ impl VueProject {
                     }
                 }
             }
+            Ok(())
+        }
+
+        let pages_dir = front_dir.join("pages");
+        if pages_dir.exists() {
+            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes)
+                .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
         let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
@@ -863,7 +936,7 @@ impl VueProject {
             fs::create_dir_all(&router_dir)
                 .map_err(|e| format!("Failed to create src/router: {}", e))?;
 
-            let router_content = VueGenerator::generate_router_file(&self.routes);
+            let router_content = self.generate_router_file();
             fs::write(router_dir.join("index.ts"), router_content)
                 .map_err(|e| format!("Failed to write router/index.ts: {}", e))?;
 
@@ -957,7 +1030,7 @@ impl VueProject {
             fs::create_dir_all(&router_dir)
                 .map_err(|e| format!("Failed to create src/router: {}", e))?;
 
-            let router_content = VueGenerator::generate_router_file(&self.routes);
+            let router_content = self.generate_router_file();
             fs::write(router_dir.join("index.ts"), router_content)
                 .map_err(|e| format!("Failed to write router/index.ts: {}", e))?;
 

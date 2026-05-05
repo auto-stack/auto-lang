@@ -1,0 +1,48 @@
+// login_03.at - Login with muted background
+
+widget Login03Page {
+    model {
+        email str = ""
+        password str = ""
+    }
+    view {
+        col (style: "min-h-screen w-full items-center justify-center bg-slate-100 p-6") {
+            card (style: "w-full max-w-sm shadow-xl") {
+                col (style: "gap-6 p-8") {
+                    col (style: "gap-2 text-center") {
+                        h1 (style: "text-2xl font-bold tracking-tight") {
+                            text (text: "Welcome back") {}
+                        }
+                        text (style: "text-sm text-slate-500") {
+                            text (text: "Enter your credentials to sign in") {}
+                        }
+                    }
+                    col (style: "gap-4") {
+                        col (style: "gap-2") {
+                            label (for: "email", text: "Email") {}
+                            input (value: .email, type: "email", placeholder: "name@company.com") {}
+                        }
+                        col (style: "gap-2") {
+                            row (style: "items-center justify-between") {
+                                label (for: "password", text: "Password") {}
+                                link (href: "#", text: "Forgot password?") {}
+                            }
+                            input (value: .password, type: "password", placeholder: "••••••••") {}
+                        }
+                        button (text: "Sign in", style: "w-full") {}
+                    }
+                    separator (style: "my-2") {}
+                    col (style: "gap-3") {
+                        button (text: "Continue with Google", style: "w-full bg-white text-slate-700 border border-slate-300 hover:bg-slate-50") {}
+                        button (text: "Continue with GitHub", style: "w-full bg-slate-900 text-white hover:bg-slate-800") {}
+                    }
+                    col (style: "gap-1 text-center mt-2") {
+                        text (style: "text-xs text-slate-400") {
+                            text (text: "By signing in, you agree to our Terms of Service.") {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
