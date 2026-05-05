@@ -23,6 +23,17 @@ enum NodeKind {
     BlockStmt
     TypeStmt
     NilNode
+    // P1 additions
+    ClosureExpr
+    FStrExpr
+    IsStmt
+    EnumStmt
+    ExtStmt
+    SpecStmt
+    AliasStmt
+    UseStmt
+    ObjectExpr
+    PairExpr
 }
 
 // Function parameter
@@ -183,6 +194,62 @@ fn type_node(name str, fields_count int) ASTNode {
     }
     s = s + ")"
     ASTNode(NodeKind.TypeStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+// ---- P1 Constructor helpers ----
+
+fn closure_node(params_str str, body ASTNode) ASTNode {
+    var s = "(closure (" + params_str + ") => " + body.value + ")"
+    ASTNode(NodeKind.ClosureExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn fstr_node(parts_str str) ASTNode {
+    var s = "(fstr " + parts_str + ")"
+    ASTNode(NodeKind.FStrExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn is_node(expr ASTNode, branches_str str) ASTNode {
+    var s = "(is " + expr.value + " " + branches_str + ")"
+    ASTNode(NodeKind.IsStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn enum_node(name str, variants_str str) ASTNode {
+    var s = "(enum " + name + " " + variants_str + ")"
+    ASTNode(NodeKind.EnumStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn ext_node(target str, methods_str str) ASTNode {
+    var s = "(ext " + target + " " + methods_str + ")"
+    ASTNode(NodeKind.ExtStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn spec_node(name str, methods_str str) ASTNode {
+    var s = "(spec " + name + " " + methods_str + ")"
+    ASTNode(NodeKind.SpecStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn alias_node(name str, target str) ASTNode {
+    var s = "(alias " + name + " " + target + ")"
+    ASTNode(NodeKind.AliasStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn use_node(path_str str, items_str str) ASTNode {
+    var s = "(use " + path_str
+    if items_str != "" {
+        s = s + " " + items_str
+    }
+    s = s + ")"
+    ASTNode(NodeKind.UseStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn object_node(pairs_str str) ASTNode {
+    var s = "(object " + pairs_str + ")"
+    ASTNode(NodeKind.ObjectExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn pair_node(key str, val ASTNode) ASTNode {
+    var s = "(pair " + key + " " + val.value + ")"
+    ASTNode(NodeKind.PairExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 // Simply return the pre-computed S-expression string

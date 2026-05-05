@@ -142,6 +142,12 @@ fn parse_top_stmt(p Parser) ASTNode {
     is kind {
         TokenKind.Fn -> parse_fn_decl(p)
         TokenKind.Type -> parse_type_decl(p)
+        TokenKind.Enum -> parse_enum_decl(p)
+        TokenKind.Tag -> parse_enum_decl(p)
+        TokenKind.Spec -> parse_spec_decl(p)
+        TokenKind.Ext -> parse_ext_stmt(p)
+        TokenKind.Alias -> parse_alias_stmt(p)
+        TokenKind.Use -> parse_use_stmt(p)
         else -> parse_stmt(p)
     }
 }
@@ -182,6 +188,7 @@ fn parse_stmt(p Parser) ASTNode {
         TokenKind.Return -> parse_return_stmt(p)
         TokenKind.If -> parse_if_stmt(p)
         TokenKind.For -> parse_for_stmt(p)
+        TokenKind.Is -> parse_is_stmt(p)
         TokenKind.Break -> {
             p.pos = p.pos + 1
             nil_node()
@@ -191,6 +198,21 @@ fn parse_stmt(p Parser) ASTNode {
             nil_node()
         }
         TokenKind.LBrace -> {
+            // Check for object literal: {key: value, ...}
+            // Lookahead: pos+1 is Ident, pos+2 is Colon
+            var p1 = p.pos + 1
+            if p1 < p.len {
+                var t1 = p.tokens.get(p1)
+                if t1.kind == TokenKind.Ident {
+                    var p2 = p.pos + 2
+                    if p2 < p.len {
+                        var t2 = p.tokens.get(p2)
+                        if t2.kind == TokenKind.Colon {
+                            return parse_object(p)
+                        }
+                    }
+                }
+            }
             var body = parse_body(p)
             block_node(body)
         }
@@ -626,10 +648,68 @@ fn parse_atom(p Parser) ASTNode {
             return nil_node()
         }
         TokenKind.Ident -> {
+            // Check for single-param closure: x => expr
+            if parser_peek_kind(p) == TokenKind.DoubleArrow {
+                var pname = tok.text
+                p.pos = p.pos + 1  // skip param name
+                p.pos = p.pos + 1  // skip '=>'
+                var body = parse_expr(p)
+                return closure_node(pname, body)
+            }
             p.pos = p.pos + 1
             return ident_node(tok.text)
         }
         TokenKind.LParen -> {
+            // Check for () => closure or (a, b) => closure
+            // Look ahead to find '=>'
+            var saved = p.pos
+            p.pos = p.pos + 1  // skip '('
+            if parser_kind(p) == TokenKind.RParen {
+                // () => expr — zero-param closure
+                p.pos = p.pos + 1  // skip ')'
+                if parser_kind(p) == TokenKind.DoubleArrow {
+                    p.pos = p.pos + 1  // skip '=>'
+                    var body = parse_expr(p)
+                    return closure_node("", body)
+                }
+                // () without => — just empty parens
+                return nil_node()
+            }
+            // Try to parse as multi-param closure: (a, b) => expr
+            var params_str = ""
+            var is_closure = false
+            for parser_kind(p) != TokenKind.RParen && parser_kind(p) != TokenKind.EOF {
+                var pname = parser_text(p)
+                p.pos = p.pos + 1  // skip param name
+                // Skip optional type annotation
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Ident {
+                    var peek2 = parser_peek_kind(p)
+                    if peek2 != TokenKind.Comma && peek2 != TokenKind.RParen {
+                        p.pos = p.pos + 1
+                    }
+                }
+                if params_str != "" {
+                    params_str = params_str + " "
+                }
+                params_str = params_str + pname
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Comma {
+                    p.pos = p.pos + 1
+                    parser_skip_nl_semi(p)
+                }
+            }
+            if parser_kind(p) == TokenKind.RParen {
+                p.pos = p.pos + 1  // skip ')'
+            }
+            if parser_kind(p) == TokenKind.DoubleArrow {
+                // It's a closure
+                p.pos = p.pos + 1  // skip '=>'
+                var body = parse_expr(p)
+                return closure_node(params_str, body)
+            }
+            // Not a closure — backtrack and parse as grouped expression
+            p.pos = saved
             p.pos = p.pos + 1  // skip '('
             var expr = parse_expr(p)
             if parser_kind(p) == TokenKind.RParen {
@@ -668,10 +748,523 @@ fn parse_atom(p Parser) ASTNode {
             var operand = parse_atom(p)
             return unary_node("!", operand)
         }
+        TokenKind.CStr -> {
+            p.pos = p.pos + 1
+            return str_node(tok.text)
+        }
+        TokenKind.Char -> {
+            p.pos = p.pos + 1
+            return str_node(tok.text)
+        }
+        TokenKind.FStrStart -> {
+            // F-string: FStrStart + parts + FStrEnd
+            p.pos = p.pos + 1  // skip FStrStart
+            var parts_str = ""
+            for parser_kind(p) != TokenKind.FStrEnd && parser_kind(p) != TokenKind.EOF {
+                var fk = parser_kind(p)
+                if fk == TokenKind.Str || fk == TokenKind.FStrPart {
+                    // Text part
+                    if parts_str != "" {
+                        parts_str = parts_str + " "
+                    }
+                    var ptxt = parser_text(p)
+                    parts_str = parts_str + "\"" + ptxt + "\""
+                    p.pos = p.pos + 1
+                } else if fk == TokenKind.FStrNote {
+                    // $ interpolation marker — skip it
+                    p.pos = p.pos + 1
+                } else if fk == TokenKind.Ident {
+                    // Interpolated identifier
+                    if parts_str != "" {
+                        parts_str = parts_str + " "
+                    }
+                    parts_str = parts_str + parser_text(p)
+                    p.pos = p.pos + 1
+                } else {
+                    // Other expression token in f-string — parse as expr
+                    var inner = parse_expr(p)
+                    if parts_str != "" {
+                        parts_str = parts_str + " "
+                    }
+                    parts_str = parts_str + inner.value
+                }
+            }
+            if parser_kind(p) == TokenKind.FStrEnd {
+                p.pos = p.pos + 1  // skip FStrEnd
+            }
+            return fstr_node(parts_str)
+        }
+        TokenKind.LBrace -> {
+            // Object literal: {key: value, ...}
+            // Check lookahead: pos+1 is Ident, pos+2 is Colon
+            var p1 = p.pos + 1
+            if p1 < p.len {
+                var t1 = p.tokens.get(p1)
+                if t1.kind == TokenKind.Ident {
+                    var p2 = p.pos + 2
+                    if p2 < p.len {
+                        var t2 = p.tokens.get(p2)
+                        if t2.kind == TokenKind.Colon {
+                            return parse_object(p)
+                        }
+                    }
+                }
+            }
+            // Otherwise it's a block (handled in parse_stmt, not parse_atom)
+            // But if we get here in expression context, treat as object attempt
+            p.pos = p.pos + 1
+            return nil_node()
+        }
         else -> {
             // Unexpected token — skip and return nil
             p.pos = p.pos + 1
             return nil_node()
         }
     }
+}
+
+// ---- P1 Parser Additions ----
+
+// Parse alias statement: alias Name = Target
+fn parse_alias_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'alias'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+    if parser_kind(p) == TokenKind.Asn {
+        p.pos = p.pos + 1  // skip '='
+    }
+    var target = parser_text(p)
+    p.pos = p.pos + 1  // skip target
+    return alias_node(name, target)
+}
+
+// Parse enum/tag declaration: enum Name { variants }
+fn parse_enum_decl(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'enum'/'tag'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+    parser_skip_nl_semi(p)
+
+    // Skip optional generic params <T>
+    if parser_kind(p) == TokenKind.Lt {
+        var depth = 1
+        p.pos = p.pos + 1
+        for depth > 0 && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Lt {
+                depth = depth + 1
+            }
+            if parser_kind(p) == TokenKind.Gt {
+                depth = depth - 1
+            }
+            p.pos = p.pos + 1
+        }
+        parser_skip_nl_semi(p)
+    }
+
+    // Optional repr type: enum Code u16 { ... }
+    var pk = parser_kind(p)
+    if pk != TokenKind.LBrace && pk != TokenKind.EOF {
+        // Skip repr type name
+        p.pos = p.pos + 1
+        parser_skip_nl_semi(p)
+    }
+
+    var variants_str = ""
+    if parser_kind(p) == TokenKind.LBrace {
+        p.pos = p.pos + 1  // skip '{'
+        parser_skip_nl_semi(p)
+        for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+            var vname = parser_text(p)
+            p.pos = p.pos + 1  // skip variant name
+            if variants_str != "" {
+                variants_str = variants_str + " "
+            }
+            variants_str = variants_str + vname
+
+            // Optional payload: type name or (types) or {fields}
+            parser_skip_nl_semi(p)
+            var vk = parser_kind(p)
+            if vk == TokenKind.LParen {
+                // Skip (type, type, ...) payload
+                var depth = 1
+                p.pos = p.pos + 1
+                for depth > 0 && parser_kind(p) != TokenKind.EOF {
+                    if parser_kind(p) == TokenKind.LParen { depth = depth + 1 }
+                    if parser_kind(p) == TokenKind.RParen { depth = depth - 1 }
+                    p.pos = p.pos + 1
+                }
+            } else if vk == TokenKind.LBrace {
+                // Skip {fields} struct-like payload
+                var depth = 1
+                p.pos = p.pos + 1
+                for depth > 0 && parser_kind(p) != TokenKind.EOF {
+                    if parser_kind(p) == TokenKind.LBrace { depth = depth + 1 }
+                    if parser_kind(p) == TokenKind.RBrace { depth = depth - 1 }
+                    p.pos = p.pos + 1
+                }
+            } else if vk == TokenKind.Ident {
+                // Single type payload: variant TypeName
+                // Check it's not the next variant name (peek for comma/newline/RBrace)
+                var peek = parser_peek_kind(p)
+                if peek != TokenKind.Comma && peek != TokenKind.Newline && peek != TokenKind.RBrace && peek != TokenKind.EOF {
+                    p.pos = p.pos + 1  // skip type name
+                }
+            }
+
+            // Optional = value for scalar enums
+            parser_skip_nl_semi(p)
+            if parser_kind(p) == TokenKind.Asn {
+                p.pos = p.pos + 1  // skip '='
+                // Skip the value expression
+                parser_skip_nl_semi(p)
+                p.pos = p.pos + 1
+            }
+
+            parser_skip_nl_semi(p)
+            if parser_kind(p) == TokenKind.Comma {
+                p.pos = p.pos + 1
+                parser_skip_nl_semi(p)
+            }
+        }
+        if parser_kind(p) == TokenKind.RBrace {
+            p.pos = p.pos + 1
+        }
+    }
+    return enum_node(name, variants_str)
+}
+
+// Parse use statement: use path : items
+fn parse_use_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'use'
+    var path_str = ""
+    var items_str = ""
+
+    var kind = parser_kind(p)
+    if kind == TokenKind.Dot {
+        // FFI import: use.c <stdio.h>
+        p.pos = p.pos + 1  // skip '.'
+        var ffi_kind = parser_text(p)
+        p.pos = p.pos + 1  // skip c/rust/py
+        path_str = ffi_kind
+        // Skip the path string literal if present
+        parser_skip_nl_semi(p)
+        if parser_kind(p) == TokenKind.Str || parser_kind(p) == TokenKind.Lt {
+            // Skip <path> or "path"
+            var k = parser_kind(p)
+            if k == TokenKind.Lt {
+                // Read until >
+                p.pos = p.pos + 1
+                for parser_kind(p) != TokenKind.Gt && parser_kind(p) != TokenKind.EOF {
+                    p.pos = p.pos + 1
+                }
+                if parser_kind(p) == TokenKind.Gt {
+                    p.pos = p.pos + 1
+                }
+            } else {
+                p.pos = p.pos + 1
+            }
+        }
+    } else if kind == TokenKind.Pac {
+        path_str = "pac"
+        p.pos = p.pos + 1  // skip 'pac'
+        // Read dot-separated path
+        for parser_kind(p) == TokenKind.Dot {
+            p.pos = p.pos + 1
+            path_str = path_str + "." + parser_text(p)
+            p.pos = p.pos + 1
+        }
+    } else if kind == TokenKind.Super {
+        path_str = "super"
+        p.pos = p.pos + 1  // skip 'super'
+        for parser_kind(p) == TokenKind.Dot {
+            p.pos = p.pos + 1
+            path_str = path_str + "." + parser_text(p)
+            p.pos = p.pos + 1
+        }
+    } else {
+        // Regular: use db or use std.collections
+        path_str = parser_text(p)
+        p.pos = p.pos + 1
+        for parser_kind(p) == TokenKind.Dot {
+            p.pos = p.pos + 1
+            path_str = path_str + "." + parser_text(p)
+            p.pos = p.pos + 1
+        }
+    }
+
+    // Optional items: : item1, item2
+    parser_skip_nl_semi(p)
+    if parser_kind(p) == TokenKind.Colon {
+        p.pos = p.pos + 1  // skip ':'
+        parser_skip_nl_semi(p)
+        for true {
+            var ik = parser_kind(p)
+            if ik == TokenKind.Ident {
+                if items_str != "" {
+                    items_str = items_str + " "
+                }
+                items_str = items_str + parser_text(p)
+                p.pos = p.pos + 1
+            } else {
+                break
+            }
+            parser_skip_nl_semi(p)
+            if parser_kind(p) == TokenKind.Comma {
+                p.pos = p.pos + 1
+                parser_skip_nl_semi(p)
+            } else {
+                break
+            }
+        }
+    }
+
+    return use_node(path_str, items_str)
+}
+
+// Parse spec declaration: spec Name { fn sig() }
+fn parse_spec_decl(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'spec'
+    var name = parser_text(p)
+    p.pos = p.pos + 1  // skip name
+    parser_skip_nl_semi(p)
+
+    // Skip optional generic params <T>
+    if parser_kind(p) == TokenKind.Lt {
+        var depth = 1
+        p.pos = p.pos + 1
+        for depth > 0 && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Lt { depth = depth + 1 }
+            if parser_kind(p) == TokenKind.Gt { depth = depth - 1 }
+            p.pos = p.pos + 1
+        }
+        parser_skip_nl_semi(p)
+    }
+
+    var methods_str = ""
+    if parser_kind(p) == TokenKind.LBrace {
+        p.pos = p.pos + 1  // skip '{'
+        parser_skip_nl_semi(p)
+        for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Fn {
+                // Parse method signature (no body for P1)
+                p.pos = p.pos + 1  // skip 'fn'
+                var mname = parser_text(p)
+                p.pos = p.pos + 1  // skip method name
+                if methods_str != "" {
+                    methods_str = methods_str + " "
+                }
+                methods_str = methods_str + mname
+
+                // Skip params
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.LParen {
+                    var depth = 1
+                    p.pos = p.pos + 1
+                    for depth > 0 && parser_kind(p) != TokenKind.EOF {
+                        if parser_kind(p) == TokenKind.LParen { depth = depth + 1 }
+                        if parser_kind(p) == TokenKind.RParen { depth = depth - 1 }
+                        p.pos = p.pos + 1
+                    }
+                }
+
+                // Skip optional return type
+                parser_skip_nl_semi(p)
+                var rk = parser_kind(p)
+                if rk == TokenKind.Arrow {
+                    p.pos = p.pos + 1
+                    parser_skip_nl_semi(p)
+                    p.pos = p.pos + 1
+                } else if rk == TokenKind.Ident {
+                    var peek = parser_peek_kind(p)
+                    if peek == TokenKind.LBrace || peek == TokenKind.Newline || peek == TokenKind.Semi {
+                        p.pos = p.pos + 1
+                    }
+                }
+
+                // Skip optional body { ... }
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.LBrace {
+                    var depth = 1
+                    p.pos = p.pos + 1
+                    for depth > 0 && parser_kind(p) != TokenKind.EOF {
+                        if parser_kind(p) == TokenKind.LBrace { depth = depth + 1 }
+                        if parser_kind(p) == TokenKind.RBrace { depth = depth - 1 }
+                        p.pos = p.pos + 1
+                    }
+                }
+            } else {
+                p.pos = p.pos + 1
+            }
+            parser_skip_nl_semi(p)
+        }
+        if parser_kind(p) == TokenKind.RBrace {
+            p.pos = p.pos + 1
+        }
+    }
+    return spec_node(name, methods_str)
+}
+
+// Parse ext block: ext Type { methods }
+fn parse_ext_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'ext'/'impl'
+
+    // Skip optional generic params <T>
+    if parser_kind(p) == TokenKind.Lt {
+        var depth = 1
+        p.pos = p.pos + 1
+        for depth > 0 && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Lt { depth = depth + 1 }
+            if parser_kind(p) == TokenKind.Gt { depth = depth - 1 }
+            p.pos = p.pos + 1
+        }
+    }
+
+    var target = parser_text(p)
+    p.pos = p.pos + 1  // skip target name
+
+    // Optional: for SpecName (trait implementation)
+    parser_skip_nl_semi(p)
+    if parser_kind(p) == TokenKind.For {
+        p.pos = p.pos + 1  // skip 'for'
+        parser_skip_nl_semi(p)
+        // Read trait name — skip it for P1
+        p.pos = p.pos + 1
+        parser_skip_nl_semi(p)
+    }
+
+    // Optional generic args after trait name
+    if parser_kind(p) == TokenKind.Lt {
+        var depth = 1
+        p.pos = p.pos + 1
+        for depth > 0 && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Lt { depth = depth + 1 }
+            if parser_kind(p) == TokenKind.Gt { depth = depth - 1 }
+            p.pos = p.pos + 1
+        }
+    }
+
+    parser_skip_nl_semi(p)
+    var methods_str = ""
+    if parser_kind(p) == TokenKind.LBrace {
+        p.pos = p.pos + 1  // skip '{'
+        parser_skip_nl_semi(p)
+        for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+            if parser_kind(p) == TokenKind.Fn {
+                var method = parse_fn_decl(p)
+                if methods_str != "" {
+                    methods_str = methods_str + " "
+                }
+                methods_str = methods_str + method.value
+            } else if parser_kind(p) == TokenKind.Mut {
+                // mut fn ...
+                p.pos = p.pos + 1  // skip 'mut'
+                if parser_kind(p) == TokenKind.Fn {
+                    var method = parse_fn_decl(p)
+                    if methods_str != "" {
+                        methods_str = methods_str + " "
+                    }
+                    methods_str = methods_str + method.value
+                }
+            } else if parser_kind(p) == TokenKind.Static {
+                // static fn ...
+                p.pos = p.pos + 1  // skip 'static'
+                if parser_kind(p) == TokenKind.Fn {
+                    var method = parse_fn_decl(p)
+                    if methods_str != "" {
+                        methods_str = methods_str + " "
+                    }
+                    methods_str = methods_str + method.value
+                }
+            } else {
+                // Field declaration — skip ident type
+                p.pos = p.pos + 1
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Ident {
+                    p.pos = p.pos + 1
+                }
+            }
+            parser_skip_nl_semi(p)
+        }
+        if parser_kind(p) == TokenKind.RBrace {
+            p.pos = p.pos + 1
+        }
+    }
+    return ext_node(target, methods_str)
+}
+
+// Parse is/match statement: is expr { branches }
+fn parse_is_stmt(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip 'is'
+    parser_skip_nl_semi(p)
+    var expr = parse_expr(p)
+    parser_skip_nl_semi(p)
+
+    var branches_str = ""
+    if parser_kind(p) == TokenKind.LBrace {
+        p.pos = p.pos + 1  // skip '{'
+        parser_skip_nl_semi(p)
+        for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+            parser_skip_nl_semi(p)
+            if parser_kind(p) == TokenKind.Else {
+                // else branch
+                p.pos = p.pos + 1  // skip 'else'
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Arrow {
+                    p.pos = p.pos + 1  // skip '->'
+                }
+                parser_skip_nl_semi(p)
+                var body = parse_expr(p)
+                if branches_str != "" {
+                    branches_str = branches_str + " "
+                }
+                branches_str = branches_str + "(else " + body.value + ")"
+            } else {
+                // Pattern branch: pattern -> body
+                var pattern = parse_expr(p)
+                parser_skip_nl_semi(p)
+                if parser_kind(p) == TokenKind.Arrow {
+                    p.pos = p.pos + 1  // skip '->'
+                }
+                parser_skip_nl_semi(p)
+                var body = parse_expr(p)
+                if branches_str != "" {
+                    branches_str = branches_str + " "
+                }
+                branches_str = branches_str + "(" + pattern.value + " -> " + body.value + ")"
+            }
+            parser_skip_nl_semi(p)
+        }
+        if parser_kind(p) == TokenKind.RBrace {
+            p.pos = p.pos + 1
+        }
+    }
+    return is_node(expr, branches_str)
+}
+
+// Parse object literal: {key: value, ...}
+fn parse_object(p Parser) ASTNode {
+    p.pos = p.pos + 1  // skip '{'
+    parser_skip_nl_semi(p)
+    var pairs_str = ""
+    for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
+        var key = parser_text(p)
+        p.pos = p.pos + 1  // skip key
+        if parser_kind(p) == TokenKind.Colon {
+            p.pos = p.pos + 1  // skip ':'
+        }
+        var val = parse_expr(p)
+        if pairs_str != "" {
+            pairs_str = pairs_str + " "
+        }
+        pairs_str = pairs_str + "(" + key + " " + val.value + ")"
+        parser_skip_nl_semi(p)
+        if parser_kind(p) == TokenKind.Comma {
+            p.pos = p.pos + 1
+            parser_skip_nl_semi(p)
+        }
+    }
+    if parser_kind(p) == TokenKind.RBrace {
+        p.pos = p.pos + 1
+    }
+    return object_node(pairs_str)
 }

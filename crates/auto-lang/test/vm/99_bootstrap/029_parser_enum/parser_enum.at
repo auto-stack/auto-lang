@@ -1,0 +1,12 @@
+// Test: enum declaration — enum Color { Red, Green, Blue }
+fn main() {
+    let source = "enum Color {\n    Red\n    Green\n    Blue\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}

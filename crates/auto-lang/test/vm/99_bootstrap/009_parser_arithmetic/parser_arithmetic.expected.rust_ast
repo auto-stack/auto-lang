@@ -1,0 +1,1 @@
+(code (bina (bina (int 1) (op +) (int 2)) (op +) (int 3)))

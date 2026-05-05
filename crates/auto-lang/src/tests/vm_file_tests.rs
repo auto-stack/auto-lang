@@ -6,6 +6,7 @@
 //   .expected.error  — expected runtime error
 
 use crate::error::AutoResult;
+use crate::parser::Parser;
 use crate::{run, run_with_capture};
 use std::fs::read_to_string;
 use std::path::PathBuf;
@@ -559,3 +560,157 @@ fn test_aavm(case: &str) -> AutoResult<()> {
 
 // Plan 233: AAVM Parser tests
 #[test] fn test_99_bootstrap_008_parser_hello() { test_aavm("99_bootstrap/008_parser_hello").unwrap(); }
+
+// =============================================================================
+// Plan 233 Phase 2: Shared File-Based Parser Tests (Rust + AAVM)
+//
+// Each test directory contains:
+//   name.at                — AAVM test program with embedded source string
+//   name.expected.out      — Expected AAVM parser output
+//   name.expected.rust_ast — Expected Rust parser AST output (optional)
+//
+// The Rust parser runner extracts the source string from `let source = "..."`
+// in the .at file, parses it with the Rust parser, and compares to .expected.rust_ast.
+
+/// Extract the source string from a parser test .at file.
+/// Looks for `let source = "..."` and returns the unescaped content.
+fn extract_source_string(test_src: &str) -> AutoResult<String> {
+    for line in test_src.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("let source = \"") || trimmed.starts_with("var source = \"") {
+            // Find first and last quote
+            let first_quote = trimmed.find('"').unwrap_or(0);
+            let last_quote = trimmed.rfind('"').unwrap_or(0);
+            if first_quote < last_quote {
+                let content = &trimmed[first_quote + 1..last_quote];
+                let source = content
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\\"", "\"");
+                return Ok(source);
+            }
+        }
+    }
+    Err(crate::error::AutoError::Msg("No source string found in parser test file".into()))
+}
+
+/// Rust parser test runner: reads .at, extracts source, parses with Rust parser,
+/// compares to .expected.rust_ast
+fn test_rust_parser(case: &str) -> AutoResult<()> {
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
+    let name = parts[1..].join("_");
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    // Read test file and extract source string
+    let test_src = read_to_string(d.join(format!("test/vm/{}/{}.at", case, name)))?;
+    let source = extract_source_string(&test_src)?;
+
+    // Parse with Rust parser
+    let mut parser = Parser::from(source.as_str());
+    let ast = parser.parse()?;
+
+    // Check .expected.rust_ast
+    let rust_ast_path = d.join(format!("test/vm/{}/{}.expected.rust_ast", case, name));
+    if rust_ast_path.is_file() {
+        let expected = read_to_string(&rust_ast_path)?;
+        let actual = ast.to_string();
+        if actual != expected {
+            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.rust_ast", case, name));
+            std::fs::write(&wrong_path, &actual)?;
+        }
+        assert_eq!(actual, expected);
+    }
+
+    Ok(())
+}
+
+// === 009-027: Shared parser tests (Rust + AAVM) ===
+#[test] fn test_rust_99_bootstrap_009_parser_arithmetic() { test_rust_parser("99_bootstrap/009_parser_arithmetic").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_009_parser_arithmetic() { test_aavm("99_bootstrap/009_parser_arithmetic").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_010_parser_precedence() { test_rust_parser("99_bootstrap/010_parser_precedence").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_010_parser_precedence() { test_aavm("99_bootstrap/010_parser_precedence").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_011_parser_unary() { test_rust_parser("99_bootstrap/011_parser_unary").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_011_parser_unary() { test_aavm("99_bootstrap/011_parser_unary").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_012_parser_not() { test_rust_parser("99_bootstrap/012_parser_not").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_012_parser_not() { test_aavm("99_bootstrap/012_parser_not").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_013_parser_comparison() { test_rust_parser("99_bootstrap/013_parser_comparison").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_013_parser_comparison() { test_aavm("99_bootstrap/013_parser_comparison").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_014_parser_equality() { test_rust_parser("99_bootstrap/014_parser_equality").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_014_parser_equality() { test_aavm("99_bootstrap/014_parser_equality").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_015_parser_logical() { test_rust_parser("99_bootstrap/015_parser_logical").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_015_parser_logical() { test_aavm("99_bootstrap/015_parser_logical").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_016_parser_let() { test_rust_parser("99_bootstrap/016_parser_let").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_016_parser_let() { test_aavm("99_bootstrap/016_parser_let").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_017_parser_var() { test_rust_parser("99_bootstrap/017_parser_var").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_017_parser_var() { test_aavm("99_bootstrap/017_parser_var").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_018_parser_fn_decl() { test_rust_parser("99_bootstrap/018_parser_fn_decl").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_018_parser_fn_decl() { test_aavm("99_bootstrap/018_parser_fn_decl").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_019_parser_fn_call() { test_rust_parser("99_bootstrap/019_parser_fn_call").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_019_parser_fn_call() { test_aavm("99_bootstrap/019_parser_fn_call").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_020_parser_if_else() { test_rust_parser("99_bootstrap/020_parser_if_else").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_020_parser_if_else() { test_aavm("99_bootstrap/020_parser_if_else").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_021_parser_for_in() { test_rust_parser("99_bootstrap/021_parser_for_in").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_021_parser_for_in() { test_aavm("99_bootstrap/021_parser_for_in").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_022_parser_return() { test_rust_parser("99_bootstrap/022_parser_return").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_022_parser_return() { test_aavm("99_bootstrap/022_parser_return").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_023_parser_dot() { test_rust_parser("99_bootstrap/023_parser_dot").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_023_parser_dot() { test_aavm("99_bootstrap/023_parser_dot").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_024_parser_assign() { test_rust_parser("99_bootstrap/024_parser_assign").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_024_parser_assign() { test_aavm("99_bootstrap/024_parser_assign").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_025_parser_range() { test_rust_parser("99_bootstrap/025_parser_range").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_025_parser_range() { test_aavm("99_bootstrap/025_parser_range").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_026_parser_string() { test_rust_parser("99_bootstrap/026_parser_string").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_026_parser_string() { test_aavm("99_bootstrap/026_parser_string").unwrap(); }
+
+#[test] fn test_rust_99_bootstrap_027_parser_multi() { test_rust_parser("99_bootstrap/027_parser_multi").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_027_parser_multi() { test_aavm("99_bootstrap/027_parser_multi").unwrap(); }
+
+// === 028-037: P1 parser tests (Plan 234) ===
+#[test] fn test_aavm_99_bootstrap_028_parser_alias() { test_aavm("99_bootstrap/028_parser_alias").unwrap(); }
+#[test] fn test_rust_99_bootstrap_028_parser_alias() { test_rust_parser("99_bootstrap/028_parser_alias").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_029_parser_enum() { test_aavm("99_bootstrap/029_parser_enum").unwrap(); }
+#[test] fn test_rust_99_bootstrap_029_parser_enum() { test_rust_parser("99_bootstrap/029_parser_enum").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_030_parser_use() { test_aavm("99_bootstrap/030_parser_use").unwrap(); }
+#[test] fn test_rust_99_bootstrap_030_parser_use() { test_rust_parser("99_bootstrap/030_parser_use").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_031_parser_spec() { test_aavm("99_bootstrap/031_parser_spec").unwrap(); }
+#[test] fn test_rust_99_bootstrap_031_parser_spec() { test_rust_parser("99_bootstrap/031_parser_spec").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_032_parser_ext() { test_aavm("99_bootstrap/032_parser_ext").unwrap(); }
+#[test] fn test_rust_99_bootstrap_032_parser_ext() { test_rust_parser("99_bootstrap/032_parser_ext").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_033_parser_closure() { test_aavm("99_bootstrap/033_parser_closure").unwrap(); }
+#[test] fn test_rust_99_bootstrap_033_parser_closure() { test_rust_parser("99_bootstrap/033_parser_closure").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_034_parser_closure_multi() { test_aavm("99_bootstrap/034_parser_closure_multi").unwrap(); }
+#[test] fn test_rust_99_bootstrap_034_parser_closure_multi() { test_rust_parser("99_bootstrap/034_parser_closure_multi").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_035_parser_fstr() { test_aavm("99_bootstrap/035_parser_fstr").unwrap(); }
+#[test] fn test_rust_99_bootstrap_035_parser_fstr() { test_rust_parser("99_bootstrap/035_parser_fstr").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_036_parser_is() { test_aavm("99_bootstrap/036_parser_is").unwrap(); }
+#[test] fn test_rust_99_bootstrap_036_parser_is() { test_rust_parser("99_bootstrap/036_parser_is").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_037_parser_object() { test_aavm("99_bootstrap/037_parser_object").unwrap(); }
+#[test] fn test_rust_99_bootstrap_037_parser_object() { test_rust_parser("99_bootstrap/037_parser_object").unwrap(); }

@@ -1,0 +1,12 @@
+// Test: return statement — return 42
+fn main() {
+    let source = "return 42"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}

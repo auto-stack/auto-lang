@@ -1,0 +1,1 @@
+(code (enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 1)) (item (name Blue) (value 2))))

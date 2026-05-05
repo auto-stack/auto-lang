@@ -1,0 +1,1 @@
+(code (call (name print) (args (int 42))))

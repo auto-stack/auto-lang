@@ -1,0 +1,1 @@
+(code (closure (x) => (bina (name x) (op +) (int 1))))

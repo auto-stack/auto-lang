@@ -1,0 +1,3 @@
+(code spec Flyer {
+    fn fly()
+})

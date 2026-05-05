@@ -387,6 +387,147 @@ fn tokenize(source str) str {
     return result
 }
 
+// Lex a backtick f-string: `Hello ${name}`
+// P1: supports $ident interpolation only (no ${expr})
+// Produces: FStrStart, FStrPart("Hello "), FStrNote, Ident(name), FStrEnd
+fn lex_fstr_backtick(source str, pos int) {
+    var p = pos + 1 // skip `
+    var start = pos
+    var list = List.new()
+    list.push(Token(TokenKind.FStrStart, Pos(1, start, 1), "`"))
+
+    var text = ""
+    var c = cur_char(source, p)
+    for c != '`' && c != 0 {
+        if c == '$' {
+            // Flush accumulated text as FStrPart
+            if text != "" {
+                list.push(Token(TokenKind.FStrPart, Pos(1, p - text.len(), text.len()), text))
+                text = ""
+            }
+            // Emit FStrNote ($)
+            list.push(Token(TokenKind.FStrNote, Pos(1, p, 1), "$"))
+            p = p + 1
+            c = cur_char(source, p)
+            // Check for ${expr} or $ident
+            if c == '{' {
+                // ${expr} — skip {, read until }
+                p = p + 1
+                c = cur_char(source, p)
+                // Read identifier inside ${}
+                var ident = ""
+                for is_alnum(c) {
+                    ident = ident + source.sub(p, p + 1)
+                    p = p + 1
+                    c = cur_char(source, p)
+                }
+                if ident != "" {
+                    list.push(Token(TokenKind.Ident, Pos(1, p - ident.len(), ident.len()), ident))
+                }
+                // skip closing }
+                if c == '}' {
+                    p = p + 1
+                    c = cur_char(source, p)
+                }
+            } else if is_alpha(c) {
+                // $ident form
+                var ident = ""
+                for is_alnum(c) {
+                    ident = ident + source.sub(p, p + 1)
+                    p = p + 1
+                    c = cur_char(source, p)
+                }
+                list.push(Token(TokenKind.Ident, Pos(1, p - ident.len(), ident.len()), ident))
+            }
+        } else {
+            text = text + source.sub(p, p + 1)
+            p = p + 1
+            c = cur_char(source, p)
+        }
+    }
+
+    // Flush remaining text
+    if text != "" {
+        list.push(Token(TokenKind.FStrPart, Pos(1, p - text.len(), text.len()), text))
+    }
+
+    // Skip closing `
+    p = p + 1
+    list.push(Token(TokenKind.FStrEnd, Pos(1, p - 1, 1), "`"))
+
+    // Fix: update FStrStart pos.total to cover the entire f-string length
+    var total_len = p - start
+    list.set(0, Token(TokenKind.FStrStart, Pos(1, start, total_len), "`"))
+
+    return list
+}
+
+// Lex an f-prefixed string: f"Hello ${name}"
+// Same logic as backtick but with f"..." delimiters
+fn lex_fstr_f(source str, pos int) {
+    var p = pos + 2 // skip f"
+    var start = pos
+    var list = List.new()
+    list.push(Token(TokenKind.FStrStart, Pos(1, start, 2), "f\""))
+
+    var text = ""
+    var c = cur_char(source, p)
+    for c != '"' && c != 0 {
+        if c == '$' {
+            // Flush accumulated text
+            if text != "" {
+                list.push(Token(TokenKind.FStrPart, Pos(1, p - text.len(), text.len()), text))
+                text = ""
+            }
+            // Emit FStrNote
+            list.push(Token(TokenKind.FStrNote, Pos(1, p, 1), "$"))
+            p = p + 1
+            c = cur_char(source, p)
+            if c == '{' {
+                p = p + 1
+                c = cur_char(source, p)
+                var ident = ""
+                for is_alnum(c) {
+                    ident = ident + source.sub(p, p + 1)
+                    p = p + 1
+                    c = cur_char(source, p)
+                }
+                if ident != "" {
+                    list.push(Token(TokenKind.Ident, Pos(1, p - ident.len(), ident.len()), ident))
+                }
+                if c == '}' {
+                    p = p + 1
+                    c = cur_char(source, p)
+                }
+            } else if is_alpha(c) {
+                var ident = ""
+                for is_alnum(c) {
+                    ident = ident + source.sub(p, p + 1)
+                    p = p + 1
+                    c = cur_char(source, p)
+                }
+                list.push(Token(TokenKind.Ident, Pos(1, p - ident.len(), ident.len()), ident))
+            }
+        } else {
+            text = text + source.sub(p, p + 1)
+            p = p + 1
+            c = cur_char(source, p)
+        }
+    }
+
+    if text != "" {
+        list.push(Token(TokenKind.FStrPart, Pos(1, p - text.len(), text.len()), text))
+    }
+
+    p = p + 1 // skip closing "
+    list.push(Token(TokenKind.FStrEnd, Pos(1, p - 1, 1), "\""))
+
+    var total_len = p - start
+    list.set(0, Token(TokenKind.FStrStart, Pos(1, start, total_len), "f\""))
+
+    return list
+}
+
 // Tokenize a source string, returning a list of tokens
 // Used by the parser to consume tokens one at a time
 fn tokenize_list(source str) {
@@ -410,9 +551,31 @@ fn tokenize_list(source str) {
             list.push(tok)
             p = p + tok.pos.total
         } else if is_alpha(c) {
-            var tok = lex_ident(source, p)
-            list.push(tok)
-            p = p + tok.pos.total
+            // Check for f"..." f-string prefix
+            if c == 'f' && peek_char(source, p, '"') {
+                var toks = lex_fstr_f(source, p)
+                var first_fstr = toks.get(0)
+                var ti = 0
+                for ti < toks.len() {
+                    list.push(toks.get(ti))
+                    ti = ti + 1
+                }
+                p = p + first_fstr.pos.total
+            } else {
+                var tok = lex_ident(source, p)
+                list.push(tok)
+                p = p + tok.pos.total
+            }
+        } else if c == '`' {
+            // Backtick f-string: `Hello ${name}`
+            var toks = lex_fstr_backtick(source, p)
+            var first_fstr = toks.get(0)
+            var ti = 0
+            for ti < toks.len() {
+                list.push(toks.get(ti))
+                ti = ti + 1
+            }
+            p = p + first_fstr.pos.total
         } else if c == '"' {
             var tok = lex_string(source, p)
             list.push(tok)

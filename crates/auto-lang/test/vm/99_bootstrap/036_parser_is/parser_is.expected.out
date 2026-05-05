@@ -1,0 +1,1 @@
+(is x (1 -> true) (else false))

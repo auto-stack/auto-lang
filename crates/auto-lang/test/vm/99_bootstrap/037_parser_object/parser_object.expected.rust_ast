@@ -1,0 +1,1 @@
+(code (object (pair (name x) (int 1)) (pair (name y) (int 2))))

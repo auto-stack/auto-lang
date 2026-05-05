@@ -1,0 +1,1 @@
+(code (ext (target str (methods (fn (name len) (ret int) (body (int 0))))))

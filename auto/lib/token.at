@@ -299,5 +299,7 @@ fn keyword_kind(text str) TokenKind {
     if text == "node" { return TokenKind.Node }
     if text == "view" { return TokenKind.View }
     if text == "take" { return TokenKind.Take }
+    if text == "and" { return TokenKind.And }
+    if text == "or" { return TokenKind.Or }
     return TokenKind.Ident
 }
