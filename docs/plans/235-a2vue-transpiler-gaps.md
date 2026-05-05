@@ -338,20 +338,35 @@ Most of these already pass through correctly once Phase A fixes are in place (si
 
 ---
 
-## 3. Prioritized Roadmap
+## 3. Completion Status
+
+### ✅ Completed (2026-05-05)
+
+| Phase | Task | Status | Commit |
+|-------|------|--------|--------|
+| A1 | Fix `ts_adapter.rs` `Expr::Call` for `Expr::Dot` | ✅ Done | `066ff22e` |
+| A2 | Fix `ts_adapter.rs` `Expr::Dot` field access | ✅ Done | `066ff22e` |
+| A3 | Safe `get_name_text()` + audit callers | ✅ Done | `066ff22e` |
+| B1 | `storage` module (`storage.get/set/remove/clear`) | ✅ Done | `0e6b382` |
+| B2 | `event` module (`event.dispatch/listen`) | ✅ Done | `0e6b382` |
+| B3 | `json` module (`json.parse/stringify`) | ✅ Done | `0e6b382` |
+| B4 | `math`/`date` builtins | ✅ Done | `0e6b382` |
+| B5 | `router` param/query/path access + `Nav.to()` | ✅ Done | `0cefc727` |
+| — | `Expr::Array` in handler expressions | ✅ Done | ad-hoc |
+| — | `Expr::Object` with builtin values in handlers | ✅ Done | ad-hoc |
+| — | `StoreKind::Let` → `let` (not `const`) in handlers | ✅ Done | ad-hoc |
+
+**Verified end-to-end**: `examples/a3ui-replica/source/front/pages/create.at` compiles and builds successfully, replacing the handmade `CreateForm.vue` with a fully Auto-native widget using `date.now()`, `storage.get()`, `json.parse/stringify`, `event.dispatch()`, and `router.push()`.
+
+### Remaining
 
 | Phase | Task | Effort | Unblocks |
 |-------|------|--------|----------|
-| A1 | Fix `ts_adapter.rs` `Expr::Call` for `Expr::Dot` | 0.5d | All method calls in handlers |
-| A2 | Fix `ts_adapter.rs` `Expr::Dot` field access | 0.5d | Property access in handlers |
-| A3 | Safe `get_name_text()` + audit callers | 0.5d | Robustness |
-| B1 | `storage` module | 1d | localStorage persistence |
-| B2 | `event` module | 0.5d | Cross-component events |
-| B3 | `json` module | 0.5d | JSON serialization |
-| B4 | `math`/`date` builtins | 0.5d | IDs, timestamps |
-| B5 | `router` param/query access | 1d | Dynamic routing |
 | C1 | `watch` syntax | 2d | Reactive side effects |
 | C2 | `provide`/`inject` syntax | 2d | Dependency injection |
+| D | Array method verification (`.find()` with lambdas) | 1d | Collection operations |
+| E | `||` operator in handler expressions | 0.5d | Fallback expressions |
+| F | `if` expression as RHS of `let` (proper return value) | 0.5d | Ternary-like patterns |
 | D | Array method verification | 1d | Collection operations |
 | **Total** | | **~10–12 days** | Full widget CRUD in Auto |
 
