@@ -224,13 +224,23 @@ impl NativeInterface {
         use crate::vm::ffi::StaticFFIRegistration;
         for entry in inventory::iter::<StaticFFIRegistration> {
             use crate::vm::native_registry::BIGVM_NATIVES;
-            let id = BIGVM_NATIVES
-                .lock()
-                .unwrap()
+            let natives = BIGVM_NATIVES.lock().unwrap();
+            let id = natives
                 .resolve_qualified(entry.name)
                 .unwrap_or_else(|| panic!("build_from_inventory: '{}' not found in BIGVM_NATIVES", entry.name));
             assert!(id < STATIC_ID_MAX, "Inventory shim '{}' resolved to dynamic ID {}", entry.name, id);
             self.static_shims[id as usize] = Some(Arc::new(entry.shim));
+            // Register names for CALL_SPEC resolve
+            // Register the inventory name itself (e.g., "Str.char_at")
+            self.name_to_id.entry(entry.name.to_string()).or_insert(id);
+            // Register the canonical form (e.g., "auto.str.char_at")
+            if let Some(canonical) = natives.resolve_qualified_to_canonical(entry.name) {
+                self.name_to_id.entry(canonical).or_insert(id);
+            }
+            // Also register lowercase variant for CALL_SPEC dispatch
+            if let Some(lower) = Self::to_canonical(entry.name) {
+                self.name_to_id.entry(lower).or_insert(id);
+            }
         }
     }
 
@@ -459,6 +469,9 @@ impl NativeInterface {
         self.register_name("auto.hashmap.size", NATIVE_HASHMAP_SIZE);
         self.register_name("auto.hashmap.clear", NATIVE_HASHMAP_CLEAR);
         self.register_name("auto.hashmap.drop", NATIVE_HASHMAP_DROP);
+
+        // String methods for CALL_SPEC dispatch
+        self.register_name("auto.str.len", NATIVE_STR_LEN);
     }
 }
 
@@ -2129,28 +2142,45 @@ pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 
 /// Insert a string key with string value
 /// Stack: hashmap_id, key_str_id, value_str_id -> result (0)
+/// Insert a string key with any value type (str, int, bool, ref)
+/// Stack: hashmap_id, key_str_id, value -> result (0)
+///
+/// The value is auto-detected: negative (but not bool sentinels) = string tag,
+/// positive/zero/bool sentinels = int.
 pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-
-    let value_str_idx = task.ram.pop_str_idx();
-    let key_str_idx = task.ram.pop_str_idx();
+    let value_bits = task.ram.pop_i32();
+    let key_bits = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(map_id) {
-        // Get strings from strings pool
+        // Decode key string tag
+        let key_str_idx = ((-key_bits) - 1) as usize;
         let strings = vm.strings.read().unwrap();
         let key_bytes = strings.get(key_str_idx).cloned()
             .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
-        let value_bytes = strings.get(value_str_idx).cloned()
-            .ok_or(VMError::RuntimeError("Invalid value string ID".into()))?;
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+        // Detect value type from bits
+        let value = if value_bits < 0 && value_bits > i32::MIN + 1 {
+            // String tag: -(idx + 1)
+            let str_idx = ((-value_bits) - 1) as usize;
+            if let Some(bytes) = strings.get(str_idx) {
+                Value::Str(auto_val::AutoStr::from(String::from_utf8_lossy(bytes).as_ref()))
+            } else {
+                Value::Int(0)
+            }
+        } else if value_bits == i32::MIN {
+            Value::Bool(true)
+        } else if value_bits == i32::MIN + 1 {
+            Value::Bool(false)
+        } else {
+            Value::Int(value_bits)
+        };
         drop(strings);
 
-        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
-        let value_str = auto_val::AutoStr::from(String::from_utf8_lossy(&value_bytes).as_ref());
-
-        // Get write guard and insert
         let mut guard = obj.write().unwrap();
         if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
-            map.insert(key_str, Value::Str(value_str))
+            map.insert(key_str, value)
                 .map_err(|e| VMError::RuntimeError(e))?;
         }
     }
@@ -2201,21 +2231,39 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 
             // Get the value from map
             if let Some(value) = map.get(&key_str) {
-                // If it's a string, push as tagged string index
-                if let auto_val::Value::Str(s) = value {
-                    // Add string to strings pool and get index
-                    let mut strings = vm.strings.write().unwrap();
-                    let str_idx = strings.len() as u16;
-                    strings.push(s.as_bytes().to_vec());
-                    // Push as tagged string index: -(idx + 1)
-                    task.ram.push_i32(-((str_idx as i32) + 1));
-                    return Ok(());
+                match value {
+                    auto_val::Value::Int(i) => {
+                        task.ram.push_i32(i);
+                        return Ok(());
+                    }
+                    auto_val::Value::Uint(u) => {
+                        task.ram.push_i32(u as i32);
+                        return Ok(());
+                    }
+                    auto_val::Value::Bool(b) => {
+                        task.ram.push_i32(if b { 1 } else { 0 });
+                        return Ok(());
+                    }
+                    auto_val::Value::Str(s) => {
+                        let mut strings = vm.strings.write().unwrap();
+                        let str_idx = strings.len() as u16;
+                        strings.push(s.as_bytes().to_vec());
+                        task.ram.push_i32(-((str_idx as i32) + 1));
+                        return Ok(());
+                    }
+                    auto_val::Value::VmRef(vm_ref) => {
+                        task.ram.push_i32(vm_ref.id as i32);
+                        return Ok(());
+                    }
+                    _ => {
+                        // Unsupported value type — push 0
+                    }
                 }
             }
         }
     }
 
-    // Not found or not a string - push 0
+    // Not found — push 0
     task.ram.push_i32(0);
     Ok(())
 }

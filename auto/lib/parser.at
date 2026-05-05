@@ -153,25 +153,38 @@ fn parse_top_stmt(p Parser) ASTNode {
 }
 
 // Parse a block body: { stmts }
-// Returns S-expression string of the body
-fn parse_body(p Parser) str {
+// Returns List of ASTNode statements
+fn parse_body(p Parser) List {
     p.pos = p.pos + 1  // skip '{'
     parser_skip_nl_semi(p)
 
-    var result = ""
+    var stmts = empty_list()
     for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
         var stmt = parse_stmt(p)
         if stmt.kind != NodeKind.NilNode {
-            if result != "" {
-                result = result + " "
-            }
-            result = result + stmt.value
+            stmts.push(stmt)
         }
         parser_skip_nl_semi(p)
     }
 
     if parser_kind(p) == TokenKind.RBrace {
         p.pos = p.pos + 1  // skip '}'
+    }
+    return stmts
+}
+
+// Convert body statement list to S-expression string
+fn body_to_str(body List) str {
+    var result = ""
+    var i = 0
+    var n = body.len()
+    for i < n {
+        var stmt = body.get(i)
+        if result != "" {
+            result = result + " "
+        }
+        result = result + stmt.value
+        i = i + 1
     }
     return result
 }
@@ -214,7 +227,10 @@ fn parse_stmt(p Parser) ASTNode {
                 }
             }
             var body = parse_body(p)
-            block_node(body)
+            var body_str = body_to_str(body)
+            var node = block_node(body_str)
+            node.children = body
+            return node
         }
         else -> parse_expr_stmt(p)
     }
@@ -276,7 +292,11 @@ fn parse_fn_decl(p Parser) ASTNode {
 
     parser_skip_nl_semi(p)
     var body = parse_body(p)
-    return fn_node(name, params.len(), ret_type, body)
+    var body_str = body_to_str(body)
+    var node = fn_node(name, params.len(), ret_type, body_str)
+    node.children = body
+    node.params = params
+    return node
 }
 
 // Parse let statement: let name [type] = expr
@@ -357,9 +377,11 @@ fn parse_if_stmt(p Parser) ASTNode {
 
     var cond = parse_expr(p)
     parser_skip_nl_semi(p)
-    var body_str = parse_body(p)
+    var body = parse_body(p)
+    var body_str = body_to_str(body)
 
     var else_str = ""
+    var else_body = empty_list()
     parser_skip_nl_semi(p)
     if parser_kind(p) == TokenKind.Else {
         p.pos = p.pos + 1  // skip 'else'
@@ -367,12 +389,17 @@ fn parse_if_stmt(p Parser) ASTNode {
         if parser_kind(p) == TokenKind.If {
             var else_if = parse_if_stmt(p)
             else_str = else_if.value
+            else_body.push(else_if)
         } else {
-            else_str = parse_body(p)
+            else_body = parse_body(p)
+            else_str = body_to_str(else_body)
         }
     }
 
-    return if_node(cond, body_str, else_str)
+    var node = if_node(cond, body_str, else_str)
+    node.children = body
+    node.else_body = else_body
+    return node
 }
 
 // Parse for statement
@@ -382,7 +409,10 @@ fn parse_for_stmt(p Parser) ASTNode {
     // for { body } -- infinite loop
     if parser_kind(p) == TokenKind.LBrace {
         var body = parse_body(p)
-        return for_node(nil_node(), body)
+        var body_str = body_to_str(body)
+        var node = for_node(nil_node(), body_str)
+        node.children = body
+        return node
     }
 
     // for ident in range { body }
@@ -396,7 +426,10 @@ fn parse_for_stmt(p Parser) ASTNode {
             var range = parse_expr(p)
             parser_skip_nl_semi(p)
             var body = parse_body(p)
-            return forin_node(name, range, body)
+            var body_str = body_to_str(body)
+            var node = forin_node(name, range, body_str)
+            node.children = body
+            return node
         }
     }
 
@@ -404,7 +437,10 @@ fn parse_for_stmt(p Parser) ASTNode {
     var cond = parse_expr(p)
     parser_skip_nl_semi(p)
     var body = parse_body(p)
-    return for_node(cond, body)
+    var body_str = body_to_str(body)
+    var node = for_node(cond, body_str)
+    node.children = body
+    return node
 }
 
 // Parse type declaration: type Name { fields }

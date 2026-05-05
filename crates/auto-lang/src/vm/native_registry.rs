@@ -194,6 +194,24 @@ impl AutoVMNativeRegistry {
         None
     }
 
+    /// Resolve a name to its ID and return the canonical name used.
+    /// Returns None if not found.
+    pub fn resolve_qualified_to_canonical(&self, path: &str) -> Option<String> {
+        // Direct lookup — path is already canonical
+        if self.registry.contains_key(path) {
+            return Some(path.to_string());
+        }
+        // Try canonical normalization
+        if !path.starts_with("auto.") && !path.starts_with("rust.") && !path.starts_with("py.") {
+            if let Some(canonical) = Self::to_canonical(path) {
+                if self.registry.contains_key(&canonical) {
+                    return Some(canonical);
+                }
+            }
+        }
+        None
+    }
+
     /// Convert a short native name to its canonical "auto.X.Y" form.
     ///
     /// - "str.len" → "auto.str.len"

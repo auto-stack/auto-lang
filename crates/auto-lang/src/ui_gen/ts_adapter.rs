@@ -240,6 +240,17 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             }
         }
 
+        // String literal — escape newlines and quotes for JS single-quoted strings
+        Expr::Str(s) => {
+            let escaped = s
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+            write!(out, "'{}'", escaped).ok();
+        }
+
         // Function call — API detection, print, builtins, method calls
         Expr::Call(call) => {
             match call.name.as_ref() {

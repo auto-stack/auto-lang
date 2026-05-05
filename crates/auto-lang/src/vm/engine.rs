@@ -3517,7 +3517,10 @@ impl AutoVM {
                     let receiver = task.ram.read_i32(receiver_pos);
 
                     // Look up the object's type name from all registries
-                    let type_name = if receiver > 0 {
+                    let type_name = if receiver < 0 && receiver > i32::MIN + 1 {
+                        // Tagged string index — treat as str type
+                        "str".to_string()
+                    } else if receiver > 0 {
                         let obj_key = receiver as u64;
                         // heap_objects (4000000+): ListData, HashMapData, GenericInstanceData, etc.
                         if let Some(obj_lock) = self.heap_objects.get(&obj_key) {

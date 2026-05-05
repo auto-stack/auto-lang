@@ -9444,7 +9444,12 @@ impl<'a> Parser<'a> {
 
             let name = self.cur.text.clone();
             self.next();
-            let ty = self.parse_type()?;
+            // Support optional type annotation: `name = expr` or `name type = expr`
+            let ty = if self.is_kind(TokenKind::Asn) {
+                Type::Unknown
+            } else {
+                self.parse_type()?
+            };
             let init = if self.is_kind(TokenKind::Asn) {
                 self.next();
                 self.parse_expr()?
@@ -10550,8 +10555,20 @@ impl<'a> Parser<'a> {
                 self.next();
             }
 
+            // Define params in scope before parsing body
+            self.enter_scope();
+            for param in &params {
+                let meta = Meta::Store(Store {
+                    kind: StoreKind::Var,
+                    name: param.clone().into(),
+                    expr: Expr::Nil,
+                    ty: Type::Unknown,
+                });
+                self.define(param.as_str(), meta);
+            }
             // Parse body
             let body = self.body()?;
+            self.exit_scope();
 
             handlers.push(OnHandler { pattern, params, body });
             self.skip_empty_lines();

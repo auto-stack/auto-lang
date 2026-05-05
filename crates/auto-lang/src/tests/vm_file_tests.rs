@@ -486,6 +486,7 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/lexer.at",
     "auto/lib/ast.at",
     "auto/lib/parser.at",
+    "auto/lib/eval.at",
 ];
 
 /// Read and concatenate all auto/lib/*.at files
@@ -714,3 +715,5 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 
 #[test] fn test_aavm_99_bootstrap_037_parser_object() { test_aavm("99_bootstrap/037_parser_object").unwrap(); }
 #[test] fn test_rust_99_bootstrap_037_parser_object() { test_rust_parser("99_bootstrap/037_parser_object").unwrap(); }
+
+#[test] fn test_aavm_99_bootstrap_038_eval_arithmetic() { test_aavm("99_bootstrap/038_eval_arithmetic").unwrap(); }

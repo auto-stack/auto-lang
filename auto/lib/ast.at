@@ -43,9 +43,11 @@ type Param {
 }
 
 // Universal AST node — value stores pre-computed S-expression string
+// name stores identifier/literal text for evaluator lookup
 type ASTNode {
     kind NodeKind
     value str
+    name str
     children List
     left List
     right List
@@ -63,23 +65,23 @@ fn empty_list() List {
 
 // Constructor helpers — value field stores S-expression representation
 fn int_node(val str) ASTNode {
-    ASTNode(NodeKind.IntExpr, val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.IntExpr, val, val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn str_node(val str) ASTNode {
-    ASTNode(NodeKind.StrExpr, "\"" + val + "\"", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.StrExpr, "\"" + val + "\"", val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn bool_node(val str) ASTNode {
-    ASTNode(NodeKind.BoolExpr, val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.BoolExpr, val, val, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn ident_node(name str) ASTNode {
-    ASTNode(NodeKind.IdentExpr, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.IdentExpr, name, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn nil_node() ASTNode {
-    ASTNode(NodeKind.NilNode, "nil", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.NilNode, "nil", "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn bin_node(op str, left ASTNode, right ASTNode) ASTNode {
@@ -88,14 +90,14 @@ fn bin_node(op str, left ASTNode, right ASTNode) ASTNode {
     var r = empty_list()
     r.push(right)
     var s = "(" + op + " " + left.value + " " + right.value + ")"
-    ASTNode(NodeKind.BinExpr, s, empty_list(), l, r, op, empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.BinExpr, s, "", empty_list(), l, r, op, empty_list(), "", empty_list(), empty_list())
 }
 
 fn unary_node(op str, operand ASTNode) ASTNode {
     var l = empty_list()
     l.push(operand)
     var s = "(" + op + " " + operand.value + ")"
-    ASTNode(NodeKind.UnaryExpr, s, empty_list(), l, empty_list(), op, empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.UnaryExpr, s, "", empty_list(), l, empty_list(), op, empty_list(), "", empty_list(), empty_list())
 }
 
 fn call_node(callee ASTNode, args_str str) ASTNode {
@@ -104,14 +106,14 @@ fn call_node(callee ASTNode, args_str str) ASTNode {
         s = s + " " + args_str
     }
     s = s + ")"
-    ASTNode(NodeKind.CallExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.CallExpr, s, callee.value, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn dot_node(obj ASTNode, field str) ASTNode {
     var l = empty_list()
     l.push(obj)
     var s = obj.value + "." + field
-    ASTNode(NodeKind.DotExpr, s, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.DotExpr, s, field, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn fn_node(name str, params_count int, ret str, body_str str) ASTNode {
@@ -126,7 +128,7 @@ fn fn_node(name str, params_count int, ret str, body_str str) ASTNode {
         s = s + " " + ret
     }
     s = s + " (body " + body_str + "))"
-    ASTNode(NodeKind.FnStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), ret, empty_list(), empty_list())
+    ASTNode(NodeKind.FnStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), ret, empty_list(), empty_list())
 }
 
 fn store_node(kind NodeKind, name str, type_name str, expr ASTNode) ASTNode {
@@ -143,18 +145,18 @@ fn store_node(kind NodeKind, name str, type_name str, expr ASTNode) ASTNode {
         s = s + " " + type_name
     }
     s = s + " " + expr.value + ")"
-    ASTNode(kind, s, empty_list(), l, empty_list(), "", empty_list(), type_name, empty_list(), empty_list())
+    ASTNode(kind, s, name, empty_list(), l, empty_list(), "", empty_list(), type_name, empty_list(), empty_list())
 }
 
 fn return_node(expr ASTNode) ASTNode {
     var l = empty_list()
     l.push(expr)
     var s = "(return " + expr.value + ")"
-    ASTNode(NodeKind.ReturnStmt, s, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ReturnStmt, s, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn return_node_empty() ASTNode {
-    ASTNode(NodeKind.ReturnStmt, "(return)", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ReturnStmt, "(return)", "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn if_node(cond ASTNode, body_str str, else_str str) ASTNode {
@@ -162,27 +164,33 @@ fn if_node(cond ASTNode, body_str str, else_str str) ASTNode {
     if else_str != "" {
         s = "(if " + cond.value + " (body " + body_str + ") (else " + else_str + "))"
     }
-    ASTNode(NodeKind.IfStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var cl = empty_list()
+    cl.push(cond)
+    ASTNode(NodeKind.IfStmt, s, "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", cl, empty_list())
 }
 
 fn forin_node(name str, range ASTNode, body_str str) ASTNode {
     var s = "(for " + name + " in " + range.value + " (body " + body_str + "))"
-    ASTNode(NodeKind.ForInStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var rl = empty_list()
+    rl.push(range)
+    ASTNode(NodeKind.ForInStmt, s, name, empty_list(), rl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn for_node(cond ASTNode, body_str str) ASTNode {
     var s = "(for " + cond.value + " (body " + body_str + "))"
-    ASTNode(NodeKind.ForStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var cl = empty_list()
+    cl.push(cond)
+    ASTNode(NodeKind.ForStmt, s, "", empty_list(), cl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn expr_stmt_node(expr ASTNode) ASTNode {
     var l = empty_list()
     l.push(expr)
-    ASTNode(NodeKind.ExprStmt, expr.value, empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ExprStmt, expr.value, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn block_node(body_str str) ASTNode {
-    ASTNode(NodeKind.BlockStmt, "(block " + body_str + ")", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.BlockStmt, "(block " + body_str + ")", "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn type_node(name str, fields_count int) ASTNode {
@@ -193,44 +201,48 @@ fn type_node(name str, fields_count int) ASTNode {
         i = i + 1
     }
     s = s + ")"
-    ASTNode(NodeKind.TypeStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.TypeStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 // ---- P1 Constructor helpers ----
 
 fn closure_node(params_str str, body ASTNode) ASTNode {
     var s = "(closure (" + params_str + ") => " + body.value + ")"
-    ASTNode(NodeKind.ClosureExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var bl = empty_list()
+    bl.push(body)
+    ASTNode(NodeKind.ClosureExpr, s, "", empty_list(), bl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn fstr_node(parts_str str) ASTNode {
     var s = "(fstr " + parts_str + ")"
-    ASTNode(NodeKind.FStrExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.FStrExpr, s, "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn is_node(expr ASTNode, branches_str str) ASTNode {
     var s = "(is " + expr.value + " " + branches_str + ")"
-    ASTNode(NodeKind.IsStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var el = empty_list()
+    el.push(expr)
+    ASTNode(NodeKind.IsStmt, s, "", empty_list(), el, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn enum_node(name str, variants_str str) ASTNode {
     var s = "(enum " + name + " " + variants_str + ")"
-    ASTNode(NodeKind.EnumStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.EnumStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn ext_node(target str, methods_str str) ASTNode {
     var s = "(ext " + target + " " + methods_str + ")"
-    ASTNode(NodeKind.ExtStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ExtStmt, s, target, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn spec_node(name str, methods_str str) ASTNode {
     var s = "(spec " + name + " " + methods_str + ")"
-    ASTNode(NodeKind.SpecStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.SpecStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn alias_node(name str, target str) ASTNode {
     var s = "(alias " + name + " " + target + ")"
-    ASTNode(NodeKind.AliasStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.AliasStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn use_node(path_str str, items_str str) ASTNode {
@@ -239,17 +251,19 @@ fn use_node(path_str str, items_str str) ASTNode {
         s = s + " " + items_str
     }
     s = s + ")"
-    ASTNode(NodeKind.UseStmt, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.UseStmt, s, path_str, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn object_node(pairs_str str) ASTNode {
     var s = "(object " + pairs_str + ")"
-    ASTNode(NodeKind.ObjectExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ObjectExpr, s, "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn pair_node(key str, val ASTNode) ASTNode {
     var s = "(pair " + key + " " + val.value + ")"
-    ASTNode(NodeKind.PairExpr, s, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    var vl = empty_list()
+    vl.push(val)
+    ASTNode(NodeKind.PairExpr, s, key, empty_list(), vl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 // Simply return the pre-computed S-expression string

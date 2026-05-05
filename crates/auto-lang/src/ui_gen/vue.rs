@@ -2943,10 +2943,19 @@ impl VueGenerator {
         false
     }
 
+    /// Escape a string for use in JavaScript single-quoted string literals.
+    fn escape_js_string(s: &str) -> String {
+        s.replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }
+
     /// Convert AuraExpr to JS value string
     fn expr_to_js(&self, expr: &AuraExpr) -> GenResult<String> {
         match expr {
-            AuraExpr::Literal(s) => Ok(format!("'{}'", s)),
+            AuraExpr::Literal(s) => Ok(format!("'{}'", Self::escape_js_string(s))),
             AuraExpr::Int(n) => Ok(n.to_string()),
             AuraExpr::Float(n) => Ok(n.to_string()),
             AuraExpr::Bool(b) => Ok(b.to_string()),
