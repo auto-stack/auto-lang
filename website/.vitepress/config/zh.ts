@@ -34,7 +34,17 @@ function nav(): DefaultTheme.NavItem[] {
     { text: '文档', link: '/zh/docs/' },
     { text: '教程', link: '/zh/books/' },
     { text: 'Playground', link: '/zh/playground' },
-    { text: 'UI 画廊', link: '/zh/ui-gallery' },
+    {
+      text: 'UI',
+      items: [
+        { text: '画廊', link: '/zh/ui-gallery' },
+        { text: '组件', link: '/ui-gallery/web/index.html', target: '_self' },
+        { text: '区块', link: '/ui-gallery/web/index.html#/blocks', target: '_self' },
+        { text: '桌面端', link: '/zh/ui-desktop' },
+        { text: 'Android', link: '/zh/ui-android' },
+        { text: '鸿蒙', link: '/zh/ui-harmony' },
+      ],
+    },
     {
       text: 'v0.3',
       items: [
