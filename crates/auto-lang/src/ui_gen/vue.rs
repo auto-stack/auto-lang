@@ -837,6 +837,9 @@ pub struct VueGenerator {
 
     /// Whether theme-toggle component is used
     use_theme_toggle: bool,
+
+    /// Whether CurveType from @unovis/ts is needed (for chart curve-type props)
+    use_curve_type: bool,
 }
 
 /// Data for generating interactive preview cards
@@ -890,6 +893,7 @@ impl VueGenerator {
             used_handlers: HashSet::new(),
             has_dark_mode: false,
             use_theme_toggle: false,
+            use_curve_type: false,
         }
     }
 
@@ -1181,6 +1185,10 @@ impl VueGenerator {
         if !shadcn_imports.is_empty() {
             script.push_str(&shadcn_imports);
             script.push('\n');
+        }
+        // Chart CurveType import
+        if self.use_curve_type {
+            script.push_str("import { CurveType } from '@unovis/ts'\n");
         }
 
         // Generate lucide-vue-next imports (if any icons were used)
@@ -3387,6 +3395,90 @@ impl VueGenerator {
                 Ok(format!("{}{}", left_str, right_str))
             }
             _ => Ok("value".to_string()),
+        }
+    }
+
+    /// Convert AuraExpr to Vue bound attribute value (for :prop="..." bindings).
+    /// Used for chart props and other complex bindings where we need JavaScript
+    /// expressions in Vue templates (state refs are kept bare, no .value).
+    fn expr_to_vue_bound_value(&self, expr: &AuraExpr) -> GenResult<String> {
+        match expr {
+            AuraExpr::Literal(s) => Ok(format!("'{}'", Self::escape_js_string(s))),
+            AuraExpr::Int(n) => Ok(n.to_string()),
+            AuraExpr::Float(n) => Ok(n.to_string()),
+            AuraExpr::Bool(b) => Ok(b.to_string()),
+            AuraExpr::StateRef(name) => Ok(name.clone()),
+            AuraExpr::FieldAccess { object, field } => {
+                let obj_str = self.expr_to_vue_bound_value(object)?;
+                Ok(format!("{}.{}", obj_str, field))
+            }
+            AuraExpr::Array(elems) => {
+                let elems_vue: Vec<String> = elems.iter()
+                    .map(|e| self.expr_to_vue_bound_value(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("[{}]", elems_vue.join(", ")))
+            }
+            AuraExpr::Object(fields) => {
+                let pairs_vue: Vec<String> = fields.iter()
+                    .map(|(k, v)| {
+                        let v_vue = self.expr_to_vue_bound_value(v)?;
+                        Ok(format!("{}: {}", k, v_vue))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{{{}}}", pairs_vue.join(", ")))
+            }
+            _ => Ok("null".to_string()),
+        }
+    }
+
+    /// Emit a chart prop attribute.
+    /// Literal strings become static attributes; everything else becomes a bound attribute.
+    fn emit_chart_prop(&mut self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>, key: &str, vue_attr: &str) {
+        if let Some(value) = props.get(key) {
+            match value {
+                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                    attrs.push(format!("{}=\"{}\"", vue_attr, s));
+                }
+                AuraPropValue::Expr(expr) => {
+                    if let Ok(v) = self.expr_to_vue_bound_value(expr) {
+                        attrs.push(format!(":{}=\"{}\"", vue_attr, v));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Emit curve-type prop for charts, mapping string values to CurveType enum.
+    fn emit_curve_type_prop(&mut self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>) {
+        if let Some(value) = props.get("curve-type").or_else(|| props.get("curve_type")) {
+            self.use_curve_type = true;
+            if let Some(s) = self.extract_string_value(value) {
+                let mapped = match s {
+                    "basis" => "CurveType.Basis",
+                    "basisClosed" => "CurveType.BasisClosed",
+                    "basisOpen" => "CurveType.BasisOpen",
+                    "bundle" => "CurveType.Bundle",
+                    "cardinal" => "CurveType.Cardinal",
+                    "cardinalClosed" => "CurveType.CardinalClosed",
+                    "cardinalOpen" => "CurveType.CardinalOpen",
+                    "catmullRom" => "CurveType.CatmullRom",
+                    "catmullRomClosed" => "CurveType.CatmullRomClosed",
+                    "catmullRomOpen" => "CurveType.CatmullRomOpen",
+                    "linear" => "CurveType.Linear",
+                    "linearClosed" => "CurveType.LinearClosed",
+                    "monotone" | "monotoneX" => "CurveType.MonotoneX",
+                    "monotoneY" => "CurveType.MonotoneY",
+                    "natural" => "CurveType.Natural",
+                    "step" => "CurveType.Step",
+                    "stepAfter" => "CurveType.StepAfter",
+                    "stepBefore" => "CurveType.StepBefore",
+                    _ => "CurveType.MonotoneX",
+                };
+                attrs.push(format!(":curve-type=\"{}\"", mapped));
+            } else if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                attrs.push(format!(":curve-type=\"{}\"", name));
+            }
         }
     }
 
@@ -6213,6 +6305,157 @@ impl VueGenerator {
                                 }
                             }
                         }
+                    }
+                }
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
+            }
+
+            // === Charts (shadcn-vue + Unovis) ===
+            "area_chart" | "area-chart" => {
+                self.emit_chart_prop(&mut attrs, props, "data", "data");
+                self.emit_chart_prop(&mut attrs, props, "categories", "categories");
+                self.emit_chart_prop(&mut attrs, props, "index", "index");
+                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
+                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
+                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "show-x-axis", "show-x-axis");
+                self.emit_chart_prop(&mut attrs, props, "show_x_axis", "show-x-axis");
+                self.emit_chart_prop(&mut attrs, props, "show-y-axis", "show-y-axis");
+                self.emit_chart_prop(&mut attrs, props, "show_y_axis", "show-y-axis");
+                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show-grid-line", "show-grid-line");
+                self.emit_chart_prop(&mut attrs, props, "show_grid_line", "show-grid-line");
+                self.emit_chart_prop(&mut attrs, props, "x-formatter", "x-formatter");
+                self.emit_chart_prop(&mut attrs, props, "x_formatter", "x-formatter");
+                self.emit_chart_prop(&mut attrs, props, "y-formatter", "y-formatter");
+                self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
+                self.emit_curve_type_prop(&mut attrs, props);
+                self.emit_chart_prop(&mut attrs, props, "show-gradient", "show-gradient");
+                self.emit_chart_prop(&mut attrs, props, "show_gradient", "show-gradient");
+                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
+                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    } else if let Some(name) = self.extract_string_value(value) {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    }
+                }
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
+            }
+
+            "bar_chart" | "bar-chart" => {
+                self.emit_chart_prop(&mut attrs, props, "data", "data");
+                self.emit_chart_prop(&mut attrs, props, "categories", "categories");
+                self.emit_chart_prop(&mut attrs, props, "index", "index");
+                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
+                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
+                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "show-x-axis", "show-x-axis");
+                self.emit_chart_prop(&mut attrs, props, "show_x_axis", "show-x-axis");
+                self.emit_chart_prop(&mut attrs, props, "show-y-axis", "show-y-axis");
+                self.emit_chart_prop(&mut attrs, props, "show_y_axis", "show-y-axis");
+                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show-grid-line", "show-grid-line");
+                self.emit_chart_prop(&mut attrs, props, "show_grid_line", "show-grid-line");
+                self.emit_chart_prop(&mut attrs, props, "x-formatter", "x-formatter");
+                self.emit_chart_prop(&mut attrs, props, "x_formatter", "x-formatter");
+                self.emit_chart_prop(&mut attrs, props, "y-formatter", "y-formatter");
+                self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
+                self.emit_chart_prop(&mut attrs, props, "type", "type");
+                self.emit_chart_prop(&mut attrs, props, "rounded-corners", "rounded-corners");
+                self.emit_chart_prop(&mut attrs, props, "rounded_corners", "rounded-corners");
+                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
+                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    } else if let Some(name) = self.extract_string_value(value) {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    }
+                }
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
+            }
+
+            "line_chart" | "line-chart" => {
+                self.emit_chart_prop(&mut attrs, props, "data", "data");
+                self.emit_chart_prop(&mut attrs, props, "categories", "categories");
+                self.emit_chart_prop(&mut attrs, props, "index", "index");
+                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
+                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
+                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "show-x-axis", "show-x-axis");
+                self.emit_chart_prop(&mut attrs, props, "show_x_axis", "show-x-axis");
+                self.emit_chart_prop(&mut attrs, props, "show-y-axis", "show-y-axis");
+                self.emit_chart_prop(&mut attrs, props, "show_y_axis", "show-y-axis");
+                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show-grid-line", "show-grid-line");
+                self.emit_chart_prop(&mut attrs, props, "show_grid_line", "show-grid-line");
+                self.emit_chart_prop(&mut attrs, props, "x-formatter", "x-formatter");
+                self.emit_chart_prop(&mut attrs, props, "x_formatter", "x-formatter");
+                self.emit_chart_prop(&mut attrs, props, "y-formatter", "y-formatter");
+                self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
+                self.emit_curve_type_prop(&mut attrs, props);
+                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
+                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    } else if let Some(name) = self.extract_string_value(value) {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    }
+                }
+                if let Some(value) = self.get_style_class(props) {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    if !class.is_empty() {
+                        attrs.push(format!("class=\"{}\"", class));
+                    }
+                }
+            }
+
+            "donut_chart" | "donut-chart" => {
+                self.emit_chart_prop(&mut attrs, props, "data", "data");
+                self.emit_chart_prop(&mut attrs, props, "category", "category");
+                self.emit_chart_prop(&mut attrs, props, "index", "index");
+                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
+                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
+                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
+                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
+                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
+                self.emit_chart_prop(&mut attrs, props, "type", "type");
+                self.emit_chart_prop(&mut attrs, props, "value-formatter", "value-formatter");
+                self.emit_chart_prop(&mut attrs, props, "value_formatter", "value-formatter");
+                self.emit_chart_prop(&mut attrs, props, "sort-function", "sort-function");
+                self.emit_chart_prop(&mut attrs, props, "sort_function", "sort-function");
+                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
+                    if let AuraPropValue::Expr(AuraExpr::StateRef(name)) = value {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
+                    } else if let Some(name) = self.extract_string_value(value) {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
                     }
                 }
                 if let Some(value) = self.get_style_class(props) {

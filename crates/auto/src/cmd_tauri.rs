@@ -304,6 +304,10 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
         ("@/components/ui/aspect-ratio", "aspect-ratio"),
         ("@/components/ui/button-group", "button-group"),
         ("@/components/ui/chart", "chart"),
+        ("@/components/ui/chart-area", "chart-area"),
+        ("@/components/ui/chart-bar", "chart-bar"),
+        ("@/components/ui/chart-line", "chart-line"),
+        ("@/components/ui/chart-donut", "chart-donut"),
         ("@/components/ui/collapsible", "collapsible"),
         ("@/components/ui/input-group", "input-group"),
         ("@/components/ui/input-otp", "input-otp"),
@@ -730,6 +734,17 @@ fn generate_index_css() -> String {
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* Unovis chart theme variables */
+    --vis-tooltip-background-color: none !important;
+    --vis-tooltip-border-color: none !important;
+    --vis-tooltip-text-color: none !important;
+    --vis-tooltip-shadow-color: none !important;
+    --vis-tooltip-backdrop-filter: none !important;
+    --vis-tooltip-padding: none !important;
+    --vis-primary-color: var(--primary);
+    --vis-secondary-color: 160 81% 40%;
+    --vis-text-color: var(--muted-foreground);
   }
 
   .dark {

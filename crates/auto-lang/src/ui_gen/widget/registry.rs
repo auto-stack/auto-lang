@@ -2785,6 +2785,59 @@ impl WidgetRegistry {
             extra_components: Vec::new(),
         });
         self.register(list_item);
+
+        // === Charts (shadcn-vue + Unovis) ===
+        // AreaChart
+        let mut area_chart = WidgetSpec::new("AreaChart", WidgetCategory::Data)
+            .with_alias("area-chart");
+        area_chart.has_children = false;
+        area_chart.backends.insert("vue".to_string(), BackendMapping {
+            component: "AreaChart".to_string(),
+            import: Some("@/components/ui/chart-area".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(area_chart);
+
+        // BarChart
+        let mut bar_chart = WidgetSpec::new("BarChart", WidgetCategory::Data)
+            .with_alias("bar-chart");
+        bar_chart.has_children = false;
+        bar_chart.backends.insert("vue".to_string(), BackendMapping {
+            component: "BarChart".to_string(),
+            import: Some("@/components/ui/chart-bar".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(bar_chart);
+
+        // LineChart
+        let mut line_chart = WidgetSpec::new("LineChart", WidgetCategory::Data)
+            .with_alias("line-chart");
+        line_chart.has_children = false;
+        line_chart.backends.insert("vue".to_string(), BackendMapping {
+            component: "LineChart".to_string(),
+            import: Some("@/components/ui/chart-line".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(line_chart);
+
+        // DonutChart
+        let mut donut_chart = WidgetSpec::new("DonutChart", WidgetCategory::Data)
+            .with_alias("donut-chart");
+        donut_chart.has_children = false;
+        donut_chart.backends.insert("vue".to_string(), BackendMapping {
+            component: "DonutChart".to_string(),
+            import: Some("@/components/ui/chart-donut".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(donut_chart);
     }
 
     fn register_semantic_widgets(&mut self) {

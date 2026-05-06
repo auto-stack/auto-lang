@@ -8,6 +8,14 @@ widget Dashboard01Page {
             { label: "Bounce Rate", value: "12.23%", change: "+4.1%", trend: "up" },
             { label: "Active Now", value: "+573", change: "+201", trend: "up" }
         ]
+        revenueData = [
+            { month: "Jan", desktop: 186, mobile: 80 },
+            { month: "Feb", desktop: 305, mobile: 200 },
+            { month: "Mar", desktop: 237, mobile: 120 },
+            { month: "Apr", desktop: 73, mobile: 190 },
+            { month: "May", desktop: 209, mobile: 130 },
+            { month: "Jun", desktop: 214, mobile: 140 }
+        ]
         users = [
             { name: "User 1", email: "user1@example.com", amount: "+$42.00", initial: "U1" },
             { name: "User 2", email: "user2@example.com", amount: "+$84.00", initial: "U2" },
@@ -52,11 +60,12 @@ widget Dashboard01Page {
                         text (style: "text-base font-semibold") {
                             text (text: "Revenue Overview") {}
                         }
-                        div (style: "h-[300px] bg-slate-100 rounded-md flex items-center justify-center") {
-                            text (style: "text-sm text-slate-400") {
-                                text (text: "Chart placeholder") {}
-                            }
-                        }
+                        area-chart (
+                            data: .revenueData,
+                            categories: ["desktop", "mobile"],
+                            index: "month",
+                            style: "h-[300px] w-full"
+                        ) {}
                     }
                 }
                 // Recent activity

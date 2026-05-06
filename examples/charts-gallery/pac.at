@@ -1,0 +1,4 @@
+name: "charts-gallery"
+version: "1.0.0"
+scene: "ui"
+backend: ["vue"]
