@@ -486,6 +486,7 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/lexer.at",
     "auto/lib/ast.at",
     "auto/lib/parser.at",
+    "auto/lib/typeinfer.at",
     "auto/lib/eval.at",
 ];
 
@@ -733,3 +734,6 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_051a_eval_str_fn_arg_simple() { test_aavm("99_bootstrap/051a_eval_str_fn_arg_simple").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_052_eval_str_return() { test_aavm("99_bootstrap/052_eval_str_return").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_053_eval_str_literal() { test_aavm("99_bootstrap/053_eval_str_literal").unwrap(); }
+// Plan 237 Phase B: Type inference
+#[test] fn test_aavm_99_bootstrap_054_type_infer_basic() { test_aavm("99_bootstrap/054_type_infer_basic").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_055_type_infer_fn() { test_aavm("99_bootstrap/055_type_infer_fn").unwrap(); }

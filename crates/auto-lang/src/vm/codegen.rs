@@ -696,6 +696,10 @@ impl Codegen {
                 // Parameters will have indices: fn_scope_start, fn_scope_start+1, ...
                 self.fn_scope_start = self.scope_stack.iter().map(|s| s.len()).sum();
 
+                // Save var_types and infer_ctx state so function parameter types don't leak
+                let saved_var_types = self.var_types.clone();
+                let saved_type_env = self.infer_ctx.type_env.clone();
+
                 // Save and reset max_locals for this function
                 let old_max_locals = self.max_locals;
                 self.max_locals = 0;
@@ -902,6 +906,10 @@ impl Codegen {
 
                 // 8. Pop function scope
                 self.pop_scope();
+
+                // Restore var_types and infer_ctx to prevent type leakage between functions
+                self.var_types = saved_var_types;
+                self.infer_ctx.type_env = saved_type_env;
 
                 // Plan 087 Phase 3: Reset current function parameter count and scope start
                 self.current_fn_n_args = 0;

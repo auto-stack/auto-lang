@@ -1,0 +1,13 @@
+// Test: type inference — function signatures
+fn main() {
+    var source = "fn add(a int, b int) int {\n  return a + b\n}\nfn greet(name str) str {\n  return name\n}"
+    var tokens = tokenize_list(source)
+    var p = parser_new(tokens)
+    var stmts = parse_program(p)
+    var tenv = typeenv_new()
+    type_infer_program(tenv, stmts)
+    print("add:" + int_to_str(type_fn_ret(tenv, "add")))
+    print("greet:" + int_to_str(type_fn_ret(tenv, "greet")))
+    print("add_p0:" + int_to_str(type_fn_param(tenv, "add", 0)))
+    print("greet_p0:" + int_to_str(type_fn_param(tenv, "greet", 0)))
+}

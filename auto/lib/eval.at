@@ -178,7 +178,7 @@ fn int_to_str(n int) str {
 }
 
 // ---- String Part Extraction ----
-// Get the N-th part of a pipe-separated string (e.g., "x|y|z" part 0 = "x")
+// Get the N-th part of a comma-separated string (e.g., "x,y,z" part 0 = "x")
 // Used to extract param names from fn_def.op without needing DotExpr on Param objects
 
 fn str_get_part(s str, index int) str {
@@ -191,7 +191,7 @@ fn str_get_part(s str, index int) str {
         if i < n {
             ch = s.char_at(i)
         }
-        if ch == 124 || i == n {
+        if ch == 44 || i == n {
             if part == index {
                 return s.substr(start, i)
             }

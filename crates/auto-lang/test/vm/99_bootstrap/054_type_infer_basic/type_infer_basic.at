@@ -1,0 +1,12 @@
+// Test: type inference — basic literal and variable types
+fn main() {
+    var source = "let x = 42\nlet s = \"hello\"\nlet b = true"
+    var tokens = tokenize_list(source)
+    var p = parser_new(tokens)
+    var stmts = parse_program(p)
+    var tenv = typeenv_new()
+    type_infer_program(tenv, stmts)
+    print("x:" + int_to_str(type_lookup(tenv, "x")))
+    print("s:" + int_to_str(type_lookup(tenv, "s")))
+    print("b:" + int_to_str(type_lookup(tenv, "b")))
+}

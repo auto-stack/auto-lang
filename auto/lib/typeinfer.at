@@ -1,0 +1,194 @@
+// Type Inference for the Auto self-hosted compiler
+// Records types during evaluation for use by codegen
+// Type tags: 0=int, 1=str, 2=bool, 3=void, -1=unknown
+
+type TypeEnv {
+    var_types Map
+    fn_ret_types Map
+    fn_param_types Map
+}
+
+fn typeenv_new() TypeEnv {
+    TypeEnv(Map.new(), Map.new(), Map.new())
+}
+
+fn type_bind(env TypeEnv, name str, type_id int) {
+    env.var_types.insert_int(name, type_id)
+}
+
+fn type_fn_sig(env TypeEnv, name str, ret_type int, param_types str) {
+    env.fn_ret_types.insert_int(name, ret_type)
+    env.fn_param_types.insert_str(name, param_types)
+}
+
+fn type_lookup(env TypeEnv, name str) int {
+    if env.var_types.contains(name) {
+        return env.var_types.get_int(name)
+    }
+    return -1
+}
+
+fn type_fn_ret(env TypeEnv, name str) int {
+    if env.fn_ret_types.contains(name) {
+        return env.fn_ret_types.get_int(name)
+    }
+    return -1
+}
+
+fn type_fn_param(env TypeEnv, fn_name str, index int) int {
+    if env.fn_param_types.contains(fn_name) {
+        var types_str = env.fn_param_types.get(fn_name)
+        var t = str_get_part(types_str, index)
+        return str_to_int(t)
+    }
+    return -1
+}
+
+fn type_from_name(name str) int {
+    if name == "int" { return 0 }
+    if name == "str" { return 1 }
+    if name == "bool" { return 2 }
+    if name == "void" { return 3 }
+    return -1
+}
+
+fn type_is_cmp_op(op str) int {
+    if op == "==" { return 1 }
+    if op == "!=" { return 1 }
+    if op == "<" { return 1 }
+    if op == ">" { return 1 }
+    if op == "<=" { return 1 }
+    if op == ">=" { return 1 }
+    return 0
+}
+
+fn type_infer_expr(tenv TypeEnv, node ASTNode) int {
+    var kind = node.kind
+    if kind == NodeKind.IntExpr { return 0 }
+    if kind == NodeKind.StrExpr { return 1 }
+    if kind == NodeKind.BoolExpr { return 2 }
+    if kind == NodeKind.NilNode { return 3 }
+    if kind == NodeKind.IdentExpr {
+        return type_lookup(tenv, node.name)
+    }
+    if kind == NodeKind.BinExpr {
+        var op = node.op
+        if op == "=" {
+            var left_node = node.left.get(0)
+            if left_node.kind == NodeKind.IdentExpr {
+                return type_lookup(tenv, left_node.name)
+            }
+            return -1
+        }
+        if type_is_cmp_op(op) == 1 { return 2 }
+        if op == "||" { return 2 }
+        if op == "&&" { return 2 }
+        if op == ".." { return 0 }
+        if op == "..=" { return 0 }
+        if op == "+" {
+            var lt = type_infer_expr(tenv, node.left.get(0))
+            var rt = type_infer_expr(tenv, node.right.get(0))
+            if lt == 1 { return 1 }
+            if rt == 1 { return 1 }
+            return 0
+        }
+        return 0
+    }
+    if kind == NodeKind.UnaryExpr {
+        if node.op == "!" { return 2 }
+        return 0
+    }
+    if kind == NodeKind.CallExpr {
+        return type_fn_ret(tenv, node.name)
+    }
+    if kind == NodeKind.DotExpr {
+        return 0
+    }
+    return -1
+}
+
+fn type_infer_stmts(tenv TypeEnv, stmts List) {
+    var i = 0
+    var n = stmts.len()
+    for i < n {
+        var stmt = stmts.get(i)
+        type_infer_stmt(tenv, stmt)
+        i = i + 1
+    }
+}
+
+fn type_infer_let_var(tenv TypeEnv, stmt ASTNode) {
+    if stmt.left.len() > 0 {
+        var expr = stmt.left.get(0)
+        var t = type_infer_expr(tenv, expr)
+        if t == -1 {
+            if stmt.type_name != "" {
+                t = type_from_name(stmt.type_name)
+            }
+        }
+        type_bind(tenv, stmt.name, t)
+    }
+}
+
+fn type_infer_stmt(tenv TypeEnv, stmt ASTNode) int {
+    var kind = stmt.kind
+    if kind == NodeKind.FnStmt {
+        var ret_type = -1
+        if stmt.type_name != "" {
+            ret_type = type_from_name(stmt.type_name)
+        }
+        var param_types = ""
+        var params = stmt.params
+        var j = 0
+        var pn = params.len()
+        for j < pn {
+            var param = params.get(j)
+            var pt = -1
+            if param.type_name != "" {
+                pt = type_from_name(param.type_name)
+            }
+            if j > 0 {
+                param_types = param_types + ","
+            }
+            param_types = eval_str_cat(param_types, int_to_str(pt))
+            type_bind(tenv, param.name, pt)
+            j = j + 1
+        }
+        type_fn_sig(tenv, stmt.name, ret_type, param_types)
+        type_infer_stmts(tenv, stmt.children)
+        return 0
+    }
+    if kind == NodeKind.LetStmt {
+        type_infer_let_var(tenv, stmt)
+        return 0
+    }
+    if kind == NodeKind.VarStmt {
+        type_infer_let_var(tenv, stmt)
+        return 0
+    }
+    if kind == NodeKind.IfStmt {
+        type_infer_stmts(tenv, stmt.children)
+        if stmt.else_body.len() > 0 {
+            type_infer_stmts(tenv, stmt.else_body)
+        }
+        return 0
+    }
+    if kind == NodeKind.ForStmt {
+        type_infer_stmts(tenv, stmt.children)
+        return 0
+    }
+    if kind == NodeKind.ForInStmt {
+        type_bind(tenv, stmt.name, 0)
+        type_infer_stmts(tenv, stmt.children)
+        return 0
+    }
+    if kind == NodeKind.BlockStmt {
+        type_infer_stmts(tenv, stmt.children)
+        return 0
+    }
+    return 0
+}
+
+fn type_infer_program(tenv TypeEnv, stmts List) {
+    type_infer_stmts(tenv, stmts)
+}

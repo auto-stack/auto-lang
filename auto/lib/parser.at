@@ -263,7 +263,7 @@ fn parse_fn_decl(p Parser) ASTNode {
 
             // Build pipe-separated param names string
             if param_names != "" {
-                param_names = param_names + "|"
+                param_names = param_names + ","
             }
             param_names = eval_str_cat(param_names, param_name)
 
