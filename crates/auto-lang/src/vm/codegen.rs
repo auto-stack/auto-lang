@@ -5493,6 +5493,10 @@ impl Codegen {
                                 Type::Int | Type::I64 => ObjectType::Int,
                                 _ => ObjectType::NestedObject,
                             };
+                        } else {
+                            // Fallback: infer return type from native name suffix
+                            // to avoid stale last_expr_type from argument compilation
+                            self.last_expr_type = self.infer_native_return_type(name);
                         }
                         // List HOF methods return arrays (tracked for type-aware dispatch)
                         if name == "List.map" || name == "List.filter" {
@@ -5715,6 +5719,9 @@ impl Codegen {
                     // Arg count (excluding receiver) so engine knows stack layout
                     let arg_count = call.args.args.len() as u8;
                     self.code.push(arg_count);
+
+                    // Infer return type for CALL_SPEC based on method name suffix
+                    self.last_expr_type = self.infer_call_spec_return_type(&method_str);
                 } else {
                     self.emit(OpCode::CALL);
 
@@ -6510,6 +6517,49 @@ impl Codegen {
                 }
             }
             _ => FStrPartType::Int,
+        }
+    }
+
+    /// Infer return type for native function calls not in fn_return_types.
+    /// Returns the current last_expr_type as default to preserve existing behavior,
+    /// except for well-known int-returning natives where it overrides to Int.
+    fn infer_native_return_type(&self, name: &str) -> ObjectType {
+        // Known int-returning natives (without fn_return_types entry)
+        if name == "auto.hashmap.get_int"
+            || name == "auto.list.len"
+            || name == "auto.str.len"
+            || name == "auto.hashmap.size"
+            || name == "auto.list.find"
+        {
+            return ObjectType::Int;
+        }
+        // Default: preserve current last_expr_type (no change)
+        self.last_expr_type
+    }
+
+    /// Infer return type for CALL_SPEC based on method name.
+    /// Prevents stale `last_expr_type` from causing wrong opcode selection.
+    fn infer_call_spec_return_type(&self, method: &str) -> ObjectType {
+        match method {
+            // Methods returning int
+            "get_int" | "len" | "char_at" | "parse_int" | "to_int" | "find" | "rfind"
+            | "count" | "cmp" | "hash" | "abs" | "size" => ObjectType::Int,
+            // Methods returning string
+            "get_str" | "get" | "substr" | "trim" | "to_str" | "to_string"
+            | "join" | "format" | "lower" | "upper" | "replace" | "slice" => ObjectType::String,
+            // Methods returning float/double
+            "to_float" | "to_double" | "sqrt" | "sin" | "cos" | "tan" | "pow"
+            | "log" | "exp" | "floor" | "ceil" | "round" => ObjectType::Double,
+            // Methods returning bool
+            "contains" | "starts_with" | "ends_with" | "is_empty"
+            | "has_key" | "has_prefix" => ObjectType::Bool,
+            // Methods returning a collection (nested object)
+            "keys" | "values" | "entries" | "split" | "lines" | "chars" => ObjectType::NestedObject,
+            // Methods returning void
+            "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
+            | "sort" | "reverse" | "print" | "println" => ObjectType::Void,
+            // Default: preserve current last_expr_type to avoid regressions
+            _ => self.last_expr_type,
         }
     }
 
