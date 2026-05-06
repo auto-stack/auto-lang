@@ -21,12 +21,12 @@
       </button>
     </div>
 
-    <!-- Web Panel -->
-    <div v-if="activeTab === 'web'" class="panel">
+    <!-- Web / Blocks Panel -->
+    <div v-if="activeTab === 'web' || activeTab === 'blocks'" class="panel">
       <div class="panel-header">
         <div class="panel-info">
-          <h3>{{ t.webTitle }}</h3>
-          <p>{{ t.webDesc }}</p>
+          <h3>{{ activeTab === 'blocks' ? (isZh ? 'Blocks' : 'Blocks') : t.webTitle }}</h3>
+          <p>{{ activeTab === 'blocks' ? (isZh ? '24 个 shadcn-vue building blocks 复刻' : '24 shadcn-vue building block replicas') : t.webDesc }}</p>
         </div>
         <a :href="webUrl" target="_blank" class="open-link">
           {{ t.openNew }} ↗
@@ -34,32 +34,10 @@
       </div>
       <div class="iframe-wrapper">
         <iframe
+          :key="webUrl"
           :src="webUrl"
-          :title="t.webTitle"
+          :title="activeTab === 'blocks' ? 'Blocks' : t.webTitle"
           frameborder="0"
-          loading="lazy"
-          allow="clipboard-write"
-        />
-      </div>
-    </div>
-
-    <!-- Blocks Panel -->
-    <div v-else-if="activeTab === 'blocks'" class="panel">
-      <div class="panel-header">
-        <div class="panel-info">
-          <h3>{{ isZh ? 'Blocks' : 'Blocks' }}</h3>
-          <p>{{ isZh ? '24 个 shadcn-vue  building blocks 复刻' : '24 shadcn-vue building block replicas' }}</p>
-        </div>
-        <a :href="webUrl" target="_blank" class="open-link">
-          {{ t.openNew }} ↗
-        </a>
-      </div>
-      <div class="iframe-wrapper">
-        <iframe
-          :src="webUrl"
-          title="Blocks"
-          frameborder="0"
-          loading="lazy"
           allow="clipboard-write"
         />
       </div>

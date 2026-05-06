@@ -1,4 +1,2 @@
-a == b: true
-a == c: false
-nl len = 0
-after nl
+4
+5
