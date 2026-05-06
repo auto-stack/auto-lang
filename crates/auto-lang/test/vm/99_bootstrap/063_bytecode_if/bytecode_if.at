@@ -1,0 +1,9 @@
+// Test: bytecode compilation + execution — if/else
+fn main() {
+    var result = run_bytecode("fn main() {\nlet x = 10\nif x > 5 {\nprint(\"big\")\n} else {\nprint(\"small\")\n}\n}")
+    if result == "big\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

@@ -487,6 +487,8 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/ast.at",
     "auto/lib/parser.at",
     "auto/lib/typeinfer.at",
+    "auto/lib/codegen.at",
+    "auto/lib/vm.at",
     "auto/lib/eval.at",
 ];
 
@@ -737,3 +739,10 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 // Plan 237 Phase B: Type inference
 #[test] fn test_aavm_99_bootstrap_054_type_infer_basic() { test_aavm("99_bootstrap/054_type_infer_basic").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_055_type_infer_fn() { test_aavm("99_bootstrap/055_type_infer_fn").unwrap(); }
+// Plan 237 Phase C: Bytecode compilation + execution
+#[test] fn test_aavm_99_bootstrap_060_bytecode_int() { test_aavm("99_bootstrap/060_bytecode_int").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_061_bytecode_var() { test_aavm("99_bootstrap/061_bytecode_var").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_062_bytecode_fn() { test_aavm("99_bootstrap/062_bytecode_fn").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_063_bytecode_if() { test_aavm("99_bootstrap/063_bytecode_if").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_064_bytecode_for() { test_aavm("99_bootstrap/064_bytecode_for").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_065_bytecode_str() { test_aavm("99_bootstrap/065_bytecode_str").unwrap(); }

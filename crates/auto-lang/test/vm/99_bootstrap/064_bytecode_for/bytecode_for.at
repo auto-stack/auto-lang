@@ -1,0 +1,9 @@
+// Test: bytecode compilation + execution — for-in loop
+fn main() {
+    var result = run_bytecode("fn main() {\nvar sum = 0\nfor i in 0..5 {\nsum = sum + i\n}\nprint(sum)\n}")
+    if result == "10\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

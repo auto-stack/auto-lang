@@ -1,0 +1,9 @@
+// Test: bytecode compilation + execution — string concatenation
+fn main() {
+    var result = run_bytecode("fn main() {\nprint(\"hello \" + \"world\")\n}")
+    if result == "hello world\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

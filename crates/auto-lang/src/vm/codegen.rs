@@ -6962,7 +6962,7 @@ impl Codegen {
         } else {
             // This is a local variable, stored after BP
             // Local index is relative to the position after all parameters
-            let local_index = index - fn_scope_start - n_args;
+            let local_index = index.saturating_sub(fn_scope_start).saturating_sub(n_args);
 
             match local_index {
                 0 => self.emit(OpCode::STORE_LOC_0),
@@ -7014,7 +7014,7 @@ impl Codegen {
         } else {
             // This is a local variable, stored after BP
             // Local index is relative to the position after all parameters
-            let local_index = index - fn_scope_start - n_args;
+            let local_index = index.saturating_sub(fn_scope_start).saturating_sub(n_args);
             vm_debug!("DEBUG: Loading local variable {} (absolute index {}) at BP+1+{}",
                 local_index, index, local_index
             );

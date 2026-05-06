@@ -1,0 +1,9 @@
+// Test: bytecode compilation + execution — function call
+fn main() {
+    var result = run_bytecode("fn add(a int, b int) int {\nreturn a + b\n}\nfn main() {\nprint(add(3, 4))\n}")
+    if result == "7\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

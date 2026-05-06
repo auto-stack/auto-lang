@@ -1,0 +1,9 @@
+// Test: bytecode compilation + execution — variables and arithmetic
+fn main() {
+    var result = run_bytecode("fn main() {\nlet x = 10\nlet y = 20\nprint(x + y)\n}")
+    if result == "30\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

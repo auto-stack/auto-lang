@@ -681,3 +681,22 @@ fn eval_forin(env EvalEnv, node ASTNode) int {
 fn eval_block(env EvalEnv, node ASTNode) int {
     return eval_exec_body(env, node.children)
 }
+
+// ---- Bytecode Compilation + Execution Entry Point ----
+
+fn run_bytecode(source str) str {
+    var tokens = tokenize_list(source)
+    var p = parser_new(tokens)
+    var stmts = parse_program(p)
+    // Type inference
+    var tenv = typeenv_new()
+    type_infer_program(tenv, stmts)
+    // Compile to bytecode
+    var cg = codegen_new()
+    codegen_compile(cg, stmts, tenv)
+    // Execute bytecode
+    var state = Map.new()
+    bvm_init(state)
+    state.insert_int("__nstr", cg.n_strings)
+    return bvm_run(cg.code, cg.strings, state)
+}

@@ -1,0 +1,5 @@
+// Test: bytecode compilation + execution — integer print
+fn main() {
+    var result = run_bytecode("fn main() {\nprint(42)\n}")
+    print(int_to_str(result.len()))
+}
