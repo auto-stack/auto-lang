@@ -244,6 +244,7 @@ fn parse_fn_decl(p Parser) ASTNode {
 
     // Parameters
     var params = empty_list()
+    var param_names = ""
     if parser_kind(p) == TokenKind.LParen {
         p.pos = p.pos + 1  // skip '('
         parser_skip_nl_semi(p)
@@ -259,6 +260,12 @@ fn parse_fn_decl(p Parser) ASTNode {
                 p.pos = p.pos + 1  // skip type name
             }
             params.push(Param(param_name, param_type))
+
+            // Build pipe-separated param names string
+            if param_names != "" {
+                param_names = param_names + "|"
+            }
+            param_names = eval_str_cat(param_names, param_name)
 
             parser_skip_nl_semi(p)
             if parser_kind(p) == TokenKind.Comma {
@@ -296,6 +303,7 @@ fn parse_fn_decl(p Parser) ASTNode {
     var node = fn_node(name, params.len(), ret_type, body_str)
     node.children = body
     node.params = params
+    node.op = param_names
     return node
 }
 

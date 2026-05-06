@@ -31,7 +31,7 @@ fn eval_get_last_str(env EvalEnv) str {
 }
 
 fn eval_set_last_type(env EvalEnv, t int) {
-    env.globals.insert("__last_type__", t)
+    env.globals.insert_int("__last_type__", t)
 }
 
 fn eval_get_last_type(env EvalEnv) int {
@@ -51,15 +51,6 @@ fn eval_str_key(name str) str {
 
 fn eval_is_str_var(env EvalEnv, name str) int {
     var skey = eval_str_key(name)
-    // Check scopes
-    var i = env.scopes.len() - 1
-    for i >= 0 {
-        var scope = env.scopes.get(i)
-        if scope.contains(skey) {
-            return 1
-        }
-        i = i - 1
-    }
     if env.globals.contains(skey) {
         return 1
     }
@@ -67,6 +58,9 @@ fn eval_is_str_var(env EvalEnv, name str) int {
 }
 
 // ---- Scope Management ----
+// NOTE: scope maps are kept for future use, but all variable
+// operations go through globals to avoid type inference issues
+// with "var scope = env.scopes.get(...)" pattern.
 
 fn eval_push_scope(env EvalEnv) {
     env.scopes.push(Map.new())
@@ -79,47 +73,24 @@ fn eval_pop_scope(env EvalEnv) {
     }
 }
 
-// Bind a variable in the current scope
+// Bind a variable in the current scope (int value)
 fn eval_bind(env EvalEnv, name str, value) {
-    if env.scopes.len() > 0 {
-        var scope = env.scopes.get(env.scopes.len() - 1)
-        scope.insert(name, value)
-    } else {
-        env.globals.insert(name, value)
-    }
+    env.globals.insert_int(name, value)
 }
 
 // Bind int variable
 fn eval_bind_int(env EvalEnv, name str, value int) {
-    if env.scopes.len() > 0 {
-        var scope = env.scopes.get(env.scopes.len() - 1)
-        scope.insert(name, value)
-    } else {
-        env.globals.insert(name, value)
-    }
+    env.globals.insert_int(name, value)
 }
 
 // Bind string variable — stores with __s__ prefix
 fn eval_bind_str(env EvalEnv, name str, value str) {
     var skey = eval_str_key(name)
-    if env.scopes.len() > 0 {
-        var scope = env.scopes.get(env.scopes.len() - 1)
-        scope.insert_str(skey, value)
-    } else {
-        env.globals.insert_str(skey, value)
-    }
+    env.globals.insert_str(skey, value)
 }
 
 // Look up a variable by name — returns int value
 fn eval_lookup_int(env EvalEnv, name str) int {
-    var i = env.scopes.len() - 1
-    for i >= 0 {
-        var scope = env.scopes.get(i)
-        if scope.contains(name) {
-            return scope.get_int(name)
-        }
-        i = i - 1
-    }
     if env.globals.contains(name) {
         return env.globals.get_int(name)
     }
@@ -129,14 +100,6 @@ fn eval_lookup_int(env EvalEnv, name str) int {
 // Look up a string variable by name (using __s__ prefix)
 fn eval_lookup_str_var(env EvalEnv, name str) str {
     var skey = eval_str_key(name)
-    var i = env.scopes.len() - 1
-    for i >= 0 {
-        var scope = env.scopes.get(i)
-        if scope.contains(skey) {
-            return scope.get(skey)
-        }
-        i = i - 1
-    }
     if env.globals.contains(skey) {
         return env.globals.get(skey)
     }
@@ -145,14 +108,6 @@ fn eval_lookup_str_var(env EvalEnv, name str) str {
 
 // Look up a variable by name — returns str value
 fn eval_lookup_str(env EvalEnv, name str) str {
-    var i = env.scopes.len() - 1
-    for i >= 0 {
-        var scope = env.scopes.get(i)
-        if scope.contains(name) {
-            return scope.get(name)
-        }
-        i = i - 1
-    }
     if env.globals.contains(name) {
         return env.globals.get(name)
     }
@@ -222,6 +177,32 @@ fn int_to_str(n int) str {
     return result
 }
 
+// ---- String Part Extraction ----
+// Get the N-th part of a pipe-separated string (e.g., "x|y|z" part 0 = "x")
+// Used to extract param names from fn_def.op without needing DotExpr on Param objects
+
+fn str_get_part(s str, index int) str {
+    var start = 0
+    var part = 0
+    var i = 0
+    var n = s.len()
+    for i <= n {
+        var ch = 0
+        if i < n {
+            ch = s.char_at(i)
+        }
+        if ch == 124 || i == n {
+            if part == index {
+                return s.substr(start, i)
+            }
+            part = part + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return ""
+}
+
 // ---- Entry Points ----
 
 // Evaluate a full program (list of top-level statements)
@@ -232,7 +213,7 @@ fn eval_program(env EvalEnv, stmts List) {
     for i < n {
         var stmt = stmts.get(i)
         if stmt.kind == NodeKind.FnStmt {
-            env.fn_defs.insert(stmt.name, stmt)
+            env.fn_defs.insert_int(stmt.name, stmt)
         }
         i = i + 1
     }
@@ -263,7 +244,7 @@ fn eval_exec_stmt(env EvalEnv, node ASTNode) int {
     var kind = node.kind
 
     if kind == NodeKind.FnStmt {
-        env.fn_defs.insert(node.name, node)
+        env.fn_defs.insert_int(node.name, node)
         return 0
     }
 
@@ -295,7 +276,9 @@ fn eval_exec_stmt(env EvalEnv, node ASTNode) int {
     }
 
     if kind == NodeKind.ExprStmt {
-        eval_expr(env, node.left.get(0))
+        var val = eval_expr(env, node.left.get(0))
+        // Store for implicit return in eval_exec_body
+        env.globals.insert_int("__last_expr__", val)
         return 0
     }
 
@@ -318,8 +301,8 @@ fn eval_exec_body(env EvalEnv, body List) int {
             if stmt.left.len() > 0 {
                 val = eval_expr(env, stmt.left.get(0))
             }
-            env.globals.insert("__ret__", val)
-            env.globals.insert("__ret_type__", eval_get_last_type(env))
+            env.globals.insert_int("__ret__", val)
+            env.globals.insert_int("__ret_type__", eval_get_last_type(env))
             if eval_get_last_type(env) == 1 {
                 env.globals.insert_str("__ret_str__", eval_get_last_str(env))
             }
@@ -329,14 +312,20 @@ fn eval_exec_body(env EvalEnv, body List) int {
         if ret == 1 {
             return 1
         }
-        // Implicit return: last ExprStmt
+        // Implicit return: last ExprStmt (reuse eval state from eval_exec_stmt)
+        // Do NOT re-evaluate — that would double-fire side effects like print()
         if i == n - 1 {
             if stmt.kind == NodeKind.ExprStmt {
-                var val2 = eval_expr(env, stmt.left.get(0))
-                env.globals.insert("__ret__", val2)
-                env.globals.insert("__ret_type__", eval_get_last_type(env))
-                if eval_get_last_type(env) == 1 {
-                    env.globals.insert_str("__ret_str__", eval_get_last_str(env))
+                // eval_exec_stmt already called eval_expr, which set last_type/last_str
+                // Just store the value from the last_expr_value side channel
+                if env.globals.contains("__last_expr__") {
+                    env.globals.insert_int("__ret__", env.globals.get_int("__last_expr__"))
+                }
+                if env.globals.contains("__last_type__") {
+                    env.globals.insert_int("__ret_type__", env.globals.get_int("__last_type__"))
+                }
+                if env.globals.contains("__last_str__") {
+                    env.globals.insert_str("__ret_str__", env.globals.get("__last_str__"))
                 }
             }
         }
@@ -570,6 +559,9 @@ fn eval_fn_call(env EvalEnv, call_node ASTNode, fn_name str) int {
 
     var params = fn_def.params
     var params_count = params.len()
+    // Param names stored as pipe-separated string in fn_def.op
+    // (set by parse_fn_decl to avoid DotExpr on Param objects)
+    var param_names = fn_def.op
 
     // Push new scope
     eval_push_scope(env)
@@ -579,12 +571,13 @@ fn eval_fn_call(env EvalEnv, call_node ASTNode, fn_name str) int {
     for i < params_count {
         if i < call_node.params.len() {
             var arg_val = eval_expr(env, call_node.params.get(i))
-            var param_node = params.get(i)
             var lt = eval_get_last_type(env)
+            // Get param name from pipe-separated string
+            var pname = str_get_part(param_names, i)
             if lt == 1 {
-                eval_bind_str(env, param_node.name, eval_get_last_str(env))
+                eval_bind_str(env, pname, eval_get_last_str(env))
             } else {
-                eval_bind_int(env, param_node.name, arg_val)
+                eval_bind_int(env, pname, arg_val)
             }
         }
         i = i + 1

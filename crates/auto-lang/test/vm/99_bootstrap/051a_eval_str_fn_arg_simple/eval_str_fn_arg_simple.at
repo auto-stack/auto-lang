@@ -1,0 +1,5 @@
+// Test: eval — int function argument
+fn main() {
+    var r1 = run_eval("fn double(x) {\n  return x + x\n}\nprint(double(3))")
+    print("r1:" + r1)
+}

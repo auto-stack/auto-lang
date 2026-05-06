@@ -1,0 +1,5 @@
+// Test: eval — string function argument
+fn main() {
+    var r1 = run_eval("fn greet(name) {\n  print(name)\n}\ngreet(\"world\")")
+    print("r1:" + r1)
+}

@@ -1285,6 +1285,29 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    #[cfg(feature = "nanbox")]
+    {
+        let index_nv = task.ram.pop_nv();
+        let list_nv = task.ram.pop_nv();
+        let index = if auto_val::is_i32(index_nv) { auto_val::decode_i32(index_nv) as usize } else { 0usize };
+        let list_id = if auto_val::is_i32(list_nv) { auto_val::decode_i32(list_nv) as u64 } else { 0u64 };
+
+        if let Some(obj) = vm.get_heap_object(list_id) {
+            let guard = obj.read().unwrap();
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                if let Some(&val) = list.get(index) {
+                    task.ram.push_i32(val);
+                } else {
+                    task.ram.push_i32(0);
+                }
+                return Ok(());
+            }
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
+    {
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
@@ -1300,6 +1323,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Invalid list_id
     task.ram.push_i32(0);
     Ok(())
+    }
 }
 
 /// Set element at index.
@@ -2291,6 +2315,33 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Insert a string key with i32 value
 /// Stack: hashmap_id, key_str_id, value -> result (0)
 pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        let value_nv = task.ram.pop_nv();
+        let key_nv = task.ram.pop_nv();
+        let map_nv = task.ram.pop_nv();
+        if !auto_val::is_string(key_nv) {
+            return Err(VMError::RuntimeError("Invalid key string ID".into()));
+        }
+        let value = if auto_val::is_i32(value_nv) { auto_val::decode_i32(value_nv) } else { 0 };
+        let key_str_idx = auto_val::decode_string(key_nv) as usize;
+        let map_id = if auto_val::is_i32(map_nv) { auto_val::decode_i32(map_nv) as u64 } else { 0 };
+        if let Some(obj) = vm.get_heap_object(map_id) {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            drop(key_bytes);
+            let mut guard = obj.write().unwrap();
+            if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                map.insert(key_str, Value::Int(value))
+                    .map_err(|e| VMError::RuntimeError(e))?;
+            }
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
+    {
     let value = task.ram.pop_i32();
     let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
@@ -2311,6 +2362,7 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
     task.ram.push_i32(0);
     Ok(())
+    }
 }
 
 /// Get value by string key
