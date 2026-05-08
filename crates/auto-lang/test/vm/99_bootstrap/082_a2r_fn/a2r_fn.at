@@ -1,0 +1,9 @@
+fn main() {
+    var result = run_a2r("fn add(a int, b int) int {\nreturn a + b\n}\nfn main() {\nvar result = add(5, 3)\nprint(result)\n}")
+    var expected = "fn add(a: i32, b: i32) -> i32 {\n    return (a + b);\n}\nfn main() {\n    let mut result = add(5, 3);\n    println!(\"{}\", result);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

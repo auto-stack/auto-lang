@@ -1,0 +1,9 @@
+fn main() {
+    var result = run_a2r("fn main() {\nvar x = 10\nvar y = 20\nvar sum = x + y\nprint(sum)\n}")
+    var expected = "fn main() {\n    let mut x = 10;\n    let mut y = 20;\n    let mut sum = (x + y);\n    println!(\"{}\", sum);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

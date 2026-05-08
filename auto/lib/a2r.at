@@ -1,0 +1,375 @@
+// AA2R — Auto-to-Rust Transpiler (Auto A2R)
+// Transpiles Auto AST to Rust source code string
+// Phase E1: basic expressions, functions, variables, if/else, for loops
+
+// ---- Type mapping ----
+
+fn a2r_type(t str) str {
+    if t == "" { return "" }
+    if t == "int" { return "i32" }
+    if t == "str" { return "String" }
+    if t == "bool" { return "bool" }
+    if t == "void" { return "" }
+    if t == "uint" { return "u32" }
+    if t == "i64" { return "i64" }
+    if t == "f64" { return "f64" }
+    if t == "f32" { return "f32" }
+    if t == "byte" { return "u8" }
+    return "i32"
+}
+
+fn a2r_type_from_tag(ttag int) str {
+    if ttag == 0 { return "i32" }
+    if ttag == 1 { return "String" }
+    if ttag == 2 { return "bool" }
+    if ttag == 3 { return "" }
+    return "i32"
+}
+
+// ---- Indent helpers ----
+
+fn a2r_indent_str(level int) str {
+    var s = ""
+    var i = 0
+    for i < level {
+        s = s + "    "
+        i = i + 1
+    }
+    return s
+}
+
+// ---- Expression Transpiler ----
+
+fn a2r_expr(node ASTNode, tenv TypeEnv) str {
+    var kind = node.kind
+
+    if kind == NodeKind.IntExpr {
+        return node.name
+    }
+
+    if kind == NodeKind.StrExpr {
+        return "\"" + node.name + "\".to_string()"
+    }
+
+    if kind == NodeKind.BoolExpr {
+        return node.name
+    }
+
+    if kind == NodeKind.IdentExpr {
+        return node.name
+    }
+
+    if kind == NodeKind.NilNode {
+        return "None"
+    }
+
+    if kind == NodeKind.BinExpr {
+        var op = node.op
+
+        // Assignment
+        if op == "=" {
+            var lhs = a2r_expr(node.left.get(0), tenv)
+            var rhs = a2r_expr(node.right.get(0), tenv)
+            return lhs + " = " + rhs
+        }
+
+        // String concatenation
+        if op == "+" {
+            var lt = type_infer_expr(tenv, node.left.get(0))
+            if lt == 1 {
+                var l = a2r_expr(node.left.get(0), tenv)
+                var r = a2r_expr(node.right.get(0), tenv)
+                return "format!(\"{}{}\", " + l + ", " + r + ")"
+            }
+        }
+
+        // Range operators
+        if op == ".." {
+            var l2 = a2r_expr(node.left.get(0), tenv)
+            var r2 = a2r_expr(node.right.get(0), tenv)
+            return l2 + ".." + r2
+        }
+        if op == "..=" {
+            var l3 = a2r_expr(node.left.get(0), tenv)
+            var r3 = a2r_expr(node.right.get(0), tenv)
+            return l3 + "..=" + r3
+        }
+
+        // Compound assignment
+        if op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" {
+            var la = a2r_expr(node.left.get(0), tenv)
+            var ra = a2r_expr(node.right.get(0), tenv)
+            return la + " " + op + " " + ra
+        }
+
+        // Index access
+        if op == "[]" {
+            var lo = a2r_expr(node.left.get(0), tenv)
+            var ro = a2r_expr(node.right.get(0), tenv)
+            return lo + "[" + ro + "]"
+        }
+
+        // Standard binary operators
+        var le = a2r_expr(node.left.get(0), tenv)
+        var re = a2r_expr(node.right.get(0), tenv)
+        return "(" + le + " " + op + " " + re + ")"
+    }
+
+    if kind == NodeKind.UnaryExpr {
+        var operand = a2r_expr(node.left.get(0), tenv)
+        var uop = node.op
+        if uop == "-" { return "(-" + operand + ")" }
+        if uop == "!" { return "(!" + operand + ")" }
+        return "(" + uop + operand + ")"
+    }
+
+    if kind == NodeKind.CallExpr {
+        var callee = node.name
+
+        // print() → println!()
+        if callee == "print" {
+            if node.params.len() == 0 {
+                return "println!()"
+            }
+            if node.params.len() == 1 {
+                var arg = node.params.get(0)
+                var at = type_infer_expr(tenv, arg)
+                // String literal: emit println!("value") directly
+                if arg.kind == NodeKind.StrExpr {
+                    return "println!(\"" + arg.name + "\")"
+                }
+                var arg_str = a2r_expr(arg, tenv)
+                return "println!(\"{}\", " + arg_str + ")"
+            }
+            // Multi-arg print
+            var fmt = ""
+            var args = ""
+            var j = 0
+            var pn = node.params.len()
+            for j < pn {
+                if j > 0 {
+                    fmt = fmt + " "
+                    args = args + ", "
+                }
+                var pa = node.params.get(j)
+                var pat = type_infer_expr(tenv, pa)
+                if pa.kind == NodeKind.StrExpr {
+                    fmt = fmt + a2r_expr(pa, tenv)
+                } else {
+                    fmt = fmt + "{}"
+                    args = args + a2r_expr(pa, tenv)
+                }
+                j = j + 1
+            }
+            return "println!(\"" + fmt + "\"" + ", " + args + ")"
+        }
+
+        // Regular function call
+        var call_args = ""
+        var k = 0
+        var cn = node.params.len()
+        for k < cn {
+            if k > 0 { call_args = call_args + ", " }
+            call_args = call_args + a2r_expr(node.params.get(k), tenv)
+            k = k + 1
+        }
+        return callee + "(" + call_args + ")"
+    }
+
+    if kind == NodeKind.DotExpr {
+        var obj = a2r_expr(node.left.get(0), tenv)
+        return obj + "." + node.name
+    }
+
+    return "/* expr:" + int_to_str(kind) + " */"
+}
+
+// ---- Statement Transpiler ----
+
+fn a2r_body(stmts List, tenv TypeEnv, indent int) str {
+    var out = ""
+    var i = 0
+    var n = stmts.len()
+    for i < n {
+        out = out + a2r_stmt(stmts.get(i), tenv, indent)
+        i = i + 1
+    }
+    return out
+}
+
+fn a2r_stmt(node ASTNode, tenv TypeEnv, indent int) str {
+    var kind = node.kind
+    var prefix = a2r_indent_str(indent)
+
+    if kind == NodeKind.ExprStmt {
+        if node.left.len() > 0 {
+            return prefix + a2r_expr(node.left.get(0), tenv) + ";\n"
+        }
+        return ""
+    }
+
+    if kind == NodeKind.ReturnStmt {
+        if node.left.len() > 0 {
+            return prefix + "return " + a2r_expr(node.left.get(0), tenv) + ";\n"
+        }
+        return prefix + "return;\n"
+    }
+
+    if kind == NodeKind.LetStmt || kind == NodeKind.VarStmt {
+        var type_str = a2r_type(node.type_name)
+        var expr_str = ""
+        if node.left.len() > 0 {
+            expr_str = a2r_expr(node.left.get(0), tenv)
+        } else {
+            expr_str = "0"
+        }
+        // Infer type if not declared
+        if node.type_name == "" && node.left.len() > 0 {
+            var itag = type_infer_expr(tenv, node.left.get(0))
+            type_str = a2r_type_from_tag(itag)
+        }
+        // String init needs .to_string() if literal
+        if type_str == "String" && node.left.len() > 0 {
+            var init = node.left.get(0)
+            if init.kind != NodeKind.StrExpr && init.kind != NodeKind.CallExpr {
+                expr_str = a2r_expr(node.left.get(0), tenv) + ".to_string()"
+            }
+        }
+        var kw = "let"
+        if kind == NodeKind.VarStmt { kw = "let mut" }
+        // Skip type annotation for inferred i32 to keep output clean
+        if type_str == "i32" && node.type_name == "" {
+            return prefix + kw + " " + node.name + " = " + expr_str + ";\n"
+        }
+        if type_str == "" {
+            return prefix + kw + " " + node.name + " = " + expr_str + ";\n"
+        }
+        return prefix + kw + " " + node.name + ": " + type_str + " = " + expr_str + ";\n"
+    }
+
+    if kind == NodeKind.IfStmt {
+        var cond = a2r_expr(node.cond.get(0), tenv)
+        var out2 = prefix + "if " + cond + " {\n"
+        out2 = out2 + a2r_body(node.children, tenv, indent + 1)
+        if node.else_body.len() > 0 {
+            out2 = out2 + prefix + "} else {\n"
+            out2 = out2 + a2r_body(node.else_body, tenv, indent + 1)
+        }
+        out2 = out2 + prefix + "}\n"
+        return out2
+    }
+
+    if kind == NodeKind.ForInStmt {
+        var range = a2r_expr(node.left.get(0), tenv)
+        var out3 = prefix + "for " + node.name + " in " + range + " {\n"
+        out3 = out3 + a2r_body(node.children, tenv, indent + 1)
+        out3 = out3 + prefix + "}\n"
+        return out3
+    }
+
+    if kind == NodeKind.ForStmt {
+        var fcond = a2r_expr(node.left.get(0), tenv)
+        var out4 = prefix + "while " + fcond + " {\n"
+        out4 = out4 + a2r_body(node.children, tenv, indent + 1)
+        out4 = out4 + prefix + "}\n"
+        return out4
+    }
+
+    if kind == NodeKind.BlockStmt {
+        return a2r_body(node.children, tenv, indent)
+    }
+
+    if kind == NodeKind.FnStmt {
+        return a2r_fn(node, tenv, indent)
+    }
+
+    return prefix + "/* stmt:" + int_to_str(kind) + " */\n"
+}
+
+// ---- Function Transpiler ----
+
+fn a2r_fn(node ASTNode, tenv TypeEnv, indent int) str {
+    var prefix = a2r_indent_str(indent)
+
+    // Build parameter list
+    var params_str = ""
+    var i = 0
+    var pn = node.params.len()
+    for i < pn {
+        if i > 0 { params_str = params_str + ", " }
+        var param = node.params.get(i)
+        var pt = a2r_type(param.type_name)
+        if pt == "" { pt = "i32" }
+        if pt == "String" {
+            params_str = params_str + param.name + ": &str"
+        } else {
+            params_str = params_str + param.name + ": " + pt
+        }
+        i = i + 1
+    }
+
+    // Build return type
+    var ret = a2r_type(node.type_name)
+    var ret_part = ""
+    if ret != "" {
+        ret_part = " -> " + ret
+    }
+
+    var out = prefix + "fn " + node.name + "(" + params_str + ")" + ret_part + " {\n"
+    out = out + a2r_body(node.children, tenv, indent + 1)
+    out = out + prefix + "}\n"
+    return out
+}
+
+// ---- Top-level Transpiler ----
+
+fn a2r_transpile(stmts List, tenv TypeEnv) str {
+    var out = ""
+    var has_main = 0
+    var top_stmts = ""
+    var i = 0
+    var n = stmts.len()
+
+    // First pass: check for fn main()
+    for i < n {
+        var s = stmts.get(i)
+        if s.kind == NodeKind.FnStmt {
+            if s.name == "main" { has_main = 1 }
+        }
+        i = i + 1
+    }
+
+    // Second pass: emit
+    if has_main == 0 {
+        // Wrap top-level statements in fn main()
+        var body_out = ""
+        var j = 0
+        for j < n {
+            var s2 = stmts.get(j)
+            body_out = body_out + a2r_stmt(s2, tenv, 1)
+            j = j + 1
+        }
+        out = "fn main() {\n" + body_out + "}\n"
+    } else {
+        // Emit functions normally
+        var k = 0
+        for k < n {
+            var s3 = stmts.get(k)
+            out = out + a2r_stmt(s3, tenv, 0)
+            k = k + 1
+        }
+    }
+
+    return out
+}
+
+// ---- Entry Point ----
+
+fn run_a2r(source str) str {
+    var tokens = tokenize_list(source)
+    var p = parser_new(tokens)
+    var stmts = parse_program(p)
+    var tenv = typeenv_new()
+    type_infer_program(tenv, stmts)
+    return a2r_transpile(stmts, tenv)
+}

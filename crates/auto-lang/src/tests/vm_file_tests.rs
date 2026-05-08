@@ -489,6 +489,7 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/typeinfer.at",
     "auto/lib/codegen.at",
     "auto/lib/vm.at",
+    "auto/lib/a2r.at",
     "auto/lib/eval.at",
 ];
 
@@ -761,3 +762,9 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_078_list_mixed_types() { test_aavm("99_bootstrap/078_list_mixed_types").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_079_list_str_fn_arg() { test_aavm("99_bootstrap/079_list_str_fn_arg").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_080_list_str_loop() { test_aavm("99_bootstrap/080_list_str_loop").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_081_a2r_hello() { test_aavm("99_bootstrap/081_a2r_hello").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_082_a2r_fn() { test_aavm("99_bootstrap/082_a2r_fn").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_083_a2r_var() { test_aavm("99_bootstrap/083_a2r_var").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_084_a2r_if() { test_aavm("99_bootstrap/084_a2r_if").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_085_a2r_for() { test_aavm("99_bootstrap/085_a2r_for").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_086_a2r_str() { test_aavm("99_bootstrap/086_a2r_str").unwrap(); }
