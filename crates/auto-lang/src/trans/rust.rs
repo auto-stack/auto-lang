@@ -629,18 +629,40 @@ impl RustTrans {
                         self.expr(rhs, out)?;
                     }
                     Op::Add => {
-                        let is_str_lhs = matches!(lhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
-                        let is_str_rhs = matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
-                        if is_str_lhs || is_str_rhs {
+                        let is_str_literal = |e: &Expr| -> bool {
+                            matches!(e, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        };
+                        let is_int = |e: &Expr| -> bool {
+                            matches!(e, Expr::Int(_))
+                        };
+                        let is_numeric_expr = |e: &Expr| -> bool {
+                            match e {
+                                Expr::Int(_) => true,
+                                Expr::Bina(_, Op::Add, _) | Expr::Bina(_, Op::Sub, _) |
+                                Expr::Bina(_, Op::Mul, _) | Expr::Bina(_, Op::Div, _) => true,
+                                _ => false,
+                            }
+                        };
+                        if is_str_literal(&lhs) || is_str_literal(&rhs) {
+                            // String literal involved — always use format!
                             write!(out, "format!(\"{{}}{{}}\", ")?;
                             self.expr(&lhs, out)?;
                             write!(out, ", ")?;
                             self.expr(&rhs, out)?;
                             write!(out, ")")?;
-                        } else {
+                        } else if is_int(&lhs) || is_int(&rhs) || (is_numeric_expr(&lhs) && is_numeric_expr(&rhs)) {
+                            // At least one side is Int literal, or both are numeric expressions — use +
                             self.expr(&lhs, out)?;
                             write!(out, " + ")?;
                             self.expr(&rhs, out)?;
+                        } else {
+                            // Ambiguous — could be string concat or numeric add
+                            // Use format! for safety (works for any Display type)
+                            write!(out, "format!(\"{{}}{{}}\", ")?;
+                            self.expr(&lhs, out)?;
+                            write!(out, ", ")?;
+                            self.expr(&rhs, out)?;
+                            write!(out, ")")?;
                         }
                     }
                     Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
@@ -1966,9 +1988,9 @@ impl RustTrans {
                                         self.expr(b, out)?;
                                     }
                                 }
-                                write!(out, "].to_string()")?;
+                                write!(out, "]")?;
                             } else {
-                                write!(out, "..].to_string()")?;
+                                write!(out, "..]")?;
                             }
                             return Ok(());
                         }
@@ -2142,9 +2164,9 @@ impl RustTrans {
                                 self.expr(b, out)?;
                             }
                         }
-                        write!(out, "].to_string()")?;
+                        write!(out, "]")?;
                     } else {
-                        write!(out, "..].to_string()")?;
+                        write!(out, "..]")?;
                     }
                     return Ok(());
                 }
@@ -2160,13 +2182,14 @@ impl RustTrans {
                     return Ok(());
                 }
                 "find" => {
-                    // s.find(sub) -> s.find(sub) (returns Option<usize>)
+                    // Auto: s.find(sub) returns i32 (-1 if not found)
+                    // Rust: s.find(sub).map(|i| i as i32).unwrap_or(-1)
                     self.expr(object, out)?;
                     write!(out, ".find(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr(a, out)?;
                     }
-                    write!(out, ")")?;
+                    write!(out, ").map(|i| i as i32).unwrap_or(-1)")?;
                     return Ok(());
                 }
                 "to_int" => {
@@ -2299,6 +2322,16 @@ impl RustTrans {
                         write!(out, ").ok()")?;
                         return Ok(());
                     }
+                    ("fs", "write") => {
+                        // fs.write(path, content) -> std::fs::write(path, content).is_ok()
+                        write!(out, "std::fs::write(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            self.arg(arg, out)?;
+                        }
+                        write!(out, ").is_ok()")?;
+                        return Ok(());
+                    }
                     ("Map", "new") => {
                         // Map.new() -> std::collections::HashMap::new()
                         write!(out, "std::collections::HashMap::new()")?;
@@ -2346,7 +2379,8 @@ impl RustTrans {
                 match arg {
                     Arg::Pos(expr) => {
                         self.expr(expr, out)?;
-                        if is_insert && matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                        // For Map.insert(), auto-convert &str to String
+                        if is_insert {
                             write!(out, ".to_string()")?;
                         }
                     }
@@ -2732,6 +2766,11 @@ impl RustTrans {
 
             Stmt::Break => {
                 sink.body.write(b"break;")?;
+                Ok(true)
+            }
+
+            Stmt::Continue => {
+                sink.body.write(b"continue;")?;
                 Ok(true)
             }
 
@@ -3137,12 +3176,13 @@ impl RustTrans {
                 }
             }
             Iter::Destructured(key, val) => {
-                // for (k, v) in map -> for (k, &v) in &map
-                // key stays as reference (&String -> &str via deref), value is dereferenced (Copy types)
+                // for (k, v) in map -> for (ref k, v) in map
+                // This consumes the map but gives owned values
+                // Actually use: for (k, v) in &map — k: &String, v: &String
                 sink.body.write(b"for (")?;
                 sink.body.write(key.as_bytes())?;
                 sink.body.write(b", ")?;
-                write!(sink.body, "&{}", val)?;
+                sink.body.write(val.as_bytes())?;
                 sink.body.write(b") in &")?;
                 self.expr(&for_stmt.range, &mut sink.body)?;
                 sink.body.write(b" {\n")?;
@@ -3238,15 +3278,9 @@ impl RustTrans {
                         let needs_semicolon = if !is_last {
                             true
                         } else {
-                            // Check if it's a call to print or other void functions
+                            // All function/method calls need semicolons (not block return values)
                             match expr {
-                                Expr::Call(call) => {
-                                    if let Expr::Ident(name) = call.name.as_ref() {
-                                        name == "print" || name == "println"
-                                    } else {
-                                        false
-                                    }
-                                }
+                                Expr::Call(_) => true,
                                 _ => false,
                             }
                         };
@@ -3267,6 +3301,9 @@ impl RustTrans {
                     }
                     Stmt::Break => {
                         sink.body.write(b"break;\n")?;
+                    }
+                    Stmt::Continue => {
+                        sink.body.write(b"continue;\n")?;
                     }
                     Stmt::Return(ret) => {
                         sink.body.write(b"return ")?;
@@ -3304,15 +3341,9 @@ impl RustTrans {
                         let needs_semicolon = if !is_last {
                             true
                         } else {
-                            // Check if it's a call to print or other void functions
+                            // All function/method calls need semicolons (not block return values)
                             match expr {
-                                Expr::Call(call) => {
-                                    if let Expr::Ident(name) = call.name.as_ref() {
-                                        name == "print" || name == "println"
-                                    } else {
-                                        false
-                                    }
-                                }
+                                Expr::Call(_) => true,
                                 _ => false,
                             }
                         };
@@ -3467,7 +3498,42 @@ impl RustTrans {
                     // Multi-pattern: 1 | 2 | 3 => ...
                     for (i, pat) in patterns.iter().enumerate() {
                         if i > 0 { sink.body.write(b" | ")?; }
-                        self.expr(pat, &mut sink.body)?;
+                        // In match patterns, Some(ident) should bind by ref
+                        if let Expr::Some(inner) = pat {
+                            sink.body.write(b"Some(ref ")?;
+                            self.expr(inner, &mut sink.body)?;
+                            sink.body.write(b")")?;
+                        } else if let Expr::Call(call) = pat {
+                            if let Expr::Ident(name) = call.name.as_ref() {
+                                if name == "Some" && !call.args.args.is_empty() {
+                                    sink.body.write(b"Some(ref ")?;
+                                    if let Some(Arg::Pos(inner)) = call.args.args.first() {
+                                        self.expr(inner, &mut sink.body)?;
+                                    }
+                                    sink.body.write(b")")?;
+                                } else {
+                                    self.expr(pat, &mut sink.body)?;
+                                }
+                            } else {
+                                self.expr(pat, &mut sink.body)?;
+                            }
+                        } else if let Expr::OptionPattern(oc) = pat {
+                            // Some(text) / None parsed as OptionPattern in is branches
+                            match oc.variant {
+                                crate::ast::cover::OptionVariant::Some => {
+                                    sink.body.write(b"Some(ref ")?;
+                                    if let Some(binding) = &oc.binding {
+                                        sink.body.write(binding.as_bytes())?;
+                                    }
+                                    sink.body.write(b")")?;
+                                }
+                                crate::ast::cover::OptionVariant::None => {
+                                    self.expr(pat, &mut sink.body)?;
+                                }
+                            }
+                        } else {
+                            self.expr(pat, &mut sink.body)?;
+                        }
                     }
                     sink.body.write(b" => ")?;
                     self.write_match_arm_body(body, sink)?;
