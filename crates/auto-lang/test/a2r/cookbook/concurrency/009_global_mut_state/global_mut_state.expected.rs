@@ -12,8 +12,8 @@ fn main() {
     let counter = Arc::new(AtomicUsize::new(0));
     let c1 = counter.clone();
     let c2 = counter.clone();
-    let t1 = thread.spawn(|_| { /* unsupported stmt in block */ });
-    let t2 = thread.spawn(|_| { /* unsupported stmt in block */ });
+    let t1 = thread.spawn(|_| { for i in 0..100 { c1.fetch_add(1, Ordering::SeqCst); }});
+    let t2 = thread.spawn(|_| { for i in 0..100 { c2.fetch_add(1, Ordering::SeqCst); }});
     t1.join().unwrap();
     t2.join().unwrap();
     println!("Final count: {}", counter.load(Ordering::SeqCst));

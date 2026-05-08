@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use csv::Writer;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut writer = Writer::from_writer(Vec::new());
     writer.write_record(vec!["name", "age"])?;
     writer.write_record(vec!["Alice", "30"])?;

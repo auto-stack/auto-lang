@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use csv::Reader;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let csv_str: String = "name,age\nAlice,30\nBob,25".to_string();
     let mut reader = Reader::from_reader(csv_str.as_bytes());
     for result in reader.records() {

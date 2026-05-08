@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path: String = "lines.txt".to_string();
 
     let mut output = File::create(path)?;

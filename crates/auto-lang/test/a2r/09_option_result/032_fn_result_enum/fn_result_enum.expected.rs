@@ -11,7 +11,7 @@ pub enum ToolError {
 }
 
 
-pub fn execute(input: String) -> Result<String, ToolError> {
+pub fn execute(input: &str) -> Result<String, ToolError> {
     if input == "" {
         return Err(ToolError::InvalidInput("empty"));
     }

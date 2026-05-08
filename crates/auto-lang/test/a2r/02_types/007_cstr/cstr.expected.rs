@@ -6,11 +6,11 @@ use auto_lang::a2r_std::*;
 
 
 
-fn println(msg: String) {
+fn println(msg: &str) {
     print!("%s\n", msg);
 }
 
 fn main() {
     let s: String = "Hello!";
-    println(s);
+    println(&s);
 }

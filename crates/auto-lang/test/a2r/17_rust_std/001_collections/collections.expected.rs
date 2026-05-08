@@ -7,17 +7,17 @@ use auto_lang::a2r_std::*;
 use std::collections::{HashMap, HashSet, BTreeMap, VecDeque};
 fn main() {
     let mut scores: HashMap<String, i32> = HashMap::new();
-    scores.insert("alice", 100);
-    scores.insert("bob", 95);
-    let alice_score = scores.get("alice");
+    scores.insert("alice".to_string(), 100);
+    scores.insert("bob".to_string(), 95);
+    let alice_score = scores.get("alice").cloned();
 
     let mut visited: HashSet<String> = HashSet::new();
-    visited.insert("home");
-    visited.insert("about");
+    visited.insert("home".to_string());
+    visited.insert("about".to_string());
 
     let mut timeline: BTreeMap<i32, String> = BTreeMap::new();
-    timeline.insert(1, "start");
-    timeline.insert(2, "middle");
+    timeline.insert(1, "start".to_string());
+    timeline.insert(2, "middle".to_string());
 
     let mut queue: VecDeque<i32> = VecDeque::new();
     queue.push_back(1);

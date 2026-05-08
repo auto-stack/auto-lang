@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use std::fs;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = fs.read_dir(".")?;
     let mut total: i32 = 0;
     for entry in dir {

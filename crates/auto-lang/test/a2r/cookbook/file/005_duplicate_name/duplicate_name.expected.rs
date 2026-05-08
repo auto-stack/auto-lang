@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::collections::HashMap;
 use std::fs;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = fs.read_dir(".")?;
     let mut seen = HashMap::new();
     for entry in dir {

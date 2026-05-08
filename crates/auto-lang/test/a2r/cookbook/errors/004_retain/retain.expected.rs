@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::error::Error;
 fn main() {
-    let result = Err("inner error".to_string());
+    let result = Err("inner error".into());
     match result {
         Ok(val) => println!("Success: {}", val),
         Err(e) => println!("Error: {}", e),

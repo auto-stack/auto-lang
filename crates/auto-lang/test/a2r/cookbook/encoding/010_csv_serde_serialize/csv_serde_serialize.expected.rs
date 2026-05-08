@@ -12,7 +12,7 @@ struct Record {
     age: i32,
 }
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let records = vec![Record { name: "Alice".to_string(), age: 30 }, Record { name: "Bob".to_string(), age: 25 }];
     let mut writer = Writer::from_writer(Vec::new());
     for record in records {

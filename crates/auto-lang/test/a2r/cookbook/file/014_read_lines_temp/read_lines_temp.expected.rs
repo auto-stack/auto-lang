@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use std::fs;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let content: String = "line1\nline2\nline3".to_string();
     let path: String = "test_temp.txt".to_string();
     std::fs::write(path, content).is_ok()?;

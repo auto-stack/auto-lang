@@ -356,7 +356,7 @@ impl RustTrans {
             Type::U64 => "u64".to_string(),
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
-            Type::Result(inner) => format!("Result<{}, String>", self.rust_type_name(inner)),
+            Type::Result(inner) => format!("Result<{}, Box<dyn std::error::Error>>", self.rust_type_name(inner)),
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
@@ -378,9 +378,9 @@ impl RustTrans {
             Type::Option(inner) => {
                 format!("Option<{}>", self.rust_return_type_name(inner))
             }
-            // Result<str> -> Result<String, String>
+            // Result<str> -> Result<String, Box<dyn std::error::Error>>
             Type::Result(inner) => {
-                format!("Result<{}, String>", self.rust_return_type_name(inner))
+                format!("Result<{}, Box<dyn std::error::Error>>", self.rust_return_type_name(inner))
             }
             // Fn type: use return type mapping for the return position
             Type::Fn(params, ret) => {
@@ -516,11 +516,11 @@ impl RustTrans {
                 write!(out, ")").map_err(Into::into)
             }
             Expr::Err(e) => {
-                // Result<T, String> — no Box needed
+                // Result<T, Box<dyn std::error::Error>>
                 write!(out, "Err(")?;
                 self.expr(e, out)?;
                 if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
-                    write!(out, ".to_string()")?;
+                    write!(out, ".into()")?;
                 }
                 write!(out, ")").map_err(Into::into)
             }
@@ -597,13 +597,15 @@ impl RustTrans {
                                     false
                                 };
 
-                                // Check if lhs is a type name (starts with uppercase)
+                                // Check if lhs is a type name (starts with uppercase or is a Rust primitive)
                                 let is_type_name = if let Expr::Ident(lhs_name) = lhs.as_ref() {
-                                    lhs_name
-                                        .chars()
-                                        .next()
-                                        .map(|c| c.is_uppercase())
-                                        .unwrap_or(false)
+                                    let name = lhs_name.as_str();
+                                    name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                                        || matches!(name,
+                                            "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+                                            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+                                            | "f32" | "f64" | "bool" | "char" | "str"
+                                        )
                                 } else {
                                     false
                                 };
@@ -617,7 +619,13 @@ impl RustTrans {
                                     self.expr(rhs, out)?;
                                 } else {
                                     // expr.field or expr.method()
+                                    // Parenthesize lhs if it's a binary op (e.g., (a / b).method())
+                                    let needs_parens = matches!(lhs.as_ref(),
+                                        Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
+                                    );
+                                    if needs_parens { write!(out, "(")?; }
                                     self.expr(lhs, out)?;
+                                    if needs_parens { write!(out, ")")?; }
                                     write!(out, ".")?;
                                     self.expr(rhs, out)?;
                                 }
@@ -1523,6 +1531,9 @@ impl RustTrans {
                             self.expr(ret_expr, out)?;
                             write!(out, "; ")?;
                         }
+                        Stmt::For(for_stmt) => {
+                            self.for_stmt_inline(for_stmt, out)?;
+                        }
                         Stmt::EmptyLine(n) => {
                             for _ in 0..*n {
                                 write!(out, "\n")?;
@@ -2118,7 +2129,12 @@ impl RustTrans {
                     };
 
                     if let Some(rust_name) = rust_method {
+                        let lhs_parens = matches!(lhs.as_ref(),
+                            Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
+                        );
+                        if lhs_parens { write!(out, "(")?; }
                         self.expr(lhs, out)?;
+                        if lhs_parens { write!(out, ")")?; }
                         write!(out, ".{}(", rust_name)?;
                         // Special handling for .contains() - auto-borrow string args
                         if method_name.as_str() == "contains" {
@@ -2334,7 +2350,12 @@ impl RustTrans {
             };
 
             if let Some(rust_name) = rust_method {
+                let obj_parens = matches!(object.as_ref(),
+                    Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
+                );
+                if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
+                if obj_parens { write!(out, ")")?; }
                 write!(out, ".{}(", rust_name)?;
                 for (i, arg) in call.args.args.iter().enumerate() {
                     self.arg(arg, out)?;
@@ -2408,7 +2429,12 @@ impl RustTrans {
                     .chars()
                     .next()
                     .map(|c| c.is_uppercase())
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                    || matches!(type_name.as_str(),
+                        "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+                        | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+                        | "f32" | "f64" | "bool" | "char" | "str"
+                    );
                 if is_type {
                     // Check for tag construction: Type.Variant(args)
                     if self.tag_types.contains(type_name) {
@@ -2437,7 +2463,13 @@ impl RustTrans {
             // Regular method call: object.method(args)
             let is_get = method_name.as_str() == "get";
             let is_insert = method_name.as_str() == "insert";
+            // Parenthesize object if it's a binary op (e.g., (a / b).method())
+            let obj_needs_parens = matches!(object.as_ref(),
+                Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
+            );
+            if obj_needs_parens { write!(out, "(")?; }
             self.expr(object, out)?;
+            if obj_needs_parens { write!(out, ")")?; }
             write!(out, ".{}(", method_name)?;
             for (i, arg) in call.args.args.iter().enumerate() {
                 match arg {
@@ -3333,6 +3365,56 @@ impl RustTrans {
                 }
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    /// Inline for-loop for closures: outputs compact single-line for loop
+    fn for_stmt_inline(&mut self, for_stmt: &For, out: &mut impl Write) -> AutoResult<()> {
+        match &for_stmt.iter {
+            Iter::Named(name) => {
+                write!(out, "for {} in ", name)?;
+                if let Expr::Range(range) = &for_stmt.range {
+                    self.expr(&range.start, out)?;
+                    write!(out, "..")?;
+                    self.expr(&range.end, out)?;
+                } else {
+                    self.expr(&for_stmt.range, out)?;
+                }
+                write!(out, " {{ ")?;
+                for stmt in &for_stmt.body.stmts {
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, out)?;
+                            write!(out, "; ")?;
+                        }
+                        Stmt::Store(store) => {
+                            self.store(store, out)?;
+                            write!(out, "; ")?;
+                        }
+                        _ => {}
+                    }
+                }
+                write!(out, "}}")?;
+            }
+            Iter::Cond => {
+                write!(out, "while ")?;
+                self.expr(&for_stmt.range, out)?;
+                write!(out, " {{ ")?;
+                for stmt in &for_stmt.body.stmts {
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, out)?;
+                            write!(out, "; ")?;
+                        }
+                        _ => {}
+                    }
+                }
+                write!(out, "}}")?;
+            }
+            _ => {
+                write!(out, "/* unsupported for in closure */")?;
+            }
         }
         Ok(())
     }

@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::process::Command;
 use std::process::Stdio;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut child = Command::new("cat").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
     let stdin = child.stdin.unwrap();
     stdin.write_all("hello from stdin".as_bytes())?;

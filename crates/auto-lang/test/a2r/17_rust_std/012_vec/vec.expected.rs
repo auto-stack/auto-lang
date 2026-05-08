@@ -10,7 +10,7 @@ fn main() {
     v.push(1);
     v.push(2);
     v.push(3);
-    let first = v.get(0);
+    let first = v.get(0).cloned();
     let len = v.len();
     let popped = v.pop();
     v.clear();

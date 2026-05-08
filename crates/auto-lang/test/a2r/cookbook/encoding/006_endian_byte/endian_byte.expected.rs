@@ -10,6 +10,6 @@ fn main() {
     println!("BE bytes: {}, {}", bytes[0], bytes[1]);
     let le_bytes = value.to_le_bytes();
     println!("LE bytes: {}, {}", le_bytes[0], le_bytes[1]);
-    let from_be = u16.from_be_bytes(bytes);
+    let from_be = u16::from_be_bytes(bytes);
     println!("From BE: {}", from_be);
 }

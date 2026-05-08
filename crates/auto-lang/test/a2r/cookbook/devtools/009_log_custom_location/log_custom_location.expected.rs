@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use log::info;
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = std.fs.create("app.log")?;
     info!("logging to custom file");
     println!("log written to app.log");

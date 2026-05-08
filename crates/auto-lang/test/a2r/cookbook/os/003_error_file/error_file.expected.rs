@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use std::fs::File;
 use std::process::{Command, Stdio};
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let outputs = File::create("out.txt")?;
     let errors = outputs.try_clone()?;
 

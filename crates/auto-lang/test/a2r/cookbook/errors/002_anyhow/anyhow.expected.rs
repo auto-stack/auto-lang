@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use anyhow::Context;
-fn read_config() -> Result<(), String> {
+fn read_config() -> Result<(), Box<dyn std::error::Error>> {
     let path: String = "config.toml".to_string();
     let result = read_to_string(path);
     let content = result.context("Failed to read config")?;

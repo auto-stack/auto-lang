@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output = std.process.run("echo", vec!["hello"])?;
     let stdout = String::from_utf8(output.stdout)?;
     let trimmed = stdout.trim();
