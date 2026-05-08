@@ -500,6 +500,74 @@ fn bvm_step(code List, strings Map, state Map) int {
         return 1
     }
 
+    // OP_LIST_PUSH_STR = 79 — pop str pool key and list_ref, append string to list
+    if op == 79 {
+        var val_str_key = bvm_pop_str_key(state)
+        var heap_idx = bvm_pop_int(state)
+        var nkey = "__l" + int_to_str(heap_idx) + "_n"
+        var n = state.get_int(nkey)
+        var val_str = ""
+        if strings.contains(val_str_key) { val_str = strings.get(val_str_key) }
+        state.insert_str("__l" + int_to_str(heap_idx) + "_s_" + int_to_str(n), val_str)
+        state.insert_int(nkey, n + 1)
+        return 1
+    }
+
+    // OP_LIST_GET_STR = 86 — pop idx and list_ref, push string pool key
+    if op == 86 {
+        var idx = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var ekey = "__l" + int_to_str(heap_idx) + "_s_" + int_to_str(idx)
+        if state.contains(ekey) {
+            var result = state.get(ekey)
+            var n = state.get_int("__nstr")
+            strings.insert_str(int_to_str(n), result)
+            state.insert_int("__nstr", n + 1)
+            bvm_push_str(state, int_to_str(n))
+        } else {
+            var n2 = state.get_int("__nstr")
+            strings.insert_str(int_to_str(n2), "")
+            state.insert_int("__nstr", n2 + 1)
+            bvm_push_str(state, int_to_str(n2))
+        }
+        return 1
+    }
+
+    // OP_LIST_SET_STR = 87 — pop str pool key, idx, list_ref; set list[idx] = str
+    if op == 87 {
+        var val_str_key = bvm_pop_str_key(state)
+        var idx = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var val_str = ""
+        if strings.contains(val_str_key) { val_str = strings.get(val_str_key) }
+        state.insert_str("__l" + int_to_str(heap_idx) + "_s_" + int_to_str(idx), val_str)
+        return 1
+    }
+
+    // OP_LIST_POP_STR = 88 — pop list_ref; push last string element, decrement length
+    if op == 88 {
+        var heap_idx = bvm_pop_int(state)
+        var nkey = "__l" + int_to_str(heap_idx) + "_n"
+        var n = state.get_int(nkey)
+        if n > 0 {
+            n = n - 1
+            var ekey = "__l" + int_to_str(heap_idx) + "_s_" + int_to_str(n)
+            var val_str = ""
+            if state.contains(ekey) { val_str = state.get(ekey) }
+            state.insert_int(nkey, n)
+            var ns = state.get_int("__nstr")
+            strings.insert_str(int_to_str(ns), val_str)
+            state.insert_int("__nstr", ns + 1)
+            bvm_push_str(state, int_to_str(ns))
+        } else {
+            var ns2 = state.get_int("__nstr")
+            strings.insert_str(int_to_str(ns2), "")
+            state.insert_int("__nstr", ns2 + 1)
+            bvm_push_str(state, int_to_str(ns2))
+        }
+        return 1
+    }
+
     // OP_STR_LEN = 76 — pop str pool key, push length
     if op == 76 {
         var pool_key = bvm_pop_str_key(state)

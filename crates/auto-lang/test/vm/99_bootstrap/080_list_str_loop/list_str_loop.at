@@ -1,0 +1,8 @@
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(\"a\")\nlist.push(\"b\")\nlist.push(\"c\")\nvar i = 0\nfor i < list.len() {\nprint(list.get(i))\ni = i + 1\n}\n}")
+    if result == "a\nb\nc\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

@@ -28,6 +28,10 @@ fn OP_LIST_POP() int { return 75 }
 fn OP_STR_LEN() int { return 76 }
 fn OP_STR_CHAR_AT() int { return 77 }
 fn OP_STR_SUBSTR() int { return 78 }
+fn OP_LIST_PUSH_STR() int { return 79 }
+fn OP_LIST_GET_STR() int { return 86 }
+fn OP_LIST_SET_STR() int { return 87 }
+fn OP_LIST_POP_STR() int { return 88 }
 fn OP_ADD() int { return 48 }
 fn OP_SUB() int { return 49 }
 fn OP_MUL() int { return 50 }
@@ -58,14 +62,40 @@ type CodeGen {
     exports Map
     locals Map
     n_locals int
+    elem_types Map    // var_name -> elem type (0=int, 1=str) for List monomorphization
 }
 
 fn codegen_new() CodeGen {
-    CodeGen(List.new(), Map.new(), 0, Map.new(), Map.new(), 0)
+    CodeGen(List.new(), Map.new(), 0, Map.new(), Map.new(), 0, Map.new())
 }
 
 fn codegen_offset(cg CodeGen) int {
     return cg.code.len()
+}
+
+fn codegen_record_elem(cg CodeGen, name str, et int) {
+    cg.elem_types.insert_int(name, et)
+}
+
+fn codegen_lookup_elem(cg CodeGen, name str) int {
+    if cg.elem_types.contains(name) { return cg.elem_types.get_int(name) }
+    return 0
+}
+
+fn codegen_str_returning_call(cg CodeGen, callee str) int {
+    if codegen_extract_method_suffix(callee, ".get") == 1 {
+        var vn = codegen_extract_var_name(callee)
+        var et = codegen_lookup_elem(cg, vn)
+        if et == 1 { return 1 }
+    }
+    if codegen_extract_method_suffix(callee, ".pop") == 1 {
+        var vn2 = codegen_extract_var_name(callee)
+        var et2 = codegen_lookup_elem(cg, vn2)
+        if et2 == 1 { return 1 }
+    }
+    if codegen_extract_method_suffix(callee, ".substr") == 1 { return 1 }
+    if codegen_extract_method_suffix(callee, ".get_str") == 1 { return 1 }
+    return 0
 }
 
 fn codegen_emit(cg CodeGen, byte int) {
@@ -367,11 +397,25 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
             }
             // Determine method from suffix
             if codegen_extract_method_suffix(callee, ".push") == 1 {
-                codegen_emit(cg, OP_LIST_PUSH())
+                var et = 0
+                if node.params.len() > 0 {
+                    et = type_infer_expr(tenv, node.params.get(0))
+                }
+                if et == 1 {
+                    codegen_emit(cg, OP_LIST_PUSH_STR())
+                    codegen_record_elem(cg, var_name, 1)
+                } else {
+                    codegen_emit(cg, OP_LIST_PUSH())
+                }
                 codegen_emit(cg, OP_CONST_0())
                 return 0
             }
-            if codegen_extract_method_suffix(callee, ".get") == 1 { codegen_emit(cg, OP_LIST_GET()); return 0 }
+            if codegen_extract_method_suffix(callee, ".get") == 1 {
+                var et = codegen_lookup_elem(cg, var_name)
+                if et == 1 { codegen_emit(cg, OP_LIST_GET_STR()) }
+                else { codegen_emit(cg, OP_LIST_GET()) }
+                return 0
+            }
             if codegen_extract_method_suffix(callee, ".len") == 1 {
                 var len_type = type_lookup(tenv, var_name)
                 if len_type == 1 { codegen_emit(cg, OP_STR_LEN()) }
@@ -392,11 +436,18 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
             }
             if codegen_extract_method_suffix(callee, ".get_str") == 1 { codegen_emit(cg, OP_MAP_GET_STR()); return 0 }
             if codegen_extract_method_suffix(callee, ".set") == 1 {
-                codegen_emit(cg, OP_LIST_SET())
+                var et = codegen_lookup_elem(cg, var_name)
+                if et == 1 { codegen_emit(cg, OP_LIST_SET_STR()) }
+                else { codegen_emit(cg, OP_LIST_SET()) }
                 codegen_emit(cg, OP_CONST_0())
                 return 0
             }
-            if codegen_extract_method_suffix(callee, ".pop") == 1 { codegen_emit(cg, OP_LIST_POP()); return 0 }
+            if codegen_extract_method_suffix(callee, ".pop") == 1 {
+                var et = codegen_lookup_elem(cg, var_name)
+                if et == 1 { codegen_emit(cg, OP_LIST_POP_STR()) }
+                else { codegen_emit(cg, OP_LIST_POP()) }
+                return 0
+            }
             if codegen_extract_method_suffix(callee, ".char_at") == 1 { codegen_emit(cg, OP_STR_CHAR_AT()); return 0 }
             if codegen_extract_method_suffix(callee, ".substr") == 1 { codegen_emit(cg, OP_STR_SUBSTR()); return 0 }
         }
@@ -414,9 +465,7 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
             var arg_type = type_infer_expr(tenv, arg_node)
             // For method calls where type inference returns -1, check known string-returning methods
             if arg_type == -1 && arg_node.kind == NodeKind.CallExpr {
-                var aname = arg_node.name
-                if codegen_extract_method_suffix(aname, ".substr") == 1 { arg_type = 1 }
-                if codegen_extract_method_suffix(aname, ".get_str") == 1 { arg_type = 1 }
+                if codegen_str_returning_call(cg, arg_node.name) == 1 { arg_type = 1 }
             }
             codegen_expr(cg, arg_node, tenv)
             if arg_type == 1 {
@@ -464,7 +513,14 @@ fn codegen_stmt(cg CodeGen, node ASTNode, tenv TypeEnv) {
     if kind == NodeKind.LetStmt || kind == NodeKind.VarStmt {
         var slot = codegen_alloc_local(cg, node.name)
         if node.left.len() > 0 {
-            codegen_expr(cg, node.left.get(0), tenv)
+            var init = node.left.get(0)
+            codegen_expr(cg, init, tenv)
+            // Track if initializer returns a string (e.g., list.get(0) on str list)
+            if init.kind == NodeKind.CallExpr {
+                if codegen_str_returning_call(cg, init.name) == 1 {
+                    type_bind(tenv, node.name, 1)
+                }
+            }
         } else {
             codegen_emit(cg, OP_CONST_0())
         }
@@ -614,6 +670,7 @@ fn codegen_compile(cg CodeGen, stmts List, tenv TypeEnv) {
             cg.exports.insert_int(stmt.name, fn_addr)
             cg.locals = Map.new()
             cg.n_locals = 0
+            cg.elem_types = Map.new()
             var params = stmt.params
             var j = 0
             var pn = params.len()

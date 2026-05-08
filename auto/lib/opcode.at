@@ -57,6 +57,10 @@ let OP_LIST_POP = 75
 let OP_STR_LEN = 76
 let OP_STR_CHAR_AT = 77
 let OP_STR_SUBSTR = 78
+let OP_LIST_PUSH_STR = 79
+let OP_LIST_GET_STR = 86
+let OP_LIST_SET_STR = 87
+let OP_LIST_POP_STR = 88
 
 // String
 let OP_STR_CAT = 124
