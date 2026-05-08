@@ -1,0 +1,9 @@
+use.rust rand::Rng
+use.rust rand::thread_rng
+
+fn main() {
+    var rng = thread_rng()
+    let x = rng.gen_range(0..5)
+    let y = rng.gen_range(10..20)
+    print(f"x = $x, y = $y")
+}

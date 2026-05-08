@@ -1,0 +1,7 @@
+use.rust chrono::Local
+
+fn main() {
+    let now = Local.now()
+    let formatted = now.format("%Y-%m-%d %H:%M:%S")
+    print(f"Formatted: $formatted")
+}

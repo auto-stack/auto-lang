@@ -1,0 +1,11 @@
+use.rust std::fs::File
+use.rust flate2::read::GzDecoder
+use.rust tar::Archive
+
+fn main() ! {
+    let file = File.open("archive.tar.gz").?
+    let dec = GzDecoder.new(file)
+    var archive = Archive.new(dec)
+    archive.unpack("target").?
+    print("Unpacked archive.tar.gz")
+}

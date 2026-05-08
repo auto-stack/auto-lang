@@ -1,0 +1,10 @@
+use.rust chrono::Utc
+use.rust chrono::Local
+use.rust chrono::TimeZone
+
+fn main() {
+    let utc_time = Utc.now()
+    let local_time = Local.now()
+    print(f"UTC: $utc_time")
+    print(f"Local: $local_time")
+}

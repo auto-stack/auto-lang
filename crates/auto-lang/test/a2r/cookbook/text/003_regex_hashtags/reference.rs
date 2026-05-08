@@ -1,0 +1,9 @@
+use regex::Regex;
+
+fn main() {
+    let re = Regex::new(r"#\w+").unwrap();
+    let text = "Love #rust and #programming!";
+    for cap in re.captures_iter(text) {
+        println!("Hashtag: {}", &cap[0]);
+    }
+}

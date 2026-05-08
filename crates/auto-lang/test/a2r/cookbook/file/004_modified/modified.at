@@ -1,0 +1,13 @@
+use.rust walkdir::WalkDir
+use.rust std::fs
+
+fn main() {
+    for entry in WalkDir.new("src").into_iter() {
+        let e = entry.ok()
+        if e.file_type().is_file() {
+            let meta = fs.metadata(e.path()).unwrap()
+            let modified = meta.modified().unwrap()
+            print(f"${e.path().display()}: $modified")
+        }
+    }
+}

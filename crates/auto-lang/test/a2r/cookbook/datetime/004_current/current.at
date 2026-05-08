@@ -1,0 +1,13 @@
+use.rust chrono::Local
+use.rust chrono::Datelike
+use.rust chrono::Timelike
+
+fn main() {
+    let now = Local.now()
+    let year = now.year()
+    let month = now.month()
+    let day = now.day()
+    let hour = now.hour()
+    print(f"Date: $year-$month-$day")
+    print(f"Time: $hour:00")
+}

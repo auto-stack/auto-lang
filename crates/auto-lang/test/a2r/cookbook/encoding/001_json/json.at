@@ -1,0 +1,16 @@
+use.rust serde::Serialize
+use.rust serde::Deserialize
+use.rust serde_json
+
+type Point {
+    x f64
+    y f64
+}
+
+fn main() {
+    let point = Point(1.0, 2.0)
+    let serialized = serde_json.to_string(point).unwrap()
+    print(f"Serialized: $serialized")
+    let deserialized Point = serde_json.from_str(serialized).unwrap()
+    print(f"Deserialized: x=${deserialized.x}, y=${deserialized.y}")
+}

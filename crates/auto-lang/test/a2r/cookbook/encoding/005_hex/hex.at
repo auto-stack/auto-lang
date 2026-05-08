@@ -1,0 +1,8 @@
+use.rust data_encoding::HEXLOWER
+
+fn main() {
+    let encoded = HEXLOWER.encode(b"hello world")
+    print(f"Hex: $encoded")
+    let decoded = HEXLOWER.decode(encoded.as_bytes()).unwrap()
+    print(f"Decoded: ${decoded.len()} bytes")
+}

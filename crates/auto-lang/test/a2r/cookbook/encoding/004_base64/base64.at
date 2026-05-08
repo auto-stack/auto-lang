@@ -1,0 +1,9 @@
+use.rust base64::Engine
+use.rust base64::engine::general_purpose::STANDARD
+
+fn main() {
+    let encoded = STANDARD.encode(b"hello world")
+    print(f"Encoded: $encoded")
+    let decoded = STANDARD.decode(encoded.as_bytes()).unwrap()
+    print(f"Decoded: ${decoded.len()} bytes")
+}

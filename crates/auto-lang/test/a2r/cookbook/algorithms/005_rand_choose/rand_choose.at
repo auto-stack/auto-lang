@@ -1,0 +1,10 @@
+use.rust rand::seq::IteratorRandom
+use.rust rand::Rng
+use.rust rand::thread_rng
+
+fn main() {
+    var rng = thread_rng()
+    let choices = ["a", "b", "c", "d", "e"]
+    let choice = choices[rng.gen_range(0..choices.len())]
+    print(f"Chose: $choice")
+}

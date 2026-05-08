@@ -1,0 +1,9 @@
+use.rust sha2::Sha256
+use.rust sha2::Digest
+
+fn main() {
+    var hasher = Sha256.new()
+    hasher.update(b"hello world")
+    let result = hasher.finalize()
+    print(f"SHA256: {result:x}")
+}

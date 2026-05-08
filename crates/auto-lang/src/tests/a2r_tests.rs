@@ -403,3 +403,72 @@ fn get_line(src: &str, offset: usize) -> String {
 
 // -- cookbook/errors --
 #[test] fn test_cookbook_errors_001_boxed_error() { test_a2r("cookbook/errors/001_boxed_error").unwrap(); }
+
+// === Cookbook B-tier: External crate tests ===
+
+// -- cookbook/algorithms/randomness (B-tier) --
+#[test] fn test_cookbook_algorithms_004_rand() { test_a2r("cookbook/algorithms/004_rand").unwrap(); }
+#[test] fn test_cookbook_algorithms_005_rand_choose() { test_a2r("cookbook/algorithms/005_rand_choose").unwrap(); }
+#[test] fn test_cookbook_algorithms_006_rand_custom() { test_a2r("cookbook/algorithms/006_rand_custom").unwrap(); }
+#[test] fn test_cookbook_algorithms_007_rand_dist() { test_a2r("cookbook/algorithms/007_rand_dist").unwrap(); }
+#[test] fn test_cookbook_algorithms_008_rand_passwd() { test_a2r("cookbook/algorithms/008_rand_passwd").unwrap(); }
+#[test] fn test_cookbook_algorithms_009_rand_range() { test_a2r("cookbook/algorithms/009_rand_range").unwrap(); }
+
+// -- cookbook/cli (B-tier) --
+#[test] fn test_cookbook_cli_001_clap_basic() { test_a2r("cookbook/cli/001_clap_basic").unwrap(); }
+
+// -- cookbook/compression (B-tier) --
+#[test] fn test_cookbook_compression_001_tar_compress() { test_a2r("cookbook/compression/001_tar_compress").unwrap(); }
+#[test] fn test_cookbook_compression_002_tar_decompress() { test_a2r("cookbook/compression/002_tar_decompress").unwrap(); }
+
+// -- cookbook/concurrency (B-tier) --
+#[test] fn test_cookbook_concurrency_001_rayon_any_all() { test_a2r("cookbook/concurrency/001_rayon_any_all").unwrap(); }
+#[test] fn test_cookbook_concurrency_002_rayon_map_reduce() { test_a2r("cookbook/concurrency/002_rayon_map_reduce").unwrap(); }
+#[test] fn test_cookbook_concurrency_003_rayon_parallel_sort() { test_a2r("cookbook/concurrency/003_rayon_parallel_sort").unwrap(); }
+#[test] fn test_cookbook_concurrency_004_crossbeam_spsc() { test_a2r("cookbook/concurrency/004_crossbeam_spsc").unwrap(); }
+
+// -- cookbook/cryptography (B-tier) --
+#[test] fn test_cookbook_cryptography_001_sha_digest() { test_a2r("cookbook/cryptography/001_sha_digest").unwrap(); }
+
+// -- cookbook/datetime (B-tier, chrono) --
+#[test] fn test_cookbook_datetime_002_checked() { test_a2r("cookbook/datetime/002_checked").unwrap(); }
+#[test] fn test_cookbook_datetime_003_timezone() { test_a2r("cookbook/datetime/003_timezone").unwrap(); }
+#[test] fn test_cookbook_datetime_004_current() { test_a2r("cookbook/datetime/004_current").unwrap(); }
+#[test] fn test_cookbook_datetime_005_format() { test_a2r("cookbook/datetime/005_format").unwrap(); }
+#[test] fn test_cookbook_datetime_006_parse_string() { test_a2r("cookbook/datetime/006_parse_string").unwrap(); }
+#[test] fn test_cookbook_datetime_007_timestamp() { test_a2r("cookbook/datetime/007_timestamp").unwrap(); }
+
+// -- cookbook/versioning (B-tier, semver) --
+#[test] fn test_cookbook_versioning_001_semver_parse() { test_a2r("cookbook/versioning/001_semver_parse").unwrap(); }
+#[test] fn test_cookbook_versioning_002_semver_increment() { test_a2r("cookbook/versioning/002_semver_increment").unwrap(); }
+#[test] fn test_cookbook_versioning_003_semver_latest() { test_a2r("cookbook/versioning/003_semver_latest").unwrap(); }
+
+// -- cookbook/encoding (B-tier) --
+#[test] fn test_cookbook_encoding_001_json() { test_a2r("cookbook/encoding/001_json").unwrap(); }
+#[test] fn test_cookbook_encoding_002_toml() { test_a2r("cookbook/encoding/002_toml").unwrap(); }
+#[test] fn test_cookbook_encoding_003_csv_read() { test_a2r("cookbook/encoding/003_csv_read").unwrap(); }
+#[test] fn test_cookbook_encoding_004_base64() { test_a2r("cookbook/encoding/004_base64").unwrap(); }
+#[test] fn test_cookbook_encoding_005_hex() { test_a2r("cookbook/encoding/005_hex").unwrap(); }
+
+// -- cookbook/errors (B-tier, anyhow) --
+#[test] fn test_cookbook_errors_002_anyhow() { test_a2r("cookbook/errors/002_anyhow").unwrap(); }
+
+// -- cookbook/file (B-tier, walkdir) --
+#[test] fn test_cookbook_file_002_find_files() { test_a2r("cookbook/file/002_find_files").unwrap(); }
+#[test] fn test_cookbook_file_003_recursive_size() { test_a2r("cookbook/file/003_recursive_size").unwrap(); }
+#[test] fn test_cookbook_file_004_modified() { test_a2r("cookbook/file/004_modified").unwrap(); }
+
+// -- cookbook/science/mathematics/complex_numbers (B-tier, num) --
+#[test] fn test_cookbook_science_complex_001_add_complex() { test_a2r("cookbook/science/mathematics/complex_numbers/001_add_complex").unwrap(); }
+#[test] fn test_cookbook_science_complex_002_create_complex() { test_a2r("cookbook/science/mathematics/complex_numbers/002_create_complex").unwrap(); }
+
+// -- cookbook/text (B-tier, regex/unicode) --
+#[test] fn test_cookbook_text_001_regex_replace() { test_a2r("cookbook/text/001_regex_replace").unwrap(); }
+#[test] fn test_cookbook_text_002_regex_email() { test_a2r("cookbook/text/002_regex_email").unwrap(); }
+#[test] fn test_cookbook_text_003_regex_hashtags() { test_a2r("cookbook/text/003_regex_hashtags").unwrap(); }
+#[test] fn test_cookbook_text_004_graphemes() { test_a2r("cookbook/text/004_graphemes").unwrap(); }
+
+// -- cookbook/web/url (B-tier, url) --
+#[test] fn test_cookbook_web_url_001_base() { test_a2r("cookbook/web/url/001_base").unwrap(); }
+#[test] fn test_cookbook_web_url_002_parse() { test_a2r("cookbook/web/url/002_parse").unwrap(); }
+#[test] fn test_cookbook_web_url_003_fragment() { test_a2r("cookbook/web/url/003_fragment").unwrap(); }

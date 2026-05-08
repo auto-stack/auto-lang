@@ -1,0 +1,10 @@
+use.rust crossbeam::channel::unbounded
+
+fn main() {
+    let ch = unbounded()
+    let tx = ch.sender
+    let rx = ch.receiver
+    tx.send(42).unwrap()
+    let received = rx.recv().unwrap()
+    print(f"Received: $received")
+}

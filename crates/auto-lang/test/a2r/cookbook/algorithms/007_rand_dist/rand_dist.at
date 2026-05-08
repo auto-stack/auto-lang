@@ -1,0 +1,10 @@
+use.rust rand::Rng
+use.rust rand::thread_rng
+
+fn main() {
+    var rng = thread_rng()
+    let n1 = rng.gen_range(0..100)
+    let n2 = rng.gen_range(0..100)
+    let avg = (n1 + n2) / 2
+    print(f"Two random numbers: $n1, $n2, average: $avg")
+}

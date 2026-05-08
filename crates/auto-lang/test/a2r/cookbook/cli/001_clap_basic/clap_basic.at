@@ -1,0 +1,13 @@
+use.rust clap::Parser
+
+type Args {
+    name str
+    count int
+}
+
+fn main() {
+    let args = Parser.parse()
+    for _ in 0..args.count {
+        print(f"Hello, $args.name!")
+    }
+}

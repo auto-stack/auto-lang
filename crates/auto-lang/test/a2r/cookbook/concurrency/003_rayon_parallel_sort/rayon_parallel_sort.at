@@ -1,0 +1,11 @@
+use.rust rayon::prelude
+use.rust rand::seq::SliceRandom
+use.rust rand::thread_rng
+
+fn main() {
+    var v = [0..100].collect()
+    var rng = thread_rng()
+    v.shuffle(rng.mut)
+    v.par_sort()
+    print(f"Sorted first: ${v[0]}, last: ${v[99]}")
+}

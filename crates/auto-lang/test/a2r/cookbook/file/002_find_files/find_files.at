@@ -1,0 +1,8 @@
+use.rust walkdir::WalkDir
+
+fn main() {
+    for entry in WalkDir.new("src") {
+        let entry = entry.unwrap()
+        print(f"Found: ${entry.path().display()}")
+    }
+}

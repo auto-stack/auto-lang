@@ -1,0 +1,13 @@
+use.rust semver::Version
+
+fn main() {
+    let versions = ["1.0.0", "2.1.0", "1.5.0", "2.0.1"]
+    var max = Version.parse(versions[0]).unwrap()
+    for v in versions {
+        let parsed = Version.parse(v).unwrap()
+        if parsed > max {
+            max = parsed
+        }
+    }
+    print(f"Latest: $max")
+}

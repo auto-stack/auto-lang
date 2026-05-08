@@ -1,0 +1,9 @@
+use.rust unicode_segmentation::UnicodeSegmentation
+
+fn main() {
+    let text = "hello world"
+    let graphemes = text.graphemes(true).collect()
+    print(f"Graphemes: $graphemes")
+    let reversed = text.graphemes(true).rev().collect()
+    print(f"Reversed: $reversed")
+}

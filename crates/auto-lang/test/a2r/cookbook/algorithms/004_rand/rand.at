@@ -1,0 +1,7 @@
+use.rust rand::Rng
+
+fn main() {
+    var rng = thread_rng()
+    let n = rng.gen_range(0..100)
+    print(f"Random number: $n")
+}

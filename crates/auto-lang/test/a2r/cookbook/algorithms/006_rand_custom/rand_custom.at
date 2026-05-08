@@ -1,0 +1,15 @@
+use.rust rand::Rng
+use.rust rand::distributions::{Distribution, Standard}
+use.rust rand::thread_rng
+
+enum Pet {
+    Dog
+    Cat
+    Bird
+}
+
+fn main() {
+    var rng = thread_rng()
+    let pet Pet = rng.gen()
+    print("Got a pet!")
+}

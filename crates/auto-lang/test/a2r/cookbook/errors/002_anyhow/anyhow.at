@@ -1,0 +1,13 @@
+use.rust anyhow::Context
+
+fn read_config() ! {
+    let path = "config.toml"
+    let result = read_to_string(path)
+    let content = result.context("Failed to read config").?
+    Ok(content)
+}
+
+fn main() {
+    let result = read_config()
+    print(f"Config result: $result")
+}

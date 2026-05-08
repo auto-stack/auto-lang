@@ -1,0 +1,13 @@
+use.rust std::fs::File
+use.rust flate2::write::GzEncoder
+use.rust flate2::Compression
+use.rust tar::Builder
+
+fn main() ! {
+    let file = File.create("archive.tar.gz").?
+    let enc = GzEncoder.new(file, Compression.default())
+    var tar = Builder.new(enc)
+    tar.append_dir_all("backup", "src").?
+    tar.finish().?
+    print("Created archive.tar.gz")
+}

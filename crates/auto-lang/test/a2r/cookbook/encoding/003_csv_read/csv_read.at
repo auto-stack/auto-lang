@@ -1,0 +1,10 @@
+use.rust csv::Reader
+
+fn main() ! {
+    let csv_str = "name,age\nAlice,30\nBob,25"
+    var reader = Reader.from_reader(csv_str.as_bytes())
+    for result in reader.records() {
+        let record = result.?
+        print(f"Name: ${record.get(0)}, Age: ${record.get(1)}")
+    }
+}

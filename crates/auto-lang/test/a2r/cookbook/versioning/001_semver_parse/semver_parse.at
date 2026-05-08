@@ -1,0 +1,6 @@
+use.rust semver::Version
+
+fn main() {
+    let v = Version.parse("1.2.3").unwrap()
+    print(f"Major: ${v.major}, Minor: ${v.minor}, Patch: ${v.patch}")
+}
