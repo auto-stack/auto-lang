@@ -38,6 +38,7 @@ function nav(): DefaultTheme.NavItem[] {
       text: 'UI',
       items: [
         { text: 'Overview', link: '/ui/' },
+        { text: 'A2UI Demo', link: '/ui/a2ui/index.html', target: '_self' },
         { text: 'Components', link: '/ui/gallery/index.html', target: '_self' },
         { text: 'Blocks', link: '/ui/blocks/index.html', target: '_self' },
         { text: 'Charts', link: '/ui/charts/index.html', target: '_self' },

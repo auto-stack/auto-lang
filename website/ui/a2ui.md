@@ -11,6 +11,10 @@ A2UI compiles Auto `view` declarations to:
 - **Android** — Jetpack Compose (planned)
 - **HarmonyOS** — ArkTS (planned)
 
+## Live Demo
+
+- [**A2UI Interactive Demo**](/ui/a2ui/index.html) — Full widget editor, gallery, component catalog, and theater playback
+
 ## Related Galleries
 
 - [**Component Gallery**](/ui/gallery/index.html) — 46+ shadcn-vue components

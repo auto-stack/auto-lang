@@ -38,6 +38,7 @@ function nav(): DefaultTheme.NavItem[] {
       text: 'UI',
       items: [
         { text: '概览', link: '/zh/ui/' },
+        { text: 'A2UI 演示', link: '/ui/a2ui/index.html', target: '_self' },
         { text: '组件', link: '/ui/gallery/index.html', target: '_self' },
         { text: '区块', link: '/ui/blocks/index.html', target: '_self' },
         { text: '图表', link: '/ui/charts/index.html', target: '_self' },
