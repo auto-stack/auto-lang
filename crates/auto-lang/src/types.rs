@@ -607,7 +607,7 @@ mod tests {
             name: "Pair".to_string(),
             param_types: vec![
                 GenericParamType::Type,
-                GenericParamType::StrOwned,
+                GenericParamType::String,
             ],
             field_ty: Type::Unknown,
         };

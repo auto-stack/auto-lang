@@ -6557,11 +6557,15 @@ impl Codegen {
     /// except for well-known int-returning natives where it overrides to Int.
     fn infer_native_return_type(&self, name: &str) -> ObjectType {
         // Known int-returning natives (without fn_return_types entry)
-        if name == "auto.hashmap.get_int"
-            || name == "auto.list.len"
-            || name == "auto.str.len"
-            || name == "auto.hashmap.size"
-            || name == "auto.list.find"
+        // Match both "auto.str.len" and "str.len" forms since the compiler
+        // may use either depending on how the method was resolved.
+        if name == "auto.hashmap.get_int" || name == "hashmap.get_int"
+            || name == "auto.list.len" || name == "list.len"
+            || name == "auto.str.len" || name == "str.len"
+            || name == "auto.hashmap.size" || name == "hashmap.size"
+            || name == "auto.list.find" || name == "list.find"
+            || name == "str.char_at" || name == "auto.str.char_at"
+            || name == "str.index_of" || name == "auto.str.index_of"
         {
             return ObjectType::Int;
         }
