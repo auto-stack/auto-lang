@@ -8816,6 +8816,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
+        // Handle 'not' as prefix unary operator for boolean negation
+        // e.g., assert(not expr) -> assert(!expr)
+        if self.cur.text == "not" {
+            self.next(); // skip 'not'
+            let inner = self.parse_expr()?;
+            return Ok(Expr::Unary(Op::Not, Box::new(inner)));
+        }
+
         // Parse identifier or generic type instance (e.g., List or List<int>)
         let name = self.cur.text.clone();
         self.next(); // skip the identifier
