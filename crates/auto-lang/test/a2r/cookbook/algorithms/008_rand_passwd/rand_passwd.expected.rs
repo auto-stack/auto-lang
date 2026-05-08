@@ -13,7 +13,7 @@ fn main() {
     for _ in 0..16 {
         let idx = rng.gen_range(0..charset.len());
         let ch = charset.chars().nth(idx).unwrap();
-        password = format!("{}{}", password, ch.to_string());
+        password = password + ch.to_string();
     }
     println!("Password: {}", password);
 }

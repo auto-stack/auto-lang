@@ -10,7 +10,7 @@ fn main() {
     let mut c: Vec<Vec<i32>> = vec![vec![0, 0], vec![0, 0]];
     for i in 0..2 {
         for j in 0..2 {
-            c[(i) as usize][(j) as usize] = format!("{}{}", a[(i) as usize][(j) as usize], b[(i) as usize][(j) as usize]);
+            c[(i) as usize][(j) as usize] = a[(i) as usize][(j) as usize] + b[(i) as usize][(j) as usize];
         }
     }
     println!("{} {}", c[0][0], c[0][1]);

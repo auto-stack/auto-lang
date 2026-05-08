@@ -8,7 +8,7 @@ use num::BigInt;
 fn main() {
     let a = BigInt::from(100);
     let b = BigInt::from(200);
-    let sum = format!("{}{}", a, b);
+    let sum = a + b;
     let product = a * b;
     println!("Sum: {}", sum);
     println!("Product: {}", product);

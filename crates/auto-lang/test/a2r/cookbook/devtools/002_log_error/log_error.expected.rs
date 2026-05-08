@@ -6,6 +6,6 @@ use auto_lang::a2r_std::*;
 
 use log::error;
 fn main() {
-    error.collect()("something went wrong");
+    error!("something went wrong");
     println!("operation completed with errors");
 }

@@ -6,8 +6,8 @@ use auto_lang::a2r_std::*;
 
 use log::debug;
 fn main() {
-    debug.collect()("starting operation");
+    debug!("starting operation");
     let value: i32 = 42;
-    debug.collect()("value = {}", value);
+    debug!("value = {}", value);
     println!("done");
 }

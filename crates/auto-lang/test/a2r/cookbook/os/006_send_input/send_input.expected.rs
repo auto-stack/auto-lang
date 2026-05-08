@@ -7,10 +7,7 @@ use auto_lang::a2r_std::*;
 use std::process::Command;
 use std::process::Stdio;
 fn main() -> Result<(), String> {
-    let mut child = Command::new("cat");
-    self.stdin(Stdio::piped());
-    self.stdout(Stdio::piped());
-    self.spawn()?;
+    let mut child = Command::new("cat").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
     let stdin = child.stdin.unwrap();
     stdin.write_all("hello from stdin".as_bytes())?;
     let out = child.wait_with_output();

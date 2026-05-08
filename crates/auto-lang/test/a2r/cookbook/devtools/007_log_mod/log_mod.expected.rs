@@ -7,13 +7,13 @@ use auto_lang::a2r_std::*;
 use log::info;
 use log::debug;
 fn process() {
-    debug.collect()("processing step 1");
-    debug.collect()("processing step 2");
-    info.collect()("processing complete");
+    debug!("processing step 1");
+    debug!("processing step 2");
+    info!("processing complete");
 }
 
 fn main() {
-    info.collect()("app started");
+    info!("app started");
     process();
     println!("done");
 }

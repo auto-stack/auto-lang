@@ -11,7 +11,7 @@ fn main() -> Result<(), String> {
     for entry in dir {
         let entry: i32 = entry?;
         let meta = entry.metadata()?;
-        total = format!("{}{}", total, meta.len());
+        total = total + meta.len();
     }
     println!("Total size: {} bytes", total);
     Ok(())

@@ -10,6 +10,6 @@ fn main() {
     let mut rng = thread_rng();
     let n1 = rng.gen_range(0..100);
     let n2 = rng.gen_range(0..100);
-    let avg: i32 = format!("{}{}", n1, n2) / 2;
+    let avg: i32 = n1 + n2 / 2;
     println!("Two random numbers: {}, {}, average: {}", n1, n2, avg);
 }

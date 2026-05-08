@@ -10,10 +10,5 @@ fn main() -> Result<(), String> {
     let outputs = File::create("out.txt")?;
     let errors = outputs.try_clone()?;
 
-    Command::new("ls");
-    self.args(vec![".", "oops"]);
-    self.stdout(Stdio::from(outputs));
-    self.stderr(Stdio::from(errors));
-    self.spawn()?;
-    self.wait_with_output()?
+    Command::new("ls").args(vec![".", "oops"]).stdout(Stdio::from(outputs)).stderr(Stdio::from(errors)).spawn()?.wait_with_output()?
 }

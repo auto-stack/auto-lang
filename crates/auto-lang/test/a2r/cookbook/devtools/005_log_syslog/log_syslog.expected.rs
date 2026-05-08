@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use log::info;
 fn main() {
-    info.collect()("sending to syslog");
-    info.collect()("daemon started");
+    info!("sending to syslog");
+    info!("daemon started");
     println!("syslog configured");
 }

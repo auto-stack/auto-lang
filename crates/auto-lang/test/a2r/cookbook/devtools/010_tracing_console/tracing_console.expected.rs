@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 use tracing::info;
 use tracing::debug;
 fn main() {
-    info.collect()("application started");
+    info!("application started");
     let count: i32 = 10;
-    debug.collect()("processing $count items");
-    info.collect()("application finished");
+    debug!("processing $count items");
+    info!("application finished");
 }

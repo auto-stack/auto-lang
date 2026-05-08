@@ -1861,7 +1861,6 @@ impl<'a> Parser<'a> {
                     // Converts expr! into expr.collect()
                     Op::Not => {
                         self.next(); // skip !
-                                     // Convert to method call: lhs.collect()
                         let collect_name = crate::ast::Name::from("collect");
                         let collect_expr =
                             Expr::Bina(Box::new(lhs), Op::Dot, Box::new(Expr::Ident(collect_name)));
@@ -4917,6 +4916,27 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Replace `Expr::Ident("self")` inside `expr` with `replacement`.
+    /// Used for method chaining: `.method()` parsed as `self.method()` → `prev_expr.method()`.
+    fn replace_self_with(expr: &mut Expr, replacement: &Expr) {
+        match expr {
+            Expr::Dot(obj, _) => {
+                if matches!(obj.as_ref(), Expr::Ident(name) if name == "self") {
+                    *obj = Box::new(replacement.clone());
+                } else {
+                    Self::replace_self_with(obj, replacement);
+                }
+            }
+            Expr::Call(call) => {
+                Self::replace_self_with(&mut call.name, replacement);
+            }
+            Expr::ErrorPropagate(inner) => {
+                Self::replace_self_with(inner, replacement);
+            }
+            _ => {}
+        }
+    }
+
     pub fn skip_empty_lines(&mut self) -> usize {
         let mut count = 0;
         while self.is_kind(TokenKind::Newline) {
@@ -4964,6 +4984,81 @@ impl<'a> Parser<'a> {
                     }
                     stmts.push(stmt);
                     source_lines.push(stmt_line);
+
+                    // Method chaining: merge `.method()` lines into previous expression.
+                    // When a line starts with `.` (parsed as `self.method()`), and the
+                    // previous statement has a non-trivial expression, attach it to that.
+                    let stmts_len = stmts.len();
+                    if stmts_len >= 2 {
+                        fn is_dot_self_call(expr: &Expr) -> bool {
+                            match expr {
+                                Expr::Dot(obj, _) => {
+                                    matches!(obj.as_ref(), Expr::Ident(name) if name == "self")
+                                }
+                                Expr::Call(call) => {
+                                    matches!(call.name.as_ref(), Expr::Dot(obj, _) if matches!(obj.as_ref(), Expr::Ident(name) if name == "self"))
+                                }
+                                Expr::ErrorPropagate(inner) => is_dot_self_call(inner),
+                                _ => false,
+                            }
+                        }
+
+                        // Get the current expression to check if it's a self.dot call
+                        let curr_is_chainable = match stmts.get(stmts_len - 1) {
+                            Some(Stmt::Expr(e)) => is_dot_self_call(e),
+                            _ => false,
+                        };
+
+                        if curr_is_chainable {
+                            // Find the previous expression to chain to.
+                            // Walk back through stmts to find the last non-self-dot expression.
+                            // This handles: let x = A.new()\n  .b()\n  .c()
+                            let mut chain_target_idx = None;
+                            for i in (0..stmts_len - 1).rev() {
+                                match &stmts[i] {
+                                    Stmt::Expr(e) if !is_dot_self_call(e) && !matches!(e, Expr::Nil | Expr::Null) => {
+                                        chain_target_idx = Some(i);
+                                        break;
+                                    }
+                                    Stmt::Store(s) if !matches!(s.expr, Expr::Nil | Expr::Null) => {
+                                        chain_target_idx = Some(i);
+                                        break;
+                                    }
+                                    _ => continue,
+                                }
+                            }
+
+                            if let Some(target_idx) = chain_target_idx {
+                                // Get the base expression from the target stmt
+                                let base_expr = match &stmts[target_idx] {
+                                    Stmt::Expr(e) => e.clone(),
+                                    Stmt::Store(s) => s.expr.clone(),
+                                    _ => unreachable!(),
+                                };
+
+                                // Collect all self-dot stmts from target_idx+1 to end
+                                // and chain them onto base_expr
+                                let mut chained = base_expr;
+                                let chain_count = stmts_len - target_idx - 1;
+                                for _ in 0..chain_count {
+                                    if let Some(Stmt::Expr(dot_expr)) = stmts.pop() {
+                                        source_lines.pop();
+                                        let mut replaced = dot_expr;
+                                        Self::replace_self_with(&mut replaced, &chained);
+                                        chained = replaced;
+                                    }
+                                }
+
+                                // Update the target stmt with the chained expression
+                                match &mut stmts[target_idx] {
+                                    Stmt::Expr(e) => *e = chained,
+                                    Stmt::Store(s) => s.expr = chained,
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+
                     let is_first = stmt_index == 0;
                     // Check for ambiguous syntax errors in expect_eos
                     let newline_count = match self.expect_eos(is_first) {

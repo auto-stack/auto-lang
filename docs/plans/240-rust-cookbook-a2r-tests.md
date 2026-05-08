@@ -328,10 +328,10 @@ web/leptos.md                            — Full stack web with Leptos framewor
 ### Phase 5: B 层测试用例实现（第二批）✅ 完成
 68 个新增 B-tier 测试用例创建完成，修复解析器对 `spawn` 关键字的支持。所有 124 个 cookbook 测试通过。
 
-### Phase 6: 修复 a2r 问题 ⬅️ 下一阶段
-根据全部 B-tier 测试结果修复更多 a2r 问题。
+### Phase 6: 修复 a2r 问题 ⬅️ 当前阶段
+根据全部 A+B tier 测试审查结果，系统性修复 a2r 转译器问题。
 
-## 7. a2r 问题分析
+## 7. a2r 问题分析（全面审查）
 
 ### 7.1 已修复
 
@@ -339,34 +339,64 @@ web/leptos.md                            — Full stack web with Leptos framewor
 |---|------|------|------|
 | P1 | 数组类型推断为 `[T; N]` 而非 `Vec<T>` | `rust_type_name()` 中 `Type::Array` 输出 `Vec<T>` | e6baefad |
 | P4 | 缺少函数末尾 `Ok(())` | `body()` 方法末尾追加 `Ok(())` | e6baefad |
-| B-P5 | `spawn` 保留关键字导致 `thread.spawn()` 解析失败 | 解析器支持 `spawn` 作为字段名/方法名 | Phase 5 提交 |
+| B-P5 | `spawn` 保留关键字导致 `thread.spawn()` 解析失败 | 解析器支持 `spawn` 作为字段名/方法名 | ca6de4e9 |
 
-### 7.2 待修复（高优先级）
-
-| # | 问题 | 影响的测试 | 描述 |
-|---|------|-----------|------|
-| P2 | `fn() !` 返回 `Result<(), String>` 而非正确的错误类型 | read_lines, env_variable, boxed_error | `?` 操作符无法从 `io::Error` 等类型自动转为 `String` |
-| P3 | 方法链被拆解为 `self.xxx()` 语句 | process_continuous, error_file | Builder pattern 不可用 |
-| P5 | `.to_f64()` 不存在于 `i32`/`usize` | central_tendency, standard_deviation | 已在 .at 中用 `.as(f64)` 规避 |
-
-### 7.3 待修复（中优先级）
+### 7.2 P0 — 生成错误/不可编译的 Rust（最高优先级）
 
 | # | 问题 | 影响的测试 | 描述 |
 |---|------|-----------|------|
-| P6 | type derive 缺少 `Ord`/`Eq` | sort_struct | 排序需要 `Ord` derive |
-| P7 | `Duration` 使用 `{}` 而非 `{:?}` | elapsed_time | `Duration` 不实现 `Display` |
-| P8 | `.cmp()` 参数缺少引用 | sort_struct | 应为 `.cmp(&a.age)` |
-| P9 | 操作符优先级错误 | latitude_longitude | 方法调用优先级高于除法 |
-| P10 | `use.rust std::error::Error` 不生成 `Box<dyn Error>` | boxed_error | 错误类型映射不正确 |
+| M1 | **`+` 运算符被翻译为字符串拼接** | algorithms/010_rand_custom, linear_algebra/001_add_matrices | `a + b` → `format!("{}{}", a, b)` 而非 `a + b`，数学运算完全错误 |
+| M2 | **方法链生成 `self.xxx()` 而非 `.xxx()`** | os/002_process_continuous, os/003_error_file, os/006_send_input | Builder pattern 被拆解，`self.arg()` 应为 `cmd.arg()` |
+| M3 | **`debug!`/`info!` 等宏变成 `debug.collect()(...)`** | devtools/001~010（全部 10 个日志测试） | 宏调用被错误解析为方法调用 |
+| M4 | **闭包体被替换为 `/* unsupported stmt in block */`** | concurrency/009_global_mut_state | 复杂闭包体完全丢失 |
+| M5 | **操作符优先级错误** | trigonometry/003_latitude_longitude | `delta / 2.0.sin()` 而非 `(delta / 2.0).sin()` |
 
-### 7.4 B-tier 新发现的问题
+### 7.3 P1 — 生成不正确但可能编译的代码
 
-| # | 问题 | 描述 |
+| # | 问题 | 影响的测试 | 描述 |
+|---|------|-----------|------|
+| T1 | **`fn() !` → `Result<(), String>` 而非正确错误类型** | 所有含 `!` 返回类型的函数 | 应为 `Result<(), Box<dyn Error>>` 或 `Result<(), io::Error>` |
+| T2 | **`.cmp()` 参数缺少 `&` 引用** | sort_struct | `.cmp(a.age)` → 应为 `.cmp(&a.age)` |
+| T3 | **`Duration` 用 `{}` 而非 `{:?}`** | elapsed_time | `Duration` 不实现 `Display`，运行时 panic |
+| T4 | **静态方法用 `.` 而非 `::`** | endian_byte 等 | `u16.from_be_bytes()` → 应为 `u16::from_be_bytes()` |
+| T5 | **`par_iter_mut` 闭包缺少解引用** | concurrency/005_rayon_iter_mut | `x = x * 2` → 应为 `*x *= 2` |
+| T6 | **type derive 缺少 `Ord`/`Eq`** | sort_struct | 排序需要 `Ord` derive |
+
+### 7.4 P2 — 需 .at 文件 workaround 规避
+
+| # | 问题 | Workaround | 影响 |
+|---|------|-----------|------|
+| W1 | **表达式不支持 `::`** | 所有 `Type::method()` 写为 `Type.method()` + `use.rust` | 全部 B-tier |
+| W2 | **不支持 `use.rust crate::{A, B}`** | 拆为多行导入 | 多个 B-tier |
+| W3 | **不支持 `use.rust path::*`** | 省略或手动列举 | rayon 等 |
+| W4 | **不支持 `|x|` 闭包语法** | 用 `x => expr` | 多个 B-tier |
+| W5 | **不支持方法链 Builder pattern** | 拆为单独语句 | os/002, os/003, os/006 |
+| W6 | **不支持解构赋值** | 拆为 `let tx = ch.sender` 等 | crossbeam |
+| W7 | **不支持引用参数 `&Path`** | 用 owned 类型代替 | file/008_loops |
+| W8 | **`hex` 字面量变十进制** | `0x1234` → `4660` | endian_byte |
+
+### 7.5 P3 — 设计层面，短期难解决
+
+| # | 问题 | 说明 |
 |---|------|------|
-| B-P1 | **Auto 解析器不支持表达式中的 `::`** | 只在 `use.rust` 语句中支持。所有 B-tier .at 文件用 `.` 点号替代 `Type::method()` |
-| B-P2 | **`use.rust crate::{A, B}` 花括号导入不支持** | 需拆为多行单独导入 |
-| B-P3 | **`use.rust path::*` 通配符导入不支持** | 如 `rayon::prelude::*` |
-| B-P4 | **`|x|` 闭包语法不支持** | Auto 用 `x => expr`，但迭代器中 `.map(|x| ...)` 需要特殊处理 |
+| D1 | 不支持 trait impl (FromStr, Display 等) | Auto 的 `spec`/`ext` 未映射到 Rust trait |
+| D2 | 不支持 lifetime 注解 | Auto 无此概念 |
+| D3 | 不支持 `Box<dyn Error>` | 错误类型系统简化 |
+| D4 | 不支持 derive 宏自定义 | 只能生成默认 derive |
+| D5 | 不支持 `format!` 精度控制 | `{:.1}` 等 |
+
+### 7.6 修复优先级
+
+1. **M1**（`+` 变字符串拼接）— 数学运算完全错误
+2. **M2**（方法链 `self.xxx`）— Builder pattern 是 Rust 核心惯用法
+3. **M3**（宏翻译错误）— 10 个 devtools 测试输出不可编译
+4. **T1**（错误类型 `String` vs `Box<dyn Error>`）— 影响所有含 `!` 的函数
+5. **T4**（静态方法 `::` vs `.`）— 与 W1 同源
+6. **T3**（Duration `{:?}`）— 运行时 panic
+7. **T6**（derive `Ord`/`Eq`）— 排序功能缺失
+8. **M5**（操作符优先级）— 数值计算错误
+9. **M4**（闭包体丢失）— 并发功能缺失
+10. **T2/T5**（引用相关）— 需设计层面考虑
 
 ## 8. 统计
 
@@ -379,7 +409,7 @@ web/leptos.md                            — Full stack web with Leptos framewor
 
 ## 9. 下一步
 
-1. **修复 B-P1（表达式中的 `::`）** — 让解析器支持 `Type::method()` 语法，消除手动 `.` 替换
-2. **修复 P2（错误类型映射）** — `fn() !` 应根据 `use.rust` 导入推断正确的错误类型
-3. **修复 P3（方法链）** — Builder pattern 是 Rust 的核心惯用法
-4. **评估 C-tier 可行性** — 随着异步支持（`~T` 返回类型）的完善，部分 C-tier 可能降级为 B-tier
+1. 按优先级逐个修复 M1→M2→M3→T1→T4→... 的问题
+2. 每修复一个问题，更新对应测试的 `.expected.rs`
+3. 确保所有 124 个测试持续通过
+4. 评估 C-tier 可行性

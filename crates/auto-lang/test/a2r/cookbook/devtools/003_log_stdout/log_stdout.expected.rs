@@ -8,7 +8,7 @@ use log::info;
 use env_logger;
 fn main() {
     env_logger.init();
-    info.collect()("application started");
-    info.collect()("processing data");
+    info!("application started");
+    info!("processing data");
     println!("done");
 }

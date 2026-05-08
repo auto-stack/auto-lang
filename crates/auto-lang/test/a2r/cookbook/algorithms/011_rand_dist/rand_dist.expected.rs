@@ -10,7 +10,7 @@ fn main() {
     let mut sum: i32 = 0;
     for i in 0..1000 {
         let val = rng.gen_range(1..7);
-        sum = format!("{}{}", sum, val);
+        sum = sum + val;
     }
     let avg: i32 = sum / 1000;
     println!("Average dice roll: {}", avg);

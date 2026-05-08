@@ -7,12 +7,7 @@ use auto_lang::a2r_std::*;
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
 fn main() -> Result<(), String> {
-    let stdout = Command::new("echo");
-    self.arg("hello world");
-    self.arg("usb device found");
-    self.stdout(Stdio::piped());
-    self.spawn()?;
-    self.stdout?;
+    let stdout = Command::new("echo").arg("hello world").arg("usb device found").stdout(Stdio::piped()).spawn()?.stdout?;
 
     let reader = BufReader::new(stdout);
 

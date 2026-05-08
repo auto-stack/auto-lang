@@ -11,7 +11,7 @@ fn main() {
     for i in 0..2 {
         for j in 0..2 {
             for k in 0..2 {
-                c[(i) as usize][(j) as usize] = format!("{}{}", c[(i) as usize][(j) as usize], a[(i) as usize][(k) as usize] * b[(k) as usize][(j) as usize]);
+                c[(i) as usize][(j) as usize] = c[(i) as usize][(j) as usize] + a[(i) as usize][(k) as usize] * b[(k) as usize][(j) as usize];
             }
         }
     }

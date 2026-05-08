@@ -640,37 +640,57 @@ impl RustTrans {
                         let is_str_literal = |e: &Expr| -> bool {
                             matches!(e, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
                         };
-                        let is_int = |e: &Expr| -> bool {
+                        let _is_int = |e: &Expr| -> bool {
                             matches!(e, Expr::Int(_))
                         };
-                        let is_numeric_expr = |e: &Expr| -> bool {
+                        let _is_numeric_expr = |e: &Expr| -> bool {
                             match e {
-                                Expr::Int(_) => true,
-                                Expr::Bina(_, Op::Add, _) | Expr::Bina(_, Op::Sub, _) |
-                                Expr::Bina(_, Op::Mul, _) | Expr::Bina(_, Op::Div, _) => true,
+                                Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
+                                | Expr::I64(_) | Expr::U64(_) | Expr::Byte(_) | Expr::Float(..)
+                                | Expr::Double(..) => true,
+                                Expr::Bina(_, op, _) => matches!(op,
+                                    Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod),
+                                Expr::Index(_, _) => true,
+                                Expr::Dot(_, _) => true,
+                                Expr::Call(_) => true,
+                                Expr::Unary(_, _) => true,
                                 _ => false,
                             }
                         };
-                        if is_str_literal(&lhs) || is_str_literal(&rhs) {
-                            // String literal involved — always use format!
+                        let is_string_expr = |e: &Expr| -> bool {
+                            match e {
+                                Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
+                                Expr::Call(c) => {
+                                    if let Expr::Ident(name) = c.name.as_ref() {
+                                        // Common string-returning functions
+                                        matches!(name.as_str(),
+                                            "to_string" | "format" | "trim" | "replace"
+                                            | "to_lowercase" | "to_uppercase" | "read_to_string"
+                                            | "read_line" | "collect")
+                                    } else {
+                                        false
+                                    }
+                                }
+                                Expr::Dot(_, method) => {
+                                    matches!(method.as_str(),
+                                        "to_string" | "trim" | "replace" | "to_lowercase"
+                                        | "to_uppercase" | "display" | "format")
+                                }
+                                _ => false,
+                            }
+                        };
+                        if is_str_literal(&lhs) || is_str_literal(&rhs) || is_string_expr(&lhs) || is_string_expr(&rhs) {
+                            // String involved — use format!
                             write!(out, "format!(\"{{}}{{}}\", ")?;
                             self.expr(&lhs, out)?;
                             write!(out, ", ")?;
                             self.expr(&rhs, out)?;
                             write!(out, ")")?;
-                        } else if is_int(&lhs) || is_int(&rhs) || (is_numeric_expr(&lhs) && is_numeric_expr(&rhs)) {
-                            // At least one side is Int literal, or both are numeric expressions — use +
+                        } else {
+                            // Default to numeric + (covers index exprs, dot access, calls, etc.)
                             self.expr(&lhs, out)?;
                             write!(out, " + ")?;
                             self.expr(&rhs, out)?;
-                        } else {
-                            // Ambiguous — could be string concat or numeric add
-                            // Use format! for safety (works for any Display type)
-                            write!(out, "format!(\"{{}}{{}}\", ")?;
-                            self.expr(&lhs, out)?;
-                            write!(out, ", ")?;
-                            self.expr(&rhs, out)?;
-                            write!(out, ")")?;
                         }
                     }
                     Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
@@ -1779,6 +1799,41 @@ impl RustTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // Detect Rust macro pattern: name!("...") was parsed as name.collect()("...")
+        // because '!' is the eager collection operator in Auto.
+        // Parser creates: Expr::Bina(lhs, Dot, "collect") then wraps in Call.
+        // AST: Call { name: Call { name: Bina(Ident(name), Dot, "collect"), args: [] }, args: [...] }
+        if let Expr::Call(inner) = call.name.as_ref() {
+            if let Expr::Bina(obj, Op::Dot, field) = inner.name.as_ref() {
+                if let Expr::Ident(field_name) = field.as_ref() {
+                    if field_name.as_str() == "collect" {
+                        if let Expr::Ident(macro_name) = obj.as_ref() {
+                            if inner.args.args.is_empty() {
+                                // Known Rust macros from log/tracing crates
+                                if matches!(macro_name.as_str(),
+                                    "debug" | "info" | "warn" | "error" | "trace"
+                                    | "println" | "eprintln" | "print" | "eprint"
+                                    | "write" | "writeln" | "format"
+                                    | "panic" | "assert" | "assert_eq" | "assert_ne"
+                                    | "todo" | "unimplemented" | "unreachable"
+                                    | "vec" | "include_str" | "concat" | "env") {
+                                    write!(out, "{}!(", macro_name)?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        self.arg(arg, out)?;
+                                        if i < call.args.args.len() - 1 {
+                                            write!(out, ", ")?;
+                                        }
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Special case for print function
         if let Expr::Ident(name) = call.name.as_ref() {
             if name == "print" {

@@ -9,5 +9,5 @@ use chrono::Local;
 fn main() {
     let now = Local::now();
     println!("[{}] application started", now);
-    info.collect()("with timestamp logging");
+    info!("with timestamp logging");
 }
