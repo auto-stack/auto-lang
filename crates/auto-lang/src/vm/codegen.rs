@@ -6630,6 +6630,28 @@ impl Codegen {
                 }
                 false
             }
+            // Function call: check fn_return_types for str return type
+            Expr::Call(call) => {
+                if let Expr::Ident(fn_name) = call.name.as_ref() {
+                    if let Some(ret_ty) = self.fn_return_types.get(fn_name.as_ref()) {
+                        return matches!(ret_ty, Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit);
+                    }
+                }
+                // Also check method calls that return string
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    let obj_type = self.infer_object_type(obj.as_ref());
+                    let ret = self.stdlib_method_return_type(obj_type, method.as_ref());
+                    return ret == ObjectType::String;
+                }
+                false
+            }
+            // Binary add with string operand: string concatenation chain
+            Expr::Bina(lhs, op, rhs) => {
+                if matches!(op, Op::Add) {
+                    return self.is_string_expr(lhs) || self.is_string_expr(rhs);
+                }
+                false
+            }
             _ => false,
         }
     }

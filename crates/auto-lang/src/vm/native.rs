@@ -2320,12 +2320,33 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         let value_nv = task.ram.pop_nv();
         let key_nv = task.ram.pop_nv();
         let map_nv = task.ram.pop_nv();
-        if !auto_val::is_string(key_nv) {
-            return Err(VMError::RuntimeError("Invalid key string ID".into()));
+        // Key should be a string pool reference. In nanbox mode, the tag can be
+        // TAG_STRING or (due to i32 round-trips in some code paths) TAG_I32.
+        // Both use the same payload encoding (negative i32 = string pool index),
+        // so decode_string works for both.
+        if !auto_val::is_string(key_nv) && !auto_val::is_i32(key_nv) {
+            return Err(VMError::RuntimeError(format!(
+                "Invalid key for insert_int: key_nv={:#018x} tag={}", key_nv, auto_val::tag_of(key_nv)
+            )));
         }
-        let value = if auto_val::is_i32(value_nv) { auto_val::decode_i32(value_nv) } else { 0 };
         let key_str_idx = auto_val::decode_string(key_nv) as usize;
-        let map_id = if auto_val::is_i32(map_nv) { auto_val::decode_i32(map_nv) as u64 } else { 0 };
+        // Decode value: support i32, object ref, string ref, etc.
+        let value = if auto_val::is_i32(value_nv) {
+            Value::Int(auto_val::decode_i32(value_nv))
+        } else if auto_val::is_object(value_nv) {
+            // Store object reference as VmRef so get_str can restore the tag
+            Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(value_nv) as usize })
+        } else if auto_val::is_string(value_nv) {
+            // Store the string pool index as an int for later retrieval
+            Value::Int(auto_val::decode_string(value_nv) as i32)
+        } else if auto_val::is_list(value_nv) {
+            Value::VmRef(auto_val::VmRef { id: auto_val::decode_list(value_nv) as usize })
+        } else {
+            Value::Int(0)
+        };
+        let map_id = if auto_val::is_i32(map_nv) { auto_val::decode_i32(map_nv) as u64 }
+                     else if auto_val::is_object(map_nv) { auto_val::decode_object(map_nv) as u64 }
+                     else { 0 };
         if let Some(obj) = vm.get_heap_object(map_id) {
             let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
                 .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
@@ -2333,7 +2354,7 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             drop(key_bytes);
             let mut guard = obj.write().unwrap();
             if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
-                map.insert(key_str, Value::Int(value))
+                map.insert(key_str, value)
                     .map_err(|e| VMError::RuntimeError(e))?;
             }
         }
@@ -2403,7 +2424,14 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                         return Ok(());
                     }
                     auto_val::Value::VmRef(vm_ref) => {
-                        task.ram.push_i32(vm_ref.id as i32);
+                        #[cfg(feature = "nanbox")]
+                        {
+                            task.ram.push_nv(auto_val::encode_object(vm_ref.id as u32));
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        {
+                            task.ram.push_i32(vm_ref.id as i32);
+                        }
                         return Ok(());
                     }
                     _ => {

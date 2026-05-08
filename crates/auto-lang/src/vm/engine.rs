@@ -1014,8 +1014,9 @@ impl AutoVM {
                         // Plan 118: Store error for proper error propagation
                         // Plan 199: Include source line number in error message
                         let line = task.current_line;
+                        let ip = task.ip;
                         let error_msg = if line > 0 {
-                            format!("{:?} at line {}", e, line)
+                            format!("{:?} at line {} (ip={:#06x})", e, line, ip)
                         } else {
                             format!("{:?}", e)
                         };
