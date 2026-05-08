@@ -13,6 +13,14 @@ fn OP_CONST_1() int { return 19 }
 fn OP_LOAD_STR() int { return 31 }
 fn OP_LOAD_LOCAL() int { return 32 }
 fn OP_STORE_LOCAL() int { return 33 }
+fn OP_LIST_NEW() int { return 64 }
+fn OP_LIST_PUSH() int { return 65 }
+fn OP_LIST_GET() int { return 66 }
+fn OP_LIST_LEN() int { return 67 }
+fn OP_MAP_NEW() int { return 68 }
+fn OP_MAP_INSERT_INT() int { return 69 }
+fn OP_MAP_GET_INT() int { return 70 }
+fn OP_MAP_CONTAINS() int { return 71 }
 fn OP_ADD() int { return 48 }
 fn OP_SUB() int { return 49 }
 fn OP_MUL() int { return 50 }
@@ -284,8 +292,83 @@ fn codegen_binop(cg CodeGen, node ASTNode, tenv TypeEnv) {
     return 0
 }
 
+fn codegen_extract_method_suffix(callee str, suffix str) int {
+    // Returns 1 if callee ends with suffix (e.g., "list.push" ends with ".push")
+    var sn = suffix.len()
+    var cn = callee.len()
+    if cn < sn { return 0 }
+    var start = cn - sn
+    var i = 0
+    for i < sn {
+        if callee.char_at(start + i) != suffix.char_at(i) { return 0 }
+        i = i + 1
+    }
+    return 1
+}
+
+fn codegen_extract_var_name(callee str) str {
+    // Extract var name before the last "." in callee
+    var i = callee.len() - 1
+    for i >= 0 {
+        if callee.char_at(i) == 46 {
+            return callee.substr(0, i)
+        }
+        i = i - 1
+    }
+    return callee
+}
+
 fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
     var callee = node.name
+
+    // Static constructors: List.new() / Map.new()
+    if callee == "List.new" {
+        codegen_emit(cg, OP_LIST_NEW())
+        return 0
+    }
+    if callee == "Map.new" {
+        codegen_emit(cg, OP_MAP_NEW())
+        return 0
+    }
+
+    // Instance methods: check if callee ends with known method suffixes
+    var is_list_map_method = 0
+    if codegen_extract_method_suffix(callee, ".push") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".get") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".len") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".insert_int") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".get_int") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".contains") == 1 { is_list_map_method = 1 }
+
+    if is_list_map_method == 1 {
+        var var_name = codegen_extract_var_name(callee)
+        var slot = codegen_find_local(cg, var_name)
+        if slot >= 0 {
+            codegen_emit(cg, OP_LOAD_LOCAL())
+            codegen_emit(cg, slot)
+            var i = 0
+            var pn = node.params.len()
+            for i < pn {
+                codegen_expr(cg, node.params.get(i), tenv)
+                i = i + 1
+            }
+            // Determine method from suffix
+            if codegen_extract_method_suffix(callee, ".push") == 1 {
+                codegen_emit(cg, OP_LIST_PUSH())
+                codegen_emit(cg, OP_CONST_0())
+                return 0
+            }
+            if codegen_extract_method_suffix(callee, ".get") == 1 { codegen_emit(cg, OP_LIST_GET()); return 0 }
+            if codegen_extract_method_suffix(callee, ".len") == 1 { codegen_emit(cg, OP_LIST_LEN()); return 0 }
+            if codegen_extract_method_suffix(callee, ".insert_int") == 1 {
+                codegen_emit(cg, OP_MAP_INSERT_INT())
+                codegen_emit(cg, OP_CONST_0())
+                return 0
+            }
+            if codegen_extract_method_suffix(callee, ".get_int") == 1 { codegen_emit(cg, OP_MAP_GET_INT()); return 0 }
+            if codegen_extract_method_suffix(callee, ".contains") == 1 { codegen_emit(cg, OP_MAP_CONTAINS()); return 0 }
+        }
+    }
 
     if callee == "print" {
         if node.params.len() == 0 {

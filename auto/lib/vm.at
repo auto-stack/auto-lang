@@ -1,5 +1,9 @@
 // Bytecode Interpreter for AAVM self-hosted compiler
 // Uses a single Map for all state (ints, strings, emulated arrays)
+// List/Map heap stored in state Map via key conventions:
+//   __nl = next list id, __nm = next map id
+//   __l{id}_n = list length, __l{id}_{idx} = list element
+//   __m{id}_{key} = map int value, __m{id}_h_{key} = has-key flag
 
 fn bvm_init(state Map) {
     state.insert_int("__ip", 0)
@@ -7,6 +11,8 @@ fn bvm_init(state Map) {
     state.insert_int("__bp", 0)
     state.insert_int("__csn", 0)
     state.insert_str("__output", "")
+    state.insert_int("__nl", 0)
+    state.insert_int("__nm", 0)
 }
 
 fn bvm_push_int(state Map, val int) {
@@ -14,6 +20,22 @@ fn bvm_push_int(state Map, val int) {
     state.insert_int("v" + int_to_str(sp), val)
     state.insert_str("s" + int_to_str(sp), "")
     state.insert_int("t" + int_to_str(sp), 0)
+    state.insert_int("__sp", sp + 1)
+}
+
+fn bvm_push_list_ref(state Map, heap_idx int) {
+    var sp = state.get_int("__sp")
+    state.insert_int("v" + int_to_str(sp), heap_idx)
+    state.insert_str("s" + int_to_str(sp), "")
+    state.insert_int("t" + int_to_str(sp), 2)
+    state.insert_int("__sp", sp + 1)
+}
+
+fn bvm_push_map_ref(state Map, heap_idx int) {
+    var sp = state.get_int("__sp")
+    state.insert_int("v" + int_to_str(sp), heap_idx)
+    state.insert_str("s" + int_to_str(sp), "")
+    state.insert_int("t" + int_to_str(sp), 3)
     state.insert_int("__sp", sp + 1)
 }
 
@@ -110,6 +132,10 @@ fn bvm_step(code List, strings Map, state Map) int {
             var t = state.get_int("t" + int_to_str(sp - 1))
             if t == 1 {
                 bvm_push_str(state, state.get("s" + int_to_str(sp - 1)))
+            } else if t == 2 {
+                bvm_push_list_ref(state, state.get_int("v" + int_to_str(sp - 1)))
+            } else if t == 3 {
+                bvm_push_map_ref(state, state.get_int("v" + int_to_str(sp - 1)))
             } else {
                 bvm_push_int(state, state.get_int("v" + int_to_str(sp - 1)))
             }
@@ -151,6 +177,10 @@ fn bvm_step(code List, strings Map, state Map) int {
             var t = state.get_int("t" + int_to_str(abs_idx))
             if t == 1 {
                 bvm_push_str(state, state.get("s" + int_to_str(abs_idx)))
+            } else if t == 2 {
+                bvm_push_list_ref(state, state.get_int("v" + int_to_str(abs_idx)))
+            } else if t == 3 {
+                bvm_push_map_ref(state, state.get_int("v" + int_to_str(abs_idx)))
             } else {
                 bvm_push_int(state, state.get_int("v" + int_to_str(abs_idx)))
             }
@@ -274,6 +304,10 @@ fn bvm_step(code List, strings Map, state Map) int {
         }
         if ret_type == 1 {
             bvm_push_str(state, ret_str_key)
+        } else if ret_type == 2 {
+            bvm_push_list_ref(state, ret_val)
+        } else if ret_type == 3 {
+            bvm_push_map_ref(state, ret_val)
         } else {
             bvm_push_int(state, ret_val)
         }
@@ -315,6 +349,92 @@ fn bvm_step(code List, strings Map, state Map) int {
         strings.insert_str(int_to_str(n), result)
         state.insert_int("__nstr", n + 1)
         bvm_push_str(state, int_to_str(n))
+        return 1
+    }
+
+    // OP_LIST_NEW = 64 — create a new list in the heap, push list_ref
+    if op == 64 {
+        var nl = state.get_int("__nl")
+        state.insert_int("__l" + int_to_str(nl) + "_n", 0)
+        bvm_push_list_ref(state, nl)
+        state.insert_int("__nl", nl + 1)
+        return 1
+    }
+
+    // OP_LIST_PUSH = 65 — pop val and list_ref, append val to list
+    if op == 65 {
+        var val = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var nkey = "__l" + int_to_str(heap_idx) + "_n"
+        var n = state.get_int(nkey)
+        state.insert_int("__l" + int_to_str(heap_idx) + "_" + int_to_str(n), val)
+        state.insert_int(nkey, n + 1)
+        return 1
+    }
+
+    // OP_LIST_GET = 66 — pop idx and list_ref, push list[idx]
+    if op == 66 {
+        var idx = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var ekey = "__l" + int_to_str(heap_idx) + "_" + int_to_str(idx)
+        if state.contains(ekey) {
+            bvm_push_int(state, state.get_int(ekey))
+        } else {
+            bvm_push_int(state, 0)
+        }
+        return 1
+    }
+
+    // OP_LIST_LEN = 67 — pop list_ref, push length
+    if op == 67 {
+        var heap_idx = bvm_pop_int(state)
+        var nkey = "__l" + int_to_str(heap_idx) + "_n"
+        bvm_push_int(state, state.get_int(nkey))
+        return 1
+    }
+
+    // OP_MAP_NEW = 68 — create a new map in the heap, push map_ref
+    if op == 68 {
+        var nm = state.get_int("__nm")
+        bvm_push_map_ref(state, nm)
+        state.insert_int("__nm", nm + 1)
+        return 1
+    }
+
+    // OP_MAP_INSERT_INT = 69 — pop val, key, map_ref, insert into map
+    if op == 69 {
+        var val = bvm_pop_int(state)
+        var key = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var prefix = "__m" + int_to_str(heap_idx) + "_"
+        state.insert_int(prefix + int_to_str(key), val)
+        state.insert_int(prefix + "h" + int_to_str(key), 1)
+        return 1
+    }
+
+    // OP_MAP_GET_INT = 70 — pop key, map_ref, push map[key]
+    if op == 70 {
+        var key = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var vkey = "__m" + int_to_str(heap_idx) + "_" + int_to_str(key)
+        if state.contains(vkey) {
+            bvm_push_int(state, state.get_int(vkey))
+        } else {
+            bvm_push_int(state, 0)
+        }
+        return 1
+    }
+
+    // OP_MAP_CONTAINS = 71 — pop key, map_ref, push 1/0
+    if op == 71 {
+        var key = bvm_pop_int(state)
+        var heap_idx = bvm_pop_int(state)
+        var hkey = "__m" + int_to_str(heap_idx) + "_h" + int_to_str(key)
+        if state.contains(hkey) {
+            bvm_push_int(state, 1)
+        } else {
+            bvm_push_int(state, 0)
+        }
         return 1
     }
 

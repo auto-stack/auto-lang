@@ -746,3 +746,6 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_063_bytecode_if() { test_aavm("99_bootstrap/063_bytecode_if").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_064_bytecode_for() { test_aavm("99_bootstrap/064_bytecode_for").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_065_bytecode_str() { test_aavm("99_bootstrap/065_bytecode_str").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_066_bytecode_list() { test_aavm("99_bootstrap/066_bytecode_list").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_067_bytecode_map() { test_aavm("99_bootstrap/067_bytecode_map").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_068_bytecode_list_fn() { test_aavm("99_bootstrap/068_bytecode_list_fn").unwrap(); }

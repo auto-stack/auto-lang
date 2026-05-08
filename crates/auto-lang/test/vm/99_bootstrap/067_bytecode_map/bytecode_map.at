@@ -1,0 +1,8 @@
+fn main() {
+    var result = run_bytecode("fn main() {\nvar m = Map.new()\nm.insert_int(1, 100)\nm.insert_int(2, 200)\nprint(m.get_int(1))\nprint(m.get_int(2))\nprint(m.contains(1))\nprint(m.contains(3))\n}")
+    if result == "100\n200\n1\n0\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
