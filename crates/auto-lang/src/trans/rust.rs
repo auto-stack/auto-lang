@@ -2174,6 +2174,42 @@ impl RustTrans {
                     write!(out, ".parse::<i32>().ok()")?;
                     return Ok(());
                 }
+                "get_or" => {
+                    // Check if object is 'env' — env.get_or("KEY", default) -> std::env::var("KEY").ok().unwrap_or(default.to_string())
+                    if let Expr::Ident(type_name) = object.as_ref() {
+                        if type_name == "env" {
+                            write!(out, "std::env::var(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ").ok().unwrap_or(")?;
+                            if call.args.args.len() > 1 {
+                                if let Arg::Pos(a) = &call.args.args[1] {
+                                    self.expr(a, out)?;
+                                    if matches!(a, Expr::Str(_) | Expr::CStr(_)) {
+                                        write!(out, ".to_string()")?;
+                                    }
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
+                    // map.get_or(key, default) -> map.get(key).cloned().unwrap_or(default)
+                    self.expr(object, out)?;
+                    write!(out, ".get(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, ").cloned().unwrap_or(")?;
+                    if call.args.args.len() > 1 {
+                        if let Arg::Pos(a) = &call.args.args[1] {
+                            self.expr(a, out)?;
+                        }
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
                 "to_hex" => {
                     // val.to_hex(width) -> format!("{:0>width$x}", val, width = width)
                     write!(out, "format!(\"{{:0>width$x}}\", ")?;
@@ -2234,6 +2270,24 @@ impl RustTrans {
                             self.expr(a, out)?;
                         }
                         write!(out, ").ok()")?;
+                        return Ok(());
+                    }
+                    ("env", "get_or") => {
+                        // env.get_or("KEY", default) -> std::env::var("KEY").ok().unwrap_or(default.to_string())
+                        write!(out, "std::env::var(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, ").ok().unwrap_or(")?;
+                        if call.args.args.len() > 1 {
+                            if let Arg::Pos(a) = &call.args.args[1] {
+                                self.expr(a, out)?;
+                                if matches!(a, Expr::Str(_) | Expr::CStr(_)) {
+                                    write!(out, ".to_string()")?;
+                                }
+                            }
+                        }
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "read_to_string") => {
