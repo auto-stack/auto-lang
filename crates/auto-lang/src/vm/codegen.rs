@@ -5175,8 +5175,13 @@ impl Codegen {
                                     // Plan 197 Task 3: User-defined method on chained result
                                     Some(format!("{}.{}", type_name, method.as_ref()))
                                 } else if method.as_str() == "len" {
-                                    // Fallback for len() - most common
-                                    Some("auto.str.len".to_string())
+                                    // Fallback for len() — emit ARRAY_LEN which handles
+                                    // List/Array heap objects at runtime without requiring
+                                    // a typed String argument (avoids Str.len FFI crash).
+                                    self.compile_expr(obj)?;
+                                    self.emit(OpCode::ARRAY_LEN);
+                                    self.last_expr_type = ObjectType::Int;
+                                    return Ok(());
                                 } else {
                                     Some(format!("Unknown_{}", method))
                                 }
@@ -6569,6 +6574,11 @@ impl Codegen {
         {
             return ObjectType::Int;
         }
+        // hashmap.get (unspecialized) returns unknown type — don't inherit
+        // stale String from argument compilation (e.g., map.get(str_key))
+        if name == "auto.hashmap.get" {
+            return ObjectType::NestedObject;
+        }
         // Default: preserve current last_expr_type (no change)
         self.last_expr_type
     }
@@ -6580,8 +6590,8 @@ impl Codegen {
             // Methods returning int
             "get_int" | "len" | "char_at" | "parse_int" | "to_int" | "find" | "rfind"
             | "count" | "cmp" | "hash" | "abs" | "size" => ObjectType::Int,
-            // Methods returning string
-            "get_str" | "get" | "substr" | "trim" | "to_str" | "to_string"
+            // Methods returning string (get_str is explicitly string-typed; plain "get" returns unknown)
+            "get_str" | "substr" | "trim" | "to_str" | "to_string"
             | "join" | "format" | "lower" | "upper" | "replace" | "slice" => ObjectType::String,
             // Methods returning float/double
             "to_float" | "to_double" | "sqrt" | "sin" | "cos" | "tan" | "pow"
