@@ -1,14 +1,15 @@
 # Plan 237: AAVM Architecture Gap Closure — 分阶段拉近与 Rust AutoVM 的距离
 
-## 状态: Phase A-C 已完成, Phase D-E 未完成 (2026-05-08)
+## 状态: Phase A-D 已完成, Phase E 未完成 (2026-05-08)
 
 ### 已完成
 - Phase A: 值多态编码 (eval_expr 支持 int/str/bool)
 - Phase B: 类型推断 (typeinfer.at, 54-55 测试)
 - Phase C: 字节码编译器 + 解释器 (codegen.at + vm.at, 测试 060-068)
+- Phase D: BVM String/Map/List 操作 (7 新 opcode 72-78, 测试 069-074)
+  - 额外修复: 051a/052 eval 字符串函数参数测试 (Map.get 返回类型推断 + .len() fallback)
 
 ### 未完成
-- Phase D: 泛型单态化
 - Phase E: a2r 转译器
 
 ## 目标

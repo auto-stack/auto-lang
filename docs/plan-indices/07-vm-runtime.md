@@ -42,9 +42,13 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
 | 221 | Nanboxing Migration | ✅ | Migrate VM value representation to NaN-boxing for compact tagged values |
 | 224 | VM Async Runtime | ✅ | TaskSystem.run bridge, AWAIT_FUTURE reentrant execution, async FFI shim support |
+| 226 | ABT Bytecode Text Format | ✅ | ABC↔ABT assembler/disassembler, Playground bytecode tab |
+| 229a | IS_VARIANT Primitive Fix | ✅ | Engine-level i32 Option compatibility |
+| 230 | f64 Struct Literal Fix | ✅ | PROMOTE_F64 in 5 codegen paths |
+| 231 | Nested mut fn Stack Fix | ✅ | SET_GENERIC_FIELD Void marking + BUILD_FSTR formatting |
 
 ## Status Summary
-- Completed: 22 | Partial: 4 | Planned: 0 | Deprecated: 0
+- Completed: 26 | Partial: 4 | Planned: 0 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity

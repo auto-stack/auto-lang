@@ -42,10 +42,14 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 212b | Rust FFI E2E Dynamic Loading | Complete | dep serde_json -> cargo build cdylib -> AutoVM load .dll -> call |
 | 221 | Nanboxing Migration | Complete | Migrate VM value representation to NaN-boxing for improved memory and performance |
 | 224 | VM Async Runtime | Complete | TaskSystem.run bridge, AWAIT_FUTURE reentrant execution, async FFI shim support |
+| 226 | ABT Bytecode Text Format | Complete | ABC↔ABT assembler/disassembler with Playground bytecode tab integration |
+| 229a | IS_VARIANT Primitive Fix | Complete | Engine-level i32 Option compatibility fix for IS_VARIANT opcode on primitive values |
+| 230 | f64 Struct Literal Fix | Complete | PROMOTE_F64 emission in 5 codegen paths for correct f64 struct literal handling |
+| 231 | Nested mut fn Stack Fix | Complete | SET_GENERIC_FIELD Void marking + BUILD_FSTR formatting to fix stack corruption in nested mut fn + for loops |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -155,3 +159,7 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [212-rust-ffi-e2e.md](../plans/212-rust-ffi-e2e.md)
 - [221-nanboxing-migration.md](../plans/221-nanboxing-migration.md)
 - [224-vm-async-runtime.md](../plans/old/224-vm-async-runtime.md)
+- [226-auto-byte-text-abt.md](../plans/old/226-auto-byte-text-abt.md)
+- [229a-vmtest-08-is-pattern-on-primitive.md](../plans/old/229a-vmtest-08-is-pattern-on-primitive.md)
+- [230-vmtest-17-f64-struct-literal.md](../plans/old/230-vmtest-17-f64-struct-literal.md)
+- [231-nested-mut-fn-stack-corruption.md](../plans/old/231-nested-mut-fn-stack-corruption.md)

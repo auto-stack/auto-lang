@@ -15,12 +15,18 @@ Self-hosting is the capstone goal for AutoLang: a compiler written in AutoLang t
 | 033 | Self-Hosting Compiler | Planned | AutoLang compiler written in AutoLang, targeting C via a2c transpiler |
 | 037 | Expression and Array Support | Complete | Complex expressions, array indexing, array return types |
 | 095 | Compile-Time Execution Engine (CTEE) | Complete | `#if`, `#for`, `#is`, `#{}` comptime constructs using embedded AutoVM |
+| 229 | Self-Hosting via a2r | Partial Phase 2 | Auto 自举编译器 — Phase 1 fully complete (token+lexer+parser+eval+typeinfer+codegen+vm+BVM string/map/list ops with 74 test dirs), Phase 2 (a2r transpiler in Auto) + Phase 3 (self-bootstrapping) remaining |
+| 233 | AAVM Parser P0+P1 | Complete | tokenize_list() + Pratt parser + 20 P0 tests, then 10 P1 features (closure/fstr/is/enum/use/ext/spec/alias/object) for 37 total tests |
+| 234-P1 | AAVM Parser P1 | Complete | 10 high-priority features: closure/fstr/is/enum/use/ext/spec/alias/object |
+| 236 | AAVM Evaluator | Complete | Tree-walking evaluator + AST restructuring + 16 tests |
+| 237 | AAVM Architecture Gap Closure | Partial Phase E | Phase A-D complete (value encoding, type inference, bytecode compiler, BVM string/map/list ops), Phase E (a2r transpiler in Auto) remaining |
+| 239 | AAVM List/Map Bytecode | Complete | BVM heap + 8 opcodes (LIST_NEW/PUSH/GET/LEN, MAP_NEW/INSERT/GET/LEN) |
 
 ## Status
 
-**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation).
+**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories).
 
-**Partial**: None.
+**Partial**: Plan 229 (Phase 1 complete, Phase 2 a2r transpiler + Phase 3 self-bootstrapping remaining), Plan 237 (Phase A-D complete, Phase E a2r transpiler remaining).
 
 **Planned**: Plans 028-031 and 033. These form a deep dependency chain: Plan 028 (generics) is needed by Plans 029, 030, and 033; Plan 031 (bootstrap) must resolve the compiler-stdlib chicken-and-egg problem before Plan 033 can begin. Combined estimated timeline is 30-50 weeks for the planned work alone.
 
@@ -98,3 +104,9 @@ The combined estimated timeline for just the planned work in this chapter is 30-
 - Plan 033: Self-Hosting Compiler
 - Plan 037: Expression and Array Support
 - Plan 095: Compile-Time Execution Engine (CTEE)
+- Plan 229: Self-Hosting via a2r
+- Plan 233: AAVM Parser P0+P1
+- Plan 234-P1: AAVM Parser P1
+- Plan 236: AAVM Evaluator
+- Plan 237: AAVM Architecture Gap Closure
+- Plan 239: AAVM List/Map Bytecode

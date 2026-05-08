@@ -37,10 +37,12 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
 | 220 | a2r Transpiler Improvement | Complete | Enhanced a2r output quality with improved type mapping and code generation |
 | 223 | a2r Step-00 Transpiler Fixes | Complete | Lexer pos drift fix (str/char/multi_str), multi-arg enum tuple variants, is as expression, return/break in match arms, env/fs/sleep_ms runtime mappings |
+| 232 | a2r Lexer Compilation | Complete | `.sub()`/`.slice()` string method handler + post_process() for type conversion fixes in self-hosting a2r |
+| 240 | Rust Cookbook a2r Tests | Planned | Systematic a2r test suite covering Rust Cookbook examples for comprehensive transpiler validation |
 
 ## Status
 
-**Implemented**: a2p (Python, 10 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216).
+**Implemented**: a2p (Python, 10 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232).
 
 **Partial**: a2r (144 tests, 38% parity with a2c, ongoing gap closure), a2r .rs.at platform-specific files, a2ts migration from a2js (Phase 2-3 done, Phase 4 pending).
 
@@ -107,7 +109,7 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 215, 216, 219, 220, 232, 240.
 
 - [204-a2r-transpiler-completeness.md](../plans/old/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)

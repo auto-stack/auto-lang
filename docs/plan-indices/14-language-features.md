@@ -31,9 +31,10 @@ Plans covering core language syntax additions and enhancements, from the ext sta
 | 206 | Closure HOF + call_closure API | ✅ | call_closure public API, List.map/filter/reduce/find/for_each shims |
 | 207 | Enum Multi-Field Destructuring | ✅ | Multi-binding destructuring and named arg construction for enum variants |
 | 208 | Result Heap Object | ✅ | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
+| 228 | Hetero Enum Tuple Syntax | ✅ | Parser requires `(T, T)` for multi-field variants |
 
 ## Status Summary
-- Completed: 8 | Partial: 2 | Planned: 12 | Deprecated: 1
+- Completed: 9 | Partial: 2 | Planned: 12 | Deprecated: 1
 
 ## Key Achievements
 - `ext` statement (Plan 035) enables idiomatic OOP-style API design, completed in just 2 days

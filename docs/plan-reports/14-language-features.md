@@ -32,10 +32,11 @@ AutoLang's language features span a wide range of syntax enhancements, type syst
 | 206 | Closure HOF + call_closure API | Complete | call_closure public API, List.map/filter/reduce/find/for_each shims |
 | 207 | Enum Multi-Field Destructuring | Complete | Multi-binding destructuring and named arg construction for enum variants |
 | 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
+| 228 | Hetero Enum Tuple Syntax | Complete | Parser requires `(T, T)` parenthesized tuple syntax for multi-field enum variants, rejecting bare `T T` form |
 
 ## Status
 
-**Implemented**: Plans 035, 036, 084, 156, 168, 169, 193, 194, 197, 206, 207, 208 (twelve plans fully complete).
+**Implemented**: Plans 035, 036, 084, 156, 168, 169, 193, 194, 197, 206, 207, 208, 228 (thirteen plans fully complete).
 
 **Partial**: Plans 040 (tag method parsing deferred, ext workaround works), 086 (parser/AST done, WidgetLoader not yet built).
 
@@ -143,3 +144,4 @@ Plan 086 proposes loading widget specifications from `stdlib/aura/widgets/*.at` 
 - [206-closure-hof-call-closure-api.md](../plans/206-closure-hof-call-closure-api.md)
 - [207-enum-multi-field-destruct-construction.md](../plans/207-enum-multi-field-destruct-construction.md)
 - [208-result-heap-object.md](../plans/208-result-heap-object.md)
+- [228-hetero-enum-tuple-syntax.md](../plans/old/228-hetero-enum-tuple-syntax.md)

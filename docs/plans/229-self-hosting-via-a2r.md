@@ -23,6 +23,7 @@
 | 1.TypeInfer | ✅ 已完成 | auto/lib/typeinfer.at, 2 测试 (Plan 237 Phase B) |
 | 1.Codegen | ✅ 已完成 | auto/lib/codegen.at + vm.at bytecode, 9 测试 (Plan 237 Phase C) |
 | 1.ListMap | ✅ 已完成 | BVM heap + List/Map opcodes (Plan 239) |
+| 1.BVMStrOps | ✅ 已完成 | 7 新 opcode (72-78): str/map/list ops, 6 测试 (Plan 237 Phase D) |
 | Phase 2: a2r | ⏳ 未开始 | 见 Plan 237 Phase E |
 | Phase 3: 自举 | ⏳ 未开始 | 依赖 Phase 2 |
 
