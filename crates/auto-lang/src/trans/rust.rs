@@ -2224,19 +2224,17 @@ impl RustTrans {
                             return Ok(());
                         }
                     }
-                    // map.get_or(key, default) -> map.get(key).cloned().unwrap_or(default.to_string())
+                    // map.get_or(key, default) -> map.get(key).map(|s| s.as_str()).unwrap_or(default)
+                    // Returns &str (borrowed), no cloning
                     self.expr(object, out)?;
                     write!(out, ".get(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr(a, out)?;
                     }
-                    write!(out, ").cloned().unwrap_or(")?;
+                    write!(out, ").map(|s| s.as_str()).unwrap_or(")?;
                     if call.args.args.len() > 1 {
                         if let Arg::Pos(a) = &call.args.args[1] {
                             self.expr(a, out)?;
-                            if matches!(a, Expr::Str(_) | Expr::CStr(_)) {
-                                write!(out, ".to_string()")?;
-                            }
                         }
                     }
                     write!(out, ")")?;
@@ -2388,8 +2386,8 @@ impl RustTrans {
                 match arg {
                     Arg::Pos(expr) => {
                         self.expr(expr, out)?;
-                        // For Map.insert(), auto-convert string literals to String
-                        if is_insert && matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                        // For Map.insert(), auto-convert to String for non-primitive types
+                        if is_insert && !matches!(expr, Expr::Int(_) | Expr::Bool(_)) {
                             write!(out, ".to_string()")?;
                         }
                     }
