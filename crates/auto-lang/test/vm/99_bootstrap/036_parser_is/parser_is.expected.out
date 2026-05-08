@@ -1,1 +1,1 @@
-(is x (1 -> true) (else false))
+(is x (-> 1 true) (else false))

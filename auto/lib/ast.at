@@ -195,15 +195,17 @@ fn block_node(body_str str) ASTNode {
     ASTNode(NodeKind.BlockStmt, "(block " + body_str + ")", "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
-fn type_node(name str, fields_count int) ASTNode {
+fn type_node(name str, fields List) ASTNode {
     var s = "(type " + name
     var i = 0
-    for i < fields_count {
-        s = s + " field"
+    var n = fields.len()
+    for i < n {
+        var f = fields.get(i)
+        s = s + " " + f.name + ":" + f.type_name
         i = i + 1
     }
     s = s + ")"
-    ASTNode(NodeKind.TypeStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.TypeStmt, s, name, empty_list(), empty_list(), empty_list(), "", fields, "", empty_list(), empty_list())
 }
 
 // ---- P1 Constructor helpers ----
@@ -215,31 +217,78 @@ fn closure_node(params_str str, body ASTNode) ASTNode {
     ASTNode(NodeKind.ClosureExpr, s, "", empty_list(), bl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
-fn fstr_node(parts_str str) ASTNode {
+fn fstr_node(parts_str str, parts List) ASTNode {
     var s = "(fstr " + parts_str + ")"
-    ASTNode(NodeKind.FStrExpr, s, "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.FStrExpr, s, "", parts, empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
-fn is_node(expr ASTNode, branches_str str) ASTNode {
+fn is_node(expr ASTNode, branches List, else_branch List) ASTNode {
+    var branches_str = ""
+    var i = 0
+    var n = branches.len()
+    for i < n {
+        if branches_str != "" {
+            branches_str = branches_str + " "
+        }
+        branches_str = branches_str + branches.get(i).value
+        i = i + 1
+    }
+    if else_branch.len() > 0 {
+        branches_str = branches_str + " (else " + else_branch.get(0).value + ")"
+    }
     var s = "(is " + expr.value + " " + branches_str + ")"
     var el = empty_list()
     el.push(expr)
-    ASTNode(NodeKind.IsStmt, s, "", empty_list(), el, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.IsStmt, s, "", branches, el, empty_list(), "", empty_list(), "", empty_list(), else_branch)
 }
 
-fn enum_node(name str, variants_str str) ASTNode {
-    var s = "(enum " + name + " " + variants_str + ")"
-    ASTNode(NodeKind.EnumStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+fn enum_node(name str, variants List, repr_type str) ASTNode {
+    var s = "(enum " + name
+    if repr_type != "" {
+        s = s + " " + repr_type
+    }
+    var i = 0
+    var n = variants.len()
+    for i < n {
+        s = s + " " + variants.get(i).name
+        i = i + 1
+    }
+    s = s + ")"
+    ASTNode(NodeKind.EnumStmt, s, name, empty_list(), empty_list(), empty_list(), "", variants, repr_type, empty_list(), empty_list())
 }
 
-fn ext_node(target str, methods_str str) ASTNode {
-    var s = "(ext " + target + " " + methods_str + ")"
-    ASTNode(NodeKind.ExtStmt, s, target, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+fn ext_node(target str, methods List, for_spec str) ASTNode {
+    var methods_str = ""
+    var i = 0
+    var n = methods.len()
+    for i < n {
+        if methods_str != "" {
+            methods_str = methods_str + " "
+        }
+        methods_str = methods_str + methods.get(i).value
+        i = i + 1
+    }
+    var s = "(ext " + target
+    if for_spec != "" {
+        s = s + " for " + for_spec
+    }
+    s = s + " " + methods_str + ")"
+    ASTNode(NodeKind.ExtStmt, s, target, methods, empty_list(), empty_list(), for_spec, empty_list(), "", empty_list(), empty_list())
 }
 
-fn spec_node(name str, methods_str str) ASTNode {
+fn spec_node(name str, methods List) ASTNode {
+    var methods_str = ""
+    var i = 0
+    var n = methods.len()
+    for i < n {
+        if methods_str != "" {
+            methods_str = methods_str + " "
+        }
+        methods_str = methods_str + methods.get(i).name
+        i = i + 1
+    }
     var s = "(spec " + name + " " + methods_str + ")"
-    ASTNode(NodeKind.SpecStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.SpecStmt, s, name, empty_list(), empty_list(), empty_list(), "", methods, "", empty_list(), empty_list())
 }
 
 fn alias_node(name str, target str) ASTNode {
@@ -247,13 +296,13 @@ fn alias_node(name str, target str) ASTNode {
     ASTNode(NodeKind.AliasStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
-fn use_node(path_str str, items_str str) ASTNode {
+fn use_node(path_str str, items_str str, items List) ASTNode {
     var s = "(use " + path_str
     if items_str != "" {
         s = s + " " + items_str
     }
     s = s + ")"
-    ASTNode(NodeKind.UseStmt, s, path_str, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.UseStmt, s, path_str, empty_list(), empty_list(), empty_list(), "", items, "", empty_list(), empty_list())
 }
 
 fn object_node(pairs_str str) ASTNode {

@@ -1,0 +1,9 @@
+fn main() {
+    var result = run_a2r("use std.io\nfn main() {\nprint(42)\n}")
+    var expected = "use std::io;\nfn main() {\n    println!(\"{}\", 42);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

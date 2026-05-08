@@ -768,3 +768,10 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_084_a2r_if() { test_aavm("99_bootstrap/084_a2r_if").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_085_a2r_for() { test_aavm("99_bootstrap/085_a2r_for").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_086_a2r_str() { test_aavm("99_bootstrap/086_a2r_str").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_087_a2r_use() { test_aavm("99_bootstrap/087_a2r_use").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_088_a2r_type() { test_aavm("99_bootstrap/088_a2r_type").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_089_a2r_enum() { test_aavm("99_bootstrap/089_a2r_enum").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_090_a2r_is() { test_aavm("99_bootstrap/090_a2r_is").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_091_a2r_ext() { test_aavm("99_bootstrap/091_a2r_ext").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_092_a2r_fstr() { test_aavm("99_bootstrap/092_a2r_fstr").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_093_a2r_spec() { test_aavm("99_bootstrap/093_a2r_spec").unwrap(); }

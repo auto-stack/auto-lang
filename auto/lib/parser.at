@@ -495,7 +495,7 @@ fn parse_type_decl(p Parser) ASTNode {
         }
     }
 
-    return type_node(name, fields.len())
+    return type_node(name, fields)
 }
 
 // Parse expression statement
@@ -806,6 +806,7 @@ fn parse_atom(p Parser) ASTNode {
             // F-string: FStrStart + parts + FStrEnd
             p.pos = p.pos + 1  // skip FStrStart
             var parts_str = ""
+            var parts = empty_list()
             for parser_kind(p) != TokenKind.FStrEnd && parser_kind(p) != TokenKind.EOF {
                 var fk = parser_kind(p)
                 if fk == TokenKind.Str || fk == TokenKind.FStrPart {
@@ -815,6 +816,7 @@ fn parse_atom(p Parser) ASTNode {
                     }
                     var ptxt = parser_text(p)
                     parts_str = parts_str + "\"" + ptxt + "\""
+                    parts.push(str_node(ptxt))
                     p.pos = p.pos + 1
                 } else if fk == TokenKind.FStrNote {
                     // $ interpolation marker — skip it
@@ -824,7 +826,9 @@ fn parse_atom(p Parser) ASTNode {
                     if parts_str != "" {
                         parts_str = parts_str + " "
                     }
-                    parts_str = parts_str + parser_text(p)
+                    var iname = parser_text(p)
+                    parts_str = parts_str + iname
+                    parts.push(ident_node(iname))
                     p.pos = p.pos + 1
                 } else {
                     // Other expression token in f-string — parse as expr
@@ -833,12 +837,13 @@ fn parse_atom(p Parser) ASTNode {
                         parts_str = parts_str + " "
                     }
                     parts_str = parts_str + inner.value
+                    parts.push(inner)
                 }
             }
             if parser_kind(p) == TokenKind.FStrEnd {
                 p.pos = p.pos + 1  // skip FStrEnd
             }
-            return fstr_node(parts_str)
+            return fstr_node(parts_str, parts)
         }
         TokenKind.LBrace -> {
             // Object literal: {key: value, ...}
@@ -915,17 +920,14 @@ fn parse_enum_decl(p Parser) ASTNode {
         parser_skip_nl_semi(p)
     }
 
-    var variants_str = ""
+    var variants = empty_list()
     if parser_kind(p) == TokenKind.LBrace {
         p.pos = p.pos + 1  // skip '{'
         parser_skip_nl_semi(p)
         for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
             var vname = parser_text(p)
             p.pos = p.pos + 1  // skip variant name
-            if variants_str != "" {
-                variants_str = variants_str + " "
-            }
-            variants_str = variants_str + vname
+            var payload = ""
 
             // Optional payload: type name or (types) or {fields}
             parser_skip_nl_semi(p)
@@ -950,7 +952,6 @@ fn parse_enum_decl(p Parser) ASTNode {
                 }
             } else if vk == TokenKind.Ident {
                 // Single type payload: variant TypeName
-                // Check it's not the next variant name (peek for comma/newline/RBrace)
                 var peek = parser_peek_kind(p)
                 if peek != TokenKind.Comma && peek != TokenKind.Newline && peek != TokenKind.RBrace && peek != TokenKind.EOF {
                     p.pos = p.pos + 1  // skip type name
@@ -961,10 +962,12 @@ fn parse_enum_decl(p Parser) ASTNode {
             parser_skip_nl_semi(p)
             if parser_kind(p) == TokenKind.Asn {
                 p.pos = p.pos + 1  // skip '='
-                // Skip the value expression
                 parser_skip_nl_semi(p)
+                payload = "=" + parser_text(p)
                 p.pos = p.pos + 1
             }
+
+            variants.push(Param(vname, payload))
 
             parser_skip_nl_semi(p)
             if parser_kind(p) == TokenKind.Comma {
@@ -976,7 +979,7 @@ fn parse_enum_decl(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return enum_node(name, variants_str)
+    return enum_node(name, variants, "")
 }
 
 // Parse use statement: use path : items
@@ -1039,6 +1042,7 @@ fn parse_use_stmt(p Parser) ASTNode {
     }
 
     // Optional items: : item1, item2
+    var items = empty_list()
     parser_skip_nl_semi(p)
     if parser_kind(p) == TokenKind.Colon {
         p.pos = p.pos + 1  // skip ':'
@@ -1049,7 +1053,9 @@ fn parse_use_stmt(p Parser) ASTNode {
                 if items_str != "" {
                     items_str = items_str + " "
                 }
-                items_str = items_str + parser_text(p)
+                var item_name = parser_text(p)
+                items_str = items_str + item_name
+                items.push(Param(item_name, ""))
                 p.pos = p.pos + 1
             } else {
                 break
@@ -1064,7 +1070,7 @@ fn parse_use_stmt(p Parser) ASTNode {
         }
     }
 
-    return use_node(path_str, items_str)
+    return use_node(path_str, items_str, items)
 }
 
 // Parse spec declaration: spec Name { fn sig() }
@@ -1086,21 +1092,18 @@ fn parse_spec_decl(p Parser) ASTNode {
         parser_skip_nl_semi(p)
     }
 
-    var methods_str = ""
+    var methods = empty_list()
     if parser_kind(p) == TokenKind.LBrace {
         p.pos = p.pos + 1  // skip '{'
         parser_skip_nl_semi(p)
         for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
             if parser_kind(p) == TokenKind.Fn {
-                // Parse method signature (no body for P1)
+                // Parse method signature
                 p.pos = p.pos + 1  // skip 'fn'
                 var mname = parser_text(p)
                 p.pos = p.pos + 1  // skip method name
-                if methods_str != "" {
-                    methods_str = methods_str + " "
-                }
-                methods_str = methods_str + mname
 
+                var ret_type = ""
                 // Skip params
                 parser_skip_nl_semi(p)
                 if parser_kind(p) == TokenKind.LParen {
@@ -1113,19 +1116,23 @@ fn parse_spec_decl(p Parser) ASTNode {
                     }
                 }
 
-                // Skip optional return type
+                // Collect optional return type
                 parser_skip_nl_semi(p)
                 var rk = parser_kind(p)
                 if rk == TokenKind.Arrow {
                     p.pos = p.pos + 1
                     parser_skip_nl_semi(p)
+                    ret_type = parser_text(p)
                     p.pos = p.pos + 1
                 } else if rk == TokenKind.Ident {
                     var peek = parser_peek_kind(p)
                     if peek == TokenKind.LBrace || peek == TokenKind.Newline || peek == TokenKind.Semi {
+                        ret_type = parser_text(p)
                         p.pos = p.pos + 1
                     }
                 }
+
+                methods.push(Param(mname, ret_type))
 
                 // Skip optional body { ... }
                 parser_skip_nl_semi(p)
@@ -1147,7 +1154,7 @@ fn parse_spec_decl(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return spec_node(name, methods_str)
+    return spec_node(name, methods)
 }
 
 // Parse ext block: ext Type { methods }
@@ -1169,11 +1176,12 @@ fn parse_ext_stmt(p Parser) ASTNode {
     p.pos = p.pos + 1  // skip target name
 
     // Optional: for SpecName (trait implementation)
+    var for_spec = ""
     parser_skip_nl_semi(p)
     if parser_kind(p) == TokenKind.For {
         p.pos = p.pos + 1  // skip 'for'
         parser_skip_nl_semi(p)
-        // Read trait name — skip it for P1
+        for_spec = parser_text(p)
         p.pos = p.pos + 1
         parser_skip_nl_semi(p)
     }
@@ -1190,36 +1198,27 @@ fn parse_ext_stmt(p Parser) ASTNode {
     }
 
     parser_skip_nl_semi(p)
-    var methods_str = ""
+    var methods = empty_list()
     if parser_kind(p) == TokenKind.LBrace {
         p.pos = p.pos + 1  // skip '{'
         parser_skip_nl_semi(p)
         for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
             if parser_kind(p) == TokenKind.Fn {
                 var method = parse_fn_decl(p)
-                if methods_str != "" {
-                    methods_str = methods_str + " "
-                }
-                methods_str = methods_str + method.value
+                methods.push(method)
             } else if parser_kind(p) == TokenKind.Mut {
                 // mut fn ...
                 p.pos = p.pos + 1  // skip 'mut'
                 if parser_kind(p) == TokenKind.Fn {
                     var method = parse_fn_decl(p)
-                    if methods_str != "" {
-                        methods_str = methods_str + " "
-                    }
-                    methods_str = methods_str + method.value
+                    methods.push(method)
                 }
             } else if parser_kind(p) == TokenKind.Static {
                 // static fn ...
                 p.pos = p.pos + 1  // skip 'static'
                 if parser_kind(p) == TokenKind.Fn {
                     var method = parse_fn_decl(p)
-                    if methods_str != "" {
-                        methods_str = methods_str + " "
-                    }
-                    methods_str = methods_str + method.value
+                    methods.push(method)
                 }
             } else {
                 // Field declaration — skip ident type
@@ -1235,7 +1234,7 @@ fn parse_ext_stmt(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return ext_node(target, methods_str)
+    return ext_node(target, methods, for_spec)
 }
 
 // Parse is/match statement: is expr { branches }
@@ -1245,7 +1244,8 @@ fn parse_is_stmt(p Parser) ASTNode {
     var expr = parse_expr(p)
     parser_skip_nl_semi(p)
 
-    var branches_str = ""
+    var branches = empty_list()
+    var else_branch = empty_list()
     if parser_kind(p) == TokenKind.LBrace {
         p.pos = p.pos + 1  // skip '{'
         parser_skip_nl_semi(p)
@@ -1260,10 +1260,7 @@ fn parse_is_stmt(p Parser) ASTNode {
                 }
                 parser_skip_nl_semi(p)
                 var body = parse_expr(p)
-                if branches_str != "" {
-                    branches_str = branches_str + " "
-                }
-                branches_str = branches_str + "(else " + body.value + ")"
+                else_branch.push(body)
             } else {
                 // Pattern branch: pattern -> body
                 var pattern = parse_expr(p)
@@ -1273,10 +1270,7 @@ fn parse_is_stmt(p Parser) ASTNode {
                 }
                 parser_skip_nl_semi(p)
                 var body = parse_expr(p)
-                if branches_str != "" {
-                    branches_str = branches_str + " "
-                }
-                branches_str = branches_str + "(" + pattern.value + " -> " + body.value + ")"
+                branches.push(bin_node("->", pattern, body))
             }
             parser_skip_nl_semi(p)
         }
@@ -1284,7 +1278,7 @@ fn parse_is_stmt(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return is_node(expr, branches_str)
+    return is_node(expr, branches, else_branch)
 }
 
 // Parse object literal: {key: value, ...}
