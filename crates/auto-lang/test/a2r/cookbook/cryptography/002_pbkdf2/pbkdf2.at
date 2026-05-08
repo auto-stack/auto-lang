@@ -1,0 +1,14 @@
+use.rust ring::pbkdf2
+use.rust ring::rand::SecureRandom
+use.rust ring::rand::SystemRandom
+
+fn main() {
+    let rng = SystemRandom.new()
+    var salt = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    rng.fill(salt).unwrap()
+    let password = "hunter2"
+    var result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    pbkdf2.derive(pbkdf2.PBKDF2_HMAC_SHA256, 100_000, salt, password.as_bytes(), result)
+    print(f"Salt: ${salt.len()} bytes")
+    print(f"Hash: ${result.len()} bytes")
+}

@@ -1,0 +1,11 @@
+fn main() {
+    let a = [1.0, 2.0, 3.0]
+    let b = [1.0, 2.0, 3.0]
+    var equal = true
+    for i in 0..3 {
+        if a[i] != b[i] {
+            equal = false
+        }
+    }
+    print(f"Vectors equal: $equal")
+}

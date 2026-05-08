@@ -1,0 +1,8 @@
+use.rust log::debug
+
+fn main() {
+    debug!("starting operation")
+    let value = 42
+    debug!("value = {}", value)
+    print("done")
+}

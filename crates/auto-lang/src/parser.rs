@@ -1612,7 +1612,8 @@ impl<'a> Parser<'a> {
                     || self.is_kind(TokenKind::False)
                     || self.is_kind(TokenKind::Nil)
                     || self.is_kind(TokenKind::Type)
-                // Allow .type property
+                    || self.is_kind(TokenKind::Spawn)
+                // Allow .type property and .spawn method
                 {
                     self.next();
                     // Use Expr::Dot for semantic clarity
@@ -8894,7 +8895,8 @@ impl<'a> Parser<'a> {
                 || self.is_kind(TokenKind::False)
                 || self.is_kind(TokenKind::Nil)
                 || self.is_kind(TokenKind::Type)
-            // Allow .type property
+                || self.is_kind(TokenKind::Spawn)
+            // Allow .type property and .spawn method
             {
                 let text = self.cur.text.clone();
                 self.next();

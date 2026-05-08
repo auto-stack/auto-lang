@@ -1,0 +1,12 @@
+use.rust std::fs
+
+fn main() ! {
+    let content = "line1\nline2\nline3"
+    let path = "test_temp.txt"
+    fs.write(path, content).?
+    let lines = fs.read_to_string(path).?
+    for line in lines.lines() {
+        print(f"Line: $line")
+    }
+    fs.remove_file(path).?
+}

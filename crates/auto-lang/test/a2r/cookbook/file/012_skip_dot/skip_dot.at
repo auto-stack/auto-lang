@@ -1,0 +1,13 @@
+use.rust std::fs
+
+fn main() ! {
+    let dir = fs.read_dir(".").?
+    for entry in dir {
+        let entry = entry.?
+        let name = entry.file_name()
+        let name_str = name.to_str().unwrap()
+        if !name_str.starts_with(".") {
+            print(f"$name_str")
+        }
+    }
+}

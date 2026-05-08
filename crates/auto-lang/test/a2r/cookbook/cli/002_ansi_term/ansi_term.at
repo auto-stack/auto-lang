@@ -1,0 +1,9 @@
+fn main() {
+    let red = "\x1b[31m"
+    let green = "\x1b[32m"
+    let yellow = "\x1b[33m"
+    let reset = "\x1b[0m"
+    print(f"$red" + "Error: something went wrong" + "$reset")
+    print(f"$green" + "Success: operation completed" + "$reset")
+    print(f"$yellow" + "Warning: check your input" + "$reset")
+}

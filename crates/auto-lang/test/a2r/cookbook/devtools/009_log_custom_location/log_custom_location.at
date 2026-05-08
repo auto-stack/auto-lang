@@ -1,0 +1,7 @@
+use.rust log::info
+
+fn main() ! {
+    let file = std.fs.create("app.log").?
+    info!("logging to custom file")
+    print("log written to app.log")
+}

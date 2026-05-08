@@ -1,0 +1,19 @@
+use.rust rand::Rng
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn main() {
+    var rng = thread_rng()
+    let colors = [Color.Red, Color.Green, Color.Blue]
+    let idx = rng.gen_range(0..3)
+    let color = colors[idx]
+    is color {
+        Color.Red -> print("Red")
+        Color.Green -> print("Green")
+        Color.Blue -> print("Blue")
+    }
+}

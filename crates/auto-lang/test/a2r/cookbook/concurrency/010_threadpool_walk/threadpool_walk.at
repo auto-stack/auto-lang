@@ -1,0 +1,11 @@
+use.rust walkdir::WalkDir
+use.rust std::thread
+
+fn main() {
+    var count = 0
+    for entry in WalkDir.new(".") {
+        let entry = entry.unwrap()
+        count = count + 1
+    }
+    print(f"Total entries: $count")
+}

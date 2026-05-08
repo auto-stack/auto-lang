@@ -1,0 +1,14 @@
+type Point {
+    x int
+    y int
+}
+
+fn parse_point(s str) Point {
+    let parts = s.split(",")
+    Point(parts[0], parts[1])
+}
+
+fn main() {
+    let p = parse_point("3,4")
+    print(f"Point: (${p.x}, ${p.y})")
+}

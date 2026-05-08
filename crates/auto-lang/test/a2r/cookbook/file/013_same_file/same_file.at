@@ -1,0 +1,9 @@
+use.rust std::path::Path
+
+fn main() {
+    let path1 = Path.new("a.txt")
+    let path2 = Path.new("a.txt")
+    if path1 == path2 {
+        print("Same path, skipping")
+    }
+}

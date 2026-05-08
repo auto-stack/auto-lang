@@ -1,0 +1,15 @@
+use.rust std::process::Command
+use.rust std::process::Stdio
+
+fn main() ! {
+    var child = Command.new("cat")
+        .stdin(Stdio.piped())
+        .stdout(Stdio.piped())
+        .spawn().?
+    let stdin = child.stdin.unwrap()
+    stdin.write_all("hello from stdin".as_bytes()).?
+    let out = child.wait_with_output()
+    let output = out.?
+    let stdout = String.from_utf8(output.stdout).?
+    print(f"Output: $stdout")
+}

@@ -1,0 +1,13 @@
+use.rust crossbeam
+
+fn main() {
+    crossbeam.scope(s => {
+        s.spawn(_ => {
+            print("Hello from scoped thread 1")
+        })
+        s.spawn(_ => {
+            print("Hello from scoped thread 2")
+        })
+    }).unwrap()
+    print("All threads completed")
+}

@@ -1,0 +1,18 @@
+use.rust crossbeam::channel::unbounded
+use.rust std::thread
+
+fn main() {
+    let ch = unbounded()
+    let tx = ch.sender
+    let rx = ch.receiver
+    thread.spawn(_ => {
+        tx.send("hello").unwrap()
+        tx.send("world").unwrap()
+    })
+    for msg in rx {
+        print(f"Received: $msg")
+        if msg == "world" {
+            break
+        }
+    }
+}

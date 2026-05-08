@@ -1,0 +1,8 @@
+fn main() {
+    var buf = [0, 0, 0, 0, 0]
+    let data = [104, 101, 108, 108, 111]
+    for i in 0..5 {
+        buf[i] = data[i]
+    }
+    print(f"Buffer: ${buf.len()} bytes")
+}

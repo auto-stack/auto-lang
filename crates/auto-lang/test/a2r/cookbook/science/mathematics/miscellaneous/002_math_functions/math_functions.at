@@ -1,0 +1,11 @@
+fn main() {
+    let x = 2.0
+    let y = 3.0
+    let power = x.powf(y)
+    let sqrt_val = x.sqrt()
+    let abs_val = -5.0
+    let abs_result = abs_val.abs()
+    print(f"2^3 = $power")
+    print(f"sqrt(2) = $sqrt_val")
+    print(f"abs(-5) = $abs_result")
+}

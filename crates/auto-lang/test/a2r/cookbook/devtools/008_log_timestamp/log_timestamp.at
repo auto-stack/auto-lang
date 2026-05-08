@@ -1,0 +1,8 @@
+use.rust log::info
+use.rust chrono::Local
+
+fn main() {
+    let now = Local.now()
+    print(f"[${now}] application started")
+    info!("with timestamp logging")
+}

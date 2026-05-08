@@ -1,0 +1,12 @@
+use.rust std::fs
+
+fn main() ! {
+    let dir = fs.read_dir(".").?
+    var total = 0
+    for entry in dir {
+        let entry = entry.?
+        let meta = entry.metadata().?
+        total = total + meta.len()
+    }
+    print(f"Total size: $total bytes")
+}

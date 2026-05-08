@@ -1,0 +1,9 @@
+use.rust semver::Version
+
+fn main() {
+    let v = Version.parse("1.2.3").unwrap()
+    let threshold = Version.parse("1.0.0").unwrap()
+    if v > threshold {
+        print("version is greater than 1.0.0")
+    }
+}

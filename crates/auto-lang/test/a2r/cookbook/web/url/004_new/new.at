@@ -1,0 +1,8 @@
+use.rust url::Url
+
+fn main() {
+    let url = Url.parse("https://example.com/path?query=1").unwrap()
+    let new_url = url.join("sub/page").unwrap()
+    print(f"Original: $url")
+    print(f"Joined: $new_url")
+}

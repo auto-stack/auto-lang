@@ -1,0 +1,4 @@
+fn main() {
+    let cores = std.thread.available_parallelism()
+    print(f"CPU cores: ${cores}")
+}

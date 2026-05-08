@@ -1,0 +1,9 @@
+use.rust std::error::Error
+
+fn main() {
+    let result = Err("inner error")
+    is result {
+        Ok(val) -> print(f"Success: $val")
+        Err(e) -> print(f"Error: $e")
+    }
+}

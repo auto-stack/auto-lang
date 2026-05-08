@@ -1,0 +1,13 @@
+use.rust csv::Reader
+
+fn main() ! {
+    let data = "name,age\nAlice,30\nBob,25\nCharlie,35"
+    var reader = Reader.from_reader(data.as_bytes())
+    for result in reader.records() {
+        let record = result.?
+        let age = record.get(1).unwrap().parse().unwrap()
+        if age > 28 {
+            print(f"Name: ${record.get(0)}, Age: ${record.get(1)}")
+        }
+    }
+}

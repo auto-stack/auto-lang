@@ -1,0 +1,10 @@
+use.rust num::Complex
+
+fn main() {
+    let z = Complex.new(3.0, 4.0)
+    let r = z.norm()
+    let theta = z.arg()
+    print(f"Complex: $z")
+    print(f"Magnitude: $r")
+    print(f"Phase: $theta")
+}

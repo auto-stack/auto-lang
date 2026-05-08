@@ -1,0 +1,10 @@
+use.rust num::BigInt
+
+fn main() {
+    let a = BigInt.from(100)
+    let b = BigInt.from(200)
+    let sum = a + b
+    let product = a * b
+    print(f"Sum: $sum")
+    print(f"Product: $product")
+}

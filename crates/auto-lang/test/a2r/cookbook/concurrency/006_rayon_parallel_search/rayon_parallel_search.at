@@ -1,0 +1,11 @@
+use.rust rayon::prelude
+
+fn main() {
+    let v = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let target = 7
+    let found = v.par_iter().find_any(x => x == target)
+    is found {
+        Some(val) -> print(f"Found: $val")
+        None -> print("Not found")
+    }
+}

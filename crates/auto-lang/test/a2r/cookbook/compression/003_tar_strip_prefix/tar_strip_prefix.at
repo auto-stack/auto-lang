@@ -1,0 +1,13 @@
+use.rust flate2::read::GzDecoder
+use.rust tar::Archive
+
+fn main() ! {
+    let file = std.fs.open("archive.tar.gz").?
+    let gz = GzDecoder.new(file)
+    var archive = Archive.new(gz)
+    archive.set_prefix_strip(3)
+    for entry in archive.entries().? {
+        let entry = entry.?
+        print(f"Extracted: ${entry.path().?.display()}")
+    }
+}

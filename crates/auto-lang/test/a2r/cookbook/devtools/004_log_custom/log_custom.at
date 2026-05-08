@@ -1,0 +1,7 @@
+use.rust log
+
+fn main() {
+    log.set_max_level(log.LevelFilter.Debug)
+    log.info("custom logger active")
+    print("done")
+}

@@ -1,0 +1,17 @@
+use.rust std::collections::HashMap
+use.rust std::fs
+
+fn main() ! {
+    let dir = fs.read_dir(".").?
+    var seen = HashMap.new()
+    for entry in dir {
+        let entry = entry.?
+        let name = entry.file_name()
+        let name_str = name.to_str().unwrap()
+        let existing = seen.get(name_str)
+        is existing {
+            Some(_) -> print(f"Duplicate: $name_str")
+            None -> seen.insert(name_str, true)
+        }
+    }
+}

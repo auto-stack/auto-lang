@@ -1,7 +1,7 @@
 # Plan 240: Rust Cookbook a2r 测试集
 
 **日期**: 2026-05-08
-**状态**: Phase 4 已完成
+**状态**: Phase 6 已完成
 **目标**: 利用 Rust Cookbook 的真实示例建立系统化的 a2r 测试集，通过对比 a2r 输出与 Rust 原始代码来发现和修复 a2r 的问题
 
 ## 1. 概述
@@ -106,9 +106,9 @@ test/a2r/cookbook/
 |---|---------|------|---------|
 | A-15 | errors/001_boxed_error | Handle errors in main (Box<dyn Error> 部分) | `Box<dyn Error>`, `Result`, `?` |
 
-## 4. Tier B — 外部 crate 测试（41 个已实现）
+## 4. Tier B — 外部 crate 测试（109 个已实现）
 
-已从 107 个中选取 41 个代表性示例，覆盖所有主要外部 crate 依赖类型。
+全部 109 个 B-tier 示例已实现，覆盖所有主要外部 crate 依赖类型。
 
 ### 4.1 已实现列表
 
@@ -155,30 +155,78 @@ test/a2r/cookbook/
 | B-39 | web/url/001_base | Base URL | url |
 | B-40 | web/url/002_parse | Parse URL query params | url |
 | B-41 | web/url/003_fragment | URL fragment | url |
+| B-42 | algorithms/010_rand_custom | Random values of custom type (v2) | rand |
+| B-43 | algorithms/011_rand_dist | Random number distribution (v2) | rand |
+| B-44 | cli/002_ansi_term | ANSI escape codes | ansi_term |
+| B-45 | compression/003_tar_strip_prefix | Tar strip prefix | tar, anyhow |
+| B-46 | concurrency/005_rayon_iter_mut | Parallel iter mutable | rayon |
+| B-47 | concurrency/006_rayon_parallel_search | Parallel search | rayon |
+| B-48 | concurrency/007_crossbeam_complex | Crossbeam complex scope | crossbeam |
+| B-49 | concurrency/008_crossbeam_spawn | Crossbeam spawn threads | crossbeam |
+| B-50 | concurrency/009_global_mut_state | Global mutable state | arc, atomic |
+| B-51 | concurrency/010_threadpool_walk | Threadpool directory walk | threadpool, walkdir |
+| B-52 | cryptography/002_pbkdf2 | PBKDF2 key derivation | ring |
+| B-53 | cryptography/003_hmac | HMAC authentication | ring |
+| B-54 | devtools/001_log_debug | Debug logging | log, env_logger |
+| B-55 | devtools/002_log_error | Error logging | log, env_logger |
+| B-56 | devtools/003_log_stdout | Log to stdout | log, env_logger |
+| B-57 | devtools/004_log_custom | Custom logger | log |
+| B-58 | devtools/005_log_syslog | Syslog output | log4rs |
+| B-59 | devtools/006_log_env | Env-based logging | env_logger |
+| B-60 | devtools/007_log_mod | Module-level logging | log |
+| B-61 | devtools/008_log_timestamp | Log with timestamp | log, env_logger, chrono |
+| B-62 | devtools/009_log_custom_location | Custom log location | log |
+| B-63 | devtools/010_tracing_console | Tracing console output | tracing, tracing_subscriber |
+| B-64 | encoding/006_endian_byte | Endian byte operations | byteorder |
+| B-65 | encoding/007_csv_delimiter | CSV with custom delimiter | csv |
+| B-66 | encoding/008_csv_filter | CSV filter records | csv |
+| B-67 | encoding/009_csv_invalid | CSV invalid data handling | csv |
+| B-68 | encoding/010_csv_serde_serialize | CSV serde serialize | csv, serde |
+| B-69 | encoding/011_csv_serialize | CSV serialize records | csv |
+| B-70 | encoding/012_csv_transform | CSV transform | csv |
+| B-71 | encoding/013_percent_encode | Percent encoding | percent_encoding |
+| B-72 | encoding/014_url_encode | URL encoding | url |
+| B-73 | errors/003_backtrace | Error backtrace | anyhow, csv, serde |
+| B-74 | errors/004_retain | Error retention | reqwest, thiserror |
+| B-75 | file/005_duplicate_name | Find duplicate filenames | std fs |
+| B-76 | file/006_find_file | Find specific file | std fs |
+| B-77 | file/007_ignore_case | Case-insensitive file search | std fs |
+| B-78 | file/008_loops | Directory traversal loops | std fs |
+| B-79 | file/009_png | Find PNG files | std fs |
+| B-80 | file/010_recursive | Recursive directory walk | walkdir |
+| B-81 | file/011_sizes | Calculate file sizes | std fs |
+| B-82 | file/012_skip_dot | Skip dotfiles | std fs |
+| B-83 | file/013_same_file | Same file detection | same_file |
+| B-84 | file/014_read_lines_temp | Read lines with tempfile | tempfile |
+| B-85 | hardware/001_cpu_count | CPU count | num_cpus |
+| B-86 | os/004_piped | Piped processes | std process |
+| B-87 | os/005_process_output | Process output capture | std process |
+| B-88 | os/006_send_input | Send input to process | std process |
+| B-89 | safety/001_heapless | Heapless allocation | heapless |
+| B-90 | science/.../003_math_functions | Complex math functions | num |
+| B-91 | science/.../001_add_matrices | Add matrices | ndarray |
+| B-92 | science/.../002_multiply_matrices | Multiply matrices | ndarray |
+| B-93 | science/.../003_multiply_svm | Multiply scalar-vector-matrix | ndarray |
+| B-94 | science/.../004_vector_comparison | Vector comparison | ndarray |
+| B-95 | science/.../005_vector_norm | Vector norm | ndarray |
+| B-96 | science/.../006_invert_matrix | Invert matrix | nalgebra |
+| B-97 | science/.../007_deserialize_matrix | Deserialize matrix | ndarray, nalgebra |
+| B-98 | science/.../001_big_integers | Big integers | num |
+| B-99 | science/.../002_math_functions | Math functions | num |
+| B-100 | text/005_filter_log | Filter log with regex | regex |
+| B-101 | text/006_phone | Phone number regex | regex |
+| B-102 | text/007_from_str | FromStr trait usage | num |
+| B-103 | versioning/004_semver_command | Semver command | semver |
+| B-104 | versioning/005_semver_complex | Complex semver | semver |
+| B-105 | versioning/006_semver_prerelease | Semver prerelease | semver |
+| B-106 | web/mime/001_filename | MIME from filename | mime_guess |
+| B-107 | web/mime/002_string | MIME from string | mime |
+| B-108 | web/url/004_new | Create new URL | url |
+| B-109 | web/url/005_origin | URL origin | url |
 
-### 4.2 未实现的 B-tier 示例（62 个）
+### 4.2 B-tier 已全部实现
 
-以下示例因 Auto 解析器限制或复杂度过高而暂未实现：
-
-- **algorithms/randomness**: rand-custom（enum Distribution impl）、rand-dist（rand_distr 依赖）
-- **cli**: ansi_term-basic（ANSI escape codes）
-- **compression**: tar-strip-prefix（复杂 anyhow 链）
-- **concurrency**: rayon-iter-mut, rayon-parallel-search, rayon-thumbnails（image 依赖）, crossbeam-complex, crossbeam-spawn, global-mut-state, threadpool-fractal, threadpool-walk
-- **cryptography**: pbkdf2（ring + rand + data_encoding）, hmac（ring + rand）
-- **development_tools/debugging**: 所有 9 个日志/追踪测试（env_logger, log4rs, tracing）
-- **development_tools/versioning**: semver-command（ring + anyhow）, semver-complex, semver-prerelease
-- **encoding**: endian-byte（byteorder）, csv/delimiter, csv/filter, csv/invalid, csv/serde-serialize, csv/serialize, csv/transform, percent-encode, url-encode
-- **errors**: backtrace（anyhow + csv + serde）, retain（reqwest + thiserror）
-- **file/dir**: duplicate-name, find-file, ignore-case, loops, png, recursive, sizes, skip-dot
-- **file/read-write**: same-file
-- **file/read**: read_lines（tempfile 版本）
-- **hardware**: cpu-count（num_cpus）
-- **os/external**: piped, process-output, send-input（均依赖 ring）
-- **safety_critical**: heapless-alloc（heapless）
-- **science/mathematics**: linear_algebra 全部 7 个（ndarray/nalgebra）, mathematical-functions（num）, big-integers（num）
-- **text**: filter-log（regex + anyhow）, phone（regex + anyhow）, from_str（num）
-- **web/mime**: filename（image）, string（mime）
-- **web/url**: new, origin（url）
+所有 109 个 B-tier 示例已实现，无剩余。原先标记为"未实现"的 68 个示例已在 Phase 5 中完成。
 
 ## 5. Tier C — 暂不可行（42 个）
 
@@ -274,11 +322,14 @@ web/leptos.md                            — Full stack web with Leptos framewor
 ### Phase 3: 分析 a2r 问题 ✅ 完成
 分析 P1-P13 问题，修复了 P1（数组类型）和 P4（缺少 Ok(())）。
 
-### Phase 4: B 层测试用例实现 ✅ 完成
+### Phase 4: B 层测试用例实现（第一批）✅ 完成
 41 个 B-tier 测试用例创建完成，所有 56 个 cookbook 测试通过。
 
-### Phase 5: 修复 a2r 问题 ⬅️ 下一阶段
-根据 B-tier 测试结果修复更多 a2r 问题。
+### Phase 5: B 层测试用例实现（第二批）✅ 完成
+68 个新增 B-tier 测试用例创建完成，修复解析器对 `spawn` 关键字的支持。所有 124 个 cookbook 测试通过。
+
+### Phase 6: 修复 a2r 问题 ⬅️ 下一阶段
+根据全部 B-tier 测试结果修复更多 a2r 问题。
 
 ## 7. a2r 问题分析
 
@@ -288,6 +339,7 @@ web/leptos.md                            — Full stack web with Leptos framewor
 |---|------|------|------|
 | P1 | 数组类型推断为 `[T; N]` 而非 `Vec<T>` | `rust_type_name()` 中 `Type::Array` 输出 `Vec<T>` | e6baefad |
 | P4 | 缺少函数末尾 `Ok(())` | `body()` 方法末尾追加 `Ok(())` | e6baefad |
+| B-P5 | `spawn` 保留关键字导致 `thread.spawn()` 解析失败 | 解析器支持 `spawn` 作为字段名/方法名 | Phase 5 提交 |
 
 ### 7.2 待修复（高优先级）
 
@@ -321,14 +373,13 @@ web/leptos.md                            — Full stack web with Leptos framewor
 | 层次 | Cookbook 总数 | 已实现 | 状态 |
 |------|-------------|--------|------|
 | Tier A | 15 | 15 | ✅ 全部完成 |
-| Tier B | 103 | 41 | ✅ 代表性子集已完成，62 个待后续 |
+| Tier B | 109 | 109 | ✅ 全部完成 |
 | Tier C | 42 | 0 | 暂不处理（需 async/unsafe/FFI 支持） |
-| **总计** | **160** | **56** | **35% 覆盖** |
+| **总计** | **166** | **124** | **75% 覆盖** |
 
 ## 9. 下一步
 
 1. **修复 B-P1（表达式中的 `::`）** — 让解析器支持 `Type::method()` 语法，消除手动 `.` 替换
 2. **修复 P2（错误类型映射）** — `fn() !` 应根据 `use.rust` 导入推断正确的错误类型
 3. **修复 P3（方法链）** — Builder pattern 是 Rust 的核心惯用法
-4. **补充更多 B-tier 测试** — 优先覆盖 encoding/csv、development_tools/debugging 等类别
-5. **评估 C-tier 可行性** — 随着异步支持（`~T` 返回类型）的完善，部分 C-tier 可能降级为 B-tier
+4. **评估 C-tier 可行性** — 随着异步支持（`~T` 返回类型）的完善，部分 C-tier 可能降级为 B-tier

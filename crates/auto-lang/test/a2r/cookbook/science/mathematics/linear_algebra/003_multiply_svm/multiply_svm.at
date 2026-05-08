@@ -1,0 +1,9 @@
+fn main() {
+    let scalar = 2
+    let v = [1, 2, 3]
+    var result = [0, 0, 0]
+    for i in 0..3 {
+        result[i] = scalar * v[i]
+    }
+    print(f"Scaled vector: ${result[0]}, ${result[1]}, ${result[2]}")
+}

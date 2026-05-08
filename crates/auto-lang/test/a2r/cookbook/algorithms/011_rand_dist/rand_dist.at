@@ -1,0 +1,12 @@
+use.rust rand::Rng
+
+fn main() {
+    var rng = thread_rng()
+    var sum = 0
+    for i in 0..1000 {
+        let val = rng.gen_range(1..7)
+        sum = sum + val
+    }
+    let avg = sum / 1000
+    print(f"Average dice roll: $avg")
+}
