@@ -1514,7 +1514,7 @@ impl CTrans {
             // Plan 162: Explicit type conversion: expr.to(Type)
             Expr::To { expr, target_type } => {
                 match target_type {
-                    Type::Str(_) | Type::String => {
+                    Type::StrFixed(_) | Type::StrOwned => {
                         // x.to(str) → need runtime helper auto_to_str()
                         write!(out, "auto_to_str(")?;
                         self.expr(expr, out)?;
@@ -1685,8 +1685,8 @@ impl CTrans {
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
-            Type::Str(_) | Type::String => "const char*".to_string(),
-            Type::CStr => "const char*".to_string(),
+            Type::StrFixed(_) | Type::StrOwned => "const char*".to_string(),
+            Type::CStrLit => "const char*".to_string(),
             Type::StrSlice => "const char*".to_string(),
             Type::Char => "char".to_string(),
             Type::Void => "void".to_string(),
@@ -2004,7 +2004,7 @@ impl CTrans {
             "bool" => Type::Bool,
             "char" => Type::Char,
             "str" => Type::StrSlice, // Borrowed string slice
-            "cstr" => Type::CStr,
+            "cstr" => Type::CStrLit,
             // For user-defined types, we'd need to lookup TypeDecl
             // For now, use Unknown as fallback
             _ => Type::Unknown,
@@ -2309,8 +2309,8 @@ impl CTrans {
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
-            Type::Str(_) | Type::String => "char*".to_string(),
-            Type::CStr => "char*".to_string(),
+            Type::StrFixed(_) | Type::StrOwned => "char*".to_string(),
+            Type::CStrLit => "char*".to_string(),
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
@@ -3106,8 +3106,8 @@ impl CTrans {
             Expr::Float(_, _) => Some(Type::Float),
             Expr::Double(_, _) => Some(Type::Double),
             Expr::Char(_) => Some(Type::Char),
-            Expr::Str(_) => Some(Type::Str(0)),
-            Expr::CStr(_) => Some(Type::CStr),
+            Expr::Str(_) => Some(Type::StrFixed(0)),
+            Expr::CStr(_) => Some(Type::CStrLit),
             // Plan 060: Binary operations - infer type from operands
             Expr::Bina(lhs, op, _rhs) => {
                 // For arithmetic operations, try to infer type from operands
@@ -3369,7 +3369,7 @@ impl CTrans {
                 self.print_indent(out)?;
                 out.write(b"printf(\"\\n\")")?;
             }
-            Type::Str(_) | Type::String => {
+            Type::StrFixed(_) | Type::StrOwned => {
                 out.write(b"for (")?;
                 self.range("i", &r.start, &r.end, out)?;
                 out.write(b") {\n")?;
@@ -3395,7 +3395,7 @@ impl CTrans {
         if let Some(meta) = meta {
             if let Meta::Store(st) = meta.as_ref() {
                 return match &st.ty {
-                    Type::Str(_) | Type::String | Type::CStr => "%s",
+                    Type::StrFixed(_) | Type::StrOwned | Type::CStrLit => "%s",
                     Type::Float => "%f",
                     Type::Char => "%c",
                     Type::Ptr(ptr) => {
@@ -3430,7 +3430,7 @@ impl CTrans {
         if let Expr::Ident(n) = arr {
             if let Some(m) = self.lookup_meta(&n) {
                 if let Meta::Store(s) = m.as_ref() {
-                    if matches!(s.ty, Type::Str(_) | Type::String) {
+                    if matches!(s.ty, Type::StrFixed(_) | Type::StrOwned) {
                         return Some("%c");
                     }
                 }
@@ -3689,9 +3689,9 @@ impl CTrans {
                 | Type::Double
                 | Type::Bool
                 | Type::Char
-                | Type::Str(_)
-                | Type::String
-                | Type::CStr => {
+                | Type::StrFixed(_)
+                | Type::StrOwned
+                | Type::CStrLit => {
                     // Built-in type: ext method, pass by value
                     let type_name = self.type_to_name(&lhs_type);
                     let c_function_name = format!("{}_{}", type_name, method_name);
@@ -3980,8 +3980,8 @@ impl CTrans {
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Char => "char".to_string(),
-            Type::Str(_) | Type::String => "str".to_string(),
-            Type::CStr => "cstr".to_string(),
+            Type::StrFixed(_) | Type::StrOwned => "str".to_string(),
+            Type::CStrLit => "cstr".to_string(),
             Type::User(decl) => decl.name.to_string(),
             _ => "unknown".to_string(),
         }
@@ -4028,8 +4028,8 @@ impl CTrans {
             Expr::Double(_, _) => Type::Double,
             Expr::Bool(_) => Type::Bool,
             Expr::Char(_) => Type::Char,
-            Expr::Str(s) => Type::Str(s.len()),
-            Expr::CStr(_) => Type::CStr,
+            Expr::Str(s) => Type::StrFixed(s.len()),
+            Expr::CStr(_) => Type::CStrLit,
             Expr::Array(elems) => {
                 if elems.is_empty() {
                     Type::Array(ArrayType {
@@ -4055,10 +4055,10 @@ impl CTrans {
             // Exact match
             (a, e) if std::mem::discriminant(a) == std::mem::discriminant(e) => true,
             // String types are compatible
-            (Type::Str(_), Type::Str(_))
-            | (Type::Str(_), Type::String)
-            | (Type::String, Type::Str(_))
-            | (Type::String, Type::String) => true,
+            (Type::StrFixed(_), Type::StrFixed(_))
+            | (Type::StrFixed(_), Type::StrOwned)
+            | (Type::StrOwned, Type::StrFixed(_))
+            | (Type::StrOwned, Type::StrOwned) => true,
             // Numeric types: allow some conversions
             (Type::Int, Type::Uint) | (Type::Uint, Type::Int) => true,
             (Type::Float, Type::Double) | (Type::Double, Type::Float) => true,

@@ -775,7 +775,7 @@ mod tests {
             vec![],
         );
 
-        let mono_name = template.mono_name_from_args(&[Type::Int, Type::Str(0)]);
+        let mono_name = template.mono_name_from_args(&[Type::Int, Type::StrFixed(0)]);
         assert_eq!(mono_name, "Pair_int_str");
 
         let mono_name2 = template.mono_name_from_args(&[Type::Bool, Type::Int]);
@@ -794,13 +794,13 @@ mod tests {
             vec![],
         );
 
-        let substituted = template.substitute_fields(&[Type::Int, Type::Str(0)]);
+        let substituted = template.substitute_fields(&[Type::Int, Type::StrFixed(0)]);
 
         assert_eq!(substituted.len(), 2);
         assert_eq!(substituted[0].name, "key");
         assert!(matches!(substituted[0].field_type, Type::Int));
         assert_eq!(substituted[1].name, "val");
-        assert!(matches!(substituted[1].field_type, Type::Str(_)));
+        assert!(matches!(substituted[1].field_type, Type::StrFixed(_)));
     }
 
     #[test]
@@ -815,7 +815,7 @@ mod tests {
             vec![],
         ));
 
-        let class_type = ClassType::new(template, vec![Type::Int, Type::Str(0)]);
+        let class_type = ClassType::new(template, vec![Type::Int, Type::StrFixed(0)]);
 
         assert_eq!(class_type.base_name(), "Pair");
         assert_eq!(class_type.mono_name, "Pair_int_str");
@@ -870,12 +870,12 @@ mod tests {
         let _ = registry.register_template(template).unwrap();
 
         // First call should create
-        let class_type1 = registry.get_or_create_type("Pair", vec![Type::Int, Type::Str(0)]).unwrap();
+        let class_type1 = registry.get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)]).unwrap();
         assert_eq!(class_type1.mono_name, "Pair_int_str");
         assert_eq!(registry.type_count(), 1);
 
         // Second call should reuse
-        let class_type2 = registry.get_or_create_type("Pair", vec![Type::Int, Type::Str(0)]).unwrap();
+        let class_type2 = registry.get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)]).unwrap();
         assert_eq!(class_type2.mono_name, "Pair_int_str");
         assert_eq!(registry.type_count(), 1);  // No new type created
 
@@ -925,7 +925,7 @@ mod tests {
 
         let class_type = Arc::new(ClassType::new(
             Arc::clone(&template),
-            vec![Type::Int, Type::Str(0)],
+            vec![Type::Int, Type::StrFixed(0)],
         ));
 
         let instance = GenericInstanceData::new(
@@ -953,7 +953,7 @@ mod tests {
 
         let class_type = Arc::new(ClassType::new(
             Arc::clone(&template),
-            vec![Type::Int, Type::Str(0)],
+            vec![Type::Int, Type::StrFixed(0)],
         ));
 
         let mut instance = GenericInstanceData::new(
@@ -1000,7 +1000,7 @@ mod tests {
             vec![],
         ));
 
-        let class_type = ClassType::new(template, vec![Type::Int, Type::Str(0)]);
+        let class_type = ClassType::new(template, vec![Type::Int, Type::StrFixed(0)]);
 
         let display = format!("{}", class_type);
         assert!(display.contains("Pair"));
@@ -1017,7 +1017,7 @@ mod tests {
             vec![],  // No generic parameters
             vec![
                 FieldDef::new("x", Type::Int),
-                FieldDef::new("y", Type::Str(0)),
+                FieldDef::new("y", Type::StrFixed(0)),
             ],
             vec![],
         );
@@ -1059,7 +1059,7 @@ mod tests {
 
         assert_eq!(template.generic_params.len(), 3);
 
-        let mono_name = template.mono_name_from_args(&[Type::Int, Type::Bool, Type::Str(0)]);
+        let mono_name = template.mono_name_from_args(&[Type::Int, Type::Bool, Type::StrFixed(0)]);
         assert_eq!(mono_name, "Triple_int_bool_str");
     }
 
@@ -1077,12 +1077,12 @@ mod tests {
             vec![],
         );
 
-        let substituted = template.substitute_fields(&[Type::Bool, Type::Str(0)]);
+        let substituted = template.substitute_fields(&[Type::Bool, Type::StrFixed(0)]);
 
         assert_eq!(substituted.len(), 3);
         assert!(matches!(substituted[0].field_type, Type::Bool));
         assert!(matches!(substituted[1].field_type, Type::Int));  // Unchanged
-        assert!(matches!(substituted[2].field_type, Type::Str(_)));
+        assert!(matches!(substituted[2].field_type, Type::StrFixed(_)));
     }
 
     #[test]
@@ -1127,13 +1127,13 @@ mod tests {
             vec![],
         );
 
-        let list_type = Type::List(Box::new(Type::Str(0)));
+        let list_type = Type::List(Box::new(Type::StrFixed(0)));
         let substituted = template.substitute_fields(&[list_type]);
 
         assert_eq!(substituted.len(), 1);
         match &substituted[0].field_type {
             Type::List(elem) => {
-                assert!(matches!(**elem, Type::Str(_)));
+                assert!(matches!(**elem, Type::StrFixed(_)));
             }
             _ => panic!("Expected List type"),
         }
@@ -1302,7 +1302,7 @@ mod tests {
         let _ = registry.register_template(template2);
 
         // Create types from both templates
-        let pair_type = registry.get_or_create_type("Pair", vec![Type::Int, Type::Str(0)]).unwrap();
+        let pair_type = registry.get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)]).unwrap();
         assert_eq!(pair_type.mono_name, "Pair_int_str");
 
         let triple_type = registry.get_or_create_type("Triple", vec![Type::Bool, Type::Int, Type::Float]).unwrap();
@@ -1313,7 +1313,7 @@ mod tests {
     fn test_template_with_many_fields() {
         let fields = vec![
             FieldDef::new("f0", Type::Int),
-            FieldDef::new("f1", Type::Str(0)),
+            FieldDef::new("f1", Type::StrFixed(0)),
             FieldDef::new("f2", Type::Bool),
             FieldDef::new("f3", Type::Float),
             FieldDef::new("f4", Type::Double),
@@ -1347,7 +1347,7 @@ mod tests {
 
         // Create same type with different arguments
         let box_int = registry.get_or_create_type("Box", vec![Type::Int]).unwrap();
-        let box_str = registry.get_or_create_type("Box", vec![Type::Str(0)]).unwrap();
+        let box_str = registry.get_or_create_type("Box", vec![Type::StrFixed(0)]).unwrap();
         let box_bool = registry.get_or_create_type("Box", vec![Type::Bool]).unwrap();
 
         assert_eq!(box_int.mono_name, "Box_int");
@@ -1469,7 +1469,7 @@ mod tests {
     fn test_specialized_pair_int_value_creation() {
         let pair = SpecializedPair::from_type_args(
             &Type::Int,
-            &Type::Str(0),
+            &Type::StrFixed(0),
             Value::Int(55),
             Value::Str(AutoStr::from("hello")),
         ).unwrap();
@@ -1486,7 +1486,7 @@ mod tests {
     #[test]
     fn test_specialized_pair_value_int_creation() {
         let pair = SpecializedPair::from_type_args(
-            &Type::Str(0),
+            &Type::StrFixed(0),
             &Type::Int,
             Value::Str(AutoStr::from("key")),
             Value::Int(77),
@@ -1505,8 +1505,8 @@ mod tests {
     fn test_specialized_pair_generic_creation() {
         // Pair<string, string> should use Generic variant
         let pair = SpecializedPair::from_type_args(
-            &Type::Str(0),
-            &Type::Str(0),
+            &Type::StrFixed(0),
+            &Type::StrFixed(0),
             Value::Str(AutoStr::from("hello")),
             Value::Str(AutoStr::from("world")),
         ).unwrap();

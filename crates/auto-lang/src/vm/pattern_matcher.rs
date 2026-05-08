@@ -103,10 +103,10 @@ impl PatternMatcher {
         // Check if the message matches the expected type
         let type_matches = match (type_expr, message) {
             // String types
-            (Type::Str(_), Value::Str(_)) => true,
-            (Type::String, Value::Str(_)) => true,
+            (Type::StrFixed(_), Value::Str(_)) => true,
+            (Type::StrOwned, Value::Str(_)) => true,
             (Type::StrSlice, Value::Str(_)) => true,
-            (Type::CStr, Value::Str(_)) => true,
+            (Type::CStrLit, Value::Str(_)) => true,
 
             // Integer types (Value has Int(i32) and I64(i64))
             (Type::Int, Value::Int(_)) => true,
@@ -168,7 +168,7 @@ impl PatternMatcher {
         use crate::ast::Type;
 
         match (type_expr, message) {
-            (Type::Str(_) | Type::String, Value::Str(_)) => true,
+            (Type::StrFixed(_) | Type::StrOwned, Value::Str(_)) => true,
             (Type::Int, Value::Int(_) | Value::I64(_)) => true,
             (Type::Uint, Value::Uint(_)) => true,
             (Type::Bool, Value::Bool(_)) => true,
@@ -362,7 +362,7 @@ mod tests {
     fn test_match_type_binding_string() {
         let pattern = TaskMsgPattern::TypeBinding {
             name: "msg".into(),
-            type_expr: Box::new(Type::Str(0)),
+            type_expr: Box::new(Type::StrFixed(0)),
         };
         let message = Value::str("hello");
 
@@ -392,7 +392,7 @@ mod tests {
     fn test_match_type_binding_wrong_type() {
         let pattern = TaskMsgPattern::TypeBinding {
             name: "msg".into(),
-            type_expr: Box::new(Type::Str(0)),
+            type_expr: Box::new(Type::StrFixed(0)),
         };
         let message = Value::Int(42);
 

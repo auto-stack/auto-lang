@@ -316,7 +316,7 @@ fn check_for(ctx: &mut InferenceContext, for_stmt: &For) -> Result<Type, AutoErr
             let range_ty = infer_expr(ctx, &for_stmt.range);
 
             // Key is typically a string, value depends on map type
-            ctx.bind_var(key_var.clone(), Type::Str(0));
+            ctx.bind_var(key_var.clone(), Type::StrFixed(0));
             match range_ty {
                 Type::Map(_k, v) => {
                     ctx.bind_var(val_var.clone(), (*v).clone());
@@ -550,13 +550,13 @@ mod tests {
         let store = Store {
             kind: StoreKind::Let,
             name: Name::from("greeting"),
-            ty: Type::Str(5),  // Match actual string length
+            ty: Type::StrFixed(5),  // Match actual string length
             expr: Expr::Str("hello".into()),
         };
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        if let Some(Type::Str(len)) = ctx.lookup_type(&Name::from("greeting")) {
+        if let Some(Type::StrFixed(len)) = ctx.lookup_type(&Name::from("greeting")) {
             assert_eq!(len, 5);
         } else {
             panic!("Expected Str type");

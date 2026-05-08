@@ -108,6 +108,10 @@ pub struct RustTrans {
     // Used to add .to_string() when returning a &str param as String
     current_fn_str_params: HashSet<AutoStr>,
 
+    // Track which function params are str (&str) type for auto-borrow at call sites
+    // fn_name -> vec of booleans (true = param is str/&str, needs & at call site)
+    fn_str_param_indices: HashMap<AutoStr, Vec<bool>>,
+
 }
 
 impl RustTrans {
@@ -129,6 +133,7 @@ impl RustTrans {
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
+            fn_str_param_indices: HashMap::new(),
         }
     }
 
@@ -151,6 +156,7 @@ impl RustTrans {
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
+            fn_str_param_indices: HashMap::new(),
         }
     }
 
@@ -267,10 +273,10 @@ impl RustTrans {
             Type::Float | Type::Double => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Char => "char".to_string(),
-            Type::Str(_) => "String".to_string(),
-            Type::CStr => "String".to_string(),
+            Type::StrFixed(_) => "String".to_string(),
+            Type::CStrLit => "String".to_string(),
             Type::StrSlice => "String".to_string(),
-            Type::String => "String".to_string(), // Owned dynamic string (Plan 155)
+            Type::StrOwned => "String".to_string(), // Owned dynamic string (Plan 155)
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }
@@ -365,7 +371,7 @@ impl RustTrans {
     fn rust_return_type_name(&self, ty: &Type) -> String {
         match ty {
             // str/CStr in return position -> String (owned, safe default)
-            Type::StrSlice | Type::CStr => "String".to_string(),
+            Type::StrSlice | Type::CStrLit => "String".to_string(),
             // Option<str> / Option<cstr> -> Option<String>
             Type::Option(inner) => {
                 format!("Option<{}>", self.rust_return_type_name(inner))
@@ -413,7 +419,7 @@ impl RustTrans {
     /// This avoids String ownership transfer on repeated function calls.
     fn rust_param_type_name(&self, ty: &Type) -> String {
         match ty {
-            Type::Str(_) | Type::StrSlice | Type::CStr => "&str".to_string(),
+            Type::StrFixed(_) | Type::StrSlice | Type::CStrLit => "&str".to_string(),
             _ => self.rust_type_name(ty),
         }
     }
@@ -1642,7 +1648,7 @@ impl RustTrans {
             // Future: refine based on source type inference.
             Expr::To { expr, target_type } => {
                 match target_type {
-                    Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => {
+                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
                         // x.to(str) / x.to(String) → x.to_string()
                         self.expr(expr, out)?;
                         write!(out, ".to_string()")?;
@@ -2218,7 +2224,7 @@ impl RustTrans {
                             return Ok(());
                         }
                     }
-                    // map.get_or(key, default) -> map.get(key).cloned().unwrap_or(default)
+                    // map.get_or(key, default) -> map.get(key).cloned().unwrap_or(default.to_string())
                     self.expr(object, out)?;
                     write!(out, ".get(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -2228,6 +2234,9 @@ impl RustTrans {
                     if call.args.args.len() > 1 {
                         if let Arg::Pos(a) = &call.args.args[1] {
                             self.expr(a, out)?;
+                            if matches!(a, Expr::Str(_) | Expr::CStr(_)) {
+                                write!(out, ".to_string()")?;
+                            }
                         }
                     }
                     write!(out, ")")?;
@@ -2379,8 +2388,8 @@ impl RustTrans {
                 match arg {
                     Arg::Pos(expr) => {
                         self.expr(expr, out)?;
-                        // For Map.insert(), auto-convert &str to String
-                        if is_insert {
+                        // For Map.insert(), auto-convert string literals to String
+                        if is_insert && matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                             write!(out, ".to_string()")?;
                         }
                     }
@@ -2464,13 +2473,38 @@ impl RustTrans {
         // Normal function call
         self.expr(&call.name, out)?;
         write!(out, "(")?;
+
+        // Look up str-param flags for auto-borrow at call sites
+        let str_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
+            self.fn_str_param_indices.get(fn_name).cloned()
+        } else {
+            None
+        };
+
         for (i, arg) in call.args.args.iter().enumerate() {
+            let is_str_param = str_flags.as_ref()
+                .and_then(|f| f.get(i))
+                .copied()
+                .unwrap_or(false);
+            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg);
+            if needs_borrow {
+                write!(out, "&")?;
+            }
             self.arg(arg, out)?;
             if i < call.args.args.len() - 1 {
                 write!(out, ", ")?;
             }
         }
         write!(out, ")").map_err(Into::into)
+    }
+
+    /// Check if an arg is a string literal ("...") — doesn't need & at call site
+    fn is_string_literal_arg(arg: &Arg) -> bool {
+        if let Arg::Pos(expr) = arg {
+            matches!(expr, Expr::Str(_) | Expr::CStr(_))
+        } else {
+            false
+        }
     }
 
     fn struct_init(
@@ -2837,7 +2871,7 @@ impl RustTrans {
 
         // Plan 6B-3.4: const declaration → const NAME: &str = "...";
         if matches!(store.kind, StoreKind::Const) {
-            let ty_name = if matches!(store.ty, Type::Str(_)) {
+            let ty_name = if matches!(store.ty, Type::StrFixed(_)) {
                 "&str".to_string()
             } else {
                 self.rust_type_name(&store.ty)
@@ -2875,9 +2909,9 @@ impl RustTrans {
             || matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "view");
         let is_mut_borrow = matches!(&store.expr, Expr::Dot(_, f) if f.as_str() == "mut");
 
-        let ty_name = if is_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
+        let ty_name = if is_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             "&str".to_string()
-        } else if is_mut_borrow && matches!(store.ty, Type::String | Type::Str(_)) {
+        } else if is_mut_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             "&mut str".to_string()
         } else {
             ty_name
@@ -2952,7 +2986,7 @@ impl RustTrans {
 
         // When assigning a string literal to a String/Str type, add .to_string()
         // because Rust string literals are &str, but String type needs conversion
-        if matches!(store.ty, Type::String | Type::Str(_)) {
+        if matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             if let Expr::Str(_) = &store.expr {
                 write!(out, ".to_string()")?;
             }
@@ -3073,11 +3107,16 @@ impl RustTrans {
 
         // Plan 232: Track str-type parameter names for .to_string() on return
         self.current_fn_str_params.clear();
+        // Cache which params are str (&str) type for auto-borrow at call sites
+        let str_param_flags: Vec<bool> = fn_decl.params.iter()
+            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+            .collect();
         for param in &fn_decl.params {
-            if matches!(param.ty, Type::Str(_) | Type::StrSlice | Type::CStr) {
+            if matches!(param.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
                 self.current_fn_str_params.insert(param.name.clone());
             }
         }
+        self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
         // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)

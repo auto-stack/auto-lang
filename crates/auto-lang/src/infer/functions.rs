@@ -496,7 +496,7 @@ mod tests {
         let fn_ty = result.unwrap();
 
         if let Type::Fn(_, ret) = fn_ty {
-            assert!(matches!(*ret, Type::Str(_)));
+            assert!(matches!(*ret, Type::StrFixed(_)));
         } else {
             panic!("Expected function type");
         }

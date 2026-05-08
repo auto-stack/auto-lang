@@ -321,7 +321,7 @@ fn is_image_source_prop(name: &str, ty: &Type) -> bool {
     // Common naming patterns for image sources
     let is_image_name = name.ends_with("Src") || name.ends_with("Image") || name == "imageSrc" || name == "src" || name == "image";
     // Must be a string type (would be converted to ResourceStr)
-    let is_str_type = matches!(ty, Type::Str(_) | Type::String);
+    let is_str_type = matches!(ty, Type::StrFixed(_) | Type::StrOwned);
     is_image_name && is_str_type
 }
 
@@ -406,7 +406,7 @@ fn auto_type_to_arkts(ty: &Type, interfaces: &[InterfaceDef]) -> String {
         Type::Uint | Type::U64 => "number".to_string(),
         Type::Float | Type::Double => "number".to_string(),
         Type::Bool => "boolean".to_string(),
-        Type::Str(_) | Type::String => "string".to_string(),
+        Type::StrFixed(_) | Type::StrOwned => "string".to_string(),
         Type::Array(arr) => format!("{}[]", auto_type_to_arkts(&arr.elem, interfaces)),
         Type::List(elem) => format!("{}[]", auto_type_to_arkts(elem, interfaces)),
         Type::Map(k, v) => format!("HashMap<{}, {}>", auto_type_to_arkts(k, interfaces), auto_type_to_arkts(v, interfaces)),
@@ -429,7 +429,7 @@ fn generate_default_value(ty: &Type) -> String {
         Type::Uint | Type::U64 => "1".to_string(),
         Type::Float | Type::Double => "1.0".to_string(),
         Type::Bool => "false".to_string(),
-        Type::Str(_) | Type::String => "\"\"".to_string(),
+        Type::StrFixed(_) | Type::StrOwned => "\"\"".to_string(),
         Type::Array(_) => "[]".to_string(),
         Type::List(_) => "[]".to_string(),
         Type::Map(_, _) => "new HashMap()".to_string(),
@@ -586,14 +586,14 @@ mod tests {
         let interfaces = vec![];
         assert_eq!(auto_type_to_arkts(&Type::Int, &interfaces), "number");
         assert_eq!(auto_type_to_arkts(&Type::Bool, &interfaces), "boolean");
-        assert_eq!(auto_type_to_arkts(&Type::Str(0), &interfaces), "string");
+        assert_eq!(auto_type_to_arkts(&Type::StrFixed(0), &interfaces), "string");
     }
 
     #[test]
     fn test_generate_default_value() {
         assert_eq!(generate_default_value(&Type::Int), "0");
         assert_eq!(generate_default_value(&Type::Bool), "false");
-        assert_eq!(generate_default_value(&Type::Str(0)), "\"\"");
+        assert_eq!(generate_default_value(&Type::StrFixed(0)), "\"\"");
     }
 
     #[test]

@@ -180,10 +180,10 @@ impl TaskTypeChecker {
             (Type::Uint, Type::Uint) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Char, Type::Char) => true,
-            (Type::Str(_), Type::Str(_))
-            | (Type::Str(_), Type::String)
-            | (Type::String, Type::Str(_))
-            | (Type::String, Type::String) => true,
+            (Type::StrFixed(_), Type::StrFixed(_))
+            | (Type::StrFixed(_), Type::StrOwned)
+            | (Type::StrOwned, Type::StrFixed(_))
+            | (Type::StrOwned, Type::StrOwned) => true,
             (Type::Void, Type::Void) => true,
 
             // Numeric compatibility
@@ -280,7 +280,7 @@ impl TaskTypeChecker {
             Expr::Double(_, _) => Type::Double,
             Expr::Bool(_) => Type::Bool,
             Expr::Char(_) => Type::Char,
-            Expr::Str(s) => Type::Str(s.len()),
+            Expr::Str(s) => Type::StrFixed(s.len()),
             Expr::Ident(name) => Type::User(TypeDecl {
                 name: name.clone(),
                 kind: TypeDeclKind::UserType,
@@ -310,7 +310,7 @@ impl Default for TaskTypeChecker {
 /// Convert a literal value to its corresponding type
 pub fn literal_to_type(lit: &LiteralValue) -> Type {
     match lit {
-        LiteralValue::String(s) => Type::Str(s.len()),
+        LiteralValue::String(s) => Type::StrFixed(s.len()),
         LiteralValue::Int(_) => Type::Int,
         LiteralValue::Uint(_) => Type::Uint,
         LiteralValue::Float(_, _) => Type::Float,
@@ -357,11 +357,11 @@ mod tests {
             name: "TestEnvelope".into(),
             fields: vec![
                 UnionField { name: "IntVariant".into(), ty: Type::Int },
-                UnionField { name: "StrVariant".into(), ty: Type::Str(0) },
+                UnionField { name: "StrVariant".into(), ty: Type::StrFixed(0) },
             ],
         });
         assert!(checker.check_send_type(&envelope, &Type::Int).is_ok());
-        assert!(checker.check_send_type(&envelope, &Type::Str(0)).is_ok());
+        assert!(checker.check_send_type(&envelope, &Type::StrFixed(0)).is_ok());
         assert!(checker.check_send_type(&envelope, &Type::Bool).is_err());
     }
 
@@ -394,14 +394,14 @@ mod tests {
         on_block.add_handler_with_guard(
             TaskMsgPattern::TypeBinding {
                 name: "msg".into(),
-                type_expr: Box::new(Type::Str(0)),
+                type_expr: Box::new(Type::StrFixed(0)),
             },
             None,
             Body::new(),
         );
 
         let result = checker.infer_envelope_type("TestTask", &on_block);
-        assert!(matches!(result, Type::Str(_)));
+        assert!(matches!(result, Type::StrFixed(_)));
     }
 
     #[test]
@@ -422,7 +422,7 @@ mod tests {
         on_block.add_handler_with_guard(
             TaskMsgPattern::TypeBinding {
                 name: "msg".into(),
-                type_expr: Box::new(Type::Str(0)),
+                type_expr: Box::new(Type::StrFixed(0)),
             },
             None,
             Body::new(),

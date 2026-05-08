@@ -29,7 +29,7 @@ fn test_monomorphizer_list_string() {
 
     let instance = crate::vm::generic::GenericInstance::new(
         "List".to_string(),
-        vec![Type::Str(0)]
+        vec![Type::StrFixed(0)]
     );
     mono.register_generic(instance);
 
@@ -46,7 +46,7 @@ fn test_codegen_monomorphize() {
 
     // Track some generics
     codegen.track_generic(&Type::List(Box::new(Type::Int)));
-    codegen.track_generic(&Type::List(Box::new(Type::Str(0))));
+    codegen.track_generic(&Type::List(Box::new(Type::StrFixed(0))));
     codegen.track_generic(&Type::List(Box::new(Type::Bool)));
 
     // Perform monomorphization
@@ -69,7 +69,7 @@ fn test_codegen_monomorphize() {
 fn test_is_monomorphizable() {
     assert!(is_monomorphizable(&Type::List(Box::new(Type::Int))));
     assert!(!is_monomorphizable(&Type::Int));
-    assert!(!is_monomorphizable(&Type::Str(0)));
+    assert!(!is_monomorphizable(&Type::StrFixed(0)));
     assert!(!is_monomorphizable(&Type::Bool));
 }
 
@@ -117,7 +117,7 @@ fn test_monomorphizer_multiple_modules() {
     ));
     mono.register_generic(crate::vm::generic::GenericInstance::new(
         "List".to_string(),
-        vec![Type::Str(0)]
+        vec![Type::StrFixed(0)]
     ));
     mono.register_generic(crate::vm::generic::GenericInstance::new(
         "List".to_string(),

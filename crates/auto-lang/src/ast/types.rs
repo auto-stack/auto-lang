@@ -32,10 +32,10 @@ pub enum Type {
     Double,
     Bool,
     Char, // char is actually u8/ubyte
-    Str(usize),
-    CStr,
-    StrSlice,  // Borrowed string slice (Phase 3)
-    String,    // Owned, growable dynamic string (Plan 155)
+    StrFixed(usize), // Fixed-size string buffer (user writes str(N))
+    CStrLit,        // C-style string literal (null-terminated)
+    StrSlice,       // Borrowed string slice &str (user writes str)
+    StrOwned,       // Owned dynamic String (user writes Str)
     Array(ArrayType),         // [N]T - static array (compile-time size)
     RuntimeArray(RuntimeArrayType),  // [expr]T - runtime-sized array (Plan 052)
     List(Box<Type>),          // List<T> - dynamic list
@@ -83,10 +83,10 @@ impl Type {
             Type::Bool => "bool".into(),
             Type::Byte => "byte".into(),
             Type::Char => "char".into(),
-            Type::Str(_) => "str".into(),
-            Type::CStr => "cstr".into(),
+            Type::StrFixed(_) => "str".into(),
+            Type::CStrLit => "cstr".into(),
             Type::StrSlice => "str".into(),
-            Type::String => "String".into(),
+            Type::StrOwned => "Str".into(),
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
@@ -149,10 +149,10 @@ impl Type {
             Type::Bool => "false".into(),
             Type::Byte => "0".into(),
             Type::Char => "0".into(),
-            Type::Str(_) => "\"\"".into(),
-            Type::CStr => "\"\"".into(),
+            Type::StrFixed(_) => "\"\"".into(),
+            Type::CStrLit => "\"\"".into(),
             Type::StrSlice => "\"\"".into(),  // Default empty slice
-            Type::String => "String.new()".into(),  // Owned dynamic string
+            Type::StrOwned => "Str.new()".into(),  // Owned dynamic string
             Type::Array(_) => "[]".into(),
             Type::RuntimeArray(_) => "[runtime]".into(),  // Runtime array placeholder
             Type::List(_) => "List.new()".into(),  // Empty list constructor
@@ -198,8 +198,8 @@ impl Type {
         match self {
             // Basic types: return directly (no substitution needed)
             Type::Byte | Type::Int | Type::Uint | Type::USize | Type::Float | Type::Double |
-            Type::Bool | Type::Char | Type::Void | Type::CStr | Type::StrSlice |
-            Type::Unknown | Type::Variadic | Type::String => self.clone(),
+            Type::Bool | Type::Char | Type::Void | Type::CStrLit | Type::StrSlice |
+            Type::Unknown | Type::Variadic | Type::StrOwned => self.clone(),
 
             Type::Fn(params, ret) => {
                 // Function types don't support type parameter substitution
@@ -207,7 +207,7 @@ impl Type {
                 Type::Fn(params.clone(), ret.clone())
             }
 
-            Type::Str(_) => Type::Str(0), // Str with size 0 is generic
+            Type::StrFixed(_) => Type::StrFixed(0), // Str with size 0 is generic
 
             // Type parameters: lookup and replace
             Type::User(type_decl) => {
@@ -312,7 +312,7 @@ impl Type {
     ///
     /// assert!(Type::Int.is_optimized_by_value());      // true: small type
     /// assert!(Type::Bool.is_optimized_by_value());     // true: small type
-    /// assert!(!Type::Str(10).is_optimized_by_value()); // false: heap-allocated
+    /// assert!(!Type::StrFixed(10).is_optimized_by_value()); // false: heap-allocated
     /// ```
     pub fn is_optimized_by_value(&self) -> bool {
         match self {
@@ -323,7 +323,7 @@ impl Type {
             Type::Float | Type::Double => true,
 
             // Large types - use reference passing (heap-allocated or expensive to copy)
-            Type::Str(_) | Type::CStr | Type::StrSlice | Type::String => false,
+            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => false,
             Type::Array(_) | Type::RuntimeArray(_) | Type::List(_) | Type::Map(_, _) => false,
             Type::Slice(_) | Type::Ptr(_) | Type::Reference(_) => false,
 
@@ -351,7 +351,7 @@ impl Type {
 
     /// Check if this type is any kind of string (literal, slice, or owned)
     pub fn is_any_string(&self) -> bool {
-        matches!(self, Type::Str(_) | Type::StrSlice | Type::String)
+        matches!(self, Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned)
     }
 }
 
@@ -521,10 +521,10 @@ impl fmt::Display for Type {
             Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
             Type::Char => write!(f, "char"),
-            Type::Str(_) => write!(f, "str"),
-            Type::CStr => write!(f, "cstr"),
+            Type::StrFixed(_) => write!(f, "str"),
+            Type::CStrLit => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str"),
-            Type::String => write!(f, "String"),
+            Type::StrOwned => write!(f, "String"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::RuntimeArray(rta) => write!(f, "{}", rta),
             Type::List(elem) => write!(f, "List<{}>", elem),
@@ -582,10 +582,10 @@ impl From<Type> for auto_val::Type {
             Type::Double => auto_val::Type::Double,
             Type::Bool => auto_val::Type::Bool,
             Type::Char => auto_val::Type::Char,
-            Type::Str(_) => auto_val::Type::Str,
-            Type::CStr => auto_val::Type::CStr,
+            Type::StrFixed(_) => auto_val::Type::Str,
+            Type::CStrLit => auto_val::Type::CStrLit,
             Type::StrSlice => auto_val::Type::StrSlice,
-            Type::String => auto_val::Type::String,
+            Type::StrOwned => auto_val::Type::StrOwned,
             Type::Array(_) => auto_val::Type::Array,
             Type::RuntimeArray(_) => auto_val::Type::Array,  // Runtime arrays transpile to Array type
             Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
@@ -879,10 +879,10 @@ impl AtomWriter for Type {
             Type::Double => write!(f, "double")?,
             Type::Bool => write!(f, "bool")?,
             Type::Char => write!(f, "char")?,
-            Type::Str(_) => write!(f, "str")?,
-            Type::CStr => write!(f, "cstr")?,
+            Type::StrFixed(_) => write!(f, "str")?,
+            Type::CStrLit => write!(f, "cstr")?,
             Type::StrSlice => write!(f, "str")?,
-            Type::String => write!(f, "String")?,
+            Type::StrOwned => write!(f, "String")?,
             Type::Array(array_type) => {
                 write!(
                     f,

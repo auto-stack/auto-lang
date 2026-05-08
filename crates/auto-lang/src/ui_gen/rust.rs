@@ -826,7 +826,7 @@ impl RustGenerator {
             crate::ast::Type::Float => "f32".to_string(),
             crate::ast::Type::Double => "f64".to_string(),
             crate::ast::Type::Bool => "bool".to_string(),
-            crate::ast::Type::Str(_) | crate::ast::Type::String => "String".to_string(),
+            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned => "String".to_string(),
             crate::ast::Type::Void => "()".to_string(),
             _ => "i32".to_string(), // Default fallback
         }
@@ -1055,7 +1055,7 @@ mod tests {
 
         assert_eq!(gen.auto_type_to_rust(&Type::Int), "i32");
         assert_eq!(gen.auto_type_to_rust(&Type::Bool), "bool");
-        assert_eq!(gen.auto_type_to_rust(&Type::Str(0)), "String");
+        assert_eq!(gen.auto_type_to_rust(&Type::StrFixed(0)), "String");
         assert_eq!(gen.auto_type_to_rust(&Type::Float), "f32");
     }
 

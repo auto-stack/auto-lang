@@ -68,8 +68,8 @@ mod plan_088_tests {
     #[test]
     fn test_is_optimized_by_value_large_types() {
         // Large types should return false (use reference passing)
-        assert!(!Type::Str(10).is_optimized_by_value());
-        assert!(!Type::CStr.is_optimized_by_value());
+        assert!(!Type::StrFixed(10).is_optimized_by_value());
+        assert!(!Type::CStrLit.is_optimized_by_value());
         assert!(!Type::StrSlice.is_optimized_by_value());
 
         // Array types
@@ -160,7 +160,7 @@ mod plan_088_tests {
         // Verify that large types use reference passing
         // This is critical for memory efficiency
 
-        let string_param = Param::new("text".into(), Type::Str(100), None);
+        let string_param = Param::new("text".into(), Type::StrFixed(100), None);
         assert!(!string_param.ty.is_optimized_by_value());
 
         let list_param = Param::new("items".into(), Type::List(Box::new(Type::Int)), None);

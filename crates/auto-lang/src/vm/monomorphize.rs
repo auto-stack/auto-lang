@@ -84,7 +84,7 @@ impl Monomorphizer {
                     // List<int> operations
                     bytecode.push(OpCode::CREATE_LIST_INT as u8);
                 }
-                Type::Str(_) | Type::String => {
+                Type::StrFixed(_) | Type::StrOwned => {
                     // List<string> operations
                     bytecode.push(OpCode::CREATE_LIST_STR as u8);
                 }
@@ -104,7 +104,7 @@ impl Monomorphizer {
     pub fn get_list_create_opcode(elem_type: &Type) -> Option<OpCode> {
         match elem_type {
             Type::Int => Some(OpCode::CREATE_LIST_INT),
-            Type::Str(_) | Type::String => Some(OpCode::CREATE_LIST_STR),
+            Type::StrFixed(_) | Type::StrOwned => Some(OpCode::CREATE_LIST_STR),
             Type::Bool => Some(OpCode::CREATE_LIST_BOOL),
             _ => None,
         }
@@ -244,7 +244,7 @@ mod tests {
     fn test_monomorphize_list_string() {
         let mut mono = Monomorphizer::new();
 
-        let instance = GenericInstance::new("List".to_string(), vec![Type::Str(0)]);
+        let instance = GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]);
         mono.register_generic(instance);
 
         let modules = mono.monomorphize();
@@ -273,7 +273,7 @@ mod tests {
         let mut mono = Monomorphizer::new();
 
         mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Int]));
-        mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+        mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
         mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
         let modules = mono.monomorphize();
@@ -293,7 +293,7 @@ mod tests {
             Some(OpCode::CREATE_LIST_INT)
         );
         assert_eq!(
-            Monomorphizer::get_list_create_opcode(&Type::Str(0)),
+            Monomorphizer::get_list_create_opcode(&Type::StrFixed(0)),
             Some(OpCode::CREATE_LIST_STR)
         );
         assert_eq!(
@@ -313,7 +313,7 @@ mod tests {
             Some(OpCode::LIST_PUSH_INT)
         );
         assert_eq!(
-            Monomorphizer::get_list_push_opcode(&Type::Str(0)),
+            Monomorphizer::get_list_push_opcode(&Type::StrFixed(0)),
             None // Not implemented yet
         );
     }
@@ -322,7 +322,7 @@ mod tests {
     fn test_is_monomorphizable() {
         assert!(is_monomorphizable(&Type::List(Box::new(Type::Int))));
         assert!(!is_monomorphizable(&Type::Int));
-        assert!(!is_monomorphizable(&Type::Str(0)));
+        assert!(!is_monomorphizable(&Type::StrFixed(0)));
     }
 
     #[test]

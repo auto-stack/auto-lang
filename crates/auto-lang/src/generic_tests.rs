@@ -24,7 +24,7 @@ fn test_generic_table_multiple_lists() {
     // Register List<int>
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
     // Register List<string>
-    table.register(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
     // Register List<bool>
     table.register(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
@@ -50,7 +50,7 @@ fn test_codegen_track_generic_list_string() {
     let mut codegen = Codegen::new();
 
     // Track List<string>
-    let list_str = Type::List(Box::new(Type::Str(0)));
+    let list_str = Type::List(Box::new(Type::StrFixed(0)));
     let mono_name = codegen.track_generic(&list_str);
 
     assert_eq!(mono_name, Some("List_str".to_string()));
@@ -64,7 +64,7 @@ fn test_codegen_track_multiple_generics() {
 
     // Track multiple instantiations
     codegen.track_generic(&Type::List(Box::new(Type::Int)));
-    codegen.track_generic(&Type::List(Box::new(Type::Str(0))));
+    codegen.track_generic(&Type::List(Box::new(Type::StrFixed(0))));
     codegen.track_generic(&Type::List(Box::new(Type::Bool)));
 
     assert_eq!(codegen.generics.len(), 3);
@@ -116,7 +116,7 @@ fn test_generic_instance_list_element_type() {
     // Just check that element type is present (can't compare Type directly)
     assert!(list_int.list_element_type().is_some());
 
-    let list_str = GenericInstance::new("List".to_string(), vec![Type::Str(0)]);
+    let list_str = GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]);
     assert!(list_str.list_element_type().is_some());
 
     // Wrong parameter count
@@ -153,7 +153,7 @@ fn test_generic_table_clear() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
 
     assert_eq!(table.len(), 2);
 
@@ -181,7 +181,7 @@ fn test_codegen_preserves_generics_after_tracking() {
 
     // Track some generics
     codegen.track_generic(&Type::List(Box::new(Type::Int)));
-    codegen.track_generic(&Type::List(Box::new(Type::Str(0))));
+    codegen.track_generic(&Type::List(Box::new(Type::StrFixed(0))));
 
     // Generics table should persist
     assert_eq!(codegen.generics.len(), 2);

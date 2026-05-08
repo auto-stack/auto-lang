@@ -15,10 +15,10 @@ pub enum Type {
     Double,
     Bool,
     Char,
-    Str,
-    CStr,
+    Str,       // String literal value (matches Value::Str)
+    CStrLit,   // C-style string literal (null-terminated)
     StrSlice,  // Borrowed string slice (Phase 3)
-    String,    // Owned, growable dynamic string (Plan 155)
+    StrOwned,  // Owned, growable dynamic string (Plan 155)
     Array,
     Ptr,
     User(AutoStr),
@@ -87,7 +87,7 @@ impl TypeInfoStore {
             Value::Float(_) => self.lookup_method(Type::Float, name),
             Value::Bool(_) => self.lookup_method(Type::Bool, name),
             Value::Str(_) => self.lookup_method(Type::Str, name),
-            Value::String(_) => self.lookup_method(Type::String, name),
+            Value::String(_) => self.lookup_method(Type::StrOwned, name),
             Value::StrSlice(_) => self.lookup_method(Type::StrSlice, name),
             _ => self.lookup_method(Type::Any, name),
         }
@@ -112,9 +112,9 @@ impl TypeInfoStore {
             Type::Double => self.types.get("double").unwrap(),
             Type::Bool => self.types.get("bool").unwrap(),
             Type::Str => self.types.get("str").unwrap(),
-            Type::CStr => self.types.get("cstr").unwrap(),
+            Type::CStrLit => self.types.get("cstr").unwrap(),
             Type::StrSlice => self.types.get("str_slice").unwrap(),
-            Type::String => self.types.get("String").unwrap(),
+            Type::StrOwned => self.types.get("String").unwrap(),
             Type::Char => self.types.get("char").unwrap(),
             Type::Array => self.types.get("array").unwrap(),
             Type::Ptr => self.types.get("ptr").unwrap(),
@@ -239,9 +239,9 @@ impl fmt::Display for Type {
             Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
-            Type::CStr => write!(f, "cstr"),
+            Type::CStrLit => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str_slice"),
-            Type::String => write!(f, "String"),
+            Type::StrOwned => write!(f, "String"),
             Type::Char => write!(f, "char"),
             Type::Array => write!(f, "array"),
             Type::Ptr => write!(f, "ptr"),

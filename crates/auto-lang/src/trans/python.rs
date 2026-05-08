@@ -123,7 +123,7 @@ impl PythonTrans {
                         self.expr(expr, out)?;
                         out.write(b")")?;
                     }
-                    Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => {
+                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
                         write!(out, "str(")?;
                         self.expr(expr, out)?;
                         out.write(b")")?;
@@ -1138,7 +1138,7 @@ impl PythonTrans {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Byte => "0".into(),
             Type::Float | Type::Double => "0.0".into(),
             Type::Bool => "False".into(),
-            Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => "\"\"".into(),
+            Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => "\"\"".into(),
             _ => "None".into(),
         }
     }
@@ -1150,8 +1150,8 @@ impl PythonTrans {
             Type::Float => "float".into(),
             Type::Double => "float".into(),
             Type::Bool => "bool".into(),
-            Type::Str(_) | Type::String | Type::StrSlice => "str".into(),
-            Type::CStr => "str".into(),
+            Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => "str".into(),
+            Type::CStrLit => "str".into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::List(_) => "list".into(),  // List<T> → list in Python

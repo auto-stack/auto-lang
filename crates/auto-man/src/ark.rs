@@ -368,7 +368,7 @@ impl ArkProject {
         match ty {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
             Type::Bool => "boolean".to_string(),
-            Type::Str(_) | Type::CStr | Type::StrSlice => "string".to_string(),
+            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice => "string".to_string(),
             Type::User(type_decl) => {
                 let type_name = type_decl.name.as_str();
                 // Special handling for List type - treat as Object[]

@@ -389,23 +389,23 @@ impl InferenceContext {
             (Type::Void, Type::Void) => Ok(Type::Void),
 
             // 字符串类型：允许长度统一（未知长度）
-            (Type::Str(n1), Type::Str(n2)) => {
+            (Type::StrFixed(n1), Type::StrFixed(n2)) => {
                 if n1 == n2 {
-                    Ok(Type::Str(n1))
+                    Ok(Type::StrFixed(n1))
                 } else {
-                    Ok(Type::Str(0)) // 未知长度
+                    Ok(Type::StrFixed(0)) // 未知长度
                 }
             }
             // Str literal → StrSlice 隐式转换
-            (Type::Str(_), Type::StrSlice) => Ok(Type::StrSlice),
-            (Type::StrSlice, Type::Str(_)) => Ok(Type::StrSlice),
+            (Type::StrFixed(_), Type::StrSlice) => Ok(Type::StrSlice),
+            (Type::StrSlice, Type::StrFixed(_)) => Ok(Type::StrSlice),
             (Type::StrSlice, Type::StrSlice) => Ok(Type::StrSlice),
             // String ↔ StrSlice 隐式转换
-            (Type::String, Type::StrSlice) | (Type::StrSlice, Type::String) => Ok(Type::StrSlice),
-            (Type::Str(_) | Type::String, Type::String) | (Type::String, Type::Str(_)) => {
-                Ok(Type::String)
+            (Type::StrOwned, Type::StrSlice) | (Type::StrSlice, Type::StrOwned) => Ok(Type::StrSlice),
+            (Type::StrFixed(_) | Type::StrOwned, Type::StrOwned) | (Type::StrOwned, Type::StrFixed(_)) => {
+                Ok(Type::StrOwned)
             }
-            (Type::CStr, Type::CStr) => Ok(Type::CStr),
+            (Type::CStrLit, Type::CStrLit) => Ok(Type::CStrLit),
 
             // 数组类型：统一元素类型和长度
             (Type::Array(arr1), Type::Array(arr2)) => {

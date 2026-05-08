@@ -256,7 +256,7 @@ impl TypeScriptTrans {
                         self.expr(expr, out)?;
                         out.write(b")")?;
                     }
-                    Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => {
+                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
                         write!(out, "String(")?;
                         self.expr(expr, out)?;
                         out.write(b")")?;

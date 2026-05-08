@@ -523,7 +523,7 @@ fn import_value(value: &A2UIValue) -> (AuraExpr, Vec<AuraStateDef>) {
             if !var_name.is_empty() {
                 state_vars.push(AuraStateDef {
                     name: var_name.clone(),
-                    type_info: Type::String,
+                    type_info: Type::StrOwned,
                     initial: AuraExpr::Literal("".to_string()),
                     decorators: vec![],
                 });

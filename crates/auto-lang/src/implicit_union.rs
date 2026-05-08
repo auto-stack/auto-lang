@@ -292,8 +292,8 @@ fn type_to_rust_type(ty: &Type) -> String {
         Type::Bool => "bool".to_string(),
         Type::Byte => "u8".to_string(),
         Type::Char => "char".to_string(),
-        Type::Str(_) | Type::String | Type::StrSlice => "String".to_string(),
-        Type::CStr => "std::ffi::CString".to_string(),
+        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => "String".to_string(),
+        Type::CStrLit => "std::ffi::CString".to_string(),
         Type::Void => "()".to_string(),
         Type::USize => "usize".to_string(),
         Type::Array(arr) => {
@@ -331,7 +331,7 @@ fn type_to_c_type(ty: &Type) -> String {
         Type::Bool => "bool".to_string(),
         Type::Byte => "uint8_t".to_string(),
         Type::Char => "char".to_string(),
-        Type::Str(_) | Type::String | Type::StrSlice => "char*".to_string(),
+        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => "char*".to_string(),
         Type::Void => "void".to_string(),
         Type::USize => "size_t".to_string(),
         Type::Array(arr) => {
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn test_add_type_binding() {
         let mut info = ImplicitUnionInfo::new("TestTask");
-        info.add_type_binding("msg".into(), Type::Str(0));
+        info.add_type_binding("msg".into(), Type::StrFixed(0));
         assert_eq!(info.type_bindings.len(), 1);
         assert_eq!(info.type_bindings[0].0, "msg");
     }
@@ -410,7 +410,7 @@ mod tests {
     fn test_generate_rust_enum() {
         let mut info = ImplicitUnionInfo::new("TestTask");
         info.add_literal(LiteralValue::String("ping".into()));
-        info.add_type_binding("msg".into(), Type::Str(0));
+        info.add_type_binding("msg".into(), Type::StrFixed(0));
 
         let code = info.generate_rust_enum();
         assert!(code.contains("pub enum TestTaskEnvelope"));
@@ -439,7 +439,7 @@ mod tests {
     fn test_type_to_rust_type() {
         assert_eq!(type_to_rust_type(&Type::Int), "i64");
         assert_eq!(type_to_rust_type(&Type::Bool), "bool");
-        assert_eq!(type_to_rust_type(&Type::Str(0)), "String");
+        assert_eq!(type_to_rust_type(&Type::StrFixed(0)), "String");
         assert_eq!(type_to_rust_type(&Type::Void), "()");
     }
 
@@ -499,7 +499,7 @@ mod tests {
         info.add_literal(LiteralValue::String("ping".into()));
         assert_eq!(info.variant_count(), 1);
 
-        info.add_type_binding("msg".into(), Type::Str(0));
+        info.add_type_binding("msg".into(), Type::StrFixed(0));
         assert_eq!(info.variant_count(), 2);
     }
 

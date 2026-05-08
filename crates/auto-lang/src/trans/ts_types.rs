@@ -14,7 +14,7 @@ impl TypeScriptTrans {
             Type::Bool => "boolean".to_string(),
 
             // String types → string
-            Type::Str(_) | Type::CStr | Type::StrSlice | Type::String => "string".to_string(),
+            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => "string".to_string(),
 
             // Array types → T[]
             Type::Array(arr) => {

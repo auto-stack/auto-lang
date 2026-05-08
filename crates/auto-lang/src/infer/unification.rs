@@ -131,7 +131,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         Type::Void => false,
 
         // 字符串类型
-        Type::Str(_) | Type::CStr | Type::StrSlice | Type::String => false,
+        Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => false,
 
         // Unknown 类型
         Type::Unknown => false,
@@ -222,16 +222,16 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
         (Type::Char, Type::Char) => Ok(Type::Char),
 
         // 3. 字符串类型
-        (Type::Str(_), Type::Str(_)) => Ok(ty1.clone()),
-        (Type::Str(_), Type::String) | (Type::String, Type::Str(_)) => Ok(ty1.clone()),
-        (Type::String, Type::String) => Ok(ty1.clone()),
-        (Type::CStr, Type::CStr) => Ok(ty1.clone()),
+        (Type::StrFixed(_), Type::StrFixed(_)) => Ok(ty1.clone()),
+        (Type::StrFixed(_), Type::StrOwned) | (Type::StrOwned, Type::StrFixed(_)) => Ok(ty1.clone()),
+        (Type::StrOwned, Type::StrOwned) => Ok(ty1.clone()),
+        (Type::CStrLit, Type::CStrLit) => Ok(ty1.clone()),
         // Str literal → StrSlice 隐式转换
-        (Type::Str(_), Type::StrSlice) => Ok(Type::StrSlice),
-        (Type::StrSlice, Type::Str(_)) => Ok(Type::StrSlice),
+        (Type::StrFixed(_), Type::StrSlice) => Ok(Type::StrSlice),
+        (Type::StrSlice, Type::StrFixed(_)) => Ok(Type::StrSlice),
         (Type::StrSlice, Type::StrSlice) => Ok(Type::StrSlice),
         // String ↔ StrSlice 隐式转换
-        (Type::String, Type::StrSlice) | (Type::StrSlice, Type::String) => Ok(Type::StrSlice),
+        (Type::StrOwned, Type::StrSlice) | (Type::StrSlice, Type::StrOwned) => Ok(Type::StrSlice),
 
         // 4. Void 类型
         (Type::Void, Type::Void) => Ok(Type::Void),

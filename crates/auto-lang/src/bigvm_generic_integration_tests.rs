@@ -30,7 +30,7 @@ fn test_codegen_tracks_multiple_list_types() {
 
     // Track multiple list instantiations
     codegen.track_generic(&Type::List(Box::new(Type::Int)));
-    codegen.track_generic(&Type::List(Box::new(Type::Str(0))));
+    codegen.track_generic(&Type::List(Box::new(Type::StrFixed(0))));
     codegen.track_generic(&Type::List(Box::new(Type::Bool)));
 
     assert_eq!(codegen.generics.len(), 3);
@@ -48,7 +48,7 @@ fn test_codegen_preserves_generics_across_compilations() {
     assert_eq!(codegen.generics.len(), 1);
 
     // Second compilation (simulated by not clearing)
-    codegen.track_generic(&Type::List(Box::new(Type::Str(0))));
+    codegen.track_generic(&Type::List(Box::new(Type::StrFixed(0))));
     assert_eq!(codegen.generics.len(), 2);
 
     // Generics should persist
@@ -79,7 +79,7 @@ fn test_monomorphize_multiple_instantiations() {
     let mut mono = Monomorphizer::new();
 
     mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+    mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
     mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
     let modules = mono.monomorphize();
@@ -118,7 +118,7 @@ fn test_get_list_create_opcode_int() {
 
 #[test]
 fn test_get_list_create_opcode_string() {
-    let elem_type = Type::Str(0);
+    let elem_type = Type::StrFixed(0);
     let opcode = Monomorphizer::get_list_create_opcode(&elem_type);
 
     assert_eq!(opcode, Some(OpCode::CREATE_LIST_STR));
@@ -217,7 +217,7 @@ fn test_is_monomorphizable_list() {
 #[test]
 fn test_is_monomorphizable_non_generic() {
     assert!(!is_monomorphizable(&Type::Int));
-    assert!(!is_monomorphizable(&Type::Str(0)));
+    assert!(!is_monomorphizable(&Type::StrFixed(0)));
     assert!(!is_monomorphizable(&Type::Bool));
 }
 
@@ -265,7 +265,7 @@ fn test_generic_instance_monomorphic_name_list_int() {
 
 #[test]
 fn test_generic_instance_monomorphic_name_list_str() {
-    let instance = GenericInstance::new("List".to_string(), vec![Type::Str(0)]);
+    let instance = GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]);
     assert_eq!(instance.monomorphic_name(), "List_str");
 }
 
@@ -289,7 +289,7 @@ fn test_generic_instance_list_element_type() {
     let list_int = GenericInstance::new("List".to_string(), vec![Type::Int]);
     assert!(list_int.list_element_type().is_some());
 
-    let list_str = GenericInstance::new("List".to_string(), vec![Type::Str(0)]);
+    let list_str = GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]);
     assert!(list_str.list_element_type().is_some());
 
     let wrong_params = GenericInstance::new("List".to_string(), vec![]);
@@ -319,7 +319,7 @@ fn test_generic_table_multiple_registrations() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
     table.register(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
     assert_eq!(table.len(), 3);
@@ -333,7 +333,7 @@ fn test_generic_table_list_instantiations() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
 
     let lists = table.list_instantiations();
     assert_eq!(lists.len(), 2);
@@ -344,7 +344,7 @@ fn test_generic_table_clear() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
 
     assert_eq!(table.len(), 2);
 
@@ -363,7 +363,7 @@ fn test_end_to_end_track_and_monomorphize() {
     // Step 1: Track generics during compilation (simulated)
     let mut codegen = Codegen::new();
     codegen.track_generic(&Type::List(Box::new(Type::Int)));
-    codegen.track_generic(&Type::List(Box::new(Type::Str(0))));
+    codegen.track_generic(&Type::List(Box::new(Type::StrFixed(0))));
 
     // Step 2: Extract generics from codegen
     let instances = codegen.get_generic_instantiations();
@@ -397,7 +397,7 @@ fn test_end_to_end_monomorphizable_workflow() {
     // Source code contains: List<int>, List<string>, List<bool>
     let types = vec![
         Type::List(Box::new(Type::Int)),
-        Type::List(Box::new(Type::Str(0))),
+        Type::List(Box::new(Type::StrFixed(0))),
         Type::List(Box::new(Type::Bool)),
     ];
 

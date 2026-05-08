@@ -607,7 +607,7 @@ mod tests {
             name: "Pair".to_string(),
             param_types: vec![
                 GenericParamType::Type,
-                GenericParamType::String,
+                GenericParamType::StrOwned,
             ],
             field_ty: Type::Unknown,
         };
@@ -617,7 +617,7 @@ mod tests {
         // 创建泛型实例（类型参数替换）
         let instance = store.create_generic_instance(
             "Pair",
-            &[Type::Int, Type::Str(0)]
+            &[Type::Int, Type::StrFixed(0)]
         );
 
         assert!(matches!(instance, Type::GenericInstance(_)));
@@ -642,7 +642,7 @@ mod tests {
         // 创建泛型实例
         let instance = store.create_generic_instance(
             "Box",
-            &[Type::Int, Type::Str(0)]
+            &[Type::Int, Type::StrFixed(0)]
         );
 
         // 验证类型参数替换
@@ -650,7 +650,7 @@ mod tests {
             assert_eq!(inst.base_name.to_string(), "Box");
             // Type doesn't implement Eq, so we can't compare directly
             assert!(matches!(inst.args[0], Type::Int));
-            assert!(matches!(inst.args[1], Type::Str(_)));
+            assert!(matches!(inst.args[1], Type::StrFixed(_)));
         }
     }
 

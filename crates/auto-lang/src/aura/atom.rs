@@ -408,8 +408,8 @@ fn type_to_string(ty: &Type) -> String {
         Type::Double => "double".to_string(),
         Type::Bool => "bool".to_string(),
         Type::Char => "char".to_string(),
-        Type::Str(_) | Type::String => "str".to_string(),
-        Type::CStr => "cstr".to_string(),
+        Type::StrFixed(_) | Type::StrOwned => "str".to_string(),
+        Type::CStrLit => "cstr".to_string(),
         Type::StrSlice => "str_slice".to_string(),
         Type::Void => "void".to_string(),
         Type::Unknown => "unknown".to_string(),
@@ -499,7 +499,7 @@ mod tests {
     fn test_type_to_string() {
         assert_eq!(type_to_string(&Type::Int), "int");
         assert_eq!(type_to_string(&Type::Bool), "bool");
-        assert_eq!(type_to_string(&Type::Str(0)), "str");
+        assert_eq!(type_to_string(&Type::StrFixed(0)), "str");
     }
 
     #[test]

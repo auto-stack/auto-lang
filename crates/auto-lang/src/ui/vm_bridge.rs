@@ -516,7 +516,7 @@ mod tests {
             },
             AuraStateDef {
                 name: "label".to_string(),
-                type_info: Type::Str(0),
+                type_info: Type::StrFixed(0),
                 initial: AuraExpr::Literal("Hello".to_string()),
                 decorators: vec![],
             },
@@ -552,7 +552,7 @@ mod tests {
         let widget = make_test_widget("Greeter", vec![
             AuraStateDef {
                 name: "greeting".to_string(),
-                type_info: Type::Str(0),
+                type_info: Type::StrFixed(0),
                 initial: AuraExpr::Literal("Hello World".to_string()),
                 decorators: vec![],
             },
@@ -649,7 +649,7 @@ mod tests {
             },
             AuraStateDef {
                 name: "name".to_string(),
-                type_info: Type::Str(0),
+                type_info: Type::StrFixed(0),
                 initial: AuraExpr::Literal("test".to_string()),
                 decorators: vec![],
             },

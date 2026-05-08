@@ -46,8 +46,8 @@ impl GenericInstance {
             Type::Bool => "bool".to_string(),
             Type::Byte => "byte".to_string(),
             Type::Char => "char".to_string(),
-            Type::Str(_) | Type::String => "str".to_string(),
-            Type::CStr => "cstr".to_string(),
+            Type::StrFixed(_) | Type::StrOwned => "str".to_string(),
+            Type::CStrLit => "cstr".to_string(),
             Type::List(inner) => format!("List_{}", Self::type_to_simple_name(inner)),
             Type::Map(k, v) => format!("Map_{}_{}", Self::type_to_simple_name(k), Self::type_to_simple_name(v)),
             Type::User(type_decl) => type_decl.name.to_string(),
@@ -193,7 +193,7 @@ mod tests {
     fn test_generic_instance_list_string() {
         let instance = GenericInstance::new(
             "List".to_string(),
-            vec![Type::Str(0)],
+            vec![Type::StrFixed(0)],
         );
 
         assert_eq!(instance.monomorphic_name(), "List_str");
@@ -229,7 +229,7 @@ mod tests {
         let mut table = GenericTable::new();
 
         table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-        table.register(GenericInstance::new("List".to_string(), vec![Type::Str(0)]));
+        table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
         table.register(GenericInstance::new("MyType".to_string(), vec![Type::Bool]));
 
         assert_eq!(table.len(), 3);

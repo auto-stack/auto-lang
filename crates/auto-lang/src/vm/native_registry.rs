@@ -286,7 +286,7 @@ impl AutoVMNativeRegistry {
             Type::Int => Some(NativeRetType::Int),
             Type::Float => Some(NativeRetType::Float),
             Type::Bool => Some(NativeRetType::Bool),
-            Type::Str(_) => Some(NativeRetType::String),
+            Type::StrFixed(_) => Some(NativeRetType::String),
             Type::I64 => Some(NativeRetType::I64),
             _ => None,
         }

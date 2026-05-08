@@ -70,8 +70,8 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::Double(_, _) => Type::Double,
         Expr::Bool(_) => Type::Bool,
         Expr::Char(_) => Type::Char,
-        Expr::Str(s) => Type::Str(s.len()),
-        Expr::CStr(_) => Type::CStr,
+        Expr::Str(s) => Type::StrFixed(s.len()),
+        Expr::CStr(_) => Type::CStrLit,
 
         // 空值类型
         Expr::Nil | Expr::Null => Type::Unknown,
@@ -210,7 +210,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         }
 
         // ========== F-String 表达式 ==========
-        Expr::FStr(_) => Type::Str(0),
+        Expr::FStr(_) => Type::StrFixed(0),
 
         // ========== Grid 表达式 ==========
         Expr::Grid(_grid) => Type::Unknown,
@@ -759,8 +759,8 @@ fn get_type_decl_from_type(
         Type::Float => Ok(TypeDecl::builtin("float")),
         Type::Double => Ok(TypeDecl::builtin("double")),
         Type::Bool => Ok(TypeDecl::builtin("bool")),
-        Type::Str(_) | Type::String => Ok(TypeDecl::builtin("str")),
-        Type::CStr => Ok(TypeDecl::builtin("cstr")),
+        Type::StrFixed(_) | Type::StrOwned => Ok(TypeDecl::builtin("str")),
+        Type::CStrLit => Ok(TypeDecl::builtin("cstr")),
         Type::Char => Ok(TypeDecl::builtin("char")),
         Type::Void => Ok(TypeDecl::builtin("void")),
         // Types that don't have TypeDecls - return error
@@ -796,7 +796,7 @@ fn infer_index_type(ctx: &mut InferenceContext, array_expr: &Expr, index_expr: &
     match container_ty {
         Type::Array(arr) => *arr.elem,
         Type::RuntimeArray(rta) => *rta.elem, // Plan 052
-        Type::Str(_) | Type::String | Type::CStr => Type::Char,
+        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit => Type::Char,
         Type::Ptr(ptr) => {
             let inner_ty = ptr.of.borrow();
             inner_ty.clone()
@@ -904,7 +904,7 @@ mod tests {
         let mut ctx = make_test_context();
         let expr = Expr::Str(AutoStr::from("hello"));
         let ty = infer_expr(&mut ctx, &expr);
-        assert!(matches!(ty, Type::Str(_)));
+        assert!(matches!(ty, Type::StrFixed(_)));
     }
 
     #[test]

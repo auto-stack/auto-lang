@@ -792,7 +792,7 @@ impl<'a> Parser<'a> {
         // Plan 125: Check for built-in type aliases first
         match name {
             "str" => return shared(Type::StrSlice),
-            "String" => return shared(Type::String),
+            "Str" => return shared(Type::StrOwned),
             "int" => return shared(Type::Int),
             "uint" => return shared(Type::Uint),
             "i64" => return shared(Type::I64),
@@ -5886,9 +5886,9 @@ impl<'a> Parser<'a> {
             Expr::Float(..) => typ = Type::Float,
             Expr::Double(..) => typ = Type::Double,
             Expr::Bool(..) => typ = Type::Bool,
-            Expr::Str(n) => typ = Type::Str(n.len()),
-            Expr::CStr(..) => typ = Type::CStr,
-            Expr::FStr(..) => typ = Type::Str(0),
+            Expr::Str(n) => typ = Type::StrFixed(n.len()),
+            Expr::CStr(..) => typ = Type::CStrLit,
+            Expr::FStr(..) => typ = Type::StrFixed(0),
 
             // Identifier - prioritize infer module
             Expr::Ident(id) => {
@@ -7968,8 +7968,8 @@ impl<'a> Parser<'a> {
                     "double" | "f64" => return Ok(Type::Double),
                     "bool" => return Ok(Type::Bool),
                     "str" => return Ok(Type::StrSlice),
-                    "String" => return Ok(Type::String),
-                    "cstr" => return Ok(Type::CStr),
+                    "Str" => return Ok(Type::StrOwned),
+                    "cstr" => return Ok(Type::CStrLit),
                     "byte" | "u8" => return Ok(Type::Byte),
                     "char" | "i8" => return Ok(Type::Char),
                     "void" => return Ok(Type::Void),

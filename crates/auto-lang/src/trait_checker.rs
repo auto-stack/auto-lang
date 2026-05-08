@@ -66,15 +66,15 @@ impl TraitChecker {
                             | (Type::Float, Type::Float)
                             | (Type::Double, Type::Double)
                             | (Type::Bool, Type::Bool)
-                            | (Type::Str(_), Type::Str(_))
-                            | (Type::Str(_), Type::StrSlice)
-                            | (Type::StrSlice, Type::Str(_))
+                            | (Type::StrFixed(_), Type::StrFixed(_))
+                            | (Type::StrFixed(_), Type::StrSlice)
+                            | (Type::StrSlice, Type::StrFixed(_))
                             | (Type::StrSlice, Type::StrSlice)
-                            | (Type::Str(_), Type::String)
-                            | (Type::String, Type::Str(_))
-                            | (Type::String, Type::String)
-                            | (Type::StrSlice, Type::String)
-                            | (Type::String, Type::StrSlice)
+                            | (Type::StrFixed(_), Type::StrOwned)
+                            | (Type::StrOwned, Type::StrFixed(_))
+                            | (Type::StrOwned, Type::StrOwned)
+                            | (Type::StrSlice, Type::StrOwned)
+                            | (Type::StrOwned, Type::StrSlice)
                             | (Type::Unknown, Type::Void)  // Unknown is compatible with Void
                             | (Type::Void, Type::Unknown)  // Void is compatible with Unknown
                             // Plan 057: Unknown is compatible with any concrete type (generic params)
@@ -83,9 +83,9 @@ impl TraitChecker {
                             | (Type::Float, Type::Unknown)
                             | (Type::Double, Type::Unknown)
                             | (Type::Bool, Type::Unknown)
-                            | (Type::Str(_), Type::Unknown)
+                            | (Type::StrFixed(_), Type::Unknown)
                             | (Type::StrSlice, Type::Unknown)
-                            | (Type::String, Type::Unknown)
+                            | (Type::StrOwned, Type::Unknown)
                     );
 
                     if !is_compatible {
@@ -388,7 +388,7 @@ mod tests {
 
         let ty = create_test_type(
             "BadGetter",
-            vec![create_fn("get_value", vec![], Type::Str(0))],
+            vec![create_fn("get_value", vec![], Type::StrFixed(0))],
             vec!["Getter".into()],
         );
 

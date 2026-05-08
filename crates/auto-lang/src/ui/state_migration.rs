@@ -139,13 +139,13 @@ fn types_compatible(a: &Type, b: &Type) -> bool {
         (Type::Bool, Type::Bool) => true,
         (Type::Byte, Type::Byte) => true,
         (Type::Char, Type::Char) => true,
-        (Type::CStr, Type::CStr) => true,
+        (Type::CStrLit, Type::CStrLit) => true,
         (Type::StrSlice, Type::StrSlice) => true,
-        (Type::String, Type::String) => true,
+        (Type::StrOwned, Type::StrOwned) => true,
         (Type::Void, Type::Void) => true,
 
         // Str(N): compare as string types regardless of capacity
-        (Type::Str(_), Type::Str(_)) => true,
+        (Type::StrFixed(_), Type::StrFixed(_)) => true,
 
         // For complex types, compare unique names as a string approximation
         _ => a.unique_name() == b.unique_name(),
@@ -208,11 +208,11 @@ mod tests {
         ]);
         let old_fields = vec![
             field("count", Type::Int, AuraExpr::Int(0)),
-            field("label", Type::Str(0), AuraExpr::Literal("".to_string())),
+            field("label", Type::StrFixed(0), AuraExpr::Literal("".to_string())),
         ];
         let new_fields = vec![
             field("count", Type::Int, AuraExpr::Int(0)),
-            field("label", Type::Str(0), AuraExpr::Literal("".to_string())),
+            field("label", Type::StrFixed(0), AuraExpr::Literal("".to_string())),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -254,7 +254,7 @@ mod tests {
         ]);
         let old_fields = vec![
             field("count", Type::Int, AuraExpr::Int(0)),
-            field("legacy", Type::Str(0), AuraExpr::Literal("".to_string())),
+            field("legacy", Type::StrFixed(0), AuraExpr::Literal("".to_string())),
         ];
         let new_fields = vec![
             field("count", Type::Int, AuraExpr::Int(0)),
@@ -280,7 +280,7 @@ mod tests {
         ];
         let new_fields = vec![
             // Type changed from Int to Str
-            field("value", Type::Str(0), AuraExpr::Literal("default".to_string())),
+            field("value", Type::StrFixed(0), AuraExpr::Literal("default".to_string())),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -297,7 +297,7 @@ mod tests {
         let old_fields: Vec<AuraStateDef> = vec![];
         let new_fields = vec![
             field("count", Type::Int, AuraExpr::Int(10)),
-            field("name", Type::Str(0), AuraExpr::Literal("test".to_string())),
+            field("name", Type::StrFixed(0), AuraExpr::Literal("test".to_string())),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -339,7 +339,7 @@ mod tests {
             field("b", Type::Int, AuraExpr::Int(0)),
         ];
         let new_fields = vec![
-            field("x", Type::Str(0), AuraExpr::Literal("new".to_string())),
+            field("x", Type::StrFixed(0), AuraExpr::Literal("new".to_string())),
             field("y", Type::Bool, AuraExpr::Bool(false)),
         ];
 

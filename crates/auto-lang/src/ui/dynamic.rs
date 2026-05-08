@@ -667,7 +667,7 @@ mod tests {
             },
             AuraStateDef {
                 name: "label".to_string(),
-                type_info: Type::Str(0),
+                type_info: Type::StrFixed(0),
                 initial: AuraExpr::Literal("hello".to_string()),
                 decorators: vec![],
             },
@@ -911,7 +911,7 @@ mod tests {
             },
             AuraStateDef {
                 name: "legacy".to_string(),
-                type_info: Type::Str(0),
+                type_info: Type::StrFixed(0),
                 initial: AuraExpr::Literal("old".to_string()),
                 decorators: vec![],
             },

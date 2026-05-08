@@ -155,9 +155,9 @@ fn type_expr_to_tag(ty: &crate::ast::Type) -> u8 {
         Type::Double => 0x06,
         Type::Bool => 0x07,
         Type::Char => 0x08,
-        Type::Str(_) | Type::String => 0x09,
+        Type::StrFixed(_) | Type::StrOwned => 0x09,
         Type::StrSlice => 0x0A,
-        Type::CStr => 0x0B,
+        Type::CStrLit => 0x0B,
         Type::Void => 0x0C,
         Type::Byte => 0x0D,
         Type::Unknown => 0xFF,
@@ -383,7 +383,7 @@ mod tests {
         let mut table = TaskHandlerTable::new("TestTask".to_string());
         let pattern = TaskMsgPattern::TypeBinding {
             name: "msg".into(),
-            type_expr: Box::new(Type::Str(0)),
+            type_expr: Box::new(Type::StrFixed(0)),
         };
 
         let idx = table.add_handler(&pattern, 200, true);
@@ -486,7 +486,7 @@ mod tests {
         assert_eq!(type_expr_to_tag(&Type::I64), 0x02);
         assert_eq!(type_expr_to_tag(&Type::Uint), 0x03);
         assert_eq!(type_expr_to_tag(&Type::Bool), 0x07);
-        assert_eq!(type_expr_to_tag(&Type::Str(0)), 0x09);
+        assert_eq!(type_expr_to_tag(&Type::StrFixed(0)), 0x09);
         assert_eq!(type_expr_to_tag(&Type::Unknown), 0xFF);
     }
 }

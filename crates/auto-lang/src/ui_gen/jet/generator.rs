@@ -267,7 +267,7 @@ fun {}Preview() {{
             Type::Uint => "uint".to_string(),
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
-            Type::Str(_) | Type::String => "str".to_string(),
+            Type::StrFixed(_) | Type::StrOwned => "str".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Char => "char".to_string(),
             Type::Byte => "byte".to_string(),
@@ -328,7 +328,7 @@ fun {}Preview() {{
                         crate::ast::Type::Float => "Float".to_string(),
                         crate::ast::Type::Double => "Double".to_string(),
                         crate::ast::Type::Bool => "Boolean".to_string(),
-                        crate::ast::Type::Str(_) | crate::ast::Type::String => "String".to_string(),
+                        crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned => "String".to_string(),
                         crate::ast::Type::User(decl) => decl.name.as_str().to_string(),
                         _ => "Any".to_string(),
                     };
@@ -2201,7 +2201,7 @@ mod tests {
             state_vars: vec![
                 AuraStateDef {
                     name: "name".to_string(),
-                    type_info: Type::Str(0),
+                    type_info: Type::StrFixed(0),
                     initial: crate::aura::AuraExpr::Literal("Guest".to_string()),
                     decorators: vec![],
                 },
@@ -2386,7 +2386,7 @@ mod tests {
         assert_eq!(JetGenerator::type_to_string(&Type::Int), "int");
         assert_eq!(JetGenerator::type_to_string(&Type::Float), "float");
         assert_eq!(JetGenerator::type_to_string(&Type::Bool), "bool");
-        assert_eq!(JetGenerator::type_to_string(&Type::Str(0)), "str");
+        assert_eq!(JetGenerator::type_to_string(&Type::StrFixed(0)), "str");
         assert_eq!(JetGenerator::type_to_string(&Type::Uint), "uint");
         assert_eq!(JetGenerator::type_to_string(&Type::Byte), "byte");
     }

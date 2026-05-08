@@ -895,7 +895,7 @@ mod tests {
     fn test_task_msg_pattern_type_binding() {
         let pattern = TaskMsgPattern::TypeBinding {
             name: "msg".into(),
-            type_expr: Box::new(Type::Str(0)),
+            type_expr: Box::new(Type::StrFixed(0)),
         };
         assert_eq!(pattern.to_string(), "msg str");
         assert!(pattern.is_type_binding());

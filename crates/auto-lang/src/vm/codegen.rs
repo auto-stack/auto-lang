@@ -103,7 +103,7 @@ fn type_to_native_suffix(ty: &Type) -> &'static str {
         Type::Uint | Type::U64 | Type::USize | Type::Byte => "_uint",
         Type::Float | Type::Double => "_float",
         Type::Bool => "_bool",
-        Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => "_str",
+        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => "_str",
         _ => "",
     }
 }
@@ -1020,7 +1020,7 @@ impl Codegen {
                             if let Expr::Index(container, idx) = &store.expr {
                                 if let Expr::Range(_) = idx.as_ref() {
                                     if self.is_string_expr(container) {
-                                        self.var_types.insert(name_str.clone(), Type::Str(0));
+                                        self.var_types.insert(name_str.clone(), Type::StrFixed(0));
                                     } else {
                                         self.var_types.insert(name_str.clone(), store.ty.clone());
                                     }
@@ -1045,8 +1045,8 @@ impl Codegen {
                         // Plan 118 Phase 4: Infer type from expression when annotation is Unknown
                         // Plan 118 Phase 7: Add closure type inference
                         let inferred_type = match &store.expr {
-                            Expr::Str(s) => Type::Str(s.len()),
-                            Expr::CStr(_) => Type::CStr,
+                            Expr::Str(s) => Type::StrFixed(s.len()),
+                            Expr::CStr(_) => Type::CStrLit,
                             Expr::Char(_) => Type::Char,
                             Expr::Int(_) => Type::Int,
                             Expr::I8(_) => Type::Int,  // I8 maps to Int
@@ -1149,7 +1149,7 @@ impl Codegen {
                                     // Range slice on a string container produces a string, not char
                                     if let Expr::Range(_) = idx.as_ref() {
                                         if self.is_string_expr(container) {
-                                            Type::Str(0)
+                                            Type::StrFixed(0)
                                         } else {
                                             self.infer_expr_type(&store.expr)
                                         }
@@ -1226,7 +1226,7 @@ impl Codegen {
                         }
                     } else if matches!(self.last_expr_type, ObjectType::String) {
                         if matches!(store.ty, Type::Unknown) {
-                            self.var_types.insert(name_str.clone(), Type::Str(0));
+                            self.var_types.insert(name_str.clone(), Type::StrFixed(0));
                         }
                     } else if matches!(self.last_expr_type, ObjectType::Uint) {
                         if matches!(store.ty, Type::Unknown) || matches!(store.ty, Type::Int) {
@@ -1875,7 +1875,7 @@ impl Codegen {
                                 match &range_type {
                                     Type::Array(arr) => (*arr.elem).clone(),
                                     Type::RuntimeArray(rta) => (*rta.elem).clone(),
-                                    Type::Str(_) | Type::String => Type::Char,
+                                    Type::StrFixed(_) | Type::StrOwned => Type::Char,
                                     _ => {
                                         // Try var_types for the range variable
                                         if let Expr::Ident(name) = &for_stmt.range {
@@ -3036,7 +3036,7 @@ impl Codegen {
                     (crate_name.clone(), full_path),
                 );
                 // Rust FFI functions return String via the C ABI bridge
-                self.fn_return_types.insert(local_name.to_string(), Type::Str(0));
+                self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
             }
         }
     }
@@ -3107,7 +3107,7 @@ impl Codegen {
                     (module_path.to_string(), full_path),
                 );
                 // Python FFI functions return String via the string-pool bridge
-                self.fn_return_types.insert(local_name.to_string(), Type::Str(0));
+                self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
                 // Plan 222: Record PyType::Auto as default return type
                 self.py_return_types.insert(local_name.to_string(), crate::py_ffi_types::PyType::Auto);
             }
@@ -3607,7 +3607,7 @@ impl Codegen {
                 // Plan 118: Check variable type for result formatting
                 if let Some(var_type) = self.var_types.get(&name_str) {
                     self.last_expr_type = match var_type {
-                        Type::Str(_) | Type::StrSlice | Type::String => ObjectType::String,
+                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned => ObjectType::String,
                         Type::Byte => ObjectType::Byte,
                         Type::Uint | Type::U64 => ObjectType::Uint,
                         Type::Float => ObjectType::Float,
@@ -3979,7 +3979,7 @@ impl Codegen {
                                 Type::GenericInstance(_) => {
                                     self.last_expr_type = ObjectType::NestedObject;
                                 }
-                                Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => {
+                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
                                     self.last_expr_type = ObjectType::String;
                                 }
                                 Type::Char => {
@@ -5031,7 +5031,7 @@ impl Codegen {
                                                         Type::Float | Type::Double => "float".to_string(),
                                                         Type::Bool => "bool".to_string(),
                                                         Type::Char => "char".to_string(),
-                                                        Type::Str(_) | Type::String | Type::StrSlice | Type::CStr => "str".to_string(),
+                                                        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => "str".to_string(),
                                                         Type::Array(_) => "Array".to_string(),
                                                         _ => String::new(),
                                                     };
@@ -5518,7 +5518,7 @@ impl Codegen {
                                 Type::Void => ObjectType::Void,
                                 Type::Float => ObjectType::Float,
                                 Type::Double => ObjectType::Double,
-                                Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
                                 Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
                                 Type::Byte => ObjectType::Byte,
                                 Type::Bool => ObjectType::Bool,
@@ -5787,7 +5787,7 @@ impl Codegen {
                             Type::Void => ObjectType::Void,
                             Type::Float => ObjectType::Float,
                             Type::Double => ObjectType::Double,
-                            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
                             Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
                             Type::Byte => ObjectType::Byte,
                             Type::Bool => ObjectType::Bool,
@@ -5943,7 +5943,7 @@ impl Codegen {
                 let src_precise_type = self.infer_expr_type_for_conv(expr.as_ref(), src_type);
                 // Emit appropriate conversion opcode based on source + target type
                 let opcode = match target_type {
-                    Type::Str(_) | Type::String | Type::StrSlice => {
+                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => {
                         match src_precise_type {
                             ConvSrcType::F32 => OpCode::TYPE_F32_TO_STR,
                             ConvSrcType::F64 => OpCode::TYPE_F64_TO_STR,
@@ -5978,7 +5978,7 @@ impl Codegen {
                 };
                 self.emit(opcode);
                 self.last_expr_type = match target_type {
-                    Type::Str(_) | Type::String | Type::StrSlice => ObjectType::String,
+                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => ObjectType::String,
                     Type::Int | Type::I64 => ObjectType::Int,
                     Type::Float | Type::Double => ObjectType::Float,
                     Type::Uint | Type::USize | Type::U64 => ObjectType::Uint,
@@ -6086,7 +6086,7 @@ impl Codegen {
                     if inst.base_name.as_ref() == "Future" {
                         if let Some(inner) = inst.args.first() {
                             self.last_expr_type = match inner {
-                                Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
                                 Type::Float => ObjectType::Float,
                                 Type::Double => ObjectType::Double,
                                 Type::Int | Type::I64 => ObjectType::Int,
@@ -6507,7 +6507,7 @@ impl Codegen {
                 let name_str = name.to_string();
                 if let Some(ty) = self.var_types.get(&name_str) {
                     match ty {
-                        Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => FStrPartType::String,
+                        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => FStrPartType::String,
                         Type::Float => FStrPartType::Float32,
                         Type::Double => FStrPartType::Float64,
                         Type::U64 | Type::I64 | Type::Uint | Type::USize => FStrPartType::Uint64,
@@ -6538,7 +6538,7 @@ impl Codegen {
                             Type::Double => FStrPartType::Float64,
                             Type::U64 | Type::I64 | Type::USize | Type::Uint => FStrPartType::Uint64,
                             Type::Float => FStrPartType::Float32,
-                            Type::Str(_) | Type::String => FStrPartType::String,
+                            Type::StrFixed(_) | Type::StrOwned => FStrPartType::String,
                             _ => FStrPartType::Int,
                         }
                     } else {
@@ -6601,8 +6601,8 @@ impl Codegen {
             Expr::Ident(name) => {
                 // Check inferred type for the variable
                 let ty = self.infer_ctx.type_env.get(name);
-                matches!(ty, Some(Type::Str(_)) | Some(Type::String))
-                    || matches!(self.var_types.get(name.as_ref()), Some(Type::Str(_)) | Some(Type::String) | Some(Type::CStr | Type::StrSlice))
+                matches!(ty, Some(Type::StrFixed(_)) | Some(Type::StrOwned))
+                    || matches!(self.var_types.get(name.as_ref()), Some(Type::StrFixed(_)) | Some(Type::StrOwned) | Some(Type::CStrLit | Type::StrSlice))
             }
             Expr::Index(container, _index) => {
                 // String slicing: "hello"[0..2] produces a string
@@ -6619,7 +6619,7 @@ impl Codegen {
                         };
                         if let Some(ct) = self.generic_registry.get_type(&type_name) {
                             if let Some(ft) = ct.field_type(field.as_ref()) {
-                                return matches!(ft, Type::Str(_) | Type::String | Type::CStr | Type::StrSlice);
+                                return matches!(ft, Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice);
                             }
                         }
                     }
@@ -6763,7 +6763,7 @@ impl Codegen {
                     Type::Double => ObjectType::Double,
                     Type::Byte => ObjectType::Byte,
                     Type::Bool => ObjectType::Bool,
-                    Type::Str(_) | Type::String => ObjectType::String,
+                    Type::StrFixed(_) | Type::StrOwned => ObjectType::String,
                     Type::Char => ObjectType::Char,
                     _ => ObjectType::Int,
                 }
@@ -6882,7 +6882,7 @@ impl Codegen {
     /// Plan 197 Task 3: Map a Type to ObjectType for object field tracking
     fn type_to_object_type(&self, ty: &Type) -> ObjectType {
         match ty {
-            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => ObjectType::String,
+            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
             Type::Char => ObjectType::Char,
             Type::Int | Type::I64 => ObjectType::Int,
             Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
@@ -6899,7 +6899,7 @@ impl Codegen {
     /// Extract a type name string from a Type for fn_return_types qualified name lookup
     fn type_name_from_type(&self, ty: &Type) -> String {
         match ty {
-            Type::Str(_) | Type::String | Type::CStr | Type::StrSlice => "str".to_string(),
+            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => "str".to_string(),
             Type::Char => "char".to_string(),
             Type::Int | Type::I64 => "int".to_string(),
             Type::Uint | Type::U64 | Type::USize => "uint".to_string(),
@@ -7776,7 +7776,7 @@ impl Codegen {
                         Type::Float => ConvSrcType::F32,
                         Type::Double => ConvSrcType::F64,
                         Type::Bool => ConvSrcType::Bool,
-                        Type::Str(_) | Type::String | Type::StrSlice => ConvSrcType::Str,
+                        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => ConvSrcType::Str,
                         _ => ConvSrcType::I32,
                     }
                 } else {
@@ -7836,7 +7836,7 @@ impl Codegen {
                 NativeRetType::Int => Type::Int,
                 NativeRetType::Float => Type::Float,
                 NativeRetType::Bool => Type::Bool,
-                NativeRetType::String => Type::String,
+                NativeRetType::String => Type::StrOwned,
                 NativeRetType::I64 => Type::I64,
                 NativeRetType::List => Type::List(Box::new(Type::Unknown)),
                 NativeRetType::Map => Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)),
@@ -7846,13 +7846,13 @@ impl Codegen {
         drop(registry);
 
         // 2. Intrinsics that aren't in the registry but codegen needs type info for
-        map.insert("int.to_str".to_string(), Type::String);
-        map.insert("int_str".to_string(), Type::String);
-        map.insert("uint.to_hex".to_string(), Type::String);
-        map.insert("List.join".to_string(), Type::String);
+        map.insert("int.to_str".to_string(), Type::StrOwned);
+        map.insert("int_str".to_string(), Type::StrOwned);
+        map.insert("uint.to_hex".to_string(), Type::StrOwned);
+        map.insert("List.join".to_string(), Type::StrOwned);
         // str.split returns List<str>
-        map.insert("str.split".to_string(), Type::List(Box::new(Type::String)));
-        map.insert("auto.str.split".to_string(), Type::List(Box::new(Type::String)));
+        map.insert("str.split".to_string(), Type::List(Box::new(Type::StrOwned)));
+        map.insert("auto.str.split".to_string(), Type::List(Box::new(Type::StrOwned)));
         // Map.new → auto.hashmap.new (alias for Auto syntax)
         map.insert("Map.new".to_string(), Type::Unknown);
         map.insert("HashMap.new".to_string(), Type::Unknown);
@@ -7938,8 +7938,8 @@ impl Codegen {
                 Type::Float | Type::Double => Some("float".to_string()),
                 Type::Bool => Some("bool".to_string()),
                 Type::Char => Some("char".to_string()),
-                Type::Str(_) | Type::String | Type::StrSlice => Some("str".to_string()),
-                Type::CStr => Some("str".to_string()),
+                Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => Some("str".to_string()),
+                Type::CStrLit => Some("str".to_string()),
                 Type::Array(_) | Type::RuntimeArray(_) => Some("Array".to_string()),
                 Type::List(_) => Some("List".to_string()),
                 Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
@@ -8192,11 +8192,11 @@ impl Codegen {
         // Generic collections with default type params
         const GENERIC_DEFAULTS: &[(&str, &str, &[Type])] = &[
             ("List",         "List",     &[Type::Int] as &[Type]),
-            ("HashMap",      "HashMap",  &[Type::Str(0), Type::Int]),
-            ("HashSet",      "HashSet",  &[Type::Str(0)]),
-            ("Map",          "HashMap",  &[Type::Str(0), Type::Int]),
+            ("HashMap",      "HashMap",  &[Type::StrFixed(0), Type::Int]),
+            ("HashSet",      "HashSet",  &[Type::StrFixed(0)]),
+            ("Map",          "HashMap",  &[Type::StrFixed(0), Type::Int]),
             ("VecDeque",     "VecDeque", &[Type::Int]),
-            ("BTreeMap",     "BTreeMap", &[Type::Str(0), Type::Int]),
+            ("BTreeMap",     "BTreeMap", &[Type::StrFixed(0), Type::Int]),
         ];
 
         if let Some((_, base, defaults)) = GENERIC_DEFAULTS.iter().find(|(n, _, _)| *n == type_name) {

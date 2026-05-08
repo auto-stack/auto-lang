@@ -120,7 +120,7 @@ mod tests {
                 },
                 Member {
                     name: Name::from("y"),
-                    ty: Type::Str(0),
+                    ty: Type::StrFixed(0),
                     value: None,
                     attrs: Vec::new(),
                 },
@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(found_decl.name, Name::from("Point"));
         assert_eq!(found_decl.members.len(), 2);
         assert!(matches!(found_decl.members[0].ty, Type::Int));
-        assert!(matches!(found_decl.members[1].ty, Type::Str(0)));
+        assert!(matches!(found_decl.members[1].ty, Type::StrFixed(0)));
     }
 
     #[test]
