@@ -20,4 +20,4 @@ Auto 的桌面端 UI 后端正在积极开发中。
 - **Winit**：编译视图为原生 winit 事件循环
 - **LVGL**：编译视图为 C 结构体和事件处理器
 
-[← 返回 UI 画廊](/zh/ui-gallery)
+[← 返回 UI](/zh/ui)

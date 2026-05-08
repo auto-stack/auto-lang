@@ -1,0 +1,61 @@
+import { createRouter, createWebHashHistory } from 'vue-router'
+import type { RouteRecordRaw } from 'vue-router'
+
+const routes: RouteRecordRaw[] = [
+  { path: '/', name: 'index', component: () => import('@/pages/index.vue') },
+  { path: '/accordion', name: 'accordion', component: () => import('@/pages/accordion.vue') },
+  { path: '/alert', name: 'alert', component: () => import('@/pages/alert.vue') },
+  { path: '/alertdialog', name: 'alertdialog', component: () => import('@/pages/alertdialog.vue') },
+  { path: '/aspectratio', name: 'aspectratio', component: () => import('@/pages/aspectratio.vue') },
+  { path: '/avatar', name: 'avatar', component: () => import('@/pages/avatar.vue') },
+  { path: '/badge', name: 'badge', component: () => import('@/pages/badge.vue') },
+  { path: '/breadcrumb', name: 'breadcrumb', component: () => import('@/pages/breadcrumb.vue') },
+  { path: '/button', name: 'button', component: () => import('@/pages/button.vue') },
+  { path: '/calendar', name: 'calendar', component: () => import('@/pages/calendar.vue') },
+  { path: '/card', name: 'card', component: () => import('@/pages/card.vue') },
+  { path: '/carousel', name: 'carousel', component: () => import('@/pages/carousel.vue') },
+  { path: '/checkbox', name: 'checkbox', component: () => import('@/pages/checkbox.vue') },
+  { path: '/collapsible', name: 'collapsible', component: () => import('@/pages/collapsible.vue') },
+  { path: '/combobox', name: 'combobox', component: () => import('@/pages/combobox.vue') },
+  { path: '/command', name: 'command', component: () => import('@/pages/command.vue') },
+  { path: '/contextmenu', name: 'contextmenu', component: () => import('@/pages/contextmenu.vue') },
+  { path: '/datatable', name: 'datatable', component: () => import('@/pages/datatable.vue') },
+  { path: '/datepicker', name: 'datepicker', component: () => import('@/pages/datepicker.vue') },
+  { path: '/dialog', name: 'dialog', component: () => import('@/pages/dialog.vue') },
+  { path: '/drawer', name: 'drawer', component: () => import('@/pages/drawer.vue') },
+  { path: '/dropdownmenu', name: 'dropdownmenu', component: () => import('@/pages/dropdownmenu.vue') },
+  { path: '/form', name: 'form', component: () => import('@/pages/form.vue') },
+  { path: '/hovercard', name: 'hovercard', component: () => import('@/pages/hovercard.vue') },
+  { path: '/input', name: 'input', component: () => import('@/pages/input.vue') },
+  { path: '/label', name: 'label', component: () => import('@/pages/label.vue') },
+  { path: '/menubar', name: 'menubar', component: () => import('@/pages/menubar.vue') },
+  { path: '/navigationmenu', name: 'navigationmenu', component: () => import('@/pages/navigationmenu.vue') },
+  { path: '/pagination', name: 'pagination', component: () => import('@/pages/pagination.vue') },
+  { path: '/popover', name: 'popover', component: () => import('@/pages/popover.vue') },
+  { path: '/progress', name: 'progress', component: () => import('@/pages/progress.vue') },
+  { path: '/radiogroup', name: 'radiogroup', component: () => import('@/pages/radiogroup.vue') },
+  { path: '/scrollarea', name: 'scrollarea', component: () => import('@/pages/scrollarea.vue') },
+  { path: '/select', name: 'select', component: () => import('@/pages/select.vue') },
+  { path: '/separator', name: 'separator', component: () => import('@/pages/separator.vue') },
+  { path: '/sheet', name: 'sheet', component: () => import('@/pages/sheet.vue') },
+  { path: '/sidebar', name: 'sidebar', component: () => import('@/pages/sidebar.vue') },
+  { path: '/skeleton', name: 'skeleton', component: () => import('@/pages/skeleton.vue') },
+  { path: '/slider', name: 'slider', component: () => import('@/pages/slider.vue') },
+  { path: '/sonner', name: 'sonner', component: () => import('@/pages/sonner.vue') },
+  { path: '/switch', name: 'switch', component: () => import('@/pages/switch.vue') },
+  { path: '/table', name: 'table', component: () => import('@/pages/table.vue') },
+  { path: '/tabs', name: 'tabs', component: () => import('@/pages/tabs.vue') },
+  { path: '/textarea', name: 'textarea', component: () => import('@/pages/textarea.vue') },
+  { path: '/toast', name: 'toast', component: () => import('@/pages/toast.vue') },
+  { path: '/toggle', name: 'toggle', component: () => import('@/pages/toggle.vue') },
+  { path: '/togglegroup', name: 'togglegroup', component: () => import('@/pages/togglegroup.vue') },
+  { path: '/tooltip', name: 'tooltip', component: () => import('@/pages/tooltip.vue') },
+
+]
+
+const router = createRouter({
+  history: createWebHashHistory(),
+  routes,
+})
+
+export default router

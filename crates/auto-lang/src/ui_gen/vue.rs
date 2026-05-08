@@ -7118,6 +7118,113 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_shadcn_attrs_area_chart() {
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        props.insert("data".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("monthlyRevenue".to_string())));
+        props.insert("categories".to_string(), AuraPropValue::Expr(AuraExpr::Array(vec![
+            AuraExpr::Literal("desktop".to_string()),
+            AuraExpr::Literal("mobile".to_string()),
+        ])));
+        props.insert("index".to_string(), AuraPropValue::Expr(AuraExpr::Literal("month".to_string())));
+        props.insert("show-x-axis".to_string(), AuraPropValue::Expr(AuraExpr::Bool(false)));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("area-chart", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains(":data=\"monthlyRevenue\"")));
+        assert!(attrs.iter().any(|a| a.contains(":categories=")));
+        assert!(attrs.iter().any(|a| a.contains("index=\"month\"")));
+        assert!(attrs.iter().any(|a| a.contains(":show-x-axis=\"false\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_bar_chart() {
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        props.insert("data".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("quarterlySales".to_string())));
+        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("stacked".to_string())));
+        props.insert("rounded-corners".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("bar-chart", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains(":data=\"quarterlySales\"")));
+        assert!(attrs.iter().any(|a| a.contains("type=\"stacked\"")));
+        assert!(attrs.iter().any(|a| a.contains(":rounded-corners=\"true\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_line_chart_with_curve() {
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        props.insert("curve-type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("monotone".to_string())));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("line-chart", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains(":curve-type=\"CurveType.MonotoneX\"")));
+        assert!(gen.use_curve_type);
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_donut_chart() {
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        props.insert("category".to_string(), AuraPropValue::Expr(AuraExpr::Literal("source".to_string())));
+        props.insert("value-formatter".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("formatValue".to_string())));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("donut-chart", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("category=\"source\"")));
+        assert!(attrs.iter().any(|a| a.contains(":value-formatter=\"formatValue\"")));
+    }
+
+    #[test]
+    fn test_dashboard_01_compiles() {
+        use crate::ui_build_shadcn;
+        let result = ui_build_shadcn("../../examples/component-gallery/source/front/pages/blocks/dashboard_01.at", None);
+        assert!(result.is_ok(), "dashboard_01 should compile: {:?}", result.err());
+        let code = result.unwrap();
+        assert!(code.contains("<AreaChart"), "AreaChart tag missing in dashboard");
+        assert!(code.contains(":data=\"revenueData\""), "revenueData binding missing");
+        assert!(code.contains("index=\"month\""), "month index missing");
+    }
+
+    #[test]
+    fn test_charts_gallery_compiles() {
+        // Integration test: compile the charts gallery app.at and verify output
+        use crate::ui_build_shadcn;
+        let result = ui_build_shadcn("../../examples/charts-gallery/src/front/app.at", None);
+        assert!(result.is_ok(), "charts gallery should compile: {:?}", result.err());
+        let code = result.unwrap();
+
+        // Verify chart component tags are present
+        assert!(code.contains("<AreaChart"), "AreaChart tag missing");
+        assert!(code.contains("<BarChart"), "BarChart tag missing");
+        assert!(code.contains("<LineChart"), "LineChart tag missing");
+        assert!(code.contains("<DonutChart"), "DonutChart tag missing");
+
+        // Verify chart imports are present
+        assert!(code.contains("@/components/ui/chart-area"), "chart-area import missing");
+        assert!(code.contains("@/components/ui/chart-bar"), "chart-bar import missing");
+        assert!(code.contains("@/components/ui/chart-line"), "chart-line import missing");
+        assert!(code.contains("@/components/ui/chart-donut"), "chart-donut import missing");
+
+        // Verify key props are emitted
+        assert!(code.contains(":data=\"monthlyRevenue\""), "monthlyRevenue data binding missing");
+        assert!(code.contains("index=\"month\""), "month index missing");
+        assert!(code.contains("type=\"stacked\""), "stacked type missing");
+        assert!(code.contains(":curve-type=\"CurveType.MonotoneX\""), "curve type missing");
+        assert!(code.contains("category=\"source\""), "donut category missing");
+        assert!(code.contains(":colors="), "colors binding missing");
+
+        // Verify CurveType import
+        assert!(code.contains("import { CurveType } from '@unovis/ts'"), "CurveType import missing");
+    }
+
+    #[test]
     fn test_generate_shadcn_attrs_button() {
         let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();

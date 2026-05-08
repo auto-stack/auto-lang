@@ -20,4 +20,4 @@ The same Auto `view` block that generates Vue for the web will also generate pla
 - **Winit**: compiles views to raw winit event loops
 - **LVGL**: compiles views to C structs and event handlers
 
-[← Back to UI Gallery](/ui-gallery)
+[← Back to UI](/ui)

@@ -2838,6 +2838,45 @@ impl WidgetRegistry {
             extra_components: Vec::new(),
         });
         self.register(donut_chart);
+
+        // Chart (shared container/primitives)
+        let mut chart = WidgetSpec::new("Chart", WidgetCategory::Data)
+            .with_alias("chart");
+        chart.has_children = true;
+        chart.backends.insert("vue".to_string(), BackendMapping {
+            component: "ChartContainer".to_string(),
+            import: Some("@/components/ui/chart".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: vec!["ChartTooltip".to_string(), "ChartLegend".to_string(), "ChartStyle".to_string()],
+        });
+        self.register(chart);
+
+        // ChartTooltip
+        let mut chart_tooltip = WidgetSpec::new("ChartTooltip", WidgetCategory::Data)
+            .with_alias("chart-tooltip");
+        chart_tooltip.has_children = false;
+        chart_tooltip.backends.insert("vue".to_string(), BackendMapping {
+            component: "ChartTooltip".to_string(),
+            import: Some("@/components/ui/chart".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(chart_tooltip);
+
+        // ChartLegend
+        let mut chart_legend = WidgetSpec::new("ChartLegend", WidgetCategory::Data)
+            .with_alias("chart-legend");
+        chart_legend.has_children = false;
+        chart_legend.backends.insert("vue".to_string(), BackendMapping {
+            component: "ChartLegend".to_string(),
+            import: Some("@/components/ui/chart".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(chart_legend);
     }
 
     fn register_semantic_widgets(&mut self) {

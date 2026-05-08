@@ -14,4 +14,4 @@ Auto's Android UI backend is under active development.
 
 The same Auto `view` block that generates Vue for the web will also generate Jetpack Compose Kotlin code for Android native apps.
 
-[← Back to UI Gallery](/ui-gallery)
+[← Back to UI](/ui)

@@ -6,13 +6,17 @@
 
 ## Web
 
-### <a id="components"></a><a href="/ui-gallery/web/index.html" target="_self">组件 ↗</a>
+### <a id="components"></a><a href="/ui/gallery/index.html" target="_self">组件 ↗</a>
 
 49 个 shadcn-vue 组件使用 Auto 语言复刻。基于 Vue 3 + shadcn-vue，由 `auto build --backend vue` 自动生成。
 
-### <a id="blocks"></a><a href="/ui-gallery/web/index.html#/blocks" target="_self">区块 ↗</a>
+### <a id="blocks"></a><a href="/ui/blocks/index.html" target="_self">区块 ↗</a>
 
 24 个 shadcn-vue building block 复刻 — 登录表单、仪表盘、产品表格和侧边栏布局。
+
+### <a id="charts"></a><a href="/ui/charts/index.html" target="_self">图表 ↗</a>
+
+6 个 shadcn-vue 图表复刻 — 面积图、柱状图、折线图和环形图，由 Unovis 提供支持。
 
 ---
 

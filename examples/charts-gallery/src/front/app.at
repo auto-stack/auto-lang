@@ -118,6 +118,22 @@ widget App {
                 }
             }
 
+            // Chart with Colors
+            card (style: "w-full") {
+                col (style: "p-6 gap-4") {
+                    text (style: "text-lg font-semibold") {
+                        text (text: "Area Chart — Custom Colors") {}
+                    }
+                    area-chart (
+                        data: .monthlyRevenue,
+                        categories: ["desktop", "mobile"],
+                        index: "month",
+                        colors: ["#3b82f6", "#10b981"],
+                        style: "h-[300px] w-full"
+                    ) {}
+                }
+            }
+
             // Sparkline (Line chart with hidden axes/tooltip/legend)
             card (style: "w-full") {
                 col (style: "p-6 gap-4") {

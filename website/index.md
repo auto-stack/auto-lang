@@ -47,6 +47,10 @@ onMounted(() => {
   </div>
 </div>
 
+<div class="icp-footer">
+  <a href="https://beian.miit.gov.cn/" target="_blank">粤ICP备2026054131号-1</a>
+</div>
+
 <style scoped>
 .features-section {
   padding: 4rem 2rem;
@@ -117,5 +121,21 @@ onMounted(() => {
 
 .cta-secondary:hover {
   background: hsl(var(--accent));
+}
+
+.icp-footer {
+  padding: 2rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.icp-footer a {
+  color: hsl(var(--muted-foreground));
+  text-decoration: none;
+}
+
+.icp-footer a:hover {
+  text-decoration: underline;
 }
 </style>

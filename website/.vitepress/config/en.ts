@@ -37,9 +37,10 @@ function nav(): DefaultTheme.NavItem[] {
     {
       text: 'UI',
       items: [
-        { text: 'Gallery', link: '/ui-gallery' },
-        { text: 'Components', link: '/ui-gallery/web/index.html', target: '_self' },
-        { text: 'Blocks', link: '/ui-gallery/web/index.html#/blocks', target: '_self' },
+        { text: 'Overview', link: '/ui/' },
+        { text: 'Components', link: '/ui/gallery/index.html', target: '_self' },
+        { text: 'Blocks', link: '/ui/blocks/index.html', target: '_self' },
+        { text: 'Charts', link: '/ui/charts/index.html', target: '_self' },
         { text: 'Desktop', link: '/ui-desktop' },
         { text: 'Android', link: '/ui-android' },
         { text: 'Harmony', link: '/ui-harmony' },

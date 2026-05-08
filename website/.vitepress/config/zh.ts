@@ -37,9 +37,10 @@ function nav(): DefaultTheme.NavItem[] {
     {
       text: 'UI',
       items: [
-        { text: '画廊', link: '/zh/ui-gallery' },
-        { text: '组件', link: '/ui-gallery/web/index.html', target: '_self' },
-        { text: '区块', link: '/ui-gallery/web/index.html#/blocks', target: '_self' },
+        { text: '概览', link: '/zh/ui/' },
+        { text: '组件', link: '/ui/gallery/index.html', target: '_self' },
+        { text: '区块', link: '/ui/blocks/index.html', target: '_self' },
+        { text: '图表', link: '/ui/charts/index.html', target: '_self' },
         { text: '桌面端', link: '/zh/ui-desktop' },
         { text: 'Android', link: '/zh/ui-android' },
         { text: '鸿蒙', link: '/zh/ui-harmony' },

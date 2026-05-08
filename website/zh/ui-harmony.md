@@ -14,4 +14,4 @@ Auto 的鸿蒙 UI 后端正在积极开发中。
 
 同一个 Auto `view` 块，既可以为 Web 生成 Vue，也可以为鸿蒙原生应用生成 ArkTS 代码。
 
-[← 返回 UI 画廊](/zh/ui-gallery)
+[← 返回 UI](/zh/ui)
