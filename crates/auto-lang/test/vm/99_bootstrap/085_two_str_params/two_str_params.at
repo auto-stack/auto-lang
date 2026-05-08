@@ -1,0 +1,7 @@
+fn main() {
+    fn match_suffix(callee str, suffix str) int {
+        var start = callee.len() - suffix.len()
+        return callee.char_at(start)
+    }
+    print(match_suffix("s.len", ".len"))
+}

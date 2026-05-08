@@ -1,0 +1,11 @@
+fn main() {
+    var source = "fn main() {\nvar s = \"hello\"\nprint(s.len())\n}"
+    var tokens = tokenize_list(source)
+    var p = parser_new(tokens)
+    var stmts = parse_program(p)
+    var tenv = typeenv_new()
+    type_infer_program(tenv, stmts)
+    var t = type_lookup(tenv, "s")
+    print("type_of_s:")
+    print(t)
+}

@@ -1,0 +1,9 @@
+fn main() {
+    // Test suffix matching inside BVM (uses char_at with variable expressions)
+    var result = run_bytecode("fn test_suffix(callee str, suffix str) int {\nvar sn = suffix.len()\nvar cn = callee.len()\nif cn < sn { return 0 }\nvar start = cn - sn\nvar i = 0\nfor i < sn {\nif callee.char_at(start + i) != suffix.char_at(i) { return 0 }\ni = i + 1\n}\nreturn 1\n}\nfn main() {\nvar r = test_suffix(\"s.len\", \".len\")\nprint(r)\n}")
+    if result == "1\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

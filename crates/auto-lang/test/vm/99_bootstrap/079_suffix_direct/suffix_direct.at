@@ -1,0 +1,36 @@
+fn main() {
+    // Directly test codegen_extract_method_suffix in the merged library context
+    var r1 = codegen_extract_method_suffix("s.len", ".len")
+    print("s.len vs .len:")
+    print(r1)
+
+    var r2 = codegen_extract_method_suffix("list.push", ".push")
+    print("list.push vs .push:")
+    print(r2)
+
+    var r3 = codegen_extract_method_suffix("s.char_at", ".char_at")
+    print("s.char_at vs .char_at:")
+    print(r3)
+
+    // Test char_at individually
+    var s = ".len"
+    print("suffix char 0 (46):")
+    print(s.char_at(0))
+    print("suffix char 1 (108):")
+    print(s.char_at(1))
+
+    var callee = "s.len"
+    var cn = callee.len()
+    var sn = 4
+    var start = cn - sn
+    print("start:")
+    print(start)
+    print("callee.char_at(start) (46):")
+    print(callee.char_at(start))
+
+    if r1 == 1 && r2 == 1 && r3 == 1 {
+        print("ALL PASS")
+    } else {
+        print("FAIL")
+    }
+}

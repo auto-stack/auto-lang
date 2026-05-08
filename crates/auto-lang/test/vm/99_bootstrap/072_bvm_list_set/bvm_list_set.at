@@ -1,0 +1,8 @@
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(10)\nlist.push(20)\nlist.push(30)\nlist.set(1, 99)\nprint(list.get(0))\nprint(list.get(1))\nprint(list.get(2))\n}")
+    if result == "10\n99\n30\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

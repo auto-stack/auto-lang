@@ -1,0 +1,21 @@
+fn main() {
+    // Full replication of codegen_extract_method_suffix
+    fn my_match(callee str, suffix str) int {
+        var sn = suffix.len()
+        var cn = callee.len()
+        if cn < sn { return 0 }
+        var start = cn - sn
+        var i = 0
+        for i < sn {
+            if callee.char_at(start + i) != suffix.char_at(i) { return 0 }
+            i = i + 1
+        }
+        return 1
+    }
+
+    print(my_match("s.len", ".len"))
+    print(my_match("list.push", ".push"))
+    print(my_match("m.insert_int", ".insert_int"))
+    print(my_match("s.char_at", ".char_at"))
+    print(my_match("s.substr", ".substr"))
+}

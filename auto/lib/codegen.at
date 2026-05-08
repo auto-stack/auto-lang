@@ -21,6 +21,13 @@ fn OP_MAP_NEW() int { return 68 }
 fn OP_MAP_INSERT_INT() int { return 69 }
 fn OP_MAP_GET_INT() int { return 70 }
 fn OP_MAP_CONTAINS() int { return 71 }
+fn OP_MAP_INSERT_STR() int { return 72 }
+fn OP_MAP_GET_STR() int { return 73 }
+fn OP_LIST_SET() int { return 74 }
+fn OP_LIST_POP() int { return 75 }
+fn OP_STR_LEN() int { return 76 }
+fn OP_STR_CHAR_AT() int { return 77 }
+fn OP_STR_SUBSTR() int { return 78 }
 fn OP_ADD() int { return 48 }
 fn OP_SUB() int { return 49 }
 fn OP_MUL() int { return 50 }
@@ -339,6 +346,12 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
     if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".insert_int") == 1 { is_list_map_method = 1 }
     if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".get_int") == 1 { is_list_map_method = 1 }
     if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".contains") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".insert_str") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".get_str") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".set") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".pop") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".char_at") == 1 { is_list_map_method = 1 }
+    if is_list_map_method == 0 && codegen_extract_method_suffix(callee, ".substr") == 1 { is_list_map_method = 1 }
 
     if is_list_map_method == 1 {
         var var_name = codegen_extract_var_name(callee)
@@ -359,7 +372,12 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
                 return 0
             }
             if codegen_extract_method_suffix(callee, ".get") == 1 { codegen_emit(cg, OP_LIST_GET()); return 0 }
-            if codegen_extract_method_suffix(callee, ".len") == 1 { codegen_emit(cg, OP_LIST_LEN()); return 0 }
+            if codegen_extract_method_suffix(callee, ".len") == 1 {
+                var len_type = type_lookup(tenv, var_name)
+                if len_type == 1 { codegen_emit(cg, OP_STR_LEN()) }
+                else { codegen_emit(cg, OP_LIST_LEN()) }
+                return 0
+            }
             if codegen_extract_method_suffix(callee, ".insert_int") == 1 {
                 codegen_emit(cg, OP_MAP_INSERT_INT())
                 codegen_emit(cg, OP_CONST_0())
@@ -367,6 +385,20 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
             }
             if codegen_extract_method_suffix(callee, ".get_int") == 1 { codegen_emit(cg, OP_MAP_GET_INT()); return 0 }
             if codegen_extract_method_suffix(callee, ".contains") == 1 { codegen_emit(cg, OP_MAP_CONTAINS()); return 0 }
+            if codegen_extract_method_suffix(callee, ".insert_str") == 1 {
+                codegen_emit(cg, OP_MAP_INSERT_STR())
+                codegen_emit(cg, OP_CONST_0())
+                return 0
+            }
+            if codegen_extract_method_suffix(callee, ".get_str") == 1 { codegen_emit(cg, OP_MAP_GET_STR()); return 0 }
+            if codegen_extract_method_suffix(callee, ".set") == 1 {
+                codegen_emit(cg, OP_LIST_SET())
+                codegen_emit(cg, OP_CONST_0())
+                return 0
+            }
+            if codegen_extract_method_suffix(callee, ".pop") == 1 { codegen_emit(cg, OP_LIST_POP()); return 0 }
+            if codegen_extract_method_suffix(callee, ".char_at") == 1 { codegen_emit(cg, OP_STR_CHAR_AT()); return 0 }
+            if codegen_extract_method_suffix(callee, ".substr") == 1 { codegen_emit(cg, OP_STR_SUBSTR()); return 0 }
         }
     }
 
@@ -380,6 +412,12 @@ fn codegen_call(cg CodeGen, node ASTNode, tenv TypeEnv) {
         } else {
             var arg_node = node.params.get(0)
             var arg_type = type_infer_expr(tenv, arg_node)
+            // For method calls where type inference returns -1, check known string-returning methods
+            if arg_type == -1 && arg_node.kind == NodeKind.CallExpr {
+                var aname = arg_node.name
+                if codegen_extract_method_suffix(aname, ".substr") == 1 { arg_type = 1 }
+                if codegen_extract_method_suffix(aname, ".get_str") == 1 { arg_type = 1 }
+            }
             codegen_expr(cg, arg_node, tenv)
             if arg_type == 1 {
                 codegen_emit(cg, OP_CALL_NAT())

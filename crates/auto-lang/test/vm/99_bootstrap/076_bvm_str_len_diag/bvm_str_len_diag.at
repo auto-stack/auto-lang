@@ -1,0 +1,9 @@
+fn main() {
+    // Directly test s.len() inside BVM
+    var result = run_bytecode("fn main() {\nvar s = \"hello\"\nprint(s.len())\n}")
+    if result == "5\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

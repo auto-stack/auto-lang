@@ -41,6 +41,23 @@ let OP_CALL = 112
 let OP_RET = 113
 let OP_CALL_NAT = 114
 
+// Collections
+let OP_LIST_NEW = 64
+let OP_LIST_PUSH = 65
+let OP_LIST_GET = 66
+let OP_LIST_LEN = 67
+let OP_MAP_NEW = 68
+let OP_MAP_INSERT_INT = 69
+let OP_MAP_GET_INT = 70
+let OP_MAP_CONTAINS = 71
+let OP_MAP_INSERT_STR = 72
+let OP_MAP_GET_STR = 73
+let OP_LIST_SET = 74
+let OP_LIST_POP = 75
+let OP_STR_LEN = 76
+let OP_STR_CHAR_AT = 77
+let OP_STR_SUBSTR = 78
+
 // String
 let OP_STR_CAT = 124
 

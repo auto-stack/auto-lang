@@ -99,7 +99,20 @@ fn type_infer_expr(tenv TypeEnv, node ASTNode) int {
         return 0
     }
     if kind == NodeKind.CallExpr {
-        return type_fn_ret(tenv, node.name)
+        var ret = type_fn_ret(tenv, node.name)
+        if ret == -1 {
+            // Known string-returning methods
+            var cn = node.name.len()
+            if cn >= 7 {
+                var tail = node.name.substr(cn - 7, cn)
+                if tail == ".substr" { return 1 }
+            }
+            if cn >= 8 {
+                var tail2 = node.name.substr(cn - 8, cn)
+                if tail2 == ".get_str" { return 1 }
+            }
+        }
+        return ret
     }
     if kind == NodeKind.DotExpr {
         return 0

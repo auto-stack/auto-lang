@@ -1,0 +1,10 @@
+fn main() {
+    var callee = "s.len"
+    var start = 1
+    var i = 0
+    for i < 4 {
+        var a = callee.char_at(start + i)
+        print(a)
+        i = i + 1
+    }
+}

@@ -1,0 +1,8 @@
+fn main() {
+    var result = run_bytecode("fn main() {\nvar m = Map.new()\nm.insert_str(\"name\", \"alice\")\nm.insert_str(\"city\", \"NYC\")\nprint(m.get_str(\"name\"))\nprint(m.get_str(\"city\"))\n}")
+    if result == "alice\nNYC\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

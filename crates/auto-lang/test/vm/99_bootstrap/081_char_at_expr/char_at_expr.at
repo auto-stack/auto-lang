@@ -1,0 +1,22 @@
+fn main() {
+    var callee = "s.len"
+    var start = 1
+    var i = 0
+
+    // Test 1: char_at with variable arg
+    print(callee.char_at(start))
+
+    // Test 2: char_at with (start + i) where i=0
+    print(callee.char_at(start + i))
+
+    // Test 3: compute start+i first, then pass
+    var sum = start + i
+    print(callee.char_at(sum))
+
+    // Test 4: char_at with literal
+    print(callee.char_at(1))
+
+    // Test 5: compute in separate statement
+    var idx = start + i
+    print(callee.char_at(idx))
+}
