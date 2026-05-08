@@ -31,6 +31,6 @@ fn main() {
         _ => println!("Square is not 25"),
     }
 
-    let arr: [i32; 3] = vec![1, 2, 3];
+    let arr: Vec<i32> = vec![1, 2, 3];
     println!("Array: {}", arr);
 }

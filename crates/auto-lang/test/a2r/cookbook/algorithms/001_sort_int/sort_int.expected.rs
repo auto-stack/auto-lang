@@ -4,10 +4,9 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+use std::vec::Vec;
 fn main() {
-    let array: Vec<i32> = vec![1, 2, 3, 4, 5];
-    println!("{}", array[1]);
-
-    let a: i32 = array[0];
-    println!("{}", a);
+    let mut vec: Vec<i32> = vec![1, 5, 10, 2, 15];
+    vec.sort();
+    println!("{}", vec);
 }

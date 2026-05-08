@@ -1,0 +1,7 @@
+fn main() {
+    let angle = 1.0
+    let side_length = 80.0
+
+    let hypotenuse = side_length / angle.sin()
+    print(f"Hypotenuse: $hypotenuse")
+}

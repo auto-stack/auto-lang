@@ -1,0 +1,7 @@
+use.rust std::error::Error
+
+fn main() ! {
+    let result = Ok("hello")
+    let val = result.?
+    print(val)
+}

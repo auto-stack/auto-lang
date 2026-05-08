@@ -1,0 +1,16 @@
+use.rust std::fs::File
+use.rust std::io::{BufRead, BufReader, Write}
+
+fn main() ! {
+    let path = "lines.txt"
+
+    var output = File.create(path).?
+    output.write("Rust\nFun\nAuto")
+
+    let input = File.open(path).?
+    let buffered = BufReader.new(input)
+
+    for line in buffered.lines() {
+        print(line.?)
+    }
+}

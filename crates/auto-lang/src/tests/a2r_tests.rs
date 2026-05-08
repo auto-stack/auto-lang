@@ -369,3 +369,37 @@ fn get_line(src: &str, offset: usize) -> String {
     let line_end = src[offset..].find('\n').map(|i| offset + i).unwrap_or(src.len());
     src[line_start..line_end].to_string()
 }
+
+// === Cookbook: Rust Cookbook a2r tests ===
+// See docs/plans/240-rust-cookbook-a2r-tests.md for full classification
+
+// -- cookbook/algorithms --
+#[test] fn test_cookbook_algorithms_001_sort_int() { test_a2r("cookbook/algorithms/001_sort_int").unwrap(); }
+#[test] fn test_cookbook_algorithms_002_sort_float() { test_a2r("cookbook/algorithms/002_sort_float").unwrap(); }
+#[test] fn test_cookbook_algorithms_003_sort_struct() { test_a2r("cookbook/algorithms/003_sort_struct").unwrap(); }
+
+// -- cookbook/file --
+#[test] fn test_cookbook_file_001_read_lines() { test_a2r("cookbook/file/001_read_lines").unwrap(); }
+
+// -- cookbook/os --
+#[test] fn test_cookbook_os_001_env_variable() { test_a2r("cookbook/os/001_env_variable").unwrap(); }
+#[test] fn test_cookbook_os_002_process_continuous() { test_a2r("cookbook/os/002_process_continuous").unwrap(); }
+#[test] fn test_cookbook_os_003_error_file() { test_a2r("cookbook/os/003_error_file").unwrap(); }
+
+// -- cookbook/datetime --
+#[test] fn test_cookbook_datetime_001_elapsed_time() { test_a2r("cookbook/datetime/001_elapsed_time").unwrap(); }
+
+// -- cookbook/science/mathematics/statistics --
+#[test] fn test_cookbook_science_statistics_001_central_tendency() { test_a2r("cookbook/science/mathematics/statistics/001_central_tendency").unwrap(); }
+#[test] fn test_cookbook_science_statistics_002_standard_deviation() { test_a2r("cookbook/science/mathematics/statistics/002_standard_deviation").unwrap(); }
+
+// -- cookbook/science/mathematics/trigonometry --
+#[test] fn test_cookbook_science_trigonometry_001_tan_sin_cos() { test_a2r("cookbook/science/mathematics/trigonometry/001_tan_sin_cos").unwrap(); }
+#[test] fn test_cookbook_science_trigonometry_002_side_length() { test_a2r("cookbook/science/mathematics/trigonometry/002_side_length").unwrap(); }
+#[test] fn test_cookbook_science_trigonometry_003_latitude_longitude() { test_a2r("cookbook/science/mathematics/trigonometry/003_latitude_longitude").unwrap(); }
+
+// -- cookbook/mem --
+#[test] fn test_cookbook_mem_001_lazy_cell() { test_a2r("cookbook/mem/001_lazy_cell").unwrap(); }
+
+// -- cookbook/errors --
+#[test] fn test_cookbook_errors_001_boxed_error() { test_a2r("cookbook/errors/001_boxed_error").unwrap(); }

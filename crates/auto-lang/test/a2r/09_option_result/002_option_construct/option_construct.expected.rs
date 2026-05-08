@@ -16,6 +16,7 @@ fn divide(a: i32, b: i32) -> Result<i32, String> {
         return Err("division by zero".to_string());
     }
     return Ok(a / b);
+    Ok(())
 }
 
 fn main() {

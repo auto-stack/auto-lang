@@ -1,0 +1,16 @@
+use.rust std::time::{Instant, Duration}
+
+fn expensive_function() {
+    // simulated expensive work
+    var sum = 0
+    for i in 0..1000000 {
+        sum += i
+    }
+}
+
+fn main() {
+    let start = Instant.now()
+    expensive_function()
+    let duration = start.elapsed()
+    print(f"Time elapsed: $duration")
+}

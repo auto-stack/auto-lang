@@ -19,7 +19,7 @@ struct Heap<T> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct InlineInt64 {
-    buffer: [i32; 64],
+    buffer: Vec<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

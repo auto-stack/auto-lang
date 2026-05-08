@@ -1,0 +1,18 @@
+fn mean(data []int) ?f64 {
+    let count = data.len()
+    if count == 0 {
+        return None
+    }
+    var sum = 0
+    for val in data {
+        sum += val
+    }
+    Some(sum.as(f64) / count.as(f64))
+}
+
+fn main() {
+    let data = [3, 1, 6, 1, 5, 8, 1, 8, 10, 11]
+
+    let m = mean(data)
+    print(f"Mean: $m")
+}

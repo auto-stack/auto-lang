@@ -278,7 +278,9 @@ impl RustTrans {
             Type::StrSlice => "String".to_string(),
             Type::StrOwned => "String".to_string(), // Owned dynamic string (Plan 155)
             Type::Array(arr) => {
-                format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
+                // Auto arrays are dynamic (push/pop/sort), map to Vec<T>
+                // even though the AST carries a compile-time length
+                format!("Vec<{}>", self.rust_type_name(&arr.elem))
             }
             Type::RuntimeArray(rta) => {
                 // Plan 052: Runtime arrays transpile to Vec<T> in Rust
@@ -4764,6 +4766,16 @@ impl RustTrans {
                         sink.body.write(b"\n")?;
                     }
                 }
+            }
+        }
+
+        // For Result-returning functions, append Ok(()) if the last
+        // statement is not a tail expression (e.g., ends with a semicolon)
+        if matches!(ret_type, Type::Result(_)) && !body.stmts.is_empty() {
+            let last = &body.stmts[body.stmts.len() - 1];
+            if !self.is_returnable(last) {
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"Ok(())\n")?;
             }
         }
 

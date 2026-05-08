@@ -1,0 +1,9 @@
+fn main() {
+    let x = 6.0
+
+    let a = x.tan()
+    let b = x.sin() / x.cos()
+
+    print(f"tan($x) = $a")
+    print(f"sin($x)/cos($x) = $b")
+}

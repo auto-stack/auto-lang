@@ -1,0 +1,13 @@
+use.rust std::cell::OnceCell
+
+fn main() {
+    let cell = OnceCell.new()
+    let has_none = cell.get().is_none()
+    print(f"Is none: $has_none")
+
+    cell.set("Hello, World!")
+    let value = cell.get()
+    print(f"Value: $value")
+    let exists = cell.get().is_some()
+    print(f"Has value: $exists")
+}

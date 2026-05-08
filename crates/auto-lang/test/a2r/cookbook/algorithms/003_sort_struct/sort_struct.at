@@ -1,0 +1,16 @@
+use.rust std::vec::Vec
+
+type Person {
+    name str
+    age uint
+}
+
+fn main() {
+    var people = [Person("Zoe", 25), Person("Al", 60), Person("John", 1)]
+
+    people.sort()
+    print(people)
+
+    people.sort_by((a, b) => b.age.cmp(a.age))
+    print(people)
+}

@@ -1,0 +1,7 @@
+use.rust std::vec::Vec
+
+fn main() {
+    var vec = [1, 5, 10, 2, 15]
+    vec.sort()
+    print(vec)
+}
