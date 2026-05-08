@@ -195,6 +195,14 @@ fn transpile_for(for_loop: &For, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             transpile_body(&for_loop.body, ctx, out);
             writeln!(out, "}}").ok();
         }
+        Iter::Destructured(key, val) => {
+            // for (k, v) in map -> for (const [k, v] of Object.entries(map))
+            write!(out, "for (const [{}, {}] of Object.entries(", key.as_str(), val.as_str()).ok();
+            transpile_expr(&for_loop.range, ctx, out);
+            write!(out, ")) {{").ok();
+            transpile_body(&for_loop.body, ctx, out);
+            writeln!(out, "}}").ok();
+        }
     }
 }
 

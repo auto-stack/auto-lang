@@ -311,6 +311,22 @@ fn check_for(ctx: &mut InferenceContext, for_stmt: &For) -> Result<Type, AutoErr
             }
         }
 
+        Iter::Destructured(key_var, val_var) => {
+            // Destructured iteration: for (k, v) in map
+            let range_ty = infer_expr(ctx, &for_stmt.range);
+
+            // Key is typically a string, value depends on map type
+            ctx.bind_var(key_var.clone(), Type::Str(0));
+            match range_ty {
+                Type::Map(_k, v) => {
+                    ctx.bind_var(val_var.clone(), (*v).clone());
+                }
+                _ => {
+                    ctx.bind_var(val_var.clone(), Type::Unknown);
+                }
+            }
+        }
+
         Iter::Cond => {
             // Conditional for loop: for condition { }
             let cond_ty = infer_expr(ctx, &for_stmt.range);

@@ -272,6 +272,17 @@ impl JavaScriptTrans {
                 out.write(b")")?;
                 self.if_body(&for_loop.body, out)?;
             }
+            Iter::Destructured(key, val) => {
+                // for (k, v) in map -> for (const [key, val] of Object.entries(map))
+                out.write(b"for (const [")?;
+                out.write_all(key.as_bytes())?;
+                out.write(b", ")?;
+                out.write_all(val.as_bytes())?;
+                out.write(b"] of Object.entries(")?;
+                self.expr(&for_loop.range, out)?;
+                out.write(b"))")?;
+                self.if_body(&for_loop.body, out)?;
+            }
             _ => {
                 return Err(format!("JavaScript Transpiler: unsupported for loop iteration: {:?}", for_loop.iter).into());
             }

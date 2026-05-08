@@ -2198,6 +2198,38 @@ impl Codegen {
                             ));
                         }
                     }
+                    Iter::Destructured(key_name, val_name) => {
+                        // for (k, v) in map { ... } — Map iteration with destructuring
+                        // Compile the iterable expression (the map)
+                        self.compile_expr(&for_stmt.range)?;
+
+                        // Add variables for key and value
+                        self.add_var(key_name);
+                        self.add_var(val_name);
+
+                        // Use array iteration approach: get map entries as array
+                        // TODO: full Map iteration support in VM
+                        let loop_start = self.code.len() as i16;
+
+                        if let Some(pos) = self.loop_continue_positions.last_mut() {
+                            *pos = loop_start as usize;
+                        }
+
+                        // Placeholder: just compile body once
+                        self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                        // JMP back
+                        self.emit(OpCode::JMP);
+                        let current_pos = self.code.len() as i16;
+                        self.emit_i16(loop_start - current_pos - 2);
+
+                        if let Some(exits) = self.loop_exits.pop() {
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
+                        }
+                        self.loop_continue_positions.pop();
+                    }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
                         // Loop start label

@@ -16,6 +16,7 @@ pub struct For {
 pub enum Iter {
     Indexed(/*index*/ Name, /*iter*/ Name),
     Named(/*iter*/ Name),
+    Destructured(/*key*/ Name, /*value*/ Name),
     Call(Call),
     Ever,
     Cond, // Conditional for loop: for condition { ... }
@@ -37,6 +38,7 @@ impl fmt::Display for Iter {
         match self {
             Iter::Indexed(index, iter) => write!(f, "((name {}) (name {}))", index, iter),
             Iter::Named(iter) => write!(f, "(name {})", iter),
+            Iter::Destructured(key, val) => write!(f, "((name {}) (name {}))", key, val),
             Iter::Call(call) => write!(f, "(call {})", call),
             Iter::Ever => write!(f, "(ever)"),
             Iter::Cond => write!(f, "(cond)"),
@@ -70,6 +72,12 @@ impl ToNode for For {
             Iter::Named(name) => {
                 let mut iter_node = AutoNode::new("iter");
                 iter_node.set_prop("name", Value::str(name.as_str()));
+                node.add_kid(iter_node);
+            }
+            Iter::Destructured(key, val) => {
+                let mut iter_node = AutoNode::new("iter");
+                iter_node.set_prop("key", Value::str(key.as_str()));
+                iter_node.set_prop("value", Value::str(val.as_str()));
                 node.add_kid(iter_node);
             }
             Iter::Call(call) => {
@@ -171,6 +179,9 @@ impl AtomWriter for For {
                             };
                             write!(f, "{}, {}", name, range_str)?;
                         }
+                        Iter::Destructured(key, val) => {
+                            write!(f, "({}, {}), {}", key, val, self.range.to_atom_str())?;
+                        }
                         Iter::Call(call) => {
                             write!(f, "{}", call.to_atom_str())?;
                         }
@@ -217,6 +228,12 @@ impl ToNode for Iter {
                 node.set_prop("name", Value::str(name.as_str()));
                 node
             }
+            Iter::Destructured(key, val) => {
+                let mut node = AutoNode::new("iter");
+                node.set_prop("key", Value::str(key.as_str()));
+                node.set_prop("value", Value::str(val.as_str()));
+                node
+            }
             Iter::Call(call) => call.to_node(),
             Iter::Ever => AutoNode::new("ever"),
             Iter::Cond => AutoNode::new("cond"),
@@ -232,6 +249,9 @@ impl AtomWriter for Iter {
             }
             Iter::Named(name) => {
                 write!(f, "iter(name(\"{}\"))", name)?;
+            }
+            Iter::Destructured(key, val) => {
+                write!(f, "iter(name(\"{}\"), name(\"{}\"))", key, val)?;
             }
             Iter::Call(call) => {
                 write!(f, "iter({})", call.to_atom_str())?;

@@ -3280,6 +3280,10 @@ impl CTrans {
                 }
                 self.expr(&for_stmt.range, &mut sink.body)?;
             }
+            Iter::Destructured(_, _) => {
+                // for (k, v) in map — not directly supported in C, use while loop
+                sink.body.write(b"while (1").to()?;
+            }
         }
         sink.body.write(b") ").to()?;
         self.body(&for_stmt.body, sink, &Type::Void, iter_var.as_str(), "")?;
@@ -3290,6 +3294,7 @@ impl CTrans {
         match iter {
             Iter::Indexed(_i, _iter) => {}
             Iter::Named(_) => {}
+            Iter::Destructured(_, _) => {}
             Iter::Ever => {}
             Iter::Cond => {}
             Iter::Call(call) => {

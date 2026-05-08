@@ -496,6 +496,9 @@ impl RustTrans {
             Expr::Some(e) => {
                 write!(out, "Some(")?;
                 self.expr(e, out)?;
+                if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                    write!(out, ".to_string()")?;
+                }
                 write!(out, ")").map_err(Into::into)
             }
             Expr::None => write!(out, "None").map_err(Into::into),
@@ -626,14 +629,9 @@ impl RustTrans {
                         self.expr(rhs, out)?;
                     }
                     Op::Add => {
-                        // When either side is a string expression, use format! for safe concatenation
-                        // This handles: String + String, &str + String, String + &str
                         let is_str_lhs = matches!(lhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
                         let is_str_rhs = matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_));
-                        // Plan 232: Also use format! when lhs is an Ident (likely String variable)
-                        // to avoid String + String type mismatch in generated Rust
-                        let is_var_lhs = matches!(lhs.as_ref(), Expr::Ident(_));
-                        if is_str_lhs || is_str_rhs || is_var_lhs {
+                        if is_str_lhs || is_str_rhs {
                             write!(out, "format!(\"{{}}{{}}\", ")?;
                             self.expr(&lhs, out)?;
                             write!(out, ", ")?;
@@ -1020,7 +1018,12 @@ impl RustTrans {
             // Struct construction: Point(1, 2) -> Point { x: 1, y: 2 }
             // Special case: loop { body } -> loop { body }
             Expr::Node(node) => {
-                // Check if this is a loop expression
+                if node.name == "not" {
+                    write!(out, "!(")?;
+                    if !node.id.is_empty() { write!(out, "{}", node.id)?; }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
                 if node.name == "loop" {
                     write!(out, "loop {{")?;
                     if !node.body.stmts.is_empty() {
@@ -1782,6 +1785,12 @@ impl RustTrans {
 
         // Plan 223: Function name mappings for external calls
         if let Expr::Ident(name) = call.name.as_ref() {
+            if name == "not" {
+                write!(out, "!(")?;
+                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                write!(out, ")")?;
+                return Ok(());
+            }
             match name.as_str() {
                 "sleep_ms" => {
                     write!(out, "std::thread::sleep(std::time::Duration::from_millis(")?;
@@ -2160,6 +2169,11 @@ impl RustTrans {
                     write!(out, ")")?;
                     return Ok(());
                 }
+                "to_int" => {
+                    self.expr(object, out)?;
+                    write!(out, ".parse::<i32>().ok()")?;
+                    return Ok(());
+                }
                 "to_hex" => {
                     // val.to_hex(width) -> format!("{:0>width$x}", val, width = width)
                     write!(out, "format!(\"{{:0>width$x}}\", ")?;
@@ -2270,15 +2284,24 @@ impl RustTrans {
             }
 
             // Regular method call: object.method(args)
+            let is_get = method_name.as_str() == "get";
+            let is_insert = method_name.as_str() == "insert";
             self.expr(object, out)?;
             write!(out, ".{}(", method_name)?;
             for (i, arg) in call.args.args.iter().enumerate() {
-                self.arg(arg, out)?;
-                if i < call.args.args.len() - 1 {
-                    write!(out, ", ")?;
+                match arg {
+                    Arg::Pos(expr) => {
+                        self.expr(expr, out)?;
+                        if is_insert && matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                            write!(out, ".to_string()")?;
+                        }
+                    }
+                    other => self.arg(other, out)?,
                 }
+                if i < call.args.args.len() - 1 { write!(out, ", ")?; }
             }
             write!(out, ")")?;
+            if is_get { write!(out, ".cloned()")?; }
             return Ok(());
         }
 
@@ -3058,6 +3081,22 @@ impl RustTrans {
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
                 }
+            }
+            Iter::Destructured(key, val) => {
+                // for (k, v) in map -> for (k, &v) in &map
+                // key stays as reference (&String -> &str via deref), value is dereferenced (Copy types)
+                sink.body.write(b"for (")?;
+                sink.body.write(key.as_bytes())?;
+                sink.body.write(b", ")?;
+                write!(sink.body, "&{}", val)?;
+                sink.body.write(b") in &")?;
+                self.expr(&for_stmt.range, &mut sink.body)?;
+                sink.body.write(b" {\n")?;
+                self.indent();
+                self.emit_loop_body(&for_stmt.body, sink)?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}")?;
             }
             Iter::Ever => {
                 // Infinite loop: loop { body }

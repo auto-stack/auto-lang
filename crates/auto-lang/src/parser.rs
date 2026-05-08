@@ -5206,6 +5206,43 @@ impl<'a> Parser<'a> {
             }));
         }
 
+        // Destructured for-in: for (k, v) in expr { ... }
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip '('
+            let key = self.parse_name()?;
+            self.expect(TokenKind::Comma)?;
+            let val = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            self.expect(TokenKind::In)?;
+            self.enter_scope();
+            let meta_key = Meta::Store(Store {
+                kind: StoreKind::Var,
+                name: key.clone(),
+                expr: Expr::Nil,
+                ty: Type::Int,
+            });
+            self.define(key.as_str(), meta_key);
+            let meta_val = Meta::Store(Store {
+                kind: StoreKind::Var,
+                name: val.clone(),
+                expr: Expr::Nil,
+                ty: Type::Int,
+            });
+            self.define(val.as_str(), meta_val);
+            let iter = Iter::Destructured(key, val);
+            let range = self.iterable_expr()?;
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            self.exit_scope();
+            return Ok(Stmt::For(For {
+                iter,
+                range,
+                body,
+                new_line: has_new_line,
+                init: None,
+            }));
+        }
+
         // No initializer, try to parse as iterator pattern: for ident in range { ... }
         // Or conditional loop: for ident < max { ... }
         if self.is_kind(TokenKind::Ident) {
