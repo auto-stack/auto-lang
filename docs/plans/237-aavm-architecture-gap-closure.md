@@ -1,5 +1,16 @@
 # Plan 237: AAVM Architecture Gap Closure — 分阶段拉近与 Rust AutoVM 的距离
 
+## 状态: Phase A-C 已完成, Phase D-E 未完成 (2026-05-08)
+
+### 已完成
+- Phase A: 值多态编码 (eval_expr 支持 int/str/bool)
+- Phase B: 类型推断 (typeinfer.at, 54-55 测试)
+- Phase C: 字节码编译器 + 解释器 (codegen.at + vm.at, 测试 060-068)
+
+### 未完成
+- Phase D: 泛型单态化
+- Phase E: a2r 转译器
+
 ## 目标
 
 让 AAVM（用 Auto 写的 Auto 编译器）逐步具备与 Rust 版 Auto 编译器相同的架构能力。最终目标是 AAVM 能独立编译和执行 AutoLang 程序，不依赖 Rust 编译器。

@@ -1,6 +1,6 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ Phase 1.3 AST 待开始
+## 实施状态: ⏳ Phase 2 (a2r) 待开始 (2026-05-08 更新)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
@@ -9,7 +9,7 @@
 
 **预估工期:** 16–22 周（4–5.5 个月）
 
-### 进度摘要（2026-05-02 更新）
+### 进度摘要（2026-05-08 更新）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -17,10 +17,14 @@
 | Phase 0.5: VM Bug | ✅ 已完成 | 4 个字符串/bool/nesting VM bug 已修复 + 5 个回归测试 |
 | Phase 1.1: Token | ✅ 已完成 | 129 种 TokenKind + keyword_kind + is_keyword |
 | Phase 1.2: Lexer | ✅ 已完成 | auto/lib/lexer.at P0 实现 + VM 核心逻辑测试 |
-| Phase 1.3: AST | ⏳ 未开始 | 完全未开始 |
-| Phase 1.4: Parser | ⏳ 未开始 | 完全未开始 |
-| Phase 2: a2r | ⏳ 未开始 | 完全未开始 |
-| Phase 3: 自举 | ⏳ 未开始 | 完全未开始 |
+| Phase 1.3: AST | ✅ 已完成 | auto/lib/ast.at (Plan 233/234) |
+| Phase 1.4: Parser | ✅ 已完成 | auto/lib/parser.at P0+P1, 37 测试通过 (Plan 233/234) |
+| 1.Eval | ✅ 已完成 | auto/lib/eval.at tree-walking evaluator, 16 测试 (Plan 236) |
+| 1.TypeInfer | ✅ 已完成 | auto/lib/typeinfer.at, 2 测试 (Plan 237 Phase B) |
+| 1.Codegen | ✅ 已完成 | auto/lib/codegen.at + vm.at bytecode, 9 测试 (Plan 237 Phase C) |
+| 1.ListMap | ✅ 已完成 | BVM heap + List/Map opcodes (Plan 239) |
+| Phase 2: a2r | ⏳ 未开始 | 见 Plan 237 Phase E |
+| Phase 3: 自举 | ⏳ 未开始 | 依赖 Phase 2 |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）

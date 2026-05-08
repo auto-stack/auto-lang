@@ -2,7 +2,21 @@
 
 ## Status
 
-**Phase 0: NOT STARTED** — Analysis & scaffolding
+**Phase 0-3: PARTIALLY COMPLETE** (2026-05-08)
+
+### 已完成
+- Phase 0: 项目脚手架 + A2UIRenderer 提取
+- Phase 1: 应用 shell + 导航 (routes + sidebar)
+- Phase 2: Create 页 + Gallery 页
+- Phase 3: Widget Editor shell (部分)
+- 24 个 shadcn-vue blocks 已从 a3ui 复制到 component-gallery
+
+### 未完成
+- Phase 3: Widget Editor 完整功能 (JSON 解析、debounce)
+- Phase 4: Catalog 页面完整实现
+- Phase 5: Theater & Icons 完整实现
+- Phase 6: State 管理 & 持久化
+- Phase 7: Polish & 功能对齐
 
 ## Goal
 
