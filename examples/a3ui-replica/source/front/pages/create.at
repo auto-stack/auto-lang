@@ -11,13 +11,13 @@ widget CreatePage {
 
             div (style: "w-full max-w-[640px] relative") {
                 textarea (
-                    style: "w-full bg-white border border-slate-300 rounded-xl px-5 py-4 text-base shadow-sm resize-none focus:outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 transition-all duration-200",
-                    rows: "3",
+                    style: "w-full bg-white border border-slate-200 rounded-full px-6 py-3.5 text-base shadow-sm resize-none focus:outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 transition-all duration-200 h-14 pr-24",
+                    rows: "1",
                     placeholder: "Describe your A2UI widget...",
                     value: .prompt
                 ) {}
                 button (
-                    style: "absolute right-2 bottom-3 bg-violet-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-violet-700 transition-colors",
+                    style: "absolute right-2 top-1/2 -translate-y-1/2 bg-white text-slate-600 border border-slate-200 rounded-md px-4 py-1.5 text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm",
                     onclick: .Create
                 ) {
                     text (text: "Create") {}

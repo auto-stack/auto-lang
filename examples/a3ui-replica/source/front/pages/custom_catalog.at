@@ -1,31 +1,105 @@
 // pages/custom_catalog.at - Custom Catalog Page
-// Pre-built composed components and design patterns — pure Auto-generated page
+// Assembled components with tabs, live preview, and JSON data panel
 
 widget CustomCatalogPage {
+    model {
+        selectedTab str = "Flight Card"
+    }
+
+    on {
+        .SelectFlightCard -> { selectedTab = "Flight Card" }
+        .SelectSalesDashboard -> { selectedTab = "Sales Dashboard" }
+    }
+
     view {
-        col (style: "p-8 gap-8") {
-            col (style: "gap-2") {
-                h1 (style: "text-2xl font-semibold text-slate-900") {
-                    text (text: "Custom Catalog") {}
+        row (style: "h-[calc(100vh-3.5rem)]") {
+            // Left sidebar
+            col (style: "w-60 border-r border-slate-200 bg-white overflow-y-auto shrink-0 py-4 gap-1") {
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2") {
+                    text (text: "Assembled Components") {}
                 }
-                text (style: "text-slate-500") {
-                    text (text: "Pre-built composed components and design patterns built from basic A2UI blocks.") {}
+                if .selectedTab == "Flight Card" {
+                    div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                        text (text: "Flight Card") {}
+                    }
+                }
+                if .selectedTab != "Flight Card" {
+                    div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectFlightCard) {
+                        text (text: "Flight Card") {}
+                    }
+                }
+                if .selectedTab == "Sales Dashboard" {
+                    div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                        text (text: "Sales Dashboard") {}
+                    }
+                }
+                if .selectedTab != "Sales Dashboard" {
+                    div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectSalesDashboard) {
+                        text (text: "Sales Dashboard") {}
+                    }
                 }
             }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Flight Card") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Airline flight status card with route, times and status badge.") {} }
-                    A2Demo (demo: "FlightCard") {}
+            // Main content
+            col (style: "flex-1 overflow-y-auto p-8 gap-6") {
+                // Tab bar
+                row (style: "border-b border-slate-200 gap-4 pb-0 mb-2") {
+                    if .selectedTab == "Flight Card" {
+                        div (style: "px-4 py-2 text-sm font-medium text-violet-600 border-b-2 border-violet-600") {
+                            text (text: "Flight Card") {}
+                        }
+                    }
+                    if .selectedTab != "Flight Card" {
+                        div (style: "px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 cursor-pointer", onclick: .SelectFlightCard) {
+                            text (text: "Flight Card") {}
+                        }
+                    }
+                    if .selectedTab == "Sales Dashboard" {
+                        div (style: "px-4 py-2 text-sm font-medium text-violet-600 border-b-2 border-violet-600") {
+                            text (text: "Sales Dashboard") {}
+                        }
+                    }
+                    if .selectedTab != "Sales Dashboard" {
+                        div (style: "px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 cursor-pointer", onclick: .SelectSalesDashboard) {
+                            text (text: "Sales Dashboard") {}
+                        }
+                    }
+                }
+
+                // Description
+                if .selectedTab == "Flight Card" {
+                    text (style: "text-slate-500") { text (text: "Airline flight status card with route, times and status badge. Built from Card, Row, Column, Text and Icon components.") {} }
+                }
+                if .selectedTab == "Sales Dashboard" {
+                    text (style: "text-slate-500") { text (text: "Metrics row with bar chart for sales overview. Built from Column, Row, Metric and BarChart components.") {} }
+                }
+
+                // Preview
+                col (style: "gap-3") {
+                    text (style: "text-sm font-semibold text-slate-800") { text (text: "Preview") {} }
+                    if .selectedTab == "Flight Card" {
+                        A2Demo (demo: "FlightCard") {}
+                    }
+                    if .selectedTab == "Sales Dashboard" {
+                        A2Demo (demo: "SalesDashboard") {}
+                    }
                 }
             }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Sales Dashboard") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Metrics row with bar chart for sales overview.") {} }
-                    A2Demo (demo: "SalesDashboard") {}
+            // Right JSON panel
+            col (style: "w-80 border-l border-slate-200 bg-white overflow-y-auto shrink-0 p-4 gap-2") {
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2") {
+                    text (text: "JSON Data") {}
+                }
+                if .selectedTab == "Flight Card" {
+                    div (style: "bg-slate-900 rounded-lg p-3 overflow-x-auto") {
+                        text (style: "font-mono text-xs text-slate-300 whitespace-pre") { text (text: "[\n  {\"id\":\"root\",\"component\":\"Card\",\"child\":\"content\"},\n  {\"id\":\"content\",\"component\":\"Column\",\"children\":[\"header\",\"route\",\"times\"],\"gap\":12},\n  {\"id\":\"header\",\"component\":\"Row\",\"children\":[\"flight-icon\",\"flight-num\",\"date\"],\"justify\":\"spaceBetween\",\"align\":\"center\"},\n  {\"id\":\"flight-icon\",\"component\":\"Icon\",\"name\":\"send\",\"size\":16},\n  {\"id\":\"flight-num\",\"component\":\"Text\",\"value\":\"OS 87\",\"variant\":\"body\"},\n  {\"id\":\"date\",\"component\":\"Text\",\"value\":\"Mon, Dec 15\",\"variant\":\"caption\",\"color\":\"text-secondary\"},\n  {\"id\":\"route\",\"component\":\"Row\",\"children\":[\"origin\",\"arrow\",\"dest\"],\"justify\":\"center\",\"align\":\"center\",\"gap\":8},\n  {\"id\":\"origin\",\"component\":\"Text\",\"value\":\"Vienna\",\"variant\":\"h4\"},\n  {\"id\":\"arrow\",\"component\":\"Icon\",\"name\":\"arrow_forward\",\"size\":20},\n  {\"id\":\"dest\",\"component\":\"Text\",\"value\":\"New York\",\"variant\":\"h4\"},\n  {\"id\":\"times\",\"component\":\"Row\",\"children\":[\"departs\",\"status\",\"arrives\"],\"justify\":\"spaceBetween\",\"align\":\"center\"},\n  {\"id\":\"departs\",\"component\":\"Column\",\"children\":[\"dep-label\",\"dep-time\"],\"align\":\"center\",\"gap\":4},\n  {\"id\":\"dep-label\",\"component\":\"Text\",\"value\":\"Departs\",\"variant\":\"caption\",\"color\":\"text-secondary\"},\n  {\"id\":\"dep-time\",\"component\":\"Text\",\"value\":\"6:15 PM\",\"variant\":\"body\"},\n  {\"id\":\"status\",\"component\":\"Column\",\"children\":[\"st-label\",\"st-val\"],\"align\":\"center\",\"gap\":4},\n  {\"id\":\"st-label\",\"component\":\"Text\",\"value\":\"Status\",\"variant\":\"caption\",\"color\":\"text-secondary\"},\n  {\"id\":\"st-val\",\"component\":\"Text\",\"value\":\"On Time\",\"variant\":\"body\",\"color\":\"accent-green\"},\n  {\"id\":\"arrives\",\"component\":\"Column\",\"children\":[\"arr-label\",\"arr-time\"],\"align\":\"center\",\"gap\":4},\n  {\"id\":\"arr-label\",\"component\":\"Text\",\"value\":\"Arrives\",\"variant\":\"caption\",\"color\":\"text-secondary\"},\n  {\"id\":\"arr-time\",\"component\":\"Text\",\"value\":\"10:30 PM\",\"variant\":\"body\"}\n]") {} }
+                    }
+                }
+                if .selectedTab == "Sales Dashboard" {
+                    div (style: "bg-slate-900 rounded-lg p-3 overflow-x-auto") {
+                        text (style: "font-mono text-xs text-slate-300 whitespace-pre") { text (text: "[\n  {\"id\":\"root\",\"component\":\"Column\",\"children\":[\"row1\",\"row2\"],\"gap\":16},\n  {\"id\":\"row1\",\"component\":\"Row\",\"children\":[\"m1\",\"m2\",\"m3\"],\"gap\":16,\"justify\":\"spaceAround\"},\n  {\"id\":\"m1\",\"component\":\"Metric\",\"label\":\"Revenue\",\"value\":\"$42K\",\"trend\":\"up\"},\n  {\"id\":\"m2\",\"component\":\"Metric\",\"label\":\"Orders\",\"value\":\"156\",\"trend\":\"up\"},\n  {\"id\":\"m3\",\"component\":\"Metric\",\"label\":\"Returns\",\"value\":\"12\",\"trend\":\"down\"},\n  {\"id\":\"row2\",\"component\":\"BarChart\",\"data\":[\n    {\"label\":\"Mon\",\"value\":30},\n    {\"label\":\"Tue\",\"value\":45},\n    {\"label\":\"Wed\",\"value\":38},\n    {\"label\":\"Thu\",\"value\":55},\n    {\"label\":\"Fri\",\"value\":48}\n  ]}\n]") {} }
+                    }
                 }
             }
         }

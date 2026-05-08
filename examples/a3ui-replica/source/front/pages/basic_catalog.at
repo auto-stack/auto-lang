@@ -1,202 +1,360 @@
 // pages/basic_catalog.at - Basic Catalog Page
-// Documentation for A2UI basic components — pure Auto-generated page
+// Two-column documentation layout with live previews, usage snippets, and props tables
 
 widget BasicCatalogPage {
+    model {
+        selectedComponent str = "Row"
+        layoutComponents = ["Row", "Column", "List", "Card"]
+        contentComponents = ["Text", "Image", "Icon", "Title"]
+        inputComponents = ["Button", "Tabs", "TextField", "CheckBox", "Slider"]
+        displayComponents = ["Badge", "Metric", "Divider"]
+        dataComponents = ["PieChart", "BarChart", "DataTable", "DashboardCard"]
+    }
+
+    on {
+        .SelectComponent(name) -> {
+            selectedComponent = name
+        }
+    }
+
     view {
-        col (style: "p-8 gap-8") {
-            col (style: "gap-2") {
-                h1 (style: "text-2xl font-semibold text-slate-900") {
-                    text (text: "Basic Catalog") {}
+        row (style: "h-[calc(100vh-3.5rem)]") {
+            // Left sidebar nav
+            col (style: "w-60 border-r border-slate-200 bg-white overflow-y-auto shrink-0 py-4 gap-1") {
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2") {
+                    text (text: "Layout") {}
                 }
-                text (style: "text-slate-500") {
-                    text (text: "Reference documentation for all A2UI basic components with live previews.") {}
+                for name in .layoutComponents {
+                    if .selectedComponent == name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                            text (text: name) {}
+                        }
+                    }
+                    if .selectedComponent != name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectComponent(name)) {
+                            text (text: name) {}
+                        }
+                    }
                 }
-            }
 
-            // Layout Components
-            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
-                text (text: "Layout") {}
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Row") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Horizontal flex container with gap, align and justify.") {} }
-                    A2Demo (demo: "Row") {}
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mt-4 mb-2") {
+                    text (text: "Content") {}
                 }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Column") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Vertical flex container with gap and align.") {} }
-                    A2Demo (demo: "Column") {}
+                for name in .contentComponents {
+                    if .selectedComponent == name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                            text (text: name) {}
+                        }
+                    }
+                    if .selectedComponent != name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectComponent(name)) {
+                            text (text: name) {}
+                        }
+                    }
                 }
-            }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "List") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Vertical list of items with gap spacing.") {} }
-                    A2Demo (demo: "List") {}
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mt-4 mb-2") {
+                    text (text: "Input") {}
                 }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Card") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Rounded container with optional child content.") {} }
-                    A2Demo (demo: "Card") {}
+                for name in .inputComponents {
+                    if .selectedComponent == name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                            text (text: name) {}
+                        }
+                    }
+                    if .selectedComponent != name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectComponent(name)) {
+                            text (text: name) {}
+                        }
+                    }
                 }
-            }
 
-            // Content Components
-            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
-                text (text: "Content") {}
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Text") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Text display with variants: h1, h2, h3, h4, body, caption.") {} }
-                    A2Demo (demo: "Text") {}
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mt-4 mb-2") {
+                    text (text: "Display") {}
                 }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Image") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Image display with width, height and borderRadius.") {} }
-                    A2Demo (demo: "Image") {}
+                for name in .displayComponents {
+                    if .selectedComponent == name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                            text (text: name) {}
+                        }
+                    }
+                    if .selectedComponent != name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectComponent(name)) {
+                            text (text: name) {}
+                        }
+                    }
                 }
-            }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Icon") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Icon display using Lucide icon names and size.") {} }
-                    A2Demo (demo: "Icon") {}
+                text (style: "text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mt-4 mb-2") {
+                    text (text: "Data") {}
                 }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Title") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Semantic title element with h1-h3 variants.") {} }
-                    A2Demo (demo: "Title") {}
-                }
-            }
-
-            // Input Components
-            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
-                text (text: "Input") {}
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Button") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Clickable button with primary/secondary/ghost variants.") {} }
-                    A2Demo (demo: "Button") {}
+                for name in .dataComponents {
+                    if .selectedComponent == name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm bg-violet-50 text-violet-600 font-medium") {
+                            text (text: name) {}
+                        }
+                    }
+                    if .selectedComponent != name {
+                        div (style: "mx-2 px-3 py-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-all duration-150", onclick: .SelectComponent(name)) {
+                            text (text: name) {}
+                        }
+                    }
                 }
             }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Tabs") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Tab navigation with active tab state.") {} }
-                    A2Demo (demo: "Tabs") {}
+            // Right detail view
+            col (style: "flex-1 overflow-y-auto p-8 gap-6") {
+                // Header
+                col (style: "gap-2 border-b border-slate-200 pb-6") {
+                    h1 (style: "text-2xl font-semibold text-slate-900") {
+                        text (text: .selectedComponent) {}
+                    }
+                    if .selectedComponent == "Row" {
+                        text (style: "text-slate-500") { text (text: "Horizontal flex container with gap, align and justify.") {} }
+                    }
+                    if .selectedComponent == "Column" {
+                        text (style: "text-slate-500") { text (text: "Vertical flex container with gap and align.") {} }
+                    }
+                    if .selectedComponent == "List" {
+                        text (style: "text-slate-500") { text (text: "Vertical list of items with gap spacing.") {} }
+                    }
+                    if .selectedComponent == "Card" {
+                        text (style: "text-slate-500") { text (text: "Rounded container with optional child content.") {} }
+                    }
+                    if .selectedComponent == "Text" {
+                        text (style: "text-slate-500") { text (text: "Text display with variants: h1, h2, h3, h4, body, caption.") {} }
+                    }
+                    if .selectedComponent == "Image" {
+                        text (style: "text-slate-500") { text (text: "Image display with width, height and borderRadius.") {} }
+                    }
+                    if .selectedComponent == "Icon" {
+                        text (style: "text-slate-500") { text (text: "Icon display using Lucide icon names and size.") {} }
+                    }
+                    if .selectedComponent == "Title" {
+                        text (style: "text-slate-500") { text (text: "Semantic title element with h1-h3 variants.") {} }
+                    }
+                    if .selectedComponent == "Button" {
+                        text (style: "text-slate-500") { text (text: "Clickable button with primary/secondary/ghost variants.") {} }
+                    }
+                    if .selectedComponent == "Tabs" {
+                        text (style: "text-slate-500") { text (text: "Tab navigation with active tab state.") {} }
+                    }
+                    if .selectedComponent == "TextField" {
+                        text (style: "text-slate-500") { text (text: "Single-line text input with placeholder and value.") {} }
+                    }
+                    if .selectedComponent == "CheckBox" {
+                        text (style: "text-slate-500") { text (text: "Boolean toggle with label and checked state.") {} }
+                    }
+                    if .selectedComponent == "Slider" {
+                        text (style: "text-slate-500") { text (text: "Range slider with min, max and value.") {} }
+                    }
+                    if .selectedComponent == "Badge" {
+                        text (style: "text-slate-500") { text (text: "Small status label with color variants.") {} }
+                    }
+                    if .selectedComponent == "Metric" {
+                        text (style: "text-slate-500") { text (text: "Key metric with label, value and trend indicator.") {} }
+                    }
+                    if .selectedComponent == "Divider" {
+                        text (style: "text-slate-500") { text (text: "Horizontal separator with spacing.") {} }
+                    }
+                    if .selectedComponent == "PieChart" {
+                        text (style: "text-slate-500") { text (text: "Donut chart showing proportional data.") {} }
+                    }
+                    if .selectedComponent == "BarChart" {
+                        text (style: "text-slate-500") { text (text: "Bar chart for comparing categorical values.") {} }
+                    }
+                    if .selectedComponent == "DataTable" {
+                        text (style: "text-slate-500") { text (text: "Structured data table with columns and rows.") {} }
+                    }
+                    if .selectedComponent == "DashboardCard" {
+                        text (style: "text-slate-500") { text (text: "Metric card with title for dashboards.") {} }
+                    }
                 }
-            }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "TextField") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Single-line text input with placeholder and value.") {} }
-                    A2Demo (demo: "TextField") {}
+                // Preview
+                col (style: "gap-3") {
+                    text (style: "text-sm font-semibold text-slate-800") { text (text: "Preview") {} }
+                    A2Demo (demo: .selectedComponent) {}
                 }
-            }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "CheckBox") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Boolean toggle with label and checked state.") {} }
-                    A2Demo (demo: "CheckBox") {}
+                // Usage
+                col (style: "gap-3") {
+                    text (style: "text-sm font-semibold text-slate-800") { text (text: "Usage") {} }
+                    div (style: "bg-slate-900 rounded-lg p-4 overflow-x-auto") {
+                        if .selectedComponent == "Row" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "row (style: gap-4 items-center) {\n    text (text: Left) {}\n    text (text: Right) {}\n}") {} }
+                        }
+                        if .selectedComponent == "Column" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "col (style: gap-2) {\n    text (text: First) {}\n    text (text: Second) {}\n}") {} }
+                        }
+                        if .selectedComponent == "List" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "list (style: gap-2) {\n    text (text: Item 1) {}\n    text (text: Item 2) {}\n}") {} }
+                        }
+                        if .selectedComponent == "Card" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "card (style: p-4) {\n    text (text: Card content) {}\n}") {} }
+                        }
+                        if .selectedComponent == "Text" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "text (style: text-lg) {\n    text (text: Hello World) {}\n}") {} }
+                        }
+                        if .selectedComponent == "Image" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "image (src: url, width: 200, height: 120) {}") {} }
+                        }
+                        if .selectedComponent == "Icon" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "icon (name: heart, size: 24) {}") {} }
+                        }
+                        if .selectedComponent == "Title" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "title (text: Page Title, variant: h1) {}") {} }
+                        }
+                        if .selectedComponent == "Button" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "button (onclick: .Submit) {\n    text (text: Click me) {}\n}") {} }
+                        }
+                        if .selectedComponent == "Tabs" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "tabs (tabs: [A, B], activeTab: 0) {}") {} }
+                        }
+                        if .selectedComponent == "TextField" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "input (placeholder: Type here..., value: .name) {}") {} }
+                        }
+                        if .selectedComponent == "CheckBox" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "checkbox (checked: .enabled, label: Enable) {}") {} }
+                        }
+                        if .selectedComponent == "Slider" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "slider (min: 0, max: 100, value: .volume) {}") {} }
+                        }
+                        if .selectedComponent == "Badge" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "badge (label: New, variant: success) {}") {} }
+                        }
+                        if .selectedComponent == "Metric" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "metric (label: Revenue, value: $42K, trend: up) {}") {} }
+                        }
+                        if .selectedComponent == "Divider" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "divider (spacing: 8) {}") {} }
+                        }
+                        if .selectedComponent == "PieChart" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "piechart (data: [{value: 30}, {value: 70}]) {}") {} }
+                        }
+                        if .selectedComponent == "BarChart" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "barchart (data: [{label: A, value: 40}]) {}") {} }
+                        }
+                        if .selectedComponent == "DataTable" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "datatable (\n    columns: [{name: Name}],\n    rows: [{Name: Alice}]\n) {}") {} }
+                        }
+                        if .selectedComponent == "DashboardCard" {
+                            text (style: "font-mono text-sm text-slate-300 whitespace-pre") { text (text: "dashboardcard (title: Overview) {\n    metric (label: Sales, value: $124K) {}\n}") {} }
+                        }
+                    }
                 }
-            }
 
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Slider") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Range slider with min, max and value.") {} }
-                    A2Demo (demo: "Slider") {}
-                }
-            }
-
-            // Display Components
-            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
-                text (text: "Display") {}
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Badge") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Small status label with color variants.") {} }
-                    A2Demo (demo: "Badge") {}
-                }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Metric") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Key metric with label, value and trend indicator.") {} }
-                    A2Demo (demo: "Metric") {}
-                }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "Divider") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Horizontal separator with spacing.") {} }
-                    A2Demo (demo: "Divider") {}
-                }
-            }
-
-            // Data Components
-            text (style: "text-sm font-semibold text-slate-400 uppercase tracking-wider mt-4") {
-                text (text: "Data") {}
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "PieChart") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Donut chart showing proportional data.") {} }
-                    A2Demo (demo: "PieChart") {}
-                }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "BarChart") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Bar chart for comparing categorical values.") {} }
-                    A2Demo (demo: "BarChart") {}
-                }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "DataTable") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Structured data table with columns and rows.") {} }
-                    A2Demo (demo: "DataTable") {}
-                }
-            }
-
-            card (style: "p-4") {
-                col (style: "gap-2") {
-                    text (style: "font-medium text-slate-800") { text (text: "DashboardCard") {} }
-                    text (style: "text-sm text-slate-500") { text (text: "Metric card with title for dashboards.") {} }
-                    A2Demo (demo: "DashboardCard") {}
+                // Props table
+                col (style: "gap-3") {
+                    text (style: "text-sm font-semibold text-slate-800") { text (text: "Props") {} }
+                    div (style: "border border-slate-200 rounded-lg overflow-hidden") {
+                        table (style: "w-full text-sm") {
+                            thead (style: "bg-slate-50 border-b border-slate-200") {
+                                tr {
+                                    th (style: "text-left px-4 py-2 font-medium text-slate-600") { text (text: "Name") {} }
+                                    th (style: "text-left px-4 py-2 font-medium text-slate-600") { text (text: "Type") {} }
+                                    th (style: "text-left px-4 py-2 font-medium text-slate-600") { text (text: "Default") {} }
+                                    th (style: "text-left px-4 py-2 font-medium text-slate-600") { text (text: "Description") {} }
+                                }
+                            }
+                            tbody {
+                                if .selectedComponent == "Row" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "children") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Child component IDs") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "gap") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "0") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Gap between children (px)") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "align") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "start") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Vertical alignment") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "justify") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "start") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Horizontal justification") {} } }
+                                }
+                                if .selectedComponent == "Column" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "children") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Child component IDs") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "gap") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "0") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Gap between children (px)") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "align") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "start") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Horizontal alignment") {} } }
+                                }
+                                if .selectedComponent == "List" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "children") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Child component IDs") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "gap") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "0") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Gap between items (px)") {} } }
+                                }
+                                if .selectedComponent == "Card" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "child") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "null") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Single child component ID") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "style") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Tailwind CSS classes") {} } }
+                                }
+                                if .selectedComponent == "Text" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "value") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Text content") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "variant") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "body") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "h1, h2, h3, h4, body, caption") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "color") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Color style name") {} } }
+                                }
+                                if .selectedComponent == "Image" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "src") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Image URL") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "width") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Width in pixels") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "height") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Height in pixels") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "borderRadius") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "none, sm, md, lg, full") {} } }
+                                }
+                                if .selectedComponent == "Icon" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "name") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Lucide icon name") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "size") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "16") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Icon size in pixels") {} } }
+                                }
+                                if .selectedComponent == "Title" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "text") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Title text") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "variant") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "h1") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "h1, h2, h3") {} } }
+                                }
+                                if .selectedComponent == "Button" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "label") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Button label") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "variant") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "primary") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "primary, secondary, ghost") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "onclick") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "event") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Click handler") {} } }
+                                }
+                                if .selectedComponent == "Tabs" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "tabs") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Tab labels") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "activeTab") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "0") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Initially active tab index") {} } }
+                                }
+                                if .selectedComponent == "TextField" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "placeholder") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Placeholder text") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "value") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Current value") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "type") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "text") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "text, password, email") {} } }
+                                }
+                                if .selectedComponent == "CheckBox" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "checked") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "boolean") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "false") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Checked state") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "label") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Label text") {} } }
+                                }
+                                if .selectedComponent == "Slider" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "min") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "0") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Minimum value") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "max") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "100") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Maximum value") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "value") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "0") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Current value") {} } }
+                                }
+                                if .selectedComponent == "Badge" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "label") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Badge text") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "variant") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "default") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "default, success, warning, error, info") {} } }
+                                }
+                                if .selectedComponent == "Metric" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "label") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Metric label") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "value") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Metric value") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "trend") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "up, down, neutral") {} } }
+                                }
+                                if .selectedComponent == "Divider" {
+                                    tr { td (style: "px-4 py-2") { text (text: "spacing") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "8") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Vertical spacing in pixels") {} } }
+                                }
+                                if .selectedComponent == "PieChart" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "data") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "object[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Array of {value} objects") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "size") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "120") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Chart diameter in pixels") {} } }
+                                }
+                                if .selectedComponent == "BarChart" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "data") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "object[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Array of {label, value} objects") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "height") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "120") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Chart height in pixels") {} } }
+                                }
+                                if .selectedComponent == "DataTable" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "columns") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "object[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Column definitions") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "rows") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "object[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "[]") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Data rows") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "rowHeight") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "number") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "40") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Row height in pixels") {} } }
+                                }
+                                if .selectedComponent == "DashboardCard" {
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "title") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Card title") {} } }
+                                    tr { td (style: "px-4 py-2 border-b border-slate-100") { text (text: "child") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "null") {} } td (style: "px-4 py-2 border-b border-slate-100 text-slate-500") { text (text: "Single child component ID") {} } }
+                                    tr { td (style: "px-4 py-2") { text (text: "style") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "string") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "-") {} } td (style: "px-4 py-2 text-slate-500") { text (text: "Tailwind CSS classes") {} } }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
+
