@@ -14,7 +14,7 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
 import { CurveType } from '@unovis/ts'
 
 const monthlyRevenue = ref<any[]>([{mobile: 80, month: 'Jan', desktop: 186, tablet: 45, wearable: 25}, {month: 'Feb', mobile: 200, desktop: 305, tablet: 60, wearable: 35}, {month: 'Mar', mobile: 120, desktop: 237, tablet: 55, wearable: 30}, {desktop: 73, mobile: 190, month: 'Apr', tablet: 40, wearable: 20}, {month: 'May', desktop: 209, mobile: 130, tablet: 50, wearable: 28}, {mobile: 140, month: 'Jun', desktop: 214, tablet: 65, wearable: 42}])
-const quarterlySales = ref<any[]>([{product: 4500, service: 3200, quarter: 'Q1'}, {product: 5200, quarter: 'Q2', service: 4100}, {product: 4800, service: 3800, quarter: 'Q3'}, {quarter: 'Q4', product: 6100, service: 4500}])
+const quarterlySales = ref<any[]>([{product: 4500, service: 3200, license: 2100, support: 1800, quarter: 'Q1'}, {product: 5200, quarter: 'Q2', service: 4100, license: 2300, support: 1950}, {product: 4800, service: 3800, license: 2400, support: 2100, quarter: 'Q3'}, {quarter: 'Q4', product: 6100, service: 4500, license: 2600, support: 2200}])
 const trafficSource = ref<any[]>([{source: 'Desktop', value: 55, description: 'Windows, macOS & Linux browsers'}, {source: 'Mobile', value: 30, description: 'iOS & Android devices'}, {source: 'Tablet', value: 15, description: 'iPad & Android tablets'}])
 
 const sparklineMetrics = ref([
@@ -76,7 +76,7 @@ const sparklineMetrics = ref([
               <span class="text-lg font-semibold text-foreground">
                 <span>Bar Chart — Quarterly Sales (Grouped)</span>
               </span>
-              <BarChart :data="quarterlySales" :categories="['product', 'service']" index="quarter" type="grouped" class="h-[300px] w-full" />
+              <BarChart :data="quarterlySales" :categories="['product', 'service', 'license', 'support']" index="quarter" type="grouped" class="h-[300px] w-full" />
             </div>
           </Card>
           <Card>
@@ -84,7 +84,7 @@ const sparklineMetrics = ref([
               <span class="text-lg font-semibold text-foreground">
                 <span>Bar Chart — Quarterly Sales (Stacked)</span>
               </span>
-              <BarChart :data="quarterlySales" :categories="['product', 'service']" index="quarter" type="stacked" class="h-[300px] w-full" />
+              <BarChart :data="quarterlySales" :categories="['product', 'service', 'license', 'support']" index="quarter" type="stacked" class="h-[300px] w-full" />
             </div>
           </Card>
           <Card>

@@ -1473,14 +1473,28 @@ fn generate_index_css() -> String {
 
 @layer base {
   :root {
+    --radius: 0.625rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* ===== Daylight (Default) ===== */
+  [data-theme="daylight"],
+  :root:not([data-theme]) {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
@@ -1491,18 +1505,183 @@ fn generate_index_css() -> String {
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-
-    /* Unovis chart theme variables */
-    --vis-tooltip-background-color: none !important;
-    --vis-tooltip-border-color: none !important;
-    --vis-tooltip-text-color: none !important;
-    --vis-tooltip-shadow-color: none !important;
-    --vis-tooltip-backdrop-filter: none !important;
-    --vis-tooltip-padding: none !important;
+    --ring: 239 84% 67%;
+    --preview-bg: 220 14% 96%;
+    --preview-fg: 220 9% 46%;
+    --code-bg: 220 13% 9%;
+    --code-fg: 210 40% 98%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 239 84% 67%;
     --vis-primary-color: var(--primary);
-    --vis-secondary-color: 160 81% 40%;
+    --vis-secondary-color: 217 91% 60%;
+    --vis-tertiary-color: 168 76% 46%;
+    --vis-quaternary-color: 45 93% 48%;
+    --vis-text-color: var(--muted-foreground);
+  }
+
+  /* ===== Midnight ===== */
+  [data-theme="midnight"] {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 13%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 13%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 239 84% 77%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 239 84% 77%;
+    --preview-bg: 217 33% 12%;
+    --preview-fg: 215 20% 65%;
+    --code-bg: 222 47% 7%;
+    --code-fg: 210 40% 98%;
+    --sidebar-background: 222 47% 9%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 239 84% 77%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 217 33% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 18%;
+    --sidebar-ring: 239 84% 77%;
+    --vis-primary-color: var(--primary);
+    --vis-secondary-color: 210 95% 70%;
+    --vis-tertiary-color: 160 70% 55%;
+    --vis-quaternary-color: 45 93% 56%;
+    --vis-text-color: var(--muted-foreground);
+  }
+
+  /* ===== Forest ===== */
+  [data-theme="forest"] {
+    --background: 100 20% 98%;
+    --foreground: 150 20% 10%;
+    --card: 100 15% 99%;
+    --card-foreground: 150 20% 10%;
+    --popover: 100 15% 99%;
+    --popover-foreground: 150 20% 10%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 100 15% 94%;
+    --secondary-foreground: 150 20% 15%;
+    --muted: 100 12% 94%;
+    --muted-foreground: 150 10% 40%;
+    --accent: 100 20% 92%;
+    --accent-foreground: 150 20% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 100 10% 88%;
+    --input: 100 10% 88%;
+    --ring: 160 84% 39%;
+    --preview-bg: 100 12% 95%;
+    --preview-fg: 150 10% 45%;
+    --code-bg: 150 20% 8%;
+    --code-fg: 100 20% 98%;
+    --sidebar-background: 100 15% 97%;
+    --sidebar-foreground: 150 15% 25%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 100 12% 92%;
+    --sidebar-accent-foreground: 150 20% 15%;
+    --sidebar-border: 100 10% 86%;
+    --sidebar-ring: 160 84% 39%;
+    --vis-primary-color: var(--primary);
+    --vis-secondary-color: 175 84% 33%;
+    --vis-tertiary-color: 170 75% 63%;
+    --vis-quaternary-color: 20 80% 41%;
+    --vis-text-color: var(--muted-foreground);
+  }
+
+  /* ===== Sunset ===== */
+  [data-theme="sunset"] {
+    --background: 30 25% 98%;
+    --foreground: 20 20% 10%;
+    --card: 30 20% 99%;
+    --card-foreground: 20 20% 10%;
+    --popover: 30 20% 99%;
+    --popover-foreground: 20 20% 10%;
+    --primary: 24 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 20% 94%;
+    --secondary-foreground: 20 20% 15%;
+    --muted: 30 15% 94%;
+    --muted-foreground: 20 10% 40%;
+    --accent: 30 20% 92%;
+    --accent-foreground: 20 20% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 15% 88%;
+    --input: 30 15% 88%;
+    --ring: 24 95% 53%;
+    --preview-bg: 30 15% 95%;
+    --preview-fg: 20 10% 45%;
+    --code-bg: 20 20% 8%;
+    --code-fg: 30 25% 98%;
+    --sidebar-background: 30 20% 97%;
+    --sidebar-foreground: 20 15% 25%;
+    --sidebar-primary: 24 95% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 15% 92%;
+    --sidebar-accent-foreground: 20 20% 15%;
+    --sidebar-border: 30 12% 86%;
+    --sidebar-ring: 24 95% 53%;
+    --vis-primary-color: var(--primary);
+    --vis-secondary-color: 350 85% 50%;
+    --vis-tertiary-color: 220 90% 40%;
+    --vis-quaternary-color: 48 96% 64%;
+    --vis-text-color: var(--muted-foreground);
+  }
+
+  /* ===== Ocean ===== */
+  [data-theme="ocean"] {
+    --background: 200 50% 98%;
+    --foreground: 200 40% 10%;
+    --card: 200 40% 99%;
+    --card-foreground: 200 40% 10%;
+    --popover: 200 40% 99%;
+    --popover-foreground: 200 40% 10%;
+    --primary: 189 94% 43%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 30% 94%;
+    --secondary-foreground: 200 40% 15%;
+    --muted: 200 25% 94%;
+    --muted-foreground: 200 15% 40%;
+    --accent: 200 30% 92%;
+    --accent-foreground: 200 40% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 200 20% 88%;
+    --input: 200 20% 88%;
+    --ring: 189 94% 43%;
+    --preview-bg: 200 20% 95%;
+    --preview-fg: 200 15% 45%;
+    --code-bg: 200 40% 8%;
+    --code-fg: 200 50% 98%;
+    --sidebar-background: 200 35% 97%;
+    --sidebar-foreground: 200 25% 25%;
+    --sidebar-primary: 189 94% 43%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 200 25% 92%;
+    --sidebar-accent-foreground: 200 40% 15%;
+    --sidebar-border: 200 18% 86%;
+    --sidebar-ring: 189 94% 43%;
+    --vis-primary-color: var(--primary);
+    --vis-secondary-color: 200 80% 24%;
+    --vis-tertiary-color: 170 75% 63%;
+    --vis-quaternary-color: 30 90% 68%;
     --vis-text-color: var(--muted-foreground);
   }
 
@@ -1526,7 +1705,54 @@ fn generate_index_css() -> String {
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+    --vis-primary-color: var(--primary);
+    --vis-secondary-color: 210 95% 70%;
+    --vis-tertiary-color: 160 70% 55%;
+    --vis-quaternary-color: 45 93% 56%;
+    --vis-text-color: var(--muted-foreground);
   }
+}
+
+/* ===== Mono Palette Overrides (single-hue gradients) ===== */
+/* Activate by adding data-palette="mono" to <html> or a parent element */
+[data-palette="mono"] [data-theme="daylight"],
+[data-palette="mono"][data-theme="daylight"] {
+  --vis-primary-color: 239 75% 47%;
+  --vis-secondary-color: 239 84% 63%;
+  --vis-tertiary-color: 239 90% 75%;
+  --vis-quaternary-color: 239 95% 86%;
+}
+
+[data-palette="mono"] [data-theme="midnight"],
+[data-palette="mono"][data-theme="midnight"] {
+  --vis-primary-color: 239 70% 42%;
+  --vis-secondary-color: 239 84% 55%;
+  --vis-tertiary-color: 239 84% 70%;
+  --vis-quaternary-color: 239 90% 82%;
+}
+
+[data-palette="mono"] [data-theme="forest"],
+[data-palette="mono"][data-theme="forest"] {
+  --vis-primary-color: 160 85% 24%;
+  --vis-secondary-color: 160 84% 39%;
+  --vis-tertiary-color: 160 70% 53%;
+  --vis-quaternary-color: 160 80% 70%;
+}
+
+[data-palette="mono"] [data-theme="sunset"],
+[data-palette="mono"][data-theme="sunset"] {
+  --vis-primary-color: 20 85% 41%;
+  --vis-secondary-color: 24 95% 53%;
+  --vis-tertiary-color: 28 95% 65%;
+  --vis-quaternary-color: 30 95% 78%;
+}
+
+[data-palette="mono"] [data-theme="ocean"],
+[data-palette="mono"][data-theme="ocean"] {
+  --vis-primary-color: 189 85% 32%;
+  --vis-secondary-color: 189 94% 43%;
+  --vis-tertiary-color: 189 90% 57%;
+  --vis-quaternary-color: 189 85% 72%;
 }
 
 @layer base {
@@ -1536,6 +1762,15 @@ fn generate_index_css() -> String {
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Smooth theme transitions */
+  html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  html * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: ease;
+    transition-duration: 0.2s;
   }
 }
 
@@ -1565,6 +1800,13 @@ fn generate_index_css() -> String {
   main {
     @apply flex-1;
   }
+}
+
+/* Sidebar active link highlighting */
+aside .router-link-exact-active {
+  background-color: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-weight: 500;
 }
 "#.to_string()
 }

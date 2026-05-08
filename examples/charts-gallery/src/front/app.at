@@ -4,20 +4,20 @@ widget App {
     model {
         // Area & Line chart data
         monthlyRevenue = [
-            { month: "Jan", desktop: 186, mobile: 80 },
-            { month: "Feb", desktop: 305, mobile: 200 },
-            { month: "Mar", desktop: 237, mobile: 120 },
-            { month: "Apr", desktop: 73, mobile: 190 },
-            { month: "May", desktop: 209, mobile: 130 },
-            { month: "Jun", desktop: 214, mobile: 140 }
+            { month: "Jan", desktop: 186, mobile: 80, tablet: 45, wearable: 25 },
+            { month: "Feb", desktop: 305, mobile: 200, tablet: 60, wearable: 35 },
+            { month: "Mar", desktop: 237, mobile: 120, tablet: 55, wearable: 30 },
+            { month: "Apr", desktop: 73, mobile: 190, tablet: 40, wearable: 20 },
+            { month: "May", desktop: 209, mobile: 130, tablet: 50, wearable: 28 },
+            { month: "Jun", desktop: 214, mobile: 140, tablet: 65, wearable: 42 }
         ]
 
         // Bar chart data
         quarterlySales = [
-            { quarter: "Q1", product: 4500, service: 3200 },
-            { quarter: "Q2", product: 5200, service: 4100 },
-            { quarter: "Q3", product: 4800, service: 3800 },
-            { quarter: "Q4", product: 6100, service: 4500 }
+            { quarter: "Q1", product: 4500, service: 3200, license: 2100, support: 1800 },
+            { quarter: "Q2", product: 5200, service: 4100, license: 2300, support: 1950 },
+            { quarter: "Q3", product: 4800, service: 3800, license: 2400, support: 2100 },
+            { quarter: "Q4", product: 6100, service: 4500, license: 2600, support: 2200 }
         ]
 
         // Donut chart data
@@ -48,7 +48,7 @@ widget App {
                     }
                     area-chart (
                         data: .monthlyRevenue,
-                        categories: ["desktop", "mobile"],
+                        categories: ["desktop", "mobile", "tablet", "wearable"],
                         index: "month",
                         style: "h-[300px] w-full"
                     ) {}
@@ -63,7 +63,7 @@ widget App {
                     }
                     bar-chart (
                         data: .quarterlySales,
-                        categories: ["product", "service"],
+                        categories: ["product", "service", "license", "support"],
                         index: "quarter",
                         type: "grouped",
                         style: "h-[300px] w-full"
