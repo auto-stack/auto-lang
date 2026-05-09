@@ -24,7 +24,8 @@ impl TypeScriptTrans {
             // Identifier
             Expr::Ident(name) => {
                 if name == "self" {
-                    out.write(b"this")?;
+                    // In Vue <script setup>, self is not needed
+                    // Skip output — field access will provide the name
                 } else {
                     if name == "print" {
                         self.needs_print = true;
@@ -46,6 +47,13 @@ impl TypeScriptTrans {
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
+                // Handle self.field -> field (Vue <script setup>)
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "self" {
+                        out.write_all(field.as_bytes())?;
+                        return Ok(());
+                    }
+                }
                 // TypeScript uses . for all field access
                 self.expr(object, out)?;
                 out.write_all(b".")?;

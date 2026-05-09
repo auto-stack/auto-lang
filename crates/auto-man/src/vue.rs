@@ -1008,6 +1008,16 @@ export default router
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
         println!("{}", "  ✓ Regenerated main.ts".bright_green());
 
+        // Regenerate src/assets/index.css
+        let assets_dir = src_dir.join("assets");
+        fs::create_dir_all(&assets_dir)
+            .map_err(|e| format!("Failed to create src/assets: {}", e))?;
+        let index_css_content = generate_index_css();
+        let index_css_path = assets_dir.join("index.css");
+        fs::write(&index_css_path, &index_css_content)
+            .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
+        println!("{}", "  ✓ Regenerated src/assets/index.css".bright_green());
+
         // Regenerate tsconfig.json
         let tsconfig_path = self.output_dir.join("tsconfig.json");
         let tsconfig = generate_tsconfig();

@@ -10404,7 +10404,15 @@ impl<'a> Parser<'a> {
                 self.next();
                 let name = self.cur.text.to_string();
                 self.next();
-                parts.push(format!(".{}", name));
+                let mut chain = format!(".{}", name);
+                // Handle chained field access: .book.id -> .book.id
+                while self.is_kind(TokenKind::Dot) {
+                    self.next();
+                    let next_name = self.cur.text.to_string();
+                    self.next();
+                    chain.push_str(&format!(".{}", next_name));
+                }
+                parts.push(chain);
             } else if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.to_string();
                 self.next();
@@ -10684,6 +10692,11 @@ impl<'a> Parser<'a> {
                 } else {
                     Vec::new()
                 };
+                // Filter out type names: keep only parameter names (even indices)
+                let params: Vec<String> = params.iter().enumerate()
+                    .filter(|(i, _)| i % 2 == 0)
+                    .map(|(_, v)| v.clone())
+                    .collect();
                 (format!(".{}", name), params)
             } else {
                 let name = self.cur.text.to_string();

@@ -1322,8 +1322,13 @@ impl VueGenerator {
             // Check if this handler has typed params
             let pattern_key = format!(".{}", handler_name);
             let params_str = widget.handler_params.get(&pattern_key)
-                .map(|params| params.join(": any, "))
-                .map(|p| if p.is_empty() { String::new() } else { format!("{}: any", p) })
+                .map(|params| {
+                    // handler_params already contains only parameter names (types filtered by parser)
+                    let param_names: Vec<String> = params.iter()
+                        .map(|p| format!("{}: any", p))
+                        .collect();
+                    param_names.join(", ")
+                })
                 .unwrap_or_default();
 
             let async_kw = if *is_async { "async " } else { "" };
@@ -1814,14 +1819,28 @@ impl VueGenerator {
                     format!("v-for=\"{} in {}\"", var, iterable.trim_start_matches('.'))
                 };
 
-                // Wrap body in a container with v-for
+                // If body has a single Element or Component, put v-for directly on it
+                // to avoid <template> scoping issues with vue-tsc
+                if body.len() == 1 {
+                    match &body[0] {
+                        AuraNode::Element { .. } | AuraNode::Component { .. } => {
+                            let child_html = self.node_to_html(&body[0], indent)?;
+                            if let Some(gt_pos) = child_html.find('>') {
+                                let mut result = child_html;
+                                result.insert_str(gt_pos, &format!(" {}", v_for));
+                                return Ok(result);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Fallback: wrap body in a div with v-for
                 let mut body_html = String::new();
                 for child in body {
                     body_html.push_str(&self.node_to_html(child, indent + 1)?);
                 }
-
-                // Use template tag for the loop wrapper
-                Ok(format!("{}<template {}>\n{}{}</template>\n", ind, v_for, body_html, ind))
+                Ok(format!("{}<div {}>\n{}{}</div>\n", ind, v_for, body_html, ind))
             }
 
             AuraNode::Conditional { condition, then_body, else_body } => {
@@ -2418,8 +2437,12 @@ impl VueGenerator {
         // Convert .var to var, .len to .length, etc.
         let mut result = condition.trim().to_string();
 
-        // Replace .len with .length
+        // Replace .len() with .length (JavaScript property, not method)
+        result = result.replace(".len()", ".length");
         result = result.replace(".len", ".length");
+        // Handle spaced-out .len ( ) from parse_condition_expr
+        result = result.replace(" .len ( )", ".length");
+        result = result.replace(" len ( )", ".length");
 
         // Remove leading dot from state references (.count -> count)
         // Pattern: .identifier (at word boundary)
@@ -2459,6 +2482,10 @@ impl VueGenerator {
                 final_result.push(c);
             }
         }
+
+        // Handle leftover "length ( )" from parse_condition_expr + dot removal
+        final_result = final_result.replace("length ( )", "length");
+        final_result = final_result.replace("length ()", "length");
 
         final_result
     }
@@ -3024,9 +3051,18 @@ impl VueGenerator {
                 let args_js: Vec<String> = args.iter()
                     .map(|a| self.expr_to_js(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                // Convert .len to .length for JavaScript
-                let method_js = if method == "len" { "length" } else { method.as_str() };
-                Ok(format!("{}.{}({})", object_js, method_js, args_js.join(", ")))
+                match method.as_str() {
+                    "len" => Ok(format!("{}.length", object_js)),
+                    "to_string" => Ok(format!("{}.toString()", object_js)),
+                    "to_int" => {
+                        if args_js.is_empty() {
+                            Ok(format!("parseInt({})", object_js))
+                        } else {
+                            Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
+                        }
+                    }
+                    _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
+                }
             }
             AuraExpr::Array(elems) => {
                 let elems_js: Vec<String> = elems.iter()
@@ -3393,6 +3429,35 @@ impl VueGenerator {
                 let left_str = self.expr_to_vue_text(left)?;
                 let right_str = self.expr_to_vue_text(right)?;
                 Ok(format!("{}{}", left_str, right_str))
+            }
+            AuraExpr::MethodCall { object, method, args } => {
+                let obj_str = self.expr_to_vue_text(object)?;
+                let obj_clean = obj_str.trim_matches(|c| c == '{' || c == '}');
+                // Handle widget-external functions: getBookTitle() not self.getBookTitle()
+                let is_self = obj_clean == "self";
+                match method.as_str() {
+                    "to_string" => Ok(format!("{{{{ {} }}}}", obj_clean)),
+                    "len" => Ok(format!("{{{{ {}.length }}}}", obj_clean)),
+                    _ => {
+                        let args_str: Vec<String> = args.iter()
+                            .map(|a| self.expr_to_vue_bound_value(a))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        if is_self {
+                            // External function call: getBookTitle(args)
+                            if args_str.is_empty() {
+                                Ok(format!("{{{{ {}() }}}}", method))
+                            } else {
+                                Ok(format!("{{{{ {}({}) }}}}", method, args_str.join(", ")))
+                            }
+                        } else {
+                            if args_str.is_empty() {
+                                Ok(format!("{{{{ {}.{}() }}}}", obj_clean, method))
+                            } else {
+                                Ok(format!("{{{{ {}.{}({}) }}}}", obj_clean, method, args_str.join(", ")))
+                            }
+                        }
+                    }
+                }
             }
             _ => Ok("value".to_string()),
         }
@@ -6595,7 +6660,11 @@ impl VueGenerator {
         if params.is_empty() {
             func_name
         } else {
-            format!("{}({})", func_name, params.join(", "))
+            // Replace double quotes with single quotes in params to avoid HTML attr quoting issues
+            let safe_params: Vec<String> = params.iter()
+                .map(|p| p.replace('"', "'"))
+                .collect();
+            format!("{}({})", func_name, safe_params.join(", "))
         }
     }
 

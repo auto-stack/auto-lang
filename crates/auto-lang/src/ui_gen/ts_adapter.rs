@@ -113,10 +113,17 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Return
         Stmt::Return(expr) => {
-            write!(out, "return").ok();
-            write!(out, " ").ok();
-            transpile_expr(expr, ctx, out);
-            writeln!(out, ";").ok();
+            // If returning nil/null in a void function, emit bare return
+            match expr.as_ref() {
+                Expr::Nil | Expr::Null => {
+                    writeln!(out, "return;").ok();
+                }
+                _ => {
+                    write!(out, "return ").ok();
+                    transpile_expr(expr, ctx, out);
+                    writeln!(out, ";").ok();
+                }
+            }
         }
 
         // Break
@@ -219,7 +226,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         // General field access: object.field → transpile object, then emit .field
         Expr::Dot(obj, field) => {
             if let Expr::Ident(name) = obj.as_ref() {
-                if name.as_str() == "self" {
+                if name.as_str() == "self" || name.as_str() == "." {
                     let field_name = field.as_str();
                     if ctx.is_state(field_name) {
                         write!(out, "{}.value", field_name).ok();
@@ -241,8 +248,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         Expr::Ident(name) => {
             if ctx.is_state(name.as_str()) {
                 write!(out, "{}.value", name.as_str()).ok();
-            } else if name.as_str() == "self" {
-                write!(out, "this").ok();
+            } else if name.as_str() == "self" || name.as_str() == "." {
+                // In Vue <script setup>, self/this is not needed
+                // Skip output — the field access will be handled by Expr::Dot
             } else {
                 write!(out, "{}", name.as_str()).ok();
             }
@@ -266,6 +274,27 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 Expr::Dot(object, method) => {
                     if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
                         return;
+                    }
+                    // Handle common method call conversions
+                    match method.as_str() {
+                        "to_int" => {
+                            write!(out, "parseInt(").ok();
+                            transpile_expr(object, ctx, out);
+                            write!(out, ")").ok();
+                            return;
+                        }
+                        "to_string" => {
+                            write!(out, "(").ok();
+                            transpile_expr(object, ctx, out);
+                            write!(out, ").toString()").ok();
+                            return;
+                        }
+                        "len" => {
+                            transpile_expr(object, ctx, out);
+                            write!(out, ".length").ok();
+                            return;
+                        }
+                        _ => {}
                     }
                     transpile_expr(object, ctx, out);
                     write!(out, ".{}", method.as_str()).ok();
@@ -395,6 +424,19 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 transpile_expr(&pair.value, ctx, out);
             }
             write!(out, " }}").ok();
+        }
+
+        // Null-coalescing operator ??
+        Expr::NullCoalesce(lhs, rhs) => {
+            transpile_expr(lhs, ctx, out);
+            write!(out, " ?? ").ok();
+            transpile_expr(rhs, ctx, out);
+        }
+
+        // Error propagation .?
+        Expr::ErrorPropagate(expr) => {
+            transpile_expr(expr, ctx, out);
+            write!(out, "?.").ok();
         }
 
         // If expression (appears when parser treats if as RHS of let)
