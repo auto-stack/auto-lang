@@ -3,8 +3,9 @@
 > **Phase 1 Status: ✅ COMPLETE** — MVP string→string FFI + cdylib 管线端到端验证
 > **Phase 2 Status: ✅ COMPLETE** — Phase 2.1/2.2/2.3/2.4 all done
 > **Phase 2.1 Status: ✅ COMPLETE** — Primitive type (i64/f64/bool) cdylib FFI 支持
+> **Phase 2.3 Opaque Shims: ✅ COMPLETE** — chrono/base64/hex/sha2/mime_guess 内置 shim
 >
-> **Remaining: Phase 2.3 Complex (32 tests, 远期目标)**
+> **Remaining: Phase 2.3 Complex (11 impossible, 11 hard — 远期目标)**
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -16,7 +17,7 @@
 
 ---
 
-## 当前状态：管线完整，Phase 2.3 complex 远期目标
+## 当前状态：管线完整 + Phase 2.3 opaque shims 完成，complex 场景远期目标
 
 ### ✅ 已完成
 
@@ -33,6 +34,7 @@
 | `resolve_deps()` → `compile_dep()` | `compile.rs` | ✅ 管线打通 |
 | `init_rust_ffi()` | `lib.rs` | ✅ 运行时加载 + 签名传播 |
 | Built-in opaque shims (regex/url/semver) | `native.rs` | ✅ Phase 2.2 |
+| Built-in opaque shims (chrono/base64/hex/sha2/mime_guess) | `native.rs` + `native_registry.rs` + `codegen.rs` | ✅ Phase 2.3 |
 | Log/tracing shims + `#macro` 语法 | `native.rs` + `codegen.rs` | ✅ Phase 2.3-log/2.4 |
 | E2E 测试 (serde_json) | `test/vm/20_rust_ffi/` | ✅ |
 | Primitive type cdylib (rand::random) | `ffi.rs` + `sandbox.rs` | ✅ Phase 2.1 |
@@ -963,6 +965,56 @@ Phase 2.4 (#macro 调用语法)
 - [x] Phase 2.4: `#debug("msg")` 语法在 VM 中输出 `[DEBUG] msg`
 - [x] Phase 2.4: `#debug("msg")` 经 a2r 转译为 `debug!("msg")`
 - [x] Phase 2.1: `dep rand` + `use.rust rand::random` 通过 cdylib 返回随机整数
+- [x] Phase 2.3: `Local.now().year()` 在 AutoVM 中返回当前年份
+- [x] Phase 2.3: `Sha256.new().update("x").finalize()` 返回正确 hex 哈希
+- [x] Phase 2.3: `encode("hello")` → `aGVsbG8=` (base64), `encode("hello")` → `68656c6c6f` (hex)
+- [x] Phase 2.3: `from_path("file.pdf")` → `application/pdf`
+
+---
+
+## Phase 2.3 Opaque Shims: chrono/base64/hex/sha2/mime_guess
+
+**日期**: 2026-05-10
+**状态**: ✅ COMPLETE
+**目标**: 为常用 crate 添加 VM 内置 opaque shim，让 Auto 脚本直接使用无需 cdylib 编译。
+
+### 已实现的 Shim
+
+| Crate | Native IDs | 类型 | 函数 |
+|-------|-----------|------|------|
+| chrono | 2700-2709 | Opaque handle (NaiveDateTime) | `Local.now()`, `year()`, `month()`, `day()`, `hour()`, `minute()`, `second()`, `timestamp()`, `format()` |
+| base64 | 2710-2711 | Pure function | `encode()`, `decode()` |
+| hex | 2720-2721 | Pure function | `encode()`, `decode()` |
+| sha2 | 2730-2739 | Opaque handle (Sha256) | `Sha256.new()`, `update()`, `finalize()` |
+| mime_guess | 2740 | Pure function | `from_path()` |
+
+### 关键设计决策
+
+1. **Opaque handle 模式**: chrono 和 sha2 使用 `RustStdlibObject` 存储 Mutex 包装的 Rust 对象，通过 heap ID 引用
+2. **自由函数路由**: base64/hex/mime_guess 的函数调用（如 `encode("hello")`）在 codegen 中被拦截并路由到内置 shim，绕过 cdylib FFI 管线
+3. **返回类型注册**: 所有 shim 在 `native_registry.rs` 中注册了正确的 `NativeRetType`，确保 codegen 生成正确的 print 操作码
+
+### 用法示例
+
+```auto
+# chrono
+dep chrono
+use.rust chrono::Local
+let dt = Local.now()
+print(dt.format("%Y-%m-%d"))
+
+# sha2
+dep sha2
+use.rust sha2::Sha256
+let h = Sha256.new()
+h.update("hello world")
+print(h.finalize())
+
+# base64
+dep base64
+use.rust base64::encode
+print(encode("hello"))
+```
 
 ---
 
