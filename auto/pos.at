@@ -1,5 +1,0 @@
-type Pos {
-    line uint // number of line
-    at uint // pos from start of line
-    total uint // pos from start of src
-}
