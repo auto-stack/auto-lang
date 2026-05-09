@@ -17,5 +17,5 @@ fn main() {
     let start = Instant::now();
     expensive_function();
     let duration = start.elapsed();
-    println!("Time elapsed: {}", duration);
+    println!("Time elapsed: {:?}", duration);
 }

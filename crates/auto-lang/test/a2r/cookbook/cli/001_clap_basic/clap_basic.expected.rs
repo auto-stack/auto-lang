@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use clap::Parser;
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Args {
     name: String,
     count: i32,

@@ -6,7 +6,7 @@ use auto_lang::a2r_std::*;
 
 use csv::Writer;
 use serde::Serialize;
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Record {
     name: String,
     age: i32,

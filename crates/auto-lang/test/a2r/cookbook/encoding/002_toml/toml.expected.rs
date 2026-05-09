@@ -6,13 +6,13 @@ use auto_lang::a2r_std::*;
 
 use serde::Deserialize;
 use toml;
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Config {
     title: String,
     owner: Owner,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Owner {
     name: String,
 }

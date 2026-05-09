@@ -14,7 +14,7 @@ trait Weapon {
 }
 
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct WarpDrive {}
 
 impl WarpDrive {
@@ -23,7 +23,7 @@ impl WarpDrive {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct LaserCannon {}
 
 impl LaserCannon {
@@ -32,7 +32,7 @@ impl LaserCannon {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Starship {
     core: WarpDrive,
     weapon: LaserCannon,

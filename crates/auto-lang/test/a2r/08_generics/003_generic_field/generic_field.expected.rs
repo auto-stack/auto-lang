@@ -4,12 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Box<T> {
     value: T,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Container {
     data: Box<i32>,
 }

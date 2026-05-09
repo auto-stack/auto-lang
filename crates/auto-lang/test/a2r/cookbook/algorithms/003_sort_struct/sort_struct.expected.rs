@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 use std::vec::Vec;
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Person {
     name: String,
     age: u32,

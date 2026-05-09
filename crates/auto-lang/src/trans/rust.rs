@@ -2717,8 +2717,12 @@ impl RustTrans {
                             write!(out, "{}", c)?;
                         }
                         _ => {
-                            // Expression placeholder
-                            write!(out, "{{}}")?;
+                            // Expression placeholder — use {:?} for Duration-like exprs
+                            if Self::needs_debug_format(part) {
+                                write!(out, "{{:?}}")?;
+                            } else {
+                                write!(out, "{{}}")?;
+                            }
                         }
                     }
                 }
@@ -3901,8 +3905,20 @@ impl RustTrans {
 
         // Plan 159 Phase 6B-2: Output derive/serde attributes
         // Plan 204 Phase 2A: Add default #[derive(Clone, Debug, PartialEq)] if no attrs specified
+        // T6: Add Eq, PartialOrd, Ord if no float fields present
         if type_decl.attrs.is_empty() {
-            writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
+            let has_float_field = type_decl.members.iter().any(|m| {
+                matches!(m.ty, Type::Float | Type::Double)
+                    || matches!(&m.ty, Type::Rust(source) if {
+                        let name = source.short_name();
+                        name == "f32" || name == "f64" || name == "float" || name == "double"
+                    })
+            });
+            if has_float_field {
+                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
+            } else {
+                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")?;
+            }
         } else {
             for attr in &type_decl.attrs {
                 write!(sink.body, "#[{}]\n", attr)?;
@@ -5051,6 +5067,35 @@ impl RustTrans {
             Expr::Bool(_) | Expr::Nil | Expr::Null => false,
             // Variables, binary ops, calls, dot access, etc. may be u32/i32
             _ => true,
+        }
+    }
+
+    /// Check if an expression likely produces a Debug-only type (no Display impl).
+    /// Detects patterns like `.elapsed()`, `Instant::now()`, and variables named
+    /// duration/elapsed/instant.
+    fn needs_debug_format(expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(name) => {
+                let lower = name.as_str().to_lowercase();
+                lower.contains("duration") || lower.contains("elapsed") || lower.contains("instant")
+            }
+            Expr::Dot(obj, method) => {
+                method == "elapsed" || Self::needs_debug_format(obj)
+            }
+            Expr::Bina(lhs, op, rhs) => {
+                if matches!(op, Op::Dot) {
+                    // Check for expr.elapsed()
+                    if let Expr::Ident(m) = rhs.as_ref() {
+                        if m.as_str() == "elapsed" { return true; }
+                    }
+                    Self::needs_debug_format(lhs)
+                } else {
+                    Self::needs_debug_format(lhs) || Self::needs_debug_format(rhs)
+                }
+            }
+            Expr::Call(call) => Self::needs_debug_format(&call.name),
+            Expr::ErrorPropagate(inner) => Self::needs_debug_format(inner),
+            _ => false,
         }
     }
 

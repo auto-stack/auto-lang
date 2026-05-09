@@ -10,7 +10,7 @@ trait Calculator {
 }
 
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct MathEngine {}
 
 impl Calculator for MathEngine {
@@ -22,7 +22,7 @@ impl Calculator for MathEngine {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Computer {
     engine: MathEngine,
 }
