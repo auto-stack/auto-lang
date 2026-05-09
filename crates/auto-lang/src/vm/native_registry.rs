@@ -853,6 +853,35 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.semver_opaque.cmp_gt", 2606);
     registry.register_with_id("auto.semver_opaque.drop", 2609);
 
+    // chrono opaque struct shims (2700-2709) — Plan 212 Phase 2.3
+    registry.register_with_id_and_type("auto.chrono_opaque.local_now", 2700, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.year", 2701, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.month", 2702, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.day", 2703, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.hour", 2704, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.minute", 2705, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.second", 2706, NativeRetType::Int);
+    registry.register_with_id_and_type("auto.chrono_opaque.timestamp", 2707, NativeRetType::I64);
+    registry.register_with_id_and_type("auto.chrono_opaque.format", 2708, NativeRetType::String);
+    registry.register_with_id("auto.chrono_opaque.drop", 2709);
+
+    // base64 pure function shims (2710-2719) — Plan 212 Phase 2.3
+    registry.register_with_id_and_type("auto.base64.encode", 2710, NativeRetType::String);
+    registry.register_with_id_and_type("auto.base64.decode", 2711, NativeRetType::String);
+
+    // hex pure function shims (2720-2729) — Plan 212 Phase 2.3
+    registry.register_with_id_and_type("auto.hex.encode", 2720, NativeRetType::String);
+    registry.register_with_id_and_type("auto.hex.decode", 2721, NativeRetType::String);
+
+    // sha2 opaque struct shims (2730-2739) — Plan 212 Phase 2.3
+    registry.register_with_id("auto.sha2_opaque.sha256_new", 2730);
+    registry.register_with_id("auto.sha2_opaque.update", 2731);
+    registry.register_with_id_and_type("auto.sha2_opaque.finalize", 2732, NativeRetType::String);
+    registry.register_with_id("auto.sha2_opaque.drop", 2739);
+
+    // mime_guess pure function shim (2740-2749) — Plan 212 Phase 2.3
+    registry.register_with_id_and_type("auto.mime.from_path", 2740, NativeRetType::String);
+
     // Rust stdlib dispatch (3000)
     registry.register_with_id("auto.rust_stdlib.dispatch", 3000);
 

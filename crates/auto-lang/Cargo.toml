@@ -74,6 +74,12 @@ walkdir = "2"
 # Plan 212 Phase 2.2: Opaque struct shims
 url = "2"
 semver = "1"
+# Plan 212 Phase 2.3: Additional opaque struct shims
+chrono = "0.4"
+base64 = "0.22"
+hex = "0.4"
+sha2 = "0.10"
+mime_guess = "2"
 # Plan 152: SSE 解析（保留可选依赖用于高级流式场景）
 tokio-util = { version = "0.7", features = ["io"], optional = true }
 futures = { version = "0.3", optional = true }

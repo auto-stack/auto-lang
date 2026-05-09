@@ -549,6 +549,54 @@ impl NativeInterface {
         self.register_name("auto.semver_opaque.to_string", NATIVE_SEMVER_OPAQUE_TO_STRING);
         self.register_name("auto.semver_opaque.cmp_gt", NATIVE_SEMVER_OPAQUE_CMP_GT);
         self.register_name("auto.semver_opaque.drop", NATIVE_SEMVER_OPAQUE_DROP);
+
+        // Plan 212 Phase 2.3: chrono opaque struct shims
+        self.register(NATIVE_CHRONO_LOCAL_NOW, shim_chrono_local_now);
+        self.register(NATIVE_CHRONO_YEAR, shim_chrono_year);
+        self.register(NATIVE_CHRONO_MONTH, shim_chrono_month);
+        self.register(NATIVE_CHRONO_DAY, shim_chrono_day);
+        self.register(NATIVE_CHRONO_HOUR, shim_chrono_hour);
+        self.register(NATIVE_CHRONO_MINUTE, shim_chrono_minute);
+        self.register(NATIVE_CHRONO_SECOND, shim_chrono_second);
+        self.register(NATIVE_CHRONO_TIMESTAMP, shim_chrono_timestamp);
+        self.register(NATIVE_CHRONO_FORMAT, shim_chrono_format);
+        self.register(NATIVE_CHRONO_DROP, shim_chrono_drop);
+        self.register_name("auto.chrono_opaque.local_now", NATIVE_CHRONO_LOCAL_NOW);
+        self.register_name("auto.chrono_opaque.year", NATIVE_CHRONO_YEAR);
+        self.register_name("auto.chrono_opaque.month", NATIVE_CHRONO_MONTH);
+        self.register_name("auto.chrono_opaque.day", NATIVE_CHRONO_DAY);
+        self.register_name("auto.chrono_opaque.hour", NATIVE_CHRONO_HOUR);
+        self.register_name("auto.chrono_opaque.minute", NATIVE_CHRONO_MINUTE);
+        self.register_name("auto.chrono_opaque.second", NATIVE_CHRONO_SECOND);
+        self.register_name("auto.chrono_opaque.timestamp", NATIVE_CHRONO_TIMESTAMP);
+        self.register_name("auto.chrono_opaque.format", NATIVE_CHRONO_FORMAT);
+        self.register_name("auto.chrono_opaque.drop", NATIVE_CHRONO_DROP);
+
+        // Plan 212 Phase 2.3: base64 pure function shims
+        self.register(NATIVE_BASE64_ENCODE, shim_base64_encode);
+        self.register(NATIVE_BASE64_DECODE, shim_base64_decode);
+        self.register_name("auto.base64.encode", NATIVE_BASE64_ENCODE);
+        self.register_name("auto.base64.decode", NATIVE_BASE64_DECODE);
+
+        // Plan 212 Phase 2.3: hex pure function shims
+        self.register(NATIVE_HEX_ENCODE, shim_hex_encode);
+        self.register(NATIVE_HEX_DECODE, shim_hex_decode);
+        self.register_name("auto.hex.encode", NATIVE_HEX_ENCODE);
+        self.register_name("auto.hex.decode", NATIVE_HEX_DECODE);
+
+        // Plan 212 Phase 2.3: sha2 opaque struct shims
+        self.register(NATIVE_SHA2_SHA256_NEW, shim_sha2_sha256_new);
+        self.register(NATIVE_SHA2_UPDATE, shim_sha2_update);
+        self.register(NATIVE_SHA2_FINALIZE, shim_sha2_finalize);
+        self.register(NATIVE_SHA2_DROP, shim_sha2_drop);
+        self.register_name("auto.sha2_opaque.sha256_new", NATIVE_SHA2_SHA256_NEW);
+        self.register_name("auto.sha2_opaque.update", NATIVE_SHA2_UPDATE);
+        self.register_name("auto.sha2_opaque.finalize", NATIVE_SHA2_FINALIZE);
+        self.register_name("auto.sha2_opaque.drop", NATIVE_SHA2_DROP);
+
+        // Plan 212 Phase 2.3: mime_guess pure function shim
+        self.register(NATIVE_MIME_FROM_PATH, shim_mime_from_path);
+        self.register_name("auto.mime.from_path", NATIVE_MIME_FROM_PATH);
     }
 }
 
@@ -913,6 +961,35 @@ pub const NATIVE_SEMVER_OPAQUE_PRE: u16 = 2604;
 pub const NATIVE_SEMVER_OPAQUE_TO_STRING: u16 = 2605;
 pub const NATIVE_SEMVER_OPAQUE_CMP_GT: u16 = 2606;
 pub const NATIVE_SEMVER_OPAQUE_DROP: u16 = 2609;
+
+// Plan 212 Phase 2.3: chrono opaque struct shims (2700-2709)
+pub const NATIVE_CHRONO_LOCAL_NOW: u16 = 2700;
+pub const NATIVE_CHRONO_YEAR: u16 = 2701;
+pub const NATIVE_CHRONO_MONTH: u16 = 2702;
+pub const NATIVE_CHRONO_DAY: u16 = 2703;
+pub const NATIVE_CHRONO_HOUR: u16 = 2704;
+pub const NATIVE_CHRONO_MINUTE: u16 = 2705;
+pub const NATIVE_CHRONO_SECOND: u16 = 2706;
+pub const NATIVE_CHRONO_TIMESTAMP: u16 = 2707;
+pub const NATIVE_CHRONO_FORMAT: u16 = 2708;
+pub const NATIVE_CHRONO_DROP: u16 = 2709;
+
+// Plan 212 Phase 2.3: base64 pure function shims (2710-2719)
+pub const NATIVE_BASE64_ENCODE: u16 = 2710;
+pub const NATIVE_BASE64_DECODE: u16 = 2711;
+
+// Plan 212 Phase 2.3: hex pure function shims (2720-2729)
+pub const NATIVE_HEX_ENCODE: u16 = 2720;
+pub const NATIVE_HEX_DECODE: u16 = 2721;
+
+// Plan 212 Phase 2.3: sha2 opaque struct shims (2730-2739)
+pub const NATIVE_SHA2_SHA256_NEW: u16 = 2730;
+pub const NATIVE_SHA2_UPDATE: u16 = 2731;
+pub const NATIVE_SHA2_FINALIZE: u16 = 2732;
+pub const NATIVE_SHA2_DROP: u16 = 2739;
+
+// Plan 212 Phase 2.3: mime_guess pure function shim (2740-2749)
+pub const NATIVE_MIME_FROM_PATH: u16 = 2740;
 
 // === Standard Shims ===
 
@@ -4800,6 +4877,335 @@ pub fn shim_semver_opaque_cmp_gt(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 /// version.drop() — no-op, GC handles cleanup
 pub fn shim_semver_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let _ver_id = task.ram.pop_i32();
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Chrono Opaque Struct Shims
+// ============================================================================
+
+/// Local.now() → opaque NaiveDateTime handle
+/// Stack: [] -> [handle_i32]
+pub fn shim_chrono_local_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let dt = chrono::Local::now().naive_local();
+    let obj = RustStdlibObject::new("chrono::NaiveDateTime", std::sync::Mutex::new(dt));
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// dt.year() → i32
+/// Stack: [handle_i32] -> [year_i32]
+pub fn shim_chrono_year(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().year());
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.month() → i32
+/// Stack: [handle_i32] -> [month_i32]
+pub fn shim_chrono_month(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().month() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.day() → i32
+/// Stack: [handle_i32] -> [day_i32]
+pub fn shim_chrono_day(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().day() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.hour() → i32
+/// Stack: [handle_i32] -> [hour_i32]
+pub fn shim_chrono_hour(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Timelike;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().hour() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.minute() → i32
+/// Stack: [handle_i32] -> [minute_i32]
+pub fn shim_chrono_minute(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Timelike;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().minute() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.second() → i32
+/// Stack: [handle_i32] -> [second_i32]
+pub fn shim_chrono_second(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Timelike;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().second() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.timestamp() → i64 (pushed as two i32)
+/// Stack: [handle_i32] -> [timestamp_lo, timestamp_hi]
+pub fn shim_chrono_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let dt_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                let ts = dt.lock().unwrap().and_utc().timestamp();
+                task.ram.push_i64(ts);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i64(0);
+    Ok(())
+}
+
+/// dt.format(fmt) → string
+/// Stack: [fmt_str, handle_i32] -> [result_str]
+pub fn shim_chrono_format(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let fmt = pop_vm_string(task, vm);
+    let dt_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                let formatted = dt.lock().unwrap().format(&fmt).to_string();
+                push_vm_string(task, vm, &formatted);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// dt.drop() — no-op, GC handles cleanup
+pub fn shim_chrono_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _dt_id = task.ram.pop_i32();
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Base64 Pure Function Shims
+// ============================================================================
+
+/// base64::encode(input) → string
+/// Stack: [input_str] -> [encoded_str]
+pub fn shim_base64_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &input);
+    push_vm_string(task, vm, &encoded);
+    Ok(())
+}
+
+/// base64::decode(input) → string (decoded bytes as UTF-8 string)
+/// Stack: [input_str] -> [decoded_str]
+pub fn shim_base64_decode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &input) {
+        Ok(bytes) => {
+            let decoded = String::from_utf8_lossy(&bytes).into_owned();
+            push_vm_string(task, vm, &decoded);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("base64::decode failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Hex Pure Function Shims
+// ============================================================================
+
+/// hex::encode(input) → string
+/// Stack: [input_str] -> [hex_str]
+pub fn shim_hex_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    let encoded = hex::encode(input.as_bytes());
+    push_vm_string(task, vm, &encoded);
+    Ok(())
+}
+
+/// hex::decode(input) → string (decoded bytes as UTF-8 string)
+/// Stack: [input_str] -> [decoded_str]
+pub fn shim_hex_decode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    match hex::decode(&input) {
+        Ok(bytes) => {
+            let decoded = String::from_utf8_lossy(&bytes).into_owned();
+            push_vm_string(task, vm, &decoded);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("hex::decode failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Sha2 Opaque Struct Shims
+// ============================================================================
+
+/// Sha256::new() → opaque handle
+/// Stack: [] -> [handle_i32]
+pub fn shim_sha2_sha256_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use sha2::Digest;
+
+    let hasher = sha2::Sha256::new();
+    let obj = RustStdlibObject::new("sha2::Sha256", std::sync::Mutex::new(hasher));
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// hasher.update(data) → void
+/// Stack: [data_str, handle_i32] -> [0]
+pub fn shim_sha2_update(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use sha2::Digest;
+
+    let data = pop_vm_string(task, vm);
+    let hasher_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(hasher_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(hasher) = rso.downcast_mut::<std::sync::Mutex<sha2::Sha256>>() {
+                hasher.get_mut().unwrap().update(data.as_bytes());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// hasher.finalize() → hex string
+/// Note: finalize() takes ownership of the hasher, so we clone the hasher state
+/// to compute the hash while keeping the original available for further updates.
+/// Stack: [handle_i32] -> [hex_str]
+pub fn shim_sha2_finalize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use sha2::Digest;
+
+    let hasher_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(hasher_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(hasher) = rso.downcast_ref::<std::sync::Mutex<sha2::Sha256>>() {
+                // Clone the hasher to compute without consuming
+                let cloned = hasher.lock().unwrap().clone();
+                let result = cloned.finalize();
+                let hex_str = hex::encode(result);
+                drop(guard);
+                push_vm_string(task, vm, &hex_str);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// hasher.drop() — no-op, GC handles cleanup
+pub fn shim_sha2_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _hasher_id = task.ram.pop_i32();
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Mime Guess Pure Function Shim
+// ============================================================================
+
+/// mime_guess::from_path(path) → string (MIME type or empty)
+/// Stack: [path_str] -> [mime_str]
+pub fn shim_mime_from_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_vm_string(task, vm);
+    let mime = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .to_string();
+    push_vm_string(task, vm, &mime);
     Ok(())
 }
 

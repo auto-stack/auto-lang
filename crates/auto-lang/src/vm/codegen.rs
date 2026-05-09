@@ -5411,7 +5411,69 @@ impl Codegen {
                                     "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
                                     _ => {}
                                 },
+                                "chrono" => match method.as_str() {
+                                    "now" => func_name = Some("auto.chrono_opaque.local_now".to_string()),
+                                    "year" => func_name = Some("auto.chrono_opaque.year".to_string()),
+                                    "month" => func_name = Some("auto.chrono_opaque.month".to_string()),
+                                    "day" => func_name = Some("auto.chrono_opaque.day".to_string()),
+                                    "hour" => func_name = Some("auto.chrono_opaque.hour".to_string()),
+                                    "minute" => func_name = Some("auto.chrono_opaque.minute".to_string()),
+                                    "second" => func_name = Some("auto.chrono_opaque.second".to_string()),
+                                    "timestamp" => func_name = Some("auto.chrono_opaque.timestamp".to_string()),
+                                    "format" => func_name = Some("auto.chrono_opaque.format".to_string()),
+                                    _ => {}
+                                },
+                                "base64" => match method.as_str() {
+                                    "encode" => func_name = Some("auto.base64.encode".to_string()),
+                                    "decode" => func_name = Some("auto.base64.decode".to_string()),
+                                    _ => {}
+                                },
+                                "hex" => match method.as_str() {
+                                    "encode" => func_name = Some("auto.hex.encode".to_string()),
+                                    "decode" => func_name = Some("auto.hex.decode".to_string()),
+                                    _ => {}
+                                },
+                                "sha2" => match method.as_str() {
+                                    "new" => func_name = Some("auto.sha2_opaque.sha256_new".to_string()),
+                                    "update" => func_name = Some("auto.sha2_opaque.update".to_string()),
+                                    "finalize" => func_name = Some("auto.sha2_opaque.finalize".to_string()),
+                                    _ => {}
+                                },
+                                "mime_guess" => match method.as_str() {
+                                    "from_path" => func_name = Some("auto.mime.from_path".to_string()),
+                                    _ => {}
+                                },
                                 _ => {}
+                            }
+                        }
+                    }
+                }
+
+                // Plan 212 Phase 2.3: Route free function calls from built-in shim crates
+                // e.g., encode("hello") where encode is from base64 → auto.base64.encode
+                if let Some(ref fname) = func_name {
+                    if !fname.contains('.') {
+                        // Bare function name — check if it belongs to a built-in shim crate
+                        if let Some((crate_name, _)) = self.rust_native_map.get(fname.as_str()) {
+                            let canonical = match crate_name.as_str() {
+                                "base64" => match fname.as_str() {
+                                    "encode" => Some("auto.base64.encode".to_string()),
+                                    "decode" => Some("auto.base64.decode".to_string()),
+                                    _ => None,
+                                },
+                                "hex" => match fname.as_str() {
+                                    "encode" => Some("auto.hex.encode".to_string()),
+                                    "decode" => Some("auto.hex.decode".to_string()),
+                                    _ => None,
+                                },
+                                "mime_guess" => match fname.as_str() {
+                                    "from_path" => Some("auto.mime.from_path".to_string()),
+                                    _ => None,
+                                },
+                                _ => None,
+                            };
+                            if let Some(canonical_name) = canonical {
+                                func_name = Some(canonical_name);
                             }
                         }
                     }
@@ -6801,10 +6863,10 @@ impl Codegen {
                 }
                 if let Expr::Ident(type_name) = obj.as_ref() {
                     let m = method.as_str();
-                    if m == "new" || m == "parse" {
+                    if m == "new" || m == "parse" || m == "now" {
                         if let Some((crate_name, _)) = self.rust_native_map.get(type_name.as_str()) {
                             match crate_name.as_str() {
-                                "regex" | "url" | "semver" => return Some(crate_name.clone()),
+                                "regex" | "url" | "semver" | "chrono" | "sha2" => return Some(crate_name.clone()),
                                 _ => {}
                             }
                         }
