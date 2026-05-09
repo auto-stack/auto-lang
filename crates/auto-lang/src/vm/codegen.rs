@@ -5287,6 +5287,53 @@ impl Codegen {
                     }
                 }
 
+                // Plan 212 Phase 2.2: Route Regex/Url/Semver opaque struct methods
+                if let Some(ref fname) = func_name {
+                    let method = fname.rsplit('.').next().unwrap_or("").to_string();
+                    let has_regex = fname.contains("Regex") || fname.contains("regex");
+                    let has_url = fname.contains("Url") || fname.contains("url");
+                    let has_version = fname.contains("Version") && !fname.contains("VersionReq");
+                    // Regex methods
+                    if has_regex {
+                        match method.as_str() {
+                            "new" => func_name = Some("auto.re_opaque.new".to_string()),
+                            "is_match" => func_name = Some("auto.re_opaque.is_match".to_string()),
+                            "find" => func_name = Some("auto.re_opaque.find".to_string()),
+                            "find_iter" => func_name = Some("auto.re_opaque.find_all".to_string()),
+                            "replace_all" => func_name = Some("auto.re_opaque.replace_all".to_string()),
+                            "captures" => func_name = Some("auto.re_opaque.captures".to_string()),
+                            _ => {}
+                        }
+                    }
+                    // Url methods
+                    if has_url {
+                        match method.as_str() {
+                            "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
+                            "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
+                            "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
+                            "path" => func_name = Some("auto.url_opaque.path".to_string()),
+                            "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
+                            "port" => func_name = Some("auto.url_opaque.port".to_string()),
+                            "query_pairs" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                            "join" => func_name = Some("auto.url_opaque.join".to_string()),
+                            "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
+                            _ => {}
+                        }
+                    }
+                    // Version methods
+                    if has_version {
+                        match method.as_str() {
+                            "parse" => func_name = Some("auto.semver_opaque.parse".to_string()),
+                            "major" => func_name = Some("auto.semver_opaque.major".to_string()),
+                            "minor" => func_name = Some("auto.semver_opaque.minor".to_string()),
+                            "patch" => func_name = Some("auto.semver_opaque.patch".to_string()),
+                            "pre" => func_name = Some("auto.semver_opaque.pre".to_string()),
+                            "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
+                            _ => {}
+                        }
+                    }
+                }
+
                 // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
                 let native_id = if let Some(name) = &func_name {
                     // Check intrinsics first (print, etc.)
@@ -6685,6 +6732,41 @@ impl Codegen {
             || name == "Log.warn" || name == "Log.error"
         {
             return ObjectType::Void;
+        }
+        // Regex opaque shims — constructors return Int (handle), methods vary
+        if name.starts_with("auto.re_opaque.") {
+            if name == "auto.re_opaque.new" {
+                return ObjectType::NestedObject; // opaque handle
+            }
+            if name == "auto.re_opaque.is_match" {
+                return ObjectType::Int; // bool as i32
+            }
+            return ObjectType::String; // find, find_all, replace_all, captures
+        }
+        // Url opaque shims
+        if name.starts_with("auto.url_opaque.") {
+            if name == "auto.url_opaque.parse" || name == "auto.url_opaque.join" {
+                return ObjectType::NestedObject; // opaque handle
+            }
+            if name == "auto.url_opaque.port" {
+                return ObjectType::Int;
+            }
+            if name == "auto.url_opaque.query_pairs" {
+                return ObjectType::NestedObject; // list handle
+            }
+            return ObjectType::String; // scheme, host_str, path, fragment, origin
+        }
+        // Semver opaque shims
+        if name.starts_with("auto.semver_opaque.") {
+            if name == "auto.semver_opaque.parse" {
+                return ObjectType::NestedObject; // opaque handle
+            }
+            if name == "auto.semver_opaque.major" || name == "auto.semver_opaque.minor"
+                || name == "auto.semver_opaque.patch" || name == "auto.semver_opaque.cmp_gt"
+            {
+                return ObjectType::Int;
+            }
+            return ObjectType::String; // pre, to_string
         }
         // hashmap.get (unspecialized) returns unknown type — don't inherit
         // stale String from argument compilation (e.g., map.get(str_key))

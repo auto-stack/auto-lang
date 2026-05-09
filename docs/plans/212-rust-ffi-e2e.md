@@ -1,7 +1,7 @@
 # Plan 212: Rust FFI 动态加载
 
 > **Phase 1 Status: ✅ COMPLETE** — MVP string→string FFI 已验证
-> **Phase 2 Status: 📋 PLANNED** — 扩展支持 struct method 和 primitive I/O
+> **Phase 2 Status: 🔧 IN PROGRESS** — Phase 2.3/2.4 done, Phase 2.2 (opaque struct shims) in progress
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -759,174 +759,153 @@ pub extern "C" fn auto_parse_int(s: *const c_char) -> i64
 
 **验证测试：** `rand::random()` → `auto_random()` → VM 获得随机 i64
 
-### Phase 2.2: Opaque Struct Pointer（39 个测试）
+### Phase 2.2: Built-in Opaque Struct Shims（39 个测试）
 
-**目标**: 支持外部 crate 的 struct 实例创建和方法调用。
+**日期**: 2026-05-09
+**状态**: 🔧 IN PROGRESS
+**目标**: 用方案 A（built-in shims，实际 Rust crate 作为依赖）为 regex::Regex、url::Url、semver::Version 添加内置 opaque struct shims。方案 B（cdylib 编译管线）记录为未来 TODO。
 
-这是 **性价比最高** 的扩展 — 解锁 48% 的 MISSING_DEP 测试。
+#### 核心设计：Built-in Shims + Opaque Handle
 
-**核心设计：Opaque Handle**
+直接在 VM native.rs 中用实际 Rust crate 作为依赖，实现 native shims。不需要动态加载 .dll。
 
-AutoVM 不需要理解外部 struct 的布局，只需持有一个 opaque pointer：
+**模式**（与已有的 rand shim 一致）：
+1. 构造函数：`Regex::new(pattern)` → 创建 `Mutex<regex::Regex>` 包裹在 `RustStdlibObject` 中，存入 VM heap，返回 i32 handle
+2. 方法调用：`re.is_match(text)` → 从 stack 取 handle，downcast 到 `Mutex<regex::Regex>`，调用实际方法
+3. 析构：依赖 VM GC
 
 ```rust
-// wrapper crate 中生成的代码
-use std::ffi::{c_char, CStr, CString};
-
-// 构造函数：返回 opaque pointer
-#[no_mangle]
-pub extern "C" fn auto_Regex_new(pattern: *const c_char) -> *mut () {
-    let pat = unsafe { CStr::from_ptr(pattern) }.to_str().unwrap_or("");
-    let regex = regex::Regex::new(pat).unwrap();
-    Box::into_raw(Box::new(regex)) as *mut ()
+// native.rs — Regex shim 示例
+fn shim_regex_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let pattern = task.ram.pop_str();
+    let re = regex::Regex::new(&pattern).map_err(|e| VMError::from(e.to_string()))?;
+    let obj = RustStdlibObject::new("regex::Regex", Mutex::new(re));
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
 }
 
-// 方法调用：接收 opaque pointer + 参数
-#[no_mangle]
-pub extern "C" fn auto_Regex_is_match(handle: *mut (), text: *const c_char) -> bool {
-    let regex = unsafe { &*(handle as *const regex::Regex) };
-    let txt = unsafe { CStr::from_ptr(text) }.to_str().unwrap_or("");
-    regex.is_match(txt)
-}
-
-// 析构：释放 opaque pointer
-#[no_mangle]
-pub extern "C" fn auto_Regex_drop(handle: *mut ()) {
-    if !handle.is_null() {
-        unsafe { drop(Box::from_raw(handle as *mut regex::Regex)); }
+fn shim_regex_is_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text = task.ram.pop_str();
+    let re_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().is_match(&text);
+                task.ram.push_bool(result);
+                return Ok(());
+            }
+        }
     }
-}
-
-// 字段访问：从 opaque pointer 提取字段
-#[no_mangle]
-pub extern "C" fn auto_Version_major(handle: *const ()) -> u64 {
-    let ver = unsafe { &*(handle as *const semver::Version) };
-    ver.major
+    task.ram.push_bool(false);
+    Ok(())
 }
 ```
 
-**AutoVM 端映射：**
+#### ID 分配
 
-在 Auto 代码中，外部 struct 的实例在 VM 中存储为 `u64`（opaque pointer）：
+| Range | Crate | Prefix |
+|-------|-------|--------|
+| 2400-2409 | regex | `auto.re_opaque.*` |
+| 2500-2509 | url | `auto.url_opaque.*` |
+| 2600-2609 | semver | `auto.semver_opaque.*` |
 
-```auto
-// Auto 代码
-use.rust regex::Regex
+> 注：`auto.url.*` (2000-2015) 已用于字符串解析版 URL，不冲突。
+> `auto.regex.*` (2400-2401) 已有简单版本，re_opaque 是新的 opaque 版本。
 
-fn main() {
-    let re = Regex.new(r"\d+")
-    if re.is_match("hello 123") {
-        print("found digits")
-    }
-}
-```
+#### 修改文件
 
-编译为 VM bytecode 时：
-1. `Regex.new(pattern)` → `CALL_NAT(auto_Regex_new, pattern)` → 返回 `u64` handle
-2. `re.is_match(text)` → `CALL_NAT(auto_Regex_is_match, handle, text)` → 返回 `bool`
-3. 离开作用域 → `CALL_NAT(auto_Regex_drop, handle)` (或依赖 GC)
+1. `crates/auto-lang/Cargo.toml` — 添加 `url = "2"`, `semver = "1"` 依赖
+2. `crates/auto-lang/src/vm/native.rs` — 添加 Regex/Url/Semver shim 函数
+3. `crates/auto-lang/src/vm/native_registry.rs` — 注册 native IDs
+4. `crates/auto-lang/src/vm/codegen.rs` — 添加方法调用路由和返回类型推断
 
-**实现步骤：**
+#### Regex Shims (ID 2400-2409)
 
-#### Task 2.2.1: 扩展签名类型系统
+| ID | Name | 功能 |
+|----|------|------|
+| 2400 | `auto.re_opaque.new` | `Regex::new(pattern)` → opaque handle |
+| 2401 | `auto.re_opaque.is_match` | `re.is_match(text)` → bool |
+| 2402 | `auto.re_opaque.find` | `re.find(text)` → string or None |
+| 2403 | `auto.re_opaque.find_all` | `re.find_iter(text)` → List\<string\> |
+| 2404 | `auto.re_opaque.replace_all` | `re.replace_all(text, rep)` → string |
+| 2405 | `auto.re_opaque.captures` | `re.captures(text)` → opaque captures |
+| 2406 | `auto.re_opaque.drop` | drop regex handle |
 
-**文件：** `crates/auto-lang/src/ffi.rs`
+覆盖测试（a2r cookbook/text/）：001_regex_replace, 002_regex_email
+高级测试（需额外 API）：003_regex_hashtags, 005_filter_log, 006_phone
 
-扩展 `RustSignature` / `RustType` 支持：
+#### Url Shims (ID 2500-2509)
+
+| ID | Name | 功能 |
+|----|------|------|
+| 2500 | `auto.url_opaque.parse` | `Url::parse(url_str)` → opaque handle |
+| 2501 | `auto.url_opaque.scheme` | `url.scheme()` → string |
+| 2502 | `auto.url_opaque.host_str` | `url.host_str()` → string or None |
+| 2503 | `auto.url_opaque.path` | `url.path()` → string |
+| 2504 | `auto.url_opaque.fragment` | `url.fragment()` → string or None |
+| 2505 | `auto.url_opaque.port` | `url.port()` → int or None |
+| 2506 | `auto.url_opaque.query_pairs` | `url.query_pairs()` → List\<string\> |
+| 2507 | `auto.url_opaque.join` | `url.join(rel)` → opaque handle |
+| 2508 | `auto.url_opaque.origin` | `url.origin()` → string |
+| 2509 | `auto.url_opaque.drop` | drop url handle |
+
+覆盖测试（a2r cookbook/web/url/）：001_base, 002_parse, 003_fragment, 004_new, 005_origin
+
+#### Semver Shims (ID 2600-2609)
+
+| ID | Name | 功能 |
+|----|------|------|
+| 2600 | `auto.semver_opaque.parse` | `Version::parse(ver_str)` → opaque handle |
+| 2601 | `auto.semver_opaque.major` | `v.major` → int |
+| 2602 | `auto.semver_opaque.minor` | `v.minor` → int |
+| 2603 | `auto.semver_opaque.patch` | `v.patch` → int |
+| 2604 | `auto.semver_opaque.pre` | `v.pre.to_string()` → string |
+| 2605 | `auto.semver_opaque.to_string` | `v.to_string()` → string |
+| 2606 | `auto.semver_opaque.cmp_gt` | `v1 > v2` → bool |
+| 2607 | `auto.semver_opaque.drop` | drop version handle |
+
+覆盖测试（a2r cookbook/versioning/）：001_semver_parse, 003_semver_latest, 004_semver_command, 006_semver_prerelease
+需额外支持：002_semver_increment (mutable fields), 005_semver_complex (VersionReq)
+
+#### Codegen 路由
+
+在 codegen.rs 的方法调用路由中添加 Regex/Url/Semver 路由：
+
 ```rust
-enum RustType {
-    // 已有
-    String, I32, I64, F64, Bool, Void,
-    // 新增
-    OpaqueHandle,  // *mut () — 指向外部 struct 的 opaque pointer
-}
+// Regex routing
+"new" if fname.contains("Regex") => func_name = Some("auto.re_opaque.new".into()),
+"is_match" => func_name = Some("auto.re_opaque.is_match".into()),
+"replace_all" => func_name = Some("auto.re_opaque.replace_all".into()),
+// Url routing
+"parse" if fname.contains("Url") => func_name = Some("auto.url_opaque.parse".into()),
+"scheme" if fname.contains("Url") => func_name = Some("auto.url_opaque.scheme".into()),
+// Semver routing
+"parse" if fname.contains("Version") => func_name = Some("auto.semver_opaque.parse".into()),
 ```
 
-扩展 `RustSignature`：
-```rust
-struct RustSignature {
-    params: Vec<RustType>,
-    return_type: RustType,
-    /// 如果是 struct 方法，记录构造函数/方法/析构函数
-    call_kind: RustCallKind,
-}
+返回类型推断：构造函数 → Int (handle), 方法 → String/Int/Bool 视情况。
 
-enum RustCallKind {
-    Function,                          // 普通函数
-    Constructor { struct_name: String }, // 构造函数，返回 opaque handle
-    Method { struct_name: String },      // 方法，第一个参数是 handle
-    FieldGet { struct_name: String, field: String }, // 字段读取
-    Drop { struct_name: String },        // 析构函数
-}
-```
+#### `use.rust` 导入处理
 
-#### Task 2.2.2: wrapper crate 生成模板扩展
+当 `use.rust regex::Regex` 时，VM 需要识别 `Regex` 为 opaque 类型而非尝试 Rust stdlib dispatch。
+在 codegen 中对 Regex/Url/Version 等已知 opaque 类型直接路由到对应 shim。
 
-**文件：** `crates/auto-cache/src/sandbox.rs`
+#### 实施顺序
 
-为 struct method 调用生成三类 shim：
-- `auto_{Struct}_{method}(handle, ...args)` — 方法调用
-- `auto_{Struct}_new(...args)` — 构造函数
-- `auto_{Struct}_drop(handle)` — 析构函数
+1. **Regex** → 验证 001/002 测试通过
+2. **Url** → 验证 001/003 测试通过
+3. **Semver** → 验证 001 测试通过
+4. 批量验证所有通过的测试
 
-需要一个 **struct schema** 来描述外部 crate 的 struct 接口：
-```rust
-struct StructSchema {
-    name: String,
-    crate_name: String,
-    constructors: Vec<FunctionSchema>,
-    methods: Vec<FunctionSchema>,
-    fields: Vec<FieldSchema>,
-}
+#### 未来 TODO
 
-struct FunctionSchema {
-    name: String,
-    params: Vec<(String, RustType)>,
-    return_type: RustType,
-}
-
-struct FieldSchema {
-    name: String,
-    rust_type: RustType,
-}
-```
-
-这些 schema 可以：
-- 手动编写常用 crate 的 schema（regex, url, semver, chrono 等）
-- 或从 Rust doc JSON 自动生成（远期目标）
-
-#### Task 2.2.3: VM codegen 处理 struct method 调用
-
-**文件：** `crates/auto-lang/src/vm/codegen.rs`
-
-当遇到 `re.is_match("text")` 这样的 dot call 时：
-1. 识别 `re` 是 opaque handle 类型（来自 `Regex.new()` 返回值）
-2. 将 dot call 转换为 `CALL_NAT(auto_Regex_is_match, handle, "text")`
-3. handle 作为第一个参数 push 到栈上
-
-**关键问题：类型追踪**
-
-当前 VM codegen 不做跨表达式类型追踪。需要轻量级追踪：
-- 构造函数返回值标记为 `OpaqueHandle("Regex")`
-- 变量赋值时传播类型
-- dot call 时查找 `OpaqueHandle("Regex")` 的方法映射
-
-#### Task 2.2.4: Struct Schema 注册
-
-**文件：** 新建 `crates/auto-lang/src/vm/ffi/struct_schemas.rs`
-
-为 Top 8 结构体手动编写 schema：
-
-```
-regex::Regex — 3 methods: new, is_match, replace
-url::Url — 4 methods: parse, host_str, path, fragment
-semver::Version — 2 methods + 3 fields: parse, major, minor, patch
-chrono::Local — 1 method + 1 field: now, format
-csv::Reader — 2 methods: from_path, records
-walkdir::WalkDir — 2 methods: new, into_iter
-num::Complex — 3 methods: new, norm, conj
-num::BigInt — 2 methods: parse_bytes, to_string
-```
+- 方案 B：cdylib 编译管线，将外部 crate 编译为 .dll/.so，VM 动态加载
+- 高级 API shims：Regex captures_iter, captures.get(n), find_iter, cap.as_str()
+- Semver mutable fields（patch += 1 等）
+- VersionReq shim
+- chrono, csv, walkdir, num 等 crate shims
 
 ### Phase 2.3: Complex 场景（32 个测试，远期目标）
 

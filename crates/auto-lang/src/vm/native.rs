@@ -491,6 +491,62 @@ impl NativeInterface {
         // Plan 212 Phase 2: Log no-op shim (env_logger.init(), log.set_max_level(), etc.)
         self.register(NATIVE_LOG_NOOP, shim_log_noop);
         self.register_name("auto.log.noop", NATIVE_LOG_NOOP);
+
+        // Plan 212 Phase 2.2: Regex opaque struct shims
+        self.register(NATIVE_RE_OPAQUE_NEW, shim_re_opaque_new);
+        self.register(NATIVE_RE_OPAQUE_IS_MATCH, shim_re_opaque_is_match);
+        self.register(NATIVE_RE_OPAQUE_FIND, shim_re_opaque_find);
+        self.register(NATIVE_RE_OPAQUE_FIND_ALL, shim_re_opaque_find_all);
+        self.register(NATIVE_RE_OPAQUE_REPLACE_ALL, shim_re_opaque_replace_all);
+        self.register(NATIVE_RE_OPAQUE_CAPTURES, shim_re_opaque_captures);
+        self.register(NATIVE_RE_OPAQUE_DROP, shim_re_opaque_drop);
+        self.register_name("auto.re_opaque.new", NATIVE_RE_OPAQUE_NEW);
+        self.register_name("auto.re_opaque.is_match", NATIVE_RE_OPAQUE_IS_MATCH);
+        self.register_name("auto.re_opaque.find", NATIVE_RE_OPAQUE_FIND);
+        self.register_name("auto.re_opaque.find_all", NATIVE_RE_OPAQUE_FIND_ALL);
+        self.register_name("auto.re_opaque.replace_all", NATIVE_RE_OPAQUE_REPLACE_ALL);
+        self.register_name("auto.re_opaque.captures", NATIVE_RE_OPAQUE_CAPTURES);
+        self.register_name("auto.re_opaque.drop", NATIVE_RE_OPAQUE_DROP);
+
+        // Plan 212 Phase 2.2: Url opaque struct shims
+        self.register(NATIVE_URL_OPAQUE_PARSE, shim_url_opaque_parse);
+        self.register(NATIVE_URL_OPAQUE_SCHEME, shim_url_opaque_scheme);
+        self.register(NATIVE_URL_OPAQUE_HOST_STR, shim_url_opaque_host_str);
+        self.register(NATIVE_URL_OPAQUE_PATH, shim_url_opaque_path);
+        self.register(NATIVE_URL_OPAQUE_FRAGMENT, shim_url_opaque_fragment);
+        self.register(NATIVE_URL_OPAQUE_PORT, shim_url_opaque_port);
+        self.register(NATIVE_URL_OPAQUE_QUERY_PAIRS, shim_url_opaque_query_pairs);
+        self.register(NATIVE_URL_OPAQUE_JOIN, shim_url_opaque_join);
+        self.register(NATIVE_URL_OPAQUE_ORIGIN, shim_url_opaque_origin);
+        self.register(NATIVE_URL_OPAQUE_DROP, shim_url_opaque_drop);
+        self.register_name("auto.url_opaque.parse", NATIVE_URL_OPAQUE_PARSE);
+        self.register_name("auto.url_opaque.scheme", NATIVE_URL_OPAQUE_SCHEME);
+        self.register_name("auto.url_opaque.host_str", NATIVE_URL_OPAQUE_HOST_STR);
+        self.register_name("auto.url_opaque.path", NATIVE_URL_OPAQUE_PATH);
+        self.register_name("auto.url_opaque.fragment", NATIVE_URL_OPAQUE_FRAGMENT);
+        self.register_name("auto.url_opaque.port", NATIVE_URL_OPAQUE_PORT);
+        self.register_name("auto.url_opaque.query_pairs", NATIVE_URL_OPAQUE_QUERY_PAIRS);
+        self.register_name("auto.url_opaque.join", NATIVE_URL_OPAQUE_JOIN);
+        self.register_name("auto.url_opaque.origin", NATIVE_URL_OPAQUE_ORIGIN);
+        self.register_name("auto.url_opaque.drop", NATIVE_URL_OPAQUE_DROP);
+
+        // Plan 212 Phase 2.2: Semver opaque struct shims
+        self.register(NATIVE_SEMVER_OPAQUE_PARSE, shim_semver_opaque_parse);
+        self.register(NATIVE_SEMVER_OPAQUE_MAJOR, shim_semver_opaque_major);
+        self.register(NATIVE_SEMVER_OPAQUE_MINOR, shim_semver_opaque_minor);
+        self.register(NATIVE_SEMVER_OPAQUE_PATCH, shim_semver_opaque_patch);
+        self.register(NATIVE_SEMVER_OPAQUE_PRE, shim_semver_opaque_pre);
+        self.register(NATIVE_SEMVER_OPAQUE_TO_STRING, shim_semver_opaque_to_string);
+        self.register(NATIVE_SEMVER_OPAQUE_CMP_GT, shim_semver_opaque_cmp_gt);
+        self.register(NATIVE_SEMVER_OPAQUE_DROP, shim_semver_opaque_drop);
+        self.register_name("auto.semver_opaque.parse", NATIVE_SEMVER_OPAQUE_PARSE);
+        self.register_name("auto.semver_opaque.major", NATIVE_SEMVER_OPAQUE_MAJOR);
+        self.register_name("auto.semver_opaque.minor", NATIVE_SEMVER_OPAQUE_MINOR);
+        self.register_name("auto.semver_opaque.patch", NATIVE_SEMVER_OPAQUE_PATCH);
+        self.register_name("auto.semver_opaque.pre", NATIVE_SEMVER_OPAQUE_PRE);
+        self.register_name("auto.semver_opaque.to_string", NATIVE_SEMVER_OPAQUE_TO_STRING);
+        self.register_name("auto.semver_opaque.cmp_gt", NATIVE_SEMVER_OPAQUE_CMP_GT);
+        self.register_name("auto.semver_opaque.drop", NATIVE_SEMVER_OPAQUE_DROP);
     }
 }
 
@@ -823,6 +879,37 @@ pub const NATIVE_RNG_GEN: u16 = 1852;         // rng.gen() → i32
 pub const NATIVE_RNG_DROP: u16 = 1853;        // drop Rng handle
 
 pub const NATIVE_LOG_NOOP: u16 = 1804;        // no-op for env_logger.init(), etc.
+
+// === Regex Opaque Shims (2450+) — Plan 212 Phase 2.2 ===
+pub const NATIVE_RE_OPAQUE_NEW: u16 = 2450;
+pub const NATIVE_RE_OPAQUE_IS_MATCH: u16 = 2451;
+pub const NATIVE_RE_OPAQUE_FIND: u16 = 2452;
+pub const NATIVE_RE_OPAQUE_FIND_ALL: u16 = 2453;
+pub const NATIVE_RE_OPAQUE_REPLACE_ALL: u16 = 2454;
+pub const NATIVE_RE_OPAQUE_CAPTURES: u16 = 2455;
+pub const NATIVE_RE_OPAQUE_DROP: u16 = 2459;
+
+// === Url Opaque Shims (2500+) — Plan 212 Phase 2.2 ===
+pub const NATIVE_URL_OPAQUE_PARSE: u16 = 2500;
+pub const NATIVE_URL_OPAQUE_SCHEME: u16 = 2501;
+pub const NATIVE_URL_OPAQUE_HOST_STR: u16 = 2502;
+pub const NATIVE_URL_OPAQUE_PATH: u16 = 2503;
+pub const NATIVE_URL_OPAQUE_FRAGMENT: u16 = 2504;
+pub const NATIVE_URL_OPAQUE_PORT: u16 = 2505;
+pub const NATIVE_URL_OPAQUE_QUERY_PAIRS: u16 = 2506;
+pub const NATIVE_URL_OPAQUE_JOIN: u16 = 2507;
+pub const NATIVE_URL_OPAQUE_ORIGIN: u16 = 2508;
+pub const NATIVE_URL_OPAQUE_DROP: u16 = 2509;
+
+// === Semver Opaque Shims (2600+) — Plan 212 Phase 2.2 ===
+pub const NATIVE_SEMVER_OPAQUE_PARSE: u16 = 2600;
+pub const NATIVE_SEMVER_OPAQUE_MAJOR: u16 = 2601;
+pub const NATIVE_SEMVER_OPAQUE_MINOR: u16 = 2602;
+pub const NATIVE_SEMVER_OPAQUE_PATCH: u16 = 2603;
+pub const NATIVE_SEMVER_OPAQUE_PRE: u16 = 2604;
+pub const NATIVE_SEMVER_OPAQUE_TO_STRING: u16 = 2605;
+pub const NATIVE_SEMVER_OPAQUE_CMP_GT: u16 = 2606;
+pub const NATIVE_SEMVER_OPAQUE_DROP: u16 = 2609;
 
 // === Standard Shims ===
 
@@ -4136,6 +4223,568 @@ pub fn shim_rng_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_log_noop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // Arguments are already consumed by the caller's stack management.
     // Nothing to do — these functions are pure side-effects we ignore.
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.2: Regex Opaque Struct Shims
+// ============================================================================
+
+/// Helper: pop a string from the VM stack (handles both nanbox and non-nanbox)
+fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let tagged = task.ram.pop_i32();
+        if tagged < 0 {
+            let idx = ((-tagged) - 1) as u16;
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_default()
+        } else {
+            format!("{}", tagged)
+        }
+    }
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as u16;
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_default()
+        } else {
+            let val = auto_val::decode_i32(nv);
+            format!("{}", val)
+        }
+    }
+}
+
+/// Helper: push a string onto the VM stack via string pool
+fn push_vm_string(task: &mut AutoTask, vm: &AutoVM, s: &str) {
+    let idx = vm.add_string(s.as_bytes().to_vec()) as u32;
+    task.ram.push_str_idx(idx);
+}
+
+/// Regex.new(pattern) → opaque handle
+/// Stack: [pattern_str] -> [handle_i32]
+pub fn shim_re_opaque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let pattern = pop_vm_string(task, vm);
+    match regex::Regex::new(&pattern) {
+        Ok(re) => {
+            let obj = RustStdlibObject::new("regex::Regex", std::sync::Mutex::new(re));
+            let id = vm.insert_heap_object(obj);
+            task.ram.push_i32(id as i32);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("Regex::new failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+/// re.is_match(text) → bool
+/// Stack: [text_str, handle_i32] -> [bool_i32]
+pub fn shim_re_opaque_is_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().is_match(&text);
+                task.ram.push_i32(if result { 1 } else { 0 });
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// re.find(text) → string (first match) or empty string if none
+/// Stack: [text_str, handle_i32] -> [result_str]
+pub fn shim_re_opaque_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().find(&text);
+                let s = result.map(|m| m.as_str().to_string()).unwrap_or_default();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// re.find_all(text) → List of matched strings
+/// Stack: [text_str, handle_i32] -> [list_id_i32]
+pub fn shim_re_opaque_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use crate::vm::types::ListData;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = task.ram.pop_i32() as u64;
+
+    let mut matches: Vec<i32> = Vec::new();
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                for m in re.lock().unwrap().find_iter(&text) {
+                    let match_str = m.as_str();
+                    let idx = vm.add_string(match_str.as_bytes().to_vec()) as u32;
+                    matches.push(-(idx as i32) - 1);
+                }
+            }
+        }
+    }
+
+    let mut list = ListData::<i32>::new();
+    list.elems = matches;
+    let obj = RustStdlibObject::new("List<i32>", std::sync::Mutex::new(list));
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// re.replace_all(text, replacement) → string
+/// Stack: [replacement_str, text_str, handle_i32] -> [result_str]
+pub fn shim_re_opaque_replace_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let replacement = pop_vm_string(task, vm);
+    let text = pop_vm_string(task, vm);
+    let re_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().replace_all(&text, replacement.as_str());
+                let result_str = result.to_string();
+                push_vm_string(task, vm, &result_str);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, &text);
+    Ok(())
+}
+
+/// re.captures(text) → opaque captures handle
+/// Stores captures as Vec<String> (owned copy of each capture group)
+/// Stack: [text_str, handle_i32] -> [captures_handle_i32]
+pub fn shim_re_opaque_captures(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = task.ram.pop_i32() as u64;
+
+    let captures: Option<Vec<String>> = {
+        if let Some(obj) = vm.get_heap_object(re_id) {
+            let guard = obj.read().unwrap();
+            if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                    re.lock().unwrap().captures(&text).map(|caps| {
+                        caps.iter().map(|m| m.map(|s| s.as_str().to_string()).unwrap_or_default()).collect()
+                    })
+                } else { None }
+            } else { None }
+        } else { None }
+    };
+
+    if let Some(groups) = captures {
+        let caps_obj = RustStdlibObject::new("regex::Captures", std::sync::Mutex::new(groups));
+        let id = vm.insert_heap_object(caps_obj);
+        task.ram.push_i32(id as i32);
+    } else {
+        task.ram.push_i32(0);
+    }
+    Ok(())
+}
+
+/// re.drop() — no-op, GC handles cleanup
+pub fn shim_re_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _re_id = task.ram.pop_i32();
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.2: Url Opaque Struct Shims
+// ============================================================================
+
+/// Url.parse(url_str) → opaque handle
+/// Stack: [url_str] -> [handle_i32]
+pub fn shim_url_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_str = pop_vm_string(task, vm);
+    match url::Url::parse(&url_str) {
+        Ok(url) => {
+            let obj = RustStdlibObject::new("url::Url", std::sync::Mutex::new(url));
+            let id = vm.insert_heap_object(obj);
+            task.ram.push_i32(id as i32);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("Url::parse failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+/// url.scheme() → string
+/// Stack: [handle_i32] -> [scheme_str]
+pub fn shim_url_opaque_scheme(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                push_vm_string(task, vm, url.lock().unwrap().scheme());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.host_str() → string or empty
+/// Stack: [handle_i32] -> [host_str]
+pub fn shim_url_opaque_host_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let locked = url.lock().unwrap();
+                let s = locked.host_str().unwrap_or("").to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.path() → string
+/// Stack: [handle_i32] -> [path_str]
+pub fn shim_url_opaque_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                push_vm_string(task, vm, url.lock().unwrap().path());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.fragment() → string or empty
+/// Stack: [handle_i32] -> [fragment_str]
+pub fn shim_url_opaque_fragment(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let locked = url.lock().unwrap();
+                let s = locked.fragment().unwrap_or("").to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.port() → int (0 if none)
+/// Stack: [handle_i32] -> [port_i32]
+pub fn shim_url_opaque_port(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let port = url.lock().unwrap().port().unwrap_or(0) as i32;
+                task.ram.push_i32(port);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// url.query_pairs() → List of "key=value" strings
+/// Stack: [handle_i32] -> [list_id_i32]
+pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use crate::vm::types::ListData;
+
+    let url_id = task.ram.pop_i32() as u64;
+    let mut pairs: Vec<i32> = Vec::new();
+
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                for (k, v) in url.lock().unwrap().query_pairs() {
+                    let pair = format!("{}={}", k, v);
+                    let idx = vm.add_string(pair.as_bytes().to_vec()) as u32;
+                    pairs.push(-(idx as i32) - 1);
+                }
+            }
+        }
+    }
+
+    let mut list = ListData::<i32>::new();
+    list.elems = pairs;
+    let obj = RustStdlibObject::new("List<i32>", std::sync::Mutex::new(list));
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// url.join(relative) → new opaque handle
+/// Stack: [relative_str, handle_i32] -> [new_handle_i32]
+pub fn shim_url_opaque_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let relative = pop_vm_string(task, vm);
+    let url_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                match url.lock().unwrap().join(&relative) {
+                    Ok(joined) => {
+                        let new_obj = RustStdlibObject::new("url::Url", std::sync::Mutex::new(joined));
+                        let id = vm.insert_heap_object(new_obj);
+                        task.ram.push_i32(id as i32);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        return Err(VMError::RuntimeError(format!("Url::join failed: {}", e)));
+                    }
+                }
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// url.origin() → string
+/// Stack: [handle_i32] -> [origin_str]
+pub fn shim_url_opaque_origin(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let origin = url.lock().unwrap().origin().ascii_serialization();
+                push_vm_string(task, vm, &origin);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.drop() — no-op, GC handles cleanup
+pub fn shim_url_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _url_id = task.ram.pop_i32();
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.2: Semver Opaque Struct Shims
+// ============================================================================
+
+/// Version.parse(ver_str) → opaque handle
+/// Stack: [ver_str] -> [handle_i32]
+pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_str = pop_vm_string(task, vm);
+    match semver::Version::parse(&ver_str) {
+        Ok(ver) => {
+            let obj = RustStdlibObject::new("semver::Version", std::sync::Mutex::new(ver));
+            let id = vm.insert_heap_object(obj);
+            task.ram.push_i32(id as i32);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("Version::parse failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+/// v.major → u64
+/// Stack: [handle_i32] -> [major_i32]
+pub fn shim_semver_opaque_major(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                task.ram.push_i32(ver.lock().unwrap().major as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// v.minor → u64
+/// Stack: [handle_i32] -> [minor_i32]
+pub fn shim_semver_opaque_minor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                task.ram.push_i32(ver.lock().unwrap().minor as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// v.patch → u64
+/// Stack: [handle_i32] -> [patch_i32]
+pub fn shim_semver_opaque_patch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                task.ram.push_i32(ver.lock().unwrap().patch as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// v.pre → string
+/// Stack: [handle_i32] -> [pre_str]
+pub fn shim_semver_opaque_pre(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                push_vm_string(task, vm, &ver.lock().unwrap().pre.to_string());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// v.to_string() → string
+/// Stack: [handle_i32] -> [ver_str]
+pub fn shim_semver_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                push_vm_string(task, vm, &ver.lock().unwrap().to_string());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// v1 > v2 → bool
+/// Stack: [v2_handle, v1_handle] -> [bool_i32]
+pub fn shim_semver_opaque_cmp_gt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let v2_id = task.ram.pop_i32() as u64;
+    let v1_id = task.ram.pop_i32() as u64;
+
+    let v1 = if let Some(obj) = vm.get_heap_object(v1_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                Some(ver.lock().unwrap().clone())
+            } else { None }
+        } else { None }
+    } else { None };
+
+    let v2 = if let Some(obj) = vm.get_heap_object(v2_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                Some(ver.lock().unwrap().clone())
+            } else { None }
+        } else { None }
+    } else { None };
+
+    match (v1, v2) {
+        (Some(a), Some(b)) => task.ram.push_i32(if a > b { 1 } else { 0 }),
+        _ => task.ram.push_i32(0),
+    }
+    Ok(())
+}
+
+/// version.drop() — no-op, GC handles cleanup
+pub fn shim_semver_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _ver_id = task.ram.pop_i32();
     Ok(())
 }
 

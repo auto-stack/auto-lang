@@ -816,6 +816,37 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.regex.is_match", 2400);
     registry.register_with_id("auto.regex.find_all", 2401);
 
+    // Regex opaque struct shims (2450-2459) — Plan 212 Phase 2.2
+    registry.register_with_id("auto.re_opaque.new", 2450);
+    registry.register_with_id("auto.re_opaque.is_match", 2451);
+    registry.register_with_id("auto.re_opaque.find", 2452);
+    registry.register_with_id("auto.re_opaque.find_all", 2453);
+    registry.register_with_id("auto.re_opaque.replace_all", 2454);
+    registry.register_with_id("auto.re_opaque.captures", 2455);
+    registry.register_with_id("auto.re_opaque.drop", 2459);
+
+    // Url opaque struct shims (2500-2509) — Plan 212 Phase 2.2
+    registry.register_with_id("auto.url_opaque.parse", 2500);
+    registry.register_with_id("auto.url_opaque.scheme", 2501);
+    registry.register_with_id("auto.url_opaque.host_str", 2502);
+    registry.register_with_id("auto.url_opaque.path", 2503);
+    registry.register_with_id("auto.url_opaque.fragment", 2504);
+    registry.register_with_id("auto.url_opaque.port", 2505);
+    registry.register_with_id("auto.url_opaque.query_pairs", 2506);
+    registry.register_with_id("auto.url_opaque.join", 2507);
+    registry.register_with_id("auto.url_opaque.origin", 2508);
+    registry.register_with_id("auto.url_opaque.drop", 2509);
+
+    // Semver opaque struct shims (2600-2609) — Plan 212 Phase 2.2
+    registry.register_with_id("auto.semver_opaque.parse", 2600);
+    registry.register_with_id("auto.semver_opaque.major", 2601);
+    registry.register_with_id("auto.semver_opaque.minor", 2602);
+    registry.register_with_id("auto.semver_opaque.patch", 2603);
+    registry.register_with_id("auto.semver_opaque.pre", 2604);
+    registry.register_with_id("auto.semver_opaque.to_string", 2605);
+    registry.register_with_id("auto.semver_opaque.cmp_gt", 2606);
+    registry.register_with_id("auto.semver_opaque.drop", 2609);
+
     // Rust stdlib dispatch (3000)
     registry.register_with_id("auto.rust_stdlib.dispatch", 3000);
 
