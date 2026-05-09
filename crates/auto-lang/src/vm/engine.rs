@@ -3188,6 +3188,17 @@ impl AutoVM {
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     let elem = list.elems[normalized_idx];
                                     vm_debug!("DEBUG GET_ELEM: Returning elem[{}]={}", normalized_idx, elem);
+                                    // Preserve string tag encoding: negative values are string indices
+                                    #[cfg(feature = "nanbox")]
+                                    {
+                                        if elem < 0 {
+                                            let str_idx = (-(elem) - 1) as u32;
+                                            task.ram.push_nv(auto_val::encode_string(str_idx));
+                                        } else {
+                                            task.ram.push_i32(elem);
+                                        }
+                                    }
+                                    #[cfg(not(feature = "nanbox"))]
                                     task.ram.push_i32(elem);
                                 } else {
                                     vm_debug!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
@@ -3231,7 +3242,20 @@ impl AutoVM {
 
                                 // Push element value onto stack based on type
                                 match elem {
-                                    auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                    auto_val::Value::Int(i) => {
+                                        // Preserve string tag: negative values are string indices
+                                        #[cfg(feature = "nanbox")]
+                                        {
+                                            if *i < 0 {
+                                                let str_idx = (-(*i) - 1) as u32;
+                                                task.ram.push_nv(auto_val::encode_string(str_idx));
+                                            } else {
+                                                task.ram.push_i32(*i);
+                                            }
+                                        }
+                                        #[cfg(not(feature = "nanbox"))]
+                                        task.ram.push_i32(*i);
+                                    }
                                     auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
                                     auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
                                     auto_val::Value::Double(d) => task.ram.push_f64(*d),
@@ -3845,6 +3869,17 @@ impl AutoVM {
                             "to_string" => Some("auto.semver_opaque.to_string"),
                             _ => None,
                         }
+                    } else if type_name.contains("Instant") || type_name.contains("std::time::Instant") {
+                        match method_name.as_str() {
+                            "elapsed" => Some("auto.time.instant_elapsed"),
+                            _ => None,
+                        }
+                    } else if type_name.contains("OnceCell") || type_name.contains("std::cell::OnceCell") {
+                        match method_name.as_str() {
+                            "get" => Some("auto.cell.once_get"),
+                            "set" => Some("auto.cell.once_set"),
+                            _ => None,
+                        }
                     } else {
                         None
                     };
@@ -3853,6 +3888,21 @@ impl AutoVM {
                     let opaque_native_id = opaque_native_name
                         .as_ref()
                         .and_then(|name| self.native_interface.resolve(name));
+
+                    // Plan 240: Math method dispatch for CALL_SPEC
+                    // Handles chained expressions like (a-b).to_radians() where type inference fails
+                    const CALL_SPEC_MATH_METHODS: &[&str] = &[
+                        "sin", "cos", "tan", "sqrt", "abs", "floor", "ceil", "round",
+                        "pow", "powf", "powi", "exp", "ln", "log2", "log10",
+                        "signum", "asin", "acos", "atan", "atan2",
+                        "to_radians", "to_degrees",
+                    ];
+                    let math_native_id = if CALL_SPEC_MATH_METHODS.contains(&method_name.as_str()) {
+                        let math_name = format!("auto.math.{}", method_name);
+                        self.native_interface.resolve(&math_name)
+                    } else {
+                        None
+                    };
 
                     // Look up function address in exports first
                     if is_identity_unwrap {
@@ -3885,6 +3935,42 @@ impl AutoVM {
                             task.ram.pop_i32();
                         }
                         task.ram.push_i32(return_val);
+                    } else if let Some(native_id) = math_native_id {
+                        // Plan 240: Math method on expression result (e.g., (a-b).to_radians())
+                        // CALL_SPEC stack: [..., receiver, arg0, ..., argN-1]
+                        // Pop args in reverse, then pop receiver as f64, apply math, push result
+                        // For unary math methods (0 args): receiver is the f64 value
+                        if arg_count == 0 {
+                            // Unary math: receiver is the f64 value on stack
+                            // Receiver is at receiver_pos, we need to:
+                            // 1. Pop and discard the receiver from CALL_SPEC layout
+                            // 2. Replace it with the math result
+                            let recv_val = task.ram.read_i32(receiver_pos);
+                            task.ram.push_i32(recv_val);
+                            if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                                shim(task, self)?;
+                            } else {
+                                return Err(VMError::MissingNative(native_id));
+                            }
+                            let return_val = task.ram.pop_i32();
+                            // Remove old receiver (1 item)
+                            task.ram.pop_i32();
+                            task.ram.push_i32(return_val);
+                        } else {
+                            // Binary math (e.g., powf): receiver + 1 arg
+                            let recv_val = task.ram.read_i32(receiver_pos);
+                            task.ram.push_i32(recv_val);
+                            if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                                shim(task, self)?;
+                            } else {
+                                return Err(VMError::MissingNative(native_id));
+                            }
+                            let return_val = task.ram.pop_i32();
+                            for _ in 0..=arg_count {
+                                task.ram.pop_i32();
+                            }
+                            task.ram.push_i32(return_val);
+                        }
                     } else if let Some(native_id) = self.native_interface.resolve(&func_name) {
                         // Plan 200 Task 3.3: Fallback to native registry for type.method natives
                         // (e.g., Result.Ok.map_err -> shim_result_map_err)

@@ -444,6 +444,12 @@ pub fn shim_env_remove(key: String) {
     }
 }
 
+/// Get an environment variable with a default value
+#[auto_macros::rust_fn("Env.get_or")]
+pub fn shim_env_get_or(key: String, default: String) -> String {
+    std::env::var(&key).unwrap_or(default)
+}
+
 // ============================================================================
 // Time Functions
 // ============================================================================

@@ -326,6 +326,8 @@ impl NativeInterface {
         self.register(NATIVE_HASHMAP_SIZE, shim_hashmap_size);
         self.register(NATIVE_HASHMAP_CLEAR, shim_hashmap_clear);
         self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
+        self.register(NATIVE_HASHMAP_IS_EMPTY, shim_hashmap_is_empty);
+        self.register(NATIVE_HASHMAP_GET_OR, shim_hashmap_get_or);
 
         // HashSet functions
         self.register(NATIVE_HASHSET_NEW, shim_hashset_new);
@@ -472,10 +474,14 @@ impl NativeInterface {
         self.register_name("auto.hashmap.get_str", NATIVE_HASHMAP_GET_STR);
         self.register_name("auto.hashmap.get_int", NATIVE_HASHMAP_GET_INT);
         self.register_name("auto.hashmap.contains", NATIVE_HASHMAP_CONTAINS);
+        self.register_name("auto.hashmap.contains_key", NATIVE_HASHMAP_CONTAINS);
         self.register_name("auto.hashmap.remove", NATIVE_HASHMAP_REMOVE);
         self.register_name("auto.hashmap.size", NATIVE_HASHMAP_SIZE);
+        self.register_name("auto.hashmap.len", NATIVE_HASHMAP_SIZE);
         self.register_name("auto.hashmap.clear", NATIVE_HASHMAP_CLEAR);
         self.register_name("auto.hashmap.drop", NATIVE_HASHMAP_DROP);
+        self.register_name("auto.hashmap.is_empty", NATIVE_HASHMAP_IS_EMPTY);
+        self.register_name("auto.hashmap.get_or", NATIVE_HASHMAP_GET_OR);
 
         // String methods for CALL_SPEC dispatch
         self.register_name("auto.str.len", NATIVE_STR_LEN);
@@ -645,6 +651,20 @@ impl NativeInterface {
         self.register_name("auto.math.atan2", NATIVE_MATH_ATAN2);
         self.register_name("auto.math.to_radians", NATIVE_MATH_TO_RADIANS);
         self.register_name("auto.math.to_degrees", NATIVE_MATH_TO_DEGREES);
+
+        // Plan 240: Instant opaque shims
+        self.register(NATIVE_INSTANT_NOW, shim_instant_now);
+        self.register(NATIVE_INSTANT_ELAPSED, shim_instant_elapsed);
+        self.register_name("auto.time.instant_now", NATIVE_INSTANT_NOW);
+        self.register_name("auto.time.instant_elapsed", NATIVE_INSTANT_ELAPSED);
+
+        // Plan 240: OnceCell opaque shims
+        self.register(NATIVE_ONCE_NEW, shim_once_new);
+        self.register(NATIVE_ONCE_SET, shim_once_set);
+        self.register(NATIVE_ONCE_GET, shim_once_get);
+        self.register_name("auto.cell.once_new", NATIVE_ONCE_NEW);
+        self.register_name("auto.cell.once_set", NATIVE_ONCE_SET);
+        self.register_name("auto.cell.once_get", NATIVE_ONCE_GET);
     }
 }
 
@@ -921,6 +941,8 @@ pub const NATIVE_HASHMAP_REMOVE: u16 = 125;
 pub const NATIVE_HASHMAP_SIZE: u16 = 126;
 pub const NATIVE_HASHMAP_CLEAR: u16 = 127;
 pub const NATIVE_HASHMAP_DROP: u16 = 128;
+pub const NATIVE_HASHMAP_IS_EMPTY: u16 = 1290;
+pub const NATIVE_HASHMAP_GET_OR: u16 = 1291;
 
 // === HashSet Native Function IDs (129+) ===
 pub const NATIVE_HASHSET_NEW: u16 = 129;
@@ -1061,6 +1083,15 @@ pub const NATIVE_MATH_POWI: u16 = 1730;
 pub const NATIVE_MATH_POWF: u16 = 1731;
 pub const NATIVE_MATH_TO_RADIANS: u16 = 1732;
 pub const NATIVE_MATH_TO_DEGREES: u16 = 1733;
+
+// === Instant Native IDs (1203+) — Plan 240 ===
+pub const NATIVE_INSTANT_NOW: u16 = 1203;
+pub const NATIVE_INSTANT_ELAPSED: u16 = 1204;
+
+// === OnceCell Native IDs (2850+) — Plan 240 ===
+pub const NATIVE_ONCE_NEW: u16 = 2850;
+pub const NATIVE_ONCE_SET: u16 = 2851;
+pub const NATIVE_ONCE_GET: u16 = 2852;
 
 // === Rand Native IDs (1850+) — Plan 212 Phase 2 ===
 pub const NATIVE_RAND_THREAD_RNG: u16 = 1850; // thread_rng() → opaque Rng handle
@@ -1626,6 +1657,25 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Get element at index.
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
+/// Push a tagged value from ListData<i32> back onto the stack.
+/// In non-nanbox mode, all values are plain i32 so push_i32 is fine.
+/// In nanbox mode, negative values are string tags that must use push_str_idx
+/// to preserve the TAG_STRING type tag in the NanoValue encoding.
+#[cfg(feature = "nanbox")]
+fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
+    if val < 0 {
+        let str_idx = (-(val) - 1) as u32;
+        ram.push_nv(auto_val::encode_string(str_idx));
+    } else {
+        ram.push_i32(val);
+    }
+}
+
+#[cfg(not(feature = "nanbox"))]
+fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
+    ram.push_i32(val);
+}
+
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
@@ -1640,7 +1690,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let guard = obj.read().unwrap();
             if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                 if let Some(&val) = list.get(index) {
-                    task.ram.push_i32(val);
+                    push_tagged_value(&mut task.ram, val);
                 } else {
                     task.ram.push_i32(0);
                 }
@@ -2961,6 +3011,63 @@ pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_hashmap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // No-op: heap objects are managed by Arc<RwLock<>>
     // When the last reference is dropped, the object is automatically freed
+    Ok(())
+}
+
+/// Check if HashMap is empty
+/// Stack: hashmap_id -> bool (1 if empty, 0 if not)
+pub fn shim_hashmap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = task.ram.pop_i32() as u64;
+
+    let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            map.is_empty()
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    task.ram.push_i32(if is_empty { 1 } else { 0 });
+    Ok(())
+}
+
+/// Get value from HashMap with default fallback
+/// Stack: hashmap_id, key_str_id, default_value -> value
+pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let default_val = task.ram.pop_i32();
+    let key_str_idx = task.ram.pop_str_idx();
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if let Some(value) = map.get(&key_str) {
+                match value {
+                    auto_val::Value::Int(i) => { task.ram.push_i32(i); return Ok(()); }
+                    auto_val::Value::Uint(u) => { task.ram.push_i32(u as i32); return Ok(()); }
+                    auto_val::Value::Bool(b) => { task.ram.push_i32(if b { 1 } else { 0 }); return Ok(()); }
+                    auto_val::Value::Str(s) => {
+                        let mut strings = vm.strings.write().unwrap();
+                        let str_idx = strings.len() as u32;
+                        strings.push(s.as_bytes().to_vec());
+                        drop(strings);
+                        task.ram.push_str_idx(str_idx);
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    task.ram.push_i32(default_val);
     Ok(())
 }
 
@@ -5395,6 +5502,156 @@ pub fn shim_mime_from_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         .first_or_octet_stream()
         .to_string();
     push_vm_string(task, vm, &mime);
+    Ok(())
+}
+
+// Plan 240: Instant opaque shims for std::time::Instant
+
+/// Create an Instant::now() opaque handle.
+/// Stack: -> handle_id
+pub fn shim_instant_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let instant = std::time::Instant::now();
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "std::time::Instant",
+        instant,
+    );
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// Get elapsed time from Instant handle as a formatted string.
+/// Stack: handle_id -> string (e.g., "123ms")
+pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i32() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid Instant handle".to_string()))?;
+    let guard = obj.read().unwrap();
+    let rust_obj = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let instant = rust_obj.downcast_ref::<std::time::Instant>()
+        .ok_or_else(|| VMError::RuntimeError("Not an Instant object".to_string()))?;
+    let elapsed = instant.elapsed();
+    let millis = elapsed.as_millis();
+    let nanos = elapsed.as_nanos();
+    let result = if millis > 0 {
+        format!("{}ms", millis)
+    } else {
+        format!("{}ns", nanos)
+    };
+    drop(guard);
+    let bytes = result.into_bytes();
+    let idx = {
+        let mut strings = vm.strings.write().unwrap();
+        strings.push(bytes);
+        strings.len() - 1
+    };
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = auto_val::encode_string(idx as u32);
+        task.ram.push_nv(nv);
+        task.ram.push_nv(auto_val::encode_null());
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        task.ram.push_i32(idx as i32);
+    }
+    Ok(())
+}
+
+// Plan 240: OnceCell opaque shims using RustStdlibObject wrapping Option<String>
+
+/// Create a new OnceCell (empty).
+/// Stack: -> handle_id
+pub fn shim_once_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cell: Option<String> = None;
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "std::cell::OnceCell",
+        cell,
+    );
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// Set a value in the OnceCell.
+/// Stack: string_value, handle_id -> void (pushes 1 for success, 0 for already set)
+pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop string value
+    #[cfg(feature = "nanbox")]
+    let value = {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings.read().unwrap().get(idx).cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    };
+    #[cfg(not(feature = "nanbox"))]
+    let value = {
+        let idx = task.ram.pop_i32() as usize;
+        vm.strings.read().unwrap().get(idx).cloned()
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default()
+    };
+
+    let handle = task.ram.pop_i32() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid OnceCell handle".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    let rust_obj = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let cell = rust_obj.downcast_mut::<Option<String>>()
+        .ok_or_else(|| VMError::RuntimeError("Not an Option<String>".to_string()))?;
+    if cell.is_none() {
+        *cell = Some(value);
+        task.ram.push_i32(1); // success
+    } else {
+        task.ram.push_i32(0); // already set
+    }
+    Ok(())
+}
+
+/// Get the value from the OnceCell.
+/// Returns string index (>=0) if set, or -1 if None (VM Option representation).
+/// Stack: handle_id -> i32 (string index or -1 for None)
+pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i32() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid OnceCell handle".to_string()))?;
+    let guard = obj.read().unwrap();
+    let rust_obj = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let cell = rust_obj.downcast_ref::<Option<String>>()
+        .ok_or_else(|| VMError::RuntimeError("Not an Option<String>".to_string()))?;
+
+    match cell {
+        None => {
+            // Return -1 (None in VM Option representation)
+            task.ram.push_i32(-1);
+        }
+        Some(value) => {
+            let bytes = value.as_bytes().to_vec();
+            let idx = {
+                let mut strings = vm.strings.write().unwrap();
+                strings.push(bytes);
+                strings.len() - 1
+            };
+            #[cfg(feature = "nanbox")]
+            {
+                let nv = auto_val::encode_string(idx as u32);
+                task.ram.push_nv(nv);
+                task.ram.push_nv(auto_val::encode_null());
+            }
+            #[cfg(not(feature = "nanbox"))]
+            {
+                task.ram.push_i32(idx as i32);
+            }
+        }
+    }
     Ok(())
 }
 

@@ -556,6 +556,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.str.find", 1514);
     registry.register_with_id("auto.str.lines", 1515);
     registry.register_with_id("auto.str.parse_int", 1516);
+    registry.register_with_id("auto.str.to_int", 1516);
     registry.register_with_id("auto.str.parse_float", 1517);
     registry.register_with_id("auto.str.new", 177);
     registry.register_with_id("auto.str.push", 178);
@@ -624,15 +625,24 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.fs.size", 1008);
     registry.register_with_id("auto.fs.is_dir", 1009);
 
-    // Env functions (1100-1102)
+    // Env functions (1100-1103)
     registry.register_with_id("auto.env.get", 1100);
     registry.register_with_id("auto.env.set", 1101);
     registry.register_with_id("auto.env.remove", 1102);
+    registry.register_with_id("auto.env.get_or", 1103);
+    registry.register_with_id("Env.get_or", 1103); // alias for #[rust_fn]
 
-    // Time functions (1200-1202)
+    // Time functions (1200-1205)
     registry.register_with_id("auto.time.now_ms", 1200);
     registry.register_with_id("auto.time.now_sec", 1201);
     registry.register_with_id("auto.time.sleep_ms", 1202);
+    registry.register_with_id("auto.time.instant_now", 1203);
+    registry.register_with_id("auto.time.instant_elapsed", 1204);
+
+    // OnceCell functions (2850-2853)
+    registry.register_with_id("auto.cell.once_new", 2850);
+    registry.register_with_id("auto.cell.once_set", 2851);
+    registry.register_with_id("auto.cell.once_get", 2852);
 
     // Process functions (1300-1304)
     registry.register_with_id("auto.process.exit", 1300);

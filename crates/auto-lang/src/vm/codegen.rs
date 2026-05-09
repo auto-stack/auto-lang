@@ -4996,7 +4996,9 @@ impl Codegen {
                         match obj.as_ref() {
                             Expr::Ident(obj_name) => {
                                 // Check if it's a static method call (Type.method with capital T)
-                                if self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
+                                // Also treat stdlib singleton module names (env, fs) as static
+                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs");
+                                if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
                                     if method.as_str() == "spawn" && self.types.contains_key(obj_name.as_ref()) {
@@ -5320,6 +5322,34 @@ impl Codegen {
                     }
                 }
 
+                // Plan 240: Route std::env/std::fs module methods
+                if let Some(ref fname) = func_name {
+                    let parts: Vec<String> = fname.splitn(2, '.').map(|s| s.to_string()).collect();
+                    if parts.len() == 2 {
+                        let module = parts[0].as_str();
+                        let method = parts[1].as_str();
+                        let routed = match (module, method) {
+                            ("env", "get") => Some("Env.get".to_string()),
+                            ("env", "get_or") => Some("Env.get_or".to_string()),
+                            ("env", "set") => Some("Env.set".to_string()),
+                            ("env", "remove") => Some("Env.remove".to_string()),
+                            ("fs", "read_to_string") => Some("File.read_text".to_string()),
+                            ("fs", "write") | ("fs", "write_all") => Some("File.write_text".to_string()),
+                            ("fs", "create_dir") | ("fs", "create_dir_all") => Some("File.create_dir".to_string()),
+                            ("fs", "read") | ("fs", "read_bytes") => Some("File.read_bytes".to_string()),
+                            ("fs", "copy") => Some("File.copy".to_string()),
+                            ("fs", "exists") => Some("File.exists".to_string()),
+                            ("fs", "remove_file") | ("fs", "delete") => Some("File.delete".to_string()),
+                            ("fs", "metadata") => Some("File.size".to_string()),
+                            ("fs", "is_dir") => Some("File.is_dir".to_string()),
+                            _ => None,
+                        };
+                        if routed.is_some() {
+                            func_name = routed;
+                        }
+                    }
+                }
+
                 // Plan 212 Phase 2.2: Route Regex/Url/Semver opaque struct methods
                 // Handles both Type.Method (e.g., "regex::Regex.is_match") and
                 // var.method (e.g., "re.is_match") — the latter needs import-based lookup.
@@ -5443,7 +5473,27 @@ impl Codegen {
                                     "from_path" => func_name = Some("auto.mime.from_path".to_string()),
                                     _ => {}
                                 },
-                                _ => {}
+                                // Plan 240: std::time::Instant + std::cell::OnceCell methods
+                                "std" => match method.as_str() {
+                                    "now" => func_name = Some("auto.time.instant_now".to_string()),
+                                    "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
+                                    "new" => {
+                                        // Disambiguate: OnceCell.new vs Instant.new vs other std types
+                                        if fname.starts_with("OnceCell") {
+                                            func_name = Some("auto.cell.once_new".to_string());
+                                        }
+                                    }
+                                    "get" => func_name = Some("auto.cell.once_get".to_string()),
+                                    "set" => func_name = Some("auto.cell.once_set".to_string()),
+                                    _ => {}
+                                },
+                                _ => {
+                                    // Plan 240: Fallback routing by method name for known stdlib patterns
+                                    match method.as_str() {
+                                        "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
+                                        _ => {}
+                                    }
+                                }
                             }
                         }
                     }
@@ -5616,9 +5666,13 @@ impl Codegen {
                     );
                     if let Expr::Dot(obj, _method) = call.name.as_ref() {
                         // Check if it's a static method call (Type.method with capital T)
+                        // Also treat stdlib module names (env, fs, etc.) as static
                         let is_static_method = match obj.as_ref() {
                             Expr::Ident(obj_name) => {
-                                self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)
+                                let lower = obj_name.as_ref();
+                                matches!(lower, "env" | "fs")
+                                    || self.is_type_name_heuristic(obj_name)
+                                    || self.is_type(obj_name)
                             }
                             _ => false,
                         };
@@ -5864,9 +5918,13 @@ impl Codegen {
 
                 if let Expr::Dot(obj, _method) = call.name.as_ref() {
                     // Check if it's a static method call (Type.method with capital T)
+                    // Also treat stdlib module names as static
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
-                            self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)
+                            let lower = obj_name.as_ref();
+                            matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex")
+                                || self.is_type_name_heuristic(obj_name)
+                                || self.is_type(obj_name)
                         }
                         _ => false,
                     };
