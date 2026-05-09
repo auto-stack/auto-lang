@@ -112,6 +112,9 @@ pub struct RustTrans {
     // fn_name -> vec of booleans (true = param is str/&str, needs & at call site)
     fn_str_param_indices: HashMap<AutoStr, Vec<bool>>,
 
+    // Track current function's return type for string coercion
+    current_fn_ret_type: Option<Type>,
+
 }
 
 impl RustTrans {
@@ -134,6 +137,7 @@ impl RustTrans {
             local_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
+            current_fn_ret_type: None,
         }
     }
 
@@ -157,6 +161,7 @@ impl RustTrans {
             local_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
+            current_fn_ret_type: None,
         }
     }
 
@@ -262,6 +267,22 @@ impl RustTrans {
             out.write(b"    ")?;
         }
         Ok(())
+    }
+
+    /// Check if current function's return type maps to Rust String (needs &str -> String coercion)
+    fn ret_type_needs_string_coercion(&self) -> bool {
+        self.current_fn_ret_type.as_ref().map_or(false, |ty| {
+            matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+        })
+    }
+
+    /// Check if an expression produces &str that needs .to_string() for String return
+    fn expr_needs_string_coercion(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Str(_) | Expr::CStr(_) => true,
+            Expr::Index(_, idx) => matches!(idx.as_ref(), Expr::Range(_)),
+            _ => false,
+        }
     }
 
     fn rust_type_name(&self, ty: &Type) -> String {
@@ -2037,8 +2058,8 @@ impl RustTrans {
                             return Ok(());
                         }
                         "slice" => {
-                            // s.slice(n) -> s[n..].to_string()
-                            // s.slice(start, end) -> s[start..end].to_string()
+                            // s.slice(n) -> s[n..]
+                            // s.slice(start, end) -> s[start..end]
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             let args = &call.args.args;
@@ -2104,11 +2125,13 @@ impl RustTrans {
                     }
 
                     // Simple name-remap table
+                    // .len()/.length() returns usize, cast to i32 for Auto's int
+                    let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length");
                     let rust_method = match method_name.as_str() {
                         // String methods
                         "to_lower" => Some("to_lowercase"),
                         "to_upper" => Some("to_uppercase"),
-                        "length" => Some("len"),
+                        "length" | "len" => Some("len"),
                         "is_empty" => Some("is_empty"),
                         "trim" => Some("trim"),
                         "trim_left" => Some("trim_start"),
@@ -2154,6 +2177,9 @@ impl RustTrans {
                             }
                         }
                         write!(out, ")")?;
+                        if needs_i32_cast_1 {
+                            write!(out, " as i32")?;
+                        }
                         return Ok(());
                     }
                 }
@@ -2218,8 +2244,8 @@ impl RustTrans {
                     return Ok(());
                 }
                 "slice" => {
-                    // s.slice(n) -> s[n..]
-                    // s.slice(start, end) -> s[start..end]
+                    // s.slice(n) -> s[n..].to_string()
+                    // s.slice(start, end) -> s[start..end].to_string()
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     let args = &call.args.args;
@@ -2337,11 +2363,14 @@ impl RustTrans {
                 _ => {} // fall through to regular method handling
             }
 
+            // .len() and .length() return usize in Rust, cast to i32 for Auto's int
+            let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
+
             let rust_method = match method_name.as_str() {
                 // String methods
                 "to_lower" => Some("to_lowercase"),
                 "to_upper" => Some("to_uppercase"),
-                "length" => Some("len"),
+                "length" | "len" => Some("len"),
                 "is_empty" => Some("is_empty"),
                 "trim" => Some("trim"),
                 "starts_with" => Some("starts_with"),
@@ -2374,6 +2403,9 @@ impl RustTrans {
                     }
                 }
                 write!(out, ")")?;
+                if needs_i32_cast {
+                    write!(out, " as i32")?;
+                }
                 return Ok(());
             }
 
@@ -2919,7 +2951,13 @@ impl RustTrans {
                         return Ok(true);
                     }
                 }
+                // If return type is String and expr produces &str, add .to_string()
+                let needs_to_string = self.ret_type_needs_string_coercion()
+                    && self.expr_needs_string_coercion(expr);
                 self.expr(expr, &mut sink.body)?;
+                if needs_to_string {
+                    sink.body.write(b".to_string()")?;
+                }
                 sink.body.write(b";")?;
                 Ok(true)
             }
@@ -3180,8 +3218,8 @@ impl RustTrans {
         // Parameters
         write!(sink.body, "(")?;
 
-        // Add &self as first parameter for methods
-        if is_method && !fn_decl.is_static {
+        // Add &self as first parameter for methods (except constructors)
+        if is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new" {
             // Plan 163: &mut self for mut methods
             if fn_decl.is_mut {
                 write!(sink.body, "&mut self")?;
@@ -3208,6 +3246,7 @@ impl RustTrans {
 
         // Plan 232: Track str-type parameter names for .to_string() on return
         self.current_fn_str_params.clear();
+        self.current_fn_ret_type = Some(fn_decl.ret.clone());
         // Cache which params are str (&str) type for auto-borrow at call sites
         let str_param_flags: Vec<bool> = fn_decl.params.iter()
             .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
@@ -4903,6 +4942,12 @@ impl RustTrans {
                 match stmt {
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
+                        // If return type is String and expr produces &str, add .to_string()
+                        if self.ret_type_needs_string_coercion()
+                            && self.expr_needs_string_coercion(expr)
+                        {
+                            sink.body.write(b".to_string()")?;
+                        }
                         sink.body.write(b"\n")?;
                     }
                     _ => {
