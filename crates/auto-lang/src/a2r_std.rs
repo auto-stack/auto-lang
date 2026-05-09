@@ -203,6 +203,10 @@ pub mod Json {
         val.get(key)
     }
 
+    pub fn get_str(val: &Value, key: &str) -> String {
+        val.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_default()
+    }
+
     pub fn as_string(val: &Value) -> Option<String> {
         val.as_str().map(|s| s.to_string())
     }

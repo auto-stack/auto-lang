@@ -133,6 +133,12 @@ pub struct RustTrans {
 
     // Track which function params are struct/enum types (need .clone() at call sites)
     fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>,
+    // Track which function params are spec types (need Box::new() at call sites)
+    fn_spec_param_indices: HashMap<AutoStr, Vec<bool>>,
+    // Track struct→spec mapping: struct_name -> spec_name (for spec array inference)
+    struct_to_spec: HashMap<AutoStr, AutoStr>,
+    // Track variable→spec mapping: var_name -> spec_name
+    var_spec_map: HashMap<AutoStr, AutoStr>,
 
 }
 
@@ -162,6 +168,9 @@ impl RustTrans {
             current_fn_ret_type: None,
             local_var_types: HashMap::new(),
             fn_struct_param_indices: HashMap::new(),
+            struct_to_spec: HashMap::new(),
+            var_spec_map: HashMap::new(),
+            fn_spec_param_indices: HashMap::new(),
         }
     }
 
@@ -191,6 +200,9 @@ impl RustTrans {
             current_fn_ret_type: None,
             local_var_types: HashMap::new(),
             fn_struct_param_indices: HashMap::new(),
+            struct_to_spec: HashMap::new(),
+            var_spec_map: HashMap::new(),
+            fn_spec_param_indices: HashMap::new(),
         }
     }
 
@@ -201,6 +213,18 @@ impl RustTrans {
 
     pub fn set_edition(&mut self, edition: RustEdition) {
         self.edition = edition;
+    }
+
+    /// Extract the type name from a constructor expression.
+    fn extract_tag_or_ctor_type(expr: &Expr) -> Option<AutoStr> {
+        match expr {
+            Expr::Call(call) => {
+                if let Expr::Ident(name) = call.name.as_ref() {
+                    Some(name.clone())
+                } else { None }
+            }
+            _ => None,
+        }
     }
 
     /// Get Database reference (Phase 066)
@@ -2952,6 +2976,13 @@ impl RustTrans {
             None
         };
 
+        // Look up spec-param flags for auto-boxing at call sites
+        let spec_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
+            self.fn_spec_param_indices.get(fn_name).cloned()
+        } else {
+            None
+        };
+
         for (i, arg) in call.args.args.iter().enumerate() {
             let is_str_param = str_flags.as_ref()
                 .and_then(|f| f.get(i))
@@ -2969,9 +3000,23 @@ impl RustTrans {
                 .unwrap_or(false);
             let needs_clone = is_struct_param && matches!(arg, Arg::Pos(Expr::Ident(_)));
 
+            // Auto-box when passing a value to a function that takes a spec param
+            let is_spec_param = spec_flags.as_ref()
+                .and_then(|f| f.get(i))
+                .copied()
+                .unwrap_or(false);
+
+            if is_spec_param {
+                write!(out, "Box::new(")?;
+            }
+
             self.arg(arg, out)?;
             if needs_clone {
                 write!(out, ".clone()")?;
+            }
+
+            if is_spec_param {
+                write!(out, ".clone())")?;
             }
 
             if i < call.args.args.len() - 1 {
@@ -3377,6 +3422,13 @@ impl RustTrans {
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
         // Track local variable type for string concat detection
         self.local_var_types.insert(store.name.clone(), store.ty.clone());
+        // Track variable→spec mapping: when expr is a ctor with a spec type,
+        // record var_name -> spec_name for later spec array inference
+        if let Some(type_name) = Self::extract_tag_or_ctor_type(&store.expr) {
+            if let Some(spec_name) = self.struct_to_spec.get(&type_name) {
+                self.var_spec_map.insert(store.name.clone(), spec_name.clone());
+            }
+        }
 
         // Handle C variables and struct fields (should not be generated)
         match store.kind {
@@ -3445,8 +3497,21 @@ impl RustTrans {
             ty_name
         };
 
+        // Check if expression is an Array of spec instances (for unknown-type fallback)
+        let spec_array_type: Option<String> = if has_unknown {
+            if let Expr::Array(elems) = &store.expr {
+                let spec_name = elems.iter().find_map(|e| {
+                    if let Expr::Ident(name) = e {
+                        self.var_spec_map.get(name).cloned()
+                    } else { None }
+                });
+                spec_name.map(|sn| format!("Vec<Box<dyn {}>>", sn))
+            } else { None }
+        } else { None };
+
         // Skip type annotation if: Unknown type, type contains unknown, or closure expression
-        let skip_type_annotation = has_unknown || is_closure;
+        // Exception: spec array expressions need explicit type annotation for dyn Trait
+        let skip_type_annotation = (has_unknown || is_closure) && spec_array_type.is_none();
 
         if skip_type_annotation {
             // No type annotation - let Rust infer the type
@@ -3463,15 +3528,16 @@ impl RustTrans {
             }
         } else {
             // Explicit type annotation for non-closure expressions
+            let ty_str = spec_array_type.as_deref().unwrap_or(&ty_name);
             match store.kind {
                 StoreKind::Let => {
-                    write!(out, "let {}: {} = ", store.name, ty_name)?;
+                    write!(out, "let {}: {} = ", store.name, ty_str)?;
                 }
                 StoreKind::Var => {
-                    write!(out, "let mut {}: {} = ", store.name, ty_name)?;
+                    write!(out, "let mut {}: {} = ", store.name, ty_str)?;
                 }
                 _ => {
-                    write!(out, "let {}: {} = ", store.name, ty_name)?;
+                    write!(out, "let {}: {} = ", store.name, ty_str)?;
                 }
             }
         }
@@ -3500,6 +3566,22 @@ impl RustTrans {
                 write!(out, "vec![")?;
                 for (i, elem) in elems.iter().enumerate() {
                     self.expr(elem, out)?;
+                    if i < elems.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "]")?;
+            } else {
+                self.expr(&store.expr, out)?;
+            }
+        } else if spec_array_type.is_some() {
+            // Unknown-type Array with spec elements -> vec![Box::new(e.clone()), ...]
+            if let Expr::Array(elems) = &store.expr {
+                write!(out, "vec![")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    write!(out, "Box::new(")?;
+                    self.expr(elem, out)?;
+                    write!(out, ".clone())")?;
                     if i < elems.len() - 1 {
                         write!(out, ", ")?;
                     }
@@ -3683,6 +3765,12 @@ impl RustTrans {
             .map(|p| matches!(p.ty, Type::User(_) | Type::Tag(_) | Type::Enum(_)))
             .collect();
         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+
+        // Cache which params are spec types (need Box::new() at call sites)
+        let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+            .map(|p| matches!(p.ty, Type::Spec(_)))
+            .collect();
+        self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
 
         // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
@@ -3962,7 +4050,11 @@ impl RustTrans {
                         self.write_return_expr(ret, &mut sink.body, true)?;
                         sink.body.write(b"\n")?;
                     }
-                    _ => {}
+                    _ => {
+                        self.stmt(stmt, sink)?;
+                        sink.body.write(b"
+")?;
+                    }
                 }
             }
             self.dedent();
@@ -4015,7 +4107,11 @@ impl RustTrans {
                         self.expr(ret, &mut sink.body)?;
                         sink.body.write(b";\n")?;
                     }
-                    _ => {}
+                    _ => {
+                        self.stmt(stmt, sink)?;
+                        sink.body.write(b"
+")?;
+                    }
                 }
             }
             self.dedent();
@@ -4299,6 +4395,10 @@ impl RustTrans {
 
     // Type declaration (struct)
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Register struct→spec mapping for spec array inference
+        for spec_name in &type_decl.specs {
+            self.struct_to_spec.insert(type_decl.name.clone(), spec_name.clone());
+        }
         // Emit doc comments
         if let Some(ref doc) = type_decl.doc {
             for line in doc.split('\n') {
@@ -4707,13 +4807,13 @@ impl RustTrans {
                             sink.body,
                             ", {}: {}",
                             param.name,
-                            self.rust_type_name(&param.ty)
+                            self.rust_param_type_name(&param.ty)
                         )?;
                     }
 
                     // Return type
                     if !matches!(spec_method.ret, Type::Void) {
-                        write!(sink.body, ") -> {}", self.rust_type_name(&spec_method.ret))?;
+                        write!(sink.body, ") -> {}", self.rust_return_type_name(&spec_method.ret))?;
                     } else {
                         write!(sink.body, ")")?;
                     }
@@ -4894,13 +4994,13 @@ impl RustTrans {
                                 sink.body,
                                 ", {}: {}",
                                 param.name,
-                                self.rust_type_name(&param.ty)
+                                self.rust_param_type_name(&param.ty)
                             )?;
                         }
 
                         // Return type
                         if !matches!(method.ret, Type::Void) {
-                            write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+                            write!(sink.body, ") -> {}", self.rust_return_type_name(&method.ret))?;
                         } else {
                             write!(sink.body, ")")?;
                         }
@@ -5350,7 +5450,7 @@ impl RustTrans {
                     sink.body,
                     ", {}: {}",
                     param.name,
-                    self.rust_type_name(&param.ty)
+                    self.rust_param_type_name(&param.ty)
                 )?;
             }
 
