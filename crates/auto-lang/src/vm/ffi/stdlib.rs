@@ -683,10 +683,14 @@ pub fn shim_str_char_at(s: String, index: i32) -> i32 {
 /// Get substring (byte indices)
 #[auto_macros::rust_fn("Str.substr")]
 pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
+    eprintln!("DEBUG Str.substr: s={:?} (len={}), start={}, end={}", if s.len() > 30 { &s[..30] } else { &s }, s.len(), start, end);
     if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
+        eprintln!("DEBUG Str.substr: EARLY RETURN empty (condition failed)");
         return String::new();
     }
-    s[start as usize..end as usize].to_string()
+    let result = s[start as usize..end as usize].to_string();
+    eprintln!("DEBUG Str.substr: result={:?}", if result.len() > 30 { &result[..30] } else { &result });
+    result
 }
 
 /// Check if string contains substring
@@ -756,7 +760,9 @@ pub fn shim_str_reverse(s: String) -> String {
 /// Find first occurrence of substring, returns byte index or -1
 #[auto_macros::rust_fn("Str.find")]
 pub fn shim_str_find(s: String, needle: String) -> i32 {
-    s.find(&needle).map(|i| i as i32).unwrap_or(-1)
+    let result = s.find(&needle).map(|i| i as i32).unwrap_or(-1);
+    eprintln!("DEBUG Str.find: s={:?}, needle={:?}, result={}", s, needle, result);
+    result
 }
 
 /// Split string into lines

@@ -156,12 +156,14 @@ impl VMConvertible for String {
     fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
         let nv = task.ram.pop_nv();
         let str_idx = auto_val::decode_string(nv) as usize;
+        eprintln!("DEBUG String::pop_from_stack: idx={}, is_string={}", str_idx, auto_val::is_string(nv));
 
         let bytes = vm
             .get_string(str_idx as u16)
             .ok_or_else(|| FFIError::InvalidStringIndex(str_idx as u16))?;
 
         let s = String::from_utf8_lossy(&bytes).to_string();
+        eprintln!("DEBUG String::pop_from_stack: got string len={}", s.len());
         Ok(s)
     }
 
@@ -174,6 +176,7 @@ impl VMConvertible for String {
             let mut strings = vm.strings.write().unwrap();
             strings.push(self.as_bytes().to_vec());
         }
+        eprintln!("DEBUG String::push_to_stack: idx={}, str_len={}, str={:?}", len, self.len(), if self.len() > 30 { &self[..30] } else { self });
 
         task.ram.push_str_idx(len as u32);
         Ok(())

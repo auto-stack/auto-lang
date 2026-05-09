@@ -625,6 +625,12 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.fs.size", 1008);
     registry.register_with_id("auto.fs.is_dir", 1009);
 
+    // File I/O opaque handles (1010-1013) — Plan 240
+    registry.register_with_id("auto.file.create_handle", 1010);
+    registry.register_with_id("auto.file.open_handle", 1011);
+    registry.register_with_id("auto.file.write_handle", 1012);
+    registry.register_with_id("auto.file.try_clone", 1013);
+
     // Env functions (1100-1103)
     registry.register_with_id("auto.env.get", 1100);
     registry.register_with_id("auto.env.set", 1101);

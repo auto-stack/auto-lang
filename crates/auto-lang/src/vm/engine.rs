@@ -1392,6 +1392,8 @@ impl AutoVM {
 
                     // Store array in arrays registry and get ID
                     let array_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
+                    #[cfg(feature = "nanbox")]
+                    eprintln!("DEBUG CREATE_ARRAY: id={}, elems={:?}", array_id, elems.iter().map(|v| match v { auto_val::Value::Int(i) => format!("Int({})", i), other => format!("{:?}", other) }).collect::<Vec<_>>());
                     self.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
 
                     // Push array ID onto stack
@@ -1530,7 +1532,18 @@ impl AutoVM {
                                             match self.get_heap_object(obj_id) {
                                                 Some(obj) => {
                                                     let guard = obj.read().unwrap();
-                                                    if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                                    if let TypeTag::RustStdlib(ref name) = guard.type_tag() {
+                                                        // RustStdlibObject — check for string-like values
+                                                        if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                                            if let Some(s) = rust_obj.downcast_ref::<String>() {
+                                                                s.clone()
+                                                            } else {
+                                                                format!("<{}>", name)
+                                                            }
+                                                        } else {
+                                                            format!("<{}>", name)
+                                                        }
+                                                    } else if let TypeTag::GenericInstance(_) = guard.type_tag() {
                                                         if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                                                             // Special formatting for Option/Result types
                                                             if inst.mono_name == "Option.None" {
@@ -3234,6 +3247,8 @@ impl AutoVM {
                         // Fallback to legacy arrays registry
                         else if let Some(array_ref) = self.arrays.get(&obj_id) {
                             let array = array_ref.read().unwrap();
+                            #[cfg(feature = "nanbox")]
+                            eprintln!("DEBUG GET_ELEM legacy: obj_id={}, idx={}, len={}, elems={:?}", obj_id, index_i32, array.len(), array.iter().map(|v| match v { auto_val::Value::Int(i) => format!("Int({})", i), other => format!("{:?}", other) }).collect::<Vec<_>>());
 
                             // Use normalized index for negative index support
                             if let Some(normalized_idx) = normalize_index(index_i32, array.len()) {
@@ -3562,9 +3577,21 @@ impl AutoVM {
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    task.ram.push_i32(a.wrapping_add(b));
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let b_nv = task.ram.pop_nv();
+                        let a_nv = task.ram.pop_nv();
+                        let b = if auto_val::is_i32(b_nv) { auto_val::decode_i32(b_nv) } else { auto_val::decode_i32(b_nv) };
+                        let a = if auto_val::is_i32(a_nv) { auto_val::decode_i32(a_nv) } else { auto_val::decode_i32(a_nv) };
+                        eprintln!("DEBUG ADD: a={} (is_i32={}), b={} (is_i32={}), result={}", a, auto_val::is_i32(a_nv), b, auto_val::is_i32(b_nv), a.wrapping_add(b));
+                        task.ram.push_i32(a.wrapping_add(b));
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        let b = task.ram.pop_i32();
+                        let a = task.ram.pop_i32();
+                        task.ram.push_i32(a.wrapping_add(b));
+                    }
                 }
                 OpCode::SUB => {
                     let b = task.ram.pop_i32();
@@ -3880,6 +3907,12 @@ impl AutoVM {
                             "set" => Some("auto.cell.once_set"),
                             _ => None,
                         }
+                    } else if type_name.contains("std::fs::File") || type_name.contains("FileWriter") {
+                        match method_name.as_str() {
+                            "write" => Some("auto.file.write_handle"),
+                            "try_clone" => Some("auto.file.try_clone"),
+                            _ => None,
+                        }
                     } else {
                         None
                     };
@@ -3918,23 +3951,46 @@ impl AutoVM {
                         // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]
                         // Native shim expects: [..., argN-1, ..., arg0, receiver] (pop args first, then receiver)
                         // Re-push receiver on top so shim can pop in correct order
-                        let recv_val = task.ram.read_i32(receiver_pos);
-                        task.ram.push_i32(recv_val);
+                        #[cfg(feature = "nanbox")]
+                        {
+                            let recv_nv = task.ram.read_nv(receiver_pos);
+                            task.ram.push_nv(recv_nv);
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        task.ram.push_i32(task.ram.read_i32(receiver_pos));
                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
                             shim(task, self)?;
                         } else {
                             return Err(VMError::MissingNative(native_id));
                         }
-                        // After shim returns, remove the duplicate args+receiver from CALL_SPEC layout
-                        // The shim pushed its return value on top. We need to remove the old args+receiver.
-                        // Stack now: [..., receiver, arg0..argN-1, receiver, return_value]
-                        // Need: [..., return_value]
-                        let return_val = task.ram.pop_i32();
-                        // Remove old args + receiver (arg_count + 1 items)
-                        for _ in 0..=arg_count {
-                            task.ram.pop_i32();
+                        // After shim returns, remove duplicate args+receiver from CALL_SPEC layout.
+                        // Stack: [..., receiver, arg0..argN-1, receiver, return_value(s)]
+                        // Need: [..., return_value(s)]
+                        // In nanbox mode, string values occupy 2 slots (encode_string + encode_null).
+                        #[cfg(feature = "nanbox")]
+                        {
+                            use auto_val::NanoValue;
+                            let top_nv: NanoValue = task.ram.pop_nv();
+                            if auto_val::is_string(top_nv) {
+                                for _ in 0..=arg_count { task.ram.pop_nv(); }
+                                task.ram.push_nv(top_nv);
+                                task.ram.push_nv(auto_val::encode_null());
+                            } else if auto_val::is_null(top_nv) && task.ram.sp > 0 && auto_val::is_string(task.ram.read_nv(task.ram.sp - 1)) {
+                                let str_nv = task.ram.pop_nv();
+                                for _ in 0..=arg_count { task.ram.pop_nv(); }
+                                task.ram.push_nv(str_nv);
+                                task.ram.push_nv(top_nv);
+                            } else {
+                                for _ in 0..=arg_count { task.ram.pop_nv(); }
+                                task.ram.push_nv(top_nv);
+                            }
                         }
-                        task.ram.push_i32(return_val);
+                        #[cfg(not(feature = "nanbox"))]
+                        {
+                            let return_val = task.ram.pop_i32();
+                            for _ in 0..=arg_count { task.ram.pop_i32(); }
+                            task.ram.push_i32(return_val);
+                        }
                     } else if let Some(native_id) = math_native_id {
                         // Plan 240: Math method on expression result (e.g., (a-b).to_radians())
                         // CALL_SPEC stack: [..., receiver, arg0, ..., argN-1]
@@ -3979,6 +4035,89 @@ impl AutoVM {
                         } else {
                             return Err(VMError::MissingNative(native_id));
                         }
+                    } else if method_name == "is_none" || method_name == "is_some" {
+                        // Plan 240: Inline is_none/is_some for any type (Option semantics)
+                        // In nanbox mode: check nanbox type tag to determine Some vs None
+                        // In non-nanbox mode: check i32 value >= 0 (negative = None/special)
+                        #[cfg(feature = "nanbox")]
+                        let (is_some, receiver_is_string) = {
+                            let recv_nv = task.ram.read_nv(receiver_pos);
+                            if auto_val::is_string(recv_nv) {
+                                // String tag at top position (shouldn't happen with 2-slot string,
+                                // but handle if the receiver is already the string tag)
+                                (true, true)
+                            } else if auto_val::is_null(recv_nv) {
+                                // Could be the null marker of a 2-slot string
+                                // Check the slot below for string tag
+                                if receiver_pos > 0 && auto_val::is_string(task.ram.read_nv(receiver_pos - 1)) {
+                                    (true, true) // string value = Some
+                                } else {
+                                    (false, false) // standalone null = None
+                                }
+                            } else if auto_val::is_i32(recv_nv) {
+                                let val = auto_val::decode_i32(recv_nv);
+                                (val >= 0, false)
+                            } else {
+                                (true, false) // object, bool, f64, etc. = Some
+                            }
+                        };
+                        #[cfg(not(feature = "nanbox"))]
+                        let is_some = task.ram.read_i32(receiver_pos) >= 0;
+                        let result = if method_name == "is_some" {
+                            if is_some { 1 } else { 0 }
+                        } else {
+                            if is_some { 0 } else { 1 }
+                        };
+                        #[cfg(feature = "nanbox")]
+                        {
+                            if receiver_is_string {
+                                // String receiver occupies 2 nanbox slots
+                                // Pop all: null marker + args + string tag = arg_count + 2
+                                for _ in 0..=(arg_count + 1) { task.ram.pop_nv(); }
+                            } else {
+                                for _ in 0..=arg_count { task.ram.pop_nv(); }
+                            }
+                            task.ram.push_nv(auto_val::encode_i32(result));
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        {
+                            for _ in 0..=arg_count { task.ram.pop_i32(); }
+                            task.ram.push_i32(result);
+                        }
+                    } else if method_name == "to_string" || method_name == "to_str" {
+                        // Plan 240: Inline to_string — convert opaque handle to string if needed
+                        let recv_val = task.ram.read_i32(receiver_pos);
+                        let mut converted = false;
+                        if recv_val > 0 {
+                            let obj_key = recv_val as u64;
+                            if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                                let guard = obj_lock.read().unwrap();
+                                if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                    if let Some(s) = rust_obj.downcast_ref::<String>() {
+                                        let bytes = s.as_bytes().to_vec();
+                                        let idx = {
+                                            let mut strings = self.strings.write().unwrap();
+                                            strings.push(bytes);
+                                            strings.len() - 1
+                                        };
+                                        for _ in 0..=arg_count { task.ram.pop_i32(); }
+                                        #[cfg(feature = "nanbox")]
+                                        {
+                                            task.ram.push_nv(auto_val::encode_string(idx as u32));
+                                            task.ram.push_nv(auto_val::encode_null());
+                                        }
+                                        #[cfg(not(feature = "nanbox"))]
+                                        {
+                                            task.ram.push_i32(-(idx as i32) - 1);
+                                        }
+                                        converted = true;
+                                    }
+                                }
+                            }
+                        }
+                        if !converted {
+                            // Default: just leave receiver as-is
+                        }
                     } else {
                         return Err(VMError::RuntimeError(
                             format!("CALL_SPEC: no function '{}' for type '{}'", func_name, type_name)
@@ -3988,6 +4127,18 @@ impl AutoVM {
                 OpCode::CALL_NAT => {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
+
+                    // Debug: trace stack for substr(1503) and strlen(1500)
+                    #[cfg(feature = "nanbox")]
+                    if native_id == 1503 || native_id == 1500 {
+                        let sp = task.ram.sp;
+                        eprintln!("DEBUG CALL_NAT {}: sp={}, stack_top3= [{:?}, {:?}, {:?}]",
+                            native_id, sp,
+                            if sp > 0 { Some(task.ram.read_nv(sp-1)) } else { None },
+                            if sp > 1 { Some(task.ram.read_nv(sp-2)) } else { None },
+                            if sp > 2 { Some(task.ram.read_nv(sp-3)) } else { None },
+                        );
+                    }
 
                     // Execute Native Shim
                     if let Some(shim) = self.native_interface.get(native_id).cloned() {
@@ -4636,7 +4787,11 @@ impl AutoVM {
                         #[cfg(not(feature = "nanbox"))]
                         task.ram.push_i32(task.ram.read_i32(task.bp - actual_offset));
                         #[cfg(feature = "nanbox")]
-                        task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
+                        {
+                            let nv = task.ram.read_nv(task.bp - actual_offset);
+                            eprintln!("DEBUG LOAD_LOCAL param: bp={}, actual_offset={}, pos={}, is_string={}, is_i32={}, sp={}", task.bp, actual_offset, task.bp - actual_offset, auto_val::is_string(nv), auto_val::is_i32(nv), task.ram.sp);
+                            task.ram.push_nv(nv);
+                        }
                     } else {
                         // Local variable: load from bp+1+idx
                         #[cfg(not(feature = "nanbox"))]

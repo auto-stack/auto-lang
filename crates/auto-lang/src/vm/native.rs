@@ -665,6 +665,16 @@ impl NativeInterface {
         self.register_name("auto.cell.once_new", NATIVE_ONCE_NEW);
         self.register_name("auto.cell.once_set", NATIVE_ONCE_SET);
         self.register_name("auto.cell.once_get", NATIVE_ONCE_GET);
+
+        // Plan 240: File I/O opaque shims
+        self.register(NATIVE_FILE_CREATE_HANDLE, shim_file_create_handle);
+        self.register(NATIVE_FILE_OPEN_HANDLE, shim_file_open_handle);
+        self.register(NATIVE_FILE_WRITE_HANDLE, shim_file_write_handle);
+        self.register(NATIVE_FILE_TRY_CLONE, shim_file_try_clone);
+        self.register_name("auto.file.create_handle", NATIVE_FILE_CREATE_HANDLE);
+        self.register_name("auto.file.open_handle", NATIVE_FILE_OPEN_HANDLE);
+        self.register_name("auto.file.write_handle", NATIVE_FILE_WRITE_HANDLE);
+        self.register_name("auto.file.try_clone", NATIVE_FILE_TRY_CLONE);
     }
 }
 
@@ -1093,6 +1103,12 @@ pub const NATIVE_ONCE_NEW: u16 = 2850;
 pub const NATIVE_ONCE_SET: u16 = 2851;
 pub const NATIVE_ONCE_GET: u16 = 2852;
 
+// === File I/O Opaque Native IDs (1010+) — Plan 240 ===
+pub const NATIVE_FILE_CREATE_HANDLE: u16 = 1010;
+pub const NATIVE_FILE_OPEN_HANDLE: u16 = 1011;
+pub const NATIVE_FILE_WRITE_HANDLE: u16 = 1012;
+pub const NATIVE_FILE_TRY_CLONE: u16 = 1013;
+
 // === Rand Native IDs (1850+) — Plan 212 Phase 2 ===
 pub const NATIVE_RAND_THREAD_RNG: u16 = 1850; // thread_rng() → opaque Rng handle
 pub const NATIVE_RNG_GEN_RANGE: u16 = 1851;   // rng.gen_range(lo, hi) → i32
@@ -1292,6 +1308,13 @@ fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
         "Mutex" => "<Mutex>".to_string(),
         "Box" => "<Box>".to_string(),
         "RefCell" => "<RefCell>".to_string(),
+        "std::cell::OnceCell::Value" => {
+            if let Some(s) = obj.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "<OnceCell::Value>".to_string()
+            }
+        }
         other => format!("<{}>", other),
     }
 }
@@ -5559,6 +5582,90 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+// Plan 240: File I/O opaque shims
+
+/// Helper to pop a string from the stack (nanbox-aware)
+fn pop_string(task: &mut AutoTask, vm: &AutoVM) -> String {
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings.read().unwrap().get(idx).cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let idx = task.ram.pop_i32() as usize;
+        vm.strings.read().unwrap().get(idx).cloned()
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default()
+    }
+}
+
+/// File.create(path) → opaque handle with BufWriter<File>
+/// Stack: path_string -> handle_id
+pub fn shim_file_create_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string(task, vm);
+    let file = std::fs::File::create(&path)
+        .map_err(|e| VMError::RuntimeError(format!("File.create failed: {}", e)))?;
+    let writer: Box<dyn std::io::Write + Send + Sync> = Box::new(std::io::BufWriter::new(file));
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::fs::File", writer);
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// File.open(path) → opaque handle
+/// Stack: path_string -> handle_id
+pub fn shim_file_open_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string(task, vm);
+    let file = std::fs::File::open(&path)
+        .map_err(|e| VMError::RuntimeError(format!("File.open failed: {}", e)))?;
+    let content = {
+        let mut buf = String::new();
+        std::io::Read::read_to_string(&mut std::io::BufReader::new(file), &mut buf)
+            .map_err(|e| VMError::RuntimeError(format!("File.open read failed: {}", e)))?;
+        buf
+    };
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::fs::FileContent", content);
+    let id = vm.insert_heap_object(obj);
+    task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// handle.write(data) → write string to file handle
+/// Stack: data_string, handle_id -> void
+pub fn shim_file_write_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data = pop_string(task, vm);
+    let handle = task.ram.pop_i32() as u64;
+    let obj = vm.get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid File handle".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    let rust_obj = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let writer = rust_obj.downcast_mut::<Box<dyn std::io::Write + Send + Sync>>()
+        .ok_or_else(|| VMError::RuntimeError("Not a File writer".to_string()))?;
+    writer.write_all(data.as_bytes())
+        .map_err(|e| VMError::RuntimeError(format!("write failed: {}", e)))?;
+    drop(guard);
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// handle.try_clone() → clone the handle (returns same content for read handles)
+/// Stack: handle_id -> handle_id (clone)
+pub fn shim_file_try_clone(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // For simplicity, just push a copy of the handle ID
+    let handle = task.ram.pop_i32();
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
 // Plan 240: OnceCell opaque shims using RustStdlibObject wrapping Option<String>
 
 /// Create a new OnceCell (empty).
@@ -5616,8 +5723,8 @@ pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Get the value from the OnceCell.
-/// Returns string index (>=0) if set, or -1 if None (VM Option representation).
-/// Stack: handle_id -> i32 (string index or -1 for None)
+/// Returns opaque handle (>=0) if set, or -1 if None.
+/// Stack: handle_id -> i32 (opaque handle or -1)
 pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = task.ram.pop_i32() as u64;
     let obj = vm.get_heap_object(handle)
@@ -5630,26 +5737,15 @@ pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     match cell {
         None => {
-            // Return -1 (None in VM Option representation)
             task.ram.push_i32(-1);
         }
         Some(value) => {
-            let bytes = value.as_bytes().to_vec();
-            let idx = {
-                let mut strings = vm.strings.write().unwrap();
-                strings.push(bytes);
-                strings.len() - 1
-            };
-            #[cfg(feature = "nanbox")]
-            {
-                let nv = auto_val::encode_string(idx as u32);
-                task.ram.push_nv(nv);
-                task.ram.push_nv(auto_val::encode_null());
-            }
-            #[cfg(not(feature = "nanbox"))]
-            {
-                task.ram.push_i32(idx as i32);
-            }
+            let string_obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+                "std::cell::OnceCell::Value",
+                value.clone(),
+            );
+            let id = vm.insert_heap_object(string_obj);
+            task.ram.push_i32(id as i32);
         }
     }
     Ok(())

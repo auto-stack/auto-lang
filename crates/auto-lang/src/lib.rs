@@ -633,7 +633,7 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     // Plan 118: Store the codegen's result type for formatting
 
     // 5. Execute - Find main/test entry point
-    let task_id = vm.spawn_task(main_entry, 16384);
+    let task_id = vm.spawn_task(main_entry, 65536);
     vm.run_task_loop().await;
 
     // 6. Get result from stack
@@ -1187,7 +1187,7 @@ async fn debug_autovm_agent(code: &str) -> AutoResult<String> {
 
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime for agent debug");
         rt.block_on(async move {
-            vm.spawn_task(entry_point, 16384);
+            vm.spawn_task(entry_point, 65536);
             vm.run_task_loop().await;
         });
     });

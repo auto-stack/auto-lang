@@ -4452,6 +4452,10 @@ impl Codegen {
                     let mut is_double = self.is_double_operation(lhs, rhs);
                     let is_string = self.is_string_operation(lhs, rhs);
                     let is_u64 = self.is_u64_operation(lhs, rhs);
+                    if matches!(op, Op::Add) && is_string {
+                        eprintln!("DEBUG codegen: STR_CAT for {:?} + {:?} (is_string_expr lhs={}, rhs={})",
+                            lhs, rhs, self.is_string_expr(lhs), self.is_string_expr(rhs));
+                    }
 
                     // Mixed u64 + float arithmetic: promote to double (f64 can hold all u64 values)
                     if is_u64 && is_float && !is_double {
@@ -5473,7 +5477,7 @@ impl Codegen {
                                     "from_path" => func_name = Some("auto.mime.from_path".to_string()),
                                     _ => {}
                                 },
-                                // Plan 240: std::time::Instant + std::cell::OnceCell methods
+                                // Plan 240: std::time::Instant + std::cell::OnceCell + std::fs::File methods
                                 "std" => match method.as_str() {
                                     "now" => func_name = Some("auto.time.instant_now".to_string()),
                                     "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
@@ -5485,6 +5489,10 @@ impl Codegen {
                                     }
                                     "get" => func_name = Some("auto.cell.once_get".to_string()),
                                     "set" => func_name = Some("auto.cell.once_set".to_string()),
+                                    "create" => func_name = Some("auto.file.create_handle".to_string()),
+                                    "open" => func_name = Some("auto.file.open_handle".to_string()),
+                                    "write" => func_name = Some("auto.file.write_handle".to_string()),
+                                    "try_clone" => func_name = Some("auto.file.try_clone".to_string()),
                                     _ => {}
                                 },
                                 _ => {
