@@ -1029,6 +1029,54 @@ pub fn shim_math_clamp(n: f64, min: f64, max: f64) -> f64 {
     n.clamp(min, max)
 }
 
+/// Arc sine
+#[auto_macros::rust_fn("Math.asin")]
+pub fn shim_math_asin(n: f64) -> f64 {
+    n.asin()
+}
+
+/// Arc cosine
+#[auto_macros::rust_fn("Math.acos")]
+pub fn shim_math_acos(n: f64) -> f64 {
+    n.acos()
+}
+
+/// Arc tangent
+#[auto_macros::rust_fn("Math.atan")]
+pub fn shim_math_atan(n: f64) -> f64 {
+    n.atan()
+}
+
+/// Arc tangent of y/x
+#[auto_macros::rust_fn("Math.atan2")]
+pub fn shim_math_atan2(y: f64, x: f64) -> f64 {
+    y.atan2(x)
+}
+
+/// Integer power
+#[auto_macros::rust_fn("Math.powi")]
+pub fn shim_math_powi(n: f64, exp: i32) -> f64 {
+    n.powi(exp)
+}
+
+/// Float power
+#[auto_macros::rust_fn("Math.powf")]
+pub fn shim_math_powf(n: f64, exp: f64) -> f64 {
+    n.powf(exp)
+}
+
+/// Convert degrees to radians
+#[auto_macros::rust_fn("Math.to_radians")]
+pub fn shim_math_to_radians(n: f64) -> f64 {
+    n.to_radians()
+}
+
+/// Convert radians to degrees
+#[auto_macros::rust_fn("Math.to_degrees")]
+pub fn shim_math_to_degrees(n: f64) -> f64 {
+    n.to_degrees()
+}
+
 // ============================================================================
 // Log Functions (ID 1800-1899)
 // ============================================================================

@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 // Plan 076 Phase 1: Generic type support
@@ -4576,6 +4576,7 @@ impl Codegen {
                         }
                     }
                     Op::Not => self.emit(OpCode::NOT),
+                    Op::Add => { /* Unary + is a no-op */ }
                     _ => unimplemented!("Unary Op {:?}", op),
                 }
             }
@@ -4926,7 +4927,7 @@ impl Codegen {
                 // Regular function/method call (existing code)
                 // Extract function name and determine if it's a method call
                 // Plan 073: Support both static methods (Type.method) and instance methods (obj.method)
-                let func_name = match call.name.as_ref() {
+                let mut func_name = match call.name.as_ref() {
                     Expr::Ident(name) => Some(name.to_string()),
                     Expr::Dot(obj, method) => {
                         // Method call: Type.method (static) or obj.method (instance)
@@ -5198,6 +5199,26 @@ impl Codegen {
                         self.emit(OpCode::ARRAY_LEN);
                         self.last_expr_type = ObjectType::Int;
                         return Ok(());
+                    }
+                }
+
+                // VM-1: Route float math methods (x.sin(), x.sqrt(), etc.) to auto.math.*
+                // Must happen BEFORE native_id lookup so the rewritten name is resolved correctly.
+                if let Some(ref fname) = func_name {
+                    let method = fname.rsplit('.').next().unwrap_or("");
+                    const MATH_METHODS: &[&str] = &[
+                        "sin", "cos", "tan", "sqrt", "abs", "floor", "ceil", "round",
+                        "pow", "powf", "powi", "exp", "ln", "log2", "log10",
+                        "signum", "asin", "acos", "atan", "atan2",
+                        "to_radians", "to_degrees",
+                    ];
+                    if MATH_METHODS.contains(&method) && !fname.starts_with("auto.math.") {
+                        let new_name = format!("auto.math.{}", method);
+                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        if reg.resolve_qualified(&new_name).is_some() {
+                            vm_debug!("DEBUG: Routing float method {} -> {}", fname, new_name);
+                            func_name = Some(new_name);
+                        }
                     }
                 }
 
@@ -5501,7 +5522,8 @@ impl Codegen {
                         match self.last_expr_type {
                             ObjectType::Int | ObjectType::Byte | ObjectType::Uint
                             | ObjectType::Bool | ObjectType::Char => NATIVE_PRINT_I32,
-                            ObjectType::Float | ObjectType::Double => NATIVE_PRINT_F32,
+                            ObjectType::Float => NATIVE_PRINT_F32,
+                            ObjectType::Double => NATIVE_PRINT_F64,
                             _ => id, // keep PRINT_STR for String, Void, etc.
                         }
                     } else {
@@ -6573,6 +6595,10 @@ impl Codegen {
             || name == "str.index_of" || name == "auto.str.index_of"
         {
             return ObjectType::Int;
+        }
+        // Math functions return f64
+        if name.starts_with("auto.math.") {
+            return ObjectType::Double;
         }
         // hashmap.get (unspecialized) returns unknown type — don't inherit
         // stale String from argument compilation (e.g., map.get(str_key))

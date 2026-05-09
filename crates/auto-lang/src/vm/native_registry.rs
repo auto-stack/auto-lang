@@ -443,6 +443,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id_and_type("auto.list.any", 2064, NativeRetType::Bool);
     registry.register_with_id_and_type("auto.list.all", 2065, NativeRetType::Bool);
     registry.register_with_id_and_type("auto.list.reduce", 2066, NativeRetType::Void);
+    registry.register_with_id_and_type("auto.list.sort", 2067, NativeRetType::Void);
+    registry.register_with_id_and_type("auto.list.sort_by", 2068, NativeRetType::Void);
 
     // Iterator functions (IDs 111-117)
     registry.register_with_id("auto.list.iter", 111);
@@ -682,6 +684,14 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.math.abs_f", 1723);
     registry.register_with_id("auto.math.signum", 1724);
     registry.register_with_id("auto.math.clamp", 1725);
+    registry.register_with_id("auto.math.asin", 1726);
+    registry.register_with_id("auto.math.acos", 1727);
+    registry.register_with_id("auto.math.atan", 1728);
+    registry.register_with_id("auto.math.atan2", 1729);
+    registry.register_with_id("auto.math.powi", 1730);
+    registry.register_with_id("auto.math.powf", 1731);
+    registry.register_with_id("auto.math.to_radians", 1732);
+    registry.register_with_id("auto.math.to_degrees", 1733);
 
     // JSON functions (1900-1917)
     registry.register_with_id("auto.json.encode", 1900);

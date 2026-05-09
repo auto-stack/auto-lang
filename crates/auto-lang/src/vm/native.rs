@@ -261,6 +261,7 @@ impl NativeInterface {
         // Print functions
         self.register(NATIVE_PRINT_I32, shim_print_i32);
         self.register(NATIVE_PRINT_F32, shim_print_f32);
+        self.register(NATIVE_PRINT_F64, shim_print_f64);
         self.register(NATIVE_PRINT_STR, shim_print_str);
 
         // Assert functions
@@ -293,6 +294,8 @@ impl NativeInterface {
         self.register(NATIVE_LIST_ANY, shim_list_any);
         self.register(NATIVE_LIST_ALL, shim_list_all);
         self.register(NATIVE_LIST_REDUCE, shim_list_reduce);
+        self.register(NATIVE_LIST_SORT, shim_list_sort);
+        self.register(NATIVE_LIST_SORT_BY, shim_list_sort_by);
         self.register(NATIVE_LIST_JOIN, shim_list_join);
 
         // Plan 200 Task 3.3: Result.map_err(closure)
@@ -453,6 +456,8 @@ impl NativeInterface {
         self.register_name("auto.list.any", NATIVE_LIST_ANY);
         self.register_name("auto.list.all", NATIVE_LIST_ALL);
         self.register_name("auto.list.reduce", NATIVE_LIST_REDUCE);
+        self.register_name("auto.list.sort", NATIVE_LIST_SORT);
+        self.register_name("auto.list.sort_by", NATIVE_LIST_SORT_BY);
         self.register_name("auto.list.iter", NATIVE_LIST_ITER);
         self.register_name("auto.list.join", NATIVE_LIST_JOIN);
 
@@ -477,6 +482,7 @@ impl NativeInterface {
 
 pub const NATIVE_PRINT_I32: u16 = 1;
 pub const NATIVE_PRINT_F32: u16 = 2;
+pub const NATIVE_PRINT_F64: u16 = 4;
 pub const NATIVE_PRINT_STR: u16 = 3;
 pub const NATIVE_ASSERT: u16 = 4;
 pub const NATIVE_ASSERT_EQ: u16 = 5;
@@ -656,6 +662,8 @@ pub const NATIVE_LIST_FIND: u16 = 2063;
 pub const NATIVE_LIST_ANY: u16 = 2064;
 pub const NATIVE_LIST_ALL: u16 = 2065;
 pub const NATIVE_LIST_REDUCE: u16 = 2066;
+pub const NATIVE_LIST_SORT: u16 = 2067;
+pub const NATIVE_LIST_SORT_BY: u16 = 2068;
 pub const NATIVE_LIST_JOIN: u16 = 2080;
 
 // === Result HOF Native Functions ===
@@ -891,6 +899,13 @@ pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     }
     let val_bits = task.ram.pop_i32() as u32;
     let val = f32::from_bits(val_bits);
+    vm_print(vm, &val.to_string());
+    Ok(())
+}
+
+/// Print an f64 value (2 slots on stack).
+pub fn shim_print_f64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_f64();
     vm_print(vm, &val.to_string());
     Ok(())
 }
@@ -1679,6 +1694,44 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Fallback: return empty string
     let str_idx = vm.add_string(Vec::new());
     task.ram.push_str_idx(str_idx as u32);
+    Ok(())
+}
+
+/// Sort a list of i32 values in-place.
+/// Stack: list_id -> void
+pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.elems.sort();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Sort a list with a comparator closure.
+/// Stack: list_id, closure_id -> void
+/// (Currently delegates to default sort — custom comparators not yet supported in VM)
+pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let _closure_id = task.ram.pop_i32();
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.elems.sort();
+        }
+    }
+
+    task.ram.push_i32(0);
     Ok(())
 }
 

@@ -328,7 +328,7 @@ web/leptos.md                            — Full stack web with Leptos framewor
 ### Phase 5: B 层测试用例实现（第二批）✅ 完成
 68 个新增 B-tier 测试用例创建完成，修复解析器对 `spawn` 关键字的支持。所有 124 个 cookbook 测试通过。
 
-### Phase 6: 修复 a2r 问题 ⬅️ 当前阶段
+### Phase 6: 修复 a2r 问题 ✅ 完成
 根据全部 A+B tier 测试审查结果，系统性修复 a2r 转译器问题。
 
 ## 7. a2r 问题分析（全面审查）
@@ -392,8 +392,8 @@ web/leptos.md                            — Full stack web with Leptos framewor
 3. ~~**M3**（宏翻译错误）— 10 个 devtools 测试输出不可编译~~ ✅ 已修复
 4. ~~**T1**（错误类型 `String` vs `Box<dyn Error>`）— 影响所有含 `!` 的函数~~ ✅ 已修复
 5. ~~**T4**（静态方法 `::` vs `.`）— 与 W1 同源~~ ✅ 已修复（Rust 原始类型支持）
-6. **T3**（Duration `{:?}`）— 运行时 panic（跳过：需要类型推断支持）
-7. **T6**（derive `Ord`/`Eq`）— 排序功能缺失（跳过：`f64` 不支持 `Ord`）
+6. ~~**T3**（Duration `{:?}`）— 启发式检测 duration/elapsed/Instant~~ ✅ 已修复（变量名 + `.elapsed()` 调用检测）
+7. ~~**T6**（derive `Ord`/`Eq`）— 类型声明自动判断 float 字段~~ ✅ 已修复（无 float → `Eq, PartialOrd, Ord`）
 8. ~~**M5**（操作符优先级）— 数值计算错误~~ ✅ 已修复（方法调用前二元运算加括号）
 9. ~~**M4**（闭包体丢失）— 并发功能缺失~~ ✅ 已修复（inline for loop in closures）
 10. ~~**T2/T5**（引用相关）— 需设计层面考虑~~ ✅ 已更新旧版 expected 文件
@@ -407,11 +407,54 @@ web/leptos.md                            — Full stack web with Leptos framewor
 | Tier C | 42 | 0 | 暂不处理（需 async/unsafe/FFI 支持） |
 | **总计** | **166** | **124** | **75% 覆盖** |
 
-## 9. 下一步
+## 9. AAVM（AutoVM）问题分析
+
+使用 `auto run` 对全部 124 个 cookbook 测试执行 VM 运行验证。结果：**10 PASS / 111 FAIL / 3 CRASH**。
+
+### 9.1 VM 运行结果总览
+
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| PASS | 10 | boxed_error, heapless, add_matrices, multiply_matrices, multiply_svm, vector_comparison, deserialize_matrix, central_tendency, standard_deviation, from_str |
+| MISSING_DEP | 82 | `use.rust` 导入了未声明的外部 Rust crate（B-tier 预期行为） |
+| AUTO_LINK_E0401 | 16 | VM 链接器找不到 stdlib 模块（File.create, Command.new, env.get_or 等） |
+| UNDEFINED_VAR | 3 | `std::` 命名空间或 `u16` 类型在 VM 中未定义 |
+| MISSING_METHOD | 8 | VM 缺少 List.sort、f64.sqrt/sin/tan/powf 等内置方法 |
+| CRASH | 3 | Stack Overflow (2) + Unary Op Add 未实现 (1) |
+
+### 9.2 优先修复（影响 Tier A 可运行性）
+
+| # | 问题 | 影响的 Tier A 测试 | 修复方式 |
+|---|------|-------------------|---------|
+| VM-1 | **f64 数学方法缺失** (sin/cos/tan/sqrt/powf/powi) | A-11 tan_sin_cos, A-12 side_length | VM FFI 注册浮点数学方法 |
+| VM-2 | **List.sort / List.sort_by 未注册** | A-01 sort_int, A-02 sort_float, A-03 sort_struct | VM FFI 注册排序方法 |
+| VM-3 | **Unary Op Add 未实现** (crash) | A-13 latitude_longitude | VM codegen 实现 unary `+` |
+| VM-4 | **Stack Overflow** | A-08 elapsed_time, concurrency/009 | 调试无限递归原因 |
+| VM-5 | **List.contains 缺失** | 1 个测试 | VM FFI 注册 |
+| VM-6 | **HashSet.contains 缺失** | 1 个测试 | VM FFI 注册 |
+
+### 9.3 需 stdlib 模块支持（影响 Tier A 可运行性）
+
+| # | 问题 | 影响的 Tier A 测试 | 说明 |
+|---|------|-------------------|------|
+| SL-1 | File.create / File.open 未定义 | A-04 read_lines, A-07 error_file | 需 fs stdlib 模块 |
+| SL-2 | env.get_or 未定义 | A-05 env_variable | 需 env stdlib 模块 |
+| SL-3 | Command.new 未定义 | A-06 process_continuous | 需 process stdlib 模块 |
+| SL-4 | OnceCell.new 未定义 | A-14 lazy_cell | 需 mem stdlib 模块 |
+| SL-5 | BufReader.lines 未定义 | A-04, A-06 | 需 io stdlib 模块 |
+
+### 9.4 MISSING_DEP（82 个 B-tier，预期行为）
+
+这些测试使用 `use.rust serde_json` 等外部 Rust crate，AutoVM 不可能直接运行。需要以下方案之一：
+1. 为每个外部 crate 实现纯 Auto 版本的 stdlib 包装
+2. 创建简化版的 B-tier VM 测试（不含外部依赖）
+3. 标记为 a2r-only 测试（仅验证转译输出正确性）
+
+## 10. 下一步
 
 1. ~~按优先级逐个修复 M1→M2→M3→T1→T4→... 的问题~~ ✅ 已完成
 2. ~~每修复一个问题，更新对应测试的 `.expected.rs`~~ ✅ 已完成
-3. ✅ 所有 310 个 a2r 测试通过（包括 124 cookbook + 其他）
-4. 评估 C-tier 可行性
-5. T3（Duration `{:?}`）需类型推断支持
-6. T6（derive `Ord`/`Eq`）需类型感知的 derive 生成
+3. ✅ 所有 288 个 a2r 测试通过（包括 124 cookbook + 其他）
+4. 修复 VM-1~VM-4 高影响问题（f64 数学、List.sort、Unary Op、Stack Overflow）
+5. 评估 C-tier 可行性
+6. 讨论 MISSING_DEP 解决方案
