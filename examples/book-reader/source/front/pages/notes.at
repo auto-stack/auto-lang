@@ -1,0 +1,96 @@
+widget NotesPage {
+    model {
+        notes List<Map<str, any>> = []
+        books List<Map<str, any>> = []
+        searchQuery str = ""
+        selectedBookId str = "all"
+    }
+
+    on {
+        .Load -> {
+            let rawNotes = storage.get("br-notes")
+            if rawNotes != nil && rawNotes != "" {
+                .notes = json.parse(rawNotes)
+            }
+            let rawBooks = storage.get("br-books")
+            if rawBooks != nil && rawBooks != "" {
+                .books = json.parse(rawBooks)
+            }
+        }
+        .DeleteNote(id str) -> {
+            let filtered = []
+            for n in .notes {
+                if n.id != id {
+                    filtered.push(n)
+                }
+            }
+            .notes = filtered
+            storage.set("br-notes", json.stringify(.notes))
+        }
+        .GoToChapter(bookId str, ch int) -> {
+            router.push("/book/" + bookId + "/chapter/" + ch.to_string())
+        }
+        .SetBookFilter(id str) -> { .selectedBookId = id }
+    }
+
+    view {
+        col (style: "p-6 md:p-8 gap-6 max-w-5xl mx-auto") {
+            col {
+                h1 (text: "All Notes", style: "text-2xl font-semibold text-slate-900") {}
+                text (text: .notes.len().to_string() + " notes", style: "text-sm text-slate-500") {}
+            }
+
+            row (style: "flex-col md:flex-row gap-3") {
+                div (style: "relative flex-1") {
+                    icon (name: "search", size: 16, style: "absolute left-3 top-1/2 -translate-y-1/2 text-slate-400") {}
+                    input (value: .searchQuery, placeholder: "Search notes...",
+                           style: "w-full pl-9 pr-4 py-2 bg-white border rounded-lg text-sm") {}
+                }
+                row (style: "gap-2") {
+                    button (onclick: .SetBookFilter("all"), style: "px-3 py-2 border rounded-lg text-sm") {
+                        text (text: "All") {}
+                    }
+                    for book in .books {
+                        button (onclick: .SetBookFilter(book.id), style: "px-3 py-2 border rounded-lg text-sm") {
+                            text (text: book.title) {}
+                        }
+                    }
+                }
+            }
+
+            if .notes.len() == 0 {
+                col (style: "items-center justify-center py-20 gap-4 text-slate-400") {
+                    icon (name: "sticky-note", size: 48) {}
+                    text (text: "No notes found") {}
+                    text (text: "Start reading and add notes to see them here", style: "text-sm") {}
+                }
+            } else {
+                div (style: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3") {
+                    for note in .notes {
+                        div (style: "p-4 gap-3 hover:shadow-md transition-shadow cursor-pointer",
+                              onclick: .GoToChapter(note.bookId, note.chapterNum)) {
+                            row (style: "items-center justify-between") {
+                                text (text: "Chapter " + note.chapterNum.to_string(), style: "text-xs font-medium bg-slate-100 px-2 py-1 rounded") {}
+                                button (style: "p-1 hover:bg-slate-100 rounded transition-colors",
+                                        onclick: .DeleteNote(note.id)) {
+                                    icon (name: "trash-2", size: 14, color: "text-red-500") {}
+                                }
+                            }
+                            text (text: note.content, style: "text-sm text-slate-700 line-clamp-3") {}
+                            text (text: note.bookId, style: "text-xs text-slate-400") {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn getBookTitle(id str) str {
+    for book in .books {
+        if book.id == id {
+            return book.title
+        }
+    }
+    return "Unknown"
+}

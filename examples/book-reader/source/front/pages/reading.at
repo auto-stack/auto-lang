@@ -1,0 +1,26 @@
+widget ReadingPage {
+    model {
+        bookId str = ""
+        chapterNum int = 1
+    }
+
+    on {
+        .Load -> {
+            .bookId = router.params.id
+            .chapterNum = 1
+        }
+        .Back -> { router.push("/book/" + .bookId) }
+    }
+
+    view {
+        col (style: "min-h-screen bg-white") {
+            row (style: "h-14 border-b bg-white items-center px-4 gap-3 sticky top-0 z-30") {
+                button (onclick: .Back, style: "p-2 hover:bg-slate-100 rounded-lg transition-colors") {
+                    icon (name: "arrow-left", style: "w-4 h-4") {}
+                }
+                text (text: "Reading", style: "font-medium text-slate-800") {}
+            }
+            text (text: "Chapter content here", style: "p-8") {}
+        }
+    }
+}

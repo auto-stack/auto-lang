@@ -1,0 +1,114 @@
+widget SettingsPage {
+    model {
+        fontSize int = 18
+        lineHeight f64 = 1.8
+        theme str = "light"
+    }
+
+    on {
+        .Load -> {
+            let raw = storage.get("br-settings")
+            if raw != nil && raw != "" {
+                let s = json.parse(raw)
+                .fontSize = s.fontSize ?? 18
+                .lineHeight = s.lineHeight ?? 1.8
+                .theme = s.theme ?? "light"
+            }
+        }
+        .Save -> {
+            storage.set("br-settings", json.stringify({
+                fontSize: .fontSize,
+                lineHeight: .lineHeight,
+                theme: .theme
+            }))
+        }
+        .SetFontSize(s int) -> {
+            .fontSize = s
+            .Save()
+        }
+        .SetLineHeight(h f64) -> {
+            .lineHeight = h
+            .Save()
+        }
+        .SetTheme(t str) -> {
+            .theme = t
+            .Save()
+        }
+        .ClearData -> {
+            storage.set("br-books", "")
+            storage.set("br-notes", "")
+            storage.set("br-settings", "")
+        }
+    }
+
+    view {
+        col (style: "p-6 md:p-8 gap-6 max-w-2xl mx-auto") {
+            h1 (text: "Settings", style: "text-2xl font-semibold text-slate-900") {}
+
+            card (style: "p-6 gap-4") {
+                h2 (text: "Reading", style: "text-lg font-medium text-slate-800") {}
+
+                col (style: "gap-2") {
+                    text (text: "Font Size", style: "text-sm text-slate-500") {}
+                    row (style: "items-center gap-3") {
+                        button (onclick: .SetFontSize(14), style: "px-3 py-1.5 text-sm border rounded-md") {
+                            text (text: "Small") {}
+                        }
+                        button (onclick: .SetFontSize(18), style: "px-3 py-1.5 text-sm border rounded-md") {
+                            text (text: "Medium") {}
+                        }
+                        button (onclick: .SetFontSize(22), style: "px-3 py-1.5 text-sm border rounded-md") {
+                            text (text: "Large") {}
+                        }
+                    }
+                    text (text: "Current: " + .fontSize.to_string() + "px", style: "text-xs text-slate-400") {}
+                }
+
+                col (style: "gap-2") {
+                    text (text: "Line Height", style: "text-sm text-slate-500") {}
+                    row (style: "items-center gap-3") {
+                        button (onclick: .SetLineHeight(1.5), style: "px-3 py-1.5 text-sm border rounded-md") {
+                            text (text: "Compact") {}
+                        }
+                        button (onclick: .SetLineHeight(1.8), style: "px-3 py-1.5 text-sm border rounded-md") {
+                            text (text: "Comfortable") {}
+                        }
+                        button (onclick: .SetLineHeight(2.2), style: "px-3 py-1.5 text-sm border rounded-md") {
+                            text (text: "Relaxed") {}
+                        }
+                    }
+                    text (text: "Current: " + .lineHeight.to_string(), style: "text-xs text-slate-400") {}
+                }
+            }
+
+            card (style: "p-6 gap-4") {
+                h2 (text: "Appearance", style: "text-lg font-medium text-slate-800") {}
+                row (style: "items-center gap-3") {
+                    button (onclick: .SetTheme("light"), style: "flex-1 py-3 border rounded-lg text-sm") {
+                        text (text: "Light") {}
+                    }
+                    button (onclick: .SetTheme("dark"), style: "flex-1 py-3 border rounded-lg text-sm") {
+                        text (text: "Dark") {}
+                    }
+                    button (onclick: .SetTheme("sepia"), style: "flex-1 py-3 border rounded-lg text-sm") {
+                        text (text: "Sepia") {}
+                    }
+                }
+                text (text: "Current: " + .theme, style: "text-xs text-slate-400") {}
+            }
+
+            card (style: "p-6 gap-4") {
+                h2 (text: "Data", style: "text-lg font-medium text-slate-800") {}
+                row (style: "items-center justify-between") {
+                    col {
+                        text (text: "Clear All Data", style: "font-medium") {}
+                        text (text: "Remove all books, notes, and settings", style: "text-sm text-slate-500") {}
+                    }
+                    button (onclick: .ClearData, style: "px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-colors") {
+                        text (text: "Clear") {}
+                    }
+                }
+            }
+        }
+    }
+}

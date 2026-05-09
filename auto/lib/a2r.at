@@ -17,7 +17,23 @@ fn a2r_type(t str) str {
     if t == "byte" { return "u8" }
     if t == "List" { return "Vec<i32>" }
     if t == "Map" { return "std::collections::HashMap<String, i32>" }
-    return t
+
+    // Generic types: "List<int>" → "Vec<i32>", "Map<str, int>" → "HashMap<String, i32>"
+    var lt = t.find("<")
+    if lt < 0 { return t }
+    var base = t.substr(0, lt)
+    var inner = t.substr(lt + 1, t.len() - 1)
+    if base == "List" { return "Vec<" + a2r_type(inner) + ">" }
+    if base == "Map" {
+        var comma = inner.find(", ")
+        if comma >= 0 {
+            var k = inner.substr(0, comma)
+            var v = inner.substr(comma + 2, inner.len())
+            return "std::collections::HashMap<" + a2r_type(k) + ", " + a2r_type(v) + ">"
+        }
+        return "std::collections::HashMap<" + a2r_type(inner) + ">"
+    }
+    return base + "<" + a2r_type(inner) + ">"
 }
 
 fn a2r_type_from_tag(ttag int) str {

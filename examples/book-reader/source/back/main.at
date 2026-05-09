@@ -1,0 +1,113 @@
+// Book Reader Backend
+// Compile: auto trans rust source/back/main.at
+
+type Book {
+    id str
+    title str
+    author str
+    wordCount int
+    chapterCount int
+    progress int
+    status str
+}
+
+type Note {
+    id str
+    bookId str
+    chapterNum int
+    content str
+}
+
+var books List<Book> = List<Book>.new([])
+var notes List<Note> = List<Note>.new([])
+var nextBookId int = 1
+var nextNoteId int = 1
+
+fn create_book(title str, author str, chapters int, words int) Book {
+    let id str = nextBookId.to_string()
+    let book = Book {
+        id: id,
+        title: title,
+        author: author,
+        wordCount: words,
+        chapterCount: chapters,
+        progress: 0,
+        status: "unread",
+    }
+    nextBookId = nextBookId + 1
+    books.push(book)
+    return book
+}
+
+fn list_books() []Book {
+    return books.to_array()
+}
+
+fn delete_book(id str) bool {
+    var found bool = false
+    var newBooks List<Book> = List<Book>.new([])
+    var i int = 0
+    loop {
+        if i >= books.len() {
+            break
+        }
+        let book = books[i]
+        if book.id == id {
+            found = true
+        } else {
+            newBooks.push(book)
+        }
+        i = i + 1
+    }
+    books = newBooks
+    return found
+}
+
+fn create_note(bookId str, chapter int, content str) Note {
+    let id str = nextNoteId.to_string()
+    let note = Note {
+        id: id,
+        bookId: bookId,
+        chapterNum: chapter,
+        content: content,
+    }
+    nextNoteId = nextNoteId + 1
+    notes.push(note)
+    return note
+}
+
+fn list_notes() []Note {
+    return notes.to_array()
+}
+
+fn delete_note(id str) bool {
+    var found bool = false
+    var newNotes List<Note> = List<Note>.new([])
+    var i int = 0
+    loop {
+        if i >= notes.len() {
+            break
+        }
+        let note = notes[i]
+        if note.id == id {
+            found = true
+        } else {
+            newNotes.push(note)
+        }
+        i = i + 1
+    }
+    notes = newNotes
+    return found
+}
+
+fn main() {
+    println("Book Reader backend starting...")
+    
+    create_book("The Rust Programming Language", "Steve Klabnik", 20, 50000)
+    create_book("Clean Code", "Robert C. Martin", 17, 45000)
+    
+    println("Books:")
+    for book in list_books() {
+        println(book.title)
+    }
+}

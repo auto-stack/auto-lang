@@ -1,0 +1,5 @@
+name: "book-reader-front"
+version: "1.0.0"
+scene: "ui"
+backend: "vue"
+api: "../back/main.at"

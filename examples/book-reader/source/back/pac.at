@@ -1,0 +1,5 @@
+name: "book-reader-back"
+version: "1.0.0"
+scene: "default"
+backend: "rust"
+entry: "main.at"

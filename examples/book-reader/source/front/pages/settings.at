@@ -1,0 +1,65 @@
+widget SettingsPage {
+    model {
+        theme str = "light"
+        fontSize str = "medium"
+    }
+
+    on {
+        .Load -> {
+            let savedTheme = storage.get("br-theme")
+            if savedTheme != nil && savedTheme != "" {
+                .theme = savedTheme
+            }
+            let savedFont = storage.get("br-font-size")
+            if savedFont != nil && savedFont != "" {
+                .fontSize = savedFont
+            }
+        }
+        .SetTheme(t str) -> {
+            .theme = t
+            storage.set("br-theme", t)
+        }
+        .SetFontSize(s str) -> {
+            .fontSize = s
+            storage.set("br-font-size", s)
+        }
+    }
+
+    view {
+        col (style: "p-6 md:p-8 gap-6 max-w-4xl mx-auto") {
+            col {
+                h1 (text: "Settings", style: "text-2xl font-semibold text-slate-900") {}
+                text (text: "Customize your reading experience", style: "text-sm text-slate-500") {}
+            }
+
+            col (style: "gap-4") {
+                col (style: "gap-2") {
+                    text (text: "Theme", style: "text-sm font-medium text-slate-700") {}
+                    row (style: "gap-2") {
+                        button (onclick: .SetTheme("light"), style: "px-4 py-2 border rounded-lg text-sm") {
+                            text (text: "Light") {}
+                        }
+                        button (onclick: .SetTheme("dark"), style: "px-4 py-2 border rounded-lg text-sm") {
+                            text (text: "Dark") {}
+                        }
+                    }
+                }
+
+                col (style: "gap-2") {
+                    text (text: "Font Size", style: "text-sm font-medium text-slate-700") {}
+                    row (style: "gap-2") {
+                        button (onclick: .SetFontSize("small"), style: "px-4 py-2 border rounded-lg text-sm") {
+                            text (text: "Small") {}
+                        }
+                        button (onclick: .SetFontSize("medium"), style: "px-4 py-2 border rounded-lg text-sm") {
+                            text (text: "Medium") {}
+                        }
+                        button (onclick: .SetFontSize("large"), style: "px-4 py-2 border rounded-lg text-sm") {
+                            text (text: "Large") {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

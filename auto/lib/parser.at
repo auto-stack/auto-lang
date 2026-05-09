@@ -259,6 +259,7 @@ fn parse_fn_decl(p Parser) ASTNode {
             if pk != TokenKind.RParen && pk != TokenKind.Comma && pk != TokenKind.Newline {
                 param_type = parser_text(p)
                 p.pos = p.pos + 1  // skip type name
+                param_type = parser_try_read_generic_type(p, param_type)
             }
             params.push(Param(param_name, param_type))
 
@@ -288,6 +289,7 @@ fn parse_fn_decl(p Parser) ASTNode {
         parser_skip_nl_semi(p)
         ret_type = parser_text(p)
         p.pos = p.pos + 1
+        ret_type = parser_try_read_generic_type(p, ret_type)
     } else if pk2 == TokenKind.Ident {
         // Check if this is a return type or '{' start
         // If peek is '{', this is a return type
@@ -295,6 +297,7 @@ fn parse_fn_decl(p Parser) ASTNode {
         if peek == TokenKind.LBrace {
             ret_type = parser_text(p)
             p.pos = p.pos + 1
+            ret_type = parser_try_read_generic_type(p, ret_type)
         }
     }
 
@@ -306,6 +309,38 @@ fn parse_fn_decl(p Parser) ASTNode {
     node.params = params
     node.op = param_names
     return node
+}
+
+// Try to read generic type arguments after a type name: <T> or <T, U>
+// Appends to existing type_name, e.g. "List" → "List<int>"
+fn parser_try_read_generic_type(p Parser, type_name str) str {
+    if parser_kind(p) != TokenKind.Lt {
+        return type_name
+    }
+    var result = type_name + "<"
+    p.pos = p.pos + 1
+    parser_skip_nl_semi(p)
+    var depth = 1
+    for depth > 0 && parser_kind(p) != TokenKind.EOF {
+        var kind = parser_kind(p)
+        if kind == TokenKind.Lt {
+            depth = depth + 1
+            result = result + "<"
+        } else if kind == TokenKind.Gt {
+            depth = depth - 1
+            if depth > 0 {
+                result = result + ">"
+            }
+        } else if kind == TokenKind.Comma {
+            result = result + ", "
+        } else {
+            result = result + parser_text(p)
+        }
+        p.pos = p.pos + 1
+        parser_skip_nl_semi(p)
+    }
+    result = result + ">"
+    return result
 }
 
 // Parse let statement: let name [type] = expr
@@ -323,6 +358,7 @@ fn parse_let_stmt(p Parser) ASTNode {
         if peek != TokenKind.Asn {
             type_name = parser_text(p)
             p.pos = p.pos + 1
+            type_name = parser_try_read_generic_type(p, type_name)
         }
     }
 
@@ -348,6 +384,7 @@ fn parse_var_stmt(p Parser) ASTNode {
         if peek != TokenKind.Asn {
             type_name = parser_text(p)
             p.pos = p.pos + 1
+            type_name = parser_try_read_generic_type(p, type_name)
         }
     }
 
@@ -484,6 +521,7 @@ fn parse_type_decl(p Parser) ASTNode {
                 if parser_kind(p) == TokenKind.Ident {
                     field_type = parser_text(p)
                     p.pos = p.pos + 1
+                    field_type = parser_try_read_generic_type(p, field_type)
                 }
                 fields.push(Param(field_name, field_type))
             } else {

@@ -1,0 +1,197 @@
+widget BookshelfPage {
+    model {
+        books List<Map<str, any>> = []
+        showAddDialog bool = false
+        newTitle str = ""
+        newAuthor str = ""
+        newChapters str = "10"
+        newWords str = "50000"
+        deletingId str = ""
+    }
+
+    on {
+        .Load -> {
+            let raw = storage.get("br-books")
+            if raw != nil && raw != "" {
+                .books = json.parse(raw)
+            } else {
+                .books = demoBooks()
+                storage.set("br-books", json.stringify(.books))
+            }
+        }
+        .OpenBook(id str) -> { router.push("/book/" + id) }
+        .ShowAddDialog -> {
+            .showAddDialog = true
+            .newTitle = ""
+            .newAuthor = ""
+            .newChapters = "10"
+            .newWords = "50000"
+        }
+        .CloseAddDialog -> { .showAddDialog = false }
+        .AddBook -> {
+            if .newTitle == "" || .newAuthor == "" {
+                return nil
+            }
+            let chapters = .newChapters.to_int() ?? 10
+            let words = .newWords.to_int() ?? 50000
+            let id = "book-" + date.now().to_string()
+            let book = {
+                id: id,
+                title: .newTitle,
+                author: .newAuthor,
+                wordCount: words,
+                chapterCount: chapters,
+                progress: 0,
+                status: "unread",
+                addedAt: date.now()
+            }
+            .books.push(book)
+            storage.set("br-books", json.stringify(.books))
+            .showAddDialog = false
+            router.push("/book/" + id)
+        }
+        .DeleteBook(id str) -> { .deletingId = id }
+        .ConfirmDelete -> {
+            let filtered = []
+            for b in .books {
+                if b.id != .deletingId {
+                    filtered.push(b)
+                }
+            }
+            .books = filtered
+            storage.set("br-books", json.stringify(.books))
+            .deletingId = ""
+        }
+        .CancelDelete -> { .deletingId = "" }
+    }
+
+    view {
+        col (style: "p-6 md:p-8 gap-6 max-w-6xl mx-auto") {
+            row (style: "items-center justify-between") {
+                col {
+                    h1 (text: "Library", style: "text-2xl font-semibold text-slate-900") {}
+                    text (text: .books.len().to_string() + " books", style: "text-sm text-slate-500") {}
+                }
+                button (onclick: .ShowAddDialog, style: "flex items-center gap-2 px-4 py-2 bg-white border rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors") {
+                    icon (name: "plus", size: 16) {}
+                    text (text: "Add Book") {}
+                }
+            }
+
+            if .books.len() == 0 {
+                col (style: "items-center justify-center py-20 gap-4 text-slate-400") {
+                    icon (name: "book-open", size: 48) {}
+                    text (text: "No books yet") {}
+                    text (text: "Add your first book to get started", style: "text-sm") {}
+                }
+            } else {
+                div (style: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4") {
+                    for book in .books {
+                        div (style: "cursor-pointer hover:shadow-md transition-shadow overflow-hidden group",
+                              onclick: .OpenBook(book.id)) {
+                            div (style: "h-48 bg-gradient-to-br from-violet-100 to-slate-200 flex items-center justify-center relative") {
+                                icon (name: "book-open", size: 40, color: "text-white/60") {}
+                                if book.progress > 0 {
+                                    div (style: "absolute bottom-0 left-0 right-0 h-1 bg-black/10") {
+                                        div (style: "h-full bg-violet-600 transition-all", style: "width: " + book.progress.to_string() + "%") {}
+                                    }
+                                }
+                            }
+                            div (style: "p-4 gap-1") {
+                                text (text: book.title, style: "font-medium text-slate-800 truncate") {}
+                                text (text: book.author, style: "text-sm text-slate-500 truncate") {}
+                                row (style: "items-center justify-between mt-2") {
+                                    text (text: book.progress.to_string() + "%", style: "text-xs text-slate-400") {}
+                                    button (style: "opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-100 rounded transition-all",
+                                            onclick: .DeleteBook(book.id)) {
+                                        icon (name: "trash-2", size: 14, color: "text-red-500") {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if .showAddDialog {
+                div (style: "fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4") {
+                    div (style: "w-full max-w-md p-6 gap-4 bg-white") {
+                        text (text: "Add Book", style: "text-lg font-semibold") {}
+                        input (value: .newTitle, placeholder: "Book title") {}
+                        input (value: .newAuthor, placeholder: "Author") {}
+                        row (style: "gap-4") {
+                            col (style: "flex-1") {
+                                text (text: "Chapters", style: "text-sm text-slate-500") {}
+                                input (value: .newChapters, placeholder: "10") {}
+                            }
+                            col (style: "flex-1") {
+                                text (text: "Words", style: "text-sm text-slate-500") {}
+                                input (value: .newWords, placeholder: "50000") {}
+                            }
+                        }
+                        row (style: "justify-end gap-2 mt-2") {
+                            button (onclick: .CloseAddDialog, style: "px-4 py-2 border rounded-md text-sm") {
+                                text (text: "Cancel") {}
+                            }
+                            button (onclick: .AddBook, style: "px-4 py-2 bg-violet-600 text-white rounded-md text-sm") {
+                                text (text: "Add") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            if .deletingId != "" {
+                div (style: "fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4") {
+                    div (style: "w-full max-w-sm p-6 gap-4 bg-white") {
+                        text (text: "Delete Book?", style: "text-lg font-semibold") {}
+                        text (text: "This will remove the book from your library.", style: "text-sm text-slate-500") {}
+                        row (style: "justify-end gap-2 mt-2") {
+                            button (onclick: .CancelDelete, style: "px-4 py-2 border rounded-md text-sm") {
+                                text (text: "Cancel") {}
+                            }
+                            button (onclick: .ConfirmDelete, style: "px-4 py-2 bg-red-600 text-white rounded-md text-sm") {
+                                text (text: "Delete") {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn demoBooks() List<Map<str, any>> {
+    return [
+        {
+            id: "demo-1",
+            title: "Three Body",
+            author: "Liu Cixin",
+            wordCount: 320000,
+            chapterCount: 36,
+            progress: 45,
+            status: "reading",
+            addedAt: date.now() - 86400000 * 7
+        },
+        {
+            id: "demo-2",
+            title: "The Great Gatsby",
+            author: "F. Scott Fitzgerald",
+            wordCount: 47000,
+            chapterCount: 9,
+            progress: 100,
+            status: "finished",
+            addedAt: date.now() - 86400000 * 30
+        },
+        {
+            id: "demo-3",
+            title: "One Hundred Years of Solitude",
+            author: "Gabriel Garcia Marquez",
+            wordCount: 280000,
+            chapterCount: 20,
+            progress: 0,
+            status: "unread",
+            addedAt: date.now() - 86400000 * 2
+        }
+    ]
+}

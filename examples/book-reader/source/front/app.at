@@ -1,0 +1,56 @@
+widget App {
+    routes {
+        "/" -> use bookshelf
+        "/book/:id" -> use book_detail
+        "/book/:id/chapter/:ch" -> use reading
+        "/notes" -> use notes
+        "/settings" -> use settings
+    }
+
+    model {}
+
+    on {}
+
+    view {
+        row (style: "min-h-screen bg-slate-50") {
+            col (style: "w-64 border-r bg-white hidden md:flex flex-col fixed inset-y-0 z-40") {
+                div (style: "p-4 border-b") {
+                    row (style: "items-center gap-2") {
+                        icon (name: "book-open", style: "w-5 h-5 text-violet-600") {}
+                        text (text: "AutoRead", style: "font-bold text-lg") {}
+                    }
+                }
+                col (style: "p-3 gap-1 flex-1") {
+                    link (to: "/") {
+                        row (style: "items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-slate-100 transition-colors") {
+                            icon (name: "home", style: "w-4 h-4") {}
+                            text (text: "Library") {}
+                        }
+                    }
+                    link (to: "/notes") {
+                        row (style: "items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-slate-100 transition-colors") {
+                            icon (name: "sticky-note", style: "w-4 h-4") {}
+                            text (text: "Notes") {}
+                        }
+                    }
+                    link (to: "/settings") {
+                        row (style: "items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-slate-100 transition-colors") {
+                            icon (name: "settings", style: "w-4 h-4") {}
+                            text (text: "Settings") {}
+                        }
+                    }
+                }
+            }
+            col (style: "flex-1 md:ml-64") {
+                row (style: "h-14 border-b bg-white items-center px-4 gap-4 md:hidden") {
+                    text (text: "AutoRead", style: "font-bold") {}
+                    div (style: "flex-1") {}
+                    link (to: "/") { text (text: "Library") {} }
+                    link (to: "/notes") { text (text: "Notes") {} }
+                    link (to: "/settings") { text (text: "Settings") {} }
+                }
+                outlet
+            }
+        }
+    }
+}

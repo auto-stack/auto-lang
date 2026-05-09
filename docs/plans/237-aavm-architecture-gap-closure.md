@@ -21,19 +21,74 @@
 
 让 AAVM（用 Auto 写的 Auto 编译器）逐步具备与 Rust 版 Auto 编译器相同的架构能力。最终目标是 AAVM 能独立编译和执行 AutoLang 程序，不依赖 Rust 编译器。
 
-## 现状对比
+## 现状对比（2026-05-09 更新）
+
+### 代码量对比
+
+| 组件 | Auto 版 (AAVM) | Rust 版 | 比例 |
+|------|---------------|---------|------|
+| Parser | 1,345 行 | 12,255 行 | 9% |
+| Type Inference | 227 行 | 5,251 行 (8文件) | 4% |
+| VM/Engine | 608 行 | 5,372 行 | 11% |
+| Codegen | 704 行 | 8,863 行 | 8% |
+| a2r Transpiler | 702 行 | 5,662 行 | 12% |
+| Generic Registry | 0 行 (不存在) | 1,680 行 | 0% |
+| FFI | — | 4,717 行 | — |
+| **总计** | **5,632 行** | **45,365 行** | **12%** |
+
+### 功能对比
 
 | 维度 | Rust 版 | AAVM 现状 | 差距 |
 |------|---------|----------|------|
-| 代码量 | 33,834 行 | 5,547 行 | 6x |
 | 类型系统 | Type enum (30+ 变体) | TypeInfo (5 种: int/str/bool/void/unknown) | 基础可用 |
 | 表达式 | Expr enum (40+ 变体) | 39 NodeKind 枚举 | 大部分对齐 |
-| Codegen | 8,716 行，100+ OpCode | codegen.at 703 行 + vm.at 607 行, ~30 OpCode | 最小子集 |
+| Codegen | 131 OpCode | ~30 OpCode | 23%，缺浮点/Option/Result/闭包/Task |
 | VM | 4,929 行，task 系统 | 依赖 Rust VM | N/A |
 | 泛型/单态化 | GenericRegistry 1,680 行 | 无 | 完全缺失 |
-| 类型推断 | infer/ 子系统 8 个文件 | typeinfer.at 207 行 | 简化版 |
-| a2r 转译器 | 5,272 行，79 个测试 | a2r.at ~700 行，22 个 bootstrap 测试 | 核心特性覆盖 |
+| 类型推断 | infer/ 子系统 (unification + constraints) | 简化版 (只做类型传播) | 缺泛型约束 |
+| a2r 转译器 | 5,662 行，79 个测试 | 702 行，22 个 bootstrap 测试 | 核心 60-70% |
 | 值表示 | NaN-boxing u64 (Plan 221) | eval_expr -> int (沿用 VM 编码) | 已解决 |
+
+### a2r 转译器成熟度
+
+**已覆盖（可正确转译）**：
+- 基础表达式、函数、变量、if/else、for 循环
+- struct → struct, enum → enum, ext → impl, spec → trait
+- `is` → `match`, F-string → `format!`
+- 闭包 → `|params| body`, 数组 → `vec![]`, 对象 → `{ k: v }`
+- 错误传播 `?`, struct 构造函数, 多语句 match arm, use.c/use.py FFI
+- 泛型类型映射: `List` → `Vec<i32>`, `Map` → `HashMap<String, i32>`
+
+**未覆盖**：
+
+| 特性 | 难度 | 优先级 |
+|------|------|--------|
+| Option/Result 匹配 (`is opt { Some(x) -> ... }`) | 中 | P0 |
+| 泛型参数解析 (`<T>` 语法 → parser) | 高 | P0 |
+| 完整泛型单态化 (`List<int>` → `Vec<i32>`) | 高 | P1 |
+| 借用语义 (`.view`/`.mut`/`.take`) | 中 | P1 |
+| 泛型 type alias | 中 | P2 |
+| 原始指针 (`*T`) | 低 | P2 |
+
+### AAVM 编译器成熟度
+
+**OpCode 覆盖**：Auto 版 ~30 个 vs Rust 版 131 个（23%）。缺失的主要类别：
+- 浮点运算: CONST_F32/F64, ADD_F/SUB_F/MUL_F/DIV_F
+- 64 位整数: CONST_I64/U64, ADD_U64 等
+- Option/Result: CREATE_SOME/NONE/OK/ERR, IS_SOME/OK, UNWRAP_SOME/OK
+- 闭包环境: CLOSURE, CAPTURE_VAR, LOAD_CAPTURED, STORE_CAPTURED, CALL_CLOSURE
+- 对象/元组: CREATE_OBJ/ARRAY/TUPLE, GET_FIELD/SET_FIELD
+- 并发: SPAWN, CHAN_NEW, SEND, RECV
+
+**关键缺失**：
+
+| 缺失能力 | 影响 | 优先级 |
+|----------|------|--------|
+| `generics.at` 不存在 | 无法做 `List<T>` 运行时单态化 | P0 |
+| Parser 不解析 `<T>` 泛型参数 | 无法编译带泛型的 Auto 程序 | P0 |
+| 类型推断无 unification | 只能做简单类型传播，不支持泛型约束 | P2 |
+| 无 Task/Channel 字节码 | 不支持并发编程 | P2 |
+| 闭包字节码未实现 | codegen 不生成闭包字节码 | P1 |
 
 ### 核心瓶颈
 
@@ -249,7 +304,7 @@ type TypeInfo {
 
 ---
 
-### Phase D: 泛型单态化（Generic Monomorphization）
+### Phase D: 泛型单态化（Generic Monomorphization）— 下一步重点
 > 支持 List<T>、Map<K,V> 等泛型类型的编译期实例化
 
 **目标**：让 AAVM 能正确处理带类型参数的容器类型。
@@ -258,9 +313,13 @@ type TypeInfo {
 - `vm/generic_registry.rs` (1,680 行) — ClassTemplate, ClassType, FieldDef, MethodInfo
 - `Codegen.monomorphize()` — 泛型实例化
 - `Codegen.track_generic()` / `get_monomorphic_name()`
+- `parser.rs:3581-3858` — parse_generic_param(), parse_generic_params(), parse_generic_instance()
 
 **改动文件**：
 - `auto/lib/generics.at` — 新建，泛型注册表
+- `auto/lib/parser.at` — 修改，支持 `<T>` 泛型参数解析
+- `auto/lib/a2r.at` — 修改，泛型类型完整转译
+- `auto/lib/typeinfer.at` — 修改，泛型类型推断
 
 **核心概念**：
 
@@ -270,14 +329,61 @@ type TypeInfo {
 // 运行时: 所有 List<int> 操作使用特化的 List_int 方法
 ```
 
+#### D1: Parser 泛型参数解析
+
+**问题**：当前 parser 将 `<` 仅作为比较运算符，无法解析 `List<int>`、`fn foo<T>(x T)` 等泛型语法。
+
+**改动点**（`auto/lib/parser.at`）：
+
+1. **类型注解中的泛型**：`parse_let_stmt` / `parse_var_stmt` 读取 type_name 后，检查 `<` 并收集完整类型字符串
+   - `var list List` → 检查下一个 token 是否 `<`，如果是则继续读取 `<int>` → type_name = `"List<int>"`
+   - 需处理嵌套：`Map<str, List<int>>`（递归括号匹配）
+
+2. **泛型函数声明**：`parse_fn_stmt` 识别 `fn foo<T>(x T)`
+   - 在 fn name 后检测 `<`，读取泛型参数列表
+   - 存储到 ASTNode 新字段或利用现有 params
+
+3. **泛型类型定义**：`type List<T> { items List<T> }`
+   - 在 type name 后检测 `<`，读取类型参数
+   - 存储到 TypeStmt 的 ASTNode
+
+**难点**：区分 `<` 作为比较运算符 vs 泛型参数起始。Rust parser 使用 lookahead：如果 `<` 后面是 ident 且接着 `,` 或 `>`，则视为泛型参数。
+
+**测试**：
+- `104_parse_generic_type` — `var list List<int>` → ASTNode.type_name = `"List<int>"`
+- `105_parse_generic_fn` — `fn first<T>(list List<T>) T` → 正确解析
+
+#### D2: generics.at 泛型注册表
+
 **范围**：
 1. 泛型参数收集（从 type 定义和 fn 签名中提取 `<T>` 参数）
 2. 使用点实例化（遇到 `List<int>` 时创建 `List_int` 特化）
 3. 方法特化（为每个实例化生成类型正确的 `push`/`get`/`len` 方法）
 
-**验证**：新增泛型专用测试（List<int>, Map<str, int>, 嵌套泛型）。
+**测试**：
+- `106_generic_list` — `var list List<int>; list.push(1)` → 正确实例化
+- `107_generic_map` — `var m Map<str, int>; m.insert("a", 1)` → 正确实例化
 
-**估计代码量**：generics.at ~300 行
+#### D3: a2r 泛型类型完整转译
+
+**当前状态**：`a2r_type` 只做简单字符串映射（`List` → `Vec<i32>`），无法处理 `List<str>` → `Vec<String>`。
+
+**改动点**（`auto/lib/a2r.at`）：
+- `a2r_type` 增强：解析 `"List<int>"` → 提取 `"List"` 和 `"int"` → 输出 `"Vec<i32>"`
+- `a2r_type` 增强：解析 `"Map<str, int>"` → 输出 `"std::collections::HashMap<String, i32>"`
+- 字符串操作：使用 `str.find("<")` + `str.substr` 提取泛型参数
+
+**测试**：
+- `108_a2r_generic_vec` — `var list List<int>` → `let mut list: Vec<i32>`
+- `109_a2r_generic_map` — `var m Map<str, int>` → `let mut m: HashMap<String, i32>`
+
+**验证**：所有新测试 + 回归 92 个 bootstrap 测试。
+
+**估计代码量**：
+- parser.at: +150~200 行
+- generics.at: ~300 行（新建）
+- a2r.at: +100~150 行
+- typeinfer.at: +50 行
 
 ---
 
@@ -362,19 +468,19 @@ Phase A (值类型)
 
 ```
 auto/lib/
-├── ast.at          # ✅ 344 行 — 39 NodeKind + 构造函数
-├── parser.at       # ✅ 1,328 行 — P0+P1, 支持 struct/enum/match/use/impl/trait/fstr/array/object/closure
-├── lexer.at        # ✅ 597 行 — P0 Lexer
-├── token.at        # ✅ 305 行 — 129 种 TokenKind
-├── pos.at          # ✅ 7 行 — Pos 位置类型
-├── error.at        # ✅ 7 行 — Error 类型
-├── eval.at         # ✅ 702 行 — tree-walking evaluator
-├── typeinfer.at    # ✅ 207 行 — 简化版类型推断
-├── codegen.at      # ✅ 703 行 — 字节码生成器
-├── vm.at           # ✅ 607 行 — 字节码解释器
-├── opcode.at       # ✅ 77 行 — OpCode 常量
-├── a2r.at          # ✅ ~700 行 — Auto-to-Rust 转译器 (E1-E6)
-└── generics.at     # ❌ 未实现 — 泛型单态化
+├── ast.at          # ✅ 345 行 — 39 NodeKind + 构造函数
+├── parser.at       # ✅ 1,345 行 — P0+P1, 待加泛型参数解析 (D1)
+├── lexer.at        # ✅ 598 行 — P0 Lexer
+├── token.at        # ✅ 306 行 — 129 种 TokenKind
+├── pos.at          # ✅ 8 行 — Pos 位置类型
+├── error.at        # ✅ 8 行 — Error 类型
+├── eval.at         # ✅ 703 行 — tree-walking evaluator
+├── typeinfer.at    # ✅ 227 行 — 简化版类型推断, 待加泛型 (D2)
+├── codegen.at      # ✅ 704 行 — 字节码生成器
+├── vm.at           # ✅ 608 行 — 字节码解释器
+├── opcode.at       # ✅ 78 行 — OpCode 常量
+├── a2r.at          # ✅ 702 行 — Auto-to-Rust 转译器 (E1-E6), 待加泛型转译 (D3)
+└── generics.at     # ❌ 待新建 (~300 行) — 泛型单态化注册表 (D2)
 ```
 
 ## 测试规划
@@ -394,7 +500,9 @@ auto/lib/
 | E3+E4 | 094-099 | a2r 表达式补全：closure、alias、object、array、error_prop、self_field | ✅ |
 | E5 | 102 | struct 构造函数：`Point(1,2)` → `Point { x: 1, y: 2 }` | ✅ |
 | E6 | 100-101, 103 | use.c/use.py FFI、多语句 match arm、泛型类型映射 | ✅ |
-| D (泛型) | TBD | 泛型单态化：List<T>、Map<K,V> 实例化 | ❌ |
+| D1 | 104-105 | Parser 泛型参数解析：`List<int>` 类型注解、`fn foo<T>` 泛型函数 | ❌ |
+| D2 | 106-107 | generics.at 泛型注册表：List/Map 单态化 | ❌ |
+| D3 | 108-109 | a2r 泛型类型完整转译：`List<str>` → `Vec<String>` | ❌ |
 
 ## 风险与缓解
 

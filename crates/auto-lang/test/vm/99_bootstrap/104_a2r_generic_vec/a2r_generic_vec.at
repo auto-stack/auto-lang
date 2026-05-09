@@ -1,0 +1,7 @@
+fn main() {
+    var s = "List<int>"
+    var r1 = s.substr(5, 8)
+    print("r1=|" + r1 + "|")
+    var r2 = s.substr(5, 9)
+    print("r2=|" + r2 + "|")
+}

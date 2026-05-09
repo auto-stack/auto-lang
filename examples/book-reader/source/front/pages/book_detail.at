@@ -1,0 +1,98 @@
+widget BookDetailPage {
+    model {
+        bookId str = ""
+        book Map<str, any> = {}
+        chapters List<Map<str, any>> = []
+    }
+
+    on {
+        .Load -> {
+            .bookId = router.params.id
+            let raw = storage.get("br-books")
+            if raw != nil && raw != "" {
+                let books = json.parse(raw)
+                for b in books {
+                    if b.id == .bookId {
+                        .book = b
+                    }
+                }
+            }
+            let count = .book.chapterCount ?? 10
+            let list = []
+            for i in 1..=count {
+                list.push({ number: i, title: "Chapter " + i.to_string() })
+            }
+            .chapters = list
+        }
+        .Back -> { router.push("/") }
+        .ReadChapter(n int) -> { router.push("/book/" + .bookId + "/chapter/" + n.to_string()) }
+        .ContinueReading -> {
+            let current = 1
+            let progress = .book.progress ?? 0
+            let total = .book.chapterCount ?? 1
+            if progress > 0 {
+                current = progress * total / 100
+                if current < 1 { current = 1 }
+                if current > total { current = total }
+            }
+            router.push("/book/" + .bookId + "/chapter/" + current.to_string())
+        }
+    }
+
+    view {
+        col (style: "p-6 md:p-8 gap-6 max-w-4xl mx-auto") {
+            button (onclick: .Back, style: "flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors w-fit") {
+                icon (name: "arrow-left", size: 16) {}
+                text (text: "Back to Library") {}
+            }
+
+            if .book.id == "" {
+                col (style: "items-center justify-center py-20 gap-4 text-slate-400") {
+                    icon (name: "book-open", size: 48) {}
+                    text (text: "Book not found") {}
+                }
+            } else {
+                row (style: "gap-6 flex-col md:flex-row") {
+                    div (style: "w-36 h-52 bg-gradient-to-br from-violet-200 to-slate-300 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg") {
+                        icon (name: "book-open", size: 40, color: "text-white/60") {}
+                    }
+                    col (style: "gap-3 flex-1") {
+                        h1 (text: .book.title, style: "text-2xl font-semibold text-slate-900") {}
+                        text (text: .book.author, style: "text-slate-500") {}
+                        row (style: "items-center gap-3 text-sm text-slate-400 flex-wrap") {
+                            row (style: "items-center gap-1") {
+                                icon (name: "file-text", size: 14) {}
+                                text (text: .book.chapterCount.to_string() + " chapters") {}
+                            }
+                            row (style: "items-center gap-1") {
+                                icon (name: "book-open", size: 14) {}
+                                text (text: .book.wordCount.to_string() + " words") {}
+                            }
+                            if .book.progress > 0 {
+                                text (text: .book.progress.to_string() + "%", style: "text-violet-600 font-medium") {}
+                            }
+                        }
+                        if .book.progress > 0 && .book.progress < 100 {
+                            button (onclick: .ContinueReading, style: "mt-2 flex items-center justify-center gap-2 w-full md:w-auto px-6 py-2.5 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 transition-colors") {
+                                icon (name: "book-open", size: 16) {}
+                                text (text: "Continue Reading") {}
+                            }
+                        }
+                    }
+                }
+
+                div (style: "mt-4") {
+                    text (text: "Chapters", style: "text-lg font-semibold text-slate-800 mb-3") {}
+                    div (style: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2") {
+                        for ch in .chapters {
+                            button (onclick: .ReadChapter(ch.number), style: "flex items-center justify-between p-3 bg-white border rounded-lg text-left hover:border-violet-400 hover:bg-violet-50 transition-all") {
+                                text (text: ch.title, style: "text-sm font-medium text-slate-700") {}
+                                icon (name: "chevron-right", size: 14, color: "text-slate-400") {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

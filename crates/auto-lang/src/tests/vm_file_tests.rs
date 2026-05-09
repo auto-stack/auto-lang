@@ -785,3 +785,5 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_101_a2r_is_multi() { test_aavm("99_bootstrap/101_a2r_is_multi").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_102_a2r_struct_ctor() { test_aavm("99_bootstrap/102_a2r_struct_ctor").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_103_a2r_generic_type() { test_aavm("99_bootstrap/103_a2r_generic_type").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_104_a2r_generic_vec() { test_aavm("99_bootstrap/104_a2r_generic_vec").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_105_a2r_generic_map() { test_aavm("99_bootstrap/105_a2r_generic_map").unwrap(); }
