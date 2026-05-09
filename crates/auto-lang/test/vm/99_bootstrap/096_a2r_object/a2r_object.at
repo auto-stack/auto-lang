@@ -1,0 +1,9 @@
+fn main() {
+    var result = run_a2r("fn main() {\nlet o = { x: 1, y: 2 }\n}")
+    var expected = "fn main() {\n    let o = { x: 1, y: 2 };\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}

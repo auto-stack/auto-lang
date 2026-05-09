@@ -775,3 +775,9 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_091_a2r_ext() { test_aavm("99_bootstrap/091_a2r_ext").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_092_a2r_fstr() { test_aavm("99_bootstrap/092_a2r_fstr").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_093_a2r_spec() { test_aavm("99_bootstrap/093_a2r_spec").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_094_a2r_closure() { test_aavm("99_bootstrap/094_a2r_closure").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_095_a2r_alias() { test_aavm("99_bootstrap/095_a2r_alias").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_096_a2r_object() { test_aavm("99_bootstrap/096_a2r_object").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_097_a2r_array() { test_aavm("99_bootstrap/097_a2r_array").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_098_a2r_error_prop() { test_aavm("99_bootstrap/098_a2r_error_prop").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_099_a2r_self_field() { test_aavm("99_bootstrap/099_a2r_self_field").unwrap(); }

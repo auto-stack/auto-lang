@@ -34,6 +34,8 @@ enum NodeKind {
     UseStmt
     ObjectExpr
     PairExpr
+    ArrayExpr
+    ErrorPropagateExpr
 }
 
 // Function parameter
@@ -210,11 +212,11 @@ fn type_node(name str, fields List) ASTNode {
 
 // ---- P1 Constructor helpers ----
 
-fn closure_node(params_str str, body ASTNode) ASTNode {
+fn closure_node(params_str str, params List, body ASTNode) ASTNode {
     var s = "(closure (" + params_str + ") => " + body.value + ")"
     var bl = empty_list()
     bl.push(body)
-    ASTNode(NodeKind.ClosureExpr, s, "", empty_list(), bl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ClosureExpr, s, "", empty_list(), bl, empty_list(), "", params, "", empty_list(), empty_list())
 }
 
 fn fstr_node(parts_str str, parts List) ASTNode {
@@ -293,7 +295,7 @@ fn spec_node(name str, methods List) ASTNode {
 
 fn alias_node(name str, target str) ASTNode {
     var s = "(alias " + name + " " + target + ")"
-    ASTNode(NodeKind.AliasStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.AliasStmt, s, name, empty_list(), empty_list(), empty_list(), "", empty_list(), target, empty_list(), empty_list())
 }
 
 fn use_node(path_str str, items_str str, items List) ASTNode {
@@ -305,9 +307,9 @@ fn use_node(path_str str, items_str str, items List) ASTNode {
     ASTNode(NodeKind.UseStmt, s, path_str, empty_list(), empty_list(), empty_list(), "", items, "", empty_list(), empty_list())
 }
 
-fn object_node(pairs_str str) ASTNode {
+fn object_node(pairs_str str, pairs List) ASTNode {
     var s = "(object " + pairs_str + ")"
-    ASTNode(NodeKind.ObjectExpr, s, "", empty_list(), empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
+    ASTNode(NodeKind.ObjectExpr, s, "", pairs, empty_list(), empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 fn pair_node(key str, val ASTNode) ASTNode {
@@ -315,6 +317,25 @@ fn pair_node(key str, val ASTNode) ASTNode {
     var vl = empty_list()
     vl.push(val)
     ASTNode(NodeKind.PairExpr, s, key, empty_list(), vl, empty_list(), "", empty_list(), "", empty_list(), empty_list())
+}
+
+fn array_node(elems List) ASTNode {
+    var s = "(array"
+    var i = 0
+    var n = elems.len()
+    for i < n {
+        s = s + " " + elems.get(i).value
+        i = i + 1
+    }
+    s = s + ")"
+    ASTNode(NodeKind.ArrayExpr, s, "", empty_list(), empty_list(), empty_list(), "", elems, "", empty_list(), empty_list())
+}
+
+fn error_propagate_node(expr ASTNode) ASTNode {
+    var l = empty_list()
+    l.push(expr)
+    var s = "(? " + expr.value + ")"
+    ASTNode(NodeKind.ErrorPropagateExpr, s, "", empty_list(), l, empty_list(), "", empty_list(), "", empty_list(), empty_list())
 }
 
 // Simply return the pre-computed S-expression string

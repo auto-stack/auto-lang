@@ -1,15 +1,15 @@
 # Plan 229: Auto 自举编译器 — 前端先行 + a2r 落地方案
 
-## 实施状态: ⏳ Phase 2 (a2r) 待开始 (2026-05-08 更新)
+## 实施状态: ⏳ Phase 2 (a2r) E1-E4 已完成, E5 待开始 (2026-05-09 更新)
 
 **前置依赖:**
 - 现有 Rust 版编译器（parser 12,054 行 + a2r 转译器 5,189 行）作为参考实现
 - AutoVM 足以运行编译器前端代码（需验证字符串/集合操作完整性）
-- a2r 转译器已有 122 个测试用例（55 个可编译为 Rust）
+- a2r 转译器已有 272 个测试用例
 
 **预估工期:** 16–22 周（4–5.5 个月）
 
-### 进度摘要（2026-05-08 更新）
+### 进度摘要（2026-05-09 更新）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -24,8 +24,12 @@
 | 1.Codegen | ✅ 已完成 | auto/lib/codegen.at + vm.at bytecode, 9 测试 (Plan 237 Phase C) |
 | 1.ListMap | ✅ 已完成 | BVM heap + List/Map opcodes (Plan 239) |
 | 1.BVMStrOps | ✅ 已完成 | 7 新 opcode (72-78): str/map/list ops, 6 测试 (Plan 237 Phase D) |
-| Phase 2: a2r | ⏳ 未开始 | 见 Plan 237 Phase E |
-| Phase 3: 自举 | ⏳ 未开始 | 依赖 Phase 2 |
+| 2.E1: 基础转译 | ✅ 已完成 | 表达式/函数/变量/if/for, 测试 081-086 (Plan 237 Phase E1) |
+| 2.E2: 结构化 AST | ✅ 已完成 | struct/enum/match/use/impl/trait/f-string, 测试 087-093 (Plan 237 Phase E2) |
+| 2.E3: 表达式补全 | ✅ 已完成 | 数组/错误传播/self字段替换/别名, 测试 094-099 (Plan 237 Phase E3+E4) |
+| 2.E4: 对象/闭包 | ✅ 已完成 | 对象字面量 + lambda + PairExpr (合并到 E3 一起实现) |
+| 2.E5: 类型增强 | ⏳ 待开始 | Option/Result匹配/泛型/struct构造函数 |
+| Phase 3: 自举 | ⏳ 待开始 | 依赖 Phase 2 |
 
 **已完成的基础工作:**
 - [x] a2r 转译器成熟化: step-00（555 行 Auto 程序）从 69 错误降至 0 错误（Apr 30）
@@ -43,8 +47,9 @@
 - [x] Phase 0.5 Bug 4: RET 不恢复 current_fn_n_args → engine.rs CallFrame 中保存/恢复函数元数据 + AND/OR 改为逻辑操作
 
 **下一步行动:**
-- Phase 1.3: 实现 AST 类型定义
-- SSE parser 的 2 个复合场景测试仍失败（test 001, 002），涉及多个 VM 特性交互，但不阻塞 Phase 1
+- E5: Option/Result 模式匹配、泛型 struct/enum、struct 构造函数 (Point { x: 1, y: 2 })
+- 文件 I/O 验证: fs.read_to_string / fs.write_string
+- Phase 3 准备: 用 AA2R 转译 auto/lib/ 所有文件，验证输出可编译
 
 ---
 

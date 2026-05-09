@@ -185,6 +185,54 @@ fn a2r_expr(node ASTNode, tenv TypeEnv) str {
         return a2r_fstr(node, tenv)
     }
 
+    if kind == NodeKind.ArrayExpr {
+        var elems = ""
+        var i = 0
+        var n = node.params.len()
+        for i < n {
+            if i > 0 { elems = elems + ", " }
+            elems = elems + a2r_expr(node.params.get(i), tenv)
+            i = i + 1
+        }
+        return "vec![" + elems + "]"
+    }
+
+    if kind == NodeKind.ObjectExpr {
+        var fields = ""
+        var i = 0
+        var n = node.children.len()
+        for i < n {
+            if i > 0 { fields = fields + ", " }
+            fields = fields + a2r_expr(node.children.get(i), tenv)
+            i = i + 1
+        }
+        return "{ " + fields + " }"
+    }
+
+    if kind == NodeKind.PairExpr {
+        var key = node.name
+        var val = a2r_expr(node.left.get(0), tenv)
+        return key + ": " + val
+    }
+
+    if kind == NodeKind.ClosureExpr {
+        var params = ""
+        var i = 0
+        var pn = node.params.len()
+        for i < pn {
+            if i > 0 { params = params + ", " }
+            params = params + node.params.get(i).name
+            i = i + 1
+        }
+        var body = a2r_expr(node.left.get(0), tenv)
+        return "|" + params + "| " + body
+    }
+
+    if kind == NodeKind.ErrorPropagateExpr {
+        var expr = a2r_expr(node.left.get(0), tenv)
+        return expr + "?"
+    }
+
     return "/* expr:" + int_to_str(kind) + " */"
 }
 
@@ -309,6 +357,11 @@ fn a2r_stmt(node ASTNode, tenv TypeEnv, indent int) str {
 
     if kind == NodeKind.SpecStmt {
         return a2r_spec(node, indent)
+    }
+
+    if kind == NodeKind.AliasStmt {
+        var prefix = a2r_indent_str(indent)
+        return prefix + "type " + node.name + " = " + a2r_type(node.type_name) + ";\n"
     }
 
     return prefix + "/* stmt:" + int_to_str(kind) + " */\n"

@@ -1,6 +1,6 @@
 # Plan 237: AAVM Architecture Gap Closure — 分阶段拉近与 Rust AutoVM 的距离
 
-## 状态: Phase A-D 已完成, Phase E 未完成 (2026-05-08)
+## 状态: Phase A-E4 已完成, Phase E5-E6 待推进 (2026-05-09)
 
 ### 已完成
 - Phase A: 值多态编码 (eval_expr 支持 int/str/bool)
@@ -300,6 +300,36 @@ type TypeInfo {
 **验证**：复用 Rust 版 79 个 a2r 测试用例的输入文件。
 
 **估计代码量**：a2r.at ~1000 行
+
+#### Phase E 已完成
+
+- **E1** (测试 081-086): 基础表达式、函数、变量、if/else、for 循环
+- **E2** (测试 087-093): type→struct, enum→enum, use→use, is→match, ext→impl, spec→trait, f-string→format!
+  - 同时修复了 AAVM parser：ASTNode 构造函数现在存储结构化数据（字段列表、变体列表、分支列表、方法列表、f-string 部分列表）
+- **E3+E4** (测试 094-099): 数组字面量、对象字面量、闭包、错误传播、self字段替换、别名
+  - 新增 NodeKind: ArrayExpr, ErrorPropagateExpr (值 37-38)
+  - Parser 增强: 数组→ArrayExpr, `.?` 后缀, leading `.` → self.field, 对象存结构化 children, 闭包存 params List
+  - a2r 转译: ClosureExpr→`|params| body`, ArrayExpr→`vec![...]`, ObjectExpr→`{ k: v }`, PairExpr→`key: val`, ErrorPropagateExpr→`expr?`, AliasStmt→`type Alias = Type`
+
+#### Phase E 剩余工作
+
+**E5 — 类型系统增强**
+
+| 功能 | Auto | Rust | 难度 |
+|------|------|------|------|
+| 类型别名 | `alias List<T> = ...` | `type List<T> = ...` | 中 |
+| Option/Result 匹配 | `is opt { Some(x) -> ... }` | `match opt { Some(x) => ... }` | 中 |
+| 泛型支持 | `HashMap<K,V>` | `HashMap<K,V>` | 高 |
+
+**E6 — 高级特性**
+
+| 功能 | 难度 |
+|------|------|
+| 借用语义 (.view/.mut/.take) | 中 |
+| 多语句 match arm | 低 |
+| F-string 边界情况（转义等） | 低 |
+| Grid/矩阵表达式 | 中 |
+| use.c / use.py 等变体 | 低 |
 
 ---
 

@@ -97,6 +97,7 @@ fn infix_prec(kind TokenKind) int {
         TokenKind.Div -> 7
         TokenKind.Mod -> 7
         TokenKind.Dot -> 8
+        TokenKind.DotQuest -> 8
         TokenKind.LParen -> 8
         TokenKind.LSquare -> 8
         else -> 0
@@ -614,6 +615,13 @@ fn parse_expr_prec(p Parser, min_prec int) ASTNode {
             continue
         }
 
+        // Postfix: error propagation .?
+        if kind == TokenKind.DotQuest {
+            p.pos = p.pos + 1  // skip '.?'
+            lhs = error_propagate_node(lhs)
+            continue
+        }
+
         // Postfix: function call
         if kind == TokenKind.LParen {
             var args_str = ""
@@ -700,7 +708,9 @@ fn parse_atom(p Parser) ASTNode {
                 p.pos = p.pos + 1  // skip param name
                 p.pos = p.pos + 1  // skip '=>'
                 var body = parse_expr(p)
-                return closure_node(pname, body)
+                var cparams = empty_list()
+                cparams.push(Param(pname, ""))
+                return closure_node(pname, cparams, body)
             }
             p.pos = p.pos + 1
             return ident_node(tok.text)
@@ -716,13 +726,14 @@ fn parse_atom(p Parser) ASTNode {
                 if parser_kind(p) == TokenKind.DoubleArrow {
                     p.pos = p.pos + 1  // skip '=>'
                     var body = parse_expr(p)
-                    return closure_node("", body)
+                    return closure_node("", empty_list(), body)
                 }
                 // () without => — just empty parens
                 return nil_node()
             }
             // Try to parse as multi-param closure: (a, b) => expr
             var params_str = ""
+            var mparams = empty_list()
             var is_closure = false
             for parser_kind(p) != TokenKind.RParen && parser_kind(p) != TokenKind.EOF {
                 var pname = parser_text(p)
@@ -739,6 +750,7 @@ fn parse_atom(p Parser) ASTNode {
                     params_str = params_str + " "
                 }
                 params_str = params_str + pname
+                mparams.push(Param(pname, ""))
                 parser_skip_nl_semi(p)
                 if parser_kind(p) == TokenKind.Comma {
                     p.pos = p.pos + 1
@@ -752,7 +764,7 @@ fn parse_atom(p Parser) ASTNode {
                 // It's a closure
                 p.pos = p.pos + 1  // skip '=>'
                 var body = parse_expr(p)
-                return closure_node(params_str, body)
+                return closure_node(params_str, mparams, body)
             }
             // Not a closure — backtrack and parse as grouped expression
             p.pos = saved
@@ -765,14 +777,11 @@ fn parse_atom(p Parser) ASTNode {
         }
         TokenKind.LSquare -> {
             p.pos = p.pos + 1  // skip '['
-            var elems_str = ""
+            var elems = empty_list()
             parser_skip_nl_semi(p)
             for parser_kind(p) != TokenKind.RSquare && parser_kind(p) != TokenKind.EOF {
                 var elem = parse_expr(p)
-                if elems_str != "" {
-                    elems_str = elems_str + " "
-                }
-                elems_str = elems_str + elem.value
+                elems.push(elem)
                 parser_skip_nl_semi(p)
                 if parser_kind(p) == TokenKind.Comma {
                     p.pos = p.pos + 1
@@ -782,12 +791,19 @@ fn parse_atom(p Parser) ASTNode {
             if parser_kind(p) == TokenKind.RSquare {
                 p.pos = p.pos + 1  // skip ']'
             }
-            return block_node(elems_str)
+            return array_node(elems)
         }
         TokenKind.Sub -> {
             p.pos = p.pos + 1
             var operand = parse_atom(p)
             return unary_node("-", operand)
+        }
+        TokenKind.Dot -> {
+            // Leading dot: .field shorthand for self.field
+            p.pos = p.pos + 1  // skip '.'
+            var field = parser_text(p)
+            p.pos = p.pos + 1  // skip field name
+            return dot_node(ident_node("self"), field)
         }
         TokenKind.Not -> {
             p.pos = p.pos + 1
@@ -1286,6 +1302,7 @@ fn parse_object(p Parser) ASTNode {
     p.pos = p.pos + 1  // skip '{'
     parser_skip_nl_semi(p)
     var pairs_str = ""
+    var pairs = empty_list()
     for parser_kind(p) != TokenKind.RBrace && parser_kind(p) != TokenKind.EOF {
         var key = parser_text(p)
         p.pos = p.pos + 1  // skip key
@@ -1297,6 +1314,7 @@ fn parse_object(p Parser) ASTNode {
             pairs_str = pairs_str + " "
         }
         pairs_str = pairs_str + "(" + key + " " + val.value + ")"
+        pairs.push(pair_node(key, val))
         parser_skip_nl_semi(p)
         if parser_kind(p) == TokenKind.Comma {
             p.pos = p.pos + 1
@@ -1306,5 +1324,5 @@ fn parse_object(p Parser) ASTNode {
     if parser_kind(p) == TokenKind.RBrace {
         p.pos = p.pos + 1
     }
-    return object_node(pairs_str)
+    return object_node(pairs_str, pairs)
 }

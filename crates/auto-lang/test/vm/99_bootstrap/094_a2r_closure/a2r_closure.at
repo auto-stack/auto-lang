@@ -1,0 +1,9 @@
+fn main() {
+    var result = run_a2r("fn main() {\nvar f = x => x + 1\n}")
+    var expected = "fn main() {\n    let mut f = |x| (x + 1);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
