@@ -1,0 +1,106 @@
+/// Rust implementation of File operations
+/// Wraps std::fs for file I/O
+
+// ═══════════════════════════════════════════════════════════
+// File Read/Write Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Read text content from a file
+#[rs]
+pub fn read_text(path str) str {
+    return std::fs::read_to_string(path).unwrap_or("".to_string())
+}
+
+/// Read text content from a file (alias, same as read_text)
+/// Used by examples as fs.read_to_string
+#[rs]
+pub fn read_to_string(path str) str {
+    return std::fs::read_to_string(path).unwrap_or("".to_string())
+}
+
+/// Write text content to a file (returns 0 on success, -1 on failure)
+#[rs]
+pub fn write_text(path str, content str) int {
+    return if std::fs::write(path, content).is_ok() { 0 } else { -1 }
+}
+
+/// Write text content to a file (alias, returns bool)
+/// Used by examples as fs.write
+#[rs]
+pub fn write(path str, content str) bool {
+    return std::fs::write(path, content).is_ok()
+}
+
+/// Read file contents as bytes
+#[rs]
+pub fn read_bytes(path str) []int {
+    let bytes = std::fs::read(path).unwrap_or_default()
+    return bytes.into_iter().map(|b| b as int).collect()
+}
+
+/// Write bytes to a file (returns 0 on success, -1 on failure)
+#[rs]
+pub fn write_bytes(path str, bytes []int) int {
+    let data: Vec<u8> = bytes.into_iter().map(|b| b as u8).collect()
+    return if std::fs::write(path, data).is_ok() { 0 } else { -1 }
+}
+
+// ═══════════════════════════════════════════════════════════
+// File Management Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Check if a file exists
+#[rs]
+pub fn exists(path str) bool {
+    return std::path::Path::new(path).exists()
+}
+
+/// Delete a file (returns 0 on success, -1 on failure)
+#[rs]
+pub fn delete(path str) int {
+    return if std::fs::remove_file(path).is_ok() { 0 } else { -1 }
+}
+
+/// Copy a file from source to destination (returns 0 on success, -1 on failure)
+#[rs]
+pub fn copy(src str, dst str) int {
+    return if std::fs::copy(src, dst).is_ok() { 0 } else { -1 }
+}
+
+/// Get the size of a file in bytes
+#[rs]
+pub fn size(path str) i64 {
+    return std::fs::metadata(path)
+        .map(|m| m.len() as i64)
+        .unwrap_or(0)
+}
+
+// ═══════════════════════════════════════════════════════════
+// Directory Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Create a directory (including parent directories)
+#[rs]
+pub fn create_dir(path str) int {
+    return if std::fs::create_dir_all(path).is_ok() { 0 } else { -1 }
+}
+
+/// Check if a path is a directory
+#[rs]
+pub fn is_dir(path str) bool {
+    return std::path::Path::new(path).is_dir()
+}
+
+/// Append text to a file (creates file if it doesn't exist)
+#[rs]
+pub fn append_text(path str, content str) int {
+    use std::io::Write
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    return match file {
+        Ok(mut f) => if f.write_all(content.as_bytes()).is_ok() { 0 } else { -1 },
+        Err(_) => -1
+    }
+}

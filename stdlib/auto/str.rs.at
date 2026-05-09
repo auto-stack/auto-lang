@@ -1,0 +1,12 @@
+/// Rust implementation of String utility functions
+
+/// Get the character at a given byte offset (returns code point as int)
+/// If index is out of bounds, returns 0
+#[rs]
+pub fn char_at(s str, i int) int {
+    let ch = s.chars().nth(i as usize)
+    return match ch {
+        Some(c) => c as int,
+        None => 0
+    }
+}

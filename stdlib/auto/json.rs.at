@@ -1,0 +1,153 @@
+/// Rust implementation of JSON operations
+/// Wraps serde_json for JSON parsing and querying
+
+// ═══════════════════════════════════════════════════════════
+// Encoding
+// ═══════════════════════════════════════════════════════════
+
+/// Encode a value to JSON string
+#[rs]
+pub fn encode(value) str {
+    return serde_json::to_string(value).unwrap_or("".to_string())
+}
+
+/// Encode a value to pretty-printed JSON string
+#[rs]
+pub fn encode_pretty(value) str {
+    return serde_json::to_string_pretty(value).unwrap_or("".to_string())
+}
+
+// ═══════════════════════════════════════════════════════════
+// Decoding
+// ═══════════════════════════════════════════════════════════
+
+/// Parse a JSON string into a JsonValue
+/// Returns null on failure
+#[rs]
+pub fn parse(s str) JsonValue {
+    return serde_json::from_str(s).ok()
+}
+
+/// Try to decode a JSON string
+/// Returns null on failure
+#[rs]
+pub fn try_decode(s str) {
+    return serde_json::from_str(s).ok()
+}
+
+// ═══════════════════════════════════════════════════════════
+// JsonValue Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Get JSON value type as string
+#[rs]
+pub fn json_value_type(val JsonValue) str {
+    return match val {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }.to_string()
+}
+
+/// Check if JSON value is null (returns 1 for true, 0 for false)
+#[rs]
+pub fn json_is_null(val JsonValue) int {
+    return if val.is_null() { 1 } else { 0 }
+}
+
+/// Convert JsonValue to string
+#[rs]
+pub fn json_as_string(val JsonValue) str {
+    return val.as_str().unwrap_or("").to_string()
+}
+
+/// Convert JsonValue to number (float)
+#[rs]
+pub fn json_as_number(val JsonValue) float {
+    return val.as_f64().unwrap_or(0.0)
+}
+
+/// Convert JsonValue to int
+#[rs]
+pub fn json_as_int(val JsonValue) int {
+    return val.as_i64().unwrap_or(0) as int
+}
+
+/// Convert JsonValue to bool (returns 1 for true, 0 for false)
+#[rs]
+pub fn json_as_bool(val JsonValue) int {
+    return if val.as_bool().unwrap_or(false) { 1 } else { 0 }
+}
+
+/// Get object field by key
+#[rs]
+pub fn json_get(val JsonValue, key str) JsonValue {
+    return val.get(key).cloned()
+}
+
+/// Get array element by index
+#[rs]
+pub fn json_get_at(val JsonValue, index int) JsonValue {
+    return val.get(index as usize).cloned()
+}
+
+/// Get array/object length
+#[rs]
+pub fn json_len(val JsonValue) int {
+    return match val {
+        serde_json::Value::Array(a) => a.len() as int,
+        serde_json::Value::Object(o) => o.len() as int,
+        _ => 0
+    }
+}
+
+/// Check if object has key (returns 1 for true, 0 for false)
+#[rs]
+pub fn json_has_key(val JsonValue, key str) int {
+    return if val.get(key).is_some() { 1 } else { 0 }
+}
+
+/// Get object keys as array of strings
+#[rs]
+pub fn json_keys(val JsonValue) []str {
+    return val.as_object()
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Get array as list of JsonValue
+#[rs]
+pub fn json_as_array(val JsonValue) []JsonValue {
+    return val.as_array().cloned().unwrap_or_default()
+}
+
+// ═══════════════════════════════════════════════════════════
+// Utility
+// ═══════════════════════════════════════════════════════════
+
+/// Prettify a JSON string
+#[rs]
+pub fn prettify(s str) str {
+    return serde_json::from_str::<serde_json::Value>(s)
+        .ok()
+        .map(|v| serde_json::to_string_pretty(&v).unwrap_or(s.to_string()))
+        .unwrap_or(s.to_string())
+}
+
+/// Minify a JSON string
+#[rs]
+pub fn minify(s str) str {
+    return serde_json::from_str::<serde_json::Value>(s)
+        .ok()
+        .map(|v| serde_json::to_string(&v).unwrap_or(s.to_string()))
+        .unwrap_or(s.to_string())
+}
+
+/// Check if string is valid JSON (returns 1 for true, 0 for false)
+#[rs]
+pub fn is_valid(s str) int {
+    return if serde_json::from_str::<serde_json::Value>(s).is_ok() { 1 } else { 0 }
+}

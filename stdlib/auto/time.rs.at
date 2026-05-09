@@ -1,0 +1,26 @@
+/// Rust implementation of Time operations
+/// Uses std::time for system clock access
+
+/// Get current time in milliseconds since Unix epoch
+#[rs]
+pub fn now_ms() i64 {
+    return std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+
+/// Get current time in seconds since Unix epoch
+#[rs]
+pub fn now_sec() i64 {
+    return std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// Sleep for specified milliseconds
+#[rs]
+pub fn sleep_ms(ms int) {
+    std::thread::sleep(std::time::Duration::from_millis(ms as u64))
+}

@@ -281,8 +281,39 @@ impl RustTrans {
         match expr {
             Expr::Str(_) | Expr::CStr(_) => true,
             Expr::Index(_, idx) => matches!(idx.as_ref(), Expr::Range(_)),
+            Expr::Ident(name) => self.current_fn_str_params.contains(name),
+            // x.slice(...) is transpiled to x[n..] which produces &str
+            Expr::Call(call) => {
+                if let Expr::Dot(_, method) = call.name.as_ref() {
+                    method == "slice"
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
+    }
+
+    /// Write a return expression with automatic .to_string() coercion when needed.
+    /// `add_semi`: whether to append a semicolon (false for match arm bodies).
+    fn write_return_expr(&mut self, expr: &Expr, out: &mut impl Write, add_semi: bool) -> AutoResult<()> {
+        // If returning a &str parameter ident directly, wrap in .to_string()
+        if let Expr::Ident(name) = expr {
+            if self.current_fn_str_params.contains(name) {
+                write!(out, "return {}.to_string()", name)?;
+                if add_semi { out.write(b";")?; }
+                return Ok(());
+            }
+        }
+        let needs_to_string = self.ret_type_needs_string_coercion()
+            && self.expr_needs_string_coercion(expr);
+        out.write(b"return ")?;
+        self.expr(expr, out)?;
+        if needs_to_string {
+            out.write(b".to_string()")?;
+        }
+        if add_semi { out.write(b";")?; }
+        Ok(())
     }
 
     fn rust_type_name(&self, ty: &Type) -> String {
@@ -1926,13 +1957,13 @@ impl RustTrans {
                     match obj.as_str() {
                         "env" => match method.as_str() {
                             "get" => {
-                                write!(out, "std::env::var(")?;
+                                write!(out, "a2r_std::env::get(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
-                                write!(out, ").ok()")?;
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             "set" => {
-                                write!(out, "std::env::set_var(")?;
+                                write!(out, "a2r_std::env::set(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     self.arg(arg, out)?;
@@ -1944,13 +1975,13 @@ impl RustTrans {
                         },
                         "fs" => match method.as_str() {
                             "read_to_string" => {
-                                write!(out, "std::fs::read_to_string(")?;
+                                write!(out, "a2r_std::fs::read_to_string(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
-                                write!(out, ").ok()")?;
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             "write" => {
-                                write!(out, "std::fs::write(")?;
+                                write!(out, "a2r_std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     self.arg(arg, out)?;
@@ -1959,9 +1990,9 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "exists" => {
-                                write!(out, "std::path::Path::new(")?;
+                                write!(out, "a2r_std::fs::exists(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
-                                write!(out, ").exists()")?;
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -2305,21 +2336,13 @@ impl RustTrans {
                     return Ok(());
                 }
                 "get_or" => {
-                    // Check if object is 'env' — env.get_or("KEY", default) -> std::env::var("KEY").ok().unwrap_or(default.to_string())
+                    // Check if object is 'env' — env.get_or("KEY", default) -> a2r_std::env::get_or("KEY", default)
                     if let Expr::Ident(type_name) = object.as_ref() {
                         if type_name == "env" {
-                            write!(out, "std::env::var(")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() {
-                                self.expr(a, out)?;
-                            }
-                            write!(out, ").ok().unwrap_or(")?;
-                            if call.args.args.len() > 1 {
-                                if let Arg::Pos(a) = &call.args.args[1] {
-                                    self.expr(a, out)?;
-                                    if matches!(a, Expr::Str(_) | Expr::CStr(_)) {
-                                        write!(out, ".to_string()")?;
-                                    }
-                                }
+                            write!(out, "a2r_std::env::get_or(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                self.arg(arg, out)?;
                             }
                             write!(out, ")")?;
                             return Ok(());
@@ -2416,49 +2439,41 @@ impl RustTrans {
                 // Auto FFI global objects -> Rust stdlib
                 match (type_name.as_str(), method_name.as_str()) {
                     ("env", "get") => {
-                        // env.get("KEY") -> std::env::var("KEY").ok()
-                        write!(out, "std::env::var(")?;
+                        // env.get("KEY") -> a2r_std::env::get("KEY")
+                        write!(out, "a2r_std::env::get(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr(a, out)?;
                         }
-                        write!(out, ").ok()")?;
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("env", "get_or") => {
-                        // env.get_or("KEY", default) -> std::env::var("KEY").ok().unwrap_or(default.to_string())
-                        write!(out, "std::env::var(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr(a, out)?;
-                        }
-                        write!(out, ").ok().unwrap_or(")?;
-                        if call.args.args.len() > 1 {
-                            if let Arg::Pos(a) = &call.args.args[1] {
-                                self.expr(a, out)?;
-                                if matches!(a, Expr::Str(_) | Expr::CStr(_)) {
-                                    write!(out, ".to_string()")?;
-                                }
-                            }
+                        // env.get_or("KEY", default) -> a2r_std::env::get_or("KEY", default)
+                        write!(out, "a2r_std::env::get_or(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            self.arg(arg, out)?;
                         }
                         write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "read_to_string") => {
-                        // fs.read_to_string(path) -> std::fs::read_to_string(path).ok()
-                        write!(out, "std::fs::read_to_string(")?;
+                        // fs.read_to_string(path) -> a2r_std::fs::read_to_string(path)
+                        write!(out, "a2r_std::fs::read_to_string(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr(a, out)?;
                         }
-                        write!(out, ").ok()")?;
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("fs", "write") => {
-                        // fs.write(path, content) -> std::fs::write(path, content).is_ok()
-                        write!(out, "std::fs::write(")?;
+                        // fs.write(path, content) -> a2r_std::fs::write(path, content)
+                        write!(out, "a2r_std::fs::write(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             self.arg(arg, out)?;
                         }
-                        write!(out, ").is_ok()")?;
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("Map", "new") => {
@@ -2580,8 +2595,8 @@ impl RustTrans {
         if let Expr::Ident(fn_name) = call.name.as_ref() {
             match fn_name.as_str() {
                 "min" => {
-                    // min(a, b) -> std::cmp::min(a, b)
-                    write!(out, "std::cmp::min(")?;
+                    // min(a, b) -> a2r_std::math::min(a, b)
+                    write!(out, "a2r_std::math::min(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
@@ -2592,8 +2607,8 @@ impl RustTrans {
                     return Ok(());
                 }
                 "max" => {
-                    // max(a, b) -> std::cmp::max(a, b)
-                    write!(out, "std::cmp::max(")?;
+                    // max(a, b) -> a2r_std::math::max(a, b)
+                    write!(out, "a2r_std::math::max(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
@@ -3240,6 +3255,8 @@ impl RustTrans {
         write!(sink.body, "(")?;
 
         // Add &self as first parameter for methods (except constructors)
+        let skip_first_self = is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new"
+            && fn_decl.params.first().map_or(false, |p| p.name.as_str() == "self");
         if is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new" {
             // Plan 163: &mut self for mut methods
             if fn_decl.is_mut {
@@ -3247,20 +3264,37 @@ impl RustTrans {
             } else {
                 write!(sink.body, "&self")?;
             }
-            if !fn_decl.params.is_empty() {
+            // Skip the 'self' param if it was the receiver in Auto
+            let params_to_emit: Vec<_> = if skip_first_self {
+                fn_decl.params.iter().skip(1).collect()
+            } else {
+                fn_decl.params.iter().collect()
+            };
+            if !params_to_emit.is_empty() {
                 write!(sink.body, ", ")?;
             }
-        }
-
-        for (i, param) in fn_decl.params.iter().enumerate() {
-            write!(
-                sink.body,
-                "{}: {}",
-                param.name,
-                self.rust_param_type_name(&param.ty)
-            )?;
-            if i < fn_decl.params.len() - 1 {
-                write!(sink.body, ", ")?;
+            for (i, param) in params_to_emit.iter().enumerate() {
+                write!(
+                    sink.body,
+                    "{}: {}",
+                    param.name,
+                    self.rust_param_type_name(&param.ty)
+                )?;
+                if i < params_to_emit.len() - 1 {
+                    write!(sink.body, ", ")?;
+                }
+            }
+        } else {
+            for (i, param) in fn_decl.params.iter().enumerate() {
+                write!(
+                    sink.body,
+                    "{}: {}",
+                    param.name,
+                    self.rust_param_type_name(&param.ty)
+                )?;
+                if i < fn_decl.params.len() - 1 {
+                    write!(sink.body, ", ")?;
+                }
             }
         }
         write!(sink.body, ")")?;
@@ -3556,9 +3590,8 @@ impl RustTrans {
                         sink.body.write(b"continue;\n")?;
                     }
                     Stmt::Return(ret) => {
-                        sink.body.write(b"return ")?;
-                        self.expr(ret, &mut sink.body)?;
-                        sink.body.write(b";\n")?;
+                        self.write_return_expr(ret, &mut sink.body, true)?;
+                        sink.body.write(b"\n")?;
                     }
                     _ => {}
                 }
@@ -3652,7 +3685,7 @@ impl RustTrans {
             for stmt in &body.stmts {
                 match stmt {
                     Stmt::Expr(expr) => { self.expr(expr, out)?; write!(out, "; ")?; }
-                    Stmt::Return(ret) => { write!(out, "return ")?; self.expr(ret, out)?; write!(out, "; ")?; }
+                    Stmt::Return(ret) => { self.write_return_expr(ret, out, true)?; write!(out, " ")?; }
                     Stmt::Break => write!(out, "break; ")?,
                     Stmt::Continue => write!(out, "continue; ")?,
                     _ => {}
@@ -3839,7 +3872,21 @@ impl RustTrans {
                 // Join all path segments into a single Rust path
                 if !use_stmt.paths.is_empty() {
                     let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
-                    let rust_path = full_path.replace("auto::", "crate::");
+                    // Map known Auto stdlib modules to a2r_std
+                    let rust_path = if full_path.starts_with("auto::") {
+                        let rest = &full_path[6..];
+                        match rest {
+                            "math" | "str" | "time" | "env" | "json" | "file"
+                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
+                            | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
+                            | "process" | "sys" | "sse" | "may" | "regex" => {
+                                format!("a2r_std::{}", rest)
+                            }
+                            _ => format!("crate::{}", rest),
+                        }
+                    } else {
+                        full_path.replace("auto::", "crate::")
+                    };
                     if use_stmt.is_wildcard {
                         write!(out, "{}use {}::*;", pub_kw, rust_path)?;
                     } else if !use_stmt.items.is_empty() {

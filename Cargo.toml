@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/a2r-std",
     "crates/auto",
     "crates/auto-gen",
     "crates/auto-lang",

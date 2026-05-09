@@ -1,0 +1,26 @@
+/// Rust implementation of Math operations
+/// Delegates to Rust standard library
+
+/// Returns the absolute value of a number
+#[rs]
+pub fn abs(n i64) i64 {
+    return n.abs()
+}
+
+/// Returns the minimum of two numbers
+#[rs]
+pub fn min(a i64, b i64) i64 {
+    return if a <= b { a } else { b }
+}
+
+/// Returns the maximum of two numbers
+#[rs]
+pub fn max(a i64, b i64) i64 {
+    return if a >= b { a } else { b }
+}
+
+/// Returns the square root of a number
+#[rs]
+pub fn sqrt(d double) double {
+    return d.sqrt()
+}
