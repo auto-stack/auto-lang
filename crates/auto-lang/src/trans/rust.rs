@@ -2484,6 +2484,9 @@ impl RustTrans {
                         write!(out, "(")?;
                         if let Some(Arg::Pos(expr)) = call.args.args.first() {
                             self.expr(expr, out)?;
+                            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                write!(out, ".to_string()")?;
+                            }
                         }
                         write!(out, ")")?;
                         return Ok(());
@@ -2544,6 +2547,9 @@ impl RustTrans {
                             write!(out, "(")?;
                             if let Some(Arg::Pos(expr)) = call.args.args.first() {
                                 self.expr(expr, out)?;
+                                if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                    write!(out, ".to_string()")?;
+                                }
                             }
                             write!(out, ")")?;
                             return Ok(());
@@ -3125,8 +3131,8 @@ impl RustTrans {
 
         // When assigning a string literal to a String/Str type, add .to_string()
         // because Rust string literals are &str, but String type needs conversion
-        if matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
-            if let Expr::Str(_) = &store.expr {
+        if matches!(store.ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
+            if matches!(&store.expr, Expr::Str(_) | Expr::CStr(_)) {
                 write!(out, ".to_string()")?;
             }
         }
@@ -3729,13 +3735,19 @@ impl RustTrans {
                         if i > 0 { sink.body.write(b" | ")?; }
                         // In match patterns, Some(ident) should bind by ref
                         if let Expr::Some(inner) = pat {
-                            sink.body.write(b"Some(ref ")?;
+                            let is_wildcard = matches!(inner.as_ref(), Expr::Ident(name) if name.as_str() == "_");
+                            sink.body.write(b"Some(")?;
+                            if !is_wildcard { sink.body.write(b"ref ")?; }
                             self.expr(inner, &mut sink.body)?;
                             sink.body.write(b")")?;
                         } else if let Expr::Call(call) = pat {
                             if let Expr::Ident(name) = call.name.as_ref() {
                                 if name == "Some" && !call.args.args.is_empty() {
-                                    sink.body.write(b"Some(ref ")?;
+                                    let is_wildcard = call.args.args.first().map_or(false, |a| {
+                                        if let Arg::Pos(Expr::Ident(n)) = a { n.as_str() == "_" } else { false }
+                                    });
+                                    sink.body.write(b"Some(")?;
+                                    if !is_wildcard { sink.body.write(b"ref ")?; }
                                     if let Some(Arg::Pos(inner)) = call.args.args.first() {
                                         self.expr(inner, &mut sink.body)?;
                                     }
@@ -3750,7 +3762,9 @@ impl RustTrans {
                             // Some(text) / None parsed as OptionPattern in is branches
                             match oc.variant {
                                 crate::ast::cover::OptionVariant::Some => {
-                                    sink.body.write(b"Some(ref ")?;
+                                    let is_wildcard = oc.binding.as_ref().map_or(true, |b| b.as_str() == "_");
+                                    sink.body.write(b"Some(")?;
+                                    if !is_wildcard { sink.body.write(b"ref ")?; }
                                     if let Some(binding) = &oc.binding {
                                         sink.body.write(binding.as_bytes())?;
                                     }
