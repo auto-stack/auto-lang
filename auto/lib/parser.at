@@ -1275,8 +1275,16 @@ fn parse_is_stmt(p Parser) ASTNode {
                     p.pos = p.pos + 1  // skip '->'
                 }
                 parser_skip_nl_semi(p)
-                var body = parse_expr(p)
-                else_branch.push(body)
+                if parser_kind(p) == TokenKind.LBrace {
+                    var body_list = parse_body(p)
+                    var body_str = body_to_str(body_list)
+                    var body_node = block_node(body_str)
+                    body_node.children = body_list
+                    else_branch.push(body_node)
+                } else {
+                    var body = parse_expr(p)
+                    else_branch.push(body)
+                }
             } else {
                 // Pattern branch: pattern -> body
                 var pattern = parse_expr(p)
@@ -1285,8 +1293,16 @@ fn parse_is_stmt(p Parser) ASTNode {
                     p.pos = p.pos + 1  // skip '->'
                 }
                 parser_skip_nl_semi(p)
-                var body = parse_expr(p)
-                branches.push(bin_node("->", pattern, body))
+                if parser_kind(p) == TokenKind.LBrace {
+                    var body_list2 = parse_body(p)
+                    var body_str2 = body_to_str(body_list2)
+                    var body_node2 = block_node(body_str2)
+                    body_node2.children = body_list2
+                    branches.push(bin_node("->", pattern, body_node2))
+                } else {
+                    var body2 = parse_expr(p)
+                    branches.push(bin_node("->", pattern, body2))
+                }
             }
             parser_skip_nl_semi(p)
         }

@@ -1,6 +1,6 @@
 fn main() {
     var result = run_a2r("type Point {\nx int\ny int\n}\nfn main() {\nvar p = Point(1, 2)\n}")
-    var expected = "#[derive(Clone, Debug, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\nfn main() {\n    let mut p = Point(1, 2);\n}\n"
+    var expected = "#[derive(Clone, Debug, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\nfn main() {\n    let mut p = Point { x: 1, y: 2 };\n}\n"
     if result == expected {
         print("ok")
     } else {

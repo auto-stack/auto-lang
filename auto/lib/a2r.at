@@ -15,7 +15,9 @@ fn a2r_type(t str) str {
     if t == "f64" { return "f64" }
     if t == "f32" { return "f32" }
     if t == "byte" { return "u8" }
-    return "i32"
+    if t == "List" { return "Vec<i32>" }
+    if t == "Map" { return "std::collections::HashMap<String, i32>" }
+    return t
 }
 
 fn a2r_type_from_tag(ttag int) str {
@@ -162,6 +164,11 @@ fn a2r_expr(node ASTNode, tenv TypeEnv) str {
                 j = j + 1
             }
             return "println!(\"" + fmt + "\"" + ", " + args + ")"
+        }
+
+        // Struct constructor: Point(1, 2) → Point { x: 1, y: 2 }
+        if tenv.struct_fields.contains(callee) {
+            return a2r_struct_init(callee, node.params, tenv)
         }
 
         // Regular function call
@@ -510,6 +517,9 @@ fn a2r_enum_decl(node ASTNode, indent int) str {
 
 fn a2r_use(node ASTNode) str {
     var path = node.name
+    // FFI imports: use.c, use.py → comment placeholder
+    if path == "c" { return "// extern \"C\" { /* use.c */ }\n" }
+    if path == "py" { return "// use python: ...\n" }
     // Handle "rust std.collections.HashMap" → "std::collections::HashMap"
     var rust_path = ""
     if path.len() >= 5 {
@@ -548,14 +558,26 @@ fn a2r_is(node ASTNode, tenv TypeEnv, indent int) str {
     for i < n {
         var branch = node.children.get(i)
         var pattern = a2r_expr(branch.left.get(0), tenv)
-        var body = a2r_expr(branch.right.get(0), tenv)
-        out = out + a2r_indent_str(indent + 1) + pattern + " => " + body + ",\n"
+        var body_node = branch.right.get(0)
+        if body_node.kind == NodeKind.BlockStmt {
+            var body_str = a2r_body(body_node.children, tenv, indent + 2)
+            out = out + a2r_indent_str(indent + 1) + pattern + " => {\n" + body_str + a2r_indent_str(indent + 1) + "},\n"
+        } else {
+            var body = a2r_expr(body_node, tenv)
+            out = out + a2r_indent_str(indent + 1) + pattern + " => " + body + ",\n"
+        }
         i = i + 1
     }
 
     if node.else_body.len() > 0 {
-        var else_body = a2r_expr(node.else_body.get(0), tenv)
-        out = out + a2r_indent_str(indent + 1) + "_ => " + else_body + ",\n"
+        var else_node = node.else_body.get(0)
+        if else_node.kind == NodeKind.BlockStmt {
+            var else_str = a2r_body(else_node.children, tenv, indent + 2)
+            out = out + a2r_indent_str(indent + 1) + "_ => {\n" + else_str + a2r_indent_str(indent + 1) + "},\n"
+        } else {
+            var else_body = a2r_expr(else_node, tenv)
+            out = out + a2r_indent_str(indent + 1) + "_ => " + else_body + ",\n"
+        }
     }
 
     out = out + prefix + "}\n"
@@ -660,4 +682,20 @@ fn a2r_fstr(node ASTNode, tenv TypeEnv) str {
         return "format!(\"" + fmt + "\")"
     }
     return "format!(\"" + fmt + "\", " + args + ")"
+}
+
+// ---- E5: Struct Constructor ----
+
+fn a2r_struct_init(type_name str, args List, tenv TypeEnv) str {
+    var fields_str = tenv.struct_fields.get(type_name)
+    var out = type_name + " { "
+    var i = 0
+    var n = args.len()
+    for i < n {
+        if i > 0 { out = out + ", " }
+        var field_name = str_get_part(fields_str, i)
+        out = out + field_name + ": " + a2r_expr(args.get(i), tenv)
+        i = i + 1
+    }
+    return out + " }"
 }

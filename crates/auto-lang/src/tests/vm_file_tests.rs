@@ -781,3 +781,7 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_097_a2r_array() { test_aavm("99_bootstrap/097_a2r_array").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_098_a2r_error_prop() { test_aavm("99_bootstrap/098_a2r_error_prop").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_099_a2r_self_field() { test_aavm("99_bootstrap/099_a2r_self_field").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_100_a2r_use_ffi() { test_aavm("99_bootstrap/100_a2r_use_ffi").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_101_a2r_is_multi() { test_aavm("99_bootstrap/101_a2r_is_multi").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_102_a2r_struct_ctor() { test_aavm("99_bootstrap/102_a2r_struct_ctor").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_103_a2r_generic_type() { test_aavm("99_bootstrap/103_a2r_generic_type").unwrap(); }

@@ -1,6 +1,6 @@
 # Plan 237: AAVM Architecture Gap Closure — 分阶段拉近与 Rust AutoVM 的距离
 
-## 状态: Phase A-E4 已完成, Phase E5-E6 待推进 (2026-05-09)
+## 状态: Phase A-E6 已完成, Phase D (泛型) 基础映射完成 (2026-05-09)
 
 ### 已完成
 - Phase A: 值多态编码 (eval_expr 支持 int/str/bool)
@@ -8,9 +8,14 @@
 - Phase C: 字节码编译器 + 解释器 (codegen.at + vm.at, 测试 060-068)
 - Phase D: BVM String/Map/List 操作 (7 新 opcode 72-78, 测试 069-074)
   - 额外修复: 051a/052 eval 字符串函数参数测试 (Map.get 返回类型推断 + .len() fallback)
+- Phase E1-E4: a2r 转译器 (测试 081-099, 88 个 bootstrap 测试全部通过)
+- Phase E5: struct 构造函数 (测试 102, `Point(1,2)` → `Point { x: 1, y: 2 }`)
+- Phase E6: 多语句 match arm (测试 101), use.c/use.py FFI (测试 100), 泛型类型映射 (测试 103)
+- Phase D 基础: a2r_type 泛型类型映射 `List` → `Vec<i32>`, `Map` → `HashMap<String, i32>`
 
 ### 未完成
-- Phase E: a2r 转译器
+- Phase D 完整泛型单态化: generics.at 未实现（parser 不解析 `<T>` 泛型参数，无法做运行时单态化）
+- Phase E5: Option/Result 匹配, 泛型 struct/enum 完整支持
 
 ## 目标
 
@@ -20,15 +25,15 @@
 
 | 维度 | Rust 版 | AAVM 现状 | 差距 |
 |------|---------|----------|------|
-| 代码量 | 33,834 行 | 2,086 行 | 16x |
-| 类型系统 | Type enum (30+ 变体) | 无独立类型表示 | 完全缺失 |
-| 表达式 | Expr enum (40+ 变体) | 37 NodeKind 枚举 | 部分对齐 |
-| Codegen | 8,716 行，100+ OpCode | 无（tree-walking） | 完全缺失 |
+| 代码量 | 33,834 行 | 5,547 行 | 6x |
+| 类型系统 | Type enum (30+ 变体) | TypeInfo (5 种: int/str/bool/void/unknown) | 基础可用 |
+| 表达式 | Expr enum (40+ 变体) | 39 NodeKind 枚举 | 大部分对齐 |
+| Codegen | 8,716 行，100+ OpCode | codegen.at 703 行 + vm.at 607 行, ~30 OpCode | 最小子集 |
 | VM | 4,929 行，task 系统 | 依赖 Rust VM | N/A |
 | 泛型/单态化 | GenericRegistry 1,680 行 | 无 | 完全缺失 |
-| 类型推断 | infer/ 子系统 8 个文件 | 无 | 完全缺失 |
-| a2r 转译器 | 5,272 行，79 个测试 | 无 | 完全缺失 |
-| 值表示 | NaN-boxing u64 (Plan 221) | eval_expr -> int | 需沿用 VM 编码 |
+| 类型推断 | infer/ 子系统 8 个文件 | typeinfer.at 207 行 | 简化版 |
+| a2r 转译器 | 5,272 行，79 个测试 | a2r.at ~700 行，22 个 bootstrap 测试 | 核心特性覆盖 |
+| 值表示 | NaN-boxing u64 (Plan 221) | eval_expr -> int (沿用 VM 编码) | 已解决 |
 
 ### 核心瓶颈
 
@@ -315,21 +320,23 @@ type TypeInfo {
 
 **E5 — 类型系统增强**
 
-| 功能 | Auto | Rust | 难度 |
-|------|------|------|------|
-| 类型别名 | `alias List<T> = ...` | `type List<T> = ...` | 中 |
-| Option/Result 匹配 | `is opt { Some(x) -> ... }` | `match opt { Some(x) => ... }` | 中 |
-| 泛型支持 | `HashMap<K,V>` | `HashMap<K,V>` | 高 |
+| 功能 | Auto | Rust | 难度 | 状态 |
+|------|------|------|------|------|
+| struct 构造函数 | `Point(1, 2)` | `Point { x: 1, y: 2 }` | 低 | ✅ 测试 102 |
+| 类型别名 | `alias List<T> = ...` | `type List<T> = ...` | 中 | ❌ |
+| Option/Result 匹配 | `is opt { Some(x) -> ... }` | `match opt { Some(x) => ... }` | 中 | ❌ |
+| 泛型支持 | `HashMap<K,V>` | `HashMap<K,V>` | 高 | ❌ |
 
 **E6 — 高级特性**
 
-| 功能 | 难度 |
-|------|------|
-| 借用语义 (.view/.mut/.take) | 中 |
-| 多语句 match arm | 低 |
-| F-string 边界情况（转义等） | 低 |
-| Grid/矩阵表达式 | 中 |
-| use.c / use.py 等变体 | 低 |
+| 功能 | 难度 | 状态 |
+|------|------|------|
+| 多语句 match arm | 低 | ✅ 测试 101 |
+| use.c / use.py 等变体 | 低 | ✅ 测试 100 |
+| F-string 边界情况（转义等） | 低 | ✅ 已有（无需修改） |
+| 泛型类型映射 | 低 | ✅ 测试 103 |
+| 借用语义 (.view/.mut/.take) | 中 | ❌ |
+| Grid/矩阵表达式 | 中 | ❌ |
 
 ---
 
@@ -355,30 +362,39 @@ Phase A (值类型)
 
 ```
 auto/lib/
-├── ast.at          # Phase 0 已完成 (274 行)
-├── parser.at       # Phase 0+1 已完成 (1308 行)
-├── eval.at         # Phase A 重构 (504 → ~650 行)
-├── typeinfer.at    # Phase B 新建 (~200 行)
-├── opcode.at       # Phase C1 新建 (~50 行)
-├── codegen.at      # Phase C 新建 (~800 行)
-├── module.at       # Phase C1 新建 (~60 行)
-├── generics.at     # Phase D 新建 (~300 行)
-└── a2r.at          # Phase E 新建 (~1000 行)
+├── ast.at          # ✅ 344 行 — 39 NodeKind + 构造函数
+├── parser.at       # ✅ 1,328 行 — P0+P1, 支持 struct/enum/match/use/impl/trait/fstr/array/object/closure
+├── lexer.at        # ✅ 597 行 — P0 Lexer
+├── token.at        # ✅ 305 行 — 129 种 TokenKind
+├── pos.at          # ✅ 7 行 — Pos 位置类型
+├── error.at        # ✅ 7 行 — Error 类型
+├── eval.at         # ✅ 702 行 — tree-walking evaluator
+├── typeinfer.at    # ✅ 207 行 — 简化版类型推断
+├── codegen.at      # ✅ 703 行 — 字节码生成器
+├── vm.at           # ✅ 607 行 — 字节码解释器
+├── opcode.at       # ✅ 77 行 — OpCode 常量
+├── a2r.at          # ✅ ~700 行 — Auto-to-Rust 转译器 (E1-E6)
+└── generics.at     # ❌ 未实现 — 泛型单态化
 ```
 
 ## 测试规划
 
 每个 Phase 有独立的测试目录，沿用 `test/vm/99_bootstrap/` 编号：
 
-| Phase | 测试编号 | 测试内容 |
-|-------|---------|---------|
-| A | 048-052 | 值类型：str 返回、bool 返回、List 返回、nil 返回、混合运算 |
-| B | 053-057 | 类型推断：字面量推断、变量推断、函数签名、返回类型、传播 |
-| C1 | 058-062 | 最小 codegen：常量加载、算术运算、变量存取、print、函数调用 |
-| C2 | 063-067 | 控制流 codegen：if/else、for 循环、嵌套函数、递归、break |
-| C3 | 068-072 | 复合类型 codegen：字符串拼接、List 操作、Map 操作、方法调用 |
-| D | 073-077 | 泛型：List<int>、List<str>、Map<str,int>、嵌套泛型、方法特化 |
-| E | 078-082 | a2r 转译器：基本表达式、函数、类型定义、控制流、标准库映射 |
+| Phase | 测试编号 | 测试内容 | 状态 |
+|-------|---------|---------|------|
+| A | 048-052 | 值类型：str 返回、bool 返回、List 返回、nil 返回、混合运算 | ✅ |
+| B | 053-057 | 类型推断：字面量推断、变量推断、函数签名、返回类型、传播 | ✅ |
+| C1 | 058-062 | 最小 codegen：常量加载、算术运算、变量存取、print、函数调用 | ✅ |
+| C2 | 063-067 | 控制流 codegen：if/else、for 循环、嵌套函数、递归、break | ✅ |
+| C3 | 068-074 | 复合类型 codegen + BVM str/map/list ops | ✅ |
+| D | 075-080 | 补充测试 + list_str_loop | ✅ |
+| E1 | 081-086 | a2r 基础：hello、fn、var、if、for、str | ✅ |
+| E2 | 087-093 | a2r 结构化：use、type、enum、is、ext、fstr、spec | ✅ |
+| E3+E4 | 094-099 | a2r 表达式补全：closure、alias、object、array、error_prop、self_field | ✅ |
+| E5 | 102 | struct 构造函数：`Point(1,2)` → `Point { x: 1, y: 2 }` | ✅ |
+| E6 | 100-101, 103 | use.c/use.py FFI、多语句 match arm、泛型类型映射 | ✅ |
+| D (泛型) | TBD | 泛型单态化：List<T>、Map<K,V> 实例化 | ❌ |
 
 ## 风险与缓解
 
@@ -392,10 +408,10 @@ auto/lib/
 
 ## 里程碑
 
-| 里程碑 | 完成标志 | 预计 Phase |
-|--------|---------|-----------|
-| M1: 值多态 | eval_expr 正确返回 int/str/bool/list | Phase A |
-| M2: 类型感知 | 编译器知道每个表达式的类型 | Phase B |
-| M3: 字节码执行 | AAVM 能编译+运行简单程序 | Phase C |
-| M4: 泛型支持 | List<T> 正确实例化和操作 | Phase D |
-| M5: 自举能力 | AAVM 能转译自身为 Rust 代码 | Phase E |
+| 里程碑 | 完成标志 | 状态 |
+|--------|---------|------|
+| M1: 值多态 | eval_expr 正确返回 int/str/bool/list | ✅ Phase A |
+| M2: 类型感知 | 编译器知道每个表达式的类型 | ✅ Phase B |
+| M3: 字节码执行 | AAVM 能编译+运行简单程序 | ✅ Phase C |
+| M4: 泛型支持 | List<T> 正确实例化和操作 | ❌ Phase D |
+| M5: 自举能力 | AAVM 能转译自身为 Rust 代码 | 🔄 Phase E (E1-E6 完成, 92 测试通过) |
