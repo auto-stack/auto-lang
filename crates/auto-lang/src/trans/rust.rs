@@ -92,7 +92,7 @@ pub struct RustTrans {
 
     // Cache for enum tuple variants: (EnumName, VariantName) -> arity
     // Used to emit (_) for bare tuple variant checks in match arms
-    enum_tuple_variants: HashSet<(AutoStr, AutoStr)>,
+    enum_tuple_variants: HashMap<(AutoStr, AutoStr), usize>,
 
     // Plan 159 Phase 6B-2.2: Cache for spec declarations (for impl Trait for Type)
     spec_decls: HashMap<AutoStr, Vec<SpecMethod>>,
@@ -131,7 +131,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
             enum_struct_variants: HashMap::new(),
-            enum_tuple_variants: HashSet::new(),
+            enum_tuple_variants: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
@@ -155,7 +155,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
             enum_struct_variants: HashMap::new(),
-            enum_tuple_variants: HashSet::new(),
+            enum_tuple_variants: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
@@ -987,14 +987,18 @@ impl RustTrans {
                     crate::ast::Cover::Tag(tag_cover) => {
                         let key = (tag_cover.kind.clone(), tag_cover.tag.clone());
                         let is_struct = self.enum_struct_variants.contains_key(&key);
-                        let is_tuple = self.enum_tuple_variants.contains(&key);
+                        let tuple_arity = self.enum_tuple_variants.get(&key).copied();
 
                         // Bare variant check (no bindings): Enum::Variant
                         if tag_cover.bindings.iter().all(|b| b.as_str() == "_") {
-                            if is_tuple {
-                                // Tuple variant needs (_): Enum::Variant(_)
-                                write!(out, "{}::{}(_)", tag_cover.kind, tag_cover.tag)
-                                    .map_err(Into::into)
+                            if let Some(arity) = tuple_arity {
+                                // Tuple variant needs (_, _, ...): Enum::Variant(_, _, ...)
+                                write!(out, "{}::{}(", tag_cover.kind, tag_cover.tag)?;
+                                for j in 0..arity {
+                                    if j > 0 { write!(out, ", ")?; }
+                                    write!(out, "_")?;
+                                }
+                                write!(out, ")").map_err(Into::into)
                             } else if is_struct {
                                 // Struct variant needs { .. }: Enum::Variant { .. }
                                 write!(out, "{}::{} {{ .. }}", tag_cover.kind, tag_cover.tag)
@@ -4868,6 +4872,7 @@ impl RustTrans {
                         // Register tuple variant for bare-match detection
                         self.enum_tuple_variants.insert(
                             (enum_decl.name.clone(), item.name.clone()),
+                            item.payload_types.len(),
                         );
                         // Multi-arg tuple variant: ToolUse str str str → ToolUse(String, String, String)
                         write!(sink.body, "{}(", item.name)?;
@@ -4882,6 +4887,7 @@ impl RustTrans {
                         // Register single-payload tuple variant
                         self.enum_tuple_variants.insert(
                             (enum_decl.name.clone(), item.name.clone()),
+                            1,
                         );
                         // Single-payload tuple variant: Name(Type)
                         writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload))?;
