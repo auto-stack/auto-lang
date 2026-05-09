@@ -25,6 +25,121 @@ use thiserror::Error;
 use super::registry::CrateRegistry;
 
 // =============================================================================
+// Plan 212 Phase 2.1: FFI Shim Type Definitions
+// =============================================================================
+
+/// Lightweight FFI type descriptor for wrapper crate generation.
+/// Defined in auto-cache to avoid circular dependency on auto-lang's RustType.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ShimType {
+    Void,
+    I32,
+    I64,
+    F64,
+    Bool,
+    /// Null-terminated C string (*const c_char)
+    CString,
+}
+
+impl ShimType {
+    /// C type name for wrapper generation
+    pub fn c_type_name(&self) -> &'static str {
+        match self {
+            ShimType::Void => "void",
+            ShimType::I32 => "i32",
+            ShimType::I64 => "i64",
+            ShimType::F64 => "f64",
+            ShimType::Bool => "bool",
+            ShimType::CString => "*const std::os::raw::c_char",
+        }
+    }
+
+    /// Rust type for the wrapper function body
+    pub fn rust_type_name(&self) -> &'static str {
+        match self {
+            ShimType::Void => "()",
+            ShimType::I32 => "i32",
+            ShimType::I64 => "i64",
+            ShimType::F64 => "f64",
+            ShimType::Bool => "bool",
+            ShimType::CString => "String",
+        }
+    }
+}
+
+/// Descriptor for a single FFI shim function in a wrapper crate.
+#[derive(Debug, Clone)]
+pub struct FunctionShim {
+    pub name: String,
+    pub param_types: Vec<ShimType>,
+    pub return_type: ShimType,
+    /// Override the entire function body (for complex shims)
+    pub body_override: Option<String>,
+}
+
+impl FunctionShim {
+    pub fn string_to_string(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            param_types: vec![ShimType::CString],
+            return_type: ShimType::CString,
+            body_override: None,
+        }
+    }
+
+    /// Convert from auto-lang's RustSignature descriptor.
+    /// `sig_str` format: "params:ret" where params is comma-separated type chars:
+    ///   v=void, i=i32, l=i64, f=f32, d=f64, b=bool, s=string
+    ///   ret: same type chars
+    /// Example: "s:s" = String→String, ":l" = ()→i64, "ll:l" = (i64,i64)→i64
+    pub fn from_sig_str(name: &str, sig_str: &str) -> Self {
+        let (params_str, ret_str) = sig_str.split_once(':').unwrap_or(("", "s"));
+        let param_types: Vec<ShimType> = if params_str.is_empty() {
+            vec![]
+        } else {
+            params_str.chars().map(Self::char_to_type).collect()
+        };
+        let return_type = Self::char_to_type(ret_str.chars().next().unwrap_or('s'));
+        Self {
+            name: name.to_string(),
+            param_types,
+            return_type,
+            body_override: None,
+        }
+    }
+
+    fn char_to_type(c: char) -> ShimType {
+        match c {
+            'v' => ShimType::Void,
+            'i' => ShimType::I32,
+            'l' => ShimType::I64,
+            'f' => ShimType::F64,
+            'b' => ShimType::Bool,
+            's' => ShimType::CString,
+            _ => ShimType::CString,
+        }
+    }
+
+    fn type_to_char(t: &ShimType) -> char {
+        match t {
+            ShimType::Void => 'v',
+            ShimType::I32 => 'i',
+            ShimType::I64 => 'l',
+            ShimType::F64 => 'f',
+            ShimType::Bool => 'b',
+            ShimType::CString => 's',
+        }
+    }
+
+    /// Encode as sig_str for cache key
+    pub fn sig_str(&self) -> String {
+        let params: String = self.param_types.iter().map(|t| Self::type_to_char(t)).collect();
+        let ret = Self::type_to_char(&self.return_type);
+        format!("{}:{}", params, ret)
+    }
+}
+
+// =============================================================================
 // Crate Metadata Types
 // =============================================================================
 
@@ -376,36 +491,28 @@ impl Sandbox {
         PathBuf::from("cargo")
     }
 
-    /// Plan 212b Task 1: Compile a dependency crate as a cdylib wrapper
+    /// Plan 212 Phase 2.1: Compile a dependency crate as a cdylib wrapper
     ///
-    /// Generates a small wrapper crate with `#[no_mangle]` shims that expose
-    /// the target crate's functions with C ABI (`string → string` pattern).
-    ///
-    /// The wrapper function pattern is:
-    /// ```c
-    /// auto_{func}(ptr: *const c_char) -> *const c_char
-    /// ```
-    ///
-    /// Steps:
-    /// 1. Check cache — if compiled .dll exists, return immediately
-    /// 2. Generate wrapper crate in `builds/{crate_name}/`
-    /// 3. Run `cargo build --release`
-    /// 4. Copy compiled library to `crates/{lib_name}_wrapper.dll`
+    /// Generates a wrapper crate with `#[no_mangle]` shims that expose
+    /// the target crate's functions with C ABI. Supports multiple signature
+    /// types beyond String→String (primitive returns like i64, f64, bool).
     ///
     /// # Arguments
     /// * `crate_name` - Name of the crate to wrap (e.g., "serde_json")
-    /// * `functions` - List of function names to expose as shims
+    /// * `shims` - List of FunctionShim descriptors with name, param types, return type
     ///
     /// # Returns
     /// Path to the compiled wrapper library
     pub fn compile_dep(
         &self,
         crate_name: &str,
-        functions: &[String],
+        shims: &[FunctionShim],
     ) -> Result<PathBuf> {
-        // 1. Check cache
+        // 1. Check cache — include sig hash to invalidate when signatures change
         let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
-        let output_path = self.crates_path.join(self.library_name(&wrapper_name, "1"));
+        let sig_hash: String = shims.iter().map(|s| s.sig_str()).collect::<Vec<_>>().join(",");
+        let cache_version = format!("v2_{}", sig_hash.len());
+        let output_path = self.crates_path.join(self.library_name(&wrapper_name, &cache_version));
 
         if output_path.exists() {
             log::info!("Using cached wrapper for {}: {}", crate_name, output_path.display());
@@ -436,14 +543,24 @@ crate-type = ["cdylib"]
 
         // Generate lib.rs with #[no_mangle] shims
         let mut lib_rs = String::new();
-        lib_rs.push_str("use std::ffi::{CStr, CString};\n");
-        lib_rs.push_str("use std::os::raw::c_char;\n\n");
+        let needs_cstring = shims.iter().any(|s| {
+            s.param_types.contains(&ShimType::CString) || s.return_type == ShimType::CString
+        });
+        if needs_cstring {
+            lib_rs.push_str("use std::ffi::{CStr, CString};\n");
+            lib_rs.push_str("use std::os::raw::c_char;\n\n");
+        }
 
-        for func in functions {
-            // Generate shim with proper type handling
-            // from_str is generic (from_str<T>) and needs explicit type annotation
-            if func == "from_str" {
-                // JSON parse: string -> string (parses JSON, returns compact form)
+        for shim in shims {
+            // Use body override if provided
+            if let Some(ref body) = shim.body_override {
+                lib_rs.push_str(body);
+                lib_rs.push_str("\n\n");
+                continue;
+            }
+
+            // Special-case serde_json from_str/to_string (backward compat)
+            if crate_name == "serde_json" && shim.name == "from_str" {
                 lib_rs.push_str(&format!(
                     r#"#[no_mangle]
 pub extern "C" fn auto_from_str(input: *const c_char) -> *const c_char {{
@@ -461,8 +578,9 @@ pub extern "C" fn auto_from_str(input: *const c_char) -> *const c_char {{
 
 "#
                 ));
-            } else if func == "to_string" {
-                // JSON serialize: string -> string (parses then re-serializes)
+                continue;
+            }
+            if crate_name == "serde_json" && shim.name == "to_string" {
                 lib_rs.push_str(&format!(
                     r#"#[no_mangle]
 pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
@@ -483,26 +601,12 @@ pub extern "C" fn auto_to_string(input: *const c_char) -> *const c_char {{
 
 "#
                 ));
-            } else {
-                // Generic string -> string shim
-                lib_rs.push_str(&format!(
-                    r#"#[no_mangle]
-pub extern "C" fn auto_{func}(input: *const c_char) -> *const c_char {{
-    let input_str = unsafe {{
-        if input.is_null() {{
-            ""
-        }} else {{
-            CStr::from_ptr(input).to_str().unwrap_or("")
-        }}
-    }};
-    let result = {crate_name}::{func}(input_str);
-    let c_result = CString::new(result.to_string()).unwrap();
-    c_result.into_raw() as *const c_char
-}}
-
-"#
-                ));
+                continue;
             }
+
+            // Generate shim based on signature
+            lib_rs.push_str(&self.generate_shim(crate_name, shim));
+            lib_rs.push_str("\n");
         }
 
         std::fs::write(src_dir.join("lib.rs"), lib_rs)?;
@@ -542,6 +646,58 @@ pub extern "C" fn auto_{func}(input: *const c_char) -> *const c_char {{
         );
 
         Ok(output_path)
+    }
+
+    /// Generate a single wrapper shim function based on the FunctionShim descriptor.
+    fn generate_shim(&self, crate_name: &str, shim: &FunctionShim) -> String {
+        let func = &shim.name;
+        let ret_type = shim.return_type.c_type_name();
+
+        // Build parameter list
+        let params: Vec<String> = shim.param_types.iter().enumerate().map(|(i, t)| {
+            match t {
+                ShimType::CString => format!("input_{}: *const std::os::raw::c_char", i),
+                _ => format!("arg_{}: {}", i, t.c_type_name()),
+            }
+        }).collect();
+        let params_str = params.join(", ");
+
+        // Build call arguments
+        let call_args: Vec<String> = shim.param_types.iter().enumerate().map(|(i, t)| {
+            match t {
+                ShimType::CString => format!(
+                    "unsafe {{ if input_{i}.is_null() {{ \"\" }} else {{ CStr::from_ptr(input_{i}).to_str().unwrap_or(\"\") }} }}"
+                ),
+                _ => format!("arg_{}", i),
+            }
+        }).collect();
+        let call_args_str = call_args.join(", ");
+
+        // Build return handling
+        let (ret_annotation, body_end) = match shim.return_type {
+            ShimType::CString => (
+                " -> *const std::os::raw::c_char".to_string(),
+                format!(
+                    "let result = {crate_name}::{func}({call_args_str});\n    CString::new(result.to_string()).unwrap().into_raw() as *const std::os::raw::c_char"
+                ),
+            ),
+            ShimType::Void => (
+                String::new(),
+                format!("{crate_name}::{func}({call_args_str});"),
+            ),
+            _ => (
+                format!(" -> {ret_type}"),
+                format!("{crate_name}::{func}({call_args_str})"),
+            ),
+        };
+
+        format!(
+            r#"#[no_mangle]
+pub extern "C" fn auto_{func}({params_str}){ret_annotation} {{
+    {body_end}
+}}
+"#
+        )
     }
 
     /// Find the compiled cdylib in a target directory

@@ -671,31 +671,54 @@ impl CompileSession {
 
 
         // Plan 212b Task 2: Compile deps that have rust imports
-
+        // Phase 2.1: Convert function names to FunctionShim descriptors with signatures
         if let Some(ref sandbox) = self.sandbox {
+            use crate::ffi::known_signature;
+            use auto_cache::sandbox::{FunctionShim, ShimType};
 
             for (crate_name, functions) in &self.rust_imports {
-
                 if self.declared_crates.contains(crate_name) {
+                    let shims: Vec<FunctionShim> = functions.iter().map(|func| {
+                        match known_signature(crate_name, func) {
+                            Some(sig) => {
+                                let param_types: Vec<ShimType> = sig.params.iter().map(|t| match t {
+                                    crate::ffi::RustType::Void => ShimType::Void,
+                                    crate::ffi::RustType::Bool => ShimType::Bool,
+                                    crate::ffi::RustType::Int => ShimType::I32,
+                                    crate::ffi::RustType::Long => ShimType::I64,
+                                    crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
+                                    crate::ffi::RustType::String => ShimType::CString,
+                                    _ => ShimType::CString,
+                                }).collect();
+                                let return_type = match sig.returns {
+                                    crate::ffi::RustType::Void => ShimType::Void,
+                                    crate::ffi::RustType::Bool => ShimType::Bool,
+                                    crate::ffi::RustType::Int => ShimType::I32,
+                                    crate::ffi::RustType::Long => ShimType::I64,
+                                    crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
+                                    crate::ffi::RustType::String => ShimType::CString,
+                                    _ => ShimType::CString,
+                                };
+                                FunctionShim {
+                                    name: func.clone(),
+                                    param_types,
+                                    return_type,
+                                    body_override: None,
+                                }
+                            }
+                            None => FunctionShim::string_to_string(func),
+                        }
+                    }).collect();
 
-                    match sandbox.compile_dep(crate_name, functions) {
-
+                    match sandbox.compile_dep(crate_name, &shims) {
                         Ok(path) => {
-
                             log::info!("Compiled dep {} -> {}", crate_name, path.display());
-
                         }
-
                         Err(e) => {
-
                             log::warn!("Failed to compile dep {}: {}", crate_name, e);
-
                         }
-
                     }
-
                 }
-
             }
 
         }

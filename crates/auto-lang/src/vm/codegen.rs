@@ -3086,8 +3086,19 @@ impl Codegen {
                 local_name.to_string(),
                 (crate_name.clone(), full_path),
             );
-            // Rust FFI functions return String via the C ABI bridge
-            self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
+            // Phase 2.1: Infer return type from known signature
+            let ret_type = crate::ffi::known_signature(&crate_name, local_name)
+                .map(|sig| match sig.returns {
+                    crate::ffi::RustType::Void => Type::Void,
+                    crate::ffi::RustType::Bool => Type::Bool,
+                    crate::ffi::RustType::Int => Type::Int,
+                    crate::ffi::RustType::Long => Type::I64,
+                    crate::ffi::RustType::Float => Type::Float,
+                    crate::ffi::RustType::Double => Type::Double,
+                    _ => Type::StrFixed(0),
+                })
+                .unwrap_or(Type::StrFixed(0));
+            self.fn_return_types.insert(local_name.to_string(), ret_type);
         }
     }
 
@@ -5752,9 +5763,18 @@ impl Codegen {
                         if name == "List.map" || name == "List.filter" {
                             self.last_expr_type = ObjectType::Array;
                         }
-                        // Plan 212b: Rust FFI functions return String
+                        // Plan 212 Phase 2.1: Rust FFI return type from fn_return_types
                         if self.rust_native_map.contains_key(name) {
-                            self.last_expr_type = ObjectType::String;
+                            self.last_expr_type = match self.fn_return_types.get(name) {
+                                Some(Type::Void) => ObjectType::Void,
+                                Some(Type::Bool) => ObjectType::Bool,
+                                Some(Type::Int) => ObjectType::Int,
+                                Some(Type::I64) => ObjectType::Int,
+                                Some(Type::Float) => ObjectType::Float,
+                                Some(Type::Double) => ObjectType::Double,
+                                Some(Type::Uint | Type::U64) => ObjectType::Uint,
+                                _ => ObjectType::String,
+                            };
                         }
                         // Plan 214/222: Python FFI functions — type-aware return tracking
                         if self.py_native_map.contains_key(name) {

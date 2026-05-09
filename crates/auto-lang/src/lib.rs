@@ -345,36 +345,51 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
 
         // Try to load the compiled wrapper library
         if let Some(sandbox) = session.sandbox() {
-            let lib_path = sandbox.crate_library_path(&wrapper_name, "1");
-            if lib_path.exists() {
-                if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
-                    log::warn!("Failed to load Rust library {} from {}: {:?}", crate_name, lib_path.display(), e);
+            // Try v2 cache first (Phase 2.1 with signature-aware naming), then fallback to v1
+            let sig_hash_len = functions.len();
+            let cache_version = format!("v2_{}", sig_hash_len);
+            let lib_path = sandbox.crate_library_path(&wrapper_name, &cache_version);
+            let lib_path = if lib_path.exists() {
+                lib_path
+            } else {
+                // Fallback to v1 cache (Phase 1 String→String only)
+                let fallback = sandbox.crate_library_path(&wrapper_name, "1");
+                if fallback.exists() {
+                    fallback
+                } else {
+                    log::info!("Wrapper library not found for {} at {} or {}", crate_name, lib_path.display(), fallback.display());
                     continue;
                 }
+            };
 
-                // Register each function as a string→string shim
-                for func_name in functions {
-                    let signature = crate::ffi::RustSignature::new()
-                        .param(crate::ffi::RustType::String)
-                        .returns(crate::ffi::RustType::String);
+            if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
+                log::warn!("Failed to load Rust library {} from {}: {:?}", crate_name, lib_path.display(), e);
+                continue;
+            }
 
-                    match bridge.register_function(&crate_name, func_name, signature) {
-                        Ok(native_id) => {
-                            log::info!("Registered Rust FFI: {}::{} (native_id={})", crate_name, func_name, native_id);
+            // Register each function with its correct signature
+            for func_name in functions {
+                let signature = crate::ffi::known_signature(&crate_name, func_name)
+                    .unwrap_or_else(|| {
+                        crate::ffi::RustSignature::new()
+                            .param(crate::ffi::RustType::String)
+                            .returns(crate::ffi::RustType::String)
+                    });
 
-                            // Also register in BIGVM_NATIVES so codegen can find it
-                            let qualified = format!("rust.{}", func_name);
-                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
-                                registry.register_with_id(&qualified, native_id);
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
+                match bridge.register_function(&crate_name, func_name, signature.clone()) {
+                    Ok(native_id) => {
+                        log::info!("Registered Rust FFI: {}::{} (native_id={}, sig={:?})", crate_name, func_name, native_id, signature);
+
+                        // Also register in BIGVM_NATIVES so codegen can find it
+                        let qualified = format!("rust.{}", func_name);
+                        if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                            registry.register_with_id(&qualified, native_id);
                         }
                     }
+                    Err(e) => {
+                        log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
+                    }
                 }
-            } else {
-                log::info!("Wrapper library not found for {} at {}", crate_name, lib_path.display());
             }
         }
     }

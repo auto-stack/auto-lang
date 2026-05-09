@@ -802,6 +802,94 @@ impl RustFfiBridge {
                         return Ok(());
                     }
 
+                    // Phase 2.1: Primitive return types via cdylib
+
+                    // () -> i64 (e.g., rand::random)
+                    (&[], RustType::Long) => {
+                        let sym: libloading::Symbol<extern "C" fn() -> i64> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let val = sym();
+                        task.ram.push_i64(val);
+                        return Ok(());
+                    }
+
+                    // () -> f64 (e.g., math functions)
+                    (&[], RustType::Double) => {
+                        let sym: libloading::Symbol<extern "C" fn() -> f64> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let val = sym();
+                        task.ram.push_f64(val);
+                        return Ok(());
+                    }
+
+                    // () -> bool
+                    (&[], RustType::Bool) => {
+                        let sym: libloading::Symbol<extern "C" fn() -> bool> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let val = sym();
+                        task.ram.push_i32(if val { 1 } else { 0 });
+                        return Ok(());
+                    }
+
+                    // () -> i32
+                    (&[], RustType::Int) => {
+                        let sym: libloading::Symbol<extern "C" fn() -> i32> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let val = sym();
+                        task.ram.push_i32(val);
+                        return Ok(());
+                    }
+
+                    // (i64, i64) -> i64 (e.g., rng.gen_range)
+                    (&[RustType::Long, RustType::Long], RustType::Long) => {
+                        let sym: libloading::Symbol<extern "C" fn(i64, i64) -> i64> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let val = sym(args_i64[0], args_i64[1]);
+                        task.ram.push_i64(val);
+                        return Ok(());
+                    }
+
+                    // (String) -> i64 (e.g., parse functions)
+                    (&[RustType::String], RustType::Long) => {
+                        let input_ptr = args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char;
+                        let sym: libloading::Symbol<extern "C" fn(*const std::ffi::c_char) -> i64> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let val = sym(input_ptr);
+                        task.ram.push_i64(val);
+                        return Ok(());
+                    }
+
+                    // () -> String (no-param string return)
+                    (&[], RustType::String) => {
+                        let sym: libloading::Symbol<extern "C" fn() -> *const std::ffi::c_char> =
+                            _keep_lib_alive.get(exported_name.as_bytes())
+                            .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", exported_name, e)))?;
+                        let result_ptr = sym();
+                        let result_str = if result_ptr.is_null() {
+                            String::new()
+                        } else {
+                            std::ffi::CStr::from_ptr(result_ptr)
+                                .to_str()
+                                .unwrap_or("")
+                                .to_string()
+                        };
+                        if let Ok(mut strings) = _vm.strings.write() {
+                            let idx = strings.len() as u16;
+                            strings.push(result_str.into_bytes());
+                            task.ram.push_str_idx(idx as u32);
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                        return Ok(());
+                    }
+
                     // Default: unsupported
                     _ => {
                         log::warn!(
@@ -1315,6 +1403,27 @@ pub enum RustType {
     PointerMut,
     /// Callback/function pointer
     Callback,
+}
+
+/// Plan 212 Phase 2.1: Known function signatures for common crates.
+///
+/// Maps (crate_name, function_name) → RustSignature for functions that don't
+/// follow the default String→String pattern. Used by:
+/// - `compile_dep()` wrapper generation (via ShimType conversion)
+/// - `init_rust_ffi()` runtime registration
+/// - codegen return type inference
+///
+/// Returns None for unknown functions (caller should default to String→String).
+pub fn known_signature(crate_name: &str, func_name: &str) -> Option<RustSignature> {
+    match (crate_name, func_name) {
+        // rand — primitive returns
+        ("rand", "random") => Some(RustSignature::new().returns(RustType::Long)),
+
+        // chrono — string returns
+        ("chrono", "now") => Some(RustSignature::new().returns(RustType::String)),
+
+        _ => None,
+    }
 }
 
 #[cfg(test)]
