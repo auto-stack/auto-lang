@@ -2552,15 +2552,48 @@ impl RustTrans {
                 if is_type {
                     // Check for tag construction: Type.Variant(args)
                     if self.tag_types.contains(type_name) {
+                        let key = (type_name.clone(), method_name.clone());
+                        let struct_fields = self.enum_struct_variants.get(&key).cloned();
                         write!(out, "{}::{}", type_name, method_name)?;
-                        write!(out, "(")?;
-                        if let Some(Arg::Pos(expr)) = call.args.args.first() {
-                            self.expr(expr, out)?;
-                            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                write!(out, ".to_string()")?;
+                        if let Some(fields) = struct_fields {
+                            // Struct variant: Type::Variant { field1: val1, field2: val2 }
+                            write!(out, " {{ ")?;
+                            for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
+                                write!(out, "{}: ", field_name)?;
+                                match arg {
+                                    Arg::Pos(expr) => {
+                                        self.expr(expr, out)?;
+                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                    Arg::Pair(_, expr) => {
+                                        self.expr(expr, out)?;
+                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                    Arg::Name(name) => {
+                                        write!(out, "{}", name)?;
+                                    }
+                                }
+                                if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
                             }
+                            write!(out, " }}")?;
+                        } else {
+                            // Tuple variant: Type::Variant(val1, val2, ...)
+                            write!(out, "(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr(expr, out)?;
+                                    if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                        write!(out, ".to_string()")?;
+                                    }
+                                }
+                                if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                            }
+                            write!(out, ")")?;
                         }
-                        write!(out, ")")?;
                         return Ok(());
                     }
                     // Static method: Type::method(args)
@@ -2614,16 +2647,38 @@ impl RustTrans {
                 if let Expr::Ident(type_name) = lhs.as_ref() {
                     if let Expr::Ident(variant_name) = rhs.as_ref() {
                         if self.tag_types.contains(type_name) {
-                            // Tag construction: TypeName::VariantName(arg)
+                            let key = (type_name.clone(), variant_name.clone());
+                            let struct_fields = self.enum_struct_variants.get(&key).cloned();
+                            // Tag construction: TypeName::VariantName(args)
                             write!(out, "{}::{}", type_name, variant_name)?;
-                            write!(out, "(")?;
-                            if let Some(Arg::Pos(expr)) = call.args.args.first() {
-                                self.expr(expr, out)?;
-                                if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                    write!(out, ".to_string()")?;
+                            if let Some(fields) = struct_fields {
+                                // Struct variant: Type::Variant { field1: val1, field2: val2 }
+                                write!(out, " {{ ")?;
+                                for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
+                                    if let Arg::Pos(expr) = arg {
+                                        write!(out, "{}: ", field_name)?;
+                                        self.expr(expr, out)?;
+                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                    if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
                                 }
+                                write!(out, " }}")?;
+                            } else {
+                                // Tuple variant: Type::Variant(val1, val2, ...)
+                                write!(out, "(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                    if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                                }
+                                write!(out, ")")?;
                             }
-                            write!(out, ")")?;
                             return Ok(());
                         }
                     }
@@ -4671,6 +4726,9 @@ impl RustTrans {
 
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Cache enum name as tag type for construction detection
+        self.tag_types.insert(enum_decl.name.clone());
+
         // Emit doc comments
         if let Some(ref doc) = enum_decl.doc {
             for line in doc.split('\n') {
