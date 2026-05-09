@@ -261,6 +261,11 @@ pub struct Codegen {
     /// Maps local function name → PyType (from py_ffi_types, no pyo3 dependency)
     py_return_types: HashMap<String, crate::py_ffi_types::PyType>,
 
+    /// Plan 212 Phase 2.2: Maps variable name → opaque crate name
+    /// Tracks which variables hold opaque handles (e.g., "re" → "regex")
+    /// Set when `let var = OpaqueType.new(...)` is compiled
+    opaque_var_crates: HashMap<String, String>,
+
     /// Plan 199: Current source line for SOURCE_LINE opcode emission
     /// Avoids emitting redundant SOURCE_LINE for consecutive stmts on the same line
     current_source_line: u32,
@@ -329,6 +334,7 @@ impl Codegen {
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
@@ -443,6 +449,7 @@ impl Codegen {
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
@@ -1186,6 +1193,11 @@ impl Codegen {
                                 _ => store.ty.clone(),
                         };
                         self.var_types.insert(name_str.clone(), inferred_type);
+                        // Plan 212 Phase 2.2: Track opaque type variables
+                        // When `let re = Regex.new(...)` is compiled, record that `re` maps to "regex"
+                        if let Some(opaque_crate) = self.infer_opaque_crate_from_expr(&store.expr) {
+                            self.opaque_var_crates.insert(name_str.clone(), opaque_crate);
+                        }
                     }
                 }
 
@@ -3058,17 +3070,24 @@ impl Codegen {
         // Extract crate name (first segment of :: path)
         let crate_name = module_path.split("::").next().unwrap_or(&module_path).to_string();
 
-        if !use_stmt.items.is_empty() {
-            for item in &use_stmt.items {
-                let local_name = item.as_str();
-                let full_path = format!("{}::{}", module_path, local_name);
-                self.rust_native_map.insert(
-                    local_name.to_string(),
-                    (crate_name.clone(), full_path),
-                );
-                // Rust FFI functions return String via the C ABI bridge
-                self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
-            }
+        // Collect items to register: explicit items list, or last path segment if items is empty
+        let items_to_register: Vec<&str> = if !use_stmt.items.is_empty() {
+            use_stmt.items.iter().map(|s| s.as_str()).collect()
+        } else if use_stmt.paths.len() > 1 {
+            // use.rust regex::Regex → paths=["regex","Regex"] → register "Regex"
+            vec![use_stmt.paths.last().unwrap().as_str()]
+        } else {
+            vec![]
+        };
+
+        for local_name in &items_to_register {
+            let full_path = format!("{}::{}", module_path, local_name);
+            self.rust_native_map.insert(
+                local_name.to_string(),
+                (crate_name.clone(), full_path),
+            );
+            // Rust FFI functions return String via the C ABI bridge
+            self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
         }
     }
 
@@ -5288,48 +5307,98 @@ impl Codegen {
                 }
 
                 // Plan 212 Phase 2.2: Route Regex/Url/Semver opaque struct methods
-                if let Some(ref fname) = func_name {
-                    let method = fname.rsplit('.').next().unwrap_or("").to_string();
-                    let has_regex = fname.contains("Regex") || fname.contains("regex");
-                    let has_url = fname.contains("Url") || fname.contains("url");
-                    let has_version = fname.contains("Version") && !fname.contains("VersionReq");
-                    // Regex methods
-                    if has_regex {
-                        match method.as_str() {
-                            "new" => func_name = Some("auto.re_opaque.new".to_string()),
-                            "is_match" => func_name = Some("auto.re_opaque.is_match".to_string()),
-                            "find" => func_name = Some("auto.re_opaque.find".to_string()),
-                            "find_iter" => func_name = Some("auto.re_opaque.find_all".to_string()),
-                            "replace_all" => func_name = Some("auto.re_opaque.replace_all".to_string()),
-                            "captures" => func_name = Some("auto.re_opaque.captures".to_string()),
-                            _ => {}
+                // Handles both Type.Method (e.g., "regex::Regex.is_match") and
+                // var.method (e.g., "re.is_match") — the latter needs import-based lookup.
+                {
+                    // Extract owned values to avoid borrow conflicts with func_name assignment
+                    let fname_owned = func_name.clone();
+                    if let Some(ref fname) = fname_owned {
+                        let method = fname.rsplit('.').next().unwrap_or("").to_string();
+                        let has_regex = fname.contains("Regex") || fname.contains("regex");
+                        let has_url = fname.contains("Url") || fname.contains("url");
+                        let has_version = fname.contains("Version") && !fname.contains("VersionReq");
+                        // Regex methods
+                        if has_regex {
+                            match method.as_str() {
+                                "new" => func_name = Some("auto.re_opaque.new".to_string()),
+                                "is_match" => func_name = Some("auto.re_opaque.is_match".to_string()),
+                                "find" => func_name = Some("auto.re_opaque.find".to_string()),
+                                "find_iter" | "find_all" => func_name = Some("auto.re_opaque.find_all".to_string()),
+                                "replace_all" => func_name = Some("auto.re_opaque.replace_all".to_string()),
+                                "captures" => func_name = Some("auto.re_opaque.captures".to_string()),
+                                _ => {}
+                            }
                         }
-                    }
-                    // Url methods
-                    if has_url {
-                        match method.as_str() {
-                            "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
-                            "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
-                            "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
-                            "path" => func_name = Some("auto.url_opaque.path".to_string()),
-                            "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
-                            "port" => func_name = Some("auto.url_opaque.port".to_string()),
-                            "query_pairs" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
-                            "join" => func_name = Some("auto.url_opaque.join".to_string()),
-                            "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
-                            _ => {}
+                        // Url methods
+                        if has_url {
+                            match method.as_str() {
+                                "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
+                                "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
+                                "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
+                                "path" => func_name = Some("auto.url_opaque.path".to_string()),
+                                "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
+                                "port" => func_name = Some("auto.url_opaque.port".to_string()),
+                                "query_pairs" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                                "join" => func_name = Some("auto.url_opaque.join".to_string()),
+                                "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
+                                _ => {}
+                            }
                         }
-                    }
-                    // Version methods
-                    if has_version {
-                        match method.as_str() {
-                            "parse" => func_name = Some("auto.semver_opaque.parse".to_string()),
-                            "major" => func_name = Some("auto.semver_opaque.major".to_string()),
-                            "minor" => func_name = Some("auto.semver_opaque.minor".to_string()),
-                            "patch" => func_name = Some("auto.semver_opaque.patch".to_string()),
-                            "pre" => func_name = Some("auto.semver_opaque.pre".to_string()),
-                            "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
-                            _ => {}
+                        // Version methods
+                        if has_version {
+                            match method.as_str() {
+                                "parse" => func_name = Some("auto.semver_opaque.parse".to_string()),
+                                "major" => func_name = Some("auto.semver_opaque.major".to_string()),
+                                "minor" => func_name = Some("auto.semver_opaque.minor".to_string()),
+                                "patch" => func_name = Some("auto.semver_opaque.patch".to_string()),
+                                "pre" => func_name = Some("auto.semver_opaque.pre".to_string()),
+                                "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
+                                _ => {}
+                            }
+                        }
+                        // Fallback: var.method where var was assigned from an opaque constructor
+                        // Check rust_native_map and opaque_var_crates for the receiver type
+                        if !has_regex && !has_url && !has_version {
+                            let obj_part = fname.rsplit('.').nth(1).unwrap_or("");
+                            let crate_name = self.opaque_var_crates.get(obj_part)
+                                .map(|s| s.as_str())
+                                .or_else(|| {
+                                    self.rust_native_map.get(obj_part)
+                                        .map(|(cn, _)| cn.as_str())
+                                })
+                                .unwrap_or("");
+                            match crate_name {
+                                "regex" => match method.as_str() {
+                                    "new" => func_name = Some("auto.re_opaque.new".to_string()),
+                                    "is_match" => func_name = Some("auto.re_opaque.is_match".to_string()),
+                                    "find" => func_name = Some("auto.re_opaque.find".to_string()),
+                                    "replace_all" => func_name = Some("auto.re_opaque.replace_all".to_string()),
+                                    "captures" => func_name = Some("auto.re_opaque.captures".to_string()),
+                                    _ => {}
+                                },
+                                "url" => match method.as_str() {
+                                    "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
+                                    "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
+                                    "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
+                                    "path" => func_name = Some("auto.url_opaque.path".to_string()),
+                                    "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
+                                    "port" => func_name = Some("auto.url_opaque.port".to_string()),
+                                    "query_pairs" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                                    "join" => func_name = Some("auto.url_opaque.join".to_string()),
+                                    "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
+                                    _ => {}
+                                },
+                                "semver" => match method.as_str() {
+                                    "parse" => func_name = Some("auto.semver_opaque.parse".to_string()),
+                                    "major" => func_name = Some("auto.semver_opaque.major".to_string()),
+                                    "minor" => func_name = Some("auto.semver_opaque.minor".to_string()),
+                                    "patch" => func_name = Some("auto.semver_opaque.patch".to_string()),
+                                    "pre" => func_name = Some("auto.semver_opaque.pre".to_string()),
+                                    "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
                         }
                     }
                 }
@@ -6696,6 +6765,36 @@ impl Codegen {
             }
             _ => FStrPartType::Int,
         }
+    }
+
+    /// Plan 212 Phase 2.2: Check if expression is an opaque constructor call
+    /// Returns the crate name (e.g., "regex") if the expression constructs an opaque type.
+    fn infer_opaque_crate_from_expr(&self, expr: &Expr) -> Option<String> {
+        // Handle: Type.new(...).unwrap() or Type.parse(...)
+        if let Expr::Call(call) = expr {
+            if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if method.as_str() == "unwrap" || method.as_str() == "expect" {
+                    return self.infer_opaque_crate_from_expr(obj);
+                }
+                if let Expr::Ident(type_name) = obj.as_ref() {
+                    let m = method.as_str();
+                    if m == "new" || m == "parse" {
+                        if let Some((crate_name, _)) = self.rust_native_map.get(type_name.as_str()) {
+                            match crate_name.as_str() {
+                                "regex" | "url" | "semver" => return Some(crate_name.clone()),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Expr::Dot(inner, method) = expr {
+            if method.as_str() == "unwrap" || method.as_str() == "expect" {
+                return self.infer_opaque_crate_from_expr(inner);
+            }
+        }
+        None
     }
 
     /// Infer return type for native function calls not in fn_return_types.

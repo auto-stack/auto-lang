@@ -3809,13 +3809,82 @@ impl AutoVM {
                     // Construct function name: TypeName.method
                     let func_name = format!("{}.{}", type_name, method_name);
 
+                    // Plan 212 Phase 2.2: .unwrap() on opaque handles is identity
+                    // (constructors already handle errors by raising VMError)
+                    let is_identity_unwrap = method_name == "unwrap" || method_name == "expect";
+
+                    // Plan 212 Phase 2.2: Route opaque type methods to native shims
+                    // Regex::is_match -> auto.re_opaque.is_match, etc.
+                    let opaque_native_name = if type_name.contains("regex::Regex") || type_name.contains("Regex") {
+                        match method_name.as_str() {
+                            "is_match" => Some("auto.re_opaque.is_match"),
+                            "find" => Some("auto.re_opaque.find"),
+                            "find_iter" | "find_all" => Some("auto.re_opaque.find_all"),
+                            "replace_all" => Some("auto.re_opaque.replace_all"),
+                            "captures" => Some("auto.re_opaque.captures"),
+                            _ => None,
+                        }
+                    } else if type_name.contains("url::Url") || type_name.contains("Url") {
+                        match method_name.as_str() {
+                            "scheme" => Some("auto.url_opaque.scheme"),
+                            "host_str" => Some("auto.url_opaque.host_str"),
+                            "path" => Some("auto.url_opaque.path"),
+                            "fragment" => Some("auto.url_opaque.fragment"),
+                            "port" => Some("auto.url_opaque.port"),
+                            "query_pairs" => Some("auto.url_opaque.query_pairs"),
+                            "join" => Some("auto.url_opaque.join"),
+                            "origin" => Some("auto.url_opaque.origin"),
+                            _ => None,
+                        }
+                    } else if type_name.contains("semver::Version") || (type_name.contains("Version") && !type_name.contains("VersionReq")) {
+                        match method_name.as_str() {
+                            "major" => Some("auto.semver_opaque.major"),
+                            "minor" => Some("auto.semver_opaque.minor"),
+                            "patch" => Some("auto.semver_opaque.patch"),
+                            "pre" => Some("auto.semver_opaque.pre"),
+                            "to_string" => Some("auto.semver_opaque.to_string"),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Resolve opaque native shim
+                    let opaque_native_id = opaque_native_name
+                        .as_ref()
+                        .and_then(|name| self.native_interface.resolve(name));
+
                     // Look up function address in exports first
-                    if let Some(&addr) = self.flash.exports_by_name.get(&func_name) {
+                    if is_identity_unwrap {
+                        // Do nothing — receiver stays on stack, no args to pop
+                    } else if let Some(&addr) = self.flash.exports_by_name.get(&func_name) {
                         // Standard CALL sequence: push return address, old BP, set new BP, jump
                         task.ram.push_i32(task.ip as i32);
                         task.ram.push_i32(task.bp as i32);
                         task.bp = task.ram.sp - 1;
                         task.ip = addr as usize;
+                    } else if let Some(native_id) = opaque_native_id {
+                        // Plan 212 Phase 2.2: Opaque type method routed to native shim
+                        // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]
+                        // Native shim expects: [..., argN-1, ..., arg0, receiver] (pop args first, then receiver)
+                        // Re-push receiver on top so shim can pop in correct order
+                        let recv_val = task.ram.read_i32(receiver_pos);
+                        task.ram.push_i32(recv_val);
+                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(native_id));
+                        }
+                        // After shim returns, remove the duplicate args+receiver from CALL_SPEC layout
+                        // The shim pushed its return value on top. We need to remove the old args+receiver.
+                        // Stack now: [..., receiver, arg0..argN-1, receiver, return_value]
+                        // Need: [..., return_value]
+                        let return_val = task.ram.pop_i32();
+                        // Remove old args + receiver (arg_count + 1 items)
+                        for _ in 0..=arg_count {
+                            task.ram.pop_i32();
+                        }
+                        task.ram.push_i32(return_val);
                     } else if let Some(native_id) = self.native_interface.resolve(&func_name) {
                         // Plan 200 Task 3.3: Fallback to native registry for type.method natives
                         // (e.g., Result.Ok.map_err -> shim_result_map_err)
