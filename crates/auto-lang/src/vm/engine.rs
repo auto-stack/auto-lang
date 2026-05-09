@@ -1392,8 +1392,6 @@ impl AutoVM {
 
                     // Store array in arrays registry and get ID
                     let array_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
-                    #[cfg(feature = "nanbox")]
-                    eprintln!("DEBUG CREATE_ARRAY: id={}, elems={:?}", array_id, elems.iter().map(|v| match v { auto_val::Value::Int(i) => format!("Int({})", i), other => format!("{:?}", other) }).collect::<Vec<_>>());
                     self.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
 
                     // Push array ID onto stack
@@ -3247,8 +3245,6 @@ impl AutoVM {
                         // Fallback to legacy arrays registry
                         else if let Some(array_ref) = self.arrays.get(&obj_id) {
                             let array = array_ref.read().unwrap();
-                            #[cfg(feature = "nanbox")]
-                            eprintln!("DEBUG GET_ELEM legacy: obj_id={}, idx={}, len={}, elems={:?}", obj_id, index_i32, array.len(), array.iter().map(|v| match v { auto_val::Value::Int(i) => format!("Int({})", i), other => format!("{:?}", other) }).collect::<Vec<_>>());
 
                             // Use normalized index for negative index support
                             if let Some(normalized_idx) = normalize_index(index_i32, array.len()) {
@@ -3577,21 +3573,9 @@ impl AutoVM {
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
-                    #[cfg(feature = "nanbox")]
-                    {
-                        let b_nv = task.ram.pop_nv();
-                        let a_nv = task.ram.pop_nv();
-                        let b = if auto_val::is_i32(b_nv) { auto_val::decode_i32(b_nv) } else { auto_val::decode_i32(b_nv) };
-                        let a = if auto_val::is_i32(a_nv) { auto_val::decode_i32(a_nv) } else { auto_val::decode_i32(a_nv) };
-                        eprintln!("DEBUG ADD: a={} (is_i32={}), b={} (is_i32={}), result={}", a, auto_val::is_i32(a_nv), b, auto_val::is_i32(b_nv), a.wrapping_add(b));
-                        task.ram.push_i32(a.wrapping_add(b));
-                    }
-                    #[cfg(not(feature = "nanbox"))]
-                    {
-                        let b = task.ram.pop_i32();
-                        let a = task.ram.pop_i32();
-                        task.ram.push_i32(a.wrapping_add(b));
-                    }
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a.wrapping_add(b));
                 }
                 OpCode::SUB => {
                     let b = task.ram.pop_i32();
@@ -4127,18 +4111,6 @@ impl AutoVM {
                 OpCode::CALL_NAT => {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
-
-                    // Debug: trace stack for substr(1503) and strlen(1500)
-                    #[cfg(feature = "nanbox")]
-                    if native_id == 1503 || native_id == 1500 {
-                        let sp = task.ram.sp;
-                        eprintln!("DEBUG CALL_NAT {}: sp={}, stack_top3= [{:?}, {:?}, {:?}]",
-                            native_id, sp,
-                            if sp > 0 { Some(task.ram.read_nv(sp-1)) } else { None },
-                            if sp > 1 { Some(task.ram.read_nv(sp-2)) } else { None },
-                            if sp > 2 { Some(task.ram.read_nv(sp-3)) } else { None },
-                        );
-                    }
 
                     // Execute Native Shim
                     if let Some(shim) = self.native_interface.get(native_id).cloned() {
@@ -4787,11 +4759,7 @@ impl AutoVM {
                         #[cfg(not(feature = "nanbox"))]
                         task.ram.push_i32(task.ram.read_i32(task.bp - actual_offset));
                         #[cfg(feature = "nanbox")]
-                        {
-                            let nv = task.ram.read_nv(task.bp - actual_offset);
-                            eprintln!("DEBUG LOAD_LOCAL param: bp={}, actual_offset={}, pos={}, is_string={}, is_i32={}, sp={}", task.bp, actual_offset, task.bp - actual_offset, auto_val::is_string(nv), auto_val::is_i32(nv), task.ram.sp);
-                            task.ram.push_nv(nv);
-                        }
+                        task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
                     } else {
                         // Local variable: load from bp+1+idx
                         #[cfg(not(feature = "nanbox"))]

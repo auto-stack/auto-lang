@@ -4452,10 +4452,6 @@ impl Codegen {
                     let mut is_double = self.is_double_operation(lhs, rhs);
                     let is_string = self.is_string_operation(lhs, rhs);
                     let is_u64 = self.is_u64_operation(lhs, rhs);
-                    if matches!(op, Op::Add) && is_string {
-                        eprintln!("DEBUG codegen: STR_CAT for {:?} + {:?} (is_string_expr lhs={}, rhs={})",
-                            lhs, rhs, self.is_string_expr(lhs), self.is_string_expr(rhs));
-                    }
 
                     // Mixed u64 + float arithmetic: promote to double (f64 can hold all u64 values)
                     if is_u64 && is_float && !is_double {
@@ -6828,7 +6824,14 @@ impl Codegen {
 
     // Check if this is a string operation (either operand is a string type)
     // Used to emit STR_CAT instead of ADD for string concatenation
+    // Excludes cases where one operand is an integer literal (not string concat)
     fn is_string_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
+        // If either operand is a numeric literal, this cannot be string concatenation
+        if matches!(lhs, Expr::Int(_) | Expr::Float(_, _) | Expr::Double(_, _) | Expr::U64(_) | Expr::I64(_) | Expr::U8(_) | Expr::Byte(_))
+            || matches!(rhs, Expr::Int(_) | Expr::Float(_, _) | Expr::Double(_, _) | Expr::U64(_) | Expr::I64(_) | Expr::U8(_) | Expr::Byte(_))
+        {
+            return false;
+        }
         self.is_string_expr(lhs) || self.is_string_expr(rhs)
     }
 
