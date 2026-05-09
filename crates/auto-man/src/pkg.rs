@@ -189,6 +189,21 @@ pub fn exec(package: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
     run_command_live(cmd, &full_args, cwd)
 }
 
+/// Run a locally-installed package via `pnpm exec` or `npx`.
+///
+/// Use this when the package is already installed in node_modules (e.g.
+/// `@tauri-apps/cli` added as a dev dependency).
+pub fn exec_local(package: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
+    let cmd = exec_cmd();
+    let mut full_args: Vec<&str> = Vec::new();
+    if cmd == "pnpm" {
+        full_args.push("exec");
+    }
+    full_args.push(package);
+    full_args.extend(args);
+    run_command_live(cmd, &full_args, cwd)
+}
+
 /// Install specific packages: `bun add [--dev]` / `pnpm add [--save-dev]` / `npm install [--save-dev]`.
 pub fn add_packages(packages: &[&str], dev: bool, cwd: &Path) -> Result<(), String> {
     let cmd = install_cmd();

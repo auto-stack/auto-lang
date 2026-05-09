@@ -249,6 +249,8 @@ enum Commands {
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
         #[arg(short, long)]
+        dir: Option<String>,
+        #[arg(short, long)]
         port: Option<String>,
         #[arg(short, long, help = "Backend to use (vue, rust, jet, arkts, tauri)")]
         backend: Option<String>,
@@ -578,13 +580,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { port, backend, args }) => {
+        Some(Commands::Run { dir, port, backend, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
             }
+            let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);

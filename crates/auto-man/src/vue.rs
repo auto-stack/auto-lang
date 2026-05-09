@@ -755,6 +755,8 @@ export default router
             root_dir.join("src").join("front")
         } else if root_dir.join("source").join("front").exists() {
             root_dir.join("source").join("front")
+        } else if root_dir.join("front").exists() {
+            root_dir.join("front")
         } else {
             root_dir.join("src").join("front")
         };

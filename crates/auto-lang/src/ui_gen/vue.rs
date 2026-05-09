@@ -3211,12 +3211,83 @@ impl VueGenerator {
                     self.extract_api_calls_from_stmt(stmt);
                 }
             }
-            LogicPayload::AstStmts(_) => {
-                // API calls detected via stmts_contain_api_call in adapter
+            LogicPayload::AstStmts(stmts) => {
+                // Plan 132: Extract API calls from raw AST statements
+                self.extract_api_calls_from_ast_stmts(stmts);
             }
             LogicPayload::Bytecode(_) => {
                 // Bytecode not supported for API call detection
             }
+        }
+    }
+
+    /// Extract API function calls from raw AST statements (Plan 132)
+    fn extract_api_calls_from_ast_stmts(&mut self, stmts: &[crate::ast::Stmt]) {
+        use crate::ast::{Expr, Stmt};
+
+        fn walk_expr(expr: &Expr, api_fns: &[&str], used: &mut HashSet<String>) {
+            match expr {
+                Expr::Call(call) => {
+                    if let Expr::Ident(name) = call.name.as_ref() {
+                        let name_str = name.as_str();
+                        if api_fns.contains(&name_str) {
+                            used.insert(name_str.to_string());
+                        }
+                    }
+                    // Recurse into args
+                    for arg in &call.args.args {
+                        walk_expr(&arg.get_expr(), api_fns, used);
+                    }
+                }
+                Expr::Bina(l, _, r) => {
+                    walk_expr(l, api_fns, used);
+                    walk_expr(r, api_fns, used);
+                }
+                Expr::Unary(_, e) => walk_expr(e, api_fns, used),
+                Expr::Dot(obj, _) => walk_expr(obj, api_fns, used),
+                Expr::Array(items) => {
+                    for item in items {
+                        walk_expr(item, api_fns, used);
+                    }
+                }
+                Expr::Block(body) => {
+                    for stmt in &body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn walk_stmt(stmt: &Stmt, api_fns: &[&str], used: &mut HashSet<String>) {
+            match stmt {
+                Stmt::Expr(expr) => walk_expr(expr, api_fns, used),
+                Stmt::Store(store) => walk_expr(&store.expr, api_fns, used),
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        walk_expr(&branch.cond, api_fns, used);
+                        for stmt in &branch.body.stmts {
+                            walk_stmt(stmt, api_fns, used);
+                        }
+                    }
+                }
+                Stmt::For(for_) => {
+                    walk_expr(&for_.range, api_fns, used);
+                    for stmt in &for_.body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                }
+                Stmt::Block(body) => {
+                    for stmt in &body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for stmt in stmts {
+            walk_stmt(stmt, Self::API_FUNCTIONS, &mut self.api_functions_used);
         }
     }
 

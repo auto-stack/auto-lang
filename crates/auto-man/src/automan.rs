@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fmt::Display;
 use std::io::IsTerminal;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // Plan 082: AutoCache integration
 use auto_cache::{ArtifactType, AutoManCache};
@@ -25,6 +25,7 @@ pub struct Automan {
     index_store: IndexStore,
     cache: Option<AutoManCache>, // Optional cache for builds
     backend_override: Option<String>, // --backend CLI override
+    root_dir: PathBuf, // Project root directory (from pac.at location)
 }
 
 // Static API
@@ -207,11 +208,16 @@ impl Automan {
         pac.set_port(port_name.clone())?;
         pac.save_port(port_name.clone())?;
 
+        let root_dir = config_path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+
         Ok(Self {
             pac,
             index_store,
             cache: None,
             backend_override: None,
+            root_dir,
         })
     }
 
@@ -1390,8 +1396,7 @@ impl Automan {
 
     /// Build all workspace members (Plan 130)
     fn build_workspace(&mut self) -> AutoResult<()> {
-        let root_dir = std::env::current_dir()
-            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        let root_dir = self.root_dir.clone();
 
         let members = self.pac.workspace_members();
 
@@ -1508,8 +1513,7 @@ impl Automan {
 
     /// Run all workspace members (Plan 130, Plan 132: full stack)
     fn run_workspace(&mut self, args: Vec<String>) -> AutoResult<()> {
-        let root_dir = std::env::current_dir()
-            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        let root_dir = self.root_dir.clone();
 
         let members = self.pac.workspace_members();
 

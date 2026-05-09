@@ -105,6 +105,14 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         }
     }
 
+    // Step 5.5: Re-generate Tauri API code and register commands in lib.rs
+    // (must run AFTER tauri init because --force overwrites src-tauri/src/)
+    if let Err(e) = crate::api_gen::generate_api(root_dir, "tauri") {
+        println!("  ⚠ API generation skipped: {}", e);
+    } else {
+        update_tauri_lib_rs(&tauri_dir)?;
+    }
+
     // Step 6: Run Tauri dev (no build needed - tauri dev handles it)
     current_step += 1;
     println!();
@@ -241,7 +249,7 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
 
     println!("  Running: {} tauri {}", crate::pkg::exec_cmd(), init_args.join(" "));
 
-    crate::pkg::exec("tauri", &init_args, vue_dir)
+    crate::pkg::exec_local("tauri", &init_args, vue_dir)
         .map_err(|e| format!("Tauri init failed: {}", e))?;
 
     // Step 4.5: Update tauri.conf.json to use port 3000 (tauri init defaults to 5173)
@@ -276,6 +284,36 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
     Ok(())
 }
 
+/// Update src-tauri/src/lib.rs to register generated commands
+fn update_tauri_lib_rs(tauri_dir: &Path) -> AutoResult<()> {
+    let lib_rs_path = tauri_dir.join("src").join("lib.rs");
+    if !lib_rs_path.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&lib_rs_path)
+        .map_err(|e| format!("Failed to read lib.rs: {}", e))?;
+
+    // If already contains mod commands, skip
+    if content.contains("mod commands") {
+        return Ok(());
+    }
+
+    let updated = format!(
+        "mod commands;\n\n{}",
+        content.replace(
+            "tauri::Builder::default()",
+            "commands::register_commands(tauri::Builder::default())"
+        )
+    );
+
+    std::fs::write(&lib_rs_path, updated)
+        .map_err(|e| format!("Failed to write lib.rs: {}", e))?;
+
+    println!("  ✓ Registered commands in src-tauri/src/lib.rs");
+    Ok(())
+}
+
 /// Run tauri dev
 fn run_tauri_dev(root_dir: &Path) -> AutoResult<()> {
     let vue_dir = root_dir.join("gen").join("vue");
@@ -290,7 +328,7 @@ fn run_tauri_dev(root_dir: &Path) -> AutoResult<()> {
 
     // Use npx tauri dev instead of npm run tauri dev
     // (tauri CLI is installed as dev dependency, exec can run it directly)
-    crate::pkg::exec("tauri", &["dev"], &vue_dir)
+    crate::pkg::exec_local("tauri", &["dev"], &vue_dir)
         .map_err(|e| format!("Tauri dev failed: {}", e))?;
 
     Ok(())

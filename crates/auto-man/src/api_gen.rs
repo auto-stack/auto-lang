@@ -30,7 +30,15 @@ use auto_lang::api::{ApiModule, ApiType, ApiField, ApiEndpoint, ApiParam, ApiAtt
 /// - Backend: Tauri commands or Axum routes
 /// - Frontend: TypeScript types and API client
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
-    let back_dir = root_dir.join("src").join("back");
+    // Try common backend directory layouts: src/back/ or back/
+    let back_dir = if root_dir.join("src").join("back").exists() {
+        root_dir.join("src").join("back")
+    } else if root_dir.join("back").exists() {
+        root_dir.join("back")
+    } else {
+        // No backend directory found, skip generation
+        return Ok(());
+    };
 
     // Check if back/api.at exists
     let api_file = back_dir.join("api.at");
@@ -118,20 +126,114 @@ fn generate_tauri_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -
     std::fs::write(tauri_src_dir.join("commands.rs"), &tauri_code)
         .map_err(|e| format!("Failed to write commands.rs: {}", e))?;
 
-    // Generate TypeScript client
-    let ts_gen = Target::TypeScript.generator();
-    let ts_code = ts_gen.generate(api_module);
+    // Generate TypeScript IPC client for Tauri (uses invoke instead of fetch)
+    let ts_ipc_code = generate_tauri_ts_client(api_module);
 
+    // Write to src/lib/api.ts so Vue imports resolve correctly
+    let lib_dir = vue_dir.join("src").join("lib");
+    std::fs::create_dir_all(&lib_dir)
+        .map_err(|e| format!("Failed to create lib directory: {}", e))?;
+    std::fs::write(lib_dir.join("api.ts"), &ts_ipc_code)
+        .map_err(|e| format!("Failed to write src/lib/api.ts: {}", e))?;
+
+    // Also write to src/api/client.ts for backward compatibility
     let api_dir = vue_dir.join("src").join("api");
     std::fs::create_dir_all(&api_dir)
         .map_err(|e| format!("Failed to create api directory: {}", e))?;
-    std::fs::write(api_dir.join("client.ts"), &ts_code)
+    std::fs::write(api_dir.join("client.ts"), &ts_ipc_code)
         .map_err(|e| format!("Failed to write client.ts: {}", e))?;
 
     println!("  ✓ Generated Tauri commands: src-tauri/src/commands.rs");
-    println!("  ✓ Generated TypeScript client: src/api/client.ts");
+    println!("  ✓ Generated TypeScript IPC client: src/lib/api.ts");
 
     Ok(())
+}
+
+/// Generate a Tauri IPC TypeScript client using `invoke`
+fn generate_tauri_ts_client(api_module: &auto_lang::api::ApiModule) -> String {
+    let mut lines = vec![
+        "import { invoke } from '@tauri-apps/api/core';".to_string(),
+        "".to_string(),
+    ];
+
+    // Type definitions
+    for api_type in &api_module.types {
+        lines.push(format!("export interface {} {{", api_type.name));
+        for field in &api_type.fields {
+            let ts_type = auto_type_to_ts(&field.ty);
+            let optional = if field.optional { "?" } else { "" };
+            lines.push(format!("    {}{}: {};", field.name, optional, ts_type));
+        }
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    // IPC functions
+    for endpoint in &api_module.endpoints {
+        let params_ts: Vec<String> = endpoint.params.iter().map(|p| {
+            let ts_type = auto_type_to_ts(&p.ty);
+            format!("{}: {}", p.name, ts_type)
+        }).collect();
+
+        let return_ts = auto_type_to_ts(&endpoint.return_type);
+        let args_str = if params_ts.is_empty() {
+            "".to_string()
+        } else {
+            params_ts.join(", ")
+        };
+
+        if params_ts.is_empty() {
+            lines.push(format!(
+                "export async function {}(): Promise<{}> {{",
+                endpoint.fn_name, return_ts
+            ));
+            lines.push(format!(
+                "    return invoke('{}');",
+                endpoint.fn_name
+            ));
+        } else {
+            lines.push(format!(
+                "export async function {}({}): Promise<{}> {{",
+                endpoint.fn_name, args_str, return_ts
+            ));
+            lines.push(format!(
+                "    return invoke('{}', {{ {} }});",
+                endpoint.fn_name,
+                endpoint.params.iter().map(|p| format!("{}", p.name)).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Convert Auto type to TypeScript type
+fn auto_type_to_ts(auto_type: &str) -> String {
+    let auto_type = auto_type.trim();
+    if auto_type.ends_with('?') {
+        let inner = &auto_type[..auto_type.len()-1];
+        return format!("{} | undefined", auto_type_to_ts(inner));
+    }
+    if auto_type.starts_with("[]") || auto_type.starts_with("List<") {
+        let inner = if auto_type.starts_with("[]") {
+            &auto_type[2..]
+        } else if let Some(close) = auto_type.find('>') {
+            &auto_type[5..close]
+        } else {
+            auto_type
+        };
+        return format!("{}[]", auto_type_to_ts(inner));
+    }
+    match auto_type {
+        "int" | "i32" | "i64" | "long" | "uint" | "u32" | "u64" | "ulong" => "number".to_string(),
+        "float" | "f32" | "double" | "f64" => "number".to_string(),
+        "bool" | "boolean" => "boolean".to_string(),
+        "str" | "string" | "String" => "string".to_string(),
+        "void" | "()" => "void".to_string(),
+        _ => auto_type.to_string(),
+    }
 }
 
 /// Generate Vue + HTTP API code
@@ -163,7 +265,13 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
     println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
     // Generate Rust server if back/ exists
-    let back_dir = root_dir.join("src").join("back");
+    let back_dir = if root_dir.join("src").join("back").exists() {
+        root_dir.join("src").join("back")
+    } else if root_dir.join("back").exists() {
+        root_dir.join("back")
+    } else {
+        return Ok(());
+    };
     if back_dir.exists() {
         generate_rust_server(api_module, root_dir)?;
     }
