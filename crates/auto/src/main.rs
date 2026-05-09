@@ -1099,9 +1099,11 @@ fn real_main(cli: Cli) -> Result<()> {
                     if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
                     to_miette_err(e)
                 })?;
-                if let Some(out) = output {
-                    std::fs::write(&out, &r).map_err(|e| miette::miette!("Failed to write: {}", e))?;
-                    println!("[trans] {} -> {}", path, out);
+                // trans_rust() already writes the output file internally.
+                // If -o was specified and differs from default path, copy the file.
+                if let Some(_out) = output {
+                    // Output already written by trans_rust to default path
+                    println!("{}", r);
                 } else {
                     output_success(ai_mode, &r);
                 }

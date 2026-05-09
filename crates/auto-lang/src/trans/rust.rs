@@ -2297,14 +2297,24 @@ impl RustTrans {
                             return Ok(());
                         }
                     }
-                    // map.get_or(key, default) -> map.get(key).map(|s| s.as_str()).unwrap_or(default)
-                    // Returns &str (borrowed), no cloning
+                    // map.get_or(key, default)
+                    // For string maps: .get(key).map(|s| s.as_str()).unwrap_or(default)
+                    // For non-string maps: .get(key).cloned().unwrap_or(default)
+                    let is_string_default = call.args.args.get(1)
+                        .map(|a| if let Arg::Pos(e) = a {
+                            matches!(e, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        } else { true })
+                        .unwrap_or(true);
                     self.expr(object, out)?;
                     write!(out, ".get(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr(a, out)?;
                     }
-                    write!(out, ").map(|s| s.as_str()).unwrap_or(")?;
+                    if is_string_default {
+                        write!(out, ").map(|s| s.as_str()).unwrap_or(")?;
+                    } else {
+                        write!(out, ").cloned().unwrap_or(")?;
+                    }
                     if call.args.args.len() > 1 {
                         if let Arg::Pos(a) = &call.args.args[1] {
                             self.expr(a, out)?;
@@ -3905,7 +3915,7 @@ impl RustTrans {
 
         // Plan 159 Phase 6B-2: Output derive/serde attributes
         // Plan 204 Phase 2A: Add default #[derive(Clone, Debug, PartialEq)] if no attrs specified
-        // T6: Add Eq, PartialOrd, Ord if no float fields present
+        // T6: Add Eq, PartialOrd, Ord if no float/HashMap fields present
         if type_decl.attrs.is_empty() {
             let has_float_field = type_decl.members.iter().any(|m| {
                 matches!(m.ty, Type::Float | Type::Double)
@@ -3914,8 +3924,14 @@ impl RustTrans {
                         name == "f32" || name == "f64" || name == "float" || name == "double"
                     })
             });
-            if has_float_field {
-                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
+            let has_map_field = type_decl.members.iter().any(|m| {
+                matches!(&m.ty, Type::Map(_, _)) || matches!(&m.ty, Type::Rust(source) if {
+                    let name = source.short_name();
+                    name.starts_with("HashMap") || name.starts_with("BTreeMap")
+                })
+            });
+            if has_float_field || has_map_field {
+                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq)]")?;
             } else {
                 writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")?;
             }
