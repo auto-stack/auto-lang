@@ -925,12 +925,9 @@ pub fn shim_math_max(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Square root of a number
-///
-/// Stack: n (f64) -> sqrt(n) (f64)
-pub fn shim_math_sqrt(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let n = task.ram.pop_f64();
-    task.ram.push_f64(n.sqrt());
-    Ok(())
+#[auto_macros::rust_fn("Math.sqrt")]
+pub fn shim_math_sqrt(n: f64) -> f64 {
+    n.sqrt()
 }
 
 /// Floor of a float
@@ -3176,7 +3173,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.math.abs", shim_math_abs);
     natives.register_shim_by_name("auto.math.min", shim_math_min);
     natives.register_shim_by_name("auto.math.max", shim_math_max);
-    natives.register_shim_by_name("auto.math.sqrt", shim_math_sqrt);
+    // auto.math.sqrt now registered in native.rs register_std_shims() (Plan 240 VM-1)
 
     // Net/TCP functions (manual shims — use heap objects for TCP state)
     // Note: registry uses underscores in method portion (auto.net.tcp_bind, not auto.net.tcp.bind)

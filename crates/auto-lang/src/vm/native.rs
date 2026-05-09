@@ -297,6 +297,7 @@ impl NativeInterface {
         self.register(NATIVE_LIST_SORT, shim_list_sort);
         self.register(NATIVE_LIST_SORT_BY, shim_list_sort_by);
         self.register(NATIVE_LIST_JOIN, shim_list_join);
+        self.register(NATIVE_LIST_CONTAINS, shim_list_contains);
 
         // Plan 200 Task 3.3: Result.map_err(closure)
         self.register(NATIVE_RESULT_MAP_ERR, shim_result_map_err);
@@ -460,6 +461,7 @@ impl NativeInterface {
         self.register_name("auto.list.sort_by", NATIVE_LIST_SORT_BY);
         self.register_name("auto.list.iter", NATIVE_LIST_ITER);
         self.register_name("auto.list.join", NATIVE_LIST_JOIN);
+        self.register_name("auto.list.contains", NATIVE_LIST_CONTAINS);
 
         self.register_name("auto.hashmap.new", NATIVE_HASHMAP_NEW);
         self.register_name("auto.hashmap.insert", NATIVE_HASHMAP_INSERT_STR);
@@ -597,6 +599,52 @@ impl NativeInterface {
         // Plan 212 Phase 2.3: mime_guess pure function shim
         self.register(NATIVE_MIME_FROM_PATH, shim_mime_from_path);
         self.register_name("auto.mime.from_path", NATIVE_MIME_FROM_PATH);
+
+        // Plan 240 VM-1: Math shims for f64 methods
+        self.register(NATIVE_MATH_SIN, shim_math_sin);
+        self.register(NATIVE_MATH_COS, shim_math_cos);
+        self.register(NATIVE_MATH_TAN, shim_math_tan);
+        // sqrt registered via #[rust_fn("Math.sqrt")] in ffi/stdlib.rs
+        self.register(NATIVE_MATH_ABS_F, shim_math_abs_f);
+        self.register(NATIVE_MATH_FLOOR, shim_math_floor);
+        self.register(NATIVE_MATH_CEIL, shim_math_ceil);
+        self.register(NATIVE_MATH_ROUND, shim_math_round);
+        self.register(NATIVE_MATH_POW, shim_math_pow);
+        self.register(NATIVE_MATH_POWF, shim_math_powf);
+        self.register(NATIVE_MATH_POWI, shim_math_powi);
+        self.register(NATIVE_MATH_EXP, shim_math_exp);
+        self.register(NATIVE_MATH_LN, shim_math_ln);
+        self.register(NATIVE_MATH_LOG2, shim_math_log2);
+        self.register(NATIVE_MATH_LOG10, shim_math_log10);
+        self.register(NATIVE_MATH_SIGNUM, shim_math_signum);
+        self.register(NATIVE_MATH_ASIN, shim_math_asin);
+        self.register(NATIVE_MATH_ACOS, shim_math_acos);
+        self.register(NATIVE_MATH_ATAN, shim_math_atan);
+        self.register(NATIVE_MATH_ATAN2, shim_math_atan2);
+        self.register(NATIVE_MATH_TO_RADIANS, shim_math_to_radians);
+        self.register(NATIVE_MATH_TO_DEGREES, shim_math_to_degrees);
+        self.register_name("auto.math.sin", NATIVE_MATH_SIN);
+        self.register_name("auto.math.cos", NATIVE_MATH_COS);
+        self.register_name("auto.math.tan", NATIVE_MATH_TAN);
+        self.register_name("auto.math.sqrt", NATIVE_MATH_SQRT);
+        self.register_name("auto.math.abs_f", NATIVE_MATH_ABS_F);
+        self.register_name("auto.math.floor", NATIVE_MATH_FLOOR);
+        self.register_name("auto.math.ceil", NATIVE_MATH_CEIL);
+        self.register_name("auto.math.round", NATIVE_MATH_ROUND);
+        self.register_name("auto.math.pow", NATIVE_MATH_POW);
+        self.register_name("auto.math.powf", NATIVE_MATH_POWF);
+        self.register_name("auto.math.powi", NATIVE_MATH_POWI);
+        self.register_name("auto.math.exp", NATIVE_MATH_EXP);
+        self.register_name("auto.math.ln", NATIVE_MATH_LN);
+        self.register_name("auto.math.log2", NATIVE_MATH_LOG2);
+        self.register_name("auto.math.log10", NATIVE_MATH_LOG10);
+        self.register_name("auto.math.signum", NATIVE_MATH_SIGNUM);
+        self.register_name("auto.math.asin", NATIVE_MATH_ASIN);
+        self.register_name("auto.math.acos", NATIVE_MATH_ACOS);
+        self.register_name("auto.math.atan", NATIVE_MATH_ATAN);
+        self.register_name("auto.math.atan2", NATIVE_MATH_ATAN2);
+        self.register_name("auto.math.to_radians", NATIVE_MATH_TO_RADIANS);
+        self.register_name("auto.math.to_degrees", NATIVE_MATH_TO_DEGREES);
     }
 }
 
@@ -759,6 +807,67 @@ fn shim_int_bit_flip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+// ============================================================================
+// Plan 240 VM-1: Math shims for f64 methods (sin/cos/tan/sqrt/pow etc.)
+// ============================================================================
+
+macro_rules! math_unary_shim {
+    ($name:ident, $method:ident) => {
+        pub fn $name(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+            let n = task.ram.pop_f64();
+            task.ram.push_f64(n.$method());
+            Ok(())
+        }
+    };
+}
+
+macro_rules! math_binary_shim {
+    ($name:ident, $method:ident) => {
+        pub fn $name(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+            let exp = task.ram.pop_f64();
+            let base = task.ram.pop_f64();
+            task.ram.push_f64(base.$method(exp));
+            Ok(())
+        }
+    };
+}
+
+math_unary_shim!(shim_math_sin, sin);
+math_unary_shim!(shim_math_cos, cos);
+math_unary_shim!(shim_math_tan, tan);
+// sqrt — registered in native.rs but shim lives in ffi/stdlib.rs with #[rust_fn]
+// (needed because #[rust_fn] uses VMConvertible which handles nanbox f64 encoding)
+math_unary_shim!(shim_math_abs_f, abs);
+math_unary_shim!(shim_math_floor, floor);
+math_unary_shim!(shim_math_ceil, ceil);
+math_unary_shim!(shim_math_round, round);
+math_unary_shim!(shim_math_exp, exp);
+math_unary_shim!(shim_math_ln, ln);
+math_unary_shim!(shim_math_log2, log2);
+math_unary_shim!(shim_math_log10, log10);
+math_unary_shim!(shim_math_signum, signum);
+math_unary_shim!(shim_math_asin, asin);
+math_unary_shim!(shim_math_acos, acos);
+math_unary_shim!(shim_math_atan, atan);
+math_unary_shim!(shim_math_to_radians, to_radians);
+math_unary_shim!(shim_math_to_degrees, to_degrees);
+math_binary_shim!(shim_math_pow, powf);
+math_binary_shim!(shim_math_powf, powf);
+
+pub fn shim_math_powi(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let exp = task.ram.pop_i32();
+    let base = task.ram.pop_f64();
+    task.ram.push_f64(base.powi(exp));
+    Ok(())
+}
+
+pub fn shim_math_atan2(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let x = task.ram.pop_f64();
+    let y = task.ram.pop_f64();
+    task.ram.push_f64(y.atan2(x));
+    Ok(())
+}
+
 // === List Native Function IDs (100+) ===
 
 pub const NATIVE_LIST_NEW: u16 = 100;
@@ -785,6 +894,7 @@ pub const NATIVE_LIST_REDUCE: u16 = 2066;
 pub const NATIVE_LIST_SORT: u16 = 2067;
 pub const NATIVE_LIST_SORT_BY: u16 = 2068;
 pub const NATIVE_LIST_JOIN: u16 = 2080;
+pub const NATIVE_LIST_CONTAINS: u16 = 2069;
 
 // === Result HOF Native Functions ===
 // Plan 200 Task 3.3: .map_err() closure callback
@@ -921,6 +1031,36 @@ pub const NATIVE_INT_BIT_FLIP: u16 = 234;   // .bit(n).flip() → val ^ (1 << n)
 // === String/Uint Extension Native IDs (235+) ===
 pub const NATIVE_STR_BYTES: u16 = 235;    // str.bytes() → iterator of byte values
 pub const NATIVE_UINT_TO_HEX: u16 = 236; // uint.to_hex(pad) → hex string
+
+// === Math Native IDs (1700+) — Plan 240 VM-1 ===
+pub const NATIVE_MATH_ABS: u16 = 1700;
+pub const NATIVE_MATH_MIN: u16 = 1701;
+pub const NATIVE_MATH_MAX: u16 = 1702;
+pub const NATIVE_MATH_SQRT: u16 = 1750;  // Changed from 1703 to avoid conflict
+pub const NATIVE_MATH_FLOOR: u16 = 1710;
+pub const NATIVE_MATH_CEIL: u16 = 1711;
+pub const NATIVE_MATH_ROUND: u16 = 1712;
+pub const NATIVE_MATH_POW: u16 = 1713;
+pub const NATIVE_MATH_MIN_F: u16 = 1714;
+pub const NATIVE_MATH_MAX_F: u16 = 1715;
+pub const NATIVE_MATH_SIN: u16 = 1716;
+pub const NATIVE_MATH_COS: u16 = 1717;
+pub const NATIVE_MATH_TAN: u16 = 1718;
+pub const NATIVE_MATH_EXP: u16 = 1719;
+pub const NATIVE_MATH_LN: u16 = 1720;
+pub const NATIVE_MATH_LOG2: u16 = 1721;
+pub const NATIVE_MATH_LOG10: u16 = 1722;
+pub const NATIVE_MATH_ABS_F: u16 = 1723;
+pub const NATIVE_MATH_SIGNUM: u16 = 1724;
+pub const NATIVE_MATH_CLAMP: u16 = 1725;
+pub const NATIVE_MATH_ASIN: u16 = 1726;
+pub const NATIVE_MATH_ACOS: u16 = 1727;
+pub const NATIVE_MATH_ATAN: u16 = 1728;
+pub const NATIVE_MATH_ATAN2: u16 = 1729;
+pub const NATIVE_MATH_POWI: u16 = 1730;
+pub const NATIVE_MATH_POWF: u16 = 1731;
+pub const NATIVE_MATH_TO_RADIANS: u16 = 1732;
+pub const NATIVE_MATH_TO_DEGREES: u16 = 1733;
 
 // === Rand Native IDs (1850+) — Plan 212 Phase 2 ===
 pub const NATIVE_RAND_THREAD_RNG: u16 = 1850; // thread_rng() → opaque Rng handle
@@ -1886,6 +2026,17 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// List.contains(value) -> bool
+/// Stack: value (i32), list_id -> bool (1/0)
+pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value = task.ram.pop_i32();
+    let list_id = task.ram.pop_i32() as u64;
+    let elements = get_list_i32_elements(vm, list_id)?;
+    let found = elements.iter().any(|&e| e == value);
+    task.ram.push_i32(if found { 1 } else { 0 });
+    Ok(())
+}
+
 /// Sort a list of i32 values in-place.
 /// Stack: list_id -> void
 pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -2830,19 +2981,37 @@ pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Insert a string element into the set
 /// Stack: hashset_id, elem_str_id -> result (0)
 pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let elem_str_idx = task.ram.pop_str_idx();
+    #[cfg(feature = "nanbox")]
+    let key = {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings.read().unwrap().get(idx).cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    };
+    #[cfg(not(feature = "nanbox"))]
+    let key = {
+        let raw = task.ram.pop_i32();
+        if raw < 0 {
+            let idx = decode_str_idx(raw);
+            vm.strings.read().unwrap().get(idx).cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            raw.to_string()
+        }
+    };
+
     let set_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(set_id) {
-        // Get string from pool
-        let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
-            .ok_or(VMError::RuntimeError("Invalid element string ID".into()))?;
-        let elem_str = String::from_utf8_lossy(&elem_bytes).to_string();
-        drop(elem_bytes);
-
         let mut guard = obj.write().unwrap();
         if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
-            set.data.insert(elem_str, ());
+            set.data.insert(key, ());
         }
     }
 
@@ -2853,17 +3022,37 @@ pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Check if element exists in the set
 /// Stack: hashset_id, elem_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let elem_str_idx = task.ram.pop_str_idx();
+    #[cfg(feature = "nanbox")]
+    let key = {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings.read().unwrap().get(idx).cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    };
+    #[cfg(not(feature = "nanbox"))]
+    let key = {
+        let raw = task.ram.pop_i32();
+        if raw < 0 {
+            let idx = decode_str_idx(raw);
+            vm.strings.read().unwrap().get(idx).cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_else(|| "INVALID".to_string())
+        } else {
+            raw.to_string()
+        }
+    };
+
     let set_id = task.ram.pop_i32() as u64;
 
     let result = if let Some(obj) = vm.get_heap_object(set_id) {
         let guard = obj.read().unwrap();
         if let Some(set) = guard.as_any().downcast_ref::<SpecializedHashSet>() {
-            let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
-                .ok_or(VMError::RuntimeError("Invalid element string ID".into()))?;
-            let elem_str = String::from_utf8_lossy(&elem_bytes).to_string();
-
-            if set.data.contains_key(&elem_str) { 1 } else { 0 }
+            if set.data.contains_key(&key) { 1 } else { 0 }
         } else {
             0
         }

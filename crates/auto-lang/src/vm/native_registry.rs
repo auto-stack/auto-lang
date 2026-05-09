@@ -445,6 +445,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id_and_type("auto.list.reduce", 2066, NativeRetType::Void);
     registry.register_with_id_and_type("auto.list.sort", 2067, NativeRetType::Void);
     registry.register_with_id_and_type("auto.list.sort_by", 2068, NativeRetType::Void);
+    registry.register_with_id_and_type("auto.list.contains", 2069, NativeRetType::Bool);
 
     // Iterator functions (IDs 111-117)
     registry.register_with_id("auto.list.iter", 111);
@@ -673,7 +674,7 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.math.abs", 1700);
     registry.register_with_id("auto.math.min", 1701);
     registry.register_with_id("auto.math.max", 1702);
-    registry.register_with_id("auto.math.sqrt", 1703);
+    registry.register_with_id("auto.math.sqrt", 1750);  // Changed from 1703
     registry.register_with_id("auto.math.floor", 1710);
     registry.register_with_id("auto.math.ceil", 1711);
     registry.register_with_id("auto.math.round", 1712);
@@ -995,7 +996,7 @@ pub fn register_builtin_natives() {
     registry.register_return_type("auto.math.abs", NativeRetType::Int);
     registry.register_return_type("auto.math.min", NativeRetType::Int);
     registry.register_return_type("auto.math.max", NativeRetType::Int);
-    registry.register_return_type("auto.math.sqrt", NativeRetType::Float);
+    // auto.math.sqrt returns f64 — type inferred by infer_native_return_type as Double
     registry.register_with_id_and_type("str.split_once", 1518, NativeRetType::List);
     registry.register_with_id_and_type("str.match_count", 1519, NativeRetType::Int);
     registry.register_with_id_and_type("str.replace_first", 1520, NativeRetType::String);
