@@ -80,6 +80,11 @@ pub struct RustTrans {
     // Plan 204 Phase 3: Whether current function returns !T (for Err boxing)
     current_fn_is_result: bool,
 
+    // Inferred concrete error type for current !T function
+    // If all Err(X) use the same enum E, this is Some(E) → Result<T, E>
+    // Otherwise None → Result<T, Box<dyn std::error::Error>>
+    current_fn_err_type: Option<AutoStr>,
+
     // Cache for struct field names (for positional arg mapping)
     struct_fields: HashMap<AutoStr, Vec<AutoStr>>,
 
@@ -142,6 +147,7 @@ impl RustTrans {
             _current_scope: None,
             needs_err_trait: false,
             current_fn_is_result: false,
+            current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             tag_types: HashSet::new(),
@@ -170,6 +176,7 @@ impl RustTrans {
             _current_scope: None,
             needs_err_trait: false,
             current_fn_is_result: false,
+            current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             tag_types: HashSet::new(),
@@ -213,6 +220,88 @@ impl RustTrans {
     /// Check if a variable is a global variable
     pub fn is_global_var(&self, name: &AutoStr) -> bool {
         self.global_vars.contains(name)
+    }
+
+    /// Scan statements for Err(X) calls; if all use the same enum type, return it
+    fn infer_err_enum(&self, stmts: &[Stmt]) -> Option<AutoStr> {
+        let mut found_enum: Option<AutoStr> = None;
+        for stmt in stmts {
+            let result = self.scan_stmt_err_enum(stmt);
+            match result {
+                Some(Some(enum_name)) => {
+                    match &found_enum {
+                        Some(existing) if *existing != enum_name => return None,
+                        _ => found_enum = Some(enum_name),
+                    }
+                }
+                Some(None) => return None,
+                None => {}
+            }
+        }
+        found_enum
+    }
+
+    fn scan_stmt_err_enum(&self, stmt: &Stmt) -> Option<Option<AutoStr>> {
+        match stmt {
+            Stmt::Expr(expr) => self.scan_expr_err_enum(expr),
+            Stmt::Return(expr) => self.scan_expr_err_enum(expr),
+            Stmt::If(if_) => {
+                for branch in &if_.branches {
+                    for s in &branch.body.stmts {
+                        if let Some(r) = self.scan_stmt_err_enum(s) { return Some(r); }
+                    }
+                }
+                if let Some(else_body) = &if_.else_ {
+                    for s in &else_body.stmts {
+                        if let Some(r) = self.scan_stmt_err_enum(s) { return Some(r); }
+                    }
+                }
+                None
+            }
+            Stmt::Store(store) => self.scan_expr_err_enum(&store.expr),
+            _ => None,
+        }
+    }
+
+    fn scan_expr_err_enum(&self, expr: &Expr) -> Option<Option<AutoStr>> {
+        match expr {
+            Expr::Err(inner) => {
+                match inner.as_ref() {
+                    // EditError.Variant(args) — Call with Dot callee
+                    Expr::Call(call) => {
+                        if let Expr::Bina(lhs, op, _) = call.name.as_ref() {
+                            if matches!(op, Op::Dot) {
+                                if let Expr::Ident(type_name) = lhs.as_ref() {
+                                    if self.tag_types.contains(type_name) {
+                                        return Some(Some(type_name.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        if let Expr::Dot(obj, _) = call.name.as_ref() {
+                            if let Expr::Ident(type_name) = obj.as_ref() {
+                                if self.tag_types.contains(type_name) {
+                                    return Some(Some(type_name.clone()));
+                                }
+                            }
+                        }
+                        Some(None)
+                    }
+                    // EditError.Variant (no args) — plain Dot expression
+                    Expr::Dot(obj, _) => {
+                        if let Expr::Ident(type_name) = obj.as_ref() {
+                            if self.tag_types.contains(type_name) {
+                                return Some(Some(type_name.clone()));
+                            }
+                        }
+                        Some(None)
+                    }
+                    Expr::Str(_) | Expr::CStr(_) => Some(None),
+                    _ => Some(None),
+                }
+            }
+            _ => None,
+        }
     }
 
     /// Recursively check if an expression tree contains string-typed elements
@@ -464,7 +553,13 @@ impl RustTrans {
             Type::U64 => "u64".to_string(),
             // Plan 120: Option and Result types
             Type::Option(inner) => format!("Option<{}>", self.rust_type_name(inner)),
-            Type::Result(inner) => format!("Result<{}, Box<dyn std::error::Error>>", self.rust_type_name(inner)),
+            Type::Result(inner) => {
+                let err_type = match &self.current_fn_err_type {
+                    Some(enum_name) => enum_name.to_string(),
+                    None => "Box<dyn std::error::Error>".to_string(),
+                };
+                format!("Result<{}, {}>", self.rust_type_name(inner), err_type)
+            }
             // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
             Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
@@ -486,9 +581,13 @@ impl RustTrans {
             Type::Option(inner) => {
                 format!("Option<{}>", self.rust_return_type_name(inner))
             }
-            // Result<str> -> Result<String, Box<dyn std::error::Error>>
+            // Result<str> -> Result<String, E> where E is inferred or Box<dyn Error>
             Type::Result(inner) => {
-                format!("Result<{}, Box<dyn std::error::Error>>", self.rust_return_type_name(inner))
+                let err_type = match &self.current_fn_err_type {
+                    Some(enum_name) => enum_name.to_string(),
+                    None => "Box<dyn std::error::Error>".to_string(),
+                };
+                format!("Result<{}, {}>", self.rust_return_type_name(inner), err_type)
             }
             // Fn type: use return type mapping for the return position
             Type::Fn(params, ret) => {
@@ -624,11 +723,18 @@ impl RustTrans {
                 write!(out, ")").map_err(Into::into)
             }
             Expr::Err(e) => {
-                // Result<T, Box<dyn std::error::Error>>
                 write!(out, "Err(")?;
-                self.expr(e, out)?;
-                if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                if self.current_fn_err_type.is_some() {
+                    // Concrete error type — no Box::new needed
+                    self.expr(e, out)?;
+                } else if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                    self.expr(e, out)?;
                     write!(out, ".into()")?;
+                } else {
+                    // Box::new() for concrete types -> Box<dyn Error>
+                    write!(out, "Box::new(")?;
+                    self.expr(e, out)?;
+                    write!(out, ")")?;
                 }
                 write!(out, ")").map_err(Into::into)
             }
@@ -3437,6 +3543,12 @@ impl RustTrans {
 
         // Plan 204 Phase 3: Track whether current function returns !T (for Err boxing)
         self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_));
+
+        // Infer concrete error type from Err() calls in function body
+        self.current_fn_err_type = None;
+        if self.current_fn_is_result {
+            self.current_fn_err_type = self.infer_err_enum(&fn_decl.body.stmts);
+        }
 
         // Emit doc comments
         if let Some(ref doc) = fn_decl.doc {
