@@ -2,13 +2,13 @@ use.rust log::info
 use.rust log::debug
 
 fn process() {
-    debug!("processing step 1")
-    debug!("processing step 2")
-    info!("processing complete")
+    #debug("processing step 1")
+    #debug("processing step 2")
+    #info("processing complete")
 }
 
 fn main() {
-    info!("app started")
+    #info("app started")
     process()
     print("done")
 }

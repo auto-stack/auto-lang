@@ -133,6 +133,7 @@ impl<'db> DepScanner<'db> {
             Stmt::HashFor(_) => {}
             Stmt::HashIs(_) => {}
             Stmt::HashBrace(_) => {}
+            Stmt::MacroCall(_) => {}
         }
     }
 

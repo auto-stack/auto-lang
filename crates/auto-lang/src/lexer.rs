@@ -991,6 +991,32 @@ impl<'a> Lexer<'a> {
                         return Ok(Token::new(TokenKind::HashBrace, self.pos(2), "#{".into()));
                     }
 
+                    // Plan 212 Phase 2.4: Check for #ident (macro invocation)
+                    // #debug("msg") → HashIdent("debug") followed by LParen
+                    let mut iter_ident = self.chars.clone();
+                    iter_ident.next(); // skip '#'
+                    if let Some(c) = iter_ident.next() {
+                        if c.is_ascii_alphabetic() || c == '_' {
+                            // Read the full identifier
+                            let mut name = String::new();
+                            name.push(c);
+                            while let Some(nc) = iter_ident.next() {
+                                if nc.is_ascii_alphanumeric() || nc == '_' {
+                                    name.push(nc);
+                                } else {
+                                    break;
+                                }
+                            }
+                            // Consume # + identifier from self.chars
+                            self.chars.next(); // skip '#'
+                            for _ in 0..name.len() {
+                                self.chars.next();
+                            }
+                            let start = self.pos(1 + name.len());
+                            return Ok(Token::new(TokenKind::HashIdent, start, name.into()));
+                        }
+                    }
+
                     // Default: return Hash for #[...] annotations
                     return Ok(self.single(TokenKind::Hash, c));
                 }

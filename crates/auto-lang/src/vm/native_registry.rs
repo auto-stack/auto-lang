@@ -657,11 +657,12 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.char.to_lower", 1605);
     registry.register_with_id("auto.char.to_upper", 1606);
 
-    // Log functions (1800-1803)
+    // Log functions (1800-1804)
     registry.register_with_id("auto.log.debug", 1800);
     registry.register_with_id("auto.log.info", 1801);
     registry.register_with_id("auto.log.warn", 1802);
     registry.register_with_id("auto.log.error", 1803);
+    registry.register_with_id("auto.log.noop", 1804);
 
     // Math functions (1700-1725)
     registry.register_with_id("auto.math.abs", 1700);
@@ -692,6 +693,12 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.math.powf", 1731);
     registry.register_with_id("auto.math.to_radians", 1732);
     registry.register_with_id("auto.math.to_degrees", 1733);
+
+    // Rand functions (1850-1853) — Plan 212 Phase 2
+    registry.register_with_id("auto.rand.thread_rng", 1850);
+    registry.register_with_id("auto.rng.gen_range", 1851);
+    registry.register_with_id("auto.rng.gen", 1852);
+    registry.register_with_id("auto.rng.drop", 1853);
 
     // JSON functions (1900-1917)
     registry.register_with_id("auto.json.encode", 1900);

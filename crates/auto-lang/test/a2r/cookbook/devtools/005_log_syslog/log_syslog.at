@@ -1,7 +1,7 @@
 use.rust log::info
 
 fn main() {
-    info!("sending to syslog")
-    info!("daemon started")
+    #info("sending to syslog")
+    #info("daemon started")
     print("syslog configured")
 }

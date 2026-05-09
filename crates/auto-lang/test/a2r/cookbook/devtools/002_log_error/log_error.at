@@ -1,6 +1,6 @@
 use.rust log::error
 
 fn main() {
-    error!("something went wrong")
+    #error("something went wrong")
     print("operation completed with errors")
 }

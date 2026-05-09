@@ -2,8 +2,8 @@ use.rust tracing::info
 use.rust tracing::debug
 
 fn main() {
-    info!("application started")
+    #info("application started")
     let count = 10
-    debug!("processing $count items")
-    info!("application finished")
+    #debug("processing $count items")
+    #info("application finished")
 }

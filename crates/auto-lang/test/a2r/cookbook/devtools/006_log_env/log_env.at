@@ -3,6 +3,6 @@ use.rust env_logger
 
 fn main() {
     env_logger.init()
-    info!("this is an info message")
+    #info("this is an info message")
     print("check RUST_LOG env var")
 }

@@ -2058,8 +2058,8 @@ impl RustTrans {
                             return Ok(());
                         }
                         "slice" => {
-                            // s.slice(n) -> s[n..]
-                            // s.slice(start, end) -> s[start..end]
+                            // s.slice(n) -> s[n..].to_string()
+                            // s.slice(start, end) -> s[start..end].to_string()
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             let args = &call.args.args;
@@ -2087,6 +2087,7 @@ impl RustTrans {
                             } else {
                                 write!(out, "..]")?;
                             }
+                            write!(out, ".to_string()")?;
                             return Ok(());
                         }
                         "repeat" => {
@@ -2273,6 +2274,7 @@ impl RustTrans {
                     } else {
                         write!(out, "..]")?;
                     }
+                    write!(out, ".to_string()")?;
                     return Ok(());
                 }
                 "repeat" => {
@@ -2986,6 +2988,19 @@ impl RustTrans {
                 if node.name != "loop" {
                     sink.body.write(b";")?;
                 }
+                Ok(true)
+            }
+
+            // Plan 212 Phase 2.4: Macro invocation — #debug("msg") → debug!("msg")
+            Stmt::MacroCall(macro_call) => {
+                write!(sink.body, "{}!(", macro_call.name)?;
+                for (i, arg) in macro_call.args.iter().enumerate() {
+                    if i > 0 {
+                        sink.body.write(b", ")?;
+                    }
+                    self.expr(arg, &mut sink.body)?;
+                }
+                sink.body.write(b");")?;
                 Ok(true)
             }
 

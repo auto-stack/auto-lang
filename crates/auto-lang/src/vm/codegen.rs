@@ -2949,6 +2949,37 @@ impl Codegen {
             Stmt::Use(use_stmt) => {
                 self.handle_use_stmt(use_stmt);
             }
+            // Plan 212 Phase 2.4: Macro invocation — #debug("msg"), #info("msg")
+            Stmt::MacroCall(macro_call) => {
+                let routed_name = match macro_call.name.as_str() {
+                    "debug" => "Log.debug",
+                    "info" => "Log.info",
+                    "warn" => "Log.warn",
+                    "error" => "Log.error",
+                    _ => {
+                        // Unknown macro — silently ignore in VM
+                        return Ok(());
+                    }
+                };
+                // Compile arguments
+                for arg in &macro_call.args {
+                    self.compile_expr(arg)?;
+                }
+                // Look up native ID and emit CALL_NAT
+                if let Some(&id) = self.intrinsics.get(routed_name) {
+                    self.emit(OpCode::CALL_NAT);
+                    self.emit_u16(id);
+                } else {
+                    // Fallback: try BIGVM_NATIVES
+                    let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+                    if let Some(native_id) = reg.resolve_qualified(routed_name) {
+                        drop(reg);
+                        self.emit(OpCode::CALL_NAT);
+                        self.emit_u16(native_id);
+                    }
+                }
+                self.last_expr_type = ObjectType::Void;
+            }
             _ => {
                 // TODO: Implement other statements
             }
@@ -5222,6 +5253,40 @@ impl Codegen {
                     }
                 }
 
+                // Plan 212 Phase 2: Route rand/Rng methods to built-in shims
+                if let Some(ref fname) = func_name {
+                    let method = fname.rsplit('.').next().unwrap_or("");
+                    match method {
+                        "thread_rng" => {
+                            func_name = Some("auto.rand.thread_rng".to_string());
+                        }
+                        "gen_range" => {
+                            func_name = Some("auto.rng.gen_range".to_string());
+                        }
+                        "gen" if fname.contains('.') => {
+                            func_name = Some("auto.rng.gen".to_string());
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Plan 212 Phase 2: Route log/tracing macros to built-in Log shims
+                if let Some(ref fname) = func_name {
+                    let method = fname.rsplit('.').next().unwrap_or("").to_string();
+                    let bare = fname.rsplit("::").next().unwrap_or(fname.as_str()).to_string();
+                    match bare.as_str() {
+                        "debug" => func_name = Some("Log.debug".to_string()),
+                        "info" => func_name = Some("Log.info".to_string()),
+                        "warn" => func_name = Some("Log.warn".to_string()),
+                        "error" => func_name = Some("Log.error".to_string()),
+                        _ => {}
+                    }
+                    // no-op shims for env_logger/log/tracing configuration
+                    if method == "init" || method == "set_max_level" || method == "set_logger" {
+                        func_name = Some("auto.log.noop".to_string());
+                    }
+                }
+
                 // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
                 let native_id = if let Some(name) = &func_name {
                     // Check intrinsics first (print, etc.)
@@ -5441,6 +5506,13 @@ impl Codegen {
                                 vm_debug!("DEBUG: Injected task_type='{}' for Task.send", task_type_str);
                             }
                         }
+                    }
+
+                    // Plan 212 Phase 2: Log no-op — skip arg compilation + CALL_NAT entirely.
+                    // env_logger.init(), log.set_max_level(), etc. have no VM-side effect.
+                    if func_name.as_deref() == Some("auto.log.noop") {
+                        self.last_expr_type = ObjectType::Void;
+                        return Ok(());
                     }
 
                     // Compile arguments (left-to-right)
@@ -6599,6 +6671,20 @@ impl Codegen {
         // Math functions return f64
         if name.starts_with("auto.math.") {
             return ObjectType::Double;
+        }
+        // Rand functions
+        if name == "auto.rand.thread_rng" {
+            return ObjectType::NestedObject; // opaque handle (i32 heap id)
+        }
+        if name == "auto.rng.gen_range" || name == "auto.rng.gen" {
+            return ObjectType::Int;
+        }
+        // Log/tracing functions return void
+        if name == "auto.log.noop"
+            || name == "Log.debug" || name == "Log.info"
+            || name == "Log.warn" || name == "Log.error"
+        {
+            return ObjectType::Void;
         }
         // hashmap.get (unspecialized) returns unknown type — don't inherit
         // stale String from argument compilation (e.g., map.get(str_key))

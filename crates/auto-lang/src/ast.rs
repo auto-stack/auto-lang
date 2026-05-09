@@ -210,6 +210,8 @@ pub enum Stmt {
     HashFor(HashFor),
     HashIs(HashIs),
     HashBrace(HashBrace),
+    // Plan 212 Phase 2.4: Macro invocation
+    MacroCall(MacroCall),
 }
 
 impl Stmt {
@@ -284,6 +286,7 @@ impl fmt::Display for Stmt {
             Stmt::HashFor(hash_for) => write!(f, "{}", hash_for),
             Stmt::HashIs(hash_is) => write!(f, "{}", hash_is),
             Stmt::HashBrace(hash_brace) => write!(f, "{}", hash_brace),
+            Stmt::MacroCall(macro_call) => write!(f, "{}", macro_call),
         }
     }
 }
@@ -1135,6 +1138,7 @@ impl ToNode for Stmt {
             Stmt::HashFor(hash_for) => hash_for.to_node(),
             Stmt::HashIs(hash_is) => hash_is.to_node(),
             Stmt::HashBrace(hash_brace) => hash_brace.to_node(),
+            Stmt::MacroCall(macro_call) => macro_call.to_node(),
         }
     }
 }
@@ -1188,6 +1192,7 @@ impl ToAtom for Stmt {
             Stmt::HashFor(hash_for) => hash_for.to_atom_str(),
             Stmt::HashIs(hash_is) => hash_is.to_atom_str(),
             Stmt::HashBrace(hash_brace) => hash_brace.to_atom_str(),
+            Stmt::MacroCall(macro_call) => macro_call.to_atom_str(),
         }
     }
 }

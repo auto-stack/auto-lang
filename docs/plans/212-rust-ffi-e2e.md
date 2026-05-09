@@ -965,7 +965,16 @@ Phase 2.2 (Opaque Struct, 39 tests)
 
 Phase 2.3-log (log/tracing 快捷方案, 10 tests)
   ├── Task 2.3.1: 内置 log shim（不加载外部 crate）
-  └── Task 2.3.2: 验证测试
+  ├── Task 2.3.2: 验证测试
+  └── Task 2.3.3: #macro 调用语法（见 Phase 2.4）
+
+Phase 2.4 (#macro 调用语法)
+  ├── Task 2.4.1: Lexer — 识别 #ident( 为宏调用 token
+  ├── Task 2.4.2: AST — 添加 MacroCall 节点
+  ├── Task 2.4.3: Parser — 解析 #ident(args) 为 MacroCall
+  ├── Task 2.4.4: VM codegen — #debug(...) 路由到 Log.debug
+  ├── Task 2.4.5: a2r transpiler — #debug(...) 转译为 debug!(...)
+  └── Task 2.4.6: 更新 cookbook 测试文件
 
 总计覆盖: 3 (已有) + 7 + 39 + 10 = 59/82 (72%)
 剩余 23 个 complex 测试留待 Phase 3+
@@ -978,4 +987,182 @@ Phase 2.3-log (log/tracing 快捷方案, 10 tests)
 - [ ] Phase 2.2: `Url.parse("https://example.com/path").host_str()` 返回 "example.com"
 - [ ] Phase 2.2: `Version.parse("1.2.3").major` 返回 1
 - [ ] Phase 2.3-log: `debug!("msg")` 在 AutoVM 中输出 `[DEBUG] msg`
+- [ ] Phase 2.4: `#debug("msg")` 语法在 VM 中输出 `[DEBUG] msg`
+- [ ] Phase 2.4: `#debug("msg")` 经 a2r 转译为 `debug!("msg")`
 - [ ] MISSING_DEP 测试通过率从 0% 提升到 72%
+
+---
+
+## Phase 2.4: `#macro` 调用语法
+
+**日期**: 2026-05-09
+**状态**: 🔧 IN PROGRESS
+**目标**: 为 Auto 添加 `#macro_name(...)` 宏调用语法，与现有 `#if`/`#for`/`#{...}` 编译期体系一致。
+
+### 设计
+
+Auto 的编译期操作统一使用 `#` 前缀：
+- `#if cond { ... }` — 编译期条件
+- `#for x in 0..4 { ... }` — 编译期循环
+- `#{ expr }` — 编译期表达式
+- **`#macro_name(args)` — 宏调用**（新增）
+
+宏调用的语义：
+- **VM 执行**：`#debug("msg")` 路由到已有的 `Log.debug` native shim，等效于 `debug("msg")`
+- **a2r 转译**：`#debug("msg")` → `debug!("msg")`（去掉 `#`，加 `!`）
+- **声明语法**：暂不设计，本阶段只实现调用
+
+示例：
+```auto
+use.rust log::debug
+use.rust log::info
+
+fn main() {
+    #debug("starting operation")    // VM: Log.debug / a2r: debug!("...")
+    let value = 42
+    #info(f"value = $value")        // VM: Log.info  / a2r: info!("...")
+    print("done")
+}
+```
+
+### Task 2.4.1: Lexer — 识别 `#ident(` 宏调用
+
+**文件：** `crates/auto-lang/src/lexer.rs`
+
+在处理 `#` 字符时，当前已有逻辑识别 `#if`、`#for`、`#is`、`#{`。需要新增：
+
+当 `#` 后面跟着标识符字符但不是已知关键字（if/for/is/{）时：
+1. 读取完整标识符（如 `debug`）
+2. 检查后面是否有 `(`
+3. 如果有 `(`：发射 `HashIdent` token（值为标识符名）
+4. 如果没有 `(`：报错或 fallback（当前 `#` 后面只能是已知关键字）
+
+新增 token：
+```rust
+TokenKind::HashIdent  // #ident — macro invocation prefix
+```
+
+Token text 存储标识符名（不含 `#`），如 `"debug"`。
+
+### Task 2.4.2: AST — 添加 MacroCall 节点
+
+**文件：** `crates/auto-lang/src/ast/comptime.rs`（或 `ast.rs`）
+
+新增 AST 节点：
+
+```rust
+/// #name(args) — Macro invocation
+///
+/// Calls a macro at compile time. In VM mode, routes to built-in shims.
+/// In a2r mode, transpiles to Rust macro syntax: name!(args).
+///
+/// # Example
+/// ```auto
+/// #debug("message")
+/// #info(f"value = $x")
+/// ```
+#[derive(Debug, Clone)]
+pub struct MacroCall {
+    /// Macro name (without # prefix), e.g., "debug"
+    pub name: Name,
+    /// Arguments
+    pub args: Vec<Expr>,
+}
+```
+
+在 `Stmt` enum 中添加：
+```rust
+MacroCall(MacroCall),
+```
+
+> **注意**：宏调用可以作为 Stmt（语句位置）或 Expr（表达式位置）。目前先作为 Stmt 实现，因为 log/tracing 宏都不返回有意义的值。如果将来有返回值的宏（如 `#include_str!`），可以扩展为同时支持 Expr。
+
+### Task 2.4.3: Parser — 解析 `#ident(args)`
+
+**文件：** `crates/auto-lang/src/parser.rs`
+
+在 `parse_stmt()` 中，`HashIdent` token 的处理：
+
+```rust
+TokenKind::HashIdent => {
+    let name = self.current().text.to_string();
+    self.advance(); // consume HashIdent
+    self.expect(TokenKind::LParen)?;
+    let args = self.parse_arg_list()?;  // reuse existing arg parsing
+    self.expect(TokenKind::RParen)?;
+    Stmt::MacroCall(MacroCall { name, args })
+}
+```
+
+### Task 2.4.4: VM codegen — `#debug(...)` 路由
+
+**文件：** `crates/auto-lang/src/vm/codegen.rs`
+
+在 `compile_stmt()` 中添加 `Stmt::MacroCall` 分支：
+
+```rust
+Stmt::MacroCall(macro_call) => {
+    // Route #name(args) to the same native shim as name(args)
+    // e.g., #debug("msg") → Log.debug, #info("msg") → Log.info
+    let routed_name = match macro_call.name.as_str() {
+        "debug" => "Log.debug",
+        "info" => "Log.info",
+        "warn" => "Log.warn",
+        "error" => "Log.error",
+        other => {
+            log::warn!("Unknown macro: #{}", other);
+            return Ok(());
+        }
+    };
+    // Compile args + CALL_NAT (reuse existing native call logic)
+    for arg in &macro_call.args {
+        self.compile_expr(arg)?;
+    }
+    if let Some(&id) = self.intrinsics.get(routed_name) {
+        self.emit(OpCode::CALL_NAT);
+        self.emit_u16(id);
+    }
+    self.last_expr_type = ObjectType::Void;
+}
+```
+
+### Task 2.4.5: a2r transpiler — `#debug(...)` → `debug!(...)`
+
+**文件：** `crates/auto-lang/src/trans/rust.rs`
+
+在 a2r 的 `transpile_stmt()` 中添加 `MacroCall` 处理：
+
+```rust
+Stmt::MacroCall(macro_call) => {
+    // #name(args) → name!(args)
+    write!(out, "{}!(", macro_call.name)?;
+    for (i, arg) in macro_call.args.iter().enumerate() {
+        if i > 0 { write!(out, ", ")?; }
+        self.transpile_expr(arg, out)?;
+    }
+    writeln!(out, ");")?;
+}
+```
+
+### Task 2.4.6: 更新 cookbook 测试文件
+
+更新 devtools 目录下的 log 测试文件，将 `debug!("...")` 改为 `#debug("...")`：
+
+- `test/a2r/cookbook/devtools/001_log_debug/log_debug.at`
+- `test/a2r/cookbook/devtools/002_log_error/log_error.at`
+- `test/a2r/cookbook/devtools/003_log_stdout/log_stdout.at`
+- `test/a2r/cookbook/devtools/005_log_env/log_env.at`
+- `test/a2r/cookbook/devtools/006_log_mod/log_mod.at`
+- `test/a2r/cookbook/devtools/007_log_timestamp/log_timestamp.at`
+- `test/a2r/cookbook/devtools/009_log_custom_location/log_custom_location.at`
+- `test/a2r/cookbook/devtools/010_tracing_console/tracing_console.at`
+
+同时更新对应的 `.expected.rs` 文件，确认输出包含 `debug!(...)` 而非 `debug(...)`。
+
+### 实施要点
+
+1. **Lexer 优先**：`#` 后面先检查已知关键字（if/for/is/{），不匹配则尝试读标识符
+2. **Parser 复用**：参数解析复用现有的 `parse_arg_list()` 或 `parse_call_args()`
+3. **VM 侧行为不变**：`#debug(...)` 和 `debug(...)` 在 VM 中产生完全相同的 CALL_NAT
+4. **a2r 侧是核心价值**：`#` 前缀让 a2r 知道这是一个 Rust 宏调用，需要加 `!`
+5. **向后兼容**：`debug("msg")`（不带 `#`）仍然可以在 VM 中工作，但 a2r 会转译为 `debug("msg")`（函数调用，非宏）

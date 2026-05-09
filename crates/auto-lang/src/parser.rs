@@ -3365,6 +3365,7 @@ impl<'a> Parser<'a> {
             TokenKind::HashFor => self.hash_for_stmt()?,
             TokenKind::HashIs => self.hash_is_stmt()?,
             TokenKind::HashBrace => self.hash_brace_expr()?,
+            TokenKind::HashIdent => self.macro_call_stmt()?,
             TokenKind::Var => self.parse_store_stmt()?,
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
@@ -5563,6 +5564,25 @@ impl<'a> Parser<'a> {
             iter,
             body,
         }))
+    }
+
+    /// Plan 212 Phase 2.4: Parse #name(args) macro invocation
+    /// Syntax: #debug("msg"), #info(f"value = $x")
+    /// Token: HashIdent (text = "debug") followed by LParen
+    pub fn macro_call_stmt(&mut self) -> AutoResult<Stmt> {
+        let name = self.cur.text.to_string();
+        self.next(); // skip HashIdent
+        self.expect(TokenKind::LParen)?;
+        let mut args = Vec::new();
+        if !self.is_kind(TokenKind::RParen) {
+            args.push(self.parse_expr()?);
+            while self.is_kind(TokenKind::Comma) {
+                self.next();
+                args.push(self.parse_expr()?);
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(Stmt::MacroCall(MacroCall { name: name.into(), args }))
     }
 
     /// Parse #is statement for compile-time type matching

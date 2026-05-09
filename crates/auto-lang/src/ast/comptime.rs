@@ -276,6 +276,55 @@ impl AtomWriter for HashBrace {
     }
 }
 
+/// #name(args) — Macro invocation (Plan 212 Phase 2.4)
+///
+/// Calls a macro. In VM mode, routes to built-in shims.
+/// In a2r mode, transpiles to Rust macro syntax: `name!(args)`.
+///
+/// # Example
+/// ```auto
+/// #debug("message")
+/// #info(f"value = $x")
+/// ```
+#[derive(Debug, Clone)]
+pub struct MacroCall {
+    /// Macro name (without # prefix), e.g., "debug"
+    pub name: Name,
+    /// Arguments
+    pub args: Vec<Expr>,
+}
+
+impl fmt::Display for MacroCall {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(#{} (", self.name)?;
+        for (i, arg) in self.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{}", arg)?;
+        }
+        write!(f, "))")
+    }
+}
+
+impl ToNode for MacroCall {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("macro_call");
+        node.set_prop("name", Value::Str(self.name.clone()));
+        for arg in &self.args {
+            node.add_kid(arg.to_node());
+        }
+        node
+    }
+}
+
+impl AtomWriter for MacroCall {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        write!(f, "{}", self)?;
+        Ok(())
+    }
+}
+
 /// Compile-time expression that can appear in various contexts
 ///
 /// This is used for `#{}` interpolation within expressions

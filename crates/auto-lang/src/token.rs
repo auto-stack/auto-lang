@@ -81,6 +81,7 @@ pub enum TokenKind {
     HashFor,     // #for
     HashIs,      // #is
     HashBrace,   // #{
+    HashIdent,   // #ident — macro invocation prefix (Plan 212 Phase 2.4)
 
     // Keywords
     True,

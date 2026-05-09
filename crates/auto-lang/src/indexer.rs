@@ -160,7 +160,7 @@ impl<'db> Indexer<'db> {
                 }
 
                 // Plan 095: Compile-time execution
-                Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) => {
+                Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) | Stmt::MacroCall(_) => {
                     // Compile-time constructs are processed before indexing
                     // Skip them here as they should be resolved by CTEE
                 }

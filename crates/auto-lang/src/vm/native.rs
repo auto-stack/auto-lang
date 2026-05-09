@@ -477,6 +477,20 @@ impl NativeInterface {
 
         // String methods for CALL_SPEC dispatch
         self.register_name("auto.str.len", NATIVE_STR_LEN);
+
+        // Plan 212 Phase 2: Rand native shims (built-in, no external crate needed)
+        self.register(NATIVE_RAND_THREAD_RNG, shim_rand_thread_rng);
+        self.register(NATIVE_RNG_GEN_RANGE, shim_rng_gen_range);
+        self.register(NATIVE_RNG_GEN, shim_rng_gen);
+        self.register(NATIVE_RNG_DROP, shim_rng_drop);
+        self.register_name("auto.rand.thread_rng", NATIVE_RAND_THREAD_RNG);
+        self.register_name("auto.rng.gen_range", NATIVE_RNG_GEN_RANGE);
+        self.register_name("auto.rng.gen", NATIVE_RNG_GEN);
+        self.register_name("auto.rng.drop", NATIVE_RNG_DROP);
+
+        // Plan 212 Phase 2: Log no-op shim (env_logger.init(), log.set_max_level(), etc.)
+        self.register(NATIVE_LOG_NOOP, shim_log_noop);
+        self.register_name("auto.log.noop", NATIVE_LOG_NOOP);
     }
 }
 
@@ -801,6 +815,14 @@ pub const NATIVE_INT_BIT_FLIP: u16 = 234;   // .bit(n).flip() → val ^ (1 << n)
 // === String/Uint Extension Native IDs (235+) ===
 pub const NATIVE_STR_BYTES: u16 = 235;    // str.bytes() → iterator of byte values
 pub const NATIVE_UINT_TO_HEX: u16 = 236; // uint.to_hex(pad) → hex string
+
+// === Rand Native IDs (1850+) — Plan 212 Phase 2 ===
+pub const NATIVE_RAND_THREAD_RNG: u16 = 1850; // thread_rng() → opaque Rng handle
+pub const NATIVE_RNG_GEN_RANGE: u16 = 1851;   // rng.gen_range(lo, hi) → i32
+pub const NATIVE_RNG_GEN: u16 = 1852;         // rng.gen() → i32
+pub const NATIVE_RNG_DROP: u16 = 1853;        // drop Rng handle
+
+pub const NATIVE_LOG_NOOP: u16 = 1804;        // no-op for env_logger.init(), etc.
 
 // === Standard Shims ===
 
@@ -4012,6 +4034,108 @@ pub fn shim_list_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         }
     }
     task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2: Rand Native Shims
+// ============================================================================
+
+/// Simple xorshift64 PRNG — no external rand crate needed
+#[derive(Debug)]
+struct Xorshift64 {
+    state: u64,
+}
+
+impl Xorshift64 {
+    fn new(seed: u64) -> Self {
+        Self { state: if seed == 0 { 0xDEAD_BEEF_CAFE_BABE } else { seed } }
+    }
+
+    fn next(&mut self) -> u64 {
+        let mut x = self.state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.state = x;
+        x
+    }
+}
+
+/// thread_rng() -> opaque Rng handle (stored as RustStdlibObject on heap)
+/// Stack: [] -> [rng_id_i32]
+pub fn shim_rand_thread_rng(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+
+    let rng = std::sync::Mutex::new(Xorshift64::new(seed));
+    let obj = RustStdlibObject::new("rand::ThreadRng", rng);
+    let rng_id = vm.insert_heap_object(obj);
+    task.ram.push_i32(rng_id as i32);
+    Ok(())
+}
+
+/// rng.gen_range(lo, hi) -> i32
+/// Stack: [hi, lo, rng_id] -> [result]
+pub fn shim_rng_gen_range(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let hi = task.ram.pop_i32();
+    let lo = task.ram.pop_i32();
+    let rng_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let range = (hi - lo).max(1);
+                let val = rng.get_mut().unwrap().next();
+                let result = lo + ((val % range as u64) as i32);
+                task.ram.push_i32(result);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// rng.gen() -> i32
+/// Stack: [rng_id] -> [result]
+pub fn shim_rng_gen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let rng_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = rng.get_mut().unwrap().next() as i32;
+                task.ram.push_i32(val);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// rng.drop() — no-op, GC will handle
+pub fn shim_rng_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _rng_id = task.ram.pop_i32();
+    Ok(())
+}
+
+/// log no-op — swallows all arguments, returns nothing.
+/// Used for env_logger.init(), log::set_max_level(), tracing::init(), etc.
+pub fn shim_log_noop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // Arguments are already consumed by the caller's stack management.
+    // Nothing to do — these functions are pure side-effects we ignore.
     Ok(())
 }
 

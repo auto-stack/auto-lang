@@ -122,7 +122,7 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         }
 
         // Plan 095: Compile-time execution - no runtime type checking needed
-        Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) => Ok(Type::Void),
+        Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) | Stmt::MacroCall(_) => Ok(Type::Void),
     }
 }
 
