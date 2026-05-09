@@ -1029,26 +1029,33 @@ impl Target {
 
     fn scan_auto(&mut self) -> AutoResult<()> {
         let mut auto_files = Vec::new();
-        // 1. check target's root folder for auto files
         let root = Path::new(self.at.as_str());
-        for entry in root.read_dir()? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("at")) {
-                // exclude pac.at/device.at
-                if path.file_name() == Some(std::ffi::OsStr::new("pac.at"))
-                    || path.file_name() == Some(std::ffi::OsStr::new("device.at"))
-                    || path.file_name() == Some(std::ffi::OsStr::new("os.at"))
-                {
-                    continue;
+        self.scan_auto_dir(root, &mut auto_files);
+        self.autos.extend(auto_files);
+        Ok(())
+    }
+
+    fn scan_auto_dir(&self, dir: &Path, files: &mut Vec<AutoStr>) {
+        if let Ok(entries) = dir.read_dir() {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("at")) {
+                    if path.file_name() == Some(std::ffi::OsStr::new("pac.at"))
+                        || path.file_name() == Some(std::ffi::OsStr::new("device.at"))
+                        || path.file_name() == Some(std::ffi::OsStr::new("os.at"))
+                    {
+                        continue;
+                    }
+                    files.push(path.unified());
+                } else if path.is_dir() && self.recurse {
+                    let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
+                    if dir_name.starts_with('.') || dir_name == "rust" {
+                        continue;
+                    }
+                    self.scan_auto_dir(&path, files);
                 }
-                auto_files.push(path.unified());
             }
         }
-
-        self.autos.extend(auto_files);
-
-        Ok(())
     }
 
     pub fn clean(&self) -> AutoResult<()> {

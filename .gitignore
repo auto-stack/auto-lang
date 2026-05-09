@@ -68,6 +68,9 @@ node_modules/
 crates/xdm-gen/
 xdm-gen/
 
+# Auto self-hosted compiler generated output
+auto/rust/
+
 # Git worktrees
 .worktrees/
 

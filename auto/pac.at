@@ -1,0 +1,10 @@
+// pac.at - Auto self-hosted compiler (AAVM)
+// Transpiles auto/lib/*.at to Rust via `auto build`
+name: "auto"
+version: "0.1.0"
+lang: "rust"
+backend: "rust"
+
+lib("auto") {
+    recurse: true
+}
