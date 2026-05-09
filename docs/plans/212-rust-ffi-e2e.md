@@ -1,7 +1,7 @@
 # Plan 212: Rust FFI 动态加载
 
 > **Phase 1 Status: ✅ COMPLETE** — MVP string→string FFI 已验证
-> **Phase 2 Status: 🔧 IN PROGRESS** — Phase 2.3/2.4 done, Phase 2.2 (opaque struct shims) in progress
+> **Phase 2 Status: ✅ COMPLETE** — Phase 2.1/2.2/2.3/2.4 all done
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -762,7 +762,7 @@ pub extern "C" fn auto_parse_int(s: *const c_char) -> i64
 ### Phase 2.2: Built-in Opaque Struct Shims（39 个测试）
 
 **日期**: 2026-05-09
-**状态**: 🔧 IN PROGRESS
+**状态**: ✅ COMPLETE
 **目标**: 用方案 A（built-in shims，实际 Rust crate 作为依赖）为 regex::Regex、url::Url、semver::Version 添加内置 opaque struct shims。方案 B（cdylib 编译管线）记录为未来 TODO。
 
 #### 核心设计：Built-in Shims + Opaque Handle
@@ -961,13 +961,13 @@ Phase 2.4 (#macro 调用语法)
 
 ### Phase 2 成功标准
 
-- [ ] Phase 2.1: `rand::random()` 在 AutoVM 中返回随机整数
-- [ ] Phase 2.2: `Regex.new(r"\d+").is_match("abc123")` 在 AutoVM 中返回 true
-- [ ] Phase 2.2: `Url.parse("https://example.com/path").host_str()` 返回 "example.com"
-- [ ] Phase 2.2: `Version.parse("1.2.3").major` 返回 1
-- [ ] Phase 2.3-log: `debug!("msg")` 在 AutoVM 中输出 `[DEBUG] msg`
-- [ ] Phase 2.4: `#debug("msg")` 语法在 VM 中输出 `[DEBUG] msg`
-- [ ] Phase 2.4: `#debug("msg")` 经 a2r 转译为 `debug!("msg")`
+- [x] Phase 2.1: `rand::random()` 在 AutoVM 中返回随机整数
+- [x] Phase 2.2: `Regex.new("\\d+").is_match("abc123")` 在 AutoVM 中返回 true
+- [x] Phase 2.2: `Url.parse("https://example.com/path").host_str()` 返回 "example.com"
+- [x] Phase 2.2: `Version.parse("1.2.3").major` 返回 1
+- [x] Phase 2.3-log: `debug!("msg")` 在 AutoVM 中输出 `[DEBUG] msg`
+- [x] Phase 2.4: `#debug("msg")` 语法在 VM 中输出 `[DEBUG] msg`
+- [x] Phase 2.4: `#debug("msg")` 经 a2r 转译为 `debug!("msg")`
 - [ ] MISSING_DEP 测试通过率从 0% 提升到 72%
 
 ---

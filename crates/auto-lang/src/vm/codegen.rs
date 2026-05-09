@@ -5285,6 +5285,9 @@ impl Codegen {
                         "gen" if fname.contains('.') => {
                             func_name = Some("auto.rng.gen".to_string());
                         }
+                        "random" => {
+                            func_name = Some("auto.rand.random".to_string());
+                        }
                         _ => {}
                     }
                 }
@@ -6822,7 +6825,7 @@ impl Codegen {
         if name == "auto.rand.thread_rng" {
             return ObjectType::NestedObject; // opaque handle (i32 heap id)
         }
-        if name == "auto.rng.gen_range" || name == "auto.rng.gen" {
+        if name == "auto.rng.gen_range" || name == "auto.rng.gen" || name == "auto.rand.random" {
             return ObjectType::Int;
         }
         // Log/tracing functions return void

@@ -483,7 +483,9 @@ impl NativeInterface {
         self.register(NATIVE_RNG_GEN_RANGE, shim_rng_gen_range);
         self.register(NATIVE_RNG_GEN, shim_rng_gen);
         self.register(NATIVE_RNG_DROP, shim_rng_drop);
+        self.register(NATIVE_RAND_RANDOM, shim_rand_random);
         self.register_name("auto.rand.thread_rng", NATIVE_RAND_THREAD_RNG);
+        self.register_name("auto.rand.random", NATIVE_RAND_RANDOM);
         self.register_name("auto.rng.gen_range", NATIVE_RNG_GEN_RANGE);
         self.register_name("auto.rng.gen", NATIVE_RNG_GEN);
         self.register_name("auto.rng.drop", NATIVE_RNG_DROP);
@@ -877,6 +879,7 @@ pub const NATIVE_RAND_THREAD_RNG: u16 = 1850; // thread_rng() → opaque Rng han
 pub const NATIVE_RNG_GEN_RANGE: u16 = 1851;   // rng.gen_range(lo, hi) → i32
 pub const NATIVE_RNG_GEN: u16 = 1852;         // rng.gen() → i32
 pub const NATIVE_RNG_DROP: u16 = 1853;        // drop Rng handle
+pub const NATIVE_RAND_RANDOM: u16 = 1854;     // rand::random() → i32
 
 pub const NATIVE_LOG_NOOP: u16 = 1804;        // no-op for env_logger.init(), etc.
 
@@ -4215,6 +4218,18 @@ pub fn shim_rng_gen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// rng.drop() — no-op, GC will handle
 pub fn shim_rng_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let _rng_id = task.ram.pop_i32();
+    Ok(())
+}
+
+/// rand::random() → random i32
+/// Stack: [] -> [random_i32]
+pub fn shim_rand_random(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    task.ram.push_i32(rng.next() as i32);
     Ok(())
 }
 

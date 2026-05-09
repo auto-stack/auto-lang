@@ -663,6 +663,11 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.log.warn", 1802);
     registry.register_with_id("auto.log.error", 1803);
     registry.register_with_id("auto.log.noop", 1804);
+    // Log.* aliases for #[rust_fn] — used by Phase 2.4 #macro routing
+    registry.register_with_id("Log.debug", 1800);
+    registry.register_with_id("Log.info", 1801);
+    registry.register_with_id("Log.warn", 1802);
+    registry.register_with_id("Log.error", 1803);
 
     // Math functions (1700-1725)
     registry.register_with_id("auto.math.abs", 1700);
@@ -694,11 +699,12 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.math.to_radians", 1732);
     registry.register_with_id("auto.math.to_degrees", 1733);
 
-    // Rand functions (1850-1853) — Plan 212 Phase 2
+    // Rand functions (1850-1854) — Plan 212 Phase 2
     registry.register_with_id("auto.rand.thread_rng", 1850);
     registry.register_with_id("auto.rng.gen_range", 1851);
     registry.register_with_id("auto.rng.gen", 1852);
     registry.register_with_id("auto.rng.drop", 1853);
+    registry.register_with_id("auto.rand.random", 1854);
 
     // JSON functions (1900-1917)
     registry.register_with_id("auto.json.encode", 1900);
