@@ -1734,9 +1734,13 @@ impl RustTrans {
             Expr::To { expr, target_type } => {
                 match target_type {
                     Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
-                        // x.to(str) / x.to(String) → x.to_string()
+                        // x.to(str) / x.to(String) → format!("{:?}", x) for struct types,
+                        // or x.to_string() for primitive types
+                        // Since we lack type inference, use format!("{:?}", x) as safe default
+                        // which works for all types that derive Debug
+                        write!(out, "format!(\"{{:?}}\", ")?;
                         self.expr(expr, out)?;
-                        write!(out, ".to_string()")?;
+                        write!(out, ")")?;
                     }
                     // For string literal sources, parse works; for others, use `as`
                     // Heuristic: check if expr is a string literal
@@ -1761,10 +1765,19 @@ impl RustTrans {
                         }
                     }
                     _ => {
-                        // Fallback: treat as cast (same as .as())
-                        write!(out, "(")?;
-                        self.expr(expr, out)?;
-                        write!(out, " as {})", self.rust_type_name(target_type))?;
+                        // Check if target is a string-like type name (String, str, etc.)
+                        let ty_name = self.rust_type_name(target_type);
+                        if ty_name == "String" || ty_name == "str" || ty_name == "&str" {
+                            // x.to(String) / x.to(str) → format!("{:?}", x)
+                            write!(out, "format!(\"{{:?}}\", ")?;
+                            self.expr(expr, out)?;
+                            write!(out, ")")?;
+                        } else {
+                            // Fallback: treat as cast (same as .as())
+                            write!(out, "(")?;
+                            self.expr(expr, out)?;
+                            write!(out, " as {})", ty_name)?;
+                        }
                     }
                 }
                 Ok(())
@@ -1917,13 +1930,44 @@ impl RustTrans {
         }
 
         // Plan 204 Phase 1A: Rust assert/assert_eq/assert_ne/panic are macros, need ! suffix
+        // Special: when 2nd arg is an f-string, inline it directly (not format!())
+        // because Rust assert! expects a string literal as the format arg.
         if let Expr::Ident(name) = call.name.as_ref() {
             if matches!(name.as_str(), "assert" | "assert_eq" | "assert_ne" | "panic") {
                 write!(out, "{}!(", name)?;
                 for (i, arg) in call.args.args.iter().enumerate() {
-                    self.arg(arg, out)?;
-                    if i < call.args.args.len() - 1 {
-                        write!(out, ", ")?;
+                    if i > 0 { write!(out, ", ")?; }
+                    // Check if this arg is an f-string — inline it without format!()
+                    if let Arg::Pos(Expr::FStr(fstr)) = arg {
+                        write!(out, "\"")?;
+                        for part in &fstr.parts {
+                            match part {
+                                Expr::Str(s) | Expr::CStr(s) => {
+                                    let escaped = s.replace("\\", "\\\\").replace("\"", r##"\""##)
+                                        .replace("{", "{{").replace("}", "}}");
+                                    write!(out, "{}", escaped)?;
+                                }
+                                Expr::Char(c) => {
+                                    write!(out, "{}", c)?;
+                                }
+                                _ => {
+                                    write!(out, "{{}}")?;
+                                }
+                            }
+                        }
+                        write!(out, "\"")?;
+                        // Add format arguments
+                        for part in &fstr.parts {
+                            match part {
+                                Expr::Str(_) | Expr::CStr(_) | Expr::Char(_) => {}
+                                _ => {
+                                    write!(out, ", ")?;
+                                    self.expr(part, out)?;
+                                }
+                            }
+                        }
+                    } else {
+                        self.arg(arg, out)?;
                     }
                 }
                 write!(out, ")")?;
@@ -2191,8 +2235,8 @@ impl RustTrans {
                         self.expr(lhs, out)?;
                         if lhs_parens { write!(out, ")")?; }
                         write!(out, ".{}(", rust_name)?;
-                        // Special handling for .contains() - auto-borrow string args
-                        if method_name.as_str() == "contains" {
+                        // Auto-borrow string args for pattern-matching methods
+                        if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with") {
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 write!(out, "&")?;
                                 self.arg(arg, out)?;
@@ -2248,7 +2292,7 @@ impl RustTrans {
                     return Ok(());
                 }
                 "sub" => {
-                    // s.sub(start, end) -> &s[start..end]
+                    // s.sub(start, end) -> s[start..end].to_string()
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -2272,7 +2316,7 @@ impl RustTrans {
                             }
                         }
                     }
-                    write!(out, "]")?;
+                    write!(out, "].to_string()")?;
                     return Ok(());
                 }
                 "slice" => {
@@ -2421,10 +2465,21 @@ impl RustTrans {
                 self.expr(object, out)?;
                 if obj_parens { write!(out, ")")?; }
                 write!(out, ".{}(", rust_name)?;
-                for (i, arg) in call.args.args.iter().enumerate() {
-                    self.arg(arg, out)?;
-                    if i < call.args.args.len() - 1 {
-                        write!(out, ", ")?;
+                // Auto-borrow string args for pattern-matching methods
+                if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with") {
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        write!(out, "&")?;
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                } else {
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
                     }
                 }
                 write!(out, ")")?;
@@ -3562,9 +3617,15 @@ impl RustTrans {
                         let needs_semicolon = if !is_last {
                             true
                         } else {
-                            // All function/method calls need semicolons (not block return values)
+                            // Only void calls (print/println) need semicolons as tail
                             match expr {
-                                Expr::Call(_) => true,
+                                Expr::Call(call) => {
+                                    if let Expr::Ident(name) = call.name.as_ref() {
+                                        name == "print" || name == "println"
+                                    } else {
+                                        false
+                                    }
+                                }
                                 _ => false,
                             }
                         };
@@ -3624,9 +3685,15 @@ impl RustTrans {
                         let needs_semicolon = if !is_last {
                             true
                         } else {
-                            // All function/method calls need semicolons (not block return values)
+                            // Only void calls (print/println) need semicolons as tail
                             match expr {
-                                Expr::Call(_) => true,
+                                Expr::Call(call) => {
+                                    if let Expr::Ident(name) = call.name.as_ref() {
+                                        name == "print" || name == "println"
+                                    } else {
+                                        false
+                                    }
+                                }
                                 _ => false,
                             }
                         };
@@ -5026,6 +5093,11 @@ impl RustTrans {
                         }
                         sink.body.write(b"\n")?;
                     }
+                    Stmt::Node(node) => {
+                        // Node (struct constructor) as tail expression — no semicolon
+                        self.expr(&Expr::Node(node.clone()), &mut sink.body)?;
+                        sink.body.write(b"\n")?;
+                    }
                     _ => {
                         self.stmt(stmt, sink)?;
                         sink.body.write(b"\n")?;
@@ -5094,6 +5166,8 @@ impl RustTrans {
                     _ => true,
                 }
             }
+            // Node (struct constructor parsed as component) is returnable
+            Stmt::Node(_) => true,
             _ => false,
         }
     }
