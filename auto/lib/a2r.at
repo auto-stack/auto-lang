@@ -4,6 +4,17 @@
 
 // ---- Type mapping ----
 
+// Find '<' position in type string using char_at (workaround: .find() result broken in arithmetic)
+fn a2r_find_lt(t str) int {
+    var i = 0
+    var n = t.len()
+    for i < n {
+        if t.char_at(i) == 60 { return i }
+        i = i + 1
+    }
+    return -1
+}
+
 fn a2r_type(t str) str {
     if t == "" { return "" }
     if t == "int" { return "i32" }
@@ -19,16 +30,29 @@ fn a2r_type(t str) str {
     if t == "Map" { return "std::collections::HashMap<String, i32>" }
 
     // Generic types: "List<int>" → "Vec<i32>", "Map<str, int>" → "HashMap<String, i32>"
-    var lt = t.find("<")
+    var lt = a2r_find_lt(t)
     if lt < 0 { return t }
     var base = t.substr(0, lt)
-    var inner = t.substr(lt + 1, t.len() - 1)
+    var tl = t.len()
+    var inner = t.substr(lt + 1, tl - 1)
     if base == "List" { return "Vec<" + a2r_type(inner) + ">" }
     if base == "Map" {
-        var comma = inner.find(", ")
-        if comma >= 0 {
-            var k = inner.substr(0, comma)
-            var v = inner.substr(comma + 2, inner.len())
+        // Find ", " in inner using char_at
+        var ci = 0
+        var cn = inner.len()
+        var comma_pos = -1
+        for ci < cn {
+            if inner.char_at(ci) == 44 {
+                // ',' found, check for space after
+                comma_pos = ci
+                ci = cn
+            } else {
+                ci = ci + 1
+            }
+        }
+        if comma_pos >= 0 {
+            var k = inner.substr(0, comma_pos)
+            var v = inner.substr(comma_pos + 2, cn)
             return "std::collections::HashMap<" + a2r_type(k) + ", " + a2r_type(v) + ">"
         }
         return "std::collections::HashMap<" + a2r_type(inner) + ">"
@@ -508,7 +532,11 @@ fn a2r_type_decl(node ASTNode, tenv TypeEnv, indent int) str {
 fn a2r_enum_decl(node ASTNode, indent int) str {
     var prefix = a2r_indent_str(indent)
     var out = prefix + "#[derive(Clone, Debug, PartialEq)]\n"
-    out = out + prefix + "enum " + node.name + " {\n"
+    var generic_part = ""
+    if node.type_name != "" {
+        generic_part = node.type_name
+    }
+    out = out + prefix + "enum " + node.name + generic_part + " {\n"
     var i = 0
     var n = node.params.len()
     for i < n {
@@ -637,11 +665,15 @@ fn a2r_method(node ASTNode, tenv TypeEnv, indent int) str {
 fn a2r_ext(node ASTNode, tenv TypeEnv, indent int) str {
     var prefix = a2r_indent_str(indent)
     var for_spec = node.op
+    var generic_part = ""
+    if node.type_name != "" {
+        generic_part = node.type_name
+    }
     var out = ""
     if for_spec != "" {
-        out = prefix + "impl " + for_spec + " for " + node.name + " {\n"
+        out = prefix + "impl" + generic_part + " " + for_spec + " for " + node.name + " {\n"
     } else {
-        out = prefix + "impl " + node.name + " {\n"
+        out = prefix + "impl" + generic_part + " " + node.name + " {\n"
     }
 
     var i = 0
@@ -660,7 +692,11 @@ fn a2r_ext(node ASTNode, tenv TypeEnv, indent int) str {
 
 fn a2r_spec(node ASTNode, indent int) str {
     var prefix = a2r_indent_str(indent)
-    var out = prefix + "trait " + node.name + " {\n"
+    var generic_part = ""
+    if node.type_name != "" {
+        generic_part = node.type_name
+    }
+    var out = prefix + "trait " + node.name + generic_part + " {\n"
     var i = 0
     var n = node.params.len()
     for i < n {

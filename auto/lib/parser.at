@@ -950,19 +950,10 @@ fn parse_enum_decl(p Parser) ASTNode {
     p.pos = p.pos + 1  // skip name
     parser_skip_nl_semi(p)
 
-    // Skip optional generic params <T>
+    // Read optional generic params <T>
+    var generic_params = ""
     if parser_kind(p) == TokenKind.Lt {
-        var depth = 1
-        p.pos = p.pos + 1
-        for depth > 0 && parser_kind(p) != TokenKind.EOF {
-            if parser_kind(p) == TokenKind.Lt {
-                depth = depth + 1
-            }
-            if parser_kind(p) == TokenKind.Gt {
-                depth = depth - 1
-            }
-            p.pos = p.pos + 1
-        }
+        generic_params = parser_try_read_generic_type(p, "")
         parser_skip_nl_semi(p)
     }
 
@@ -1033,7 +1024,9 @@ fn parse_enum_decl(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return enum_node(name, variants, "")
+    var node = enum_node(name, variants, "")
+    node.type_name = generic_params
+    return node
 }
 
 // Parse use statement: use path : items
@@ -1134,15 +1127,10 @@ fn parse_spec_decl(p Parser) ASTNode {
     p.pos = p.pos + 1  // skip name
     parser_skip_nl_semi(p)
 
-    // Skip optional generic params <T>
+    // Read optional generic params <T>
+    var spec_generic = ""
     if parser_kind(p) == TokenKind.Lt {
-        var depth = 1
-        p.pos = p.pos + 1
-        for depth > 0 && parser_kind(p) != TokenKind.EOF {
-            if parser_kind(p) == TokenKind.Lt { depth = depth + 1 }
-            if parser_kind(p) == TokenKind.Gt { depth = depth - 1 }
-            p.pos = p.pos + 1
-        }
+        spec_generic = parser_try_read_generic_type(p, "")
         parser_skip_nl_semi(p)
     }
 
@@ -1208,22 +1196,19 @@ fn parse_spec_decl(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return spec_node(name, methods)
+    var snode = spec_node(name, methods)
+    snode.type_name = spec_generic
+    return snode
 }
 
 // Parse ext block: ext Type { methods }
 fn parse_ext_stmt(p Parser) ASTNode {
     p.pos = p.pos + 1  // skip 'ext'/'impl'
 
-    // Skip optional generic params <T>
+    // Read optional generic params <T>
+    var ext_generic = ""
     if parser_kind(p) == TokenKind.Lt {
-        var depth = 1
-        p.pos = p.pos + 1
-        for depth > 0 && parser_kind(p) != TokenKind.EOF {
-            if parser_kind(p) == TokenKind.Lt { depth = depth + 1 }
-            if parser_kind(p) == TokenKind.Gt { depth = depth - 1 }
-            p.pos = p.pos + 1
-        }
+        ext_generic = parser_try_read_generic_type(p, "")
     }
 
     var target = parser_text(p)
@@ -1288,7 +1273,9 @@ fn parse_ext_stmt(p Parser) ASTNode {
             p.pos = p.pos + 1
         }
     }
-    return ext_node(target, methods, for_spec)
+    var enode = ext_node(target, methods, for_spec)
+    enode.type_name = ext_generic
+    return enode
 }
 
 // Parse is/match statement: is expr { branches }

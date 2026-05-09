@@ -787,3 +787,4 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_aavm_99_bootstrap_103_a2r_generic_type() { test_aavm("99_bootstrap/103_a2r_generic_type").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_104_a2r_generic_vec() { test_aavm("99_bootstrap/104_a2r_generic_vec").unwrap(); }
 #[test] fn test_aavm_99_bootstrap_105_a2r_generic_map() { test_aavm("99_bootstrap/105_a2r_generic_map").unwrap(); }
+#[test] fn test_aavm_99_bootstrap_106_a2r_generic_enum() { test_aavm("99_bootstrap/106_a2r_generic_enum").unwrap(); }
