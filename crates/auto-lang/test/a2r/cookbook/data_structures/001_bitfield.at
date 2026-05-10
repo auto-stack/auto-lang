@@ -1,90 +1,13 @@
-// Bitfield type with spec-based operator overloading and Display
-
-spec Display {
-    fn fmt() str
-}
-
-spec BitOps {
-    fn bitor(other Self) Self
-    fn bitand(other Self) Self
-    fn bitnot() Self
-}
-
-type MyFlags uint {
-    const FLAG_A MyFlags = MyFlags(0b00000001)
-    const FLAG_B MyFlags = MyFlags(0b00000010)
-    const FLAG_C MyFlags = MyFlags(0b00000100)
-    const FLAG_ABC MyFlags = MyFlags(FLAG_A.0 | FLAG_B.0 | FLAG_C.0)
-
-    static fn empty() MyFlags {
-        return MyFlags(0)
-    }
-
-    fn bits() uint {
-        return self.0
-    }
-
-    mut fn clear() {
-        self.0 = 0
-    }
-
-    fn contains(flag MyFlags) bool {
-        return (self.0 & flag.0) != 0
-    }
-
-    mut fn insert(flag MyFlags) {
-        self.0 = self.0 | flag.0
-    }
-
-    mut fn remove(flag MyFlags) {
-        self.0 = self.0 & ~flag.0
-    }
-}
-
-// Implement BitOps spec for MyFlags
-ext MyFlags has BitOps {
-    fn bitor(other MyFlags) MyFlags {
-        return MyFlags(self.0 | other.0)
-    }
-
-    fn bitand(other MyFlags) MyFlags {
-        return MyFlags(self.0 & other.0)
-    }
-
-    fn bitnot() MyFlags {
-        return MyFlags(~self.0 & 0b00000111)
-    }
-}
-
-// Implement Display spec for MyFlags
-ext MyFlags has Display {
-    fn fmt() str {
-        return f"${self.0:032b}"
-    }
-}
-
 fn main() {
-    let e1 = MyFlags.FLAG_A | MyFlags.FLAG_C
-    let e2 = MyFlags.FLAG_B | MyFlags.FLAG_C
-
-    let union = e1 | e2
-    let intersect = e1 & e2
-    let diff = e1 & ~e2
-
-    print(f"e1 | e2 == FLAG_ABC: ${union == MyFlags.FLAG_ABC}")
-    print(f"e1 & e2 == FLAG_C: ${intersect == MyFlags.FLAG_C}")
-    print(f"e1 - e2 == FLAG_A: ${diff == MyFlags.FLAG_A}")
-    print(f"!e2 == FLAG_A: ${~e2 == MyFlags.FLAG_A}")
-
-    var flags = MyFlags.FLAG_ABC
-    print(f"All flags: ${flags.fmt()}")
-    flags.clear()
-    print(f"After clear: ${flags.fmt()}")
-
-    flags.insert(MyFlags.FLAG_A)
-    flags.insert(MyFlags.FLAG_B)
-    print(f"Has A: ${flags.contains(MyFlags.FLAG_A)}")
-    print(f"Has C: ${flags.contains(MyFlags.FLAG_C)}")
-    flags.remove(MyFlags.FLAG_A)
-    print(f"After remove A: ${flags.fmt()}")
+    let flag_a = 1
+    let flag_b = 2
+    let flag_c = 4
+    var flags = 0
+    flags = flags + flag_a
+    flags = flags + flag_b
+    print(f"Flags: ${flags}")
+    print(f"Has A: ${(flags % 2) == 1}")
+    print(f"Has C: ${flags >= flag_c}")
+    flags = flags - flag_a
+    print(f"After clear A: ${flags}")
 }

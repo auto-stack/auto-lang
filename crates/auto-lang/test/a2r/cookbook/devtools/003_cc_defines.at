@@ -1,3 +1,4 @@
+dep cc
 use.rust cc::Build
 
 fn main() ! {
@@ -6,7 +7,7 @@ fn main() ! {
     Build.new()
         .file("src/main.c")
         .define("VERSION", Some(version))
-        .compile("mylib")?
+        .compile("mylib").?
 
     print(f"Built with version ${version}")
 }

@@ -1,3 +1,4 @@
+dep tokio
 use.rust tokio::fs::read
 use.rust tokio::fs::read_to_string
 
@@ -6,9 +7,9 @@ fn process_data(data []byte) {
 }
 
 fn main() ! ~void {
-    let content = read("data.txt").await?
+    let content = read("data.txt").await.?
     process_data(content)
 
-    let str_content = read_to_string("data.txt").await?
+    let str_content = read_to_string("data.txt").await.?
     print(f"Text: ${str_content}")
 }

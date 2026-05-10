@@ -1,57 +1,10 @@
-// JoinSet with spec-based Processable and Describable traits
+dep tokio
 
-use.rust tokio::task::JoinSet
-
-// Spec for async processable tasks
-spec Processable {
-    fn process() ~void
-}
-
-// Spec for things that can describe themselves
-spec Describable {
-    fn describe() str
-}
-
-type Job {
-    id uint
-    data str
-}
-
-ext Job {
-    static fn new(id uint) Job {
-        let data = "d".repeat(id)
-        return Job(id, data)
-    }
-}
-
-// Implement Describable spec
-ext Job has Describable {
-    fn describe() str {
-        return f"Job(${self.id}): ${self.data}"
-    }
-}
-
-// Implement Processable spec
-ext Job has Processable {
-    fn process() ~void {
-        self.data = self.data.replace("d", "x")
-        print(f"${self.describe()} -> processed")
-    }
+fn fetch_network_request() ~uint {
+    return 89
 }
 
 fn main() ~void {
-    var set = JoinSet.new()
-    let JOB_COUNT = 5
-
-    for i in 0..JOB_COUNT {
-        let mut job = Job.new(i)
-        print(f"Created ${job.describe()}")
-        set.spawn(~{ job.process().await })
-    }
-
-    var complete = 0
-    for Some(_) = set.join_next().await {
-        complete += 1
-    }
-    print(f"Completed: ${complete}/${JOB_COUNT}")
+    let result = fetch_network_request().await
+    print(f"Result: ${result}")
 }

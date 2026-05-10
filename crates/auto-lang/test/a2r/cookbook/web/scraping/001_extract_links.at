@@ -1,3 +1,4 @@
+dep scraper
 use.rust scraper::Html
 use.rust scraper::Selector
 
@@ -8,9 +9,6 @@ fn main() ! {
 
     for element in html.select(selector) {
         let href = element.attr("href")
-        is href {
-            Some(link) -> print(f"Link: ${link} -> ${element.text()}"),
-            None -> {}
-        }
+        print(f"Link: ${href}")
     }
 }

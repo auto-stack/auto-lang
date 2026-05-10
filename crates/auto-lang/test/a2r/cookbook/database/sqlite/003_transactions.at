@@ -1,24 +1,18 @@
+dep rusqlite
 use.rust rusqlite::Connection
 
 fn main() ! {
-    let conn = Connection.open("cats.db")?
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cats (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            color TEXT NOT NULL
-        )",
-        ()
-    )?
+    let conn = Connection.open("cats.db").?
+    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)").?
 
-    let tx = conn.transaction()?
-    tx.execute("INSERT INTO cats (name, color) VALUES (?1, ?2)", ("Michi", "Black"))?
-    tx.execute("INSERT INTO cats (name, color) VALUES (?1, ?2)", ("Nori", "Orange"))?
-    tx.commit()?
+    let tx = conn.transaction().?
+    tx.execute("INSERT INTO cats (name, color) VALUES ('Michi', 'Black')").?
+    tx.execute("INSERT INTO cats (name, color) VALUES ('Nori', 'Orange')").?
+    tx.commit().?
     print("Transaction committed")
 
-    let tx2 = conn.transaction()?
-    tx2.execute("INSERT INTO cats (name, color) VALUES (?1, ?2)", ("Bacon", "Brown"))?
-    tx2.rollback()?
-    print("Transaction rolled back (duplicate)")
+    let tx2 = conn.transaction().?
+    tx2.execute("INSERT INTO cats (name, color) VALUES ('Bacon', 'Brown')").?
+    tx2.rollback().?
+    print("Transaction rolled back")
 }

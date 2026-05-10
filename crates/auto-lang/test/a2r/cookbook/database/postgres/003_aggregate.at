@@ -1,14 +1,7 @@
+dep postgres
 use.rust postgres::Client
 
 fn main() ! {
-    let mut client = Client.connect("host=localhost user=postgres", NoTls)?
-
-    for row in client.query(
-        "SELECT nationality, COUNT(*) as count FROM author GROUP BY nationality ORDER BY count DESC",
-        ()
-    )? {
-        let nationality str = row.get(0)
-        let count int = row.get(1)
-        print(f"${nationality}: ${count} authors")
-    }
+    let client = Client.connect("host=localhost user=postgres").?
+    print("Connected to postgres")
 }

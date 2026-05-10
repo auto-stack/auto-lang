@@ -1,12 +1,5 @@
-// REST API GET with spec-based Serializable
-
+dep reqwest
 use.rust reqwest
-use.rust serde::Deserialize
-
-// Spec for types that can be summarized from API responses
-spec Serializable {
-    fn summary() str
-}
 
 type Stargazer {
     login str
@@ -14,22 +7,15 @@ type Stargazer {
     starred_at str
 }
 
-// Implement Serializable spec for Stargazer
-ext Stargazer has Serializable {
-    fn summary() str {
-        return f"${self.login} starred at ${self.starred_at}"
-    }
-}
-
 fn main() ! ~void {
     let client = reqwest.Client.new()
     let response = client.get("https://api.github.com/repos/rust-lang/rust/stargazers")
         .header("User-Agent", "reqwest-example")
         .send()
-        .await?
+        .await.?
 
-    let stargazers = response.json(List<Stargazer>).await?
+    let stargazers = response.json(List<Stargazer>).await.?
     for sg in stargazers {
-        print(sg.summary())
+        print(f"${sg.login} starred at ${sg.starred_at}")
     }
 }

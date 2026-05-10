@@ -1,3 +1,4 @@
+dep rusqlite
 use.rust rusqlite::Connection
 
 type Cat {
@@ -7,33 +8,17 @@ type Cat {
 }
 
 fn main() ! {
-    let conn = Connection.open("cats.db")?
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cats (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            color TEXT NOT NULL
-        )",
-        ()
-    )?
+    let conn = Connection.open("cats.db").?
+    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)").?
 
-    let cat_names = Map.new()
-    cat_names.set("Michi", "Black")
-    cat_names.set("Nori", "Orange")
-    cat_names.set("Bacon", "Brown")
+    conn.execute("INSERT INTO cats (name, color) VALUES ('Michi', 'Black')").?
+    conn.execute("INSERT INTO cats (name, color) VALUES ('Nori', 'Orange')").?
+    conn.execute("INSERT INTO cats (name, color) VALUES ('Bacon', 'Brown')").?
 
-    for name in cat_names.keys() {
-        let color = cat_names.get(name)
-        conn.execute(
-            "INSERT INTO cats (name, color) VALUES (?1, ?2)",
-            (name, color)
-        )?
-    }
-
-    let mut stmt = conn.prepare("SELECT id, name, color FROM cats")?
-    let cats = stmt.query_map((), row => {
+    let stmt = conn.prepare("SELECT id, name, color FROM cats").?
+    let cats = stmt.query_map(row => {
         return Cat(row.get(0), row.get(1), row.get(2))
-    })?
+    }).?
 
     for cat in cats {
         print(f"Found cat ${cat.name} (${cat.color}) with id ${cat.id}")

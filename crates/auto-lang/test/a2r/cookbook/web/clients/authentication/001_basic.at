@@ -1,3 +1,4 @@
+dep reqwest
 use.rust reqwest
 
 fn main() ! ~void {
@@ -5,8 +6,8 @@ fn main() ! ~void {
     let response = client.get("https://httpbin.org/basic-auth/user/pass")
         .basic_auth("user", "pass")
         .send()
-        .await?
+        .await.?
 
-    let body = response.text().await?
+    let body = response.text().await.?
     print(f"Body: ${body}")
 }

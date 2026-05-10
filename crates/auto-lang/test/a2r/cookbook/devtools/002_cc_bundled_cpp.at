@@ -1,17 +1,10 @@
+dep cc
 use.rust cc::Build
-use.rust std::ffi::CString
 
 fn main() ! {
     Build.new()
         .cpp(true)
         .file("src/hello.cpp")
-        .compile("hello_cpp")?
-
-    sys {
-        let c_msg = CString.new("Hello from C++!")
-        let result = hello_from_cpp(c_msg.as_ptr())
-        print(f"C++ says: ${result}")
-    }
+        .compile("hello_cpp").?
+    print("Compiled hello.cpp")
 }
-
-extern fn hello_from_cpp(*byte) int

@@ -1,39 +1,15 @@
+dep reqwest
 use.rust reqwest
-
-type ReverseDependencies {
-    dependencies List<Dependency>
-    meta Meta
-}
-
-type Dependency {
-    id str
-}
-
-type Meta {
-    total int
-}
 
 fn main() ! ~void {
     let client = reqwest.Client.new()
     var page = 1
-    var total = 0
 
-    loop {
-        let url = f"https://crates.io/api/v1/crates/serde/reverse_dependencies?page=${page}"
-        let response = client.get(url)
-            .header("User-Agent", "reqwest-example")
-            .send()
-            .await?
+    let url = f"https://crates.io/api/v1/crates/serde/reverse_dependencies?page=${page}"
+    let response = client.get(url)
+        .header("User-Agent", "reqwest-example")
+        .send()
+        .await.?
 
-        let deps = response.json(ReverseDependencies).await?
-        for dep in deps.dependencies {
-            print(f"Depends on serde: ${dep.id}")
-        }
-
-        total = deps.meta.total
-        if page * 10 >= total {
-            break
-        }
-        page += 1
-    }
+    print(f"Status: ${response.status()}")
 }

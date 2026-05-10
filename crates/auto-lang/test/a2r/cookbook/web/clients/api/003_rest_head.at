@@ -1,12 +1,13 @@
+dep reqwest
 use.rust reqwest
 use.rust std::time::Duration
 
 fn main() ! ~void {
     let client = reqwest.Client.builder()
         .timeout(Duration.from_secs(5))
-        .build()?
+        .build().?
 
-    let response = client.head("https://httpbin.org/get").send().await?
+    let response = client.head("https://httpbin.org/get").send().await.?
     print(f"Status: ${response.status()}")
 
     for (key, value) in response.headers() {

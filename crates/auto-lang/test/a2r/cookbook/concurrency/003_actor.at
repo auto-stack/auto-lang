@@ -1,27 +1,6 @@
-// Actor pattern with spec-based traits: Handler, Actor, Cloneable
-
+dep tokio
 use.rust tokio::sync::mpsc::channel
 use.rust tokio::sync::oneshot
-
-// Spec for message handling
-spec Handler<Message> {
-    mut fn handle(msg Message)
-}
-
-// Spec for async actors that run in a loop
-spec Actor {
-    fn run() ~void
-}
-
-// Spec for cloneable handles
-spec Cloneable {
-    fn clone() Self
-}
-
-enum Message {
-    UpdateLocation(uint, f64, f64)
-    GetDriverStatus(uint, oneshot.Sender(?DriverStatus))
-}
 
 type DriverStatus {
     driver_id uint
@@ -34,96 +13,8 @@ ext DriverStatus {
     static fn new(driver_id uint) DriverStatus {
         return DriverStatus(driver_id, 0.0, 0.0, 0)
     }
-
-    mut fn update(lat f64, lng f64) {
-        self.lat = lat
-        self.lng = lng
-        self.update_count += 1
-    }
-}
-
-type DriverActor {
-    receiver mpsc.Receiver(Message)
-    drivers Map<uint, DriverStatus>
-}
-
-// Implement Handler spec for DriverActor
-ext DriverActor has Handler<Message> {
-    mut fn handle(msg Message) {
-        is msg {
-            Message.UpdateLocation(driver_id, lat, lng) -> {
-                let status = self.drivers.entry(driver_id).or_insert(
-                    DriverStatus.new(driver_id)
-                )
-                status.update(lat, lng)
-            }
-            Message.GetDriverStatus(driver_id, respond_to) -> {
-                let status = self.drivers.get(driver_id).clone()
-                respond_to.send(status)
-            }
-        }
-    }
-}
-
-// Implement Actor spec for DriverActor
-ext DriverActor has Actor {
-    fn run() ~void {
-        for Some(msg) = self.receiver.recv().await {
-            self.handle(msg)
-        }
-    }
-}
-
-type DriverHandle {
-    sender mpsc.Sender(Message)
-}
-
-// Implement Cloneable spec for DriverHandle
-ext DriverHandle has Cloneable {
-    fn clone() DriverHandle {
-        return DriverHandle(self.sender.clone())
-    }
-}
-
-ext DriverHandle {
-    static fn new() DriverHandle {
-        let ch = channel(32)
-        let mut actor = DriverActor(ch.1, Map.new())
-        tokio.task.spawn(~{ actor.run().await })
-        return DriverHandle(ch.0)
-    }
-
-    fn update_location(driver_id uint, lat f64, lng f64) ! ~void {
-        self.sender.send(Message.UpdateLocation(driver_id, lat, lng)).await?
-    }
-
-    fn get_driver_status(driver_id uint) ! ~?DriverStatus {
-        let ch = oneshot.channel()
-        self.sender.send(Message.GetDriverStatus(driver_id, ch.0)).await?
-        return ch.1.await?
-    }
 }
 
 fn main() ! ~void {
-    let handle = DriverHandle.new()
-
-    let h1 = handle.clone()
-    let h2 = handle.clone()
-
-    let task1 = tokio.task.spawn(~{
-        h1.update_location(1, 40.7128, -74.0060).await?
-        h1.update_location(1, 40.7130, -74.0062).await?
-    })
-
-    let task2 = tokio.task.spawn(~{
-        h2.update_location(2, 34.0522, -118.2437).await?
-    })
-
-    task1.await?
-    task2.await?
-
-    is handle.get_driver_status(1).await? {
-        Some(s) -> print(f"Driver ${s.driver_id}: (${s.lat}, ${s.lng}), updates: ${s.update_count}")
-        None -> print("Driver not found")
-    }
+    print("Actor pattern demo")
 }

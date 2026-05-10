@@ -1,3 +1,4 @@
+dep tokio
 use.rust tokio::runtime::Builder
 
 fn fetch_network_request() ~uint {
@@ -9,7 +10,7 @@ fn main() ! {
         .worker_threads(4)
         .thread_name("thread-one")
         .thread_stack_size(3 * 1024 * 1024)
-        .build()?
+        .build().?
 
     runtime.spawn(~{
         let result = fetch_network_request().await

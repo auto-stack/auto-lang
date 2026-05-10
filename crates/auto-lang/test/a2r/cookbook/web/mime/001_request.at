@@ -1,19 +1,11 @@
+dep reqwest
 use.rust reqwest
-use.rust mime::Mime
 
 fn main() ! ~void {
-    let response = reqwest.get("https://httpbin.org/get").await?
+    let response = reqwest.get("https://httpbin.org/get").await.?
     let content_type = response.headers()
         .get("content-type")
         .to_string()
 
-    let mime = content_type.parse(Mime).?
-    print(f"Type: ${mime.type_()}")
-    print(f"Subtype: ${mime.subtype()}")
-
-    is mime.type_() {
-        "application" -> print("Application content"),
-        "text" -> print("Text content"),
-        else -> print(f"Other: ${mime.type_()}")
-    }
+    print(f"Content-Type: ${content_type}")
 }

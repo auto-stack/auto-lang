@@ -1,9 +1,10 @@
+dep tokio
 use.rust tokio::fs::remove_file
 use.rust tokio::fs::remove_dir
 use.rust tokio::fs::remove_dir_all
 
 fn main() ! ~void {
-    remove_file("data.txt").await?
-    remove_dir("my_dir").await?
-    remove_dir_all("my_dir").await?
+    remove_file("data.txt").await.?
+    remove_dir("my_dir").await.?
+    remove_dir_all("my_dir").await.?
 }

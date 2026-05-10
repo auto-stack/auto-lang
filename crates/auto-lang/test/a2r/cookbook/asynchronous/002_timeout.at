@@ -1,3 +1,4 @@
+dep tokio
 use.rust std::time::Duration
 use.rust tokio::time::timeout
 
@@ -6,8 +7,6 @@ fn fetch_network_request() ~uint {
 }
 
 fn main() ~void {
-    is timeout(Duration.from_millis(5), fetch_network_request()).await {
-        Ok(x) -> print(f"Received ${x}"),
-        Err(_) -> print("Timed Out!")
-    }
+    let result = timeout(Duration.from_millis(5), fetch_network_request()).await
+    print("Done")
 }

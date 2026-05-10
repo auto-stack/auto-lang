@@ -1,11 +1,12 @@
+dep memmap2
 use.rust memmap2::Mmap
 use.rust std::fs::File
 
 fn main() ! {
-    let file = File.open("data.bin")?
+    let file = File.open("data.bin").?
 
     sys {
-        let mmap = Mmap.map(file)?
+        let mmap = Mmap.map(file).?
         let byte0 = mmap[0]
         let len = mmap.len()
         print(f"File size: ${len}, first byte: ${byte0}")

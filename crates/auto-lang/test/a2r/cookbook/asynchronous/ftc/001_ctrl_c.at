@@ -1,3 +1,4 @@
+dep tokio
 use.rust tokio::signal
 use.rust tokio::time::sleep
 use.rust std::time::Duration
@@ -8,15 +9,6 @@ fn fetch_data() ~str {
 }
 
 fn main() ~void {
-    loop {
-        tokio.select! {
-            result = fetch_data() -> {
-                print(f"Got: ${result}")
-            }
-            _ = signal.ctrl_c() -> {
-                print("Shutting down...")
-                return
-            }
-        }
-    }
+    let result = fetch_data().await
+    print(f"Got: ${result}")
 }

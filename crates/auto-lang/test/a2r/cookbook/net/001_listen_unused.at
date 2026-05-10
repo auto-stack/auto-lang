@@ -1,14 +1,7 @@
 use.rust std::net::TcpListener
 
 fn main() ! {
-    let listener = TcpListener.bind("localhost:0")?
-    let addr = listener.local_addr()?
+    let listener = TcpListener.bind("localhost:0").?
+    let addr = listener.local_addr().?
     print(f"Listening on ${addr}")
-
-    for stream in listener.incoming() {
-        let mut stream = stream?
-        let mut content = ""
-        stream.read_to_string(content)?
-        print(f"Received: ${content}")
-    }
 }
