@@ -550,7 +550,12 @@ impl AutoVM {
             Value::Double(d) => ram.push_f64(*d),
             Value::Bool(b) => ram.push_i32(if *b { 1 } else { 0 }),
             Value::Char(c) => ram.push_i32(*c as i32),
-            Value::Nil => ram.push_i32(0),
+            Value::Nil => {
+                #[cfg(feature = "nanbox")]
+                ram.push_nv(auto_val::encode_null());
+                #[cfg(not(feature = "nanbox"))]
+                ram.push_i32(0);
+            }
             Value::Str(s) => {
                 // Store string in constant pool and push its tagged index
                 // String indices are stored as -(index+1) to distinguish from integers
@@ -1647,6 +1652,36 @@ impl AutoVM {
                     push_str_tag(&mut task.ram, result_idx as u32);
                 }
                 OpCode::NULL_COALESCE => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                        // Pop right expression (default value)
+                        let default_nv = task.ram.pop_nv();
+                        // Pop left expression (May<T> value)
+                        let may_nv = task.ram.pop_nv();
+
+                        if auto_val::is_null(may_nv) {
+                            // None case: push default
+                            task.ram.push_nv(default_nv);
+                        } else if auto_val::is_object(may_nv) {
+                            let obj_id = auto_val::decode_object(may_nv) as u64;
+                            if self.is_option_none(obj_id) {
+                                task.ram.push_nv(default_nv);
+                            } else if self.is_option_some(obj_id) {
+                                if let Some(field_val) = self.get_option_inner(obj_id) {
+                                    Self::push_value(&mut task.ram, &field_val, &self.strings);
+                                } else {
+                                    task.ram.push_nv(may_nv);
+                                }
+                            } else {
+                                task.ram.push_nv(may_nv);
+                            }
+                        } else {
+                            // Non-None, non-object: push as-is (it's the value itself)
+                            task.ram.push_nv(may_nv);
+                        }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
                     // Pop right expression (default value)
                     let default_bits = task.ram.pop_i32();
                     // Pop left expression (May<T> value)
@@ -1678,6 +1713,7 @@ impl AutoVM {
                             task.ram.push_i32(may_bits);
                         }
                     }
+                    } // end non-nanbox
                 }
                 // Plan 073: May<T> error propagate operator: expression.?
                 // Plan 208: Also handles Result.Ok / Result.Err heap objects with early return
