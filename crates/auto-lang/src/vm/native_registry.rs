@@ -473,6 +473,7 @@ pub fn register_builtin_natives() {
     // Unified generic methods
     registry.register_with_id("auto.hashmap.insert", 120);
     registry.register_with_id("auto.hashmap.get", 122);
+    registry.register_with_id("auto.hashmap.keys", 1292);
 
     // HashSet functions (129-135)
     registry.register_with_id("auto.hashset.new", 129);

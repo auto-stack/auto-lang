@@ -1459,6 +1459,8 @@ impl AutoVM {
                             list.elems.len() as i32
                         } else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
                             list.elems.len() as i32
+                        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                            list.elems.len() as i32
                         } else {
                             0 // Unknown type
                         };
@@ -3355,6 +3357,27 @@ impl AutoVM {
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     let elem = list.elems[normalized_idx];
                                     task.ram.push_i32(if elem { 1 } else { 0 });
+                                } else {
+                                    task.ram.push_i32(0); // Out of bounds
+                                }
+                            }
+                            // Try List<Value> (generic list of Values)
+                            else if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                                vm_debug!("DEBUG GET_ELEM: Found List<Value>");
+                                if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
+                                    let elem = &list.elems[normalized_idx];
+                                    match elem {
+                                        auto_val::Value::Str(s) => {
+                                            let mut strings = self.strings.write().unwrap();
+                                            let str_idx = strings.len() as u32;
+                                            strings.push(s.as_bytes().to_vec());
+                                            drop(strings);
+                                            task.ram.push_str_idx(str_idx);
+                                        }
+                                        auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
+                                        auto_val::Value::Bool(b) => { task.ram.push_i32(if *b { 1 } else { 0 }); }
+                                        _ => { task.ram.push_i32(0); }
+                                    }
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
                                 }

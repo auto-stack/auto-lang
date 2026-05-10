@@ -2212,33 +2212,118 @@ impl Codegen {
                     }
                     Iter::Destructured(key_name, val_name) => {
                         // for (k, v) in map { ... } — Map iteration with destructuring
+                        self.push_scope();
+
                         // Compile the iterable expression (the map)
                         self.compile_expr(&for_stmt.range)?;
+                        // Stack: [map_id]
 
-                        // Add variables for key and value
-                        self.add_var(key_name);
-                        self.add_var(val_name);
+                        // Save map reference
+                        let map_ref_index = self.add_var("_map_ref");
+                        self.emit_store_loc(map_ref_index);
+                        // Stack: []
 
-                        // Use array iteration approach: get map entries as array
-                        // TODO: full Map iteration support in VM
+                        // Load map ref and call auto.hashmap.keys to get keys list
+                        self.emit_load_loc(map_ref_index);
+                        // Stack: [map_id]
+
+                        // Emit CALL_NAT for auto.hashmap.keys (ID 1292)
+                        self.emit(OpCode::CALL_NAT);
+                        self.emit_u16(1292u16);
+                        // Stack: [keys_list_id]
+
+                        // Get keys list length
+                        self.emit(OpCode::DUP);
+                        self.emit(OpCode::ARRAY_LEN);
+                        // Stack: [keys_list_id, length]
+
+                        // Initialize counter to 0
+                        self.emit(OpCode::CONST_0);
+                        // Stack: [keys_list_id, length, 0]
+
+                        let counter_index = self.add_var("_counter");
+                        self.emit_store_loc(counter_index);
+                        // Stack: [keys_list_id, length]
+
+                        let len_index = self.add_var("_keys_len");
+                        self.emit_store_loc(len_index);
+                        // Stack: [keys_list_id]
+
+                        let keys_ref_index = self.add_var("_keys_ref");
+                        self.emit_store_loc(keys_ref_index);
+                        // Stack: []
+
+                        // Add key and value variables
+                        let key_var_index = self.add_var(key_name);
+                        let val_var_index = self.add_var(val_name);
+
+                        // Loop start
                         let loop_start = self.code.len() as i16;
 
                         if let Some(pos) = self.loop_continue_positions.last_mut() {
                             *pos = loop_start as usize;
                         }
 
-                        // Placeholder: just compile body once
+                        // Load counter and compare with length
+                        self.emit_load_loc(counter_index);
+                        self.emit_load_loc(len_index);
+                        self.emit(OpCode::LT);
+
+                        // JMP_IF_Z to end
+                        self.emit(OpCode::JMP_IF_Z);
+                        let jump_to_end = self.emit_placeholder_i16();
+
+                        // Get key: keys_list[counter]
+                        self.emit_load_loc(keys_ref_index);
+                        self.emit_load_loc(counter_index);
+                        self.emit(OpCode::GET_ELEM);
+                        // Stack: [key_value]
+
+                        // Store key to key variable
+                        self.emit_store_loc(key_var_index);
+
+                        // Get value: map.get(key)
+                        // Push map ref, then push key, then call auto.hashmap.get_str (ID 122)
+                        self.emit_load_loc(map_ref_index);
+                        self.emit_load_loc(key_var_index);
+                        // CALL_SPEC: dispatch "get" on HashMap type
+                        // Simpler: use CALL_NAT with auto.hashmap.get (ID 122)
+                        // The shim expects: push map_id, push key_str_idx
+                        self.emit(OpCode::CALL_NAT);
+                        self.emit_u16(122u16);
+                        // Stack: [value (as Option-encoded)]
+
+                        // Store value to val variable
+                        self.emit_store_loc(val_var_index);
+
+                        // Compile loop body
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                        // Continue: increment counter
+                        let continue_pos = self.code.len();
+                        if let Some(pos) = self.loop_continue_positions.last_mut() {
+                            *pos = continue_pos;
+                        }
+                        self.emit_load_loc(counter_index);
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(1);
+                        self.emit(OpCode::ADD);
+                        self.emit_store_loc(counter_index);
 
                         // JMP back
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
                         self.emit_i16(loop_start - current_pos - 2);
 
-                        if let Some(exits) = self.loop_exits.pop() {
-                            for exit_placeholder in exits {
-                                self.patch_jump(exit_placeholder);
-                            }
+                        // Patch exit jump
+                        self.patch_jump(jump_to_end);
+
+                        self.pop_scope();
+
+                        // Patch all break statements
+                        let exits = self.loop_exits.pop().unwrap();
+                        for exit_placeholder in exits {
+                            self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
                     }

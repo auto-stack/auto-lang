@@ -328,6 +328,7 @@ impl NativeInterface {
         self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
         self.register(NATIVE_HASHMAP_IS_EMPTY, shim_hashmap_is_empty);
         self.register(NATIVE_HASHMAP_GET_OR, shim_hashmap_get_or);
+        self.register(NATIVE_HASHMAP_KEYS, shim_hashmap_keys);
 
         // HashSet functions
         self.register(NATIVE_HASHSET_NEW, shim_hashset_new);
@@ -482,6 +483,7 @@ impl NativeInterface {
         self.register_name("auto.hashmap.drop", NATIVE_HASHMAP_DROP);
         self.register_name("auto.hashmap.is_empty", NATIVE_HASHMAP_IS_EMPTY);
         self.register_name("auto.hashmap.get_or", NATIVE_HASHMAP_GET_OR);
+        self.register_name("auto.hashmap.keys", NATIVE_HASHMAP_KEYS);
 
         // String methods for CALL_SPEC dispatch
         self.register_name("auto.str.len", NATIVE_STR_LEN);
@@ -956,6 +958,7 @@ pub const NATIVE_HASHMAP_CLEAR: u16 = 127;
 pub const NATIVE_HASHMAP_DROP: u16 = 128;
 pub const NATIVE_HASHMAP_IS_EMPTY: u16 = 1290;
 pub const NATIVE_HASHMAP_GET_OR: u16 = 1291;
+pub const NATIVE_HASHMAP_KEYS: u16 = 1292;
 
 // === HashSet Native Function IDs (129+) ===
 pub const NATIVE_HASHSET_NEW: u16 = 129;
@@ -3165,6 +3168,44 @@ pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     }
 
     task.ram.push_i32(default_val);
+    Ok(())
+}
+
+/// Get all keys from a HashMap as a List of strings
+/// Stack: hashmap_id -> list_id (List of string keys)
+pub fn shim_hashmap_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            // Collect keys from the specialized map
+            let keys: Vec<String> = match map {
+                SpecializedHashMap::StringInt(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringBool(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringString(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringDouble(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringValue(m) => m.keys().cloned().collect(),
+            };
+            drop(guard);
+
+            // Create a List<Value> with string entries
+            use crate::vm::types::ListData;
+            let mut list: ListData<auto_val::Value> = ListData::new();
+            for key in keys {
+                list.push(auto_val::Value::Str(auto_val::AutoStr::from(key.as_str())));
+            }
+            let list_id = vm.insert_heap_object(list);
+            task.ram.push_i32(list_id as i32);
+            return Ok(());
+        }
+    }
+
+    // Empty list if map not found
+    use crate::vm::types::ListData;
+    let list: ListData<auto_val::Value> = ListData::new();
+    let list_id = vm.insert_heap_object(list);
+    task.ram.push_i32(list_id as i32);
     Ok(())
 }
 
