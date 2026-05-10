@@ -12,7 +12,6 @@ pub fn char_at(s: &str, i: i32) -> i32 {
 
 /// Count non-overlapping occurrences of a substring
 pub fn match_count(s: &str, pattern: &str) -> i32 {
-    if pattern.is_empty() { return 0; }
     s.matches(pattern).count() as i32
 }
 
