@@ -1071,6 +1071,7 @@ pub const NATIVE_UINT_TO_HEX: u16 = 236; // uint.to_hex(pad) → hex string
 pub const NATIVE_STR_CONTAINS: u16 = 1504;
 pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
 pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
+pub const NATIVE_STR_TO_INT: u16 = 1516;
 
 // === Math Native IDs (1700+) — Plan 240 VM-1 ===
 pub const NATIVE_MATH_ABS: u16 = 1700;
@@ -4012,6 +4013,34 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
         let suffix_s = vm.get_string(suffix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
         task.ram.push_i32(if str_s.ends_with(&suffix_s) { -2147483648 } else { -2147483647 });
+    }
+    Ok(())
+}
+
+/// str.to_int() / str.parse_int() — parse string to int, return Result<int>
+/// Stack: str -> CREATE_OK(int) or CREATE_ERR(str)
+/// In nanbox mode, returns the value as CREATE_OK for proper .?() chaining
+pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        let s = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv);
+            vm.get_string(idx as u16)
+                .map(|b| String::from_utf8_lossy(&b[..]).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let result = s.trim().parse::<i32>().unwrap_or(0);
+        task.ram.push_nv(auto_val::encode_i32(result));
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let str_idx = task.ram.pop_str_idx() as u16;
+        let s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        let result = s.trim().parse::<i32>().unwrap_or(0);
+        task.ram.push_i32(result);
     }
     Ok(())
 }

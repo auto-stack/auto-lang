@@ -302,6 +302,7 @@ impl AutoVM {
             native_interface.register(crate::vm::native::NATIVE_STR_CONTAINS, crate::vm::native::shim_str_contains);
             native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
             native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
+            native_interface.register(crate::vm::native::NATIVE_STR_TO_INT, crate::vm::native::shim_str_to_int_nv);
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
