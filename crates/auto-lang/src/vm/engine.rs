@@ -295,6 +295,15 @@ impl AutoVM {
         // Plan 198: Register #[rust_fn]-annotated shims via inventory
         native_interface.build_from_inventory();
 
+        // Override inventory shims with nanbox-aware versions for str methods
+        // (inventory shims use String extraction which doesn't work with NanoValue stack)
+        #[cfg(feature = "nanbox")]
+        {
+            native_interface.register(crate::vm::native::NATIVE_STR_CONTAINS, crate::vm::native::shim_str_contains);
+            native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
+            native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
+        }
+
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
         // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
         // here we merge those shims into the VM's NativeInterface so CALL_NAT can find them.
@@ -1889,11 +1898,15 @@ impl AutoVM {
                     let nv = task.ram.pop_nv();
                     if auto_val::is_string(nv) {
                         task.ram.push_nv(nv);
-                    } else if auto_val::is_object(nv) {
+                    } else if auto_val::is_object(nv) || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) >= 4000000) {
                         use crate::vm::generic_registry::GenericInstanceData;
                         use crate::vm::heap_object::TypeTag;
-                        let obj_id = auto_val::decode_object(nv) as u64;
-                        let value_bits = auto_val::decode_object(nv) as i32;
+                        let obj_id = if auto_val::is_object(nv) {
+                            auto_val::decode_object(nv) as u64
+                        } else {
+                            auto_val::decode_i32(nv) as u64
+                        };
+                        let value_bits = obj_id as i32;
                         let string_value = match self.get_heap_object(obj_id) {
                             Some(obj) => {
                                 let guard = obj.read().unwrap();
@@ -3911,9 +3924,68 @@ impl AutoVM {
                     // The receiver is at stack position sp - arg_count - 1
                     // (args are on top, receiver is below them)
                     let receiver_pos = task.ram.sp - arg_count - 1;
+
+                    #[cfg(feature = "nanbox")]
+                    let receiver_nv = task.ram.read_nv(receiver_pos);
+                    #[cfg(not(feature = "nanbox"))]
                     let receiver = task.ram.read_i32(receiver_pos);
 
                     // Look up the object's type name from all registries
+                    #[cfg(feature = "nanbox")]
+                    let type_name = if auto_val::is_string(receiver_nv) {
+                        "str".to_string()
+                    } else if auto_val::is_i32(receiver_nv) {
+                        let receiver = auto_val::decode_i32(receiver_nv);
+                        if receiver > 0 {
+                            let obj_key = receiver as u64;
+                            if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                                let guard = obj_lock.read().unwrap();
+                                if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                                    inst.mono_name.split('_').next()
+                                        .unwrap_or(&inst.mono_name).to_string()
+                                } else {
+                                    let tag_name = guard.type_tag().name();
+                                    tag_name.split('<').next()
+                                        .unwrap_or(&tag_name).to_string()
+                                }
+                            } else if self.arrays.contains_key(&obj_key) {
+                                "List".to_string()
+                            } else if self.objects.contains_key(&obj_key) {
+                                "HashMap".to_string()
+                            } else {
+                                format!("<unknown:{}>", obj_key)
+                            }
+                        } else if auto_val::is_null(receiver_nv) {
+                            "None".to_string()
+                        } else {
+                            format!("<invalid_i32:{}>", receiver)
+                        }
+                    } else if auto_val::is_null(receiver_nv) {
+                        "None".to_string()
+                    } else if auto_val::is_object(receiver_nv) {
+                        let obj_key = auto_val::decode_object(receiver_nv) as u64;
+                        if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                            let guard = obj_lock.read().unwrap();
+                            if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                                inst.mono_name.split('_').next()
+                                    .unwrap_or(&inst.mono_name).to_string()
+                            } else {
+                                let tag_name = guard.type_tag().name();
+                                tag_name.split('<').next()
+                                    .unwrap_or(&tag_name).to_string()
+                            }
+                        } else if self.arrays.contains_key(&obj_key) {
+                            "List".to_string()
+                        } else if self.objects.contains_key(&obj_key) {
+                            "HashMap".to_string()
+                        } else {
+                            format!("<unknown_obj:{}>", obj_key)
+                        }
+                    } else {
+                        format!("<unknown_nv:{:016x}>", receiver_nv)
+                    };
+
+                    #[cfg(not(feature = "nanbox"))]
                     let type_name = if receiver < 0 && receiver > i32::MIN + 1 {
                         // Tagged string index — treat as str type
                         "str".to_string()
@@ -4176,13 +4248,19 @@ impl AutoVM {
                             task.ram.push_i32(result);
                         }
                     } else if method_name == "to_string" || method_name == "to_str" {
-                        // Plan 240: Inline to_string — convert opaque handle to string if needed
+                        // Inline to_string — convert to debug string representation
+                        #[cfg(feature = "nanbox")]
+                        let recv_nv = task.ram.read_nv(receiver_pos);
+                        #[cfg(not(feature = "nanbox"))]
                         let recv_val = task.ram.read_i32(receiver_pos);
+                        #[cfg(feature = "nanbox")]
+                        let recv_val = if auto_val::is_i32(recv_nv) { auto_val::decode_i32(recv_nv) } else if auto_val::is_object(recv_nv) { auto_val::decode_object(recv_nv) as i32 } else { task.ram.read_i32(receiver_pos) };
                         let mut converted = false;
                         if recv_val > 0 {
                             let obj_key = recv_val as u64;
                             if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
                                 let guard = obj_lock.read().unwrap();
+                                // RustStdlibObject wrapping a String
                                 if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                                     if let Some(s) = rust_obj.downcast_ref::<String>() {
                                         let bytes = s.as_bytes().to_vec();
@@ -4204,10 +4282,54 @@ impl AutoVM {
                                         converted = true;
                                     }
                                 }
+                                // GenericInstanceData (user-defined struct)
+                                if !converted {
+                                    if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                                        let type_name = inst.mono_name.split('_').next().unwrap_or(&inst.mono_name);
+                                        let mut parts = vec![type_name.to_string()];
+                                        let strings_guard = self.strings.read().unwrap();
+                                        for field in &inst.fields {
+                                            let s = match field {
+                                                auto_val::Value::Int(i) => i.to_string(),
+                                                auto_val::Value::Uint(u) => u.to_string(),
+                                                auto_val::Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                auto_val::Value::Bool(b) => b.to_string(),
+                                                auto_val::Value::Double(d) => format!("{:.1}", d),
+                                                auto_val::Value::Nil => "null".to_string(),
+                                                auto_val::Value::VmRef(r) => format!("<obj:{}>", r.id),
+                                                _ => "?".to_string(),
+                                            };
+                                            parts.push(s);
+                                        }
+                                        drop(strings_guard);
+                                        let debug_str = if inst.fields.is_empty() {
+                                            type_name.to_string()
+                                        } else {
+                                            format!("{}({})", type_name, parts[1..].join(", "))
+                                        };
+                                        let bytes = debug_str.into_bytes();
+                                        let idx = {
+                                            let mut strings = self.strings.write().unwrap();
+                                            strings.push(bytes);
+                                            strings.len() - 1
+                                        };
+                                        for _ in 0..=arg_count { task.ram.pop_i32(); }
+                                        #[cfg(feature = "nanbox")]
+                                        {
+                                            task.ram.push_nv(auto_val::encode_string(idx as u32));
+                                            task.ram.push_nv(auto_val::encode_null());
+                                        }
+                                        #[cfg(not(feature = "nanbox"))]
+                                        {
+                                            task.ram.push_i32(-(idx as i32) - 1);
+                                        }
+                                        converted = true;
+                                    }
+                                }
                             }
                         }
                         if !converted {
-                            // Default: just leave receiver as-is
+                            // Primitive value — leave receiver as-is
                         }
                     } else {
                         return Err(VMError::RuntimeError(

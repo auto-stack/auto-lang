@@ -485,6 +485,9 @@ impl NativeInterface {
 
         // String methods for CALL_SPEC dispatch
         self.register_name("auto.str.len", NATIVE_STR_LEN);
+        self.register_name("auto.str.contains", NATIVE_STR_CONTAINS);
+        self.register_name("auto.str.starts_with", NATIVE_STR_STARTS_WITH);
+        self.register_name("auto.str.ends_with", NATIVE_STR_ENDS_WITH);
 
         // Plan 212 Phase 2: Rand native shims (built-in, no external crate needed)
         self.register(NATIVE_RAND_THREAD_RNG, shim_rand_thread_rng);
@@ -1063,6 +1066,11 @@ pub const NATIVE_INT_BIT_FLIP: u16 = 234;   // .bit(n).flip() → val ^ (1 << n)
 // === String/Uint Extension Native IDs (235+) ===
 pub const NATIVE_STR_BYTES: u16 = 235;    // str.bytes() → iterator of byte values
 pub const NATIVE_UINT_TO_HEX: u16 = 236; // uint.to_hex(pad) → hex string
+
+// === String Method Native IDs (1504+) ===
+pub const NATIVE_STR_CONTAINS: u16 = 1504;
+pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
+pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 
 // === Math Native IDs (1700+) — Plan 240 VM-1 ===
 pub const NATIVE_MATH_ABS: u16 = 1700;
@@ -3930,6 +3938,82 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
         Ok(())
     }
+}
+
+/// Helper: decode a NanoValue to a String (from string pool)
+#[cfg(feature = "nanbox")]
+fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
+    if auto_val::is_string(nv) {
+        vm.get_string(auto_val::decode_string(nv) as u16)
+            .map(|b| String::from_utf8_lossy(&b[..]).to_string())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+/// str.contains(substring) — check if string contains substring
+/// Stack: substring, string -> bool
+pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        let sub_nv = task.ram.pop_nv();
+        let str_nv = task.ram.pop_nv();
+        let str_s = nv_to_string(str_nv, vm);
+        let sub_s = nv_to_string(sub_nv, vm);
+        task.ram.push_i32(if str_s.contains(sub_s.as_str()) { -2147483648 } else { -2147483647 });
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let sub_idx = task.ram.pop_str_idx() as u16;
+        let str_idx = task.ram.pop_str_idx() as u16;
+        let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        let sub_s = vm.get_string(sub_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        task.ram.push_i32(if str_s.contains(&sub_s) { -2147483648 } else { -2147483647 });
+    }
+    Ok(())
+}
+
+/// str.starts_with(prefix) — check if string starts with prefix
+pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        let prefix_nv = task.ram.pop_nv();
+        let str_nv = task.ram.pop_nv();
+        let str_s = nv_to_string(str_nv, vm);
+        let prefix_s = nv_to_string(prefix_nv, vm);
+        task.ram.push_i32(if str_s.starts_with(prefix_s.as_str()) { -2147483648 } else { -2147483647 });
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let prefix_idx = task.ram.pop_str_idx() as u16;
+        let str_idx = task.ram.pop_str_idx() as u16;
+        let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        let prefix_s = vm.get_string(prefix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        task.ram.push_i32(if str_s.starts_with(&prefix_s) { -2147483648 } else { -2147483647 });
+    }
+    Ok(())
+}
+
+/// str.ends_with(suffix) — check if string ends with suffix
+pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(feature = "nanbox")]
+    {
+        let suffix_nv = task.ram.pop_nv();
+        let str_nv = task.ram.pop_nv();
+        let str_s = nv_to_string(str_nv, vm);
+        let suffix_s = nv_to_string(suffix_nv, vm);
+        task.ram.push_i32(if str_s.ends_with(suffix_s.as_str()) { -2147483648 } else { -2147483647 });
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let suffix_idx = task.ram.pop_str_idx() as u16;
+        let str_idx = task.ram.pop_str_idx() as u16;
+        let str_s = vm.get_string(str_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        let suffix_s = vm.get_string(suffix_idx).map(|b| String::from_utf8_lossy(&b[..]).to_string()).unwrap_or_default();
+        task.ram.push_i32(if str_s.ends_with(&suffix_s) { -2147483648 } else { -2147483647 });
+    }
+    Ok(())
 }
 
 /// Get the length of a string (String.len).
