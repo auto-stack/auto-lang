@@ -1380,11 +1380,27 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let cond = task.ram.pop_i32();
-    // Plan 091: Boolean false = i32::MIN + 1 (-2147483647)
-    // Also treat 0 as false for backward compatibility
-    if cond == 0 || cond == -2147483647 {
-        return Err(VMError::RuntimeError("Assertion failed".to_string()));
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        let is_true = if auto_val::is_bool(nv) {
+            auto_val::decode_bool(nv)
+        } else if auto_val::is_i32(nv) {
+            let v = auto_val::decode_i32(nv);
+            v != 0 && v != (-2147483647i32)
+        } else {
+            true
+        };
+        if !is_true {
+            return Err(VMError::RuntimeError("Assertion failed".to_string()));
+        }
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let cond = task.ram.pop_i32();
+        if cond == 0 || cond == -2147483647 {
+            return Err(VMError::RuntimeError("Assertion failed".to_string()));
+        }
     }
     Ok(())
 }
@@ -1458,9 +1474,14 @@ pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let right_str = vm.get_string(auto_val::decode_string(right_nv) as u16)
                 .map(|b| String::from_utf8_lossy(&b).to_string());
             left_str.as_deref() == right_str.as_deref()
-        } else {
-            // Compare as i32 values
+        } else if left_nv == right_nv {
+            true
+        } else if auto_val::is_i32(left_nv) && auto_val::is_i32(right_nv) {
             auto_val::decode_i32(left_nv) == auto_val::decode_i32(right_nv)
+        } else if auto_val::is_object(left_nv) && auto_val::is_object(right_nv) {
+            vm.struct_eq(auto_val::decode_object(left_nv) as i32, auto_val::decode_object(right_nv) as i32)
+        } else {
+            false
         };
 
         if !equal {
@@ -1510,8 +1531,14 @@ pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let right_str = vm.get_string(auto_val::decode_string(right_nv) as u16)
                 .map(|b| String::from_utf8_lossy(&b).to_string());
             left_str.as_deref() == right_str.as_deref()
-        } else {
+        } else if left_nv == right_nv {
+            true
+        } else if auto_val::is_i32(left_nv) && auto_val::is_i32(right_nv) {
             auto_val::decode_i32(left_nv) == auto_val::decode_i32(right_nv)
+        } else if auto_val::is_object(left_nv) && auto_val::is_object(right_nv) {
+            vm.struct_eq(auto_val::decode_object(left_nv) as i32, auto_val::decode_object(right_nv) as i32)
+        } else {
+            false
         };
 
         if equal {
@@ -1522,7 +1549,6 @@ pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         Ok(())
     }
 }
-
 // ============================================================================
 // List Native Shims
 // ============================================================================

@@ -586,7 +586,7 @@ impl AutoVM {
     ///
     /// Compares two heap objects by their structural content rather than by ID.
     /// Both operands are expected to be >= 4000000 (heap object IDs).
-    fn struct_eq(&self, a: i32, b: i32) -> bool {
+    pub fn struct_eq(&self, a: i32, b: i32) -> bool {
         use crate::vm::generic_registry::GenericInstanceData;
         use crate::vm::heap_object::TypeTag;
 
@@ -2310,7 +2310,23 @@ impl AutoVM {
                     let val = if type_tag == 1 {
                         auto_val::Value::Double(task.ram.pop_f64())
                     } else {
-                        auto_val::Value::Int(task.ram.pop_i32())
+                        #[cfg(feature = "nanbox")]
+                        {
+                            let nv = task.ram.pop_nv();
+                            if auto_val::is_string(nv) {
+                                let idx = auto_val::decode_string(nv) as usize;
+                                let s = self.get_string(idx as u16)
+                                    .map(|b| String::from_utf8_lossy(&b).to_string())
+                                    .unwrap_or_default();
+                                auto_val::Value::Str(auto_val::AutoStr::from(s))
+                            } else if auto_val::is_object(nv) {
+                                auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+                            } else {
+                                auto_val::Value::Int(auto_val::decode_i32(nv))
+                            }
+                        }
+                        #[cfg(not(feature = "nanbox"))]
+                        { auto_val::Value::Int(task.ram.pop_i32()) }
                     };
                     let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
                     let instance_id = self.insert_heap_object(instance);
@@ -2589,32 +2605,52 @@ impl AutoVM {
                                 Value::Double(val_f64)
                             }
                             _ => {
-                                // Pop value as i32 for all other types
-                                let val_i32 = task.ram.pop_i32();
-                                vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
-
-                                // Plan 197 Task 16: Detect string, heap object, or basic integer
-                                // Strings are encoded as -(idx+1) (negative)
-                                // Heap objects are >= 4000000
-                                // Integers are everything else
-                                if val_i32 >= 4000000 {
-                                    // This is likely a heap object reference
-                                    Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
-                                } else if val_i32 < 0 {
-                                    // Tagged string index: -(idx+1)
-                                    let idx = (-val_i32 - 1) as usize;
-                                    let strings_guard = self.strings.read().unwrap();
-                                    if idx < strings_guard.len() {
-                                        let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
-                                        drop(strings_guard);
-                                        Value::Str(auto_val::AutoStr::from(s))
+                                // Pop value — in nanbox mode, preserve type information
+                                #[cfg(feature = "nanbox")]
+                                {
+                                    let nv = task.ram.pop_nv();
+                                    if auto_val::is_string(nv) {
+                                        let idx = auto_val::decode_string(nv) as usize;
+                                        let strings_guard = self.strings.read().unwrap();
+                                        if idx < strings_guard.len() {
+                                            let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
+                                            drop(strings_guard);
+                                            Value::Str(auto_val::AutoStr::from(s))
+                                        } else {
+                                            drop(strings_guard);
+                                            Value::Int(auto_val::decode_i32(nv))
+                                        }
+                                    } else if auto_val::is_object(nv) {
+                                        Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+                                    } else if auto_val::is_null(nv) {
+                                        Value::Nil
+                                    } else if auto_val::is_bool(nv) {
+                                        Value::Bool(auto_val::decode_bool(nv))
+                                    } else if auto_val::is_f64(nv) {
+                                        Value::Double(auto_val::decode_f64(nv))
                                     } else {
-                                        drop(strings_guard);
+                                        Value::Int(auto_val::decode_i32(nv))
+                                    }
+                                }
+                                #[cfg(not(feature = "nanbox"))]
+                                {
+                                    let val_i32 = task.ram.pop_i32();
+                                    if val_i32 >= 4000000 {
+                                        Value::VmRef(auto_val::VmRef { id: val_i32 as usize })
+                                    } else if val_i32 < 0 {
+                                        let idx = (-val_i32 - 1) as usize;
+                                        let strings_guard = self.strings.read().unwrap();
+                                        if idx < strings_guard.len() {
+                                            let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
+                                            drop(strings_guard);
+                                            Value::Str(auto_val::AutoStr::from(s))
+                                        } else {
+                                            drop(strings_guard);
+                                            Value::Int(val_i32)
+                                        }
+                                    } else {
                                         Value::Int(val_i32)
                                     }
-                                } else {
-                                    // Basic integer type
-                                    Value::Int(val_i32)
                                 }
                             }
                         };
@@ -2681,18 +2717,14 @@ impl AutoVM {
                     );
                 }
                 OpCode::IS_VARIANT => {
-                    // Plan 197 Task 15: Check if heap object is a GenericInstanceData with matching mono_name
-                    // Plan 229: Also handle primitive values (i32) for Option pattern compatibility
+                    // Check if a value matches an expected variant name
                     // Code layout: [opcode, name_len:u16, name_bytes...]
-                    // Stack layout: [..., instance_id]
-                    // Stack after: [..., bool] (instance_id consumed, bool pushed)
+                    // Stack layout: [..., value]
+                    // Stack after: [..., bool] (value consumed, bool pushed)
                     use crate::vm::generic_registry::GenericInstanceData;
 
-                    // Read name_len from code stream
                     let name_len = self.flash.read_u16(task.ip) as usize;
                     task.ip += 2;
-
-                    // Read name bytes from code stream
                     let mut name_bytes = vec![0u8; name_len];
                     for i in 0..name_len {
                         name_bytes[i] = self.flash.read_u8(task.ip);
@@ -2700,104 +2732,169 @@ impl AutoVM {
                     }
                     let expected_name = String::from_utf8_lossy(&name_bytes).to_string();
 
-                    // Read instance_id from stack
-                    let instance_id = task.ram.pop_i32() as u64;
-
-                    vm_debug!("DEBUG: IS_VARIANT: instance_id={}, expected_name='{}'",
-                        instance_id, expected_name
-                    );
-
-                    // Check if it's a GenericInstanceData with matching mono_name
-                    let result = if let Some(obj) = self.get_heap_object(instance_id) {
-                        let guard = obj.read().unwrap();
-                        if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
-                            instance.mono_name == expected_name
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let nv = task.ram.pop_nv();
+                        let obj_id = if auto_val::is_object(nv) {
+                            Some(auto_val::decode_object(nv) as u64)
+                        } else if auto_val::is_i32(nv) {
+                            let v = auto_val::decode_i32(nv);
+                            if v >= 4000000 { Some(v as u64) } else { None }
+                        } else {
+                            None
+                        };
+                        let result = if auto_val::is_null(nv) {
+                            expected_name == "Option.None"
+                        } else if let Some(id) = obj_id {
+                            if let Some(obj) = self.get_heap_object(id) {
+                                let guard = obj.read().unwrap();
+                                if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                    instance.mono_name == expected_name
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            expected_name == "Option.Some"
+                        };
+                        task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        let instance_id = task.ram.pop_i32() as u64;
+                        let nil_marker = (i32::MIN + 1) as u64;
+                        let result = if instance_id == nil_marker {
+                            expected_name == "Option.None"
+                        } else if let Some(obj) = self.get_heap_object(instance_id) {
+                            let guard = obj.read().unwrap();
+                            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                instance.mono_name == expected_name
+                            } else {
+                                false
+                            }
+                        } else if instance_id < 1000000 {
+                            let val = instance_id as i32;
+                            match expected_name.as_str() {
+                                "Option.Some" => val >= 0,
+                                "Option.None" => val < 0,
+                                _ => false,
+                            }
                         } else {
                             false
-                        }
-                    } else if instance_id < 1000000 {
-                        // Plan 229: Primitive value — Option compatibility
-                        // str.find returns i32: -1 = not found (None), >= 0 = found (Some)
-                        let val = instance_id as i32;
-                        match expected_name.as_str() {
-                            "Option.Some" => val >= 0,
-                            "Option.None" => val < 0,
-                            _ => false,
-                        }
-                    } else {
-                        false
-                    };
-
-                    // Push boolean result (true = i32::MIN, false = i32::MIN+1)
-                    task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                        };
+                        task.ram.push_i32(if result { -2147483648 } else { -2147483647 });
+                    }
                 }
                 OpCode::GET_GENERIC_FIELD => {
-                    // Plan 087 Phase 2: Get field value from generic instance
+                    // Get field value from a generic instance or primitive Option.Some value
                     // Code layout: [opcode, field_index:u32]
-                    // Stack layout: [..., instance_id]
-                    // Stack after: [..., value, instance_id]  (instance_id restored to top)
+                    // Stack layout: [..., value]
+                    // Stack after: [..., field_value]
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::TypeTag;
 
-                    // Read field_index from code stream (not stack!)
                     let field_index = self.flash.read_u32(task.ip) as usize;
                     task.ip += 4;
 
-                    // Read instance_id from stack WITHOUT popping it
-                    // Stack: [..., instance_id, ...]
-                    let instance_id = task.ram.read_i32(task.ram.sp - 1) as u64;
+                    #[cfg(feature = "nanbox")]
+                    {
+                        let nv = task.ram.pop_nv();
+                        // Determine object ID: if it's a proper TAG_OBJECT, decode it;
+                        // if it's TAG_I32 with a large value, it might be an object ID stored as i32
+                        let obj_id = if auto_val::is_object(nv) {
+                            Some(auto_val::decode_object(nv) as u64)
+                        } else if auto_val::is_i32(nv) {
+                            let v = auto_val::decode_i32(nv);
+                            if v >= 4000000 { Some(v as u64) } else { None }
+                        } else {
+                            None
+                        };
 
-                    vm_debug!("DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
-                        instance_id, field_index
-                    );
-
-                    // Get instance and read field
-                    if let Some(obj) = self.get_heap_object(instance_id) {
-                        let guard = obj.read().unwrap();
-
-                        // Check if this is a GenericInstance (any variant)
-                        let is_generic_instance =
-                            matches!(guard.type_tag(), TypeTag::GenericInstance(_));
-
-                        if is_generic_instance {
-                            if let Some(instance) =
-                                guard.as_any().downcast_ref::<GenericInstanceData>()
-                            {
-                                if let Some(value) = instance.get_field(field_index) {
-                                    // Pop instance_id (we already read it)
-                                    let _ = task.ram.pop_i32();
-                                    // Push field value onto stack
-                                    Self::push_value(&mut task.ram, value, &self.strings);
-                                    vm_debug!("DEBUG: GET_GENERIC_FIELD: field value = {:?}",
-                                        value
-                                    );
+                        if let Some(id) = obj_id {
+                            if let Some(obj) = self.get_heap_object(id) {
+                                let guard = obj.read().unwrap();
+                                let is_generic_instance =
+                                    matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+                                if is_generic_instance {
+                                    if let Some(instance) =
+                                        guard.as_any().downcast_ref::<GenericInstanceData>()
+                                    {
+                                        if let Some(value) = instance.get_field(field_index) {
+                                            Self::push_value(&mut task.ram, value, &self.strings);
+                                        } else {
+                                            return Err(VMError::RuntimeError(format!(
+                                                "Field index {} out of bounds", field_index
+                                            )));
+                                        }
+                                    } else {
+                                        return Err(VMError::RuntimeError(
+                                            "GET_GENERIC_FIELD: failed to downcast".to_string()
+                                        ));
+                                    }
+                                } else if field_index == 0 {
+                                    task.ram.push_nv(nv);
                                 } else {
                                     return Err(VMError::RuntimeError(format!(
-                                        "Field index {} out of bounds (instance has {} fields)",
-                                        field_index,
-                                        instance.field_count()
+                                        "Field index {} out of bounds for non-generic object", field_index
                                     )));
+                                }
+                            } else if field_index == 0 {
+                                task.ram.push_nv(nv);
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field index {} out of bounds", field_index
+                                )));
+                            }
+                        } else if field_index == 0 {
+                            // Primitive value — field 0 is the value itself
+                            task.ram.push_nv(nv);
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Field index {} out of bounds for primitive", field_index
+                            )));
+                        }
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        let instance_id = task.ram.read_i32(task.ram.sp - 1) as u64;
+
+                        if let Some(obj) = self.get_heap_object(instance_id) {
+                            let guard = obj.read().unwrap();
+                            let is_generic_instance =
+                                matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+                            if is_generic_instance {
+                                if let Some(instance) =
+                                    guard.as_any().downcast_ref::<GenericInstanceData>()
+                                {
+                                    if let Some(value) = instance.get_field(field_index) {
+                                        let _ = task.ram.pop_i32();
+                                        Self::push_value(&mut task.ram, value, &self.strings);
+                                    } else {
+                                        return Err(VMError::RuntimeError(format!(
+                                            "Field index {} out of bounds", field_index
+                                        )));
+                                    }
+                                } else {
+                                    return Err(VMError::RuntimeError(
+                                        "GET_GENERIC_FIELD: failed to downcast".to_string()
+                                    ));
                                 }
                             } else {
                                 return Err(VMError::RuntimeError(format!(
-                                    "Type error: GET_GENERIC_FIELD failed to downcast GenericInstance")));
+                                    "Type error: GET_GENERIC_FIELD expected GenericInstance, got {:?}",
+                                    guard.type_tag()
+                                )));
                             }
+                        } else if instance_id < 1000000 {
+                            let _ = task.ram.pop_i32();
+                            task.ram.push_i32(instance_id as i32);
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: GET_GENERIC_FIELD expected GenericInstance, got {:?}",
-                                guard.type_tag()
+                                "Invalid instance ID: {}", instance_id
                             )));
                         }
-                    } else if instance_id < 1000000 {
-                        // Plan 229: Primitive value — for Option.Some binding, return the value itself
-                        // Pop the instance_id and push it back as the field value
-                        let _ = task.ram.pop_i32();
-                        task.ram.push_i32(instance_id as i32);
-                    } else {
-                        return Err(VMError::RuntimeError(format!(
-                            "Invalid instance ID: {}",
-                            instance_id
-                        )));
                     }
                 }
                 OpCode::SET_GENERIC_FIELD => {

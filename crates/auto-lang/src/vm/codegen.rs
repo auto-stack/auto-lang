@@ -2422,8 +2422,10 @@ impl Codegen {
             }
             // Plan 073: Is pattern matching statement
             Stmt::Is(is_stmt) => {
-                // Evaluate target expression once and keep on stack
+                // Evaluate target expression once and store in temp variable
                 self.compile_expr(&is_stmt.target)?;
+                let target_var = self.add_var("_is_target");
+                self.emit_store_loc(target_var);
 
                 let mut end_jumps = Vec::new();
 
@@ -2436,7 +2438,7 @@ impl Codegen {
                             let pattern = &patterns[0];
                             match pattern {
                                 crate::ast::Expr::None => {
-                                    self.emit(OpCode::DUP);
+                                    self.emit_load_loc(target_var);
                                     self.emit(OpCode::IS_VARIANT);
                                     let variant_name = "Option.None";
                                     let name_bytes = variant_name.as_bytes();
@@ -2448,7 +2450,7 @@ impl Codegen {
                                 crate::ast::Expr::OptionPattern(opt_cover) => {
                                     match opt_cover.variant {
                                         crate::ast::OptionVariant::Some => {
-                                            self.emit(OpCode::DUP);
+                                            self.emit_load_loc(target_var);
                                             self.emit(OpCode::IS_VARIANT);
                                             let variant_name = "Option.Some";
                                             let name_bytes = variant_name.as_bytes();
@@ -2461,7 +2463,7 @@ impl Codegen {
                                             let jump_to_next = self.emit_placeholder_i16();
 
                                             if let Some(binding) = &opt_cover.binding {
-                                                self.emit(OpCode::DUP);
+                                                self.emit_load_loc(target_var);
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
                                                 self.emit_u32(0);
 
@@ -2472,8 +2474,6 @@ impl Codegen {
                                                     let inner_type = self.infer_option_inner_type(&is_stmt.target);
                                                     self.var_types.insert(binding.to_string(), inner_type);
                                                 }
-                                            } else {
-                                                self.emit(OpCode::POP);
                                             }
 
                                             self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
@@ -2486,7 +2486,7 @@ impl Codegen {
                                             continue;
                                         }
                                         crate::ast::OptionVariant::None => {
-                                            self.emit(OpCode::DUP);
+                                            self.emit_load_loc(target_var);
                                             self.emit(OpCode::IS_VARIANT);
                                             let variant_name = "Option.None";
                                             let name_bytes = variant_name.as_bytes();
@@ -2502,9 +2502,7 @@ impl Codegen {
                                 crate::ast::Expr::ResultPattern(res_cover) => {
                                     match res_cover.variant {
                                         crate::ast::ResultVariant::Ok => {
-                                            // Duplicate target for checking
-                                            self.emit(OpCode::DUP);
-                                            // Check if value is Result.Ok using IS_VARIANT
+                                            self.emit_load_loc(target_var);
                                             self.emit(OpCode::IS_VARIANT);
                                             let variant_name = "Result.Ok";
                                             let name_bytes = variant_name.as_bytes();
@@ -2518,18 +2516,11 @@ impl Codegen {
                                             let jump_to_next = self.emit_placeholder_i16();
                                             // If we have a binding, extract the value and store it
                                             if let Some(binding) = &res_cover.binding {
-                                                // The target is still on stack (IS_VARIANT consumed the DUP'd copy)
-                                                // DUP again for GET_GENERIC_FIELD
-                                                self.emit(OpCode::DUP);
-                                                // Extract field 0 (inner value) from Result.Ok instance
+                                                self.emit_load_loc(target_var);
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
-                                                self.emit_u32(0); // field index 0
-                                                // Store in local variable
+                                                self.emit_u32(0);
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
-                                            } else {
-                                                // Pop the remaining target
-                                                self.emit(OpCode::POP);
                                             }
 
                                             // Compile branch body
@@ -2542,12 +2533,10 @@ impl Codegen {
 
                                             // Patch jump to next branch
                                             self.patch_jump(jump_to_next);
-                                            continue; // Skip the default handling
+                                            continue;
                                         }
                                         crate::ast::ResultVariant::Err => {
-                                            // Duplicate target for checking
-                                            self.emit(OpCode::DUP);
-                                            // Check if value is Result.Err using IS_VARIANT
+                                            self.emit_load_loc(target_var);
                                             self.emit(OpCode::IS_VARIANT);
                                             let variant_name = "Result.Err";
                                             let name_bytes = variant_name.as_bytes();
@@ -2561,18 +2550,11 @@ impl Codegen {
                                             let jump_to_next = self.emit_placeholder_i16();
                                             // If we have a binding, extract the error value and store it
                                             if let Some(binding) = &res_cover.binding {
-                                                // The target is still on stack (IS_VARIANT consumed the DUP'd copy)
-                                                // DUP again for GET_GENERIC_FIELD
-                                                self.emit(OpCode::DUP);
-                                                // Extract field 0 (error value) from Result.Err instance
+                                                self.emit_load_loc(target_var);
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
-                                                self.emit_u32(0); // field index 0
-                                                // Store in local variable
+                                                self.emit_u32(0);
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
-                                            } else {
-                                                // Pop the remaining target
-                                                self.emit(OpCode::POP);
                                             }
 
                                             // Compile branch body
@@ -2585,16 +2567,14 @@ impl Codegen {
 
                                             // Patch jump to next branch
                                             self.patch_jump(jump_to_next);
-                                            continue; // Skip the default handling
+                                            continue;
                                         }
                                     }
                                 }
                                 // Plan 197 Task 16: Legacy Some as expression pattern (backward compatibility)
                                 // Uses IS_VARIANT("Option.Some") instead of IS_SOME
                                 crate::ast::Expr::Some(inner) => {
-                                    // Duplicate target for checking
-                                    self.emit(OpCode::DUP);
-                                    // Check if value is Option.Some using IS_VARIANT
+                                    self.emit_load_loc(target_var);
                                     self.emit(OpCode::IS_VARIANT);
                                     let variant_name = "Option.Some";
                                     let name_bytes = variant_name.as_bytes();
@@ -2606,9 +2586,7 @@ impl Codegen {
                                     let _ = inner; // Suppress unused warning
                                 }
                                 crate::ast::Expr::Ok(inner) => {
-                                    // Duplicate target for checking
-                                    self.emit(OpCode::DUP);
-                                    // Check if value is Result.Ok using IS_VARIANT
+                                    self.emit_load_loc(target_var);
                                     self.emit(OpCode::IS_VARIANT);
                                     let variant_name = "Result.Ok";
                                     let name_bytes = variant_name.as_bytes();
@@ -2620,9 +2598,7 @@ impl Codegen {
                                     let _ = inner; // Suppress unused warning
                                 }
                                 crate::ast::Expr::Err(msg) => {
-                                    // Duplicate target for checking
-                                    self.emit(OpCode::DUP);
-                                    // Check if value is Result.Err using IS_VARIANT
+                                    self.emit_load_loc(target_var);
                                     self.emit(OpCode::IS_VARIANT);
                                     let variant_name = "Result.Err";
                                     let name_bytes = variant_name.as_bytes();
@@ -2642,9 +2618,7 @@ impl Codegen {
 
                                     if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
                                         // Binding destructuring pattern: Atom.Int(n) -> ...
-                                        // Duplicate target for variant check
-                                        self.emit(OpCode::DUP);
-                                        // Emit IS_VARIANT with the expected mono_name
+                                        self.emit_load_loc(target_var);
                                         self.emit(OpCode::IS_VARIANT);
                                         let name_bytes = variant_mono.as_bytes();
                                         self.emit_u16(name_bytes.len() as u16);
@@ -2657,10 +2631,6 @@ impl Codegen {
                                         let jump_to_next = self.emit_placeholder_i16();
 
                                         // Variant matched — extract the payload fields and bind them
-                                        // The target is still on stack (from the DUP above consumed by IS_VARIANT,
-                                        // but IS_VARIANT popped it and pushed bool; the original target is below)
-                                        // Actually: IS_VARIANT pops the dup'd instance_id and pushes bool.
-                                        // JMP_IF_Z pops the bool. So the original target is still on stack.
 
                                         // Determine field count and types from the generic registry
                                         let (field_count, field_types) = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
@@ -2671,16 +2641,13 @@ impl Codegen {
                                         };
 
                                         // Extract each field and bind to variables
-                                        // For Atom.Int(n) with 1 field: extract field 0 into variable "n"
-                                        // For multi-field: Point.xy(x, y) -> extract field 0 into "x", field 1 into "y"
                                         let binding_count = tag_cover.bindings.len().min(field_count);
                                         for i in 0..binding_count {
                                             let binding = &tag_cover.bindings[i];
                                             if binding.as_str() != "_" {
-                                                self.emit(OpCode::DUP);
+                                                self.emit_load_loc(target_var);
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
                                                 self.emit_u32(i as u32);
-                                                // Record variable type so later use (e.g., print) knows the type
                                                 if let Some(ref ty) = field_types.get(i) {
                                                     self.var_types.insert(binding.to_string(), (*ty).clone());
                                                 }
@@ -2688,9 +2655,6 @@ impl Codegen {
                                                 self.emit_store_loc(var_idx);
                                             }
                                         }
-
-                                        // Pop the remaining instance_id left by DUP
-                                        self.emit(OpCode::POP);
 
                                         // Compile branch body with bindings in scope
                                         self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
@@ -2704,8 +2668,7 @@ impl Codegen {
                                         self.patch_jump(jump_to_next);
                                         continue; // Skip the default handling
                                     } else if has_data_payload {
-                                        // Empty variant pattern (no binding): just check variant type
-                                        self.emit(OpCode::DUP);
+                                        self.emit_load_loc(target_var);
                                         self.emit(OpCode::IS_VARIANT);
                                         let name_bytes = variant_mono.as_bytes();
                                         self.emit_u16(name_bytes.len() as u16);
@@ -2713,9 +2676,8 @@ impl Codegen {
                                             self.code.push(byte);
                                         }
                                     }
-                                    // else: scalar enum without data payload — use EQ comparison
                                     else {
-                                        self.emit(OpCode::DUP);
+                                        self.emit_load_loc(target_var);
                                         self.compile_expr(pattern)?;
                                         self.emit(OpCode::EQ);
                                     }
@@ -2724,20 +2686,15 @@ impl Codegen {
                                     // Standard equality comparison for patterns
                                     // For multi-pattern (OR): compare each, OR results together
                                     if patterns.len() == 1 {
-                                        // Single pattern: existing behavior
-                                        self.emit(OpCode::DUP);
+                                        self.emit_load_loc(target_var);
                                         self.compile_expr(pattern)?;
                                         self.emit(OpCode::EQ);
                                     } else {
-                                        // Multi-pattern: save target, compare each with short-circuit OR
-                                        // If any pattern matches, jump to matched label; otherwise fall through to next branch
-                                        let target_slot = self.add_var("_is_target");
-                                        self.emit_store_loc(target_slot);
-
+                                        // Multi-pattern: compare each with short-circuit OR
                                         let mut match_jumps = Vec::new();
 
                                         // First pattern
-                                        self.emit_load_loc(target_slot);
+                                        self.emit_load_loc(target_var);
                                         self.compile_expr(&patterns[0])?;
                                         self.emit(OpCode::EQ);
                                         self.emit(OpCode::JMP_IF_NZ);
@@ -2745,15 +2702,14 @@ impl Codegen {
 
                                         // Subsequent patterns: if previous didn't match, try this one
                                         for pat in &patterns[1..] {
-                                            self.emit_load_loc(target_slot);
+                                            self.emit_load_loc(target_var);
                                             self.compile_expr(pat)?;
                                             self.emit(OpCode::EQ);
                                             self.emit(OpCode::JMP_IF_NZ);
                                             match_jumps.push(self.emit_placeholder_i16());
                                         }
 
-                                        // No pattern matched — restore target and jump to next branch
-                                        self.emit_load_loc(target_slot);
+                                        // No pattern matched — jump to next branch
                                         self.emit(OpCode::JMP);
                                         let jump_to_next = self.emit_placeholder_i16();
 
@@ -2767,9 +2723,6 @@ impl Codegen {
                                             self.code[*j] = bytes[0];
                                             self.code[*j + 1] = bytes[1];
                                         }
-
-                                        // Restore target on stack for body execution
-                                        self.emit_load_loc(target_slot);
 
                                         // Compile branch body
                                         self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
@@ -2832,9 +2785,6 @@ impl Codegen {
                         }
                     }
                 }
-
-                // Pop the target value from stack
-                self.emit(OpCode::POP);
 
                 // Patch all jump_to_end placeholders
                 for jump_to_end in end_jumps {
