@@ -1,0 +1,25 @@
+use.rust reqwest
+use.rust serde_json::json
+
+fn main() ! ~void {
+    let client = reqwest.Client.new()
+
+    let gist = json({
+        description: "AutoLang example",
+        public: true,
+        files: {
+            main.rs: {
+                content: "fn main() { println!(\"hello\"); }"
+            }
+        }
+    })
+
+    let response = client.post("https://api.github.com/gists")
+        .header("User-Agent", "reqwest-example")
+        .basic_auth("user", "token")
+        .json(gist)
+        .send()
+        .await?
+
+    print(f"Status: ${response.status()}")
+}

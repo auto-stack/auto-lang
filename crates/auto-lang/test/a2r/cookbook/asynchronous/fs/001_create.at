@@ -1,0 +1,9 @@
+use.rust tokio::fs::File
+use.rust tokio::fs::create_dir
+use.rust tokio::fs::create_dir_all
+
+fn main() ! ~void {
+    File.create("data.txt").await?
+    create_dir("my_dir").await?
+    create_dir_all("my_dir/sub_dir/inner").await?
+}

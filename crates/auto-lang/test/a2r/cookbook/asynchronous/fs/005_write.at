@@ -1,0 +1,5 @@
+use.rust tokio::fs::write
+
+fn main() ! ~void {
+    write("data.txt", "Generic data from program!").await?
+}

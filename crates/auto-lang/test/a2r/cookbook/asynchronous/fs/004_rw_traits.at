@@ -1,0 +1,13 @@
+use.rust tokio::fs::File
+use.rust tokio::io::AsyncReadExt
+use.rust tokio::io::AsyncWriteExt
+
+fn main() ! ~void {
+    var file = File.create("data.txt").await?
+    file.write_all("Generated Data!".as_bytes()).await?
+
+    var file2 = File.open("data.txt").await?
+    var contents List<byte> = List.new()
+    file2.read_to_end(contents).await?
+    print(f"Data Length: ${contents.len()}")
+}

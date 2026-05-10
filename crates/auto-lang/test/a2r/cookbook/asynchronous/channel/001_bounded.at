@@ -1,0 +1,52 @@
+// Bounded channel with spec-based Named trait
+
+use.rust tokio::sync::mpsc::channel
+
+// Spec for things with a name
+spec Named {
+    fn name() str
+}
+
+type Book {
+    title str
+}
+
+ext Book {
+    static fn new(title str) Book {
+        return Book(title)
+    }
+}
+
+// Implement Named spec for Book
+ext Book has Named {
+    fn name() str {
+        return self.title
+    }
+}
+
+fn main() ~void {
+    let ch = channel(5)
+    let sender = ch.0
+    let mut receiver = ch.1
+
+    let sender_clone = sender.clone()
+    let store_one = tokio.task.spawn(~{
+        sender_clone.send(Book.new("Shawshank Redemption")).await
+    })
+
+    let store_two = tokio.task.spawn(~{
+        sender.send(Book.new("Secret Recipe")).await
+    })
+
+    var shelf List<Book> = List.new()
+    for Some(new_book) = receiver.recv().await {
+        shelf.push(new_book)
+    }
+
+    store_one.await
+    store_two.await
+
+    for book in shelf {
+        print(f"Title: ${book.name()}")
+    }
+}

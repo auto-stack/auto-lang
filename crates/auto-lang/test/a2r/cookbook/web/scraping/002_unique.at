@@ -1,0 +1,25 @@
+use.rust scraper::Html
+use.rust scraper::Selector
+use.rust regex::Regex
+
+fn main() ! {
+    let html_content = "<html><body><a href='https://en.wikipedia.org/wiki/Auto'>Auto</a><a href='https://en.wikipedia.org/wiki/Rust'>Rust</a></body></html>"
+    let html = Html.parse_document(html_content)
+    let selector = Selector.parse("a[href]").?
+
+    let wiki_pattern = Regex.new("https://en\\.wikipedia\\.org/wiki/.+").?
+    var seen Map<str, bool> = Map.new()
+    var unique_links List<str> = List.new()
+
+    for element in html.select(selector) {
+        let href = element.attr("href") ?? ""
+        if wiki_pattern.is_match(href) and not seen.has(href) {
+            seen.set(href, true)
+            unique_links.push(href)
+        }
+    }
+
+    for link in unique_links {
+        print(f"Unique link: ${link}")
+    }
+}

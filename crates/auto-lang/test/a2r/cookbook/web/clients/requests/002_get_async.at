@@ -1,0 +1,7 @@
+use.rust reqwest
+
+fn main() ! ~void {
+    let response = reqwest.get("https://httpbin.org/get").await?
+    let body = response.text().await?
+    print(f"Body: ${body}")
+}

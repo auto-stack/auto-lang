@@ -1,0 +1,51 @@
+// Custom Future implementation using spec for Future trait
+
+use.rust std::time::Duration
+use.rust std::time::Instant
+
+spec Future {
+    fn poll(cx Context) Poll
+}
+
+spec Awaitable {
+    fn wait() ~void
+}
+
+type Delay {
+    deadline Instant
+}
+
+ext Delay {
+    static fn new(dur Duration) Delay {
+        return Delay(Instant.now() + dur)
+    }
+}
+
+// Implement Future spec for Delay
+ext Delay has Future {
+    fn poll(cx Context) Poll {
+        if Instant.now() >= self.deadline {
+            return Poll.Ready(())
+        }
+        cx.waker().wake_by_ref()
+        return Poll.Pending
+    }
+}
+
+// Implement Awaitable spec so Delay can be .await'd
+ext Delay has Awaitable {
+    fn wait() ~void {
+        // The runtime polls until Ready
+        return self.await
+    }
+}
+
+fn main() ~void {
+    let start = Instant.now()
+    print("waiting 10 ms...")
+
+    Delay.new(Duration.from_millis(10)).wait()
+
+    let elapsed = start.elapsed()
+    print(f"done in ${elapsed}")
+}

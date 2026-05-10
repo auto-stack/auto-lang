@@ -1,0 +1,24 @@
+use.rust postgres::Client
+
+fn main() ! {
+    let mut client = Client.connect("host=localhost user=postgres", NoTls)?
+
+    let authors = Map.new()
+    authors.set("J.G. Ballard", "UK")
+    authors.set("George R.R. Martin", "USA")
+
+    for name in authors.keys() {
+        let nationality = authors.get(name)
+        client.execute(
+            "INSERT INTO author (name, nationality) VALUES ($1, $2)",
+            (name, nationality)
+        )?
+    }
+
+    for row in client.query("SELECT id, name, nationality FROM author", ())? {
+        let id int = row.get(0)
+        let name str = row.get(1)
+        let nationality str = row.get(2)
+        print(f"${name} (${nationality}) has id ${id}")
+    }
+}

@@ -1,0 +1,12 @@
+use.rust reqwest
+
+fn main() ! ~void {
+    let client = reqwest.Client.new()
+    let response = client.get("https://httpbin.org/basic-auth/user/pass")
+        .basic_auth("user", "pass")
+        .send()
+        .await?
+
+    let body = response.text().await?
+    print(f"Body: ${body}")
+}

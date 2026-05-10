@@ -1,0 +1,30 @@
+use.rust reqwest
+use.rust std::fs::File
+use.rust std::io::Write
+
+const CHUNK_SIZE = 1024
+
+fn main() ! ~void {
+    let client = reqwest.Client.new()
+    let url = "https://example.com/large-file.zip"
+    let total_size = client.head(url).send().await?.content_length() ?? 0
+
+    var downloaded = 0
+    var start = 0
+
+    for start < total_size {
+        let end = start + CHUNK_SIZE - 1
+        let response = client.get(url)
+            .header("Range", f"bytes=${start}-${end}")
+            .send()
+            .await?
+
+        let chunk = response.bytes().await?
+        let mut file = File.open("large-file.zip")?
+        file.write_all(chunk)?
+
+        downloaded += chunk.len()
+        start = end + 1
+        print(f"Downloaded ${downloaded}/${total_size}")
+    }
+}

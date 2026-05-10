@@ -1,0 +1,8 @@
+fn fetch_network_request() ~uint {
+    return 89
+}
+
+fn main() ~void {
+    let result = fetch_network_request().await
+    print(f"Result: ${result}")
+}

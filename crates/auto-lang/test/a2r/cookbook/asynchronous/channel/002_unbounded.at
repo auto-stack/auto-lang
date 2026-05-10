@@ -1,0 +1,39 @@
+use.rust tokio::sync::mpsc::unbounded_channel
+
+type Message {
+    from str
+    text str
+}
+
+ext Message {
+    static fn new(from str, text str) Message {
+        return Message(from, text)
+    }
+}
+
+fn main() ~void {
+    let ch = unbounded_channel()
+    let sender = ch.0
+    let mut receiver = ch.1
+
+    let alice_sender = sender.clone()
+    let person_one = tokio.task.spawn(~{
+        alice_sender.send(Message.new("Alice", "Meeting postponed"))
+    })
+
+    let person_two = tokio.task.spawn(~{
+        sender.send(Message.new("Bob", "Secret Leaked"))
+    })
+
+    var inbox List<Message> = List.new()
+    for Some(msg) = receiver.recv().await {
+        inbox.push(msg)
+    }
+
+    person_one.await
+    person_two.await
+
+    for msg in inbox {
+        print(f"${msg.from} says: ${msg.text}")
+    }
+}

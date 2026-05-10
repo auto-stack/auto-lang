@@ -1,0 +1,22 @@
+use.rust tokio::signal
+use.rust tokio::time::sleep
+use.rust std::time::Duration
+
+fn fetch_data() ~str {
+    sleep(Duration.from_secs(5)).await
+    return "data"
+}
+
+fn main() ~void {
+    loop {
+        tokio.select! {
+            result = fetch_data() -> {
+                print(f"Got: ${result}")
+            }
+            _ = signal.ctrl_c() -> {
+                print("Shutting down...")
+                return
+            }
+        }
+    }
+}

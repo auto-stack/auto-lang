@@ -1,0 +1,32 @@
+use.rust reqwest
+use.rust scraper::Html
+use.rust scraper::Selector
+
+fn check_link(client reqwest.Client, url str) ~Result<int, str> {
+    is client.head(url).send().await {
+        Ok(response) -> Ok(response.status().as_u16()),
+        Err(e) -> Err(e.to_string())
+    }
+}
+
+fn main() ! ~void {
+    let html_content = "<html><body><a href='https://httpbin.org/status/200'>OK</a><a href='https://httpbin.org/status/404'>Missing</a></body></html>"
+    let html = Html.parse_document(html_content)
+    let selector = Selector.parse("a[href]").?
+    let client = reqwest.Client.new()
+
+    for element in html.select(selector) {
+        let href = element.attr("href") ?? ""
+        let result = check_link(client.clone(), href).await
+        is result {
+            Ok(status) -> {
+                if status >= 400 {
+                    print(f"BROKEN: ${href} (${status})")
+                } else {
+                    print(f"OK: ${href} (${status})")
+                }
+            }
+            Err(e) -> print(f"ERROR: ${href} (${e})")
+        }
+    }
+}

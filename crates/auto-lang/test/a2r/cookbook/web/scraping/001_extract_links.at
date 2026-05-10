@@ -1,0 +1,16 @@
+use.rust scraper::Html
+use.rust scraper::Selector
+
+fn main() ! {
+    let html_content = "<html><body><a href='/page1'>Link 1</a><a href='/page2'>Link 2</a></body></html>"
+    let html = Html.parse_document(html_content)
+    let selector = Selector.parse("a").?
+
+    for element in html.select(selector) {
+        let href = element.attr("href")
+        is href {
+            Some(link) -> print(f"Link: ${link} -> ${element.text()}"),
+            None -> {}
+        }
+    }
+}

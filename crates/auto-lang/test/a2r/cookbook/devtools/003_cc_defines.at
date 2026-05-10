@@ -1,0 +1,12 @@
+use.rust cc::Build
+
+fn main() ! {
+    let version = env("CARGO_PKG_VERSION") ?? "0.1.0"
+
+    Build.new()
+        .file("src/main.c")
+        .define("VERSION", Some(version))
+        .compile("mylib")?
+
+    print(f"Built with version ${version}")
+}
