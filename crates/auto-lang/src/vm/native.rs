@@ -2901,25 +2901,32 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                         return Ok(());
                     }
                     _ => {
-                        // Unsupported value type — push 0
+                        // Unsupported value type — push nil
                     }
                 }
             }
         }
     }
 
-    // Not found — push 0
-    task.ram.push_i32(0);
+    // Not found — push nil marker
+    #[cfg(feature = "nanbox")]
+    {
+        task.ram.push_nv(auto_val::encode_null());
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        task.ram.push_i32(i32::MIN + 1);
+    }
     Ok(())
 }
 
 /// Get value by string key (returns i32)
-/// Stack: hashmap_id, key_str_id -> value (0 if not found)
+/// Stack: hashmap_id, key_str_id -> value (or nil if not found)
 pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key_str_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
 
-    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+    if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
         if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
             let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
@@ -2928,18 +2935,23 @@ pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
             drop(key_bytes);
 
             if let Some(value) = map.get(&key_str) {
-                if let auto_val::Value::Int(i) = value { i } else { 0 }
-            } else {
-                0
+                if let auto_val::Value::Int(i) = value {
+                    task.ram.push_i32(i);
+                    return Ok(());
+                }
             }
-        } else {
-            0
         }
-    } else {
-        0
-    };
+    }
 
-    task.ram.push_i32(result);
+    // Not found — push nil marker
+    #[cfg(feature = "nanbox")]
+    {
+        task.ram.push_nv(auto_val::encode_null());
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        task.ram.push_i32(i32::MIN + 1);
+    }
     Ok(())
 }
 
@@ -2983,11 +2995,38 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                 .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
             let key_str = String::from_utf8_lossy(&key_bytes).to_string();
 
-            map.remove(&key_str);
+            if let Some(value) = map.remove(&key_str) {
+                match value {
+                    auto_val::Value::Int(i) => {
+                        task.ram.push_i32(i);
+                        return Ok(());
+                    }
+                    auto_val::Value::Str(s) => {
+                        let mut strings = vm.strings.write().unwrap();
+                        let str_idx = strings.len() as u32;
+                        strings.push(s.as_bytes().to_vec());
+                        drop(strings);
+                        task.ram.push_str_idx(str_idx);
+                        return Ok(());
+                    }
+                    _ => {
+                        task.ram.push_i32(0);
+                        return Ok(());
+                    }
+                }
+            }
         }
     }
 
-    task.ram.push_i32(0);
+    // Not found — push nil marker
+    #[cfg(feature = "nanbox")]
+    {
+        task.ram.push_nv(auto_val::encode_null());
+    }
+    #[cfg(not(feature = "nanbox"))]
+    {
+        task.ram.push_i32(i32::MIN + 1);
+    }
     Ok(())
 }
 

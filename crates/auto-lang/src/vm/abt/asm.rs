@@ -125,6 +125,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
         | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
         | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
+        | OpCode::PUSH_NIL
         | OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
         | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1
         | OpCode::TYPE_CAST_I32 | OpCode::TYPE_CAST_U32 | OpCode::TYPE_CAST_I64
@@ -235,6 +236,7 @@ fn emit_operands(
         | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
         | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
         | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
+        | OpCode::PUSH_NIL
         | OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
         | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1
         | OpCode::TYPE_CAST_I32 | OpCode::TYPE_CAST_U32 | OpCode::TYPE_CAST_I64

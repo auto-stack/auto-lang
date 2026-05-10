@@ -1806,6 +1806,16 @@ impl AutoVM {
                     let val_f32 = task.ram.pop_f32();
                     task.ram.push_f64(val_f32 as f64);
                 }
+                OpCode::PUSH_NIL => {
+                    #[cfg(feature = "nanbox")]
+                    {
+                        task.ram.push_nv(auto_val::encode_null());
+                    }
+                    #[cfg(not(feature = "nanbox"))]
+                    {
+                        task.ram.push_i32(i32::MIN + 1);
+                    }
+                }
                 OpCode::TYPE_CAST_F64 => {
                     // Always pop i32 and push f32 (1 slot → 1 slot)
                     let v = task.ram.pop_i32();

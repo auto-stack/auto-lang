@@ -3743,11 +3743,17 @@ impl Codegen {
             Expr::Dot(obj, field) => {
                 // Plan 123: Check if this is enum variant access (e.g., Color.Red)
                 if let Expr::Ident(type_name) = obj.as_ref() {
-                    // Extract value from type_store to release the borrow before emitting
+                    // Check codegen's own enum_values first (populated during EnumDecl compilation)
+                    let key = format!("{}.{}", type_name, field);
+                    if let Some(&value) = self.enum_values.get(&key) {
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(value);
+                        return Ok(());
+                    }
+                    // Also check type_store (populated during type resolution)
                     let variant_value = self.type_store.read().unwrap()
                         .get_enum_variant_value(type_name.as_ref(), field.as_ref());
                     if let Some(value) = variant_value {
-                        // Enum variant access - emit the variant value as integer
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(value);
                         return Ok(());
@@ -6348,49 +6354,21 @@ impl Codegen {
                 };
             }
             // Plan 197 Task 16: Option type constructor - Some(value)
-            // Uses NEW_INSTANCE("Option.Some") + CONSTRUCT_INSTANCE with 1 field
+            // For primitive types, use inline encoding (no heap allocation)
             Expr::Some(inner) => {
                 // Compile inner expression (pushes value onto stack)
                 self.compile_expr(inner)?;
-
-                // Emit NEW_INSTANCE instruction for Option.Some
-                let mono_name = "Option.Some";
-                let name_bytes = mono_name.as_bytes();
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(name_bytes.len() as i32);
-                self.emit(OpCode::NEW_INSTANCE);
-                for &byte in name_bytes {
-                    self.code.push(byte);
-                }
-
-                // Emit CONSTRUCT_INSTANCE with field_count = 1
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(1);
-                self.emit(OpCode::CONSTRUCT_INSTANCE);
-
+                // The inner value is already on the stack — Some(primitive) is just the value itself
                 self.last_expr_type = ObjectType::NestedObject;
-                self.last_enum_variant_mono = Some(mono_name.to_string());
+                self.last_enum_variant_mono = Some("Option.Some".to_string());
             }
             // Plan 197 Task 16: Option type constructor - None
-            // Uses NEW_INSTANCE("Option.None") + CONSTRUCT_INSTANCE with 0 fields
+            // Push nil marker (i32::MIN + 1 in non-nanbox, TAG_NULL in nanbox)
             Expr::None => {
-                // Emit NEW_INSTANCE instruction for Option.None
-                let mono_name = "Option.None";
-                let name_bytes = mono_name.as_bytes();
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(name_bytes.len() as i32);
-                self.emit(OpCode::NEW_INSTANCE);
-                for &byte in name_bytes {
-                    self.code.push(byte);
-                }
-
-                // Emit CONSTRUCT_INSTANCE with field_count = 0
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(0);
-                self.emit(OpCode::CONSTRUCT_INSTANCE);
+                self.emit(OpCode::PUSH_NIL);
 
                 self.last_expr_type = ObjectType::NestedObject;
-                self.last_enum_variant_mono = Some(mono_name.to_string());
+                self.last_enum_variant_mono = Some("Option.None".to_string());
             }
             // Plan 120: Result type constructor - Ok(value)
             // Plan 204: emit type_tag (0=i32, 1=f64) so engine pops correctly

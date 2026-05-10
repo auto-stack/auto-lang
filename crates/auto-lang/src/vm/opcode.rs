@@ -256,6 +256,7 @@ pub enum OpCode {
     // === Debug ===
     SOURCE_LINE = 0xFE, // line: u16 -> void (Plan 199: record current source line)
     PRINT = 0xF0,
+    PUSH_NIL = 0xFB,    // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
     HALT = 0xFF,
 }
 
@@ -315,6 +316,7 @@ impl OpCode {
         0xEF,
         // Extended type conversions (Plan 193)
         0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
+        0xFB, // PUSH_NIL
         // Debug/Misc
         0xF0, 0xF1, 0xF2, 0xFE, 0xFF,
     ];
@@ -492,6 +494,7 @@ impl OpCode {
             Self::POLL_FUTURE => "poll.future",
             Self::SOURCE_LINE => ".line",
             Self::PRINT => "print",
+            Self::PUSH_NIL => "push.nil",
             Self::HALT => "halt",
         }
     }
@@ -665,6 +668,7 @@ impl OpCode {
             "poll.future" => Some(Self::POLL_FUTURE),
             ".line" => Some(Self::SOURCE_LINE),
             "print" => Some(Self::PRINT),
+            "push.nil" => Some(Self::PUSH_NIL),
             "halt" => Some(Self::HALT),
             _ => None,
         }

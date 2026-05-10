@@ -108,6 +108,7 @@ impl<'a> Disassembler<'a> {
             | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
             | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
             | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
+            | OpCode::PUSH_NIL
                 => (String::new(), 0),
 
             // 1-byte operand
