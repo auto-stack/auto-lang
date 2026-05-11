@@ -7,6 +7,7 @@ pub enum AppError {
     VmError(String),
     CompileError(String),
     Internal(String),
+    NotFound(String),
 }
 
 impl std::fmt::Display for AppError {
@@ -15,6 +16,7 @@ impl std::fmt::Display for AppError {
             AppError::VmError(msg) => write!(f, "VM error: {msg}"),
             AppError::CompileError(msg) => write!(f, "Compile error: {msg}"),
             AppError::Internal(msg) => write!(f, "Internal error: {msg}"),
+            AppError::NotFound(msg) => write!(f, "Not found: {msg}"),
         }
     }
 }
@@ -25,6 +27,7 @@ impl IntoResponse for AppError {
             AppError::VmError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             AppError::CompileError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             AppError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            AppError::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
         };
         let body = axum::Json(json!({ "error": message }));
         (status, body).into_response()

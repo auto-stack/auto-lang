@@ -42,7 +42,7 @@ pub async fn trans_handler(
     }))
 }
 
-fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+pub fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::rust::transpile_rust as auto_transpile_rust;
     use auto_lang::trans::Sink;
 
@@ -54,7 +54,7 @@ fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppErro
     Ok((String::from_utf8_lossy(output).to_string(), source_map))
 }
 
-fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+pub fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     let (vm, _, _, _) = auto_lang::create_vm_from_source(source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
 
@@ -63,7 +63,7 @@ fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError
     Ok((abt.to_string(), Vec::new()))
 }
 
-fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+pub fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::c::transpile_c as auto_transpile_c;
 
     let mut sink = auto_transpile_c("playground", source)
@@ -83,7 +83,7 @@ fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> 
     Ok((String::from_utf8_lossy(&output).to_string(), source_map))
 }
 
-fn transpile_python(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+pub fn transpile_python(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::{Sink, Trans};
     use auto_lang::trans::python::PythonTrans;
     use auto_lang::Parser;
@@ -99,7 +99,7 @@ fn transpile_python(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppEr
     Ok((String::from_utf8_lossy(output).to_string(), source_map))
 }
 
-fn transpile_javascript(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+pub fn transpile_javascript(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::{Sink, Trans};
     use auto_lang::trans::javascript::JavaScriptTrans;
     use auto_lang::Parser;
@@ -115,7 +115,7 @@ fn transpile_javascript(source: &str) -> Result<(String, Vec<SourceMapEntry>), A
     Ok((String::from_utf8_lossy(output).to_string(), source_map))
 }
 
-fn transpile_typescript(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
+pub fn transpile_typescript(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
     use auto_lang::trans::{Sink, Trans};
     use auto_lang::trans::typescript::TypeScriptTrans;
     use auto_lang::Parser;

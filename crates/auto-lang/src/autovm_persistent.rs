@@ -34,7 +34,7 @@ macro_rules! vm_debug {
 /// **Efficient Implementation**: Reuses Codegen to avoid allocations
 pub struct AutovmReplSession {
     /// Single VM instance (persistent across inputs)
-    vm: AutoVM,
+    pub vm: AutoVM,
 
     /// Main task ID (persistent across inputs)
     main_task_id: TaskId,

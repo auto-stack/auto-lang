@@ -2,16 +2,36 @@ mod agent_debug;
 mod code_runner;
 mod debugger;
 mod error;
+mod notebook;
 mod routes;
 mod vm_runner;
 
 use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::FromRef;
 use axum::http::Method;
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use std::path::PathBuf;
 use tower_http::cors::CorsLayer;
+
+#[derive(Clone)]
+struct AppState {
+    agent_sessions: routes::agent_debug::AgentDebugSessions,
+    notebook_state: notebook::NotebookState,
+}
+
+impl FromRef<AppState> for routes::agent_debug::AgentDebugSessions {
+    fn from_ref(state: &AppState) -> Self {
+        state.agent_sessions.clone()
+    }
+}
+
+impl FromRef<AppState> for notebook::NotebookActor {
+    fn from_ref(state: &AppState) -> Self {
+        state.notebook_state.clone()
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -33,8 +53,10 @@ async fn main() {
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(tower_http::cors::Any);
 
-    let agent_sessions: routes::agent_debug::AgentDebugSessions =
-        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    let app_state = AppState {
+        agent_sessions: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        notebook_state: notebook::NotebookActor::new(),
+    };
 
     let api_routes = Router::new()
         .route("/api/run", post(routes::run::run_handler))
@@ -42,6 +64,11 @@ async fn main() {
         .route("/api/run_code", post(routes::run_code::run_code_handler))
         .route("/api/trans", post(routes::trans::trans_handler))
         .route("/api/examples", get(routes::examples::examples_handler))
+        .route("/api/notebook/session", post(routes::notebook::create_session_handler))
+        .route("/api/notebook/{sid}/execute", post(routes::notebook::execute_handler))
+        .route("/api/notebook/{sid}/variables", get(routes::notebook::variables_handler))
+        .route("/api/notebook/{sid}/transpile", post(routes::notebook::transpile_handler))
+        .route("/api/notebook/{sid}", delete(routes::notebook::delete_session_handler))
         .route("/api/debug/ws", get(debug_ws_handler))
         .route("/api/agent-debug/start", post(routes::agent_debug::start_handler))
         .route("/api/agent-debug/sessions", get(routes::agent_debug::sessions_handler))
@@ -55,7 +82,7 @@ async fn main() {
         )
         .route("/api/agent-debug/{id}/state", get(routes::agent_debug::state_handler))
         .route("/api/agent-debug/{id}", delete(routes::agent_debug::delete_handler))
-        .with_state(agent_sessions);
+        .with_state(app_state);
 
     let app = if dist_dir.exists() {
         api_routes.fallback_service(tower_http::services::ServeDir::new(&dist_dir))
