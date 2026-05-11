@@ -1,14 +1,60 @@
 //! AI Provider integration for AutoLab
 //!
 //! Calls Claude API (Anthropic) for code generation and explanation.
-//! Falls back gracefully if no API key is configured.
+//! Reads API key and base URL from ~/.claude/settings.json by default,
+//! falling back to environment variables.
 
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::path::PathBuf;
 
 const CLAUDE_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL: &str = "claude-3-5-sonnet-20241022";
+
+/// ~/.claude/settings.json structure (partial)
+#[derive(Debug, Deserialize)]
+struct ClaudeSettings {
+    #[serde(default)]
+    env: std::collections::HashMap<String, String>,
+}
+
+fn read_claude_settings() -> Option<ClaudeSettings> {
+    let home = env::var("HOME")
+        .or_else(|_| env::var("USERPROFILE"))
+        .ok()?;
+    let path = PathBuf::from(home).join(".claude").join("settings.json");
+    let content = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn load_api_config() -> (Option<String>, String) {
+    // 1. Try ~/.claude/settings.json
+    if let Some(settings) = read_claude_settings() {
+        let key = settings
+            .env
+            .get("ANTHROPIC_AUTH_TOKEN")
+            .cloned()
+            .or_else(|| settings.env.get("ANTHROPIC_API_KEY").cloned());
+        let base = settings
+            .env
+            .get("ANTHROPIC_BASE_URL")
+            .cloned()
+            .unwrap_or_else(|| "https://api.anthropic.com".to_string());
+        if key.is_some() {
+            return (key, base);
+        }
+    }
+
+    // 2. Fall back to environment variables
+    let key = env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| env::var("ANTHROPIC_AUTH_TOKEN"))
+        .ok();
+    let base = env::var("ANTHROPIC_BASE_URL")
+        .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
+
+    (key, base)
+}
 
 /// Request from the frontend
 #[derive(Debug, Deserialize)]
@@ -39,18 +85,25 @@ pub trait AiProvider: Send + Sync {
 pub struct ClaudeProvider {
     pub(crate) client: reqwest::Client,
     pub(crate) api_key: Option<String>,
+    pub(crate) base_url: String,
 }
 
 impl ClaudeProvider {
     pub fn new() -> Self {
+        let (api_key, base_url) = load_api_config();
         Self {
             client: reqwest::Client::new(),
-            api_key: env::var("ANTHROPIC_API_KEY").ok(),
+            api_key,
+            base_url,
         }
     }
 
     pub fn is_available(&self) -> bool {
         self.api_key.is_some()
+    }
+
+    fn api_url(&self) -> String {
+        format!("{}/v1/messages", self.base_url.trim_end_matches('/'))
     }
 
     /// Stream chat response as text deltas.
@@ -61,7 +114,9 @@ impl ClaudeProvider {
         tx: tokio::sync::mpsc::UnboundedSender<AIStreamDelta>,
     ) -> Option<String> {
         let Some(api_key) = &self.api_key else {
-            return Some("ANTHROPIC_API_KEY not set. Please configure your API key.".to_string());
+            return Some(
+                "ANTHROPIC_API_KEY not set. Please configure your API key in ~/.claude/settings.json or environment variables.".to_string()
+            );
         };
 
         let system_prompt = build_system_prompt();
@@ -83,7 +138,7 @@ impl ClaudeProvider {
 
         let resp = match self
             .client
-            .post(CLAUDE_API_URL)
+            .post(self.api_url())
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")

@@ -8,7 +8,6 @@ use crate::smith::tools::ToolDefinition;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const CLAUDE_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL: &str = "claude-3-5-sonnet-20241022";
 
 /// A request to the AI that may include tool definitions
@@ -114,7 +113,9 @@ impl ToolClaudeProvider {
     ) -> Option<String> {
         let provider = self.inner.as_ref();
         let Some(api_key) = &provider.api_key else {
-            return Some("ANTHROPIC_API_KEY not set. Please configure your API key.".to_string());
+            return Some(
+                "ANTHROPIC_API_KEY not set. Please configure your API key in ~/.claude/settings.json or environment variables.".to_string()
+            );
         };
 
         let system = request
@@ -130,9 +131,10 @@ impl ToolClaudeProvider {
             "stream": true
         });
 
+        let api_url = format!("{}/v1/messages", provider.base_url.trim_end_matches('/'));
         let resp = match provider
             .client
-            .post(CLAUDE_API_URL)
+            .post(api_url)
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
