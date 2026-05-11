@@ -17,3 +17,4 @@ uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 regex = "1"
 futures = "0.3"
+dirs = { workspace = true }

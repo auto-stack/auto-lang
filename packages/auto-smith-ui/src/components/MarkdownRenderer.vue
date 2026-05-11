@@ -24,14 +24,14 @@ const rendered = computed(() => {
 .markdown-body {
   font-size: 0.9rem;
   line-height: 1.6;
-  color: #cdd6f4;
+  color: var(--af-fg);
 }
 
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
 .markdown-body h4 {
-  color: #fab387;
+  color: hsl(var(--af-furnace));
   margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
@@ -45,8 +45,8 @@ const rendered = computed(() => {
 }
 
 .markdown-body pre {
-  background: #11111b;
-  border: 1px solid #313244;
+  background: var(--af-bg);
+  border: 1px solid var(--af-border);
   border-radius: 6px;
   padding: 0.75rem;
   overflow-x: auto;
@@ -59,17 +59,17 @@ const rendered = computed(() => {
 }
 
 .markdown-body pre code {
-  color: #cdd6f4;
+  color: var(--af-fg);
   background: transparent;
   padding: 0;
 }
 
 .markdown-body p code,
 .markdown-body li code {
-  background: #313244;
+  background: var(--af-secondary);
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
-  color: #f9e2af;
+  color: hsl(var(--af-warning));
 }
 
 .markdown-body ul,
@@ -83,21 +83,21 @@ const rendered = computed(() => {
 }
 
 .markdown-body blockquote {
-  border-left: 3px solid #45475a;
+  border-left: 3px solid var(--af-border);
   padding-left: 0.75rem;
   margin-left: 0;
-  color: #a6adc8;
+  color: var(--af-muted);
   font-style: italic;
 }
 
 .markdown-body hr {
   border: none;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--af-border);
   margin: 1rem 0;
 }
 
 .markdown-body a {
-  color: #89b4fa;
+  color: hsl(var(--af-info));
   text-decoration: none;
 }
 
@@ -113,23 +113,23 @@ const rendered = computed(() => {
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid #313244;
+  border: 1px solid var(--af-border);
   padding: 0.4rem 0.6rem;
   text-align: left;
 }
 
 .markdown-body th {
-  background: #181825;
+  background: var(--af-card);
   font-weight: 600;
 }
 
-/* Syntax highlighting colors (simple Catppuccin Mocha-like) */
+/* Syntax highlighting colours (mapped to theme palette) */
 .markdown-body .hljs-keyword,
 .markdown-body .hljs-selector-tag,
 .markdown-body .hljs-literal,
 .markdown-body .hljs-section,
 .markdown-body .hljs-link {
-  color: #cba6f7;
+  color: var(--af-primary);
 }
 
 .markdown-body .hljs-string,
@@ -143,14 +143,14 @@ const rendered = computed(() => {
 .markdown-body .hljs-variable,
 .markdown-body .hljs-template-tag,
 .markdown-body .hljs-template-variable {
-  color: #a6e3a1;
+  color: hsl(var(--af-success));
 }
 
 .markdown-body .hljs-comment,
 .markdown-body .hljs-quote,
 .markdown-body .hljs-deletion,
 .markdown-body .hljs-meta {
-  color: #6c7086;
+  color: var(--af-muted);
 }
 
 .markdown-body .hljs-number,
@@ -158,16 +158,16 @@ const rendered = computed(() => {
 .markdown-body .hljs-literal,
 .markdown-body .hljs-built_in,
 .markdown-body .hljs-builtin-name {
-  color: #fab387;
+  color: hsl(var(--af-furnace));
 }
 
 .markdown-body .hljs-function,
 .markdown-body .hljs-params {
-  color: #89b4fa;
+  color: hsl(var(--af-info));
 }
 
 .markdown-body .hljs-tag,
 .markdown-body .hljs-name {
-  color: #f38ba8;
+  color: hsl(var(--af-error));
 }
 </style>

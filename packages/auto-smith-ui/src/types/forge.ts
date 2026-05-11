@@ -25,3 +25,11 @@ export interface ForgeStreamEvent {
   result?: string
   message?: string
 }
+
+export interface ForgeSessionSummary {
+  id: string
+  status: 'idle' | 'thinking' | 'tool_call' | 'waiting_approval' | 'error'
+  preview: string
+  message_count: number
+  last_activity: number
+}

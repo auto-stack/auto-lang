@@ -14,6 +14,7 @@ use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::convert::Infallible;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use crate::notebook::ai::AIProviderState;
@@ -23,13 +24,7 @@ mod tools;
 
 pub use self::handlers::*;
 
-// ─── Forge Session Store (in-memory; replace with persistent store later) ─────
-
-fn forge_sessions() -> &'static Mutex<std::collections::HashMap<String, ForgeSession>> {
-    static SESSIONS: OnceLock<Mutex<std::collections::HashMap<String, ForgeSession>>> =
-        OnceLock::new();
-    SESSIONS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-}
+// ─── Persistent Session Store ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForgeSession {
@@ -68,6 +63,121 @@ pub struct ToolCallInfo {
     pub result: Option<String>,
     pub status: String,
 }
+
+struct SessionStore {
+    sessions: std::collections::HashMap<String, ForgeSession>,
+    data_dir: PathBuf,
+    /// Maps project_path → active_session_id.
+    /// Only one session per project may hold the lock at a time.
+    project_locks: std::collections::HashMap<String, String>,
+}
+
+impl SessionStore {
+    fn new() -> Self {
+        let data_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("autoforge")
+            .join("sessions");
+        let _ = std::fs::create_dir_all(&data_dir);
+
+        let mut store = Self {
+            sessions: std::collections::HashMap::new(),
+            data_dir,
+            project_locks: std::collections::HashMap::new(),
+        };
+        store.load_all();
+        // Rebuild project locks from loaded sessions (any non-idle session claims its project)
+        for (sid, session) in &store.sessions {
+            if !matches!(session.status, ForgeStatus::Idle) {
+                store.project_locks.insert(session.project_path.clone(), sid.clone());
+            }
+        }
+        store
+    }
+
+    fn load_all(&mut self) {
+        let Ok(entries) = std::fs::read_dir(&self.data_dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension() != Some("json".as_ref()) {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+            let Ok(session) = serde_json::from_str::<ForgeSession>(&content) else { continue };
+            self.sessions.insert(session.id.clone(), session);
+        }
+        tracing::info!("Loaded {} persistent Forge sessions", self.sessions.len());
+    }
+
+    fn get(&self, sid: &str) -> Option<&ForgeSession> {
+        self.sessions.get(sid)
+    }
+
+    fn get_mut(&mut self, sid: &str) -> Option<&mut ForgeSession> {
+        self.sessions.get_mut(sid)
+    }
+
+    fn insert(&mut self, session: ForgeSession) {
+        self.save(&session);
+        self.sessions.insert(session.id.clone(), session);
+    }
+
+    fn push_message(&mut self, sid: &str, msg: ForgeMessage) {
+        let Some(session) = self.sessions.get_mut(sid) else { return };
+        session.messages.push(msg);
+        let session_clone = session.clone();
+        self.save(&session_clone);
+    }
+
+    fn update_status(&mut self, sid: &str, status: ForgeStatus) {
+        let Some(session) = self.sessions.get_mut(sid) else { return };
+        session.status = status;
+        let session_clone = session.clone();
+        self.save(&session_clone);
+    }
+
+    fn save(&self, session: &ForgeSession) {
+        let path = self.data_dir.join(format!("{}.json", session.id));
+        if let Ok(json) = serde_json::to_string_pretty(session) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+
+    fn list_all(&self) -> Vec<&ForgeSession> {
+        self.sessions.values().collect()
+    }
+
+    /// Ensure only `sid` is active for its project.
+    /// Any other session for the same project is demoted to Idle.
+    fn acquire_project_lock(&mut self, sid: &str) {
+        let Some(session) = self.sessions.get(sid) else { return };
+        let project = session.project_path.clone();
+        // Demote previous holder (if any and if different)
+        if let Some(prev_sid) = self.project_locks.get(&project) {
+            if prev_sid != sid {
+                if let Some(prev) = self.sessions.get_mut(prev_sid) {
+                    prev.status = ForgeStatus::Idle;
+                    let clone = prev.clone();
+                    self.save(&clone);
+                }
+            }
+        }
+        self.project_locks.insert(project, sid.to_string());
+    }
+
+    /// Get the currently active session for a project, if any.
+    fn active_session_for(&self, project_path: &str) -> Option<&ForgeSession> {
+        let sid = self.project_locks.get(project_path)?;
+        self.sessions.get(sid)
+    }
+}
+
+fn forge_sessions() -> &'static Mutex<SessionStore> {
+    static STORE: OnceLock<Mutex<SessionStore>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(SessionStore::new()))
+}
+
+// ─── Request / Response Types ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateForgeSessionRequest {
@@ -157,8 +267,17 @@ mod handlers {
             }],
         };
 
-        forge_sessions().lock().unwrap().insert(sid, session.clone());
+        {
+            let mut store = forge_sessions().lock().unwrap();
+            store.insert(session.clone());
+            store.acquire_project_lock(&sid);
+        }
         Json(session)
+    }
+
+    pub async fn get_forge_session(Path(sid): Path<String>) -> Json<Option<ForgeSession>> {
+        let store = forge_sessions().lock().unwrap();
+        Json(store.get(&sid).cloned())
     }
 
     pub async fn send_forge_message(
@@ -173,10 +292,14 @@ mod handlers {
             tool_calls: None,
         };
 
-        if let Ok(mut sessions) = forge_sessions().lock() {
-            if let Some(session) = sessions.get_mut(&sid) {
-                session.messages.push(user_msg.clone());
+        forge_sessions().lock().unwrap().push_message(&sid, user_msg.clone());
+
+        {
+            let mut store = forge_sessions().lock().unwrap();
+            if let Some(session) = store.get_mut(&sid) {
                 session.status = ForgeStatus::Thinking;
+                let session_clone = session.clone();
+                store.save(&session_clone);
             }
         }
 
@@ -206,8 +329,8 @@ mod handlers {
             // Build conversation messages from session history
             let mut chat_messages = Vec::new();
             {
-                let sessions = forge_sessions().lock().unwrap();
-                if let Some(session) = sessions.get(&sid) {
+                let store = forge_sessions().lock().unwrap();
+                if let Some(session) = store.get(&sid) {
                     for msg in &session.messages {
                         match msg.role.as_str() {
                             "system" => {
@@ -218,7 +341,6 @@ mod handlers {
                             }
                             "assistant" => {
                                 if let Some(ref calls) = msg.tool_calls {
-                                    // Assistant message with tool calls
                                     let mut blocks = vec![ContentBlock::text(&msg.content)];
                                     for call in calls {
                                         blocks.push(ContentBlock::ToolUse {
@@ -236,7 +358,6 @@ mod handlers {
                                 }
                             }
                             "tool" => {
-                                // Tool results are sent as user messages with tool_result blocks
                                 if let Some(ref calls) = msg.tool_calls {
                                     for call in calls {
                                         if let Some(ref result) = call.result {
@@ -256,8 +377,6 @@ mod handlers {
             // ReAct loop: chat → tool_use → execute → tool_result → chat → ...
             let mut turn_count = 0;
             let max_turns = 5;
-            let mut accumulated_text = String::new();
-            let mut pending_tool_calls: Vec<ToolCallInfo> = Vec::new();
 
             while turn_count < max_turns {
                 turn_count += 1;
@@ -276,11 +395,13 @@ mod handlers {
                 });
 
                 let mut got_tool_use = false;
+                let mut turn_text = String::new();
+                let mut turn_tool_calls: Vec<ToolCallInfo> = Vec::new();
 
                 while let Some(event) = turn_rx.recv().await {
                     match event {
                         ToolChatEvent::TextDelta { text } => {
-                            accumulated_text.push_str(&text);
+                            turn_text.push_str(&text);
                             let event = Event::default().data(
                                 serde_json::to_string(&ForgeStreamEvent::Delta {
                                     text: text.clone(),
@@ -291,20 +412,22 @@ mod handlers {
                         }
                         ToolChatEvent::ToolUse { id, name, input } => {
                             got_tool_use = true;
-                            pending_tool_calls.push(ToolCallInfo {
+                            let input_clone = input.clone();
+                            let call = ToolCallInfo {
                                 id: id.clone(),
                                 name: name.clone(),
-                                arguments: input.clone(),
+                                arguments: input_clone.clone(),
                                 result: None,
-                                status: "pending".to_string(),
-                            });
+                                status: "running".to_string(),
+                            };
+                            turn_tool_calls.push(call.clone());
 
                             // Notify frontend about the tool call
                             let event = Event::default().data(
                                 serde_json::to_string(&ForgeStreamEvent::ToolCall {
                                     id: id.clone(),
                                     name: name.clone(),
-                                    arguments: input.clone(),
+                                    arguments: input_clone.clone(),
                                 })
                                 .unwrap(),
                             );
@@ -318,10 +441,10 @@ mod handlers {
                                     Err(e) => format!("Error: {}", e),
                                 };
 
-                                // Update pending call with result
-                                if let Some(call) = pending_tool_calls.iter_mut().find(|c| c.id == id) {
-                                    call.result = Some(result_str.clone());
-                                    call.status = "success".to_string();
+                                // Update call with result
+                                if let Some(c) = turn_tool_calls.iter_mut().find(|c| c.id == id) {
+                                    c.result = Some(result_str.clone());
+                                    c.status = "success".to_string();
                                 }
 
                                 // Notify frontend about the result
@@ -336,6 +459,22 @@ mod handlers {
 
                                 // Add tool result to conversation for next turn
                                 chat_messages.push(ChatMessage::tool_result(&id, &result_str));
+
+                                // Persist tool result message
+                                let tool_msg = ForgeMessage {
+                                    id: format!("m-{}", uuid::Uuid::new_v4()),
+                                    role: "tool".to_string(),
+                                    content: result_str,
+                                    timestamp: now_secs(),
+                                    tool_calls: Some(vec![ToolCallInfo {
+                                        id: id.clone(),
+                                        name: name.clone(),
+                                        arguments: input_clone.clone(),
+                                        result: turn_tool_calls.iter().find(|c| c.id == id).and_then(|c| c.result.clone()),
+                                        status: "success".to_string(),
+                                    }]),
+                                };
+                                forge_sessions().lock().unwrap().push_message(&sid, tool_msg);
                             }
                         }
                         ToolChatEvent::Done => break,
@@ -359,16 +498,41 @@ mod handlers {
                     break;
                 }
 
+                // Persist assistant message for this turn
+                if !turn_text.is_empty() || !turn_tool_calls.is_empty() {
+                    let assistant_msg = ForgeMessage {
+                        id: format!("m-{}", uuid::Uuid::new_v4()),
+                        role: "assistant".to_string(),
+                        content: turn_text.clone(),
+                        timestamp: now_secs(),
+                        tool_calls: if turn_tool_calls.is_empty() {
+                            None
+                        } else {
+                            Some(turn_tool_calls.clone())
+                        },
+                    };
+                    forge_sessions().lock().unwrap().push_message(&sid, assistant_msg.clone());
+
+                    // Also add to chat_messages for next turn continuity
+                    if got_tool_use {
+                        let mut blocks = vec![ContentBlock::text(&turn_text)];
+                        for call in &turn_tool_calls {
+                            blocks.push(ContentBlock::ToolUse {
+                                id: call.id.clone(),
+                                name: call.name.clone(),
+                                input: call.arguments.clone(),
+                            });
+                        }
+                        chat_messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: blocks,
+                        });
+                    }
+                }
+
                 // If no tool_use was requested, we're done
                 if !got_tool_use {
                     break;
-                }
-
-                // Otherwise, add the assistant's text response (if any) to conversation
-                // and loop for another turn with the tool results
-                if !accumulated_text.is_empty() {
-                    chat_messages.push(ChatMessage::assistant_text(&accumulated_text));
-                    accumulated_text.clear();
                 }
             }
 
@@ -378,12 +542,8 @@ mod handlers {
             );
             let _ = event_tx.send(Ok(event));
 
-            // Update session
-            if let Ok(mut sessions) = forge_sessions().lock() {
-                if let Some(session) = sessions.get_mut(&sid) {
-                    session.status = ForgeStatus::Idle;
-                }
-            }
+            // Update session status back to idle
+            forge_sessions().lock().unwrap().update_status(&sid, ForgeStatus::Idle);
         });
 
         let sse_stream = stream::unfold(event_rx, |mut rx| async move {
@@ -394,12 +554,62 @@ mod handlers {
     }
 
     pub async fn forge_history(Path(sid): Path<String>) -> Json<Vec<ForgeMessage>> {
-        let sessions = forge_sessions().lock().unwrap();
-        let messages = sessions
+        let store = forge_sessions().lock().unwrap();
+        let messages = store
             .get(&sid)
             .map(|s| s.messages.clone())
             .unwrap_or_default();
         Json(messages)
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ForgeSessionSummary {
+        pub id: String,
+        pub status: ForgeStatus,
+        pub preview: String,
+        pub message_count: usize,
+        pub last_activity: u64,
+    }
+
+    pub async fn list_forge_sessions() -> Json<Vec<ForgeSessionSummary>> {
+        let store = forge_sessions().lock().unwrap();
+        let mut summaries: Vec<ForgeSessionSummary> = store
+            .list_all()
+            .iter()
+            .map(|s| {
+                let preview = s
+                    .messages
+                    .iter()
+                    .find(|m| m.role == "user")
+                    .map(|m| {
+                        let content = m.content.trim();
+                        if content.len() > 60 {
+                            format!("{}…", &content[..60])
+                        } else {
+                            content.to_string()
+                        }
+                    })
+                    .unwrap_or_else(|| String::from("New session"));
+
+                let last_activity = s
+                    .messages
+                    .last()
+                    .map(|m| m.timestamp)
+                    .unwrap_or(0);
+
+                ForgeSessionSummary {
+                    id: s.id.clone(),
+                    status: s.status.clone(),
+                    preview,
+                    message_count: s.messages.len(),
+                    last_activity,
+                }
+            })
+            .collect();
+
+        // Sort by most recent activity first
+        summaries.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
+        Json(summaries)
     }
 
     // ─── Ledger Handlers ─────────────────────────────────────────────────
@@ -473,6 +683,8 @@ pub fn routes() -> Router<crate::AppState> {
     Router::new()
         // Forge
         .route("/api/smith/forge/session", post(handlers::create_forge_session))
+        .route("/api/smith/forge/session/{sid}", get(handlers::get_forge_session))
+        .route("/api/smith/forge/sessions", get(handlers::list_forge_sessions))
         .route("/api/smith/forge/{sid}/message", post(handlers::send_forge_message))
         .route("/api/smith/forge/{sid}/stream", get(handlers::forge_stream))
         .route("/api/smith/forge/{sid}/history", get(handlers::forge_history))

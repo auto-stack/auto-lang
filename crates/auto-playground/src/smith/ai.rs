@@ -155,7 +155,8 @@ impl ToolClaudeProvider {
         use futures::StreamExt;
         let mut stream = resp.bytes_stream();
         let mut buffer = String::new();
-        let mut current_tool_use: Option<(String, String, Value)> = None;
+        let mut current_tool_use: Option<(String, String)> = None; // (id, name)
+        let mut partial_json_acc = String::new();
 
         while let Some(chunk_result) = stream.next().await {
             let bytes = match chunk_result {
@@ -192,8 +193,9 @@ impl ToolClaudeProvider {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string();
-                                let input = block.get("input").cloned().unwrap_or(Value::Null);
-                                current_tool_use = Some((id, name, input));
+                                // Reset accumulator for new tool_use block
+                                partial_json_acc.clear();
+                                current_tool_use = Some((id, name));
                             }
                         }
                     }
@@ -215,21 +217,19 @@ impl ToolClaudeProvider {
                             .and_then(|d| d.get("partial_json"))
                             .and_then(|p| p.as_str())
                         {
-                            if let Some((ref id, ref name, ref mut input)) = current_tool_use {
-                                // Accumulate partial JSON string
-                                if let Value::Object(ref mut map) = input {
-                                    // For simplicity, we just store the raw partial JSON
-                                    // In production, we'd use a JSON parser that supports streaming
-                                    map.insert(
-                                        "_partial".to_string(),
-                                        Value::String(partial_json.to_string()),
-                                    );
-                                }
-                            }
+                            partial_json_acc.push_str(partial_json);
                         }
                     }
                 } else if event_type == "content_block_stop" {
-                    if let Some((id, name, input)) = current_tool_use.take() {
+                    if let Some((id, name)) = current_tool_use.take() {
+                        // Parse accumulated JSON, fallback to empty object
+                        let input = if partial_json_acc.is_empty() {
+                            Value::Object(Default::default())
+                        } else {
+                            serde_json::from_str(&partial_json_acc)
+                                .unwrap_or_else(|_| Value::Object(Default::default()))
+                        };
+                        partial_json_acc.clear();
                         let _ = tx.send(ToolChatEvent::ToolUse { id, name, input });
                     }
                 }

@@ -159,15 +159,15 @@ function saveSection() {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: var(--af-card);
+  border-bottom: 1px solid var(--af-border);
   flex-shrink: 0;
 }
 
 .jades-header h2 {
   font-size: 1rem;
   font-weight: 600;
-  color: #94e2d5;
+  color: hsl(var(--af-jades));
 }
 
 .jades-actions {
@@ -179,9 +179,9 @@ function saveSection() {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: #313244;
-  color: #cdd6f4;
-  border: 1px solid #45475a;
+  background: var(--af-secondary);
+  color: var(--af-fg);
+  border: 1px solid var(--af-border);
   border-radius: 6px;
   padding: 0.35rem 0.65rem;
   font-size: 0.8rem;
@@ -190,7 +190,7 @@ function saveSection() {
 }
 
 .jades-btn:hover {
-  background: #45475a;
+  background: var(--af-input);
 }
 
 .jades-body {
@@ -201,8 +201,8 @@ function saveSection() {
 
 .section-nav {
   width: 240px;
-  background: #181825;
-  border-right: 1px solid #313244;
+  background: var(--af-card);
+  border-right: 1px solid var(--af-border);
   padding: 0.5rem;
   overflow-y: auto;
   flex-shrink: 0;
@@ -217,19 +217,20 @@ function saveSection() {
   cursor: pointer;
   transition: all 0.15s;
   font-size: 0.85rem;
+  color: var(--af-fg);
 }
 
 .section-nav-item:hover {
-  background: #313244;
+  background: var(--af-secondary);
 }
 
 .section-nav-item.active {
-  background: #94e2d522;
-  color: #94e2d5;
+  background: hsl(var(--af-jades) / 0.12);
+  color: hsl(var(--af-jades));
 }
 
 .section-nav-item.drift {
-  color: #f38ba8;
+  color: hsl(var(--af-error));
 }
 
 .nav-status {
@@ -239,20 +240,20 @@ function saveSection() {
   flex-shrink: 0;
 }
 
-.nav-status.draft { background: #6c7086; }
-.nav-status.approved { background: #89b4fa; }
-.nav-status.in_progress { background: #f9e2af; }
-.nav-status.verified { background: #a6e3a1; }
-.nav-status.archived { background: #45475a; }
-.nav-status.drift { background: #f38ba8; }
+.nav-status.draft { background: var(--af-muted); }
+.nav-status.approved { background: hsl(var(--af-info)); }
+.nav-status.in_progress { background: hsl(var(--af-warning)); }
+.nav-status.verified { background: hsl(var(--af-success)); }
+.nav-status.archived { background: var(--af-border); }
+.nav-status.drift { background: hsl(var(--af-error)); }
 
 .nav-label {
   flex: 1;
 }
 
 .nav-drift {
-  background: #f38ba8;
-  color: #0f0f14;
+  background: hsl(var(--af-error));
+  color: #fff;
   font-size: 0.65rem;
   font-weight: 700;
   width: 16px;
@@ -282,7 +283,7 @@ function saveSection() {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--af-border);
   flex-shrink: 0;
 }
 
@@ -304,19 +305,19 @@ function saveSection() {
   border-radius: 4px;
 }
 
-.badge.draft { background: #6c708622; color: #6c7086; }
-.badge.approved { background: #89b4fa22; color: #89b4fa; }
-.badge.in_progress { background: #f9e2af22; color: #f9e2af; }
-.badge.verified { background: #a6e3a122; color: #a6e3a1; }
-.badge.drift { background: #f38ba822; color: #f38ba8; }
-.badge.meta { background: #313244; color: #a6adc8; }
+.badge.draft { background: hsl(var(--af-muted) / 0.15); color: var(--af-muted); }
+.badge.approved { background: hsl(var(--af-info) / 0.15); color: hsl(var(--af-info)); }
+.badge.in_progress { background: hsl(var(--af-warning) / 0.15); color: hsl(var(--af-warning)); }
+.badge.verified { background: hsl(var(--af-success) / 0.15); color: hsl(var(--af-success)); }
+.badge.drift { background: hsl(var(--af-error) / 0.15); color: hsl(var(--af-error)); }
+.badge.meta { background: var(--af-secondary); color: var(--af-muted); }
 
 .editor-textarea {
   flex: 1;
-  background: #0f0f14;
+  background: var(--af-bg);
   border: none;
   padding: 1rem;
-  color: #cdd6f4;
+  color: var(--af-fg);
   font-size: 0.9rem;
   line-height: 1.6;
   resize: none;
@@ -331,13 +332,13 @@ function saveSection() {
   display: flex;
   justify-content: flex-end;
   padding: 0.75rem 1rem;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--af-border);
   flex-shrink: 0;
 }
 
 .save-btn {
-  background: #94e2d5;
-  color: #0f0f14;
+  background: hsl(var(--af-jades));
+  color: #fff;
   border: none;
   border-radius: 6px;
   padding: 0.4rem 1rem;
@@ -356,7 +357,7 @@ function saveSection() {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  color: #45475a;
+  color: var(--af-muted);
   flex: 1;
 }
 </style>

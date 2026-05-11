@@ -1,18 +1,28 @@
 import { ref, computed } from 'vue'
-import type { ForgeMessage, ForgeSession, ForgeStreamEvent } from '@/types/forge'
+import type { ForgeMessage, ForgeSession, ForgeSessionSummary, ForgeStreamEvent } from '@/types/forge'
 import type { ToolCallInfo } from '@/types/tool'
 
 const API_BASE = '/api/smith'
+const STORAGE_KEY = 'autoforge_session_id'
+
+// ─── Singleton state: persists across component instances ───────────────────
+const _session = ref<ForgeSession | null>(null)
+const _messages = ref<ForgeMessage[]>([])
+const _isLoading = ref(false)
+const _error = ref<string | null>(null)
+const _sessionList = ref<ForgeSessionSummary[]>([])
 
 export function useForge() {
-  const session = ref<ForgeSession | null>(null)
-  const messages = ref<ForgeMessage[]>([])
-  const isLoading = ref(false)
-  const error = ref<string | null>(null)
+  const session = _session
+  const messages = _messages
+  const isLoading = _isLoading
+  const error = _error
+  const sessionList = _sessionList
 
   const sessionId = computed(() => session.value?.id ?? null)
   const sessionStatus = computed(() => session.value?.status ?? 'idle')
 
+  /** Create a brand-new Forge session */
   async function createSession(notebookSid?: string, projectPath?: string) {
     try {
       const resp = await fetch(`${API_BASE}/forge/session`, {
@@ -25,10 +35,78 @@ export function useForge() {
       session.value = data
       messages.value = data.messages
       error.value = null
+      localStorage.setItem(STORAGE_KEY, data.id)
+      await loadSessionList()
       return data.id
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    }
+  }
+
+  /** Restore an existing session by ID (from localStorage or URL) */
+  async function restoreSession(sid: string) {
+    try {
+      const resp = await fetch(`${API_BASE}/forge/session/${sid}`)
+      if (!resp.ok) throw new Error(`Session not found: ${resp.status}`)
+      const data: ForgeSession | null = await resp.json()
+      if (!data) throw new Error('Session returned null')
+
+      session.value = data
+      messages.value = data.messages
+      error.value = null
+      localStorage.setItem(STORAGE_KEY, data.id)
+      return data.id
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+  }
+
+  /** Switch to a different existing session */
+  async function switchSession(sid: string) {
+    if (sessionId.value === sid) return sid
+    const restored = await restoreSession(sid)
+    if (restored) {
+      await loadSessionList()
+    }
+    return restored
+  }
+
+  /** Start fresh: clear local state and storage, then create a new session */
+  async function clearSession() {
+    session.value = null
+    messages.value = []
+    error.value = null
+    localStorage.removeItem(STORAGE_KEY)
+    await createSession()
+  }
+
+  /** Attempt to resume on app load:
+   *  1. Check localStorage for a previous session ID
+   *  2. Try to restore it from the server
+   *  3. Fall back to creating a new session if restoration fails
+   */
+  async function resume() {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const restored = await restoreSession(stored)
+      if (restored) return restored
+    }
+    return createSession()
+  }
+
+  /** Fetch the list of all sessions from the server */
+  async function loadSessionList() {
+    try {
+      const resp = await fetch(`${API_BASE}/forge/sessions`)
+      if (resp.ok) {
+        const data: ForgeSessionSummary[] = await resp.json()
+        sessionList.value = data
+      }
+    } catch {
+      // ignore
     }
   }
 
@@ -99,13 +177,13 @@ export function useForge() {
           } else if (data.type === 'done') {
             eventSource.close()
             isLoading.value = false
+            loadSessionList() // refresh list so preview updates
           } else if (data.type === 'error') {
             eventSource.close()
             assistantMsg.content += `\n\n[Error: ${data.message}]`
             isLoading.value = false
           }
         } catch {
-          // Raw text fallback
           assistantMsg.content += event.data
         }
       }
@@ -138,9 +216,15 @@ export function useForge() {
     messages,
     isLoading,
     error,
+    sessionList,
     sessionId,
     sessionStatus,
     createSession,
+    restoreSession,
+    switchSession,
+    clearSession,
+    resume,
+    loadSessionList,
     sendMessage,
     loadHistory,
   }

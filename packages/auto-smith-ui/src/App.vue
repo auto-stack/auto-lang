@@ -18,6 +18,11 @@
         </button>
       </div>
       <div class="rail-footer">
+        <button class="theme-toggle" @click="cycleTheme" title="Toggle theme">
+          <Sun v-if="mode === 'light'" :size="16" />
+          <Moon v-else-if="mode === 'dark'" :size="16" />
+          <Monitor v-else :size="16" />
+        </button>
         <span class="version">炼器房 v0.1.0</span>
       </div>
     </nav>
@@ -31,10 +36,13 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Flame, MessageSquare, Scroll, Orbit } from 'lucide-vue-next'
+import { Flame, MessageSquare, Scroll, Orbit, Sun, Moon, Monitor } from 'lucide-vue-next'
+import { useTheme } from '@/composables/useTheme'
 import FurnaceView from './views/FurnaceView.vue'
 import JadesView from './views/JadesView.vue'
 import OrderView from './views/OrderView.vue'
+
+const { mode, cycle: cycleTheme } = useTheme()
 
 const tabs: { id: 'furnace' | 'jades' | 'order'; label: string; icon: unknown }[] = [
   { id: 'furnace', label: '丹炉', icon: MessageSquare },
@@ -55,8 +63,8 @@ const currentView = ref<'furnace' | 'jades' | 'order'>('furnace')
 html, body, #app {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: #0f0f14;
-  color: #cdd6f4;
+  background: var(--af-bg);
+  color: var(--af-fg);
 }
 
 .autoforge-app {
@@ -70,8 +78,8 @@ html, body, #app {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: #181825;
-  border-right: 1px solid #313244;
+  background: var(--af-card);
+  border-right: 1px solid var(--af-border);
   padding: 0.75rem 0;
   flex-shrink: 0;
 }
@@ -81,7 +89,7 @@ html, body, #app {
   flex-direction: column;
   align-items: center;
   gap: 0.35rem;
-  color: #f38ba8;
+  color: var(--af-primary);
   margin-bottom: 1.5rem;
 }
 
@@ -109,19 +117,19 @@ html, body, #app {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #6c7086;
+  color: var(--af-muted);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .rail-tab:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--af-secondary);
+  color: var(--af-fg);
 }
 
 .rail-tab.active {
-  background: #f38ba822;
-  color: #f38ba8;
+  background: var(--af-primary-soft);
+  color: var(--af-primary);
 }
 
 .tab-label {
@@ -131,7 +139,33 @@ html, body, #app {
 
 .rail-footer {
   margin-top: auto;
-  color: #45475a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--af-muted);
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--af-border);
+  border-radius: 6px;
+  color: var(--af-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.theme-toggle:hover {
+  background: var(--af-secondary);
+  color: var(--af-fg);
+}
+
+.version {
   font-size: 0.6rem;
 }
 
