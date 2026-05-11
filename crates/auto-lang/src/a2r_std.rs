@@ -279,6 +279,28 @@ pub mod fs {
     }
 }
 
+/// Parse ~/.claude/settings.json into (api_key, base_url, vars HashMap)
+/// Returns (None, None, empty_map) if parsing fails
+pub fn parse_settings_json(text: &str) -> (Option<String>, Option<String>, std::collections::HashMap<String, String>) {
+    let val: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => return (None, None, std::collections::HashMap::new()),
+    };
+    let mut vars = std::collections::HashMap::new();
+    if let Some(env) = val.get("env").and_then(|v| v.as_object()) {
+        for (k, v) in env {
+            if let Some(s) = v.as_str() {
+                vars.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    let api_key = vars.get("ANTHROPIC_API_KEY")
+        .or_else(|| vars.get("ANTHROPIC_AUTH_TOKEN"))
+        .cloned();
+    let base_url = vars.get("ANTHROPIC_BASE_URL").cloned();
+    (api_key, base_url, vars)
+}
+
 // =============================================================================
 // Utility functions for a2r transpiler
 // =============================================================================

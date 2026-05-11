@@ -662,6 +662,7 @@ impl RustTrans {
     fn emit_a2r_stdlib(&self, out: &mut impl Write) -> AutoResult<()> {
         writeln!(out, "// a2r Standard Library (from crate)")?;
         writeln!(out, "#[allow(unused_imports)]")?;
+        writeln!(out, "use auto_lang::a2r_std;")?;
         writeln!(out, "use auto_lang::a2r_std::*;")?;
         writeln!(out)?;
         Ok(())
@@ -1405,12 +1406,12 @@ impl RustTrans {
                     for (i, arg) in node.args.args.iter().enumerate() {
                         let needs_to_string = match arg {
                             Arg::Pos(expr) => i < field_types.len()
-                                && matches!(field_types[i].1, Type::StrOwned | Type::StrFixed(_))
+                                && matches!(field_types[i].1, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice)
                                 && !matches!(expr, Expr::Str(_) | Expr::CStr(_)),
                             Arg::Pair(key, _) => {
                                 field_types.iter()
                                     .find(|(n, _)| *n == *key)
-                                    .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                                    .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
                                     .unwrap_or(false)
                             }
                             _ => false,
@@ -1466,7 +1467,7 @@ impl RustTrans {
                         // write_expr_for_struct_field already handles string literals
                         let field_is_string = field_types.iter()
                             .find(|(n, _)| *n == field_name)
-                            .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                            .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
                             .unwrap_or(false);
                         let expr_is_str_slice = match field_expr {
                             Expr::Ident(name) => {
@@ -2539,13 +2540,13 @@ impl RustTrans {
                 }
                 "find" => {
                     // Auto: s.find(sub) returns i32 (-1 if not found)
-                    // Rust: s.find(sub).map(|i| i as i32).unwrap_or(-1)
+                    // Rust: s.find(sub) -> Option<usize>
                     self.expr(object, out)?;
                     write!(out, ".find(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr(a, out)?;
                     }
-                    write!(out, ").map(|i| i as i32).unwrap_or(-1)")?;
+                    write!(out, ")")?;
                     return Ok(());
                 }
                 "to_int" => {
@@ -2638,6 +2639,8 @@ impl RustTrans {
                 "length" | "len" => Some("len"),
                 "is_empty" => Some("is_empty"),
                 "trim" => Some("trim"),
+                "trim_left" => Some("trim_start"),
+                "trim_right" => Some("trim_end"),
                 "starts_with" => Some("starts_with"),
                 "ends_with" => Some("ends_with"),
                 "append" => Some("push_str"),
@@ -2713,10 +2716,21 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("fs", "read_to_string") => {
-                        // fs.read_to_string(path) -> a2r_std::fs::read_to_string(path)
+                        // fs.read_to_string(path) -> a2r_std::fs::read_to_string(&path)
                         write!(out, "a2r_std::fs::read_to_string(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            // Auto-borrow: if arg is a String variable, add .as_str()
+                            let needs_as_str = if let Expr::Ident(name) = a {
+                                !self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false)
+                            } else {
+                                !matches!(a, Expr::Str(_) | Expr::CStr(_))
+                            };
                             self.expr(a, out)?;
+                            if needs_as_str {
+                                write!(out, ".as_str()")?;
+                            }
                         }
                         write!(out, ")")?;
                         return Ok(());
@@ -2793,7 +2807,7 @@ impl RustTrans {
                                     } else if let Expr::Ident(name) = expr {
                                         let field_is_string = tuple_field_types.as_ref()
                                             .and_then(|types| types.get(i))
-                                            .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                                            .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
                                             .unwrap_or(false);
                                         let var_is_str_slice = self.local_var_types.get(name)
                                             .map(|ty| matches!(ty, Type::StrSlice))
@@ -2812,8 +2826,34 @@ impl RustTrans {
                     // Static method: Type::method(args)
                     write!(out, "{}::{}", type_name, method_name)?;
                     write!(out, "(")?;
+                    // Prefer qualified key "Type.method" for accurate lookup
+                    let qualified_key: AutoStr = format!("{}.{}", type_name, method_name).into();
+                    let static_str_flags = self.fn_str_param_indices.get(&qualified_key)
+                        .cloned()
+                        .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned());
                     for (i, arg) in call.args.args.iter().enumerate() {
-                        self.arg(arg, out)?;
+                        if let Arg::Pos(expr) = arg {
+                            self.expr(expr, out)?;
+                            // Auto-borrow for str params
+                            let is_str_param = static_str_flags.as_ref()
+                                .and_then(|f| f.get(i))
+                                .copied()
+                                .unwrap_or(false);
+                            if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                let is_str_slice_var = if let Expr::Ident(name) = expr {
+                                    self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty, Type::StrSlice))
+                                        .unwrap_or(false)
+                                } else {
+                                    false
+                                };
+                                if !is_str_slice_var {
+                                    write!(out, ".as_str()")?;
+                                }
+                            }
+                        } else {
+                            self.arg(arg, out)?;
+                        }
                         if i < call.args.args.len() - 1 {
                             write!(out, ", ")?;
                         }
@@ -2826,6 +2866,8 @@ impl RustTrans {
             // Regular method call: object.method(args)
             let is_get = method_name.as_str() == "get";
             let is_insert = method_name.as_str() == "insert";
+            // Look up str-param flags for auto-borrow at method call sites
+            let method_str_flags = self.fn_str_param_indices.get(method_name.as_str()).cloned();
             // Parenthesize object if it's a binary op (e.g., (a / b).method())
             let obj_needs_parens = matches!(object.as_ref(),
                 Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
@@ -2841,6 +2883,23 @@ impl RustTrans {
                         // For Map.insert(), auto-convert to String for non-primitive types
                         if is_insert && !matches!(expr, Expr::Int(_) | Expr::Bool(_)) {
                             write!(out, ".to_string()")?;
+                        }
+                        // Auto-borrow: add .as_str() when passing String to &str method param
+                        let is_str_param = method_str_flags.as_ref()
+                            .and_then(|f| f.get(i))
+                            .copied()
+                            .unwrap_or(false);
+                        if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                            let is_str_slice_var = if let Expr::Ident(name) = expr {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false)
+                            } else {
+                                false
+                            };
+                            if !is_str_slice_var {
+                                write!(out, ".as_str()")?;
+                            }
                         }
                     }
                     other => self.arg(other, out)?,
@@ -2891,7 +2950,7 @@ impl RustTrans {
                                             // Check if tuple field is String but arg is &str
                                             let field_is_string = tuple_field_types.as_ref()
                                                 .and_then(|types| types.get(i))
-                                                .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                                                .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
                                                 .unwrap_or(false);
                                             let var_is_str_slice = self.local_var_types.get(name)
                                                 .map(|ty| matches!(ty, Type::StrSlice))
@@ -2988,10 +3047,16 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg);
-            if needs_borrow {
-                write!(out, "&")?;
-            }
+            // Check if the argument expression is already a &str (StrSlice) variable
+            let arg_is_str_slice = if let Arg::Pos(Expr::Ident(name)) = arg {
+                self.local_var_types.get(name)
+                    .map(|ty| matches!(ty, Type::StrSlice))
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+            // Also skip .as_str() if param type is StrSlice and arg is a string literal
+            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg) && !arg_is_str_slice;
 
             // Auto-clone when passing a variable to a function that takes a struct param
             let is_struct_param = struct_flags.as_ref()
@@ -3013,6 +3078,11 @@ impl RustTrans {
             self.arg(arg, out)?;
             if needs_clone {
                 write!(out, ".clone()")?;
+            }
+
+            // After expression: add .as_str() for String→&str conversion
+            if needs_borrow {
+                write!(out, ".as_str()")?;
             }
 
             if is_spec_param {
@@ -3074,7 +3144,7 @@ impl RustTrans {
                     };
                     // Check if field type is String but expr is &str
                     let needs_ts = i < field_types.len()
-                        && matches!(field_types[i].1, Type::StrOwned | Type::StrFixed(_))
+                        && matches!(field_types[i].1, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice)
                         && !matches!(expr, Expr::Str(_) | Expr::CStr(_));
                     (name, needs_ts)
                 }
@@ -3082,7 +3152,7 @@ impl RustTrans {
                 Arg::Pair(key, expr) => {
                     let needs_ts = field_types.iter()
                         .find(|(n, _)| n == key)
-                        .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                        .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
                         .unwrap_or(false)
                         && !matches!(expr, Expr::Str(_) | Expr::CStr(_));
                     (key.clone(), needs_ts)
@@ -4136,8 +4206,7 @@ impl RustTrans {
                     }
                 }
                 Stmt::Return(ret) => {
-                    write!(out, "return ")?;
-                    self.expr(ret, out)?;
+                    self.write_return_expr(ret, out, false)?;
                 }
                 _ => write!(out, "{{ }}")?,
             }
@@ -4175,8 +4244,7 @@ impl RustTrans {
                     }
                 }
                 Stmt::Return(ret) => {
-                    sink.body.write(b"return ")?;
-                    self.expr(ret, &mut sink.body)?;
+                    self.write_return_expr(ret, &mut sink.body, false)?;
                 }
                 _ => {
                     // For other statement types, use a block
@@ -4251,21 +4319,18 @@ impl RustTrans {
                     // Multi-pattern: 1 | 2 | 3 => ...
                     for (i, pat) in patterns.iter().enumerate() {
                         if i > 0 { sink.body.write(b" | ")?; }
-                        // In match patterns, Some(ident) should bind by ref
+                        // In match patterns, Some(ident) binds by value (Auto semantics)
                         if let Expr::Some(inner) = pat {
-                            let is_wildcard = matches!(inner.as_ref(), Expr::Ident(name) if name.as_str() == "_");
                             sink.body.write(b"Some(")?;
-                            if !is_wildcard { sink.body.write(b"ref ")?; }
                             self.expr(inner, &mut sink.body)?;
                             sink.body.write(b")")?;
                         } else if let Expr::Call(call) = pat {
                             if let Expr::Ident(name) = call.name.as_ref() {
                                 if name == "Some" && !call.args.args.is_empty() {
-                                    let is_wildcard = call.args.args.first().map_or(false, |a| {
-                                        if let Arg::Pos(Expr::Ident(n)) = a { n.as_str() == "_" } else { false }
-                                    });
                                     sink.body.write(b"Some(")?;
-                                    if !is_wildcard { sink.body.write(b"ref ")?; }
+                                    if let Some(Arg::Pos(inner)) = call.args.args.first() {
+                                        self.expr(inner, &mut sink.body)?;
+                                    }
                                     if let Some(Arg::Pos(inner)) = call.args.args.first() {
                                         self.expr(inner, &mut sink.body)?;
                                     }
@@ -4280,9 +4345,7 @@ impl RustTrans {
                             // Some(text) / None parsed as OptionPattern in is branches
                             match oc.variant {
                                 crate::ast::cover::OptionVariant::Some => {
-                                    let is_wildcard = oc.binding.as_ref().map_or(true, |b| b.as_str() == "_");
                                     sink.body.write(b"Some(")?;
-                                    if !is_wildcard { sink.body.write(b"ref ")?; }
                                     if let Some(binding) = &oc.binding {
                                         sink.body.write(binding.as_bytes())?;
                                     }
@@ -4506,21 +4569,33 @@ impl RustTrans {
         // Plan 204 Phase 2A: Add default #[derive(Clone, Debug, PartialEq)] if no attrs specified
         // T6: Add Eq, PartialOrd, Ord if no float/HashMap fields present
         if type_decl.attrs.is_empty() {
-            let has_float_field = type_decl.members.iter().any(|m| {
-                matches!(m.ty, Type::Float | Type::Double)
-                    || matches!(&m.ty, Type::Rust(source) if {
-                        let name = source.short_name();
-                        name == "f32" || name == "f64" || name == "float" || name == "double"
-                    })
-            });
+            // Recursively check field types for float/map/enum
+            fn type_has_float(ty: &Type) -> bool {
+                match ty {
+                    Type::Float | Type::Double => true,
+                    Type::List(inner) | Type::Result(inner) | Type::Option(inner) => type_has_float(inner),
+                    _ => false,
+                }
+            }
+            let has_float_field = type_decl.members.iter().any(|m| type_has_float(&m.ty));
             let has_map_field = type_decl.members.iter().any(|m| {
                 matches!(&m.ty, Type::Map(_, _)) || matches!(&m.ty, Type::Rust(source) if {
                     let name = source.short_name();
                     name.starts_with("HashMap") || name.starts_with("BTreeMap")
                 })
             });
-            if has_float_field || has_map_field {
-                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq)]")?;
+            // Enums don't derive Eq, so struct fields containing enum types can't derive Eq either
+            // Also check nested types: List<EnumType>, Option<EnumType>, etc.
+            fn type_contains_enum(ty: &Type) -> bool {
+                match ty {
+                    Type::Tag(_) | Type::Enum(_) => true,
+                    Type::List(inner) | Type::Result(inner) | Type::Option(inner) => type_contains_enum(inner),
+                    _ => false,
+                }
+            }
+            let has_enum_field = type_decl.members.iter().any(|m| type_contains_enum(&m.ty));
+            if has_float_field || has_map_field || has_enum_field {
+                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
             } else {
                 writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")?;
             }
@@ -5597,6 +5672,8 @@ impl RustTrans {
             }
             // Node (struct constructor parsed as component) is returnable
             Stmt::Node(_) => true,
+            // Is (match expression) is returnable
+            Stmt::Is(_) => true,
             _ => false,
         }
     }
@@ -5849,6 +5926,45 @@ impl Trans for RustTrans {
                     self.needs_err_trait = true;
                     break;
                 }
+            }
+        }
+
+        // Pre-scan all function signatures for auto-borrow/auto-clone at call sites
+        // Without this, functions declared after their callers won't have param type info
+        for stmt in &ast.stmts {
+            match stmt {
+                Stmt::Fn(fn_decl) => {
+                    let str_param_flags: Vec<bool> = fn_decl.params.iter()
+                        .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+                        .collect();
+                    self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+
+                    let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                        .map(|p| matches!(p.ty, Type::User(_) | Type::Tag(_) | Type::Enum(_)))
+                        .collect();
+                    self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+                }
+                Stmt::TypeDecl(type_decl) => {
+                    // Also scan methods inside type declarations
+                    let type_name = &type_decl.name;
+                    for fn_decl in &type_decl.methods {
+                        let str_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+                            .collect();
+                        // Use qualified key "Type.method" to avoid cross-type overwrites
+                        let qualified_key: AutoStr = format!("{}.{}", type_name, fn_decl.name).into();
+                        self.fn_str_param_indices.insert(qualified_key.clone(), str_param_flags.clone());
+                        // Also store unqualified for backward compat (last one wins)
+                        self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+
+                        let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::User(_) | Type::Tag(_) | Type::Enum(_)))
+                            .collect();
+                        self.fn_struct_param_indices.insert(qualified_key, struct_param_flags.clone());
+                        self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+                    }
+                }
+                _ => {}
             }
         }
 
