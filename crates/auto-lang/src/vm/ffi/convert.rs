@@ -318,45 +318,61 @@ impl VMConvertible for Vec<i32> {
 
 impl VMConvertible for Vec<String> {
     fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
-        // List is represented as list_id (i32/u64)
         let list_id = task.ram.pop_i32() as u64;
+        let strings = vm.strings.read().unwrap();
 
-        // Get list from heap
-        let obj = vm
-            .get_heap_object(list_id)
-            .ok_or(FFIError::InvalidListId(list_id))?;
+        // Path 1: heap_objects (ID 4000000+) — ListData<i32> or ListData<Value>
+        if let Some(obj) = vm.get_heap_object(list_id) {
+            let guard = obj.read().unwrap();
 
-        let guard = obj.read().unwrap();
-
-        // Try ListData<auto_val::Value> first (legacy path)
-        if let Some(list_data) = guard
-            .as_any()
-            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
-        {
-            let mut result = Vec::new();
-            for i in 0..list_data.len() {
-                if let Some(auto_val::Value::Str(s)) = list_data.get(i) {
-                    result.push(s.as_str().to_string());
+            // ListData<auto_val::Value>
+            if let Some(list_data) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+            {
+                let mut result = Vec::new();
+                for i in 0..list_data.len() {
+                    if let Some(auto_val::Value::Str(s)) = list_data.get(i) {
+                        result.push(s.as_str().to_string());
+                    }
                 }
+                return Ok(result);
             }
-            return Ok(result);
+
+            // ListData<i32> — strings stored as negative indices
+            if let Some(list_data) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<i32>>()
+            {
+                let mut result = Vec::new();
+                for i in 0..list_data.len() {
+                    if let Some(&val) = list_data.get(i) {
+                        if val < 0 {
+                            let str_idx = (-val - 1) as usize;
+                            if let Some(bytes) = strings.get(str_idx) {
+                                result.push(String::from_utf8_lossy(bytes).to_string());
+                            }
+                        }
+                    }
+                }
+                return Ok(result);
+            }
         }
 
-        // Try ListData<i32> — strings stored as negative indices (matching push_str_idx encoding)
-        if let Some(list_data) = guard
-            .as_any()
-            .downcast_ref::<crate::vm::types::ListData<i32>>()
-        {
+        // Path 2: arrays (ID 2000000+) — Vec<auto_val::Value> from CREATE_ARRAY
+        if let Some(array_ref) = vm.arrays.get(&list_id) {
+            let guard = array_ref.read().unwrap();
             let mut result = Vec::new();
-            let strings = vm.strings.read().unwrap();
-            for i in 0..list_data.len() {
-                if let Some(&val) = list_data.get(i) {
-                    if val < 0 {
-                        let str_idx = (-val - 1) as usize;
+            for val in guard.iter() {
+                match val {
+                    auto_val::Value::Str(s) => result.push(s.as_str().to_string()),
+                    auto_val::Value::Int(n) if *n < 0 => {
+                        let str_idx = (-n - 1) as usize;
                         if let Some(bytes) = strings.get(str_idx) {
                             result.push(String::from_utf8_lossy(bytes).to_string());
                         }
                     }
+                    _ => {}
                 }
             }
             return Ok(result);
