@@ -1,14 +1,14 @@
 <template>
-  <div class="array-view">
-    <div class="array-header">
-      <h2>The Array · 法阵</h2>
-      <div class="array-stats">
+  <div class="order-view">
+    <div class="order-header">
+      <h2>The Order · 法阵</h2>
+      <div class="order-stats">
         <span class="stat">Active: 1</span>
         <span class="stat">Completed: 47</span>
         <span class="stat">Failed: 2</span>
       </div>
     </div>
-    <div class="array-body">
+    <div class="order-body">
       <div class="pipeline-flow">
         <div
           v-for="(role, idx) in pipeline"
@@ -64,13 +64,13 @@ const pipeline = [
 </script>
 
 <style scoped>
-.array-view {
+.order-view {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.array-header {
+.order-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -80,13 +80,13 @@ const pipeline = [
   flex-shrink: 0;
 }
 
-.array-header h2 {
+.order-header h2 {
   font-size: 1rem;
   font-weight: 600;
   color: #89dceb;
 }
 
-.array-stats {
+.order-stats {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
@@ -96,7 +96,7 @@ const pipeline = [
   color: #a6adc8;
 }
 
-.array-body {
+.order-body {
   flex: 1;
   overflow-y: auto;
   padding: 1rem;

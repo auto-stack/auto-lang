@@ -218,7 +218,7 @@ $Review(id: "REV-1", status: "pending", reviewer: "human") {
 - **AI enrichment**: "AI, analyze the current codebase and update the Analysis section." The AI reads code, updates the Ledger, and presents a diff for human approval.
 - **AutoDown rendering**: Uses the existing Typst/HTML transpilers. The Jade Tabs · 玉简 can be exported as a PDF report or published as HTML documentation.
 
-### View 3: The Array · 法阵 — Agent Monitoring & Administration
+### View 3: The Order · 法阵 — Agent Monitoring & Administration
 
 **Purpose**: Observe, control, and audit long-running serial agent pipelines.
 
@@ -233,7 +233,7 @@ $Review(id: "REV-1", status: "pending", reviewer: "human") {
 - **Cost Analytics**: Per-run and per-role token usage. Compares actual cost vs. "what parallel execution would have cost" to show savings.
 - **Agent Registry**: Administer available agent roles (Planner, Architect, Coder, Tester, Reviewer, Documenter, etc.). Configure which model each role uses, token budgets, and timeout policies.
 
-**Key insight**: The Array · 法阵 treats agent runs like CI/CD pipelines. You wouldn't deploy code without seeing the pipeline status. You shouldn't let an AI agent run for hours without visibility into what it's doing.
+**Key insight**: The Order · 法阵 treats agent runs like CI/CD pipelines. You wouldn't deploy code without seeing the pipeline status. You shouldn't let an AI agent run for hours without visibility into what it's doing.
 
 ---
 
@@ -554,7 +554,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 - AutoDown editor with component autocomplete (`$Goal()`, `$Requirement()`)
 - Export to Typst/HTML
 
-### Phase 3: The Array · 法阵 — Serial Agents (4 weeks)
+### Phase 3: The Order · 法阵 — Serial Agents (4 weeks)
 - Pipeline definition DSL (YAML/AutoDown)
 - Serial execution engine with checkpointing
 - Agent handoff protocol

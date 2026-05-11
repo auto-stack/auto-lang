@@ -24,7 +24,7 @@
     <main class="view-main">
       <FurnaceView v-if="currentView === 'furnace'" />
       <JadeTabsView v-else-if="currentView === 'jade-tabs'" />
-      <ArrayView v-else-if="currentView === 'array'" />
+      <OrderView v-else-if="currentView === 'order'" />
     </main>
   </div>
 </template>
@@ -34,15 +34,15 @@ import { ref } from 'vue'
 import { Flame, MessageSquare, Scroll, Orbit } from 'lucide-vue-next'
 import FurnaceView from './views/FurnaceView.vue'
 import JadeTabsView from './views/JadeTabsView.vue'
-import ArrayView from './views/ArrayView.vue'
+import OrderView from './views/OrderView.vue'
 
-const tabs: { id: 'furnace' | 'jade-tabs' | 'array'; label: string; icon: unknown }[] = [
+const tabs: { id: 'furnace' | 'jade-tabs' | 'order'; label: string; icon: unknown }[] = [
   { id: 'furnace', label: '熔炉', icon: MessageSquare },
   { id: 'jade-tabs', label: '玉简', icon: Scroll },
-  { id: 'array', label: '法阵', icon: Orbit },
+  { id: 'order', label: '法阵', icon: Orbit },
 ]
 
-const currentView = ref<'furnace' | 'jade-tabs' | 'array'>('furnace')
+const currentView = ref<'furnace' | 'jade-tabs' | 'order'>('furnace')
 </script>
 
 <style>
