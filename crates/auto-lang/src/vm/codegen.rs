@@ -3884,33 +3884,43 @@ impl Codegen {
                                 type_name, field
                             );
                             // Get ClassType to find field index
-                            if let Some(class_type) = self.generic_registry.get_type(&type_name) {
-                                let field_str = field.to_string();
-                                if let Some(field_index) = class_type.field_index(&field_str) {
-                                    vm_debug!("DEBUG: Field '{}' index = {}", field, field_index);
-                                    // Emit GET_GENERIC_FIELD with field index
-                                    self.emit(OpCode::GET_GENERIC_FIELD);
-                                    self.emit_u32(field_index as u32);
+                            // For non-generic user types (only registered for field lookup),
+                            // use GET_FIELD because instances are created with CREATE_OBJ
+                            let is_generic = self.generic_registry.get_template(&type_name)
+                                .map(|t| !t.generic_params.is_empty())
+                                .unwrap_or(false);
+                            if is_generic {
+                                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                    let field_str = field.to_string();
+                                    if let Some(field_index) = class_type.field_index(&field_str) {
+                                        vm_debug!("DEBUG: Field '{}' index = {}", field, field_index);
+                                        // Emit GET_GENERIC_FIELD with field index
+                                        self.emit(OpCode::GET_GENERIC_FIELD);
+                                        self.emit_u32(field_index as u32);
 
-                                    // Plan 118 Phase 7: Set last_expr_type based on field type
-                                    // This is crucial for nested field access (obj.inner.x)
-                                    if let Some(field_type) = class_type.field_type(&field_str) {
-                                        self.last_expr_type = self.type_to_object_type(&field_type);
-                                        vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
-                                            field, field_type, self.last_expr_type);
+                                        // Plan 118 Phase 7: Set last_expr_type based on field type
+                                        if let Some(field_type) = class_type.field_type(&field_str) {
+                                            self.last_expr_type = self.type_to_object_type(&field_type);
+                                            vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
+                                                field, field_type, self.last_expr_type);
+                                        }
+                                    } else {
+                                        eprintln!("Warning: Field '{}' not found in type '{}'",
+                                            field, type_name);
+                                        self.emit(OpCode::GET_GENERIC_FIELD);
+                                        self.emit_u32(0);
                                     }
                                 } else {
-                                    eprintln!(
-                                        "Warning: Field '{}' not found in type '{}'",
-                                        field, type_name
-                                    );
-                                    // Fallback: emit placeholder
-                                    self.emit(OpCode::GET_GENERIC_FIELD);
-                                    self.emit_u32(0);
+                                    eprintln!("Warning: Type '{}' not found in registry", type_name);
+                                    self.emit(OpCode::GET_FIELD);
+                                    let field_str = field.to_string();
+                                    let field_bytes = field_str.as_bytes().to_vec();
+                                    let field_idx = self.strings.len() as u16;
+                                    self.strings.push(field_bytes);
+                                    self.emit_u16(field_idx);
                                 }
                             } else {
-                                eprintln!("Warning: Type '{}' not found in registry", type_name);
-                                // Fallback to regular field access
+                                // Non-generic user type (SseParser, etc.): use GET_FIELD (name-based)
                                 self.emit(OpCode::GET_FIELD);
                                 let field_str = field.to_string();
                                 let field_bytes = field_str.as_bytes().to_vec();
@@ -3919,7 +3929,7 @@ impl Codegen {
                                 self.emit_u16(field_idx);
                             }
                         } else {
-                            // Fallback to regular field access
+                            // Fallback: type not found in var_types, use GET_FIELD
                             self.emit(OpCode::GET_FIELD);
                             let field_str = field.to_string();
                             let field_bytes = field_str.as_bytes().to_vec();
@@ -4439,21 +4449,38 @@ impl Codegen {
                                     }
                                 };
 
-                                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
-                                    let field_str = field.to_string();
-                                    if let Some(field_index) = class_type.field_index(&field_str) {
-                                        // Stack: [value, instance_id]
-                                        // SET_GENERIC_FIELD code layout: [opcode, field_index:u32]
-                                        vm_debug!("DEBUG: Emitting SET_GENERIC_FIELD for field '{}' with index {} at code position {}",
-                                            field_str, field_index, self.code.len());
-                                        self.emit(OpCode::SET_GENERIC_FIELD);
-                                        self.emit_u32(field_index as u32);
-                                        vm_debug!("DEBUG: After emit, code position = {}", self.code.len());
+                                // Check if this is truly a generic instance (needs SET_GENERIC_FIELD)
+                                // Non-generic user types registered in generic_registry for field lookup
+                                // should use SET_FIELD because they're created with CREATE_OBJ, not NEW_INSTANCE
+                                let is_generic_instance = self.generic_registry.get_template(&type_name)
+                                    .map(|t| !t.generic_params.is_empty())
+                                    .unwrap_or(false);
+                                if is_generic_instance {
+                                    if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                        let field_str = field.to_string();
+                                        if let Some(field_index) = class_type.field_index(&field_str) {
+                                            // Stack: [value, instance_id]
+                                            // SET_GENERIC_FIELD code layout: [opcode, field_index:u32]
+                                            vm_debug!("DEBUG: Emitting SET_GENERIC_FIELD for field '{}' with index {} at code position {}",
+                                                field_str, field_index, self.code.len());
+                                            self.emit(OpCode::SET_GENERIC_FIELD);
+                                            self.emit_u32(field_index as u32);
+                                            vm_debug!("DEBUG: After emit, code position = {}", self.code.len());
+                                        } else {
+                                            eprintln!("Warning: Field '{}' not found in generic type '{}' (nested assignment)",
+                                                field, type_name);
+                                            self.emit(OpCode::SET_GENERIC_FIELD);
+                                            self.emit_u32(0);
+                                        }
                                     } else {
-                                        eprintln!("Warning: Field '{}' not found in type '{}' (nested assignment)",
-                                            field, type_name);
-                                        self.emit(OpCode::SET_GENERIC_FIELD);
-                                        self.emit_u32(0);
+                                        eprintln!("Warning: Generic type '{}' not found in registry (assignment)", type_name);
+                                        let field_str = field.to_string();
+                                        let field_bytes = field_str.as_bytes().to_vec();
+                                        let field_idx = self.strings.len() as u16;
+                                        self.strings.push(field_bytes);
+                                        self.emit(OpCode::LOAD_STR);
+                                        self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                        self.emit(OpCode::SET_FIELD);
                                     }
                                 } else {
                                     // Type not in registry, fall back to SET_FIELD
