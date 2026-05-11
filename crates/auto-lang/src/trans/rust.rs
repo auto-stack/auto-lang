@@ -1990,6 +1990,18 @@ impl RustTrans {
             }
 
             Expr::Await { expr } => {
+                // Check if the inner expression is a self-awaited call (like http.post_sync)
+                // that already contains .await internally — if so, skip the outer .await
+                if let Expr::Call(call) = expr.as_ref() {
+                    if let Expr::Dot(obj, method) = call.name.as_ref() {
+                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                            if obj_name.as_str() == "http" && method.as_str() == "post_sync" {
+                                // Already handled with internal .await — just output the expression
+                                return self.call(call, out);
+                            }
+                        }
+                    }
+                }
                 // expr.await -> expr.await
                 self.expr(expr, out)?;
                 write!(out, ".await")?;
@@ -2185,6 +2197,60 @@ impl RustTrans {
                     return Ok(());
                 }
                 _ => {}
+            }
+        }
+
+        // Handle Expr::Dot calls: http.post_sync(...), http.last_status(), env.get(...), etc.
+        // Parser generates Expr::Dot(Ident("http"), "post_sync") for two-segment module calls.
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if let Expr::Ident(obj_name) = obj.as_ref() {
+                match (obj_name.as_str(), method.as_str()) {
+                    ("http", "post_sync") => {
+                        write!(out, "{{ let __resp = a2r_std::http::post(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                                // Add .as_str() only for String-typed arguments (not &str literals or &str params)
+                                if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                    if let Expr::Ident(name) = expr {
+                                        if self.local_var_types.get(name)
+                                            .map(|ty| !matches!(ty, Type::StrSlice))
+                                            .unwrap_or(true)
+                                        { write!(out, ".as_str()")?; }
+                                    } else {
+                                        // For field access like self.api_key, always add .as_str()
+                                        write!(out, ".as_str()")?;
+                                    }
+                                }
+                            }
+                        }
+                        write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        return Ok(());
+                    }
+                    ("http", "last_status") => {
+                        write!(out, "a2r_std::http::last_status()")?;
+                        return Ok(());
+                    }
+                    ("http", "post") => {
+                        write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                                if let Expr::Ident(name) = expr {
+                                    if self.local_var_types.get(name)
+                                        .map(|ty| !matches!(ty, Type::StrSlice))
+                                        .unwrap_or(true)
+                                    { write!(out, ".as_str()")?; }
+                                }
+                            }
+                        }
+                        write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
             }
         }
 

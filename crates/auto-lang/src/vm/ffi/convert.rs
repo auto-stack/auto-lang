@@ -155,14 +155,31 @@ impl VMConvertible for () {
 impl VMConvertible for String {
     fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
         let nv = task.ram.pop_nv();
-        let str_idx = auto_val::decode_string(nv) as usize;
 
-        let bytes = vm
-            .get_string(str_idx as u16)
-            .ok_or_else(|| FFIError::InvalidStringIndex(str_idx as u16))?;
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv) as usize;
+            let bytes = vm
+                .get_string(str_idx as u16)
+                .ok_or_else(|| FFIError::InvalidStringIndex(str_idx as u16))?;
+            let s = String::from_utf8_lossy(&bytes).to_string();
+            return Ok(s);
+        }
 
-        let s = String::from_utf8_lossy(&bytes).to_string();
-        Ok(s)
+        // Handle i32 values (legacy tags or integer-to-string conversion)
+        if auto_val::is_i32(nv) {
+            let val = auto_val::decode_i32(nv);
+            if val < 0 {
+                let str_idx = (-val - 1) as usize;
+                let bytes = vm
+                    .get_string(str_idx as u16)
+                    .ok_or_else(|| FFIError::InvalidStringIndex(str_idx as u16))?;
+                let s = String::from_utf8_lossy(&bytes).to_string();
+                return Ok(s);
+            }
+            return Ok(val.to_string());
+        }
+
+        Ok(format!("{:?}", nv))
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {

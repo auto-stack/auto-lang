@@ -82,6 +82,7 @@ async fn async_main() -> anyhow::Result<()> {
     );
     let mut vm = AutoVM::new(flash, args.memory);
     vm.load_strings(codegen.strings);
+    vm.load_generic_registry(std::mem::take(&mut codegen.generic_registry));
 
     // 5. Find entry point and run
     let entry_point = codegen
