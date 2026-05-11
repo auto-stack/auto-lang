@@ -1753,7 +1753,7 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-// Plan 195: RequestBuilder 数据存储
+// Plan 195: RequestBuilder data storage
 #[derive(Debug, Clone)]
 struct HttpRequestBuilderData {
     method: String,
@@ -1761,11 +1761,6 @@ struct HttpRequestBuilderData {
     headers: Vec<(String, String)>,
     body: Option<String>,
     timeout_ms: Option<u64>,
-}
-
-thread_local! {
-    static HTTP_REQUEST_BUILDERS: std::cell::RefCell<std::collections::HashMap<u64, HttpRequestBuilderData>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// HTTP Response data
@@ -2159,15 +2154,14 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 // Plan 195: RequestBuilder FFI
 // ============================================================================
 
-/// Create a new RequestBuilder handle
+/// Create a new RequestBuilder handle (stored in heap_objects for CALL_SPEC dispatch)
 /// http_request(method, url) -> RequestBuilder handle
-pub fn shim_http_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let method: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let method: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let data = HttpRequestBuilderData {
         method,
         url,
@@ -2175,98 +2169,130 @@ pub fn shim_http_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
         body: None,
         timeout_ms: None,
     };
-    HTTP_REQUEST_BUILDERS.with(|b| b.borrow_mut().insert(handle, data));
-    task.ram.push_i64(handle as i64);
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+        "RequestBuilder",
+        std::sync::Mutex::new(data),
+    );
+    let heap_id = vm.insert_heap_object(obj);
+    task.ram.push_i32(heap_id as i32);
     Ok(())
 }
 
 /// Add a header to RequestBuilder
 /// request_builder_header(rb, key, value) -> rb
-pub fn shim_request_builder_header(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let value: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_request_builder_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let key: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i64();
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
 
-    HTTP_REQUEST_BUILDERS.with(|b| {
-        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
-            builder.headers.push((key, value));
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut builder) = mutex.lock() {
+                    builder.headers.push((key, value));
+                }
+            }
         }
-    });
+    }
 
-    task.ram.push_i64(rb_handle);
+    task.ram.push_i32(rb_handle as i32);
     Ok(())
 }
 
 /// Set body on RequestBuilder
 /// request_builder_body(rb, body) -> rb
-pub fn shim_request_builder_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_request_builder_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i64();
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
 
-    HTTP_REQUEST_BUILDERS.with(|b| {
-        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
-            builder.body = Some(body);
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut builder) = mutex.lock() {
+                    builder.body = Some(body);
+                }
+            }
         }
-    });
+    }
 
-    task.ram.push_i64(rb_handle);
+    task.ram.push_i32(rb_handle as i32);
     Ok(())
 }
 
 /// Set timeout on RequestBuilder
 /// request_builder_timeout(rb, ms) -> rb
-pub fn shim_request_builder_timeout(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let ms: i64 = task.ram.pop_i64();
-    let rb_handle: i64 = task.ram.pop_i64();
+pub fn shim_request_builder_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let ms: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
 
-    HTTP_REQUEST_BUILDERS.with(|b| {
-        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
-            builder.timeout_ms = Some(ms as u64);
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut builder) = mutex.lock() {
+                    builder.timeout_ms = Some(ms as u64);
+                }
+            }
         }
-    });
+    }
 
-    task.ram.push_i64(rb_handle);
+    task.ram.push_i32(rb_handle as i32);
     Ok(())
 }
 
 /// Set JSON body on RequestBuilder
 /// request_builder_json(rb, data) -> rb
-pub fn shim_request_builder_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let data: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_request_builder_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i64();
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
 
-    HTTP_REQUEST_BUILDERS.with(|b| {
-        if let Some(builder) = b.borrow_mut().get_mut(&(rb_handle as u64)) {
-            builder.body = Some(data);
-            if !builder.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
-                builder.headers.push(("Content-Type".to_string(), "application/json".to_string()));
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
+                if let Ok(mut builder) = mutex.lock() {
+                    builder.body = Some(data);
+                    if !builder.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
+                        builder.headers.push(("Content-Type".to_string(), "application/json".to_string()));
+                    }
+                }
             }
         }
-    });
+    }
 
-    task.ram.push_i64(rb_handle);
+    task.ram.push_i32(rb_handle as i32);
     Ok(())
 }
 
 /// Send RequestBuilder and return Response handle
 /// request_builder_send(rb) -> Response handle
-pub fn shim_request_builder_send(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let rb_handle: i64 = task.ram.pop_i64();
+pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let heap_id = rb_handle as u64;
 
-    let builder_data = HTTP_REQUEST_BUILDERS.with(|b| {
-        b.borrow_mut().remove(&(rb_handle as u64))
-    }).ok_or_else(|| VMError::RuntimeError(format!("Invalid RequestBuilder handle: {}", rb_handle)))?;
+    // Extract builder data and remove from heap
+    let obj = vm.remove_heap_object(heap_id)
+        .ok_or_else(|| VMError::RuntimeError(format!("Invalid RequestBuilder handle: {}", rb_handle)))?;
+    let guard = obj.write().unwrap();
+    let rso = guard.as_any()
+        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let mutex = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RequestBuilder".to_string()))?;
+    let builder_data = mutex.lock().map_err(|e| VMError::RuntimeError(format!("Mutex poison: {}", e)))?;
+    let method = builder_data.method.clone();
+    let url = builder_data.url.clone();
+    let body = builder_data.body.clone();
+    drop(builder_data);
+    drop(guard);
 
-    let response_handle = simple_http_request(
-        &builder_data.method,
-        &builder_data.url,
-        builder_data.body.as_deref(),
-    );
-
+    let response_handle = simple_http_request(&method, &url, body.as_deref());
     task.ram.push_i32(response_handle as i32);
     Ok(())
 }
@@ -2748,6 +2774,81 @@ pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 
     resp_body.push_to_stack(task, vm)?;
     Ok(())
+}
+
+/// HTTP POST with Bearer auth — for OpenAI-compatible APIs.
+/// Uses `Authorization: Bearer <key>` instead of `x-api-key`.
+/// Stack: [url, body, api_key] -> [response_body_str]
+pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let api_key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let key_opt = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key.as_str())
+    };
+    let (status, resp_body) = simple_http_request_bearer("POST", &url, Some(&body), key_opt);
+
+    LAST_HTTP_STATUS.with(|s| s.set(status));
+
+    resp_body.push_to_stack(task, vm)?;
+    Ok(())
+}
+
+/// Synchronous HTTP request with Bearer token auth (for OpenAI-compatible APIs).
+fn simple_http_request_bearer(
+    method: &str,
+    url: &str,
+    body: Option<&str>,
+    api_key: Option<&str>,
+) -> (i32, String) {
+    let method = method.to_string();
+    let url = url.to_string();
+    let body = body.map(|s| s.to_string());
+    let api_key = api_key.map(|s| s.to_string());
+
+    let result = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let mut builder = match method.as_str() {
+            "POST" => client.post(&url),
+            "PUT" => client.put(&url),
+            "DELETE" => client.delete(&url),
+            _ => client.get(&url),
+        };
+
+        builder = builder.header("Content-Type", "application/json");
+
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                builder = builder.header("Authorization", format!("Bearer {}", key));
+            }
+        }
+
+        if let Some(b) = body {
+            builder = builder.body(b);
+        }
+
+        match builder.send() {
+            Ok(response) => {
+                let status = response.status().as_u16() as i32;
+                let body_text = response.text().unwrap_or_default();
+                Ok((status, body_text))
+            }
+            Err(e) => Err(format!("HTTP error: {}", e)),
+        }
+    })
+    .join();
+
+    match result {
+        Ok(Ok((status, body_text))) => (status, body_text),
+        Ok(Err(e)) => (0, e),
+        Err(_) => (0, "HTTP thread panicked".to_string()),
+    }
 }
 
 /// Return the status code from the last HTTP request.
@@ -3336,6 +3437,15 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("Http.request_builder_timeout", shim_request_builder_timeout);
     natives.register_shim_by_name("Http.request_builder_json", shim_request_builder_json);
     natives.register_shim_by_name("Http.request_builder_send", shim_request_builder_send);
+
+    // RequestBuilder method aliases for CALL_SPEC dispatch
+    // When CALL_SPEC detects type "RequestBuilder", it looks up "RequestBuilder.method"
+    natives.register_shim_by_name("RequestBuilder.header", shim_request_builder_header);
+    natives.register_shim_by_name("RequestBuilder.body", shim_request_builder_body);
+    natives.register_shim_by_name("RequestBuilder.timeout", shim_request_builder_timeout);
+    natives.register_shim_by_name("RequestBuilder.json", shim_request_builder_json);
+    natives.register_shim_by_name("RequestBuilder.send", shim_request_builder_send);
+
     natives.register_shim_by_name("Response.status_code", shim_response_status_code);
     natives.register_shim_by_name("Response.header_get", shim_response_header_get);
     natives.register_shim_by_name("Response.body", shim_response_body);
@@ -3350,6 +3460,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // HTTP client sync with auth (for Anthropic API from AutoVM)
     natives.register_shim_by_name("auto.http.post_sync", shim_http_post_sync);
+    natives.register_shim_by_name("auto.http.post_bearer", shim_http_post_bearer);
     natives.register_shim_by_name("auto.http.last_status", shim_http_last_status);
 
     // Regex (manual shim — heap objects for compiled regex)

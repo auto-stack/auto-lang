@@ -180,3 +180,21 @@ fn http_stream_is_done(stream HTTPStream) int
 
 #[vm]
 fn http_stream_close(stream HTTPStream) void
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Client Sync (for API calls from AutoVM)
+// ═══════════════════════════════════════════════════════════
+
+/// Synchronous HTTP POST with x-api-key auth (for Anthropic API).
+/// Returns response body, stores status code accessible via http.last_status().
+#[vm]
+fn http_post_sync(url str, body str, api_key str) str
+
+/// Synchronous HTTP POST with Bearer token auth (for OpenAI-compatible APIs).
+/// Returns response body, stores status code accessible via http.last_status().
+#[vm]
+fn http_post_bearer(url str, body str, api_key str) str
+
+/// Return the HTTP status code from the last http_post_sync or http_post_bearer call.
+#[vm]
+fn http_last_status() int

@@ -833,6 +833,14 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.http.post_stream_with_headers", 2255);
     registry.register_with_id("auto.http.post_sync", 2256);
     registry.register_with_id("auto.http.last_status", 2257);
+    registry.register_with_id("auto.http.post_bearer", 2258);
+
+    // RequestBuilder method chaining (CALL_SPEC dispatch via "RequestBuilder.method")
+    registry.register_with_id("RequestBuilder.header", 2260);
+    registry.register_with_id("RequestBuilder.body", 2261);
+    registry.register_with_id("RequestBuilder.timeout", 2262);
+    registry.register_with_id("RequestBuilder.json", 2263);
+    registry.register_with_id("RequestBuilder.send", 2264);
 
     // Task/Msg functions (2300-2311)
     registry.register_with_id("auto.task.spawn", 2300);

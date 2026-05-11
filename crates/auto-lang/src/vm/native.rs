@@ -214,6 +214,7 @@ impl NativeInterface {
             .resolve_qualified(name)
             .unwrap_or_else(|| panic!("register_shim_by_name: '{}' not found in BIGVM_NATIVES", name));
         self.register_static(id, func);
+        self.register_name(name, id);
         id
     }
 
