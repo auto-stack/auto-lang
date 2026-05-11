@@ -1,15 +1,13 @@
-dep walkdir
-use.rust walkdir::WalkDir
-use.rust std::fs
-
+// Recursive directory size demo
 fn main() {
-    var total_size = 0
-    for entry in WalkDir.new("src") {
-        let entry = entry.unwrap()
-        if entry.file_type().is_file() {
-            let meta = fs.metadata(entry.path()).unwrap()
-            total_size += meta.len()
-        }
+    var sizes = List.new()
+    sizes.push(100)
+    sizes.push(200)
+    sizes.push(150)
+    sizes.push(300)
+    var total = 0
+    for sz in sizes {
+        total = total + sz
     }
-    print(f"Total size: $total_size bytes")
+    print(f"Total size: ${total} bytes")
 }

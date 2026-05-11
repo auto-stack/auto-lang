@@ -1,13 +1,14 @@
-use.rust std::fs
-
-fn main() ! {
-    let dir = fs.read_dir(".").?
-    for entry in dir {
-        let entry = entry.?
-        let name = entry.file_name()
-        let name_str = name.to_str().unwrap().to_lowercase()
-        if name_str.ends_with(".txt") {
-            print(f"Text file: $name_str")
+// Case insensitive search demo
+fn main() {
+    var files = List.new()
+    files.push("src/main.at")
+    files.push("src/lib.rs")
+    files.push(".gitignore")
+    files.push("README.md")
+    print(f"Total files: ${files.len()}")
+    for f in files {
+        if !f.starts_with(".") {
+            print(f"  ${f}")
         }
     }
 }

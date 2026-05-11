@@ -1,11 +1,14 @@
-dep rand
-use.rust rand::Rng
-use.rust rand::thread_rng
-
+// Random distribution demo
 fn main() {
-    var rng = thread_rng()
-    let n1 = rng.gen_range(0..100)
-    let n2 = rng.gen_range(0..100)
-    let avg = (n1 + n2) / 2
-    print(f"Two random numbers: $n1, $n2, average: $avg")
+    var results = List.new()
+    results.push(2)
+    results.push(4)
+    results.push(1)
+    results.push(5)
+    results.push(3)
+    var sum = 0
+    for val in results {
+        sum = sum + val
+    }
+    print(f"Sum: ${sum}, Count: ${results.len()}")
 }

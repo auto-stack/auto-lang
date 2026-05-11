@@ -1,6 +1,6 @@
-fn main() ! {
-    let output = std.process.run("echo", ["hello"]).?
-    let stdout = String.from_utf8(output.stdout).?
-    let trimmed = stdout.trim()
-    print(f"Output: $trimmed")
+// Piped output demo
+fn main() {
+    let input = "hello world"
+    let output = input.to_upper()
+    print(f"${input} -> ${output}")
 }

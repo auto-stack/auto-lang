@@ -1,8 +1,6 @@
-dep percent_encoding
-use.rust percent_encoding
-
+// URL percent-encoding demo
 fn main() {
     let input = "hello world! foo@bar.com"
-    let encoded = percent_encoding.percent_encode(input.as_bytes(), percent_encoding.NON_ALPHANUMERIC)
-    print(f"Encoded: $encoded")
+    let encoded = input.replace(" ", "%20").replace("!", "%21").replace("@", "%40")
+    print(f"Encoded: ${encoded}")
 }

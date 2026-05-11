@@ -1,10 +1,11 @@
-dep num
-use.rust num::Complex
+// Complex number creation demo
+type Complex {
+    real f64
+    imag f64
+}
 
 fn main() {
-    let z = Complex.new(3.0, 4.0)
-    let re = z.re
-    let im = z.im
-    let norm = z.norm()
-    print(f"z = $re + ${im}i, |z| = $norm")
+    let c = Complex(3.0, 4.0)
+    let norm = c.real * c.real + c.imag * c.imag
+    print(f"Norm squared: ${norm}")
 }

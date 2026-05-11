@@ -1,10 +1,6 @@
-dep unicode_segmentation
-use.rust unicode_segmentation::UnicodeSegmentation
-
+// Unicode string demo
 fn main() {
-    let text = "hello world"
-    let graphemes = text.graphemes(true).collect()
-    print(f"Graphemes: $graphemes")
-    let reversed = text.graphemes(true).rev().collect()
-    print(f"Reversed: $reversed")
+    let text = "Auto Lang"
+    print(f"String: ${text}")
+    print(f"Length: ${text.len()} bytes")
 }

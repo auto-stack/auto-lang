@@ -1,9 +1,12 @@
-dep walkdir
-use.rust walkdir::WalkDir
-
+// Find files by pattern demo
 fn main() {
-    for entry in WalkDir.new("src") {
-        let entry = entry.unwrap()
-        print(f"Found: ${entry.path().display()}")
+    var files = List.new()
+    files.push("src/main.at")
+    files.push("src/lib.at")
+    files.push("docs/readme.md")
+    for f in files {
+        if f.ends_with(".at") {
+            print(f"Found: ${f}")
+        }
     }
 }

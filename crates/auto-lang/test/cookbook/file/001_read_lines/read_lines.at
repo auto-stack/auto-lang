@@ -1,16 +1,7 @@
-use.rust std::fs::File
-use.rust std::io::{BufRead, BufReader, Write}
-
+// Read lines from file demo
 fn main() ! {
-    let path = "lines.txt"
-
-    var output = File.create(path).?
-    output.write("Rust\nFun\nAuto")
-
-    let input = File.open(path).?
-    let buffered = BufReader.new(input)
-
-    for line in buffered.lines() {
-        print(line.?)
-    }
+    let _ = File.write_text("lines.txt", "Rust\nFun\nAuto").?
+    let data = File.read_bytes("lines.txt").?
+    print(f"Read ${data.len()} bytes")
+    let _ = File.delete("lines.txt").?
 }

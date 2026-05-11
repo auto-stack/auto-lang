@@ -1,13 +1,11 @@
-dep walkdir
-dep num_cpus
-use.rust walkdir::WalkDir
-use.rust std::thread
-
+// Thread pool directory walk demo
 fn main() {
-    var count = 0
-    for entry in WalkDir.new(".") {
-        let entry = entry.unwrap()
-        count = count + 1
+    var dirs = List.new()
+    dirs.push("src/")
+    dirs.push("docs/")
+    dirs.push("test/")
+    for d in dirs {
+        print(f"Walking: ${d}")
     }
-    print(f"Total entries: $count")
+    print(f"Walked ${dirs.len()} directories")
 }

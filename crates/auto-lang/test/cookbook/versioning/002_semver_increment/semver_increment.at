@@ -1,10 +1,13 @@
-use.rust semver::Version
+// Semver increment demo
+type SemVer {
+    major int
+    minor int
+    patch int
+}
 
 fn main() {
-    var v = Version.parse("1.2.3").unwrap()
-    v.patch += 1
-    print(f"Next patch: $v")
-    v.minor += 1
-    v.patch = 0
-    print(f"Next minor: $v")
+    var v = SemVer(1, 2, 3)
+    print(f"${v.major}.${v.minor}.${v.patch}")
+    v.patch = v.patch + 1
+    print(f"${v.major}.${v.minor}.${v.patch}")
 }

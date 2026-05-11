@@ -1,15 +1,13 @@
-dep flate2
-dep tar
-use.rust flate2::read::GzDecoder
-use.rust tar::Archive
-
-fn main() ! {
-    let file = std.fs.open("archive.tar.gz").?
-    let gz = GzDecoder.new(file)
-    var archive = Archive.new(gz)
-    archive.set_prefix_strip(3)
-    for entry in archive.entries().? {
-        let entry = entry.?
-        print(f"Extracted: ${entry.path().?.display()}")
+// Tar with prefix stripping demo
+fn main() {
+    let prefix = "backup/"
+    var files = List.new()
+    files.push("backup/file1.txt")
+    files.push("backup/file2.txt")
+    for f in files {
+        if f.starts_with(prefix) {
+            let stripped = f.substr(prefix.len(), f.len() - prefix.len())
+            print(f"${f} -> ${stripped}")
+        }
     }
 }

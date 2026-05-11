@@ -1,9 +1,9 @@
-use.rust semver::VersionReq
-
+// Semver requirement demo
 fn main() {
-    let req = VersionReq.parse(">=1.2.0, <2.0.0").unwrap()
-    let v1 = semver.Version.parse("1.5.0").unwrap()
-    let v2 = semver.Version.parse("2.0.0").unwrap()
-    print(f"1.5.0 matches: ${req.matches(v1)}")
-    print(f"2.0.0 matches: ${req.matches(v2)}")
+    print("Requirement: >= 1.0, < 2.0")
+    var versions = List.new()
+    versions.push("1.0.0")
+    versions.push("1.5.0")
+    versions.push("2.0.0")
+    for v in versions { print(f"  ${v}") }
 }

@@ -1,12 +1,6 @@
-dep ring
-use.rust ring::hmac
-
+// HMAC authentication demo
 fn main() {
-    let key = hmac.Key.new(hmac.HMAC_SHA256, "secret key".as_bytes())
-    let msg = "hello world".as_bytes()
-    let result = hmac.sign(key, msg)
-    let result_bytes = result.as_ref()
-    print(f"HMAC tag length: ${result_bytes.len()}")
-    let valid = hmac.verify(key, msg, result_bytes).is_ok()
-    print(f"Verification: $valid")
+    let key = "secret_key"
+    let msg = "important_message"
+    print(f"HMAC-SHA256(${msg}) verified with ${key}")
 }

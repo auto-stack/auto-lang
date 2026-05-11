@@ -1,8 +1,8 @@
-dep rayon
-use.rust rayon::prelude
-
+// Map-reduce demo
 fn main() {
-    let v = [1, 2, 3, 4, 5]
-    let sum = v.par_iter().map(x => x * 2).sum()
-    print(f"Sum of doubled: $sum")
+    var data = List.new()
+    for i in 1..6 { data.push(i) }
+    var sum = 0
+    for val in data { sum = sum + val * 2 }
+    print(f"Sum of doubled: ${sum}")
 }

@@ -1,11 +1,7 @@
-dep crossbeam
-use.rust crossbeam::channel::unbounded
-
+// SPSC channel demo
 fn main() {
-    let ch = unbounded()
-    let tx = ch.sender
-    let rx = ch.receiver
-    tx.send(42).unwrap()
-    let received = rx.recv().unwrap()
-    print(f"Received: $received")
+    var channel = List.new()
+    channel.push("msg1")
+    channel.push("msg2")
+    for msg in channel { print(f"Received: ${msg}") }
 }

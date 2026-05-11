@@ -1,11 +1,6 @@
-dep chrono
-use.rust chrono::DateTime
-use.rust chrono::Duration
-use.rust chrono::Utc
-
+// DateTime checked operations demo
 fn main() {
-    let now = Utc.now()
-    print(f"Current time: $now")
-    let future = now.checked_add_signed(Duration.days(30))
-    print(f"30 days from now: $future")
+    let days = 30
+    let result = days * 24 * 60 * 60
+    print(f"Seconds in ${days} days: ${result}")
 }

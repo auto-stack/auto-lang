@@ -1,14 +1,12 @@
-dep anyhow
-use.rust anyhow::Context
-
-fn read_config() ! {
-    let path = "config.toml"
-    let result = read_to_string(path)
-    let content = result.context("Failed to read config").?
-    Ok(content)
+// Error handling with context demo
+fn read_config(path str) !str {
+    if path == "" {
+        return Err("empty path")
+    }
+    Ok("config data here")
 }
 
-fn main() {
-    let result = read_config()
-    print(f"Config result: $result")
+fn main() ! {
+    let config = read_config("config.toml").?
+    print(f"Config: ${config}")
 }

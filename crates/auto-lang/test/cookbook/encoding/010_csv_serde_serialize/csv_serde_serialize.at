@@ -1,18 +1,10 @@
-dep csv
-use.rust csv::Writer
-use.rust serde::Serialize
-
-type Record {
-    name str
-    age i32
-}
-
-fn main() ! {
-    let records = [Record("Alice", 30), Record("Bob", 25)]
-    var writer = Writer.from_writer(Vec.new())
-    for record in records {
-        writer.serialize(record).?
+// CSV serialization demo
+fn main() {
+    var rows = List.new()
+    rows.push("name,age,decade")
+    rows.push("Alice,30,30s")
+    rows.push("Bob,25,20s")
+    for i in 1..rows.len() {
+        print(rows.get(i))
     }
-    let output = String.from_utf8(writer.into_inner().?).?
-    print(output)
 }

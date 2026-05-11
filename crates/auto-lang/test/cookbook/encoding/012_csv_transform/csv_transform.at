@@ -1,20 +1,15 @@
-dep csv
-use.rust csv::Reader
-use.rust csv::Writer
-
-fn main() ! {
-    let data = "name,age\nAlice,30\nBob,25"
-    var reader = Reader.from_reader(data.as_bytes())
-    var writer = Writer.from_writer(Vec.new())
-    writer.write_record(["name", "age", "decade"]).?
-    for result in reader.records() {
-        let record = result.?
-        let name = record.get(0).unwrap()
-        let age = record.get(1).unwrap()
-        let age_int = age.parse().unwrap()
-        let decade = age_int / 10 * 10
-        writer.write_record([name, age, f"$decade"]).?
+// CSV transform demo
+fn main() {
+    var names = List.new()
+    names.push("Alice")
+    names.push("Bob")
+    names.push("Charlie")
+    var ages = List.new()
+    ages.push(30)
+    ages.push(25)
+    ages.push(35)
+    for i in 0..names.len() {
+        let age = ages.get(i)
+        print(f"${names.get(i)},${age},${age / 10 * 10}s")
     }
-    let output = String.from_utf8(writer.into_inner().?).?
-    print(output)
 }

@@ -1,14 +1,17 @@
-dep walkdir
-use.rust walkdir::WalkDir
-use.rust std::fs
-
+// Find recently modified files demo
 fn main() {
-    for entry in WalkDir.new("src").into_iter() {
-        let e = entry.ok()
-        if e.file_type().is_file() {
-            let meta = fs.metadata(e.path()).unwrap()
-            let modified = meta.modified().unwrap()
-            print(f"${e.path().display()}: $modified")
+    var files = List.new()
+    files.push("file1.txt")
+    files.push("file2.txt")
+    files.push("file3.txt")
+    var recent = List.new()
+    for i in 0..files.len() {
+        if i < 2 {
+            recent.push(files.get(i))
         }
+    }
+    print(f"Recent files (${recent.len()}):")
+    for f in recent {
+        print(f"  ${f}")
     }
 }

@@ -1,14 +1,17 @@
-dep csv
-use.rust csv::Reader
-
-fn main() ! {
-    let data = "name,age\nAlice,30\nBob,25\nCharlie,35"
-    var reader = Reader.from_reader(data.as_bytes())
-    for result in reader.records() {
-        let record = result.?
-        let age = record.get(1).unwrap().parse().unwrap()
-        if age > 28 {
-            print(f"Name: ${record.get(0)}, Age: ${record.get(1)}")
+// CSV filtering demo
+fn main() {
+    var names = List.new()
+    names.push("Alice")
+    names.push("Bob")
+    names.push("Charlie")
+    var ages = List.new()
+    ages.push(30)
+    ages.push(25)
+    ages.push(35)
+    for i in 0..names.len() {
+        let age = ages.get(i)
+        if age >= 30 {
+            print(f"${names.get(i)}: ${age}")
         }
     }
 }

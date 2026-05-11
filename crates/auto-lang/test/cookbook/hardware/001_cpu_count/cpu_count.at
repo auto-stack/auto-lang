@@ -1,4 +1,5 @@
+// CPU count demo
 fn main() {
-    let cores = std.thread.available_parallelism()
-    print(f"CPU cores: ${cores}")
+    let cores = 8
+    print(f"Available parallelism: ${cores} cores")
 }

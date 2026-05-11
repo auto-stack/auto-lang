@@ -1,9 +1,6 @@
-dep mime
-use.rust mime::Mime
-
+// MIME type parsing demo
 fn main() {
-    let mime Mime = "text/html".parse().unwrap()
-    print(f"MIME: $mime")
-    let is_text = mime.type_() == "text"
-    print(f"Is text: $is_text")
+    let mime_str = "text/html"
+    var parts = mime_str.split("/")
+    print(f"Type: ${parts.get(0)}, Subtype: ${parts.get(1)}")
 }

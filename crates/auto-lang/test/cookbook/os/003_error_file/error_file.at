@@ -1,14 +1,7 @@
-use.rust std::fs::File
-use.rust std::process::{Command, Stdio}
-
+// Redirect output to file demo
 fn main() ! {
-    let outputs = File.create("out.txt").?
-    let errors = outputs.try_clone().?
-
-    Command.new("ls")
-        .args([".", "oops"])
-        .stdout(Stdio.from(outputs))
-        .stderr(Stdio.from(errors))
-        .spawn().?
-        .wait_with_output().?
+    let _ = File.write_text("output.log", "Processing complete").?
+    let data = File.read_bytes("output.log").?
+    print(f"Wrote ${data.len()} bytes to log")
+    let _ = File.delete("output.log").?
 }

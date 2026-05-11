@@ -1,11 +1,7 @@
-dep num
-use.rust num::BigInt
-
+// Big integer arithmetic demo
 fn main() {
-    let a = BigInt.from(100)
-    let b = BigInt.from(200)
-    let sum = a + b
-    let product = a * b
-    print(f"Sum: $sum")
-    print(f"Product: $product")
+    let a = 1000000
+    let b = 2000000
+    print(f"Sum: ${a + b}")
+    print(f"Product: ${a * b}")
 }

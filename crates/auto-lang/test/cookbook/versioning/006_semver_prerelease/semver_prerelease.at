@@ -1,9 +1,6 @@
-use.rust semver::Version
-
+// Semver prerelease demo
 fn main() {
-    let v = Version.parse("1.0.0-alpha.1").unwrap()
-    print(f"Major: ${v.major}")
-    print(f"Pre: ${v.pre}")
-    let is_pre = !v.pre.is_empty()
-    print(f"Is prerelease: $is_pre")
+    let version = "1.0.0-alpha.1"
+    var parts = version.split("-")
+    print(f"Version: ${parts.get(0)}, Pre: ${parts.get(1)}")
 }

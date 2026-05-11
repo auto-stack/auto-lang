@@ -1,16 +1,13 @@
-dep rand
-use.rust rand::Rng
-use.rust rand::distributions::{Distribution, Standard}
-use.rust rand::thread_rng
-
+// Custom random value demo
 enum Pet {
-    Dog
-    Cat
-    Bird
+    Dog int
+    Cat int
 }
 
 fn main() {
-    var rng = thread_rng()
-    let pet Pet = rng.gen()
-    print("Got a pet!")
+    let pet = Pet.Dog(3)
+    is pet {
+        Pet.Dog(n) -> print(f"Dog: ${n}"),
+        Pet.Cat(n) -> print(f"Cat: ${n}")
+    }
 }

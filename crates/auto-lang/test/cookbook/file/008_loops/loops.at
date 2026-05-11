@@ -1,15 +1,14 @@
-use.rust std::path::PathBuf
-use.rust std::collections::HashSet
-
-fn visit(path PathBuf, visited HashSet) {
-    if !visited.contains(path) {
-        visited.insert(path)
-    } else {
-        print(f"Loop detected: ${path.display()}")
-    }
-}
-
+// Directory loops demo
 fn main() {
-    var visited = HashSet.new()
-    visit(PathBuf.from("."), visited)
+    var files = List.new()
+    files.push("src/main.at")
+    files.push("src/lib.rs")
+    files.push(".gitignore")
+    files.push("README.md")
+    print(f"Total files: ${files.len()}")
+    for f in files {
+        if !f.starts_with(".") {
+            print(f"  ${f}")
+        }
+    }
 }

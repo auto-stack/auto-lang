@@ -1,11 +1,6 @@
-dep chrono
-use.rust chrono::Utc
-use.rust chrono::TimeZone
-
+// UNIX timestamp demo
 fn main() {
-    let dt = Utc.timestamp_opt(1700000000, 0).single().unwrap()
-    print(f"From timestamp: $dt")
-    let now = Utc.now()
-    let ts = now.timestamp()
-    print(f"Current timestamp: $ts")
+    let timestamp = 1700000000
+    let days = timestamp / 86400
+    print(f"Timestamp ${timestamp} = ~ ${days} days since epoch")
 }

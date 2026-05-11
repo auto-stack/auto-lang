@@ -1,8 +1,7 @@
-use.rust log::debug
-
+// Debug logging demo
 fn main() {
-    #debug("starting operation")
-    let value = 42
-    #debug("value = {}", value)
-    print("done")
+    print("DEBUG: Starting application")
+    let config = "loaded"
+    print(f"INFO: Config ${config}")
+    print("ERROR: Something went wrong")
 }

@@ -1,17 +1,17 @@
-dep csv
-use.rust csv::Reader
-
-fn main() ! {
-    let data = "name,age\nAlice,30\nBob,twenty-five\nCharlie,35"
-    var reader = Reader.from_reader(data.as_bytes())
-    for result in reader.records() {
-        is result {
-            Ok(record) -> {
-                print(f"Name: ${record.get(0)}, Age: ${record.get(1)}")
-            }
-            Err(e) -> {
-                print(f"Error reading record: $e")
-            }
+// CSV invalid data handling demo
+fn main() {
+    var names = List.new()
+    names.push("Alice")
+    names.push("Bob")
+    var ages = List.new()
+    ages.push(30)
+    ages.push(-1)
+    for i in 0..names.len() {
+        let age = ages.get(i)
+        if age >= 0 {
+            print(f"${names.get(i)}: ${age}")
+        } else {
+            print(f"Invalid age for ${names.get(i)}")
         }
     }
 }

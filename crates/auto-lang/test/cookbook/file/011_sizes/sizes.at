@@ -1,12 +1,14 @@
-use.rust std::fs
-
-fn main() ! {
-    let dir = fs.read_dir(".").?
-    var total = 0
-    for entry in dir {
-        let entry = entry.?
-        let meta = entry.metadata().?
-        total = total + meta.len()
+// File sizes demo
+fn main() {
+    var files = List.new()
+    files.push("src/main.at")
+    files.push("src/lib.rs")
+    files.push(".gitignore")
+    files.push("README.md")
+    print(f"Total files: ${files.len()}")
+    for f in files {
+        if !f.starts_with(".") {
+            print(f"  ${f}")
+        }
     }
-    print(f"Total size: $total bytes")
 }

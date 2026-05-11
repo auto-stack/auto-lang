@@ -1,13 +1,12 @@
-dep rand
-use.rust rand::Rng
-
+// Distribution demo with averaging
 fn main() {
-    var rng = thread_rng()
-    var sum = 0
-    for i in 0..1000 {
-        let val = rng.gen_range(1..7)
-        sum = sum + val
+    var samples = List.new()
+    for i in 0..10 {
+        samples.push((i * 3 + 1) % 7)
     }
-    let avg = sum / 1000
-    print(f"Average dice roll: $avg")
+    var sum = 0
+    for v in samples {
+        sum = sum + v
+    }
+    print(f"Average: ${sum / samples.len()}")
 }

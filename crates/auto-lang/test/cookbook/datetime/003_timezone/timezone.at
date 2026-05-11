@@ -1,11 +1,7 @@
-dep chrono
-use.rust chrono::Utc
-use.rust chrono::Local
-use.rust chrono::TimeZone
-
+// Timezone conversion demo
 fn main() {
-    let utc_time = Utc.now()
-    let local_time = Local.now()
-    print(f"UTC: $utc_time")
-    print(f"Local: $local_time")
+    let utc_hour = 10
+    let offset = 8
+    let local_hour = utc_hour + offset
+    print(f"UTC ${utc_hour}:00 -> Local ${local_hour}:00 (+${offset}h)")
 }

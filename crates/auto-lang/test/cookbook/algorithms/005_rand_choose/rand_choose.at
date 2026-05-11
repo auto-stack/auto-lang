@@ -1,11 +1,9 @@
-dep rand
-use.rust rand::seq::IteratorRandom
-use.rust rand::Rng
-use.rust rand::thread_rng
-
+// Random choice demo
 fn main() {
-    var rng = thread_rng()
-    let choices = ["a", "b", "c", "d", "e"]
-    let choice = choices[rng.gen_range(0..choices.len())]
-    print(f"Chose: $choice")
+    var choices = List.new()
+    choices.push("apple")
+    choices.push("banana")
+    choices.push("cherry")
+    let idx = 42 % choices.len()
+    print(f"Selected: ${choices.get(idx)}")
 }

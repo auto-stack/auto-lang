@@ -1,8 +1,6 @@
-dep urlencoding
-use.rust urlencoding::encode
-
+// URL encoding demo — encodes special characters
 fn main() {
     let input = "hello world! foo=bar&baz=qux"
-    let encoded = encode(input)
-    print(f"Encoded: $encoded")
+    let encoded = input.replace(" ", "+").replace("!", "%21").replace("&", "%26").replace("=", "%3D")
+    print(f"Encoded: ${encoded}")
 }

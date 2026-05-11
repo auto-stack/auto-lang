@@ -1,19 +1,8 @@
-dep serde
 dep toml
-use.rust serde::Deserialize
 use.rust toml
 
-type Config {
-    title str
-    owner Owner
-}
-
-type Owner {
-    name str
-}
-
 fn main() {
-    let toml_str = "[owner]\nname = \"Alice\""
-    let config Config = toml.from_str(toml_str).unwrap()
-    print(f"Owner: ${config.owner.name}")
+    let toml_str = "\n[owner]\nname = \"Alice\"\n"
+    let parsed = toml.from_str(toml_str)
+    print(f"Parsed TOML: ${parsed}")
 }

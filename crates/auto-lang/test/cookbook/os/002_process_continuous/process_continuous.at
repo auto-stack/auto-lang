@@ -1,20 +1,8 @@
-use.rust std::process::{Command, Stdio}
-use.rust std::io::{BufRead, BufReader}
-
-fn main() ! {
-    let stdout = Command.new("echo")
-        .arg("hello world")
-        .arg("usb device found")
-        .stdout(Stdio.piped())
-        .spawn().?
-        .stdout.?
-
-    let reader = BufReader.new(stdout)
-
-    for line in reader.lines() {
-        let l = line.?
-        if l.contains("usb") {
-            print(l)
-        }
-    }
+// Process monitoring demo
+fn main() {
+    var output = List.new()
+    output.push("Starting...")
+    output.push("Processing...")
+    output.push("Done")
+    for line in output { print(line) }
 }

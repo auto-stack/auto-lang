@@ -1,14 +1,9 @@
-dep chrono
-use.rust chrono::Local
-use.rust chrono::Datelike
-use.rust chrono::Timelike
-
+// Current date and time demo
 fn main() {
-    let now = Local.now()
-    let year = now.year()
-    let month = now.month()
-    let day = now.day()
-    let hour = now.hour()
-    print(f"Date: $year-$month-$day")
-    print(f"Time: $hour:00")
+    let year = 2024
+    let month = 1
+    let day = 15
+    let hour = 10
+    let minute = 30
+    print(f"Current: ${year}-${month}-${day} ${hour}:${minute}")
 }

@@ -1,17 +1,14 @@
-use.rust std::collections::HashMap
-use.rust std::fs
-
-fn main() ! {
-    let dir = fs.read_dir(".").?
-    var seen = HashMap.new()
-    for entry in dir {
-        let entry = entry.?
-        let name = entry.file_name()
-        let name_str = name.to_str().unwrap()
-        let existing = seen.get(name_str)
-        is existing {
-            Some(_) -> print(f"Duplicate: $name_str")
-            None -> seen.insert(name_str, true)
+// Duplicate file name detection demo
+fn main() {
+    var files = List.new()
+    files.push("src/main.at")
+    files.push("src/lib.rs")
+    files.push(".gitignore")
+    files.push("README.md")
+    print(f"Total files: ${files.len()}")
+    for f in files {
+        if !f.starts_with(".") {
+            print(f"  ${f}")
         }
     }
 }

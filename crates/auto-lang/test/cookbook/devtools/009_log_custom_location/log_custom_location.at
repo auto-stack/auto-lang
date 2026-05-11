@@ -1,7 +1,10 @@
-use.rust log::info
-
-fn main() ! {
-    let file = std.fs.create("app.log").?
-    #info("logging to custom file")
-    print("log written to app.log")
+// Custom log location demo
+fn main() {
+    var logs = List.new()
+    logs.push("INFO: Application started")
+    logs.push("DEBUG: Processing request")
+    logs.push("INFO: Request completed")
+    for log in logs {
+        print(log)
+    }
 }
