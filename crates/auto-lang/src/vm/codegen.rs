@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_RUNTIME_PANIC};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 // Plan 076 Phase 1: Generic type support
@@ -286,6 +286,7 @@ impl Codegen {
         intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
+        intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
 
         // Register return types for native functions (used for type inference in let bindings)
         let _fn_return_types = Self::build_fn_return_types();
@@ -396,6 +397,7 @@ impl Codegen {
         intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
+        intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
 
         // Register return types for native functions (used for type inference in let bindings)
         let mut fn_return_types = Self::build_fn_return_types();
@@ -1879,8 +1881,9 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                        } else if let Expr::Ident(_) = &for_stmt.range {
-                            // Plan 089: Array-based for loop: for x in array_var { ... }
+                        } else {
+                            // Plan 089: Array-based for loop: for x in expr { ... }
+                            // Supports any iterable expression: variable, field access, call, etc.
                             // Infer element type before compiling range (for var_types tracking)
                             let elem_type = {
                                 let range_type = self.infer_expr_type(&for_stmt.range);
@@ -2007,11 +2010,6 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                        } else {
-                            // For now, only support range, iterator, and array identifier expressions
-                            self.loop_exits.pop();
-                            self.loop_continue_positions.pop();
-                            return Err(AutoError::Msg("For loops with non-range/non-iterator/non-array expressions not supported yet".to_string()));
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
@@ -3768,7 +3766,6 @@ impl Codegen {
                         }
                         vm_debug!("DEBUG: Variable {} NOT FOUND!", name_str);
                         // Plan 080: Variable not found - return proper error
-                        // Even with skip_check=true in parser, we catch undefined variables here
                         return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                     }
                 }
@@ -6530,14 +6527,323 @@ impl Codegen {
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(-1);
             }
-            // Cover expression (enum variant pattern like Color.Red)
+            // Cover expression (enum variant pattern like Color.Red or ContentBlock.Text(expr))
             Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
                 let key = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+
+                // Check if this is a scalar enum variant (no payload)
                 if let Some(&value) = self.enum_values.get(&key) {
                     self.emit(OpCode::CONST_I32);
                     self.emit_i32(value);
+                } else if self.generic_registry.has_template(&key) {
+                    // Data-carrying variant construction: variant with fields
+                    // e.g., ContentBlock.Text("hello") -> NEW_INSTANCE + CONSTRUCT_INSTANCE
+                    let has_bindings = tag_cover.bindings.iter().any(|b| b.as_str() != "_");
+
+                    if has_bindings {
+                        // Get ClassType for field info
+                        if let Ok(class_type) = self.generic_registry.get_or_create_type(&key, Vec::new()) {
+                            let field_count = class_type.template.fields.len();
+                            let mono_name = class_type.mono_name.clone();
+                            let name_bytes = mono_name.as_bytes();
+                            let name_len = name_bytes.len();
+
+                            // Compile each binding value expression (pushes onto stack)
+                            for binding in &tag_cover.bindings {
+                                // Bindings are variable names referencing outer scope values
+                                self.compile_expr(&crate::ast::Expr::Ident(binding.clone()))?;
+                            }
+
+                            // NEW_INSTANCE: push name_len, then opcode + name bytes
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_u32(name_len as u32);
+                            self.emit(OpCode::NEW_INSTANCE);
+                            for &byte in name_bytes {
+                                self.code.push(byte);
+                            }
+
+                            // CONSTRUCT_INSTANCE: field_count + opcode
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_u32(field_count as u32);
+                            self.emit(OpCode::CONSTRUCT_INSTANCE);
+                        } else {
+                            return Err(AutoError::Msg(format!("Failed to create type for variant: {}", key)));
+                        }
+                    } else {
+                        // Unit variant with no payload but registered as data type
+                        // Just create an instance with 0 fields
+                        if let Ok(class_type) = self.generic_registry.get_or_create_type(&key, Vec::new()) {
+                            let mono_name = class_type.mono_name.clone();
+                            let name_bytes = mono_name.as_bytes();
+                            let name_len = name_bytes.len();
+
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_u32(name_len as u32);
+                            self.emit(OpCode::NEW_INSTANCE);
+                            for &byte in name_bytes {
+                                self.code.push(byte);
+                            }
+
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_u32(0u32);
+                            self.emit(OpCode::CONSTRUCT_INSTANCE);
+                        } else {
+                            return Err(AutoError::Msg(format!("Failed to create type for variant: {}", key)));
+                        }
+                    }
                 } else {
                     return Err(AutoError::Msg(format!("Unknown enum variant: {}", key)));
+                }
+            }
+            // Plan 223: is-expression as value
+            Expr::Is(is_expr) => {
+                // Evaluate target expression once and store in temp variable
+                self.compile_expr(&is_expr.target)?;
+                let target_var = self.add_var("_is_expr_target");
+                self.emit_store_loc(target_var);
+
+                let mut end_jumps = Vec::new();
+
+                // Process each branch — same pattern matching as Stmt::Is
+                // but the body's last expression stays on stack as the is-expression's value
+                for branch in &is_expr.branches {
+                    match branch {
+                        crate::ast::IsBranch::EqBranch(patterns, body) => {
+                            let pattern = &patterns[0];
+                            match pattern {
+                                crate::ast::Expr::None => {
+                                    self.emit_load_loc(target_var);
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let name_bytes = b"Option.None";
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
+                                }
+                                crate::ast::Expr::OptionPattern(opt_cover) => {
+                                    match opt_cover.variant {
+                                        crate::ast::OptionVariant::Some => {
+                                            self.emit_load_loc(target_var);
+                                            self.emit(OpCode::IS_VARIANT);
+                                            let name_bytes = b"Option.Some";
+                                            self.emit_u16(name_bytes.len() as u16);
+                                            for &byte in name_bytes {
+                                                self.code.push(byte);
+                                            }
+
+                                            self.emit(OpCode::JMP_IF_Z);
+                                            let jump_to_next = self.emit_placeholder_i16();
+
+                                            if let Some(binding) = &opt_cover.binding {
+                                                self.emit_load_loc(target_var);
+                                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                                self.emit_u32(0);
+                                                let var_idx = self.add_var(binding.as_str());
+                                                self.emit_store_loc(var_idx);
+                                                if binding.as_str() != "_" {
+                                                    let inner_type = self.infer_option_inner_type(&is_expr.target);
+                                                    self.var_types.insert(binding.to_string(), inner_type);
+                                                }
+                                            }
+
+                                            // Compile body — last expr value stays on stack
+                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                            self.emit(OpCode::JMP);
+                                            let jump_to_end = self.emit_placeholder_i16();
+                                            end_jumps.push(jump_to_end);
+
+                                            self.patch_jump(jump_to_next);
+                                            continue;
+                                        }
+                                        crate::ast::OptionVariant::None => {
+                                            self.emit_load_loc(target_var);
+                                            self.emit(OpCode::IS_VARIANT);
+                                            let name_bytes = b"Option.None";
+                                            self.emit_u16(name_bytes.len() as u16);
+                                            for &byte in name_bytes {
+                                                self.code.push(byte);
+                                            }
+                                        }
+                                    }
+                                }
+                                crate::ast::Expr::Some(_inner) => {
+                                    self.emit_load_loc(target_var);
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let name_bytes = b"Option.Some";
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
+                                }
+                                crate::ast::Expr::Ok(_inner) => {
+                                    self.emit_load_loc(target_var);
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let name_bytes = b"Result.Ok";
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
+                                }
+                                crate::ast::Expr::Err(_msg) => {
+                                    self.emit_load_loc(target_var);
+                                    self.emit(OpCode::IS_VARIANT);
+                                    let name_bytes = b"Result.Err";
+                                    self.emit_u16(name_bytes.len() as u16);
+                                    for &byte in name_bytes {
+                                        self.code.push(byte);
+                                    }
+                                }
+                                // Cover::Tag destructuring for data-carrying enum variants
+                                crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
+                                    let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+                                    let has_data_payload = self.generic_registry.has_template(&variant_mono);
+
+                                    if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
+                                        self.emit_load_loc(target_var);
+                                        self.emit(OpCode::IS_VARIANT);
+                                        let name_bytes = variant_mono.as_bytes();
+                                        self.emit_u16(name_bytes.len() as u16);
+                                        for &byte in name_bytes {
+                                            self.code.push(byte);
+                                        }
+
+                                        self.emit(OpCode::JMP_IF_Z);
+                                        let jump_to_next = self.emit_placeholder_i16();
+
+                                        let (field_count, field_types) = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
+                                            let types: Vec<crate::ast::Type> = template.fields.iter().map(|f| f.field_type.clone()).collect();
+                                            (template.fields.len(), types)
+                                        } else {
+                                            (1, vec![])
+                                        };
+
+                                        let binding_count = tag_cover.bindings.len().min(field_count);
+                                        for i in 0..binding_count {
+                                            let binding = &tag_cover.bindings[i];
+                                            if binding.as_str() != "_" {
+                                                self.emit_load_loc(target_var);
+                                                self.emit(OpCode::GET_GENERIC_FIELD);
+                                                self.emit_u32(i as u32);
+                                                if let Some(ref ty) = field_types.get(i) {
+                                                    self.var_types.insert(binding.to_string(), (*ty).clone());
+                                                }
+                                                let var_idx = self.add_var(binding.as_str());
+                                                self.emit_store_loc(var_idx);
+                                            }
+                                        }
+
+                                        // Compile body — last expr value stays on stack
+                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_end = self.emit_placeholder_i16();
+                                        end_jumps.push(jump_to_end);
+
+                                        self.patch_jump(jump_to_next);
+                                        continue;
+                                    } else if has_data_payload {
+                                        self.emit_load_loc(target_var);
+                                        self.emit(OpCode::IS_VARIANT);
+                                        let name_bytes = variant_mono.as_bytes();
+                                        self.emit_u16(name_bytes.len() as u16);
+                                        for &byte in name_bytes {
+                                            self.code.push(byte);
+                                        }
+                                    } else {
+                                        self.emit_load_loc(target_var);
+                                        self.compile_expr(pattern)?;
+                                        self.emit(OpCode::EQ);
+                                    }
+                                }
+                                _ => {
+                                    if patterns.len() == 1 {
+                                        self.emit_load_loc(target_var);
+                                        self.compile_expr(pattern)?;
+                                        self.emit(OpCode::EQ);
+                                    } else {
+                                        let mut match_jumps = Vec::new();
+                                        self.emit_load_loc(target_var);
+                                        self.compile_expr(&patterns[0])?;
+                                        self.emit(OpCode::EQ);
+                                        self.emit(OpCode::JMP_IF_NZ);
+                                        match_jumps.push(self.emit_placeholder_i16());
+
+                                        for pat in &patterns[1..] {
+                                            self.emit_load_loc(target_var);
+                                            self.compile_expr(pat)?;
+                                            self.emit(OpCode::EQ);
+                                            self.emit(OpCode::JMP_IF_NZ);
+                                            match_jumps.push(self.emit_placeholder_i16());
+                                        }
+
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_next = self.emit_placeholder_i16();
+
+                                        let matched_pos = self.code.len();
+                                        for j in &match_jumps {
+                                            let anchor = *j + 2;
+                                            let offset = (matched_pos as isize) - (anchor as isize);
+                                            let bytes = (offset as i16).to_le_bytes();
+                                            self.code[*j] = bytes[0];
+                                            self.code[*j + 1] = bytes[1];
+                                        }
+
+                                        // Compile body — last expr value stays on stack
+                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_end = self.emit_placeholder_i16();
+                                        end_jumps.push(jump_to_end);
+
+                                        self.patch_jump(jump_to_next);
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            // Jump to next branch if not matched
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_next = self.emit_placeholder_i16();
+
+                            // Compile body — last expr value stays on stack
+                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                            self.emit(OpCode::JMP);
+                            let jump_to_end = self.emit_placeholder_i16();
+                            end_jumps.push(jump_to_end);
+
+                            self.patch_jump(jump_to_next);
+                        }
+                        crate::ast::IsBranch::IfBranch(condition, body) => {
+                            self.compile_expr(condition)?;
+
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_next = self.emit_placeholder_i16();
+
+                            // Compile body — last expr value stays on stack
+                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                            self.emit(OpCode::JMP);
+                            let jump_to_end = self.emit_placeholder_i16();
+                            end_jumps.push(jump_to_end);
+
+                            self.patch_jump(jump_to_next);
+                        }
+                        crate::ast::IsBranch::ElseBranch(body) => {
+                            // Compile body — last expr value stays on stack
+                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                            self.emit(OpCode::JMP);
+                            let jump_to_end = self.emit_placeholder_i16();
+                            end_jumps.push(jump_to_end);
+                        }
+                    }
+                }
+
+                // Patch all jump_to_end placeholders
+                for jump_to_end in end_jumps {
+                    self.patch_jump(jump_to_end);
                 }
             }
             _ => {

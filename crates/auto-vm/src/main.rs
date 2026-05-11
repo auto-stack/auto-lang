@@ -18,8 +18,19 @@ struct Args {
     memory: usize,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    // Use a large stack (8MB) to avoid stack overflow during recursive parsing
+    let child = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async_main())
+        })
+        .expect("Failed to spawn thread");
+    child.join().expect("Thread panicked")
+}
+
+async fn async_main() -> anyhow::Result<()> {
     // Register built-in native functions
     register_builtin_natives();
 
