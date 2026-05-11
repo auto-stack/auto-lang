@@ -1,4 +1,5 @@
-use tower_lsp::lsp_types::*;
+use tower_lsp_server::ls_types::*;
+use auto_lang::ast::Stmt;
 
 /// Find the definition location for a symbol at a given position
 pub fn find_definition(content: &str, position: Position, uri: &str) -> Option<GotoDefinitionResponse> {
@@ -17,27 +18,19 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
     // Get the word at the cursor position
     let word = get_word_at_position(line, position.character as usize)?;
 
-    // Parse the code and get the universe with symbol locations
-    let scope = std::rc::Rc::new(std::cell::RefCell::new(auto_lang::Universe::new()));
-    {
-        let mut parser = auto_lang::Parser::new(content, scope.clone());
+    // Parse the code to get AST and inference context
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
 
-        // Parse to populate the symbol_locations table
-        // We ignore parse errors for go-to-definition
-        let _ = parser.parse();
-    }
-
-    let universe = scope.borrow();
-
-    // First, try to look up the simple name directly
-    if let Some(loc) = universe.get_symbol_location(&word) {
-        return create_location(uri, loc);
+    // First, try AST-based lookup for simple names
+    if let Some(loc) = find_definition_in_ast(content, &word) {
+        return create_location(uri, &loc);
     }
 
     // If not found, check if this is a member/field access (e.g., p.x or p.square())
     if let Some(var_name) = get_variable_before_dot(line, position.character as usize) {
         // Try to infer the type of the variable using the parser's type information
-        let type_name = infer_variable_type_from_parser(&universe, &var_name)
+        let type_name = infer_variable_type_from_parser(&parser.infer_ctx, &var_name)
             .or_else(|| {
                 // Fallback to heuristic text-based parsing
                 infer_variable_type_heuristic(content, &var_name)
@@ -46,9 +39,88 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
         if let Some(type_name) = type_name {
             // Try qualified name with the type (AutoLang uses ".", not "::")
             let qualified_name = format!("{}.{}", type_name, word);
-            if let Some(loc) = universe.get_symbol_location(&qualified_name) {
-                return create_location(uri, loc);
+            if let Some(loc) = find_definition_in_ast(content, &qualified_name) {
+                return create_location(uri, &loc);
             }
+        }
+    }
+
+    None
+}
+
+/// Find the definition of a symbol using the compiler's Indexer + Database
+fn find_definition_in_ast(content: &str, name: &str) -> Option<auto_lang::SymbolLocation> {
+    use auto_lang::database::Database;
+    use auto_lang::indexer::Indexer;
+    use auto_val::AutoStr;
+
+    let mut parser = auto_lang::Parser::from(content);
+    let ast = parser.parse().ok()?;
+
+    // Create a Database and index the AST for accurate line numbers
+    let mut db = Database::new();
+    let file_id = db.insert_source("document.at", AutoStr::from(content));
+    let mut indexer = Indexer::new(&mut db);
+    let _ = indexer.index_ast(&ast, file_id);
+
+    // Check for qualified name (Type.member)
+    if name.contains('.') {
+        let parts: Vec<&str> = name.split('.').collect();
+        if parts.len() == 2 {
+            let type_name = parts[0];
+            let member_name = parts[1];
+
+            // Try TypeStore for qualified lookups
+            if let Ok(store) = parser.type_store.read() {
+                if let Some(type_decl) = store.lookup_type_decl_str(type_name) {
+                    // Check methods
+                    for method in &type_decl.methods {
+                        if method.name.as_str() == member_name {
+                            return Some(auto_lang::SymbolLocation::new(0, 0, 0));
+                        }
+                    }
+                    // Check fields
+                    for member in &type_decl.members {
+                        if member.name.as_str() == member_name {
+                            return Some(auto_lang::SymbolLocation::new(0, 0, 0));
+                        }
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
+    // Search indexed fragments for the symbol name
+    for frag_id in db.get_fragments_in_file(file_id) {
+        if let Some(meta) = db.get_fragment_meta(&frag_id) {
+            if meta.name.as_str() == name {
+                return Some(auto_lang::SymbolLocation::new(
+                    meta.span.line.saturating_sub(1),
+                    meta.span.column.saturating_sub(1),
+                    meta.span.offset,
+                ));
+            }
+        }
+    }
+
+    // Fallback: search for top-level definitions by line heuristic
+    for (line_num, line_str) in content.lines().enumerate() {
+        let trimmed = line_str.trim();
+        if trimmed.starts_with("fn ") && trimmed.contains(&format!("{}(", name)) {
+            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
+        }
+        if trimmed.starts_with("type ") && trimmed.contains(name) {
+            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
+        }
+        if trimmed.starts_with("enum ") && trimmed.contains(name) {
+            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
+        }
+        if trimmed.starts_with("spec ") && trimmed.contains(name) {
+            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
+        }
+        if trimmed.starts_with("const ") && trimmed.contains(name) {
+            return Some(auto_lang::SymbolLocation::new(line_num, 0, 0));
         }
     }
 
@@ -57,7 +129,7 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
 
 /// Create an LSP Location from a SymbolLocation
 fn create_location(uri: &str, loc: &auto_lang::SymbolLocation) -> Option<GotoDefinitionResponse> {
-    let uri_parsed = Url::parse(uri).ok()?;
+    let uri_parsed: Uri = uri.parse().ok()?;
 
     // Adjust character position (subtract 1 to fix off-by-one issue)
     let char = loc.character.saturating_sub(1);
@@ -138,11 +210,11 @@ fn get_variable_before_dot(line: &str, cursor: usize) -> Option<String> {
 
 /// Infer the type of a variable using the parser's type information
 /// This tries to use the parser's metadata, with a fallback to text-based heuristics
-fn infer_variable_type_from_parser(universe: &auto_lang::Universe, var_name: &str) -> Option<String> {
+fn infer_variable_type_from_parser(infer_ctx: &auto_lang::infer::InferenceContext, var_name: &str) -> Option<String> {
     use auto_lang::scope::Meta;
 
     // Try to use the parser's type information first
-    if let Some(meta) = universe.lookup_meta(var_name) {
+    if let Some(meta) = infer_ctx.lookup_meta(var_name) {
         match meta.as_ref() {
             Meta::Store(store) => {
                 let type_name = store.ty.unique_name();

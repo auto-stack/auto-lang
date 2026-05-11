@@ -1,5 +1,4 @@
-use tower_lsp::lsp_types::*;
-use auto_lang::ast::Stmt;
+use tower_lsp_server::ls_types::*;
 
 /// Provide hover information at a given position
 pub fn hover(content: &str, position: Position, uri: &str) -> Option<Hover> {
@@ -145,143 +144,27 @@ fn get_variable_before_dot(line: &str, cursor: usize) -> Option<String> {
 
 /// Infer the type of a variable using the parser's type information with proper scope navigation
 /// This is a wrapper that parses the code and infers type from the correct scope
-fn infer_variable_type_from_parser_with_scope(content: &str, position: Position, var_name: &str) -> Option<String> {
+fn infer_variable_type_from_parser_with_scope(content: &str, _position: Position, var_name: &str) -> Option<String> {
     use auto_lang::scope::Meta;
 
-    // If we can find which function contains the cursor, navigate to its scope
-    if let Some(fn_name) = find_function_at_position(content, position) {
-        eprintln!("HOVER: Cursor is in function '{}', trying to navigate to its scope", fn_name);
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
+    let infer_ctx = &parser.infer_ctx;
 
-        // Create a universe to navigate scopes
-        let navigator = std::rc::Rc::new(std::cell::RefCell::new(auto_lang::Universe::new()));
-        {
-            let mut parser = auto_lang::Parser::new(content, navigator.clone());
-            let _ = parser.parse();
-        }
-
-        // Navigate to the function scope
-        navigator.borrow_mut().enter_fn(&fn_name);
-        eprintln!("HOVER: Entered function scope '{}'", fn_name);
-
-        // Now try to lookup the variable from within the function scope
-        let universe = navigator.borrow();
-        if let Some(meta) = universe.lookup_meta(var_name) {
-            match meta.as_ref() {
-                Meta::Store(store) => {
-                    let type_name = store.ty.unique_name();
-                    eprintln!("HOVER: Found '{}' in function scope '{}': '{}'", var_name, fn_name, type_name);
-                    return Some(type_name.to_string());
-                }
-                _ => {
-                    eprintln!("HOVER: Variable '{}' found in function scope but is not a Store: {:?}", var_name, meta);
-                }
+    if let Some(meta) = infer_ctx.lookup_meta(var_name) {
+        match meta.as_ref() {
+            Meta::Store(store) => {
+                let type_name = store.ty.unique_name();
+                return Some(type_name.to_string());
             }
-        }
-
-        drop(universe);
-        navigator.borrow_mut().exit_fn();
-        eprintln!("HOVER: Exited function scope '{}'", fn_name);
-
-        eprintln!("HOVER: Could not find variable '{}' in function scope", var_name);
-        None
-    } else {
-        // Not in a function, try global scope
-        eprintln!("HOVER: Not in a function scope, trying global scope");
-
-        let scope = std::rc::Rc::new(std::cell::RefCell::new(auto_lang::Universe::new()));
-        {
-            let mut parser = auto_lang::Parser::new(content, scope.clone());
-            let _ = parser.parse();
-        }
-        let universe = scope.borrow();
-
-        if let Some(meta) = universe.lookup_meta(var_name) {
-            match meta.as_ref() {
-                Meta::Store(store) => {
-                    let type_name = store.ty.unique_name();
-                    eprintln!("HOVER: Found '{}' at global scope: '{}'", var_name, type_name);
-                    return Some(type_name.to_string());
-                }
-                _ => {
-                    eprintln!("HOVER: Variable '{}' found but is not a Store: {:?}", var_name, meta);
-                }
-            }
-        }
-
-        eprintln!("HOVER: Could not find variable '{}' using parser metadata", var_name);
-        None
-    }
-}
-
-/// Find which function contains the given cursor position
-/// Returns the function name if the position is inside a function body
-fn find_function_at_position(content: &str, position: Position) -> Option<String> {
-    use auto_lang::ast::Stmt;
-
-    let cursor_line = position.line as usize;
-
-    // Parse the code to get the AST
-    let ast = auto_lang::parse_preserve_error(content).ok()?;
-
-    // Iterate through statements to find functions
-    for stmt in ast.stmts.iter() {
-        if let Stmt::Fn(fn_decl) = stmt {
-            // We need to find the line range of this function
-            // The AST doesn't store line numbers, so we'll need to find the function in the source
-            if let Some((start_line, end_line)) = find_function_range_in_source(content, &fn_decl.name) {
-                if cursor_line >= start_line && cursor_line <= end_line {
-                    eprintln!("HOVER: Found function '{}' at lines {}-{}, cursor at line {}",
-                        fn_decl.name, start_line, end_line, cursor_line);
-                    return Some(fn_decl.name.to_string());
-                }
-            }
+            _ => {}
         }
     }
 
     None
 }
 
-/// Find the line range of a function in the source code
-/// Returns (start_line, end_line) or None if not found
-fn find_function_range_in_source(content: &str, fn_name: &str) -> Option<(usize, usize)> {
-    let lines: Vec<&str> = content.lines().collect();
 
-    // Find the function declaration
-    let mut start_line = None;
-    let mut brace_count = 0;
-    let mut found_opening_brace = false;
-
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-
-        // Look for "fn name" pattern
-        if !found_opening_brace && trimmed.starts_with("fn ") && trimmed.contains(&format!("{}(", fn_name)) {
-            start_line = Some(i);
-            // Count braces in this line
-            brace_count += line.matches('{').count() as i32 - line.matches('}').count() as i32;
-            if brace_count > 0 {
-                found_opening_brace = true;
-            }
-            continue;
-        }
-
-        // If we found the function, count braces to find the end
-        if start_line.is_some() {
-            brace_count += line.matches('{').count() as i32 - line.matches('}').count() as i32;
-            if brace_count > 0 {
-                found_opening_brace = true;
-            }
-
-            // When brace count returns to 0 (or negative), we've found the end
-            if found_opening_brace && brace_count <= 0 {
-                return Some((start_line.unwrap(), i));
-            }
-        }
-    }
-
-    // If we never found the closing brace, return the start line to end of file
-    start_line.map(|s| (s, lines.len() - 1))
-}
 
 /// Fallback: Infer the type of a variable by looking at its declaration (text-based heuristic)
 fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String> {
@@ -323,49 +206,114 @@ fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String
 
 /// Get documentation for user-defined types and functions in the current file
 fn get_user_defined_docs(content: &str, name: &str) -> Option<String> {
-    // Parse the code to get the AST
-    match auto_lang::parse_preserve_error(content) {
-        Ok(ast) => {
-            // Check if it's a qualified name (e.g., "Point.square" or "Point.x")
-            if name.contains('.') {
-                let parts: Vec<&str> = name.split('.').collect();
-                if parts.len() == 2 {
-                    let type_name = parts[0];
-                    let member_name = parts[1];
+    let mut parser = auto_lang::Parser::from(content);
+    let ast = parser.parse().ok()?;
 
-                    // Look for the type definition
-                    for stmt in ast.stmts.iter() {
-                        if let Stmt::TypeDecl(type_decl) = stmt {
-                            if type_decl.name.as_str() == type_name {
-                                // Check if it's a method
-                                for method in &type_decl.methods {
-                                    if method.name.as_str() == member_name {
-                                        let mut docs = format_function_signature(method);
-                                        docs.push_str(&format!("\n\n**Method of type `{}`**", type_name));
-                                        return Some(docs);
-                                    }
-                                }
+    // Try TypeStore lookup first (most accurate for types, functions, specs)
+    if let Some(docs) = get_typestore_docs(&parser.type_store, name) {
+        return Some(docs);
+    }
 
-                                // Check if it's a field
-                                for member in &type_decl.members {
-                                    if member.name.as_str() == member_name {
-                                        let ty_str = format!("{}", member.ty);
-                                        let docs = format!("**Field** `{}` of type `{}`\n\n**Type:** `{}`",
-                                            member_name, type_name, ty_str);
-                                        return Some(docs);
-                                    }
-                                }
-                            }
-                        }
+    // Fall back to AST traversal for local variables and parameters
+    get_ast_docs(&ast, name)
+}
+
+/// Get documentation from the parser's TypeStore
+fn get_typestore_docs(
+    type_store: &std::sync::Arc<std::sync::RwLock<auto_lang::types::TypeStore>>,
+    name: &str,
+) -> Option<String> {
+    let store = type_store.read().ok()?;
+
+    // Check if it's a qualified name (e.g., "Point.square" or "Point.x")
+    if name.contains('.') {
+        let parts: Vec<&str> = name.split('.').collect();
+        if parts.len() == 2 {
+            let type_name = parts[0];
+            let member_name = parts[1];
+
+            if let Some(type_decl) = store.lookup_type_decl_str(type_name) {
+                // Check methods
+                for method in &type_decl.methods {
+                    if method.name.as_str() == member_name {
+                        let sig = format_function_signature(method);
+                        return Some(format!("{}\n\n**Method of type `{}`**", sig, type_name));
+                    }
+                }
+                // Check fields
+                for member in &type_decl.members {
+                    if member.name.as_str() == member_name {
+                        let ty_str = format!("{}", member.ty);
+                        return Some(format!(
+                            "**Field** `{}` of type `{}`\n\n**Type:** `{}`",
+                            member_name, type_name, ty_str
+                        ));
                     }
                 }
             }
+        }
+        return None;
+    }
 
-            // Look for local variables and function parameters (Store statements)
-            // Also search inside function bodies (Bodies)
-            for stmt in ast.stmts.iter() {
-                // Check at top level
-                if let Stmt::Store(store) = stmt {
+    // Simple name lookups
+    if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
+        let sig = format_function_signature(fn_decl);
+        return Some(format!("**Function**\n\n```auto\n{}\n```", sig));
+    }
+
+    if let Some(type_decl) = store.lookup_type_decl_str(name) {
+        let mut docs = format!("**Type** `{}`\n\n", type_decl.name);
+        if !type_decl.members.is_empty() {
+            docs.push_str("**Members:**\n\n");
+            for member in &type_decl.members {
+                docs.push_str(&format!("- `{}`: `{}`\n", member.name, member.ty));
+            }
+        }
+        if !type_decl.methods.is_empty() {
+            docs.push_str("\n**Methods:**\n\n");
+            for method in &type_decl.methods {
+                docs.push_str(&format!("- `{}`\n", format_function_signature(method)));
+            }
+        }
+        return Some(docs);
+    }
+
+    if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+        let mut docs = format!("**Spec** `{}`\n\n", spec_decl.name);
+        if !spec_decl.methods.is_empty() {
+            docs.push_str("**Methods:**\n\n");
+            for method in &spec_decl.methods {
+                let params: Vec<String> = method.params.iter().map(|p| format!("{} {}", p.name, p.ty)).collect();
+                docs.push_str(&format!("- `fn {}({}) {}`\n", method.name, params.join(", "), method.ret));
+            }
+        }
+        return Some(docs);
+    }
+
+    None
+}
+
+/// Get documentation from AST traversal (for local variables and parameters)
+fn get_ast_docs(ast: &auto_lang::ast::Code, name: &str) -> Option<String> {
+    use auto_lang::ast::Stmt;
+    for stmt in ast.stmts.iter() {
+        // Check top-level variables
+        if let Stmt::Store(store) = stmt {
+            if store.name.as_str() == name {
+                let ty_str = store.ty.unique_name().to_string();
+                let kind_str = match store.kind {
+                    auto_lang::ast::StoreKind::Let => "let",
+                    auto_lang::ast::StoreKind::Var => "var",
+                    _ => "variable",
+                };
+                return Some(format!("**{}** `{}`\n\n**Type:** `{}`", kind_str, name, ty_str));
+            }
+        }
+
+        // Check inside function bodies
+        if let Stmt::Fn(fn_decl) = stmt {
+            for body_stmt in fn_decl.body.stmts.iter() {
+                if let Stmt::Store(store) = body_stmt {
                     if store.name.as_str() == name {
                         let ty_str = store.ty.unique_name().to_string();
                         let kind_str = match store.kind {
@@ -373,137 +321,31 @@ fn get_user_defined_docs(content: &str, name: &str) -> Option<String> {
                             auto_lang::ast::StoreKind::Var => "var",
                             _ => "variable",
                         };
-                        let docs = format!("**{}** `{}`\n\n**Type:** `{}`",
-                            kind_str, name, ty_str);
-                        return Some(docs);
-                    }
-                }
-
-                // Check inside function bodies
-                if let Stmt::Fn(fn_decl) = stmt {
-                    // Look in the function body for local variables
-                    for body_stmt in fn_decl.body.stmts.iter() {
-                        if let Stmt::Store(store) = body_stmt {
-                            if store.name.as_str() == name {
-                                let ty_str = store.ty.unique_name().to_string();
-                                let kind_str = match store.kind {
-                                    auto_lang::ast::StoreKind::Let => "let",
-                                    auto_lang::ast::StoreKind::Var => "var",
-                                    _ => "variable",
-                                };
-                                let docs = format!("**{}** `{}`\n\n**Type:** `{}`\n\n**In function `{}`**",
-                                    kind_str, name, ty_str, fn_decl.name);
-                                return Some(docs);
-                            }
-                        }
-
-                        // Check function parameters
-                        for param in &fn_decl.params {
-                            if param.name.as_str() == name {
-                                let ty_str = param.ty.unique_name().to_string();
-                                let docs = format!("**Parameter** `{}`\n\n**Type:** `{}`\n\n**Of function:** `{}`",
-                                    name, ty_str, fn_decl.name);
-                                return Some(docs);
-                            }
-                        }
-                    }
-                }
-
-                // Look for type definitions
-                if let Some(type_name) = extract_type_definition(stmt) {
-                    if type_name == name {
-                        let docs = format_type_definition(stmt);
-                        return Some(docs);
-                    }
-                }
-
-                if let Some(fn_name) = extract_function_definition(stmt) {
-                    if fn_name == name {
-                        let docs = format_function_definition(stmt);
-                        return Some(docs);
+                        return Some(format!(
+                            "**{}** `{}`\n\n**Type:** `{}`\n\n**In function `{}`**",
+                            kind_str, name, ty_str, fn_decl.name
+                        ));
                     }
                 }
             }
-            None
-        }
-        Err(_) => None,
-    }
-}
 
-/// Extract the name of a type definition from a statement
-fn extract_type_definition(stmt: &auto_lang::ast::Stmt) -> Option<String> {
-    use auto_lang::ast::Stmt;
-
-    match stmt {
-        Stmt::TypeDecl(type_decl) => Some(type_decl.name.to_string()),
-        Stmt::EnumDecl(enum_decl) => Some(enum_decl.name.to_string()),
-        _ => None,
-    }
-}
-
-/// Extract the name of a function definition from a statement
-fn extract_function_definition(stmt: &auto_lang::ast::Stmt) -> Option<String> {
-    use auto_lang::ast::Stmt;
-
-    match stmt {
-        Stmt::Fn(fn_decl) => Some(fn_decl.name.to_string()),
-        _ => None,
-    }
-}
-
-/// Format a type definition for hover display
-fn format_type_definition(stmt: &auto_lang::ast::Stmt) -> String {
-    use auto_lang::ast::Stmt;
-
-    match stmt {
-        Stmt::TypeDecl(type_decl) => {
-            let mut docs = format!("**Type** `{}`\n\n", type_decl.name);
-
-            if !type_decl.members.is_empty() {
-                docs.push_str("**Members:**\n\n");
-                for member in &type_decl.members {
-                    let ty_str = format!("{}", member.ty);
-                    docs.push_str(&format!("- `{}`: `{}`\n", member.name, ty_str));
+            // Check function parameters
+            for param in &fn_decl.params {
+                if param.name.as_str() == name {
+                    let ty_str = param.ty.unique_name().to_string();
+                    return Some(format!(
+                        "**Parameter** `{}`\n\n**Type:** `{}`\n\n**Of function:** `{}`",
+                        name, ty_str, fn_decl.name
+                    ));
                 }
             }
-
-            if !type_decl.methods.is_empty() {
-                docs.push_str("\n**Methods:**\n\n");
-                for method in &type_decl.methods {
-                    docs.push_str(&format!("- `{}`\n", format_function_signature(method)));
-                }
-            }
-
-            docs
         }
-        Stmt::EnumDecl(enum_decl) => {
-            let mut docs = format!("**Enum** `{}`\n\n", enum_decl.name);
-
-            if !enum_decl.items.is_empty() {
-                docs.push_str("**Variants:**\n\n");
-                for item in &enum_decl.items {
-                    docs.push_str(&format!("- `{}` = {}\n", item.name, item.value));
-                }
-            }
-
-            docs
-        }
-        _ => "Unknown type definition".to_string(),
     }
+
+    None
 }
 
-/// Format a function definition for hover display
-fn format_function_definition(stmt: &auto_lang::ast::Stmt) -> String {
-    use auto_lang::ast::Stmt;
 
-    match stmt {
-        Stmt::Fn(fn_decl) => {
-            let signature = format_function_signature(fn_decl);
-            format!("**Function**\n\n```auto\n{}\n```", signature)
-        }
-        _ => "Unknown function definition".to_string(),
-    }
-}
 
 /// Format a function signature
 fn format_function_signature(fn_decl: &auto_lang::ast::Fn) -> String {

@@ -1,4 +1,4 @@
-use tower_lsp::lsp_types::*;
+use tower_lsp_server::ls_types::*;
 use auto_lang::error::AutoError;
 
 /// Parse AutoLang code and convert errors to LSP diagnostics
@@ -22,35 +22,27 @@ pub fn parse_diagnostics(
 fn parse_diagnostics_impl(_uri: &str, content: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
-    // Suppress stdout/stderr during parsing to prevent debug output from corrupting LSP
-    let _guard = SuppressOutput;
+    // Parse with the modern Parser API to collect errors and warnings
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
 
-    // Attempt to parse the document
-    match auto_lang::parse_preserve_error(content) {
-        Ok(_) => {
-            // Parse successful, no errors
-        }
-        Err(e) => {
-            // Extract errors based on the AutoError variant
+    // Convert parser errors to diagnostics
+    for error in &parser.errors {
+        diagnostics.push(auto_error_to_diagnostic(error, content, DiagnosticSeverity::ERROR));
+    }
+
+    // Convert parser warnings to diagnostics
+    for warning in &parser.warnings {
+        diagnostics.push(warning_to_diagnostic(warning, content));
+    }
+
+    // If no errors/warnings were collected but parse returned Err,
+    // also check the result (defensive)
+    if diagnostics.is_empty() {
+        if let Err(e) = auto_lang::parse_preserve_error(content) {
             let errors = extract_errors_from_auto_error(e);
-
             for error in errors.iter() {
-                let error_msg = format!("{}", error);
-
-                let range = extract_location_from_error(error, content);
-                let severity = extract_severity_from_error(error);
-
-                diagnostics.push(Diagnostic {
-                    range,
-                    severity: Some(severity),
-                    code: None,
-                    code_description: None,
-                    source: Some("auto-lang".to_string()),
-                    message: error_msg,
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                });
+                diagnostics.push(auto_error_to_diagnostic(error, content, DiagnosticSeverity::ERROR));
             }
         }
     }
@@ -58,13 +50,43 @@ fn parse_diagnostics_impl(_uri: &str, content: &str) -> Vec<Diagnostic> {
     diagnostics
 }
 
-/// Guard to suppress stdout/stderr during parsing
-struct SuppressOutput;
+/// Convert an AutoError to an LSP Diagnostic
+fn auto_error_to_diagnostic(error: &AutoError, content: &str, severity: DiagnosticSeverity) -> Diagnostic {
+    let error_msg = format!("{}", error);
+    let range = extract_location_from_error(error, content);
 
-impl Drop for SuppressOutput {
-    fn drop(&mut self) {
-        // Restore original stdout/stderr when guard is dropped
-        // (Currently a no-op since we're using a static approach)
+    Diagnostic {
+        range,
+        severity: Some(severity),
+        code: None,
+        code_description: None,
+        source: Some("auto-lang".to_string()),
+        message: error_msg,
+        related_information: None,
+        tags: None,
+        data: None,
+    }
+}
+
+/// Convert a Warning to an LSP Diagnostic
+fn warning_to_diagnostic(warning: &auto_lang::error::Warning, _content: &str) -> Diagnostic {
+    let message = format!("{}", warning);
+    // Warnings may not have precise spans; default to start of file
+    let range = Range {
+        start: Position { line: 0, character: 0 },
+        end: Position { line: 0, character: 0 },
+    };
+
+    Diagnostic {
+        range,
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: None,
+        code_description: None,
+        source: Some("auto-lang".to_string()),
+        message,
+        related_information: None,
+        tags: None,
+        data: None,
     }
 }
 
@@ -72,7 +94,6 @@ impl Drop for SuppressOutput {
 fn extract_errors_from_auto_error(error: AutoError) -> Vec<AutoError> {
     match &error {
         AutoError::MultipleErrors { errors, .. } => {
-            // Return a clone of the inner errors
             errors.clone()
         }
         _ => {
@@ -81,92 +102,81 @@ fn extract_errors_from_auto_error(error: AutoError) -> Vec<AutoError> {
     }
 }
 
-/// Extract LSP diagnostic severity from an AutoError
-fn extract_severity_from_error(error: &AutoError) -> DiagnosticSeverity {
-    match error {
-        AutoError::Warning(_) => DiagnosticSeverity::WARNING,
-        _ => DiagnosticSeverity::ERROR,
-    }
-}
-
 /// Extract range from AutoError by using miette labels
 fn extract_location_from_error(error: &AutoError, content: &str) -> Range {
     use miette::Diagnostic;
 
     // Default to start of file
-    let mut start_line = 0u32;
-    let mut start_char = 0u32;
-    let mut end_line = 0u32;
-    let mut end_char = 1u32;
+    let mut range = Range {
+        start: Position { line: 0, character: 0 },
+        end: Position { line: 0, character: 0 },
+    };
 
     // Try to get labels from the miette Diagnostic
     if let Some(labels) = error.labels() {
-        // Get the first label if available
         if let Some(label) = labels.into_iter().next() {
             let offset = label.offset() as usize;
             let len = label.len() as usize;
-
-            // Convert byte offset to line/column
-            let lines: Vec<&str> = content.lines().collect();
-            let mut current_offset = 0;
-
-            for (idx, line) in lines.iter().enumerate() {
-                let line_len = line.len();
-                // Add 1 for newline character
-                let line_end = current_offset + line_len + 1;
-
-                // Check if the label starts within this line
-                if offset >= current_offset && offset < line_end {
-                    start_line = idx as u32;
-                    end_line = idx as u32;
-
-                    // Calculate character position within the line
-                    start_char = (offset - current_offset) as u32;
-                    end_char = start_char + len as u32;
-
-                    break;
-                }
-
-                current_offset = line_end;
-            }
+            range = byte_range_to_lsp_range(content, offset, len);
         }
     } else {
         // Fallback: try to parse line number from error message
         let error_msg = format!("{}", error);
         if let Some(line) = extract_line_number(&error_msg) {
-            start_line = line.saturating_sub(1) as u32;
-            end_line = start_line;
-
-            // Get the line content to determine range
+            let line_idx = line.saturating_sub(1) as u32;
             let lines: Vec<&str> = content.lines().collect();
-            if let Some(line_content) = lines.get(start_line as usize) {
-                start_char = 0;
-                end_char = line_content.len().max(1) as u32;
-            }
+            let end_char = lines.get(line_idx as usize).map(|l| l.len().max(1) as u32).unwrap_or(1);
+            range = Range {
+                start: Position { line: line_idx, character: 0 },
+                end: Position { line: line_idx, character: end_char },
+            };
         }
     }
 
+    range
+}
+
+/// Convert a byte offset range to an LSP Range (line/character)
+/// LSP uses UTF-16 code units for character offsets.
+fn byte_range_to_lsp_range(content: &str, start_offset: usize, len: usize) -> Range {
+    let end_offset = start_offset.saturating_add(len);
+
     Range {
-        start: Position {
-            line: start_line,
-            character: start_char,
-        },
-        end: Position {
-            line: end_line,
-            character: end_char,
-        },
+        start: byte_offset_to_position(content, start_offset),
+        end: byte_offset_to_position(content, end_offset),
     }
 }
 
+/// Convert a byte offset to an LSP Position
+fn byte_offset_to_position(content: &str, target_offset: usize) -> Position {
+    let mut line = 0u32;
+    let mut character = 0u32;
+    let mut current_offset = 0usize;
+
+    for ch in content.chars() {
+        if current_offset >= target_offset {
+            break;
+        }
+
+        if ch == '\n' {
+            line += 1;
+            character = 0;
+        } else {
+            // LSP counts UTF-16 code units
+            character += ch.len_utf16() as u32;
+        }
+
+        current_offset += ch.len_utf8();
+    }
+
+    Position { line, character }
+}
+
 /// Extract line number from error message
-///
-/// **Performance Fix**: Use lazy_static to compile regex patterns once at startup
-/// instead of compiling them on every error message (was causing 10%+ CPU usage)
 fn extract_line_number(error_msg: &str) -> Option<usize> {
     use regex::Regex;
     use once_cell::sync::Lazy;
 
-    // Pre-compiled regex patterns (compiled once, reused forever)
     static LINE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
         vec![
             Regex::new(r"line (\d+)").unwrap(),

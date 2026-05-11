@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::ls_types::*;
+use tower_lsp_server::{Client, LanguageServer};
 
 use crate::completion;
 use crate::diagnostics;
@@ -81,7 +81,6 @@ impl Backend {
     }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     /// Handle initialization request from client
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -93,6 +92,7 @@ impl LanguageServer for Backend {
             .await;
 
         Ok(InitializeResult {
+            offset_encoding: None,
             capabilities: ServerCapabilities {
                 // Define which operations we support
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -336,12 +336,12 @@ impl LanguageServer for Backend {
         if symbols.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(DocumentSymbolResponse::Array(symbols)))
+            Ok(Some(DocumentSymbolResponse::Nested(symbols)))
         }
     }
 
     /// Workspace symbols (search across project)
-    async fn symbol(&self, params: WorkspaceSymbolParams) -> Result<Option<Vec<SymbolInformation>>> {
+    async fn symbol(&self, params: WorkspaceSymbolParams) -> Result<Option<WorkspaceSymbolResponse>> {
         self.client
             .log_message(
                 MessageType::LOG,
@@ -428,10 +428,10 @@ impl Backend {
                         )
                         .await;
 
-                    if let Ok(url) = Url::parse(uri) {
+                    if let Ok(uri_parsed) = uri.parse::<Uri>() {
                         self.client
                             .publish_diagnostics(
-                                url,
+                                uri_parsed,
                                 diagnostics,
                                 None,
                             )
@@ -464,9 +464,9 @@ impl Backend {
                         .await;
 
                     // Clear diagnostics on timeout to avoid showing stale errors
-                    if let Ok(url) = Url::parse(uri) {
+                    if let Ok(uri_parsed) = uri.parse::<Uri>() {
                         self.client
-                            .publish_diagnostics(url, vec![], None)
+                            .publish_diagnostics(uri_parsed, vec![], None)
                             .await;
                     }
                 }
@@ -481,143 +481,66 @@ impl Backend {
     }
 }
 
-/// Extract document symbols from source code using regex
+/// Extract document symbols from source code using the compiler's Indexer + Database
 fn extract_document_symbols(content: &str) -> Vec<DocumentSymbol> {
-    use regex::Regex;
+    use auto_lang::database::{Database, FragKind};
+    use auto_lang::indexer::Indexer;
+    use auto_val::AutoStr;
+
     let mut symbols = Vec::new();
 
-    // Extract fn declarations
-    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?(?:mut\s+|static\s+)?fn\s+(\w+)") {
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = re.captures(line) {
-                if let Some(name) = caps.get(1) {
-                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
-                    symbols.push(DocumentSymbol {
-                        name: name.as_str().to_string(),
-                        detail: Some("fn".to_string()),
-                        kind: SymbolKind::FUNCTION,
-                        tags: None,
-                        deprecated: None,
-                        range: Range {
-                            start: Position { line: line_num as u32, character: 0 },
-                            end: Position { line: line_num as u32, character: line.len() as u32 },
-                        },
-                        selection_range: Range {
-                            start: Position { line: line_num as u32, character: start_char },
-                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
-                        },
-                        children: None,
-                    });
-                }
-            }
+    // Parse the code
+    let mut parser = auto_lang::Parser::from(content);
+    let ast = match parser.parse() {
+        Ok(ast) => ast,
+        Err(_) => {
+            // Even on parse error, try to extract symbols from what we have
+            // The parser may have partially populated the AST
+            return symbols;
         }
-    }
+    };
 
-    // Extract type declarations
-    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?type\s+(\w+)") {
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = re.captures(line) {
-                if let Some(name) = caps.get(1) {
-                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
-                    symbols.push(DocumentSymbol {
-                        name: name.as_str().to_string(),
-                        detail: Some("type".to_string()),
-                        kind: SymbolKind::CLASS,
-                        tags: None,
-                        deprecated: None,
-                        range: Range {
-                            start: Position { line: line_num as u32, character: 0 },
-                            end: Position { line: line_num as u32, character: line.len() as u32 },
-                        },
-                        selection_range: Range {
-                            start: Position { line: line_num as u32, character: start_char },
-                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
-                        },
-                        children: None,
-                    });
-                }
-            }
-        }
-    }
+    // Create a Database and index the AST
+    let mut db = Database::new();
+    let file_id = db.insert_source("document.at", AutoStr::from(content));
+    let mut indexer = Indexer::new(&mut db);
+    let _ = indexer.index_ast(&ast, file_id);
 
-    // Extract enum declarations
-    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?enum\s+(\w+)") {
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = re.captures(line) {
-                if let Some(name) = caps.get(1) {
-                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
-                    symbols.push(DocumentSymbol {
-                        name: name.as_str().to_string(),
-                        detail: Some("enum".to_string()),
-                        kind: SymbolKind::ENUM,
-                        tags: None,
-                        deprecated: None,
-                        range: Range {
-                            start: Position { line: line_num as u32, character: 0 },
-                            end: Position { line: line_num as u32, character: line.len() as u32 },
-                        },
-                        selection_range: Range {
-                            start: Position { line: line_num as u32, character: start_char },
-                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
-                        },
-                        children: None,
-                    });
-                }
-            }
-        }
-    }
+    // Convert fragments to DocumentSymbols
+    for frag_id in db.get_fragments_in_file(file_id) {
+        if let Some(meta) = db.get_fragment_meta(&frag_id) {
+            let kind = match meta.kind {
+                FragKind::Function => SymbolKind::FUNCTION,
+                FragKind::Struct => SymbolKind::STRUCT,
+                FragKind::Enum => SymbolKind::ENUM,
+                FragKind::Const => SymbolKind::CONSTANT,
+                FragKind::Spec => SymbolKind::INTERFACE,
+                FragKind::Impl => SymbolKind::METHOD,
+            };
 
-    // Extract spec declarations (interface)
-    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?spec\s+(\w+)") {
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = re.captures(line) {
-                if let Some(name) = caps.get(1) {
-                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
-                    symbols.push(DocumentSymbol {
-                        name: name.as_str().to_string(),
-                        detail: Some("spec".to_string()),
-                        kind: SymbolKind::INTERFACE,
-                        tags: None,
-                        deprecated: None,
-                        range: Range {
-                            start: Position { line: line_num as u32, character: 0 },
-                            end: Position { line: line_num as u32, character: line.len() as u32 },
-                        },
-                        selection_range: Range {
-                            start: Position { line: line_num as u32, character: start_char },
-                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
-                        },
-                        children: None,
-                    });
-                }
-            }
-        }
-    }
+            let line = meta.span.line.saturating_sub(1) as u32;
+            let col = meta.span.column.saturating_sub(1) as u32;
 
-    // Extract const declarations
-    if let Ok(re) = Regex::new(r"^\s*(?:pub\s+)?const\s+(\w+)") {
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = re.captures(line) {
-                if let Some(name) = caps.get(1) {
-                    let start_char = line.find(name.as_str()).unwrap_or(0) as u32;
-                    symbols.push(DocumentSymbol {
-                        name: name.as_str().to_string(),
-                        detail: Some("const".to_string()),
-                        kind: SymbolKind::CONSTANT,
-                        tags: None,
-                        deprecated: None,
-                        range: Range {
-                            start: Position { line: line_num as u32, character: 0 },
-                            end: Position { line: line_num as u32, character: line.len() as u32 },
-                        },
-                        selection_range: Range {
-                            start: Position { line: line_num as u32, character: start_char },
-                            end: Position { line: line_num as u32, character: start_char + name.as_str().len() as u32 },
-                        },
-                        children: None,
-                    });
-                }
-            }
+            // Find the line content to determine range
+            let lines: Vec<&str> = content.lines().collect();
+            let line_len = lines.get(line as usize).map(|l| l.len() as u32).unwrap_or(0);
+
+            symbols.push(DocumentSymbol {
+                name: meta.name.to_string(),
+                detail: Some(format!("{:?}", meta.kind).to_lowercase()),
+                kind,
+                tags: None,
+                deprecated: None,
+                range: Range {
+                    start: Position { line, character: 0 },
+                    end: Position { line, character: line_len },
+                },
+                selection_range: Range {
+                    start: Position { line, character: col },
+                    end: Position { line, character: col + meta.name.len() as u32 },
+                },
+                children: None,
+            });
         }
     }
 

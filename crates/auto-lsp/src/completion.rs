@@ -1,4 +1,4 @@
-use tower_lsp::lsp_types::*;
+use tower_lsp_server::ls_types::*;
 
 /// Complete code at a given position
 pub fn complete(
@@ -354,58 +354,17 @@ fn member_completions(content: &str, var_name: &str) -> Vec<CompletionItem> {
 fn infer_variable_type_from_parser_with_scope(content: &str, var_name: &str) -> Option<String> {
     use auto_lang::scope::Meta;
 
-    // Find which function contains the variable (use any line, just need to find the function)
-    // We'll search through the AST to find which function contains this variable
-    if let Ok(ast) = auto_lang::parse_preserve_error(content) {
-        for stmt in ast.stmts.iter() {
-            if let auto_lang::ast::Stmt::Fn(fn_decl) = stmt {
-                // Check if this function body contains the variable
-                let mut found = false;
-                for body_stmt in fn_decl.body.stmts.iter() {
-                    if let auto_lang::ast::Stmt::Store(store) = body_stmt {
-                        if store.name.as_str() == var_name {
-                            found = true;
-                            break;
-                        }
-                    }
-                }
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
+    let infer_ctx = &parser.infer_ctx;
 
-                // Also check parameters
-                if !found {
-                    for param in &fn_decl.params {
-                        if param.name.as_str() == var_name {
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-
-                if found {
-                    // Found the function, now navigate to its scope
-                    let navigator = std::rc::Rc::new(std::cell::RefCell::new(auto_lang::Universe::new()));
-                    {
-                        let mut parser = auto_lang::Parser::new(content, navigator.clone());
-                        let _ = parser.parse();
-                    }
-
-                    // Navigate to the function scope
-                    navigator.borrow_mut().enter_fn(&fn_decl.name.to_string());
-
-                    // Try to lookup the variable from within the function scope
-                    let universe = navigator.borrow();
-                    if let Some(meta) = universe.lookup_meta(var_name) {
-                        match meta.as_ref() {
-                            Meta::Store(store) => {
-                                let type_name = store.ty.unique_name();
-                                return Some(type_name.to_string());
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    return None;
-                }
+    if let Some(meta) = infer_ctx.lookup_meta(var_name) {
+        match meta.as_ref() {
+            Meta::Store(store) => {
+                let type_name = store.ty.unique_name();
+                return Some(type_name.to_string());
             }
+            _ => {}
         }
     }
 
@@ -415,11 +374,11 @@ fn infer_variable_type_from_parser_with_scope(content: &str, var_name: &str) -> 
 /// Infer the type of a variable using the parser's type information
 /// This tries to use the parser's metadata, with a fallback to text-based heuristics
 #[allow(dead_code)]
-fn infer_variable_type_from_parser(universe: &auto_lang::Universe, var_name: &str) -> Option<String> {
+fn infer_variable_type_from_parser(infer_ctx: &auto_lang::infer::InferenceContext, var_name: &str) -> Option<String> {
     use auto_lang::scope::Meta;
 
     // Try to use the parser's type information first
-    if let Some(meta) = universe.lookup_meta(var_name) {
+    if let Some(meta) = infer_ctx.lookup_meta(var_name) {
         match meta.as_ref() {
             Meta::Store(store) => {
                 let type_name = store.ty.unique_name();
@@ -528,45 +487,53 @@ fn stdlib_function_completions() -> Vec<CompletionItem> {
     ]
 }
 
-/// Extract user-defined types from AST
+/// Extract user-defined types from the parser's TypeStore
 fn user_defined_types(content: &str) -> Vec<CompletionItem> {
     let mut items = Vec::new();
 
-    // Parse the code to get AST
-    if let Ok(ast) = auto_lang::parse_preserve_error(content) {
-        // Extract type definitions
-        for stmt in ast.stmts.iter() {
-            if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
-                items.push(completion_item(
-                    &type_decl.name.to_string(),
-                    &format!("Type: {}", type_decl.name),
-                    CompletionItemKind::STRUCT,
-                    &type_decl.name.to_string(),
-                ));
-            }
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
+
+    if let Ok(store) = parser.type_store.read() {
+        for name in store.list_types() {
+            items.push(completion_item(
+                &name,
+                &format!("Type: {}", name),
+                CompletionItemKind::STRUCT,
+                &name,
+            ));
+        }
+        for name in store.list_specs() {
+            items.push(completion_item(
+                &name,
+                &format!("Spec: {}", name),
+                CompletionItemKind::INTERFACE,
+                &name,
+            ));
         }
     }
 
     items
 }
 
-/// Extract user-defined functions from content
+/// Extract user-defined functions from the parser's TypeStore
 fn user_defined_functions(content: &str) -> Vec<CompletionItem> {
     let mut items = Vec::new();
 
-    // Simple regex-based extraction for now
-    // TODO: Parse AST properly to extract functions with signatures
-    use regex::Regex;
+    let mut parser = auto_lang::Parser::from(content);
+    let _ = parser.parse();
 
-    let fn_regex = Regex::new(r"fn\s+(\w+)\s*\(").unwrap();
-    for cap in fn_regex.captures_iter(content) {
-        if let Some(name) = cap.get(1) {
-            items.push(completion_item(
-                name.as_str(),
-                &format!("Function: {}", name.as_str()),
-                CompletionItemKind::FUNCTION,
-                &format!("{}(", name.as_str()),
-            ));
+    if let Ok(store) = parser.type_store.read() {
+        for name in store.list_functions() {
+            if let Some(fn_decl) = store.lookup_fn_decl_str(&name) {
+                let sig = format_function_signature_for_completion(fn_decl);
+                items.push(completion_item(
+                    &name,
+                    &sig,
+                    CompletionItemKind::FUNCTION,
+                    &format!("{}(", name),
+                ));
+            }
         }
     }
 

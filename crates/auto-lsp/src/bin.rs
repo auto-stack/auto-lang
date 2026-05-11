@@ -1,6 +1,6 @@
 use auto_lsp::Backend;
-use tower_lsp::LspService;
-use tower_lsp::Server;
+use tower_lsp_server::LspService;
+use tower_lsp_server::Server;
 
 #[tokio::main]
 async fn main() {
