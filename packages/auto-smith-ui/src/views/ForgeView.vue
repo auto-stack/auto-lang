@@ -22,20 +22,8 @@
             <pre v-if="msg.role === 'tool'">{{ msg.content }}</pre>
             <div v-else>{{ msg.content }}</div>
           </div>
-          <div v-if="msg.tool_calls" class="tool-calls">
-            <div
-              v-for="tc in msg.tool_calls"
-              :key="tc.id"
-              class="tool-card"
-              :class="tc.status"
-            >
-              <div class="tool-name">🔧 {{ tc.name }}</div>
-              <pre class="tool-args">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
-              <div v-if="tc.result" class="tool-result">{{ tc.result }}</div>
-            </div>
-          </div>
         </div>
-        <div v-if="isLoading" class="message assistant pending">
+        <div v-if="isLoading && !hasPendingAssistant" class="message assistant pending">
           <div class="message-header">
             <span class="role-badge assistant">assistant</span>
           </div>
@@ -44,15 +32,25 @@
             <span class="typing-dots">...</span>
           </div>
         </div>
+        <div v-if="error" class="message error">
+          <div class="message-content error">
+            {{ error }}
+          </div>
+        </div>
       </div>
       <div class="forge-input-bar">
         <textarea
           v-model="inputText"
           class="forge-input"
           placeholder="Describe what you want to build... (Shift+Enter to send)"
+          :disabled="isLoading"
           @keydown.shift.enter.prevent="sendMessage"
         />
-        <button class="send-btn" :disabled="!inputText.trim() || isLoading" @click="sendMessage">
+        <button
+          class="send-btn"
+          :disabled="!inputText.trim() || isLoading"
+          @click="sendMessage"
+        >
           <Send :size="16" />
         </button>
       </div>
@@ -61,23 +59,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { Send } from 'lucide-vue-next'
-import type { ForgeMessage } from '@/types/forge'
+import { useForge } from '@/composables/useForge'
 
-const messages = ref<ForgeMessage[]>([
-  {
-    id: 'welcome',
-    role: 'system',
-    content: 'Welcome to AutoSmith. I\'m your serial agent forge. Describe what you want to build, and I\'ll break it down into specs, generate code, and test it — one step at a time.',
-    timestamp: Date.now(),
-  },
-])
+const {
+  messages,
+  isLoading,
+  error,
+  sessionStatus,
+  createSession,
+  sendMessage: forgeSendMessage,
+} = useForge()
 
 const inputText = ref('')
-const isLoading = ref(false)
-const sessionStatus = ref<'idle' | 'thinking' | 'waiting'>('idle')
 const chatRef = ref<HTMLDivElement>()
+
+const hasPendingAssistant = computed(() => {
+  return messages.value.some((m) => m.role === 'assistant' && m.content === '')
+})
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -90,36 +90,18 @@ async function scrollToBottom() {
   }
 }
 
+watch(messages, scrollToBottom, { deep: true })
+
 async function sendMessage() {
   const text = inputText.value.trim()
-  if (!text || isLoading.value) return
-
-  const userMsg: ForgeMessage = {
-    id: `u-${Date.now()}`,
-    role: 'user',
-    content: text,
-    timestamp: Date.now(),
-  }
-  messages.value.push(userMsg)
+  if (!text) return
   inputText.value = ''
-  isLoading.value = true
-  sessionStatus.value = 'thinking'
-  await scrollToBottom()
-
-  // TODO: wire to backend SSE endpoint
-  setTimeout(() => {
-    const assistantMsg: ForgeMessage = {
-      id: `a-${Date.now()}`,
-      role: 'assistant',
-      content: 'I understand you want to build something. In the full implementation, I would analyze your request, update the Ledger with specs, and start generating code. For now, this is a scaffold.',
-      timestamp: Date.now(),
-    }
-    messages.value.push(assistantMsg)
-    isLoading.value = false
-    sessionStatus.value = 'idle'
-    scrollToBottom()
-  }, 1500)
+  await forgeSendMessage(text)
 }
+
+onMounted(async () => {
+  await createSession()
+})
 </script>
 
 <style scoped>
@@ -163,9 +145,14 @@ async function sendMessage() {
   color: #f9e2af;
 }
 
-.session-badge.waiting {
+.session-badge.waiting_approval {
   background: #cba6f722;
   color: #cba6f7;
+}
+
+.session-badge.error {
+  background: #f38ba822;
+  color: #f38ba8;
 }
 
 .forge-body {
@@ -198,6 +185,11 @@ async function sendMessage() {
 .message.assistant,
 .message.system {
   align-self: flex-start;
+}
+
+.message.error {
+  align-self: center;
+  max-width: 100%;
 }
 
 .message-header {
@@ -251,6 +243,12 @@ async function sendMessage() {
   word-break: break-word;
 }
 
+.message-content.error {
+  background: #f38ba822;
+  border-color: #f38ba844;
+  color: #f38ba8;
+}
+
 .message.user .message-content {
   background: #6366f122;
   border-color: #6366f133;
@@ -261,56 +259,6 @@ async function sendMessage() {
   border-color: #313244;
   font-style: italic;
   color: #a6adc8;
-}
-
-.tool-calls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.tool-card {
-  background: #181825;
-  border: 1px solid #313244;
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-}
-
-.tool-card.pending {
-  border-color: #f9e2af44;
-}
-
-.tool-card.success {
-  border-color: #27c93f44;
-}
-
-.tool-card.error {
-  border-color: #f38ba844;
-}
-
-.tool-name {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #f9e2af;
-  margin-bottom: 0.25rem;
-}
-
-.tool-args {
-  font-size: 0.75rem;
-  color: #6c7086;
-  background: #0f0f14;
-  padding: 0.35rem;
-  border-radius: 4px;
-  overflow-x: auto;
-}
-
-.tool-result {
-  font-size: 0.8rem;
-  color: #a6e3a1;
-  margin-top: 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid #313244;
 }
 
 .typing {
@@ -353,6 +301,10 @@ async function sendMessage() {
 
 .forge-input:focus {
   border-color: #fab387;
+}
+
+.forge-input:disabled {
+  opacity: 0.5;
 }
 
 .send-btn {
