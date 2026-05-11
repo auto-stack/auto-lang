@@ -5419,6 +5419,14 @@ impl Codegen {
                             ("json", "decode") => Some("auto.json.decode".to_string()),
                             ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
                             ("json", "has_key") => Some("auto.json.has_key".to_string()),
+                            ("json", "as_int") => Some("auto.json.as_int".to_string()),
+                            ("json", "as_number") => Some("auto.json.as_number".to_string()),
+                            ("json", "as_bool") => Some("auto.json.as_bool".to_string()),
+                            ("json", "is_null") => Some("auto.json.is_null".to_string()),
+                            ("json", "len") => Some("auto.json.len".to_string()),
+                            ("json", "type_of") => Some("auto.json.type_of".to_string()),
+                            ("json", "get_at") => Some("auto.json.get_at".to_string()),
+                            ("json", "keys") => Some("auto.json.keys".to_string()),
                             _ => None,
                         };
                         if routed.is_some() {

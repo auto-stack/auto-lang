@@ -215,6 +215,34 @@ pub mod json {
         val.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
     }
 
+    pub fn as_int(val: &Value) -> i64 {
+        val.as_i64().unwrap_or(0)
+    }
+
+    pub fn as_number(val: &Value) -> f64 {
+        val.as_f64().unwrap_or(0.0)
+    }
+
+    pub fn as_bool(val: &Value) -> bool {
+        val.as_bool().unwrap_or(false)
+    }
+
+    pub fn is_null(val: &Value) -> bool {
+        val.is_null()
+    }
+
+    pub fn len(val: &Value) -> usize {
+        match val {
+            Value::Array(a) => a.len(),
+            Value::Object(o) => o.len(),
+            _ => 0,
+        }
+    }
+
+    pub fn has_key(val: &Value, key: &str) -> bool {
+        val.get(key).is_some()
+    }
+
     pub fn to_string(val: &Value) -> String {
         serde_json::to_string(val).unwrap_or_default()
     }
