@@ -4,6 +4,7 @@ mod debugger;
 mod error;
 mod notebook;
 mod routes;
+mod smith;
 mod vm_runner;
 
 use notebook::ai::{ClaudeProvider, AIProviderState};
@@ -60,6 +61,15 @@ async fn main() {
         .join("dist");
     let lab_dist_dir = lab_dist_dir.canonicalize().unwrap_or(lab_dist_dir);
 
+    // AutoSmith UI static files
+    let smith_dist_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("packages")
+        .join("auto-smith-ui")
+        .join("dist");
+    let smith_dist_dir = smith_dist_dir.canonicalize().unwrap_or(smith_dist_dir);
+
     // Spawn frontend dev server if no production build
     let mut frontend_child: Option<tokio::process::Child> = None;
     if !dist_dir.exists() {
@@ -78,6 +88,7 @@ async fn main() {
     };
 
     let api_routes = Router::new()
+        .merge(smith::routes())
         .route("/api/run", post(routes::run::run_handler))
         .route("/api/run_abt", post(routes::run_abt::run_abt_handler))
         .route("/api/run_code", post(routes::run_code::run_code_handler))
@@ -107,6 +118,10 @@ async fn main() {
         .with_state(app_state);
 
     let mut app = api_routes;
+    if smith_dist_dir.exists() {
+        app = app.nest_service("/smith", tower_http::services::ServeDir::new(&smith_dist_dir));
+        tracing::info!("AutoSmith UI served at /smith ({})", smith_dist_dir.display());
+    }
     if lab_dist_dir.exists() {
         app = app.nest_service("/lab", tower_http::services::ServeDir::new(&lab_dist_dir));
         tracing::info!("AutoLab UI served at /lab ({})", lab_dist_dir.display());
