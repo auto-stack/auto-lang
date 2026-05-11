@@ -5725,7 +5725,7 @@ impl Codegen {
                         let is_static_method = match obj.as_ref() {
                             Expr::Ident(obj_name) => {
                                 let lower = obj_name.as_ref();
-                                matches!(lower, "env" | "fs")
+                                matches!(lower, "env" | "fs" | "json" | "http")
                                     || self.is_type_name_heuristic(obj_name)
                                     || self.is_type(obj_name)
                             }
@@ -5977,7 +5977,7 @@ impl Codegen {
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
                             let lower = obj_name.as_ref();
-                            matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex")
+                            matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http")
                                 || self.is_type_name_heuristic(obj_name)
                                 || self.is_type(obj_name)
                         }
