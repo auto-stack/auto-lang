@@ -4408,7 +4408,127 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "let (api_key, base_url, vars) = a2r_std::parse_settings_json(text);\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "Settings {{ api_key, base_url, vars }}\n")?;
+                write!(sink.body, "Settings {{ api_key: api_key.unwrap_or_default(), base_url: base_url.unwrap_or_default(), vars }}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "default_api_response" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "ApiResponse {{ id: String::new(), kind: String::new(), role: String::new(), content: vec![], model: String::new(), stop_reason: None, stop_sequence: None, usage: Usage {{ input_tokens: 0, output_tokens: 0 }} }}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "parse_usage" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let val: serde_json::Value = serde_json::from_str(usage_str).unwrap_or_default();\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "Usage {{ input_tokens: val[\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: val[\"output_tokens\"].as_u64().unwrap_or(0) as u32 }}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "parse_output_block" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let val: serde_json::Value = serde_json::from_str(block_str).unwrap_or_default();\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "match val[\"type\"].as_str().unwrap_or(\"\") {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"text\" => OutputContentBlock::Text(val[\"text\"].as_str().unwrap_or(\"\").to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"tool_use\" => OutputContentBlock::ToolUse(val[\"id\"].as_str().unwrap_or(\"\").to_string(), val[\"name\"].as_str().unwrap_or(\"\").to_string(), val[\"input\"].to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "_ => OutputContentBlock::Text(String::new()),\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "send_with_retry" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let resp = a2r_std::http::post(url, body, self.api_key.as_str()).await;\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "a2r_std::http::set_last_status(resp.0);\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let status = resp.0;\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let resp_body = resp.1;\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if status >= 200 && status < 300 {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "HttpResponse {{ status, body: resp_body, error: String::new(), kind: \"ok\".to_string() }}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}} else {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "HttpResponse {{ status, body: resp_body.clone(), error: resp_body, kind: \"error\".to_string() }}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "get_api_key" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if let Some(key) = std::env::var(\"ANTHROPIC_API_KEY\").ok() {{ return key; }}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if !self.api_key.is_empty() {{ return self.api_key.clone(); }}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "panic!(\"No API key found\")\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "get_base_url" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if let Some(url) = std::env::var(\"ANTHROPIC_BASE_URL\").ok() {{ return url; }}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if !self.base_url.is_empty() {{ return self.base_url.clone(); }}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"https://api.anthropic.com\".to_string()\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "json_escape" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let mut result = s.to_string();\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "result = result.replace(\"\\\\\", \"\\\\\\\\\");\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "result = result.replace(\"\\\"\", \"\\\\\\\"\");\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "result = result.replace(\"\\n\", \"\\\\n\");\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "result\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}}")?;
