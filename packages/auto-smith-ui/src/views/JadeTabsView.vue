@@ -1,19 +1,19 @@
 <template>
-  <div class="ledger-view">
-    <div class="ledger-header">
-      <h2>The Ledger</h2>
-      <div class="ledger-actions">
-        <button class="ledger-btn" @click="triggerDriftCheck">
+  <div class="jade-tabs-view">
+    <div class="jade-tabs-header">
+      <h2>The Jade Tabs · 玉简</h2>
+      <div class="jade-tabs-actions">
+        <button class="jade-tabs-btn" @click="triggerDriftCheck">
           <RefreshCw :size="14" />
           Drift Check
         </button>
-        <button class="ledger-btn" @click="aiEnrich">
+        <button class="jade-tabs-btn" @click="aiEnrich">
           <Sparkles :size="14" />
           AI Enrich
         </button>
       </div>
     </div>
-    <div class="ledger-body">
+    <div class="jade-tabs-body">
       <div class="section-nav">
         <div
           v-for="section in sections"
@@ -148,13 +148,13 @@ function saveSection() {
 </script>
 
 <style scoped>
-.ledger-view {
+.jade-tabs-view {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.ledger-header {
+.jade-tabs-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -164,18 +164,18 @@ function saveSection() {
   flex-shrink: 0;
 }
 
-.ledger-header h2 {
+.jade-tabs-header h2 {
   font-size: 1rem;
   font-weight: 600;
   color: #94e2d5;
 }
 
-.ledger-actions {
+.jade-tabs-actions {
   display: flex;
   gap: 0.5rem;
 }
 
-.ledger-btn {
+.jade-tabs-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -189,11 +189,11 @@ function saveSection() {
   transition: all 0.15s;
 }
 
-.ledger-btn:hover {
+.jade-tabs-btn:hover {
   background: #45475a;
 }
 
-.ledger-body {
+.jade-tabs-body {
   display: flex;
   flex: 1;
   min-height: 0;

@@ -1,39 +1,39 @@
-# AutoSmith — Spec-Driven Serial Agent UI
+# AutoForge — Spec-Driven Serial Agent UI
 
 ## Status: Design & Exploration
 
 ---
 
-## 1. Naming: From AutoCoder to AutoSmith
+## 1. Naming: From AutoForge to AutoForge
 
 After reviewing the competitive landscape and the existing Auto ecosystem, here are the top candidates:
 
 | Name | Rationale | Fit |
 |------|-----------|-----|
-| **AutoSmith** ⭐ | A smith works *serially* — heating, hammering, quenching, polishing — each step deliberate and dependent on the last. Evokes craftsmanship, precision, and finishing. No competing product uses this. | **Strong** |
+| **AutoForge** ⭐ | A smith works *serially* — heating, hammering, quenching, polishing — each step deliberate and dependent on the last. Evokes craftsmanship, precision, and finishing. No competing product uses this. | **Strong** |
 | **AutoForge** | Where things are forged. Good but more generic; Forge is common in dev tools. | Good |
 | **AutoRelay** | Emphasizes the serial handoff between agents. But sounds too sports-oriented. | Moderate |
 | **AutoMason** | Building brick by brick — very serial! But "mason" is heavily associated with package managers. | Moderate |
 | **AutoArchitect** | Focuses on planning/specs, but doesn't evoke execution/finishing. | Weak |
-| **AutoCoder** | Generic; sounds like Copilot/Codex clone. Doesn't differentiate. | Weak |
+| **AutoForge** | Generic; sounds like Copilot/Codex clone. Doesn't differentiate. | Weak |
 
-**Recommendation: AutoSmith** (or **AutoSmith Studio** for the UI, **AutoSmith Engine** for the backend).
+**Recommendation: AutoForge** (or **AutoForge Studio** for the UI, **AutoForge Engine** for the backend).
 
 It communicates:
 - **Serial craftsmanship**: A smith doesn't parallel-forge. They work one piece at a time, passing through stages.
 - **Knowledge/skill-driven**: Smithing requires deep knowledge of materials, techniques, and patterns.
 - **Gets things done**: A smith produces finished artifacts, not vibes.
-- **Fits the Auto ecosystem**: AutoLang → AutoDown → AutoLab → **AutoSmith**.
+- **Fits the Auto ecosystem**: AutoLang → AutoDown → AutoLab → **AutoForge**.
 
 ---
 
-## 2. Vision: What Makes AutoSmith Different
+## 2. Vision: What Makes AutoForge Different
 
 After analyzing 7+ major AI coding agents (Cursor, Claude Code, Copilot, Aider, Devin, OpenClaw, Intent, Kimi), every single one falls into one of three UI paradigms: IDE-embedded, CLI-native, or chat/cloud. **None of them treat project knowledge as a first-class, living entity.**
 
 ### The Gap in the Market
 
-| Capability | Cursor | Claude Code | Copilot | Aider | Devin | Intent | **AutoSmith** |
+| Capability | Cursor | Claude Code | Copilot | Aider | Devin | Intent | **AutoForge** |
 |------------|--------|-------------|---------|-------|-------|--------|---------------|
 | Chat/loop | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDE integration | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ (web-first) |
@@ -48,9 +48,9 @@ After analyzing 7+ major AI coding agents (Cursor, Claude Code, Copilot, Aider, 
 
 > **"A blacksmith doesn't assign 10 apprentices to hammer the same sword. They heat it, shape it, temper it, and grind it — each stage handled by the right craftsperson with the right tool, in the right order."**
 
-**AutoSmith's secret weapon is serial agent cooperation over time.**
+**AutoForge's secret weapon is serial agent cooperation over time.**
 
-Instead of mass-parallel multi-agent systems (which burn 20–50× more tokens due to multiplicative context overhead), AutoSmith uses a **pipeline of specialized roles that hand off work sequentially**. Each agent sees only the context it needs, not the entire conversation history.
+Instead of mass-parallel multi-agent systems (which burn 20–50× more tokens due to multiplicative context overhead), AutoForge uses a **pipeline of specialized roles that hand off work sequentially**. Each agent sees only the context it needs, not the entire conversation history.
 
 This isn't just cheaper — it's **more reliable**. When an agent "completes" a task, the next agent in the chain validates it before proceeding. Failures are caught early, not propagated across 10 parallel threads.
 
@@ -58,11 +58,11 @@ This isn't just cheaper — it's **more reliable**. When an agent "completes" a 
 
 ## 3. Three-View Architecture
 
-AutoSmith UI presents three primary views, toggled via a top navigation rail. Each view serves a distinct purpose in the development lifecycle.
+AutoForge UI presents three primary views, toggled via a top navigation rail. Each view serves a distinct purpose in the development lifecycle.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  AutoSmith Studio                    [Forge] [Ledger] [Relay] │
+│  AutoForge Studio                    [Forge] [Ledger] [Relay] │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -127,7 +127,7 @@ AutoSmith UI presents three primary views, toggled via a top navigation rail. Ea
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### View 1: The Forge — Chat & AI Loop
+### View 1: The Furnace · 熔炉 — Chat & AI Loop
 
 **Purpose**: The primary interaction surface. Like Claude Code + Cursor Composer, but web-native.
 
@@ -143,14 +143,14 @@ AutoSmith UI presents three primary views, toggled via a top navigation rail. Ea
 
 **Key difference from existing tools**: The chat is *aware of the Ledger*. When an agent proposes a spec change, it's rendered as a "Spec Delta Card" that the user can approve, modify, or reject — before any code is written. This shifts the human-in-the-loop from *code review* to *spec review*, dramatically reducing rework.
 
-### View 2: The Ledger — Living Knowledge
+### View 2: The Jade Tabs · 玉简 — Living Knowledge
 
 **Purpose**: The single source of truth for project knowledge. AutoDown-native, bidirectional, versioned.
 
-**Structure**: An AutoDown document (`.ad`) with well-known sections, stored in `.autosmith/` directory:
+**Structure**: An AutoDown document (`.ad`) with well-known sections, stored in `.autoforge/` directory:
 
 ```autodown
-# AutoSmith Ledger: auto-playground
+# AutoForge Ledger: auto-playground
 
 /// section:goals id:g1
 ## Goals
@@ -216,9 +216,9 @@ $Review(id: "REV-1", status: "pending", reviewer: "human") {
 - **Drift detection**: The system periodically checks if code has diverged from specs. A spec marked `[LIVE]` is auto-updated when code changes. A spec marked `[DRIFT]` means code has changed but the spec hasn't been updated.
 - **Bidirectional links**: Clicking a spec reference in the Forge jumps to the Ledger. Code comments referencing spec IDs (e.g., `// spec:R1.1`) are hyperlinked.
 - **AI enrichment**: "AI, analyze the current codebase and update the Analysis section." The AI reads code, updates the Ledger, and presents a diff for human approval.
-- **AutoDown rendering**: Uses the existing Typst/HTML transpilers. The Ledger can be exported as a PDF report or published as HTML documentation.
+- **AutoDown rendering**: Uses the existing Typst/HTML transpilers. The Jade Tabs · 玉简 can be exported as a PDF report or published as HTML documentation.
 
-### View 3: The Relay — Agent Monitoring & Administration
+### View 3: The Array · 法阵 — Agent Monitoring & Administration
 
 **Purpose**: Observe, control, and audit long-running serial agent pipelines.
 
@@ -233,7 +233,7 @@ $Review(id: "REV-1", status: "pending", reviewer: "human") {
 - **Cost Analytics**: Per-run and per-role token usage. Compares actual cost vs. "what parallel execution would have cost" to show savings.
 - **Agent Registry**: Administer available agent roles (Planner, Architect, Coder, Tester, Reviewer, Documenter, etc.). Configure which model each role uses, token budgets, and timeout policies.
 
-**Key insight**: The Relay treats agent runs like CI/CD pipelines. You wouldn't deploy code without seeing the pipeline status. You shouldn't let an AI agent run for hours without visibility into what it's doing.
+**Key insight**: The Array · 法阵 treats agent runs like CI/CD pipelines. You wouldn't deploy code without seeing the pipeline status. You shouldn't let an AI agent run for hours without visibility into what it's doing.
 
 ---
 
@@ -243,7 +243,7 @@ $Review(id: "REV-1", status: "pending", reviewer: "human") {
 
 Research shows peer-to-peer multi-agent systems have **multiplicative token overhead**: N agents with K messages cost O(N × K) tokens. For 6 agents with 8K context, that's 48K tokens loaded before any output. By round 3, coordination alone exceeds a single agent's needs.
 
-AutoSmith's serial model:
+AutoForge's serial model:
 
 ```
 ┌─────────┐    ┌──────────┐    ┌────────┐    ┌────────┐    ┌─────────┐
@@ -304,10 +304,10 @@ Planner has decomposed "Add JWT auth" into 5 sub-tasks.
 
 ### Configurable Roles
 
-Users can define custom roles in `.autosmith/roles/`:
+Users can define custom roles in `.autoforge/roles/`:
 
 ```yaml
-# .autosmith/roles/security-reviewer.yaml
+# .autoforge/roles/security-reviewer.yaml
 name: Security Reviewer
 model: claude-3-5-sonnet
 max_tokens: 8000
@@ -335,7 +335,7 @@ Each checkpoint serializes:
 - Agent context window (summarized, not raw)
 
 On crash or timeout:
-1. AutoSmith detects the failure
+1. AutoForge detects the failure
 2. Offers to resume from last checkpoint or rollback
 3. On resume: reloads state, rehydrates the next agent with summarized context
 4. On rollback: reverts files, restores Ledger, resets VM
@@ -348,7 +348,7 @@ On crash or timeout:
 
 AutoDown is uniquely positioned for this because:
 
-1. **It's already in the ecosystem**: AutoLab uses `.ad` for notebooks. AutoSmith uses `.ad` for specs. Same toolchain, same parsers.
+1. **It's already in the ecosystem**: AutoLab uses `.ad` for notebooks. AutoForge uses `.ad` for specs. Same toolchain, same parsers.
 2. **It's plain text**: LLMs read and write it natively. No JSON schema to learn.
 3. **It's structured**: The `$Component()` syntax provides typed, parseable metadata (status, priority, assignee) while keeping human readability.
 4. **It's multi-target**: The same Ledger can become a PDF report, HTML documentation, or a notebook.
@@ -404,13 +404,13 @@ $Requirement(id: "R2.3", status: "drift", last_verified: "2026-05-10") {
 
 ## 6. Backend Architecture
 
-### New Crate: `auto-smith`
+### New Crate: `auto-forge`
 
 ```
 crates/
 ├── auto-playground/          # Existing: notebook + AI provider + VM
 ├── auto-lang/                # Existing: compiler + AutoDown
-└── auto-smith/               # NEW: agent orchestration engine
+└── auto-forge/               # NEW: agent orchestration engine
     └── src/
         ├── main.rs           # Axum server (or reuse auto-playground)
         ├── forge/            # Chat loop + tool execution
@@ -437,9 +437,9 @@ crates/
 
 ### Integration with Existing Infrastructure
 
-| Existing Component | How AutoSmith Reuses It |
+| Existing Component | How AutoForge Reuses It |
 |-------------------|------------------------|
-| `auto-playground` Axum server | Mount `auto-smith` routes under `/smith/` |
+| `auto-playground` Axum server | Mount `auto-forge` routes under `/smith/` |
 | `notebook/ai.rs` ClaudeProvider | Extend with role-specific system prompts |
 | `notebook/mod.rs` NotebookActor | Fork/adapt for agent pipeline sessions |
 | `agent_debug/` | Foundation for durable VM checkpointing |
@@ -478,10 +478,10 @@ PUT    /api/smith/relay/roles/{name}      # Update role config
 
 ## 7. Frontend Architecture
 
-### Package: `packages/auto-smith-ui/`
+### Package: `packages/auto-forge-ui/`
 
 ```
-packages/auto-smith-ui/
+packages/auto-forge-ui/
 ├── src/
 │   ├── App.vue                    # Top-level shell with view router
 │   ├── views/
@@ -533,12 +533,12 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 ## 8. Development Phases
 
 ### Phase 0: Foundation (2 weeks)
-- Scaffold `crates/auto-smith/` and `packages/auto-smith-ui/`
+- Scaffold `crates/auto-forge/` and `packages/auto-forge-ui/`
 - Set up shared types, API contracts
 - Integrate with `auto-playground` server (mount routes)
 - Basic three-view navigation shell
 
-### Phase 1: The Forge — Chat & Loop (4 weeks)
+### Phase 1: The Furnace · 熔炉 — Chat & Loop (4 weeks)
 - Implement Forge session + streaming SSE
 - Port AutoLab's AIChatBar + streaming to Forge
 - Build tool system: read_file, write_file, edit_file, shell, search
@@ -546,7 +546,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 - Live diff panel for file changes
 - Approve/reject gates for spec changes
 
-### Phase 2: The Ledger — Knowledge (3 weeks)
+### Phase 2: The Jade Tabs · 玉简 — Knowledge (3 weeks)
 - AutoDown Ledger parser (frontend + backend)
 - Section tree navigator with status badges
 - Drift detection engine
@@ -554,7 +554,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 - AutoDown editor with component autocomplete (`$Goal()`, `$Requirement()`)
 - Export to Typst/HTML
 
-### Phase 3: The Relay — Serial Agents (4 weeks)
+### Phase 3: The Array · 法阵 — Serial Agents (4 weeks)
 - Pipeline definition DSL (YAML/AutoDown)
 - Serial execution engine with checkpointing
 - Agent handoff protocol
@@ -564,7 +564,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 - Pause/resume/rollback
 
 ### Phase 4: Integration & Polish (3 weeks)
-- AutoLab ↔ AutoSmith bridge (open AutoSmith from notebook, vice versa)
+- AutoLab ↔ AutoForge bridge (open AutoForge from notebook, vice versa)
 - Durable execution: crash recovery, VM state restore
 - Cost-aware model routing (cheap model for simple tasks)
 - Multi-project support
@@ -576,7 +576,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 
 ## 9. Differentiation Summary
 
-| Dimension | AutoSmith | Best Alternative |
+| Dimension | AutoForge | Best Alternative |
 |-----------|-----------|------------------|
 | **Agent model** | Serial pipeline with handoffs | Cursor's parallel agents |
 | **Specs** | Living, bidirectional, drift-detecting | Intent's static living specs |
@@ -593,13 +593,13 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 
 ### Decisions (Finalized)
 
-1. **Deployment**: ✅ Separate app (`auto-smith-ui`), sharing components with AutoLab
+1. **Deployment**: ✅ Separate app (`auto-forge-ui`), sharing components with AutoLab
 2. **VM sessions**: ✅ Forge reuses AutoLab's notebook VM sessions — seamless test-and-iterate
 3. **MVP scope**: ✅ Forge + Ledger — chat loop + spec management as first deliverable
 
 ### Open Question
 
-**How does AutoSmith handle non-AutoLang projects?**
+**How does AutoForge handle non-AutoLang projects?**
    - The tool system is language-agnostic (file I/O, shell)
    - But the VM integration and AutoDown specs are AutoLang-native
    - *Recommendation*: Support any language for file operations, but AutoLang projects get full Ledger + VM integration

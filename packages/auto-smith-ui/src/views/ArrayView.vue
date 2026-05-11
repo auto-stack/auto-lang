@@ -1,14 +1,14 @@
 <template>
-  <div class="relay-view">
-    <div class="relay-header">
-      <h2>The Relay</h2>
-      <div class="relay-stats">
+  <div class="array-view">
+    <div class="array-header">
+      <h2>The Array · 法阵</h2>
+      <div class="array-stats">
         <span class="stat">Active: 1</span>
         <span class="stat">Completed: 47</span>
         <span class="stat">Failed: 2</span>
       </div>
     </div>
-    <div class="relay-body">
+    <div class="array-body">
       <div class="pipeline-flow">
         <div
           v-for="(role, idx) in pipeline"
@@ -64,13 +64,13 @@ const pipeline = [
 </script>
 
 <style scoped>
-.relay-view {
+.array-view {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.relay-header {
+.array-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -80,13 +80,13 @@ const pipeline = [
   flex-shrink: 0;
 }
 
-.relay-header h2 {
+.array-header h2 {
   font-size: 1rem;
   font-weight: 600;
   color: #89dceb;
 }
 
-.relay-stats {
+.array-stats {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
@@ -96,7 +96,7 @@ const pipeline = [
   color: #a6adc8;
 }
 
-.relay-body {
+.array-body {
   flex: 1;
   overflow-y: auto;
   padding: 1rem;

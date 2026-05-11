@@ -1,12 +1,12 @@
 <template>
-  <div class="forge-view">
-    <div class="forge-header">
-      <h2>The Forge</h2>
+  <div class="furnace-view">
+    <div class="furnace-header">
+      <h2>The Furnace · 熔炉</h2>
       <span class="session-badge" :class="sessionStatus">
         {{ sessionStatus }}
       </span>
     </div>
-    <div class="forge-body">
+    <div class="furnace-body">
       <div class="chat-canvas" ref="chatRef">
         <div
           v-for="msg in messages"
@@ -63,10 +63,10 @@
           </div>
         </div>
       </div>
-      <div class="forge-input-bar">
+      <div class="furnace-input-bar">
         <textarea
           v-model="inputText"
-          class="forge-input"
+          class="furnace-input"
           placeholder="Describe what you want to build... (Shift+Enter to send)"
           :disabled="isLoading"
           @keydown.shift.enter.prevent="sendMessage"
@@ -130,13 +130,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.forge-view {
+.furnace-view {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.forge-header {
+.furnace-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -146,7 +146,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.forge-header h2 {
+.furnace-header h2 {
   font-size: 1rem;
   font-weight: 600;
   color: #fab387;
@@ -185,7 +185,7 @@ onMounted(async () => {
   color: #f38ba8;
 }
 
-.forge-body {
+.furnace-body {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -426,7 +426,7 @@ onMounted(async () => {
   40% { opacity: 1; }
 }
 
-.forge-input-bar {
+.furnace-input-bar {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
@@ -436,7 +436,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.forge-input {
+.furnace-input {
   flex: 1;
   background: #1e1e2e;
   border: 1px solid #313244;
@@ -451,11 +451,11 @@ onMounted(async () => {
   font-family: inherit;
 }
 
-.forge-input:focus {
+.furnace-input:focus {
   border-color: #fab387;
 }
 
-.forge-input:disabled {
+.furnace-input:disabled {
   opacity: 0.5;
 }
 

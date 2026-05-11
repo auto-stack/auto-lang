@@ -1,9 +1,9 @@
 <template>
-  <div class="autosmith-app">
+  <div class="autoforge-app">
     <nav class="view-rail">
       <div class="rail-brand">
-        <Hammer :size="20" />
-        <span class="brand-text">AutoSmith</span>
+        <Flame :size="20" />
+        <span class="brand-text">AutoForge</span>
       </div>
       <div class="rail-tabs">
         <button
@@ -18,31 +18,31 @@
         </button>
       </div>
       <div class="rail-footer">
-        <span class="version">v0.1.0</span>
+        <span class="version">炼器房 v0.1.0</span>
       </div>
     </nav>
     <main class="view-main">
-      <ForgeView v-if="currentView === 'forge'" />
-      <LedgerView v-else-if="currentView === 'ledger'" />
-      <RelayView v-else-if="currentView === 'relay'" />
+      <FurnaceView v-if="currentView === 'furnace'" />
+      <JadeTabsView v-else-if="currentView === 'jade-tabs'" />
+      <ArrayView v-else-if="currentView === 'array'" />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Hammer, MessageSquare, BookOpen, GitBranch } from 'lucide-vue-next'
-import ForgeView from './views/ForgeView.vue'
-import LedgerView from './views/LedgerView.vue'
-import RelayView from './views/RelayView.vue'
+import { Flame, MessageSquare, Scroll, Orbit } from 'lucide-vue-next'
+import FurnaceView from './views/FurnaceView.vue'
+import JadeTabsView from './views/JadeTabsView.vue'
+import ArrayView from './views/ArrayView.vue'
 
-const tabs: { id: 'forge' | 'ledger' | 'relay'; label: string; icon: unknown }[] = [
-  { id: 'forge', label: 'Forge', icon: MessageSquare },
-  { id: 'ledger', label: 'Ledger', icon: BookOpen },
-  { id: 'relay', label: 'Relay', icon: GitBranch },
+const tabs: { id: 'furnace' | 'jade-tabs' | 'array'; label: string; icon: unknown }[] = [
+  { id: 'furnace', label: '熔炉', icon: MessageSquare },
+  { id: 'jade-tabs', label: '玉简', icon: Scroll },
+  { id: 'array', label: '法阵', icon: Orbit },
 ]
 
-const currentView = ref<'forge' | 'ledger' | 'relay'>('forge')
+const currentView = ref<'furnace' | 'jade-tabs' | 'array'>('furnace')
 </script>
 
 <style>
@@ -59,7 +59,7 @@ html, body, #app {
   color: #cdd6f4;
 }
 
-.autosmith-app {
+.autoforge-app {
   display: flex;
   height: 100vh;
   overflow: hidden;
@@ -81,7 +81,7 @@ html, body, #app {
   flex-direction: column;
   align-items: center;
   gap: 0.35rem;
-  color: #fab387;
+  color: #f38ba8;
   margin-bottom: 1.5rem;
 }
 
@@ -120,8 +120,8 @@ html, body, #app {
 }
 
 .rail-tab.active {
-  background: #fab38722;
-  color: #fab387;
+  background: #f38ba822;
+  color: #f38ba8;
 }
 
 .tab-label {
