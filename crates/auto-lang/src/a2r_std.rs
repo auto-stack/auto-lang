@@ -184,7 +184,7 @@ pub fn nil<T>() -> Option<T> {
 
 /// AutoLang's Json module - thin wrappers around serde_json for transpiled code
 #[allow(non_snake_case)]
-pub mod Json {
+pub mod json {
     use serde_json::Value;
 
     pub fn is_valid(s: &str) -> bool {
@@ -270,6 +270,10 @@ pub mod fs {
         std::fs::read_to_string(path).ok()
     }
 
+    pub fn read_text(path: &str) -> Option<String> {
+        std::fs::read_to_string(path).ok()
+    }
+
     pub fn write(path: &str, content: &str) -> bool {
         std::fs::write(path, content).is_ok()
     }
@@ -314,35 +318,44 @@ pub fn sleep_ms(ms: u64) {
     std::thread::sleep(std::time::Duration::from_millis(ms));
 }
 
-/// Async HTTP POST with Anthropic API headers.
-/// Returns (status, body, error, kind) for constructing a local HttpResponse.
-/// Uses spawn_blocking to run reqwest::blocking on the tokio runtime.
-pub async fn http_post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
-    let url = url.to_string();
-    let body = body.to_string();
-    let api_key = api_key.to_string();
-    tokio::task::spawn_blocking(move || {
-        let client = reqwest::blocking::Client::new();
-        let result = client
-            .post(&url)
-            .header("content-type", "application/json")
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .body(body)
-            .send();
-        match result {
-            Ok(resp) => {
-                let status = resp.status().as_u16() as i32;
-                let resp_body = resp.text().unwrap_or_default();
-                if status >= 200 && status < 300 {
-                    (status, resp_body, String::new(), "ok".to_string())
-                } else {
-                    (status, resp_body, format!("HTTP {}", status), "error".to_string())
+/// AutoLang's http module — async HTTP helpers
+#[allow(non_snake_case)]
+pub mod http {
+    /// Async HTTP POST with Anthropic API headers.
+    /// Returns (status, body, error, kind) for constructing a local HttpResponse.
+    /// Uses spawn_blocking to run reqwest::blocking on the tokio runtime.
+    pub async fn post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
+        let url = url.to_string();
+        let body = body.to_string();
+        let api_key = api_key.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = reqwest::blocking::Client::new();
+            let result = client
+                .post(&url)
+                .header("content-type", "application/json")
+                .header("x-api-key", &api_key)
+                .header("anthropic-version", "2023-06-01")
+                .body(body)
+                .send();
+            match result {
+                Ok(resp) => {
+                    let status = resp.status().as_u16() as i32;
+                    let resp_body = resp.text().unwrap_or_default();
+                    if status >= 200 && status < 300 {
+                        (status, resp_body, String::new(), "ok".to_string())
+                    } else {
+                        (status, resp_body, format!("HTTP {}", status), "error".to_string())
+                    }
                 }
+                Err(e) => (0, String::new(), e.to_string(), "error".to_string())
             }
-            Err(e) => (0, String::new(), e.to_string(), "error".to_string())
-        }
-    }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
+        }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
+    }
+}
+
+/// Backward-compat: delegates to http::post
+pub async fn http_post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
+    http::post(url, body, api_key).await
 }
 
 #[cfg(test)]

@@ -2191,6 +2191,105 @@ impl RustTrans {
         // Plan 223: Method call mappings for env.x / fs.x
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
             if matches!(op, Op::Dot) {
+                if let (Expr::Bina(inner_lhs, Op::Dot, inner_rhs), Expr::Ident(method)) = (lhs.as_ref(), rhs.as_ref()) {
+                    // Handle auto.module.method(args) → a2r_std::module::method(args)
+                    if let (Expr::Ident(auto_name), Expr::Ident(module)) = (inner_lhs.as_ref(), inner_rhs.as_ref()) {
+                        if auto_name == "auto" {
+                            match (module.as_str(), method.as_str()) {
+                                ("env", "get") => {
+                                    write!(out, "a2r_std::env::get(")?;
+                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("env", "set") => {
+                                    write!(out, "a2r_std::env::set(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        self.arg(arg, out)?;
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("fs", "read_text") => {
+                                    write!(out, "a2r_std::fs::read_text(")?;
+                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("fs", "read_to_string") => {
+                                    write!(out, "a2r_std::fs::read_to_string(")?;
+                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("fs", "write") => {
+                                    write!(out, "a2r_std::fs::write(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        if i == 1 { write!(out, "&")?; }
+                                        self.arg(arg, out)?;
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("fs", "exists") => {
+                                    write!(out, "a2r_std::fs::exists(")?;
+                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("http", "post") => {
+                                    // auto.http.post(url, body, key) → wraps a2r_std::http::post into HttpResponse
+                                    write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        if let Arg::Pos(expr) = arg {
+                                            self.expr(expr, out)?;
+                                            if let Expr::Ident(name) = expr {
+                                                if self.local_var_types.get(name)
+                                                    .map(|ty| !matches!(ty, Type::StrSlice))
+                                                    .unwrap_or(true)
+                                                {
+                                                    write!(out, ".as_str()")?;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                                    return Ok(());
+                                }
+                                ("json", "parse") => {
+                                    write!(out, "a2r_std::json::parse(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("json", "get") => {
+                                    write!(out, "a2r_std::json::get(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ", ")?;
+                                    if call.args.args.len() > 1 {
+                                        if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                    }
+                                    write!(out, ").cloned()")?;
+                                    return Ok(());
+                                }
+                                ("json", "get_str") => {
+                                    write!(out, "a2r_std::json::get_str(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ", ")?;
+                                    if call.args.args.len() > 1 {
+                                        if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
                 if let (Expr::Ident(obj), Expr::Ident(method)) = (lhs.as_ref(), rhs.as_ref()) {
                     match obj.as_str() {
                         "env" => match method.as_str() {
@@ -2218,6 +2317,12 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "read_text" => {
+                                write!(out, "a2r_std::fs::read_text(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             "write" => {
                                 write!(out, "a2r_std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
@@ -2238,8 +2343,8 @@ impl RustTrans {
                         },
                         "Json" => match method.as_str() {
                             "parse" => {
-                                // Json.parse(text) -> a2r_std::Json::parse(text)
-                                write!(out, "a2r_std::Json::parse(")?;
+                                // Json.parse(text) -> a2r_std::json::parse(text)
+                                write!(out, "a2r_std::json::parse(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2247,8 +2352,8 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "get" => {
-                                // Json.get(val, key) -> a2r_std::Json::get(&val, key).cloned()
-                                write!(out, "a2r_std::Json::get(&")?;
+                                // Json.get(val, key) -> a2r_std::json::get(&val, key).cloned()
+                                write!(out, "a2r_std::json::get(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2262,8 +2367,8 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "get_str" => {
-                                // Json.get_str(val, key) -> a2r_std::Json::get_str(&val, key)
-                                write!(out, "a2r_std::Json::get_str(&")?;
+                                // Json.get_str(val, key) -> a2r_std::json::get_str(&val, key)
+                                write!(out, "a2r_std::json::get_str(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2277,8 +2382,8 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "as_string" => {
-                                // Json.as_string(val) -> a2r_std::Json::as_string(&val)
-                                write!(out, "a2r_std::Json::as_string(&")?;
+                                // Json.as_string(val) -> a2r_std::json::as_string(&val)
+                                write!(out, "a2r_std::json::as_string(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2286,8 +2391,8 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "get_at" => {
-                                // Json.get_at(val, idx) -> a2r_std::Json::get_at(&val, idx as usize)
-                                write!(out, "a2r_std::Json::get_at(&")?;
+                                // Json.get_at(val, idx) -> a2r_std::json::get_at(&val, idx as usize)
+                                write!(out, "a2r_std::json::get_at(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2302,8 +2407,8 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "get_u64" => {
-                                // Json.get_u64(val, key) -> a2r_std::Json::get_u64(&val, key)
-                                write!(out, "a2r_std::Json::get_u64(&")?;
+                                // Json.get_u64(val, key) -> a2r_std::json::get_u64(&val, key)
+                                write!(out, "a2r_std::json::get_u64(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2821,9 +2926,10 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
-                    ("fs", "read_to_string") => {
-                        // fs.read_to_string(path) -> a2r_std::fs::read_to_string(&path)
-                        write!(out, "a2r_std::fs::read_to_string(")?;
+                    ("fs", "read_to_string") | ("fs", "read_text") => {
+                        // fs.read_to_string(path) / fs.read_text(path) -> a2r_std::fs::read_to_string(&path) / a2r_std::fs::read_text(&path)
+                        let fn_name = method_name;
+                        write!(out, "a2r_std::fs::{}(", fn_name)?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             // Auto-borrow: if arg is a String variable, add .as_str()
                             let needs_as_str = if let Expr::Ident(name) = a {
@@ -4712,7 +4818,7 @@ impl RustTrans {
                     let rust_path = if full_path.starts_with("auto::") {
                         let rest = &full_path[6..];
                         match rest {
-                            "math" | "str" | "time" | "env" | "json" | "file"
+                            "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net" | "url"
                             | "process" | "sys" | "sse" | "may" | "regex" => {
