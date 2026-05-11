@@ -6149,7 +6149,16 @@ impl Codegen {
                 let is_native = func_name.as_ref()
                     .map(|name| BIGVM_NATIVES.lock().unwrap().resolve_qualified(name).is_some())
                     .unwrap_or(false);
-                if is_spec_dispatch || (func_name.is_some() && is_instance_method_call && resolved_func.is_none() && !is_native) {
+                // Check if receiver is a known user-defined type (not spec, not unknown)
+                // If so, use direct CALL with relocation — the method export may just not be compiled yet
+                let is_user_type_method = if let Expr::Dot(obj, _) = call.name.as_ref() {
+                    if let Expr::Ident(receiver_name) = obj.as_ref() {
+                        self.var_types.get(receiver_name.as_ref())
+                            .map(|ty| matches!(ty, Type::User(_)))
+                            .unwrap_or(false)
+                    } else { false }
+                } else { false };
+                if is_spec_dispatch || (func_name.is_some() && is_instance_method_call && resolved_func.is_none() && !is_native && !is_user_type_method) {
                     // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
                     self.emit(OpCode::CALL_SPEC);
                     let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
