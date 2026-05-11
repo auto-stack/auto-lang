@@ -53,6 +53,45 @@ fn parse_form(body str) Map[str, str]
 fn url_parse(url str) Url
 
 // ═══════════════════════════════════════════════════════════
+// Url Instance Methods — VM implementation for ext Url
+// ═══════════════════════════════════════════════════════════
+
+ext Url {
+    #[vm]
+    fn scheme() str
+
+    #[vm]
+    fn host() str
+
+    #[vm]
+    fn port() int
+
+    #[vm]
+    fn path() str
+
+    #[vm]
+    fn query() str
+
+    #[vm]
+    fn fragment() str
+
+    #[vm]
+    fn username() str
+
+    #[vm]
+    fn password() str
+
+    #[vm]
+    fn query_params() Map[str, str]
+
+    #[vm]
+    fn query_param(key str) str
+
+    #[vm]
+    fn to_string() str
+}
+
+// ═══════════════════════════════════════════════════════════
 // URL Building
 // ═══════════════════════════════════════════════════════════
 

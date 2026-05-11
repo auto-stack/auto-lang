@@ -64,52 +64,41 @@ pub fn parse(url str) Url?;
 ext Url {
     /// Get the scheme (protocol)
     /// Example: "https"
-    #[vm]
     fn scheme() str
 
     /// Get the host (domain)
     /// Example: "example.com"
-    #[vm]
     fn host() str
 
     /// Get the port number
     /// Returns 0 if not specified
-    #[vm]
     fn port() int
 
     /// Get the path
     /// Example: "/path/to/resource"
-    #[vm]
     fn path() str
 
     /// Get the query string (without ?)
     /// Example: "q=1&page=2"
-    #[vm]
     fn query() str
 
     /// Get the fragment (hash, without #)
     /// Example: "section-1"
-    #[vm]
     fn fragment() str
 
     /// Get the username (for URLs with credentials)
-    #[vm]
     fn username() str
 
     /// Get the password (for URLs with credentials)
-    #[vm]
     fn password() str
 
     /// Get query parameters as a map
-    #[vm]
     fn query_params() Map[str, str]
 
     /// Get a specific query parameter
-    #[vm]
     fn query_param(key str) str
 
     /// Reconstruct the full URL string
-    #[vm]
     fn to_string() str
 }
 
