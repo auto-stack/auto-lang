@@ -127,7 +127,9 @@
       "Bash(hvigorw assemble:*)",
       "Read(//d/gitcode/harmony/Login/**)",
       "mcp__web-search-prime__web_search_prime",
-      "Bash(D:/autostack/auto-lang/target/release/auto.exe build:*)"
+      "Bash(D:/autostack/auto-lang/target/release/auto.exe build:*)",
+      "Bash(echo 'fn main\\(\\) { *)",
+      "Bash(target/debug/auto.exe tmp/test_builder.at)"
     ],
     "additionalDirectories": [
       "d:\\autostack\\auto-lang\\docs\\plans",

@@ -1995,7 +1995,8 @@ impl RustTrans {
                 if let Expr::Call(call) = expr.as_ref() {
                     if let Expr::Dot(obj, method) = call.name.as_ref() {
                         if let Expr::Ident(obj_name) = obj.as_ref() {
-                            if obj_name.as_str() == "http" && method.as_str() == "post_sync" {
+                            let m = method.as_str();
+                            if obj_name.as_str() == "http" && (m == "post_sync" || m == "post_bearer") {
                                 // Already handled with internal .await — just output the expression
                                 return self.call(call, out);
                             }
@@ -2230,6 +2231,27 @@ impl RustTrans {
                     }
                     ("http", "last_status") => {
                         write!(out, "a2r_std::http::last_status()")?;
+                        return Ok(());
+                    }
+                    ("http", "post_bearer") => {
+                        write!(out, "{{ let __resp = a2r_std::http::post_bearer(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                                if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                    if let Expr::Ident(name) = expr {
+                                        if self.local_var_types.get(name)
+                                            .map(|ty| !matches!(ty, Type::StrSlice))
+                                            .unwrap_or(true)
+                                        { write!(out, ".as_str()")?; }
+                                    } else {
+                                        write!(out, ".as_str()")?;
+                                    }
+                                }
+                            }
+                        }
+                        write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                         return Ok(());
                     }
                     ("http", "post") => {
@@ -2587,6 +2609,23 @@ impl RustTrans {
                             }
                             "last_status" => {
                                 write!(out, "a2r_std::http::last_status()")?;
+                                return Ok(());
+                            }
+                            "post_bearer" => {
+                                write!(out, "{{ let __resp = a2r_std::http::post_bearer(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                        if let Expr::Ident(name) = expr {
+                                            if self.local_var_types.get(name)
+                                                .map(|ty| !matches!(ty, Type::StrSlice))
+                                                .unwrap_or(true)
+                                            { write!(out, ".as_str()")?; }
+                                        }
+                                    }
+                                }
+                                write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                                 return Ok(());
                             }
                             _ => {}

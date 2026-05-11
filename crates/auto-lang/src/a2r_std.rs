@@ -352,6 +352,32 @@ pub mod http {
         }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
     }
 
+    /// Async HTTP POST with Bearer token auth (for OpenAI-compatible APIs).
+    /// Returns (status, body).
+    pub async fn post_bearer(url: &str, body: &str, api_key: &str) -> (i32, String) {
+        let url = url.to_string();
+        let body = body.to_string();
+        let api_key = api_key.to_string();
+        let result = tokio::task::spawn_blocking(move || {
+            let client = reqwest::blocking::Client::new();
+            let result = client
+                .post(&url)
+                .header("content-type", "application/json")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .body(body)
+                .send();
+            match result {
+                Ok(resp) => {
+                    let status = resp.status().as_u16() as i32;
+                    let resp_body = resp.text().unwrap_or_default();
+                    (status, resp_body)
+                }
+                Err(e) => (0, format!("HTTP error: {}", e)),
+            }
+        }).await;
+        result.unwrap_or((0, "spawn failed".to_string()))
+    }
+
     thread_local! {
         static LAST_HTTP_STATUS: std::cell::Cell<i32> = std::cell::Cell::new(0);
     }

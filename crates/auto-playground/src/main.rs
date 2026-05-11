@@ -119,8 +119,8 @@ async fn main() {
 
     let mut app = api_routes;
     if smith_dist_dir.exists() {
-        app = app.nest_service("/smith", tower_http::services::ServeDir::new(&smith_dist_dir));
-        tracing::info!("AutoSmith UI served at /smith ({})", smith_dist_dir.display());
+        app = app.nest_service("/forge", tower_http::services::ServeDir::new(&smith_dist_dir));
+        tracing::info!("AutoForge UI served at /forge ({})", smith_dist_dir.display());
     }
     if lab_dist_dir.exists() {
         app = app.nest_service("/lab", tower_http::services::ServeDir::new(&lab_dist_dir));

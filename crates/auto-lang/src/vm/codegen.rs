@@ -5420,6 +5420,7 @@ impl Codegen {
                             ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
                             ("json", "has_key") => Some("auto.json.has_key".to_string()),
                             ("http", "post") => Some("auto.http.post".to_string()),
+                            ("http", "post_bearer") => Some("auto.http.post_bearer".to_string()),
                             _ => None,
                         };
                         if routed.is_some() {
