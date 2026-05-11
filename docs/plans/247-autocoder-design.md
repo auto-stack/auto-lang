@@ -591,17 +591,15 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 
 ## 10. Open Questions
 
-1. **Should AutoSmith be a separate deployment or integrated into AutoLab?**
-   - Option A: Separate app (`smith.auto-lang.dev`) — clean separation, different use case
-   - Option B: Integrated into AutoLab (`/lab/smith` tab) — shared sessions, easier discovery
-   - *Recommendation*: Start as separate app, add bridge later
+### Decisions (Finalized)
 
-2. **Should the Forge use the same VM sessions as AutoLab notebooks?**
-   - Option A: Yes — agent-generated code can be tested in the same VM
-   - Option B: No — agent VMs should be isolated from user notebooks
-   - *Recommendation*: Isolated VMs with optional "export to notebook"
+1. **Deployment**: ✅ Separate app (`auto-smith-ui`), sharing components with AutoLab
+2. **VM sessions**: ✅ Forge reuses AutoLab's notebook VM sessions — seamless test-and-iterate
+3. **MVP scope**: ✅ Forge + Ledger — chat loop + spec management as first deliverable
 
-3. **How does AutoSmith handle non-AutoLang projects?**
+### Open Question
+
+**How does AutoSmith handle non-AutoLang projects?**
    - The tool system is language-agnostic (file I/O, shell)
    - But the VM integration and AutoDown specs are AutoLang-native
    - *Recommendation*: Support any language for file operations, but AutoLang projects get full Ledger + VM integration
