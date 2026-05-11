@@ -4,6 +4,9 @@
       <FlaskConical :size="18" class="logo-icon" />
       <span class="app-title">AutoLab</span>
       <span v-if="filePath" class="file-path">{{ filePath }}{{ unsaved ? ' •' : '' }}</span>
+      <span v-if="sessionStatus" class="status-badge" :class="sessionStatus">
+        {{ sessionStatus }}
+      </span>
     </div>
     <div class="toolbar-center">
       <button class="toolbar-btn" @click="$emit('new-notebook')">
@@ -34,6 +37,7 @@ import { FlaskConical, FilePlus, FolderOpen, Save, Play } from 'lucide-vue-next'
 defineProps<{
   filePath: string | null
   unsaved: boolean
+  sessionStatus?: string
 }>()
 
 defineEmits<{
@@ -80,6 +84,30 @@ defineEmits<{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.status-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+}
+
+.status-badge.active {
+  background: #27c93f22;
+  color: #27c93f;
+}
+
+.status-badge.idle {
+  background: #f9e2af22;
+  color: #f9e2af;
+}
+
+.status-badge.closed {
+  background: #6c708622;
+  color: #6c7086;
 }
 
 .toolbar-center {

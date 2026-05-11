@@ -106,6 +106,7 @@ export function useNotebook() {
         stderr: `Network error: ${e.message}`,
         result: '',
         time_ms: 0,
+        diagnostics: [{ severity: 'error', message: `Network error: ${e.message}` }],
       }
     } finally {
       isLoading.value = false
@@ -121,6 +122,17 @@ export function useNotebook() {
       variables.value = data.variables || []
     } catch {
       variables.value = []
+    }
+  }
+
+  async function getSessionStatus(): Promise<string> {
+    if (!sessionId.value) return 'closed'
+    try {
+      const res = await fetch(`${API_BASE}/${sessionId.value}/status`)
+      const data = await res.json()
+      return data.status?.toLowerCase?.() || 'unknown'
+    } catch {
+      return 'closed'
     }
   }
 
@@ -318,6 +330,7 @@ export function useNotebook() {
     saveToFile,
     loadFromFile,
     askAI,
+    getSessionStatus,
   }
 }
 

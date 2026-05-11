@@ -475,13 +475,13 @@ d:\autostack\auto-lang\
 | 3.2 | Integrate Claude API (backend AI Provider + frontend interaction) | ✅ Done | `reqwest` | `ClaudeProvider` in `notebook/ai.rs`, `/api/notebook/{sid}/ai`, frontend `askAI()` |
 | 3.3 | Dependency-chain incremental re-execution (modify cell → mark dirty → rerun downstream) | ✅ Done | `notebook/mod.rs` | `cell_snapshots` + cascade dirty tracking + upstream re-execution queue |
 
-### Phase 4: Polish + Deploy
+### Phase 4: Polish + Deploy ✅ COMPLETE
 
-| # | Task | Input | Output |
-|---|------|-------|--------|
-| 4.1 | Error diagnostics enhancement (compile errors mapped to specific cells) | Existing diagnostics | Precise error messages |
-| 4.2 | Session suspend/resume (idle VM → variable snapshot → rebuild) | session.rs | Resource optimization |
-| 4.3 | Deploy to playground server (add Nginx routing) | deploy/ | Production live |
+| # | Task | Status | Input | Output |
+|---|------|--------|-------|--------|
+| 4.1 | Error diagnostics enhancement (compile errors mapped to specific cells) | ✅ Done | `CellOutput` | `diagnostics: Diagnostic[]` with line extraction + error line highlight in CodeEditor |
+| 4.2 | Session suspend/resume (idle VM → variable snapshot → rebuild) | ✅ Done (simplified) | `session.rs` | `SessionStatus` enum (Active/Idle/Closed), `GET /api/notebook/{sid}/status`, 30s frontend polling |
+| 4.3 | Deploy to playground server (add Nginx routing) | ✅ Done | `deploy/` | `/lab` route in nginx + backend `nest_service("/lab", ...)` for auto-lab-ui dist |
 
 ---
 

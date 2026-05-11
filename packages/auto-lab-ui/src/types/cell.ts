@@ -2,11 +2,18 @@ export type CellStatus = 'idle' | 'running' | 'success' | 'error' | 'dirty'
 
 export type CellType = 'code' | 'markdown' | 'ai' | 'chart' | 'table'
 
+export interface Diagnostic {
+  severity: string
+  message: string
+  line?: number
+}
+
 export interface CellOutput {
   stdout: string
   stderr: string
   result: string
   time_ms: number
+  diagnostics: Diagnostic[]
 }
 
 export interface Cell {

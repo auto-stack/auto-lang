@@ -3,6 +3,7 @@
     <NotebookToolbar
       :file-path="filePath"
       :unsaved="unsaved"
+      :session-status="sessionStatus"
       @new-notebook="onNewNotebook"
       @open-file="onOpenFile"
       @save="onSave"
@@ -36,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { useNotebook } from './composables/useNotebook'
 import NotebookToolbar from './components/layout/NotebookToolbar.vue'
 import CellCanvas from './components/cells/CellCanvas.vue'
@@ -47,10 +48,28 @@ import type { Cell, CellType } from './types/cell'
 const {
   cells, variables, filePath, unsaved,
   executeCell, addCell, deleteCell, moveCell, runAll,
-  loadFromAd, serializeToAd, saveToFile, loadFromFile, askAI,
+  loadFromAd, serializeToAd, saveToFile, loadFromFile, askAI, getSessionStatus,
 } = useNotebook()
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const sessionStatus = ref<string>('')
+
+// Poll session status every 30s
+let statusInterval: ReturnType<typeof setInterval> | null = null
+function startStatusPolling() {
+  if (statusInterval) clearInterval(statusInterval)
+  statusInterval = setInterval(async () => {
+    sessionStatus.value = await getSessionStatus()
+  }, 30000)
+}
+function stopStatusPolling() {
+  if (statusInterval) {
+    clearInterval(statusInterval)
+    statusInterval = null
+  }
+}
+
+startStatusPolling()
 
 function onNewNotebook() {
   cells.value = [{
@@ -79,6 +98,10 @@ function onSave() {
   const name = filePath.value || 'notebook.ad'
   saveToFile(name)
 }
+
+onUnmounted(() => {
+  stopStatusPolling()
+})
 
 function updateCell(id: string, patch: Partial<Cell>) {
   const cell = cells.value.find((c) => c.id === id)

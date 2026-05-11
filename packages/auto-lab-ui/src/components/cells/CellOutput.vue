@@ -1,5 +1,18 @@
 <template>
   <div class="cell-output" :class="status">
+    <!-- Diagnostics -->
+    <div v-if="output.diagnostics?.length" class="diagnostics-list">
+      <div
+        v-for="(diag, i) in output.diagnostics"
+        :key="i"
+        class="diagnostic-item"
+        :class="diag.severity"
+      >
+        <span v-if="diag.line" class="diag-line">Line {{ diag.line }}</span>
+        <span class="diag-message">{{ diag.message }}</span>
+      </div>
+    </div>
+
     <!-- Rich output for chart/table types -->
     <OutputChart v-if="cellType === 'chart'" :source="output.result || output.stdout" />
     <OutputTable v-else-if="cellType === 'table'" :source="output.result || output.stdout" />
@@ -14,7 +27,7 @@
         <div class="output-label">result</div>
         <pre class="output-text result">{{ output.result }}</pre>
       </div>
-      <div v-if="output.stderr" class="output-section">
+      <div v-if="output.stderr && !output.diagnostics?.length" class="output-section">
         <div class="output-label">stderr</div>
         <pre class="output-text stderr">{{ output.stderr }}</pre>
       </div>
@@ -44,6 +57,46 @@ defineProps<{
   background: #181825;
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
+}
+
+.diagnostics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.diagnostic-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  background: #f38ba811;
+  border-left: 3px solid #f38ba8;
+}
+
+.diagnostic-item.warning {
+  background: #f9e2af11;
+  border-left-color: #f9e2af;
+}
+
+.diag-line {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: #f38ba8;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.diagnostic-item.warning .diag-line {
+  color: #f9e2af;
+}
+
+.diag-message {
+  color: #cdd6f4;
+  word-break: break-word;
 }
 
 .output-section {

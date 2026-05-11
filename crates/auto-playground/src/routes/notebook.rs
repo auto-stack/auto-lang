@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 use crate::notebook::ai::{AIProviderState, AIRequest, AIResponse, AiProvider};
-use crate::notebook::{NotebookCellMeta, NotebookState, VariableInfo};
+use crate::notebook::{Diagnostic, NotebookCellMeta, NotebookState, SessionStatus, VariableInfo};
 use crate::routes::trans;
 
 // ============================================================================
@@ -36,11 +36,17 @@ pub struct ExecuteResponse {
     pub stderr: String,
     pub result: String,
     pub time_ms: u64,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Serialize)]
 pub struct VariablesResponse {
     pub variables: Vec<VariableInfo>,
+}
+
+#[derive(Serialize)]
+pub struct StatusResponse {
+    pub status: SessionStatus,
 }
 
 #[derive(Deserialize)]
@@ -82,7 +88,17 @@ pub async fn execute_handler(
         stderr: output.stderr,
         result: output.result,
         time_ms: output.time_ms,
+        diagnostics: output.diagnostics,
     }))
+}
+
+/// GET /api/notebook/{sid}/status — Get session status
+pub async fn status_handler(
+    State(state): State<NotebookState>,
+    Path(sid): Path<String>,
+) -> Result<Json<StatusResponse>, AppError> {
+    let status = state.status(sid).await;
+    Ok(Json(StatusResponse { status }))
 }
 
 /// GET /api/notebook/{sid}/variables — Get current variables

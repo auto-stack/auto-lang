@@ -13,6 +13,14 @@ pub struct NotebookCellMeta {
     pub depends_on: Vec<String>,
 }
 
+/// A structured diagnostic message
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Diagnostic {
+    pub severity: String, // "error" | "warning"
+    pub message: String,
+    pub line: Option<usize>,
+}
+
 /// A notebook cell's execution output
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CellOutput {
@@ -20,6 +28,7 @@ pub struct CellOutput {
     pub stderr: String,
     pub result: String,
     pub time_ms: u64,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 /// A single notebook cell (internal state)
@@ -32,6 +41,13 @@ pub struct Cell {
 }
 
 /// Variable info for the inspector
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum SessionStatus {
+    Active,
+    Idle,
+    Closed,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct VariableInfo {
     pub name: String,
@@ -125,6 +141,7 @@ impl NotebookSession {
                     stderr: output.stderr.clone(),
                     result: output.result.clone(),
                     time_ms: total_time_ms,
+                    diagnostics: output.diagnostics.clone(),
                 });
             }
 
@@ -141,6 +158,7 @@ impl NotebookSession {
             stderr: String::new(),
             result: String::new(),
             time_ms: total_time_ms,
+            diagnostics: Vec::new(),
         })
     }
 
@@ -159,13 +177,19 @@ impl NotebookSession {
                 stderr: String::new(),
                 result: self.vm.format_last_result().unwrap_or_default(),
                 time_ms: 0,
+                diagnostics: Vec::new(),
             },
-            Err(e) => CellOutput {
-                stdout,
-                stderr: e.to_string(),
-                result: String::new(),
-                time_ms: 0,
-            },
+            Err(e) => {
+                let err_str = e.to_string();
+                let diagnostics = extract_diagnostics(&err_str);
+                CellOutput {
+                    stdout,
+                    stderr: err_str,
+                    result: String::new(),
+                    time_ms: 0,
+                    diagnostics,
+                }
+            }
         }
     }
 
@@ -229,6 +253,15 @@ impl NotebookSession {
         queue
     }
 
+    fn status(&self) -> SessionStatus {
+        let idle_duration = self.last_active.elapsed();
+        if idle_duration.as_secs() > 300 {
+            SessionStatus::Idle
+        } else {
+            SessionStatus::Active
+        }
+    }
+
     fn variables(&self) -> Vec<VariableInfo> {
         let mut vars = Vec::new();
         for name in self.vm.locals() {
@@ -259,6 +292,10 @@ enum NotebookCommand {
         source: String,
         notebook_cells: Option<Vec<NotebookCellMeta>>,
         respond: oneshot::Sender<CellOutput>,
+    },
+    Status {
+        sid: String,
+        respond: oneshot::Sender<SessionStatus>,
     },
     Variables {
         sid: String,
@@ -303,8 +340,16 @@ impl NotebookActor {
                                 stderr: format!("Session '{}' not found", sid),
                                 result: String::new(),
                                 time_ms: 0,
+                                diagnostics: Vec::new(),
                             });
                         let _ = respond.send(output);
+                    }
+                    NotebookCommand::Status { sid, respond } => {
+                        let status = sessions
+                            .get(&sid)
+                            .map(|s| s.status())
+                            .unwrap_or(SessionStatus::Closed);
+                        let _ = respond.send(status);
                     }
                     NotebookCommand::Variables { sid, respond } => {
                         let vars = sessions
@@ -349,7 +394,14 @@ impl NotebookActor {
             stderr: "Notebook actor closed".to_string(),
             result: String::new(),
             time_ms: 0,
+            diagnostics: Vec::new(),
         })
+    }
+
+    pub async fn status(&self, sid: String) -> SessionStatus {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx.send(NotebookCommand::Status { sid, respond: tx });
+        rx.await.unwrap_or(SessionStatus::Closed)
     }
 
     pub async fn variables(&self, sid: String) -> Vec<VariableInfo> {
@@ -365,3 +417,44 @@ impl NotebookActor {
 
 /// Shared notebook state across requests
 pub type NotebookState = NotebookActor;
+
+/// Try to extract structured diagnostics from a raw error string.
+/// Falls back to a single diagnostic with the full message if no line info is found.
+fn extract_diagnostics(err: &str) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    // Look for patterns like "line 5:" or "at line 5" or "[line 5]"
+    let line_re = regex::Regex::new(r"(?i)(?:line\s+(\d+)|:(\d+):|@(\d+))").ok();
+
+    for line in err.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut diag_line: Option<usize> = None;
+        if let Some(re) = &line_re {
+            if let Some(caps) = re.captures(trimmed) {
+                diag_line = caps
+                    .get(1)
+                    .or_else(|| caps.get(2))
+                    .or_else(|| caps.get(3))
+                    .and_then(|m| m.as_str().parse().ok());
+            }
+        }
+        diagnostics.push(Diagnostic {
+            severity: "error".to_string(),
+            message: trimmed.to_string(),
+            line: diag_line,
+        });
+    }
+
+    if diagnostics.is_empty() {
+        diagnostics.push(Diagnostic {
+            severity: "error".to_string(),
+            message: err.to_string(),
+            line: None,
+        });
+    }
+
+    diagnostics
+}

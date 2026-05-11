@@ -17,6 +17,7 @@ const props = defineProps<{
   breakpoints?: number[];
   currentDebugLine?: number | null;
   highlightedSourceLine?: number | null;
+  errorLines?: number[];
   readOnly?: boolean;
 }>();
 
@@ -164,9 +165,32 @@ const crossHighlightState = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+const errorLineEffect = StateEffect.define<number[]>();
+
+const errorLineState = StateField.define<DecorationSet>({
+  create() { return Decoration.none; },
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(errorLineEffect)) {
+        if (!e.value || e.value.length === 0) return Decoration.none;
+        const marks = e.value
+          .filter((l) => l > 0 && l <= tr.state.doc.lines)
+          .map((l) => {
+            const line = tr.state.doc.line(l);
+            return Decoration.line({ class: 'cm-error-line' }).range(line.from);
+          });
+        return Decoration.set(marks);
+      }
+    }
+    return deco.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 const debugLineHighlight = [
   debugLineState,
   crossHighlightState,
+  errorLineState,
   EditorView.baseTheme({
     '.cm-debug-current-line': {
       backgroundColor: '#0e639c40',
@@ -175,6 +199,10 @@ const debugLineHighlight = [
     '.cm-cross-highlight-line': {
       backgroundColor: '#7b4a0e40',
       borderLeft: '3px solid #ff9d00',
+    },
+    '.cm-error-line': {
+      backgroundColor: '#f38ba822',
+      borderLeft: '3px solid #f38ba8',
     },
     '.cm-breakpoint-gutter': {
       width: '22px',
@@ -297,6 +325,11 @@ watch(() => props.currentDebugLine, (line) => {
 watch(() => props.highlightedSourceLine, (line) => {
   if (!editorView) return;
   editorView.dispatch({ effects: crossHighlightEffect.of(line ?? null) });
+});
+
+watch(() => props.errorLines, (lines) => {
+  if (!editorView) return;
+  editorView.dispatch({ effects: errorLineEffect.of(lines ?? []) });
 });
 
 watch(() => props.breakpoints, (bps) => {

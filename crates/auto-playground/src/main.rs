@@ -51,6 +51,15 @@ async fn main() {
     let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend");
     let dist_dir = frontend_dir.join("dist");
 
+    // AutoLab UI static files
+    let lab_dist_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("packages")
+        .join("auto-lab-ui")
+        .join("dist");
+    let lab_dist_dir = lab_dist_dir.canonicalize().unwrap_or(lab_dist_dir);
+
     // Spawn frontend dev server if no production build
     let mut frontend_child: Option<tokio::process::Child> = None;
     if !dist_dir.exists() {
@@ -76,6 +85,7 @@ async fn main() {
         .route("/api/examples", get(routes::examples::examples_handler))
         .route("/api/notebook/session", post(routes::notebook::create_session_handler))
         .route("/api/notebook/{sid}/execute", post(routes::notebook::execute_handler))
+        .route("/api/notebook/{sid}/status", get(routes::notebook::status_handler))
         .route("/api/notebook/{sid}/variables", get(routes::notebook::variables_handler))
         .route("/api/notebook/{sid}/transpile", post(routes::notebook::transpile_handler))
         .route("/api/notebook/{sid}", delete(routes::notebook::delete_session_handler))
@@ -95,11 +105,14 @@ async fn main() {
         .route("/api/agent-debug/{id}", delete(routes::agent_debug::delete_handler))
         .with_state(app_state);
 
-    let app = if dist_dir.exists() {
-        api_routes.fallback_service(tower_http::services::ServeDir::new(&dist_dir))
-    } else {
-        api_routes
-    };
+    let mut app = api_routes;
+    if lab_dist_dir.exists() {
+        app = app.nest_service("/lab", tower_http::services::ServeDir::new(&lab_dist_dir));
+        tracing::info!("AutoLab UI served at /lab ({})", lab_dist_dir.display());
+    }
+    if dist_dir.exists() {
+        app = app.fallback_service(tower_http::services::ServeDir::new(&dist_dir));
+    }
 
     let app = app.layer(cors);
 

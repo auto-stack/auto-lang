@@ -21,22 +21,31 @@
         :model-value="cell.source"
         @update:model-value="$emit('update', $event)"
         :on-run="() => {}"
+        :error-lines="errorLines"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { CodeEditor } from 'auto-playground-vue'
 import type { Cell } from '@/types/cell'
 
-defineProps<{
+const props = defineProps<{
   cell: Cell
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update', source: string): void
 }>()
+
+const errorLines = computed(() => {
+  if (!props.cell.output?.diagnostics) return []
+  return props.cell.output.diagnostics
+    .map((d) => d.line)
+    .filter((l): l is number => l !== undefined && l > 0)
+})
 </script>
 
 <style scoped>
