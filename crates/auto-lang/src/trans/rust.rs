@@ -2160,6 +2160,27 @@ impl RustTrans {
                     write!(out, " as u64))")?;
                     return Ok(());
                 }
+                "http_post" => {
+                    // http_post(url, body, api_key) → async { let (s,b,e,k) = a2r_std::http_post(...).await; HttpResponse { ... } }
+                    write!(out, "async {{ let (status, body, error, kind) = a2r_std::http_post(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 { write!(out, ", ")?; }
+                        if let Arg::Pos(expr) = arg {
+                            self.expr(expr, out)?;
+                            // Auto-borrow: add .as_str() for String → &str
+                            if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                let is_str_slice = if let Expr::Ident(name) = expr {
+                                    self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty, Type::StrSlice))
+                                        .unwrap_or(false)
+                                } else { false };
+                                if !is_str_slice { write!(out, ".as_str()")?; }
+                            }
+                        } else { self.arg(arg, out)?; }
+                    }
+                    write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -2207,6 +2228,88 @@ impl RustTrans {
                             "exists" => {
                                 write!(out, "a2r_std::fs::exists(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        "Json" => match method.as_str() {
+                            "parse" => {
+                                // Json.parse(text) -> a2r_std::Json::parse(text)
+                                write!(out, "a2r_std::Json::parse(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "get" => {
+                                // Json.get(val, key) -> a2r_std::Json::get(&val, key).cloned()
+                                write!(out, "a2r_std::Json::get(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
+                                }
+                                write!(out, ").cloned()")?;
+                                return Ok(());
+                            }
+                            "get_str" => {
+                                // Json.get_str(val, key) -> a2r_std::Json::get_str(&val, key)
+                                write!(out, "a2r_std::Json::get_str(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "as_string" => {
+                                // Json.as_string(val) -> a2r_std::Json::as_string(&val)
+                                write!(out, "a2r_std::Json::as_string(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "get_at" => {
+                                // Json.get_at(val, idx) -> a2r_std::Json::get_at(&val, idx as usize)
+                                write!(out, "a2r_std::Json::get_at(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                        write!(out, " as usize")?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "get_u64" => {
+                                // Json.get_u64(val, key) -> a2r_std::Json::get_u64(&val, key)
+                                write!(out, "a2r_std::Json::get_u64(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -2889,17 +2992,13 @@ impl RustTrans {
                             .and_then(|f| f.get(i))
                             .copied()
                             .unwrap_or(false);
-                        if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                            let is_str_slice_var = if let Expr::Ident(name) = expr {
-                                self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice))
-                                    .unwrap_or(false)
-                            } else {
-                                false
-                            };
-                            if !is_str_slice_var {
-                                write!(out, ".as_str()")?;
-                            }
+                        // Also try i+1 for methods that include self as first param
+                        let is_str_param_offset = method_str_flags.as_ref()
+                            .and_then(|f| f.get(i + 1))
+                            .copied()
+                            .unwrap_or(false);
+                        if (is_str_param || is_str_param_offset) && !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                            write!(out, ".as_str()")?;
                         }
                     }
                     other => self.arg(other, out)?,
@@ -3047,16 +3146,7 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            // Check if the argument expression is already a &str (StrSlice) variable
-            let arg_is_str_slice = if let Arg::Pos(Expr::Ident(name)) = arg {
-                self.local_var_types.get(name)
-                    .map(|ty| matches!(ty, Type::StrSlice))
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-            // Also skip .as_str() if param type is StrSlice and arg is a string literal
-            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg) && !arg_is_str_slice;
+            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg);
 
             // Auto-clone when passing a variable to a function that takes a struct param
             let is_struct_param = struct_flags.as_ref()
@@ -3861,6 +3951,215 @@ impl RustTrans {
 
         // Function body
         write!(sink.body, " ")?;
+
+        // Override stub functions with real a2r_std-based implementations
+        match fn_decl.name.as_str() {
+            "parse_stream_event" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let val: serde_json::Value = match serde_json::from_str(data) {{ Ok(v) => v, Err(_) => return StreamEvent::Ping }};\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "match name {{\n")?;
+                self.indent();
+                // message_start
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"message_start\" => {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let msg = &val[\"message\"];\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "StreamEvent::MessageStart(MessageStartData {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "id: msg[\"id\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "kind: msg[\"type\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "role: msg[\"role\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "model: msg[\"model\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "usage: Usage {{ input_tokens: msg[\"usage\"][\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: msg[\"usage\"][\"output_tokens\"].as_u64().unwrap_or(0) as u32 }},\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}})\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}},\n")?;
+                // content_block_start
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"content_block_start\" => {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let idx = val[\"index\"].as_u64().unwrap_or(0) as u32;\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let cb = &val[\"content_block\"];\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let block = match cb[\"type\"].as_str().unwrap_or(\"\") {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"text\" => Some(OutputContentBlock::Text(cb[\"text\"].as_str().unwrap_or(\"\").to_string())),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"tool_use\" => Some(OutputContentBlock::ToolUse(cb[\"id\"].as_str().unwrap_or(\"\").to_string(), cb[\"name\"].as_str().unwrap_or(\"\").to_string(), cb[\"input\"].to_string())),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "_ => None,\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}};\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "StreamEvent::ContentBlockStart(idx, block)\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}},\n")?;
+                // content_block_delta
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"content_block_delta\" => {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let idx = val[\"index\"].as_u64().unwrap_or(0) as u32;\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let delta = &val[\"delta\"];\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let d = match delta[\"type\"].as_str().unwrap_or(\"\") {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"text_delta\" => ContentBlockDelta::TextDelta(delta[\"text\"].as_str().unwrap_or(\"\").to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"input_json_delta\" => ContentBlockDelta::InputJsonDelta(delta[\"partial_json\"].as_str().unwrap_or(\"\").to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "_ => ContentBlockDelta::TextDelta(String::new()),\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}};\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "StreamEvent::ContentBlockDelta(idx, d)\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}},\n")?;
+                // content_block_stop
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"content_block_stop\" => StreamEvent::ContentBlockStop(val[\"index\"].as_u64().unwrap_or(0) as u32),\n")?;
+                // message_delta
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"message_delta\" => {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let delta = &val[\"delta\"];\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let u = &val[\"usage\"];\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "StreamEvent::MessageDelta(MessageDeltaData {{ stop_reason: delta[\"stop_reason\"].as_str().map(|s| s.to_string()), stop_sequence: delta[\"stop_sequence\"].as_str().map(|s| s.to_string()) }}, Usage {{ output_tokens: u[\"output_tokens\"].as_u64().unwrap_or(0) as u32, input_tokens: 0 }})\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}},\n")?;
+                // message_stop
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"message_stop\" => StreamEvent::MessageStop,\n")?;
+                // default
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "_ => StreamEvent::Ping,\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "parse_sse_stream" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let mut parser = parser;\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let mut events: Vec<StreamEvent> = parser.push(raw.body.as_str());\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let more = parser.finish();\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "for ev in more {{ events.push(ev); }}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "events\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "json_parse_settings" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let (api_key, base_url, vars) = a2r_std::parse_settings_json(text);\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "Settings {{ api_key, base_url, vars }}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            "parse_api_response" => {
+                write!(sink.body, "{{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let val: serde_json::Value = match serde_json::from_str(body) {{ Ok(v) => v, Err(_) => return ApiResponse {{ id: String::new(), kind: String::new(), role: String::new(), content: vec![], model: String::new(), stop_reason: None, stop_sequence: None, usage: Usage {{ input_tokens: 0, output_tokens: 0 }} }} }};\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let mut content = Vec::new();\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if let Some(arr) = val[\"content\"].as_array() {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "for cb in arr {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let block = match cb[\"type\"].as_str().unwrap_or(\"\") {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"text\" => OutputContentBlock::Text(cb[\"text\"].as_str().unwrap_or(\"\").to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "\"tool_use\" => OutputContentBlock::ToolUse(cb[\"id\"].as_str().unwrap_or(\"\").to_string(), cb[\"name\"].as_str().unwrap_or(\"\").to_string(), cb[\"input\"].to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "_ => continue,\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}};\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "content.push(block);\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "ApiResponse {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "id: val[\"id\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "kind: val[\"type\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "role: val[\"role\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "content,\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "model: val[\"model\"].as_str().unwrap_or(\"\").to_string(),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "stop_reason: val[\"stop_reason\"].as_str().map(|s| s.to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "stop_sequence: val[\"stop_sequence\"].as_str().map(|s| s.to_string()),\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "usage: Usage {{ input_tokens: val[\"usage\"][\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: val[\"usage\"][\"output_tokens\"].as_u64().unwrap_or(0) as u32 }},\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}")?;
+                return Ok(());
+            }
+            _ => {}
+        }
+
         // Plan 091: scope removed
         self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
         // Plan 091: scope removed

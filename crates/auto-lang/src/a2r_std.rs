@@ -211,6 +211,10 @@ pub mod Json {
         val.as_str().map(|s| s.to_string())
     }
 
+    pub fn get_u64(val: &Value, key: &str) -> u64 {
+        val.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
+    }
+
     pub fn to_string(val: &Value) -> String {
         serde_json::to_string(val).unwrap_or_default()
     }
@@ -308,6 +312,37 @@ pub fn parse_settings_json(text: &str) -> (Option<String>, Option<String>, std::
 /// Sleep for the specified number of milliseconds
 pub fn sleep_ms(ms: u64) {
     std::thread::sleep(std::time::Duration::from_millis(ms));
+}
+
+/// Async HTTP POST with Anthropic API headers.
+/// Returns (status, body, error, kind) for constructing a local HttpResponse.
+/// Uses spawn_blocking to run reqwest::blocking on the tokio runtime.
+pub async fn http_post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
+    let url = url.to_string();
+    let body = body.to_string();
+    let api_key = api_key.to_string();
+    tokio::task::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::new();
+        let result = client
+            .post(&url)
+            .header("content-type", "application/json")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .body(body)
+            .send();
+        match result {
+            Ok(resp) => {
+                let status = resp.status().as_u16() as i32;
+                let resp_body = resp.text().unwrap_or_default();
+                if status >= 200 && status < 300 {
+                    (status, resp_body, String::new(), "ok".to_string())
+                } else {
+                    (status, resp_body, format!("HTTP {}", status), "error".to_string())
+                }
+            }
+            Err(e) => (0, String::new(), e.to_string(), "error".to_string())
+        }
+    }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
 }
 
 #[cfg(test)]
