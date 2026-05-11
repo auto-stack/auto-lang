@@ -411,6 +411,26 @@ impl<'a> AdocLexer<'a> {
                 Ok(AdToken::simple(AdTokenKind::Blockquote, line, col))
             }
             
+            Some('/') => {
+                let line = self.line;
+                let col = self.column;
+                self.advance();
+                if self.peek() == Some('/') {
+                    // Comment — skip rest of line
+                    self.advance(); // consume second /
+                    while let Some(c) = self.peek() {
+                        if c == '\n' {
+                            break;
+                        }
+                        self.advance();
+                    }
+                    // Return next token (could be newline or something else)
+                    self.next_token()
+                } else {
+                    Ok(AdToken::new(AdTokenKind::Text, "/", line, col))
+                }
+            }
+            
             Some('!') => {
                 // Check for image ![...](...)
                 let line = self.line;
@@ -537,7 +557,7 @@ impl<'a> AdocLexer<'a> {
             // Stop at special characters
             match c {
                 '\n' | '#' | '$' | '%' | '*' | '_' | '`' | '-' 
-                | '>' | '!' | '[' => break,
+                | '>' | '!' | '[' | '/' => break,
                 ' ' | '\t' => {
                     text.push(c);
                     self.advance();

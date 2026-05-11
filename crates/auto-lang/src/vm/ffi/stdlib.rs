@@ -1138,6 +1138,12 @@ pub fn shim_json_parse(s: String) -> String {
     s
 }
 
+/// Parse a TOML string (placeholder)
+#[auto_macros::rust_fn("toml.from_str")]
+pub fn shim_toml_from_str(s: String) -> String {
+    s
+}
+
 /// Prettify a JSON string
 #[auto_macros::rust_fn("Json.prettify")]
 pub fn shim_json_prettify(s: String) -> String {

@@ -1,9 +1,10 @@
-dep data_encoding
-use.rust data_encoding::HEXLOWER
+dep hex
+use.rust hex
 
 fn main() {
-    let encoded = HEXLOWER.encode(b"hello world")
-    print(f"Hex: $encoded")
-    let decoded = HEXLOWER.decode(encoded.as_bytes()).unwrap()
-    print(f"Decoded: ${decoded.len()} bytes")
+    let text = "hello world"
+    let encoded = hex.encode(text)
+    print(f"Hex: ${encoded}")
+    let decoded = hex.decode(encoded)
+    print(f"Decoded: ${decoded}")
 }

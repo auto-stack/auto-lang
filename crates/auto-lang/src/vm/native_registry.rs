@@ -739,6 +739,14 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.json.get_at", 1907);
     registry.register_with_id("auto.json.len", 1908);
     registry.register_with_id("auto.json.type_of", 1909);
+
+    // serde_json aliases (auto.serde_json.*) — Plan 240 Phase 8
+    registry.register_with_id("auto.serde_json.to_string", 1900);
+    registry.register_with_id("auto.serde_json.from_str", 1902);
+
+    // TOML functions (2610-2611)
+    registry.register_with_id("auto.toml.from_str", 2610);
+    registry.register_with_id("auto.toml.to_string", 2611);
     registry.register_with_id("auto.json.as_string", 1910);
     registry.register_with_id("auto.json.as_number", 1911);
     registry.register_with_id("auto.json.as_int", 1912);
