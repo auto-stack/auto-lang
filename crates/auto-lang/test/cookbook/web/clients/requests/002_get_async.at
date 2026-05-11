@@ -1,6 +1,14 @@
-// Async HTTP GET demo (simulated)
+// Async HTTP GET demo — fetch URL and print body
 
 fn main() {
-    let body = "response body from httpbin.org"
+    let url = "https://httpbin.org/get"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
+
+    let body = Response.body(handle)
     print(f"Body: ${body}")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
 }

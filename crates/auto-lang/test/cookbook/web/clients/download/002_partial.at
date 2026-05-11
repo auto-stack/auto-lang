@@ -1,11 +1,19 @@
-// Partial/range download demo (simulated)
+// Partial/range download demo — simulate chunked reading
 
 fn main() {
-    let total = 10000
+    let url = "https://httpbin.org/bytes/10240"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
+
+    let body = Response.body(handle)
+    let total = body.len()
+    print(f"Total size: ${total} bytes")
+
+    // Simulate chunked reading progress
     let chunk_size = 1024
     var downloaded = 0
-
-    for i in 0..10 {
+    for downloaded < total {
         downloaded = downloaded + chunk_size
         if downloaded > total {
             downloaded = total

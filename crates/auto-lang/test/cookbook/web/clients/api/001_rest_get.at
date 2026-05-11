@@ -1,17 +1,14 @@
-// REST API GET demo (simulated)
-
-type Stargazer {
-    login str
-    id uint
-    starred_at str
-}
+// REST API GET demo — fetch GitHub stargazers
 
 fn main() {
-    var stargazers List<Stargazer> = List.new()
-    stargazers.push(Stargazer("user1", 1, "2024-01-01"))
-    stargazers.push(Stargazer("user2", 2, "2024-01-02"))
+    let url = "https://api.github.com/repos/rust-lang/rust/stargazers"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
 
-    for sg in stargazers {
-        print(f"${sg.login} starred at ${sg.starred_at}")
-    }
+    let body = Response.body(handle)
+    print(f"Body length: ${body.len()}")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
 }

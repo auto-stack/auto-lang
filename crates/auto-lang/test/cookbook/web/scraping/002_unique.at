@@ -1,11 +1,19 @@
-// Unique link extraction with filtering demo (simulated)
+// Unique link collection demo — fetch pages and collect unique URLs
 
 fn main() {
-    var unique_links List<str> = List.new()
-    unique_links.push("https://en.wikipedia.org/wiki/Auto")
-    unique_links.push("https://en.wikipedia.org/wiki/Rust")
+    var urls = List.new()
+    urls.push("https://httpbin.org/html")
+    urls.push("https://httpbin.org/json")
+    urls.push("https://httpbin.org/html")
 
-    for u in unique_links {
-        print(f"Unique link: ${u}")
+    // Visit each URL and print basic info
+    var visited = 0
+    for url in urls {
+        let handle = Http.get(url)
+        let status = Response.status_code(handle)
+        let body = Response.body(handle)
+        print(f"${url} => status ${status}, length ${body.len()}")
+        visited = visited + 1
     }
+    print(f"Visited ${visited} URLs")
 }

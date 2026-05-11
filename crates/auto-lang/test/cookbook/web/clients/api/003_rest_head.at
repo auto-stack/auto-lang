@@ -1,8 +1,18 @@
-// REST API HEAD demo (simulated)
+// REST API: inspect response headers
+// Note: AutoVM Http.get performs a GET request; header inspection works the same way.
 
 fn main() {
-    let status = 200
+    let url = "https://httpbin.org/get"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
     print(f"Status: ${status}")
-    print("Content-Type: application/json")
-    print("Content-Length: 1234")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
+
+    let cl = Response.header_get(handle, "Content-Length")
+    print(f"Content-Length: ${cl}")
+
+    let server = Response.header_get(handle, "Server")
+    print(f"Server: ${server}")
 }

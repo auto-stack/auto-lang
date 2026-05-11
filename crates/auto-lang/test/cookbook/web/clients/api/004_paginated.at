@@ -1,15 +1,19 @@
-// Paginated API request demo (simulated)
-
-type Dependency {
-    id str
-}
+// Paginated API request demo — fetch a page of results
 
 fn main() {
-    var deps List<Dependency> = List.new()
-    deps.push(Dependency("serde_derive"))
-    deps.push(Dependency("serde_json"))
+    let url = "https://httpbin.org/get?page=1&per_page=5"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Page 1 status: ${status}")
 
-    for d in deps {
-        print(f"Depends on serde: ${d.id}")
+    let body = Response.body(handle)
+    print(f"Body length: ${body.len()}")
+
+    // Check for next page link in headers
+    let link_header = Response.header_get(handle, "Link")
+    if link_header.len() > 0 {
+        print(f"Link header: ${link_header}")
+    } else {
+        print("No Link header (single page)")
     }
 }

@@ -1,6 +1,14 @@
-// File download demo (simulated)
+// File download demo — fetch body and check length
 
 fn main() {
-    let bytes_len = 4096
-    print(f"Downloaded ${bytes_len} bytes")
+    let url = "https://httpbin.org/bytes/4096"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
+
+    let body = Response.body(handle)
+    print(f"Downloaded ${body.len()} bytes")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
 }

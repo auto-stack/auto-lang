@@ -1,13 +1,18 @@
-// Broken link detection demo (simulated)
+// Broken link detection demo — check status codes for multiple URLs
 
 fn main() {
-    var urls List<str> = List.new()
+    var urls = List.new()
     urls.push("https://httpbin.org/status/200")
     urls.push("https://httpbin.org/status/404")
+    urls.push("https://httpbin.org/status/500")
 
-    var status200 = 200
-    var status404 = 404
-
-    print(f"OK: ${urls.get(0)} (${status200})")
-    print(f"BROKEN: ${urls.get(1)} (${status404})")
+    for url in urls {
+        let handle = Http.get(url)
+        let status = Response.status_code(handle)
+        if status == 200 {
+            print(f"OK: ${url} (${status})")
+        } else {
+            print(f"BROKEN: ${url} (${status})")
+        }
+    }
 }

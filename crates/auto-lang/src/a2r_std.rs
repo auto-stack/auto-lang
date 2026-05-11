@@ -351,6 +351,18 @@ pub mod http {
             }
         }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
     }
+
+    thread_local! {
+        static LAST_HTTP_STATUS: std::cell::Cell<i32> = std::cell::Cell::new(0);
+    }
+
+    pub fn set_last_status(status: i32) {
+        LAST_HTTP_STATUS.with(|s| s.set(status));
+    }
+
+    pub fn last_status() -> i32 {
+        LAST_HTTP_STATUS.with(|s| s.get())
+    }
 }
 
 /// Backward-compat: delegates to http::post

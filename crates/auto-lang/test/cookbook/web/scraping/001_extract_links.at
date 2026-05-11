@@ -1,11 +1,14 @@
-// HTML link extraction demo (simulated)
+// HTML fetch demo — fetch a page and show its length
 
 fn main() {
-    var links List<str> = List.new()
-    links.push("/page1")
-    links.push("/page2")
+    let url = "https://httpbin.org/html"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
 
-    for href in links {
-        print(f"Link: ${href}")
-    }
+    let body = Response.body(handle)
+    print(f"Page fetched, body length: ${body.len()}")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
 }

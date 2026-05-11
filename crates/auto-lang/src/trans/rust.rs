@@ -2259,6 +2259,31 @@ impl RustTrans {
                                     write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
                                     return Ok(());
                                 }
+                                ("http", "post_sync") => {
+                                    // http.post_sync(url, body, api_key) → a2r_std::http::post(url, body, api_key).await body (stores status in LAST_HTTP_STATUS)
+                                    write!(out, "{{ let __resp = a2r_std::http::post(")?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        if i > 0 { write!(out, ", ")?; }
+                                        if let Arg::Pos(expr) = arg {
+                                            self.expr(expr, out)?;
+                                            if let Expr::Ident(name) = expr {
+                                                if self.local_var_types.get(name)
+                                                    .map(|ty| !matches!(ty, Type::StrSlice))
+                                                    .unwrap_or(true)
+                                                {
+                                                    write!(out, ".as_str()")?;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                    return Ok(());
+                                }
+                                ("http", "last_status") => {
+                                    // http.last_status() → a2r_std::http::last_status()
+                                    write!(out, "a2r_std::http::last_status()")?;
+                                    return Ok(());
+                                }
                                 ("json", "parse") => {
                                     write!(out, "a2r_std::json::parse(")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
@@ -2474,6 +2499,28 @@ impl RustTrans {
                                     }
                                 }
                                 write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                                return Ok(());
+                            }
+                            "post_sync" => {
+                                // http.post_sync(url, body, api_key) → { let __r = a2r_std::http::post(...).await; set_last_status(__r.0); __r.1 }
+                                write!(out, "{{ let __resp = a2r_std::http::post(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                        if let Expr::Ident(name) = expr {
+                                            if self.local_var_types.get(name)
+                                                .map(|ty| !matches!(ty, Type::StrSlice))
+                                                .unwrap_or(true)
+                                            { write!(out, ".as_str()")?; }
+                                        }
+                                    }
+                                }
+                                write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                return Ok(());
+                            }
+                            "last_status" => {
+                                write!(out, "a2r_std::http::last_status()")?;
                                 return Ok(());
                             }
                             _ => {}

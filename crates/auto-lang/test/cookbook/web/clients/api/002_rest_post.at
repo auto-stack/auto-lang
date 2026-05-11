@@ -1,7 +1,15 @@
-// REST API POST demo (simulated)
+// REST API POST demo — send JSON to httpbin
 
 fn main() {
-    let status = 201
+    let url = "https://httpbin.org/post"
+    let json_body = "{\"key\":\"value\"}"
+    let handle = Http.post(url, json_body)
+    let status = Response.status_code(handle)
     print(f"Status: ${status}")
-    print("POST request sent with JSON body")
+
+    let body = Response.body(handle)
+    print(f"Body length: ${body.len()}")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
 }

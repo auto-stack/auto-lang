@@ -1,7 +1,15 @@
-// POST file upload demo (simulated)
+// POST file upload demo — upload content to httpbin
 
 fn main() {
-    let content = "file content here"
-    let url = "https://paste.rs/abc123"
-    print(f"Uploaded to: ${url}")
+    let url = "https://httpbin.org/post"
+    let content = "file content here - hello from AutoLang"
+    let handle = Http.post(url, content)
+    let status = Response.status_code(handle)
+    print(f"Upload status: ${status}")
+
+    let body = Response.body(handle)
+    print(f"Response length: ${body.len()}")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
 }

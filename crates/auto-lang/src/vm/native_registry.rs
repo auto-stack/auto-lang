@@ -831,6 +831,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.http_stream.stream_is_done", 2243);
     registry.register_with_id("auto.http_stream.stream_close", 2244);
     registry.register_with_id("auto.http.post_stream_with_headers", 2255);
+    registry.register_with_id("auto.http.post_sync", 2256);
+    registry.register_with_id("auto.http.last_status", 2257);
 
     // Task/Msg functions (2300-2311)
     registry.register_with_id("auto.task.spawn", 2300);

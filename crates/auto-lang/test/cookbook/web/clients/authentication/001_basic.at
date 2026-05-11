@@ -1,9 +1,13 @@
-// HTTP Basic auth demo (simulated)
+// HTTP Basic auth demo — unauthenticated request to auth endpoint
 
 fn main() {
-    let user = "user"
-    let pass = "pass"
-    print(f"Authenticating as ${user}:${pass}")
-    let body = "authenticated response"
-    print(f"Body: ${body}")
+    // httpbin.org /basic-auth returns 401 without credentials
+    let url = "https://httpbin.org/basic-auth/user/pass"
+
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
+
+    let body = Response.body(handle)
+    print(f"Body length: ${body.len()}")
 }

@@ -1,8 +1,16 @@
-// MIME type handling demo (simulated)
+// MIME type handling demo — inspect Content-Type header
 
 fn main() {
-    let content_type = "application/json"
+    let url = "https://httpbin.org/json"
+    let handle = Http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
+
+    let content_type = Response.header_get(handle, "Content-Type")
     print(f"Content-Type: ${content_type}")
-    print("Type: application")
-    print("Subtype: json")
+
+    // Parse MIME type into type/subtype
+    let parts = content_type.split("/")
+    print(f"Type: ${parts.get(0)}")
+    print(f"Subtype: ${parts.get(1)}")
 }
