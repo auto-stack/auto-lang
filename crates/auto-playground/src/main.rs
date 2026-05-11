@@ -6,6 +6,8 @@ mod notebook;
 mod routes;
 mod vm_runner;
 
+use notebook::ai::{ClaudeProvider, AIProviderState};
+
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::FromRef;
 use axum::http::Method;
@@ -19,6 +21,7 @@ use tower_http::cors::CorsLayer;
 struct AppState {
     agent_sessions: routes::agent_debug::AgentDebugSessions,
     notebook_state: notebook::NotebookState,
+    ai_provider: AIProviderState,
 }
 
 impl FromRef<AppState> for routes::agent_debug::AgentDebugSessions {
@@ -30,6 +33,12 @@ impl FromRef<AppState> for routes::agent_debug::AgentDebugSessions {
 impl FromRef<AppState> for notebook::NotebookActor {
     fn from_ref(state: &AppState) -> Self {
         state.notebook_state.clone()
+    }
+}
+
+impl FromRef<AppState> for AIProviderState {
+    fn from_ref(state: &AppState) -> Self {
+        state.ai_provider.clone()
     }
 }
 
@@ -56,6 +65,7 @@ async fn main() {
     let app_state = AppState {
         agent_sessions: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         notebook_state: notebook::NotebookActor::new(),
+        ai_provider: std::sync::Arc::new(ClaudeProvider::new()),
     };
 
     let api_routes = Router::new()
@@ -69,6 +79,7 @@ async fn main() {
         .route("/api/notebook/{sid}/variables", get(routes::notebook::variables_handler))
         .route("/api/notebook/{sid}/transpile", post(routes::notebook::transpile_handler))
         .route("/api/notebook/{sid}", delete(routes::notebook::delete_session_handler))
+        .route("/api/notebook/{sid}/ai", post(routes::notebook::ai_handler))
         .route("/api/debug/ws", get(debug_ws_handler))
         .route("/api/agent-debug/start", post(routes::agent_debug::start_handler))
         .route("/api/agent-debug/sessions", get(routes::agent_debug::sessions_handler))

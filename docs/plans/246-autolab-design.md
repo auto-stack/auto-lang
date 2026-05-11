@@ -443,33 +443,37 @@ d:\autostack\auto-lang\
 
 ## 8. Implementation Phases
 
-### Phase 1: Playground Component Extraction + Notebook Backend Prototype
+### Phase 1: Playground Component Extraction + Notebook Backend Prototype ✅ COMPLETE
 
-| # | Task | Input | Output |
-|---|------|-------|--------|
-| 1.1 | Extract core editor from `auto-playground/frontend/` into standalone `auto-playground-vue` package | Existing CodeMirrorEditor, autoLang.ts | Publishable Vue component |
-| 1.2 | Merge website and playground's two Auto language mode definitions | Two versions of autoLang.ts | Unified language mode |
-| 1.3 | Website switches to package import instead of inline component | auto-playground-vue | No more iframe |
-| 1.4 | Implement Notebook Session backend (single VM, multi-cell sequential execution) | auto-playground backend | `/api/notebook/*` endpoints |
-| 1.5 | AutoDown cell directive parsing (`/// cell:` → AdocAST extension) | autodown module | Cell metadata extraction |
+| # | Task | Status | Input | Output |
+|---|------|--------|-------|--------|
+| 1.1 | Extract core editor from `auto-playground/frontend/` into standalone `auto-playground-vue` package | ✅ Done | Existing CodeMirrorEditor, autoLang.ts | Publishable Vue component |
+| 1.2 | Merge website and playground's two Auto language mode definitions | ✅ Done | Two versions of autoLang.ts | Unified language mode (`packages/auto-playground-vue/src/lang/auto.ts`) |
+| 1.3 | Website switches to package import instead of inline component | ✅ Done | auto-playground-vue | No more iframe |
+| 1.4 | Implement Notebook Session backend (single VM, multi-cell sequential execution) | ✅ Done | auto-playground backend | `/api/notebook/*` endpoints (`crates/auto-playground/src/notebook/mod.rs`, `routes/notebook.rs`) |
+| 1.5 | AutoDown cell directive parsing (`/// cell:` → AdocAST extension) | ✅ Done | autodown module | Cell metadata extraction (`crates/auto-lang/src/autodown/cell.rs`) |
 
-### Phase 2: AutoLab Frontend Skeleton
+---
 
-| # | Task | Input | Output |
-|---|------|-------|--------|
-| 2.1 | Scaffold `auto-lab-ui` Vite + Vue 3 project, import `auto-playground-vue` | Phase 1 components | Runnable empty notebook |
-| 2.2 | Implement `CellCanvas` + `CellItem` (add/delete/reorder, collapse, status) | Design spec | Multi-cell management |
-| 2.3 | Implement `AIChatBar` (bottom input, submit → cell stream) | AI Provider | Human-AI dialogue flow |
-| 2.4 | Implement `VariableInspector` (side panel variable tree) | Session var_snapshot | Variable panel |
-| 2.5 | Implement `.ad` notebook file read/write (load/save/autosave) | AutoDown parser | File persistence |
+### Phase 2: AutoLab Frontend Skeleton 🔄 IN PROGRESS
 
-### Phase 3: Cell Type System + AI Integration
+### Phase 2: AutoLab Frontend Skeleton ✅ COMPLETE
 
-| # | Task | Input | Output |
-|---|------|-------|--------|
-| 3.1 | Implement cell type registration system (built-in types + extension mechanism) | CellType interface | Chart/Table display |
-| 3.2 | Integrate Claude API (backend AI Provider + frontend interaction) | anthropic SDK | AI cell generation |
-| 3.3 | Dependency-chain incremental re-execution (modify cell → mark dirty → rerun downstream) | executor.rs | Smart execution |
+| # | Task | Status | Input | Output |
+|---|------|--------|-------|--------|
+| 2.1 | Scaffold `auto-lab-ui` Vite + Vue 3 project, import `auto-playground-vue` | ✅ Done | Phase 1 components | `packages/auto-lab-ui/` with Vite + Vue 3 + TypeScript |
+| 2.2 | Implement `CellCanvas` + `CellItem` (add/delete/reorder, collapse, status) | ✅ Done | Design spec | Multi-cell management with toolbar controls |
+| 2.3 | Implement `AIChatBar` (bottom input, submit → cell stream) | ✅ Done | AI Provider | Persistent bottom chat bar appending AI cells |
+| 2.4 | Implement `VariableInspector` (side panel variable tree) | ✅ Done | Session var_snapshot | Side panel with variable list + cell overview |
+| 2.5 | Implement `.ad` notebook file read/write (load/save/autosave) | ✅ Done | AutoDown parser | `loadFromAd` / `serializeToAd` / `saveToFile` / `loadFromFile` in `useNotebook.ts` |
+
+### Phase 3: Cell Type System + AI Integration ✅ COMPLETE
+
+| # | Task | Status | Input | Output |
+|---|------|--------|-------|--------|
+| 3.1 | Implement cell type registration system (built-in types + extension mechanism) | ✅ Done | CellType interface | Chart/Table display (`OutputChart.vue`, `OutputTable.vue`), `table` type added |
+| 3.2 | Integrate Claude API (backend AI Provider + frontend interaction) | ✅ Done | `reqwest` | `ClaudeProvider` in `notebook/ai.rs`, `/api/notebook/{sid}/ai`, frontend `askAI()` |
+| 3.3 | Dependency-chain incremental re-execution (modify cell → mark dirty → rerun downstream) | ✅ Done | `notebook/mod.rs` | `cell_snapshots` + cascade dirty tracking + upstream re-execution queue |
 
 ### Phase 4: Polish + Deploy
 

@@ -4,7 +4,8 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
-use crate::notebook::{NotebookState, VariableInfo};
+use crate::notebook::ai::{AIProviderState, AIRequest, AIResponse, AiProvider};
+use crate::notebook::{NotebookCellMeta, NotebookState, VariableInfo};
 use crate::routes::trans;
 
 // ============================================================================
@@ -26,6 +27,7 @@ pub struct CreateSessionResponse {
 pub struct ExecuteRequest {
     pub cell_id: String,
     pub source: String,
+    pub notebook_cells: Option<Vec<NotebookCellMeta>>,
 }
 
 #[derive(Serialize)]
@@ -73,7 +75,7 @@ pub async fn execute_handler(
     Path(sid): Path<String>,
     Json(req): Json<ExecuteRequest>,
 ) -> Result<Json<ExecuteResponse>, AppError> {
-    let output = state.execute(sid, req.cell_id, req.source).await;
+    let output = state.execute(sid, req.cell_id, req.source, req.notebook_cells).await;
 
     Ok(Json(ExecuteResponse {
         stdout: output.stdout,
@@ -123,4 +125,14 @@ pub async fn delete_session_handler(
 ) -> StatusCode {
     state.destroy(sid);
     StatusCode::NO_CONTENT
+}
+
+/// POST /api/notebook/{sid}/ai — AI chat request
+pub async fn ai_handler(
+    State(ai): State<AIProviderState>,
+    Path(_sid): Path<String>,
+    Json(req): Json<AIRequest>,
+) -> Result<Json<AIResponse>, AppError> {
+    let response = ai.chat(req).await;
+    Ok(Json(response))
 }

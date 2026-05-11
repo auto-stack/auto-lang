@@ -1,0 +1,4 @@
+dist/
+*.d.ts
+vite.config.js
+node_modules/
