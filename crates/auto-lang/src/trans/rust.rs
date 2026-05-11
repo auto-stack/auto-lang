@@ -2423,6 +2423,61 @@ impl RustTrans {
                             }
                             _ => {}
                         },
+                        "json" => match method.as_str() {
+                            "parse" => {
+                                write!(out, "a2r_std::json::parse(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "get" => {
+                                write!(out, "a2r_std::json::get(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                }
+                                write!(out, ").cloned()")?;
+                                return Ok(());
+                            }
+                            "get_str" => {
+                                write!(out, "a2r_std::json::get_str(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "as_string" => {
+                                write!(out, "a2r_std::json::as_string(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        "http" => match method.as_str() {
+                            "post" => {
+                                write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                        if let Expr::Ident(name) = expr {
+                                            if self.local_var_types.get(name)
+                                                .map(|ty| !matches!(ty, Type::StrSlice))
+                                                .unwrap_or(true)
+                                            { write!(out, ".as_str()")?; }
+                                        }
+                                    }
+                                }
+                                write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
                         _ => {}
                     }
                 }

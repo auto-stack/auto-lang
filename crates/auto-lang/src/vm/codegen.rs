@@ -5037,7 +5037,7 @@ impl Codegen {
                             Expr::Ident(obj_name) => {
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
-                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs");
+                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http");
                                 if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -5369,21 +5369,30 @@ impl Codegen {
                         let module = parts[0].as_str();
                         let method = parts[1].as_str();
                         let routed = match (module, method) {
-                            ("env", "get") => Some("Env.get".to_string()),
-                            ("env", "get_or") => Some("Env.get_or".to_string()),
-                            ("env", "set") => Some("Env.set".to_string()),
-                            ("env", "remove") => Some("Env.remove".to_string()),
-                            ("fs", "read_to_string") => Some("File.read_text".to_string()),
-                            ("fs", "write") | ("fs", "write_all") => Some("File.write_text".to_string()),
-                            ("fs", "create_dir") | ("fs", "create_dir_all") => Some("File.create_dir".to_string()),
-                            ("fs", "read") | ("fs", "read_bytes") => Some("File.read_bytes".to_string()),
-                            ("fs", "copy") => Some("File.copy".to_string()),
-                            ("fs", "exists") => Some("File.exists".to_string()),
-                            ("fs", "remove_file") | ("fs", "delete") => Some("File.delete".to_string()),
-                            ("fs", "remove_dir") => Some("File.remove_dir".to_string()),
-                            ("fs", "remove_dir_all") => Some("File.remove_dir_all".to_string()),
-                            ("fs", "metadata") => Some("File.size".to_string()),
-                            ("fs", "is_dir") => Some("File.is_dir".to_string()),
+                            ("env", "get") => Some("auto.env.get".to_string()),
+                            ("env", "get_or") => Some("auto.env.get_or".to_string()),
+                            ("env", "set") => Some("auto.env.set".to_string()),
+                            ("env", "remove") => Some("auto.env.remove".to_string()),
+                            ("fs", "read_to_string") | ("fs", "read_text") => Some("auto.fs.read_text".to_string()),
+                            ("fs", "write") | ("fs", "write_all") | ("fs", "write_text") => Some("auto.fs.write_text".to_string()),
+                            ("fs", "create_dir") | ("fs", "create_dir_all") => Some("auto.fs.create_dir".to_string()),
+                            ("fs", "read") | ("fs", "read_bytes") => Some("auto.fs.read_bytes".to_string()),
+                            ("fs", "copy") => Some("auto.fs.copy".to_string()),
+                            ("fs", "exists") => Some("auto.fs.exists".to_string()),
+                            ("fs", "remove_file") | ("fs", "delete") => Some("auto.fs.delete".to_string()),
+                            ("fs", "remove_dir") => Some("auto.fs.remove_dir".to_string()),
+                            ("fs", "remove_dir_all") => Some("auto.fs.remove_dir_all".to_string()),
+                            ("fs", "metadata") => Some("auto.fs.size".to_string()),
+                            ("fs", "is_dir") => Some("auto.fs.is_dir".to_string()),
+                            ("json", "parse") => Some("auto.json.parse".to_string()),
+                            ("json", "get") => Some("auto.json.get".to_string()),
+                            ("json", "get_str") => Some("auto.json.as_string".to_string()),
+                            ("json", "as_string") => Some("auto.json.as_string".to_string()),
+                            ("json", "encode") => Some("auto.json.encode".to_string()),
+                            ("json", "decode") => Some("auto.json.decode".to_string()),
+                            ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
+                            ("json", "has_key") => Some("auto.json.has_key".to_string()),
+                            ("http", "post") => Some("auto.http.post".to_string()),
                             _ => None,
                         };
                         if routed.is_some() {
