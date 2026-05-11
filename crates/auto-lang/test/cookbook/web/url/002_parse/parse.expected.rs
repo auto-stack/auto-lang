@@ -6,8 +6,8 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let url: String = "https://user:pass@example.com:8080/path?query=1#frag".to_string();
-    println!("Scheme: {}", Url::scheme(url));
-    println!("Host: {}", Url::host(url));
-    println!("Port: {}", Url::port(url));
+    let u = url.parse("https://user:pass@example.com:8080/path?query=1#frag");
+    println!("Scheme: {}", u.scheme());
+    println!("Host: {}", u.host());
+    println!("Port: {}", u.port());
 }

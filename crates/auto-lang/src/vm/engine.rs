@@ -4101,13 +4101,15 @@ impl AutoVM {
                     } else if type_name.contains("url::Url") || type_name.contains("Url") {
                         match method_name.as_str() {
                             "scheme" => Some("auto.url_opaque.scheme"),
-                            "host_str" => Some("auto.url_opaque.host_str"),
+                            "host" | "host_str" => Some("auto.url_opaque.host_str"),
                             "path" => Some("auto.url_opaque.path"),
+                            "query" => Some("auto.url_opaque.query"),
                             "fragment" => Some("auto.url_opaque.fragment"),
                             "port" => Some("auto.url_opaque.port"),
-                            "query_pairs" => Some("auto.url_opaque.query_pairs"),
+                            "query_pairs" | "query_params" => Some("auto.url_opaque.query_pairs"),
                             "join" => Some("auto.url_opaque.join"),
                             "origin" => Some("auto.url_opaque.origin"),
+                            "to_string" => Some("auto.url_opaque.to_string"),
                             _ => None,
                         }
                     } else if type_name.contains("semver::Version") || (type_name.contains("Version") && !type_name.contains("VersionReq")) {

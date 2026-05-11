@@ -6,10 +6,10 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let url: String = "https://example.com/path?query=1".to_string();
-    let encoded = Url::encode("hello world");
-    let decoded = Url::decode("hello%20world");
-    println!("Scheme: {}", Url::scheme(url));
+    let u = url.parse("https://example.com/path?query=1");
+    let encoded = url.encode("hello world");
+    let decoded = url.decode("hello%20world");
+    println!("Scheme: {}", u.scheme());
     println!("Encoded: {}", encoded);
     println!("Decoded: {}", decoded);
 }

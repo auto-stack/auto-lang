@@ -1,5 +1,5 @@
 fn main() {
-    let url = "https://example.com/page#section"
-    let fragment = Url.fragment(url)
+    let u = url.parse("https://example.com/page#section")
+    let fragment = u.fragment()
     print(f"Fragment: $fragment")
 }

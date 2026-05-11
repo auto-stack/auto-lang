@@ -1,5 +1,5 @@
 fn main() {
-    let url = "https://example.com/rust?name=hello&age=20"
-    let query = Url.query(url)
+    let u = url.parse("https://example.com/rust?name=hello&age=20")
+    let query = u.query()
     print(f"Query: $query")
 }

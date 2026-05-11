@@ -6,8 +6,8 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let url: String = "https://example.com/path?query=1".to_string();
-    println!("Scheme: {}", Url::scheme(url));
-    println!("Host: {}", Url::host(url));
-    println!("Path: {}", Url::path(url));
+    let u = url.parse("https://example.com/path?query=1");
+    println!("Scheme: {}", u.scheme());
+    println!("Host: {}", u.host());
+    println!("Path: {}", u.path());
 }

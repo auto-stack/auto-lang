@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let url: String = "https://example.com/page#section".to_string();
-    let fragment = Url::fragment(url);
+    let u = url.parse("https://example.com/page#section");
+    let fragment = u.fragment();
     println!("Fragment: {}", fragment);
 }

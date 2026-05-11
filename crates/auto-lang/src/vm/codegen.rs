@@ -5064,7 +5064,7 @@ impl Codegen {
                             Expr::Ident(obj_name) => {
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
-                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http");
+                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url");
                                 if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -5427,6 +5427,11 @@ impl Codegen {
                             ("json", "type_of") => Some("auto.json.type_of".to_string()),
                             ("json", "get_at") => Some("auto.json.get_at".to_string()),
                             ("json", "keys") => Some("auto.json.keys".to_string()),
+                            // URL module → opaque heap object shims
+                            ("url", "parse") => Some("auto.url_opaque.parse".to_string()),
+                            ("url", "encode") => Some("auto.url.encode".to_string()),
+                            ("url", "decode") => Some("auto.url.decode".to_string()),
+                            ("url", "join_path") => Some("auto.url.join_path".to_string()),
                             _ => None,
                         };
                         if routed.is_some() {
@@ -5468,11 +5473,13 @@ impl Codegen {
                             match method.as_str() {
                                 "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
                                 "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
-                                "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
+                                "host" | "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
                                 "path" => func_name = Some("auto.url_opaque.path".to_string()),
+                                "query" => func_name = Some("auto.url_opaque.query".to_string()),
                                 "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
                                 "port" => func_name = Some("auto.url_opaque.port".to_string()),
-                                "query_pairs" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                                "query_pairs" | "query_params" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                                "to_string" => func_name = Some("auto.url_opaque.to_string".to_string()),
                                 "join" => func_name = Some("auto.url_opaque.join".to_string()),
                                 "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
                                 _ => {}
@@ -5513,11 +5520,13 @@ impl Codegen {
                                 "url" => match method.as_str() {
                                     "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
                                     "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
-                                    "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
+                                    "host" | "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
                                     "path" => func_name = Some("auto.url_opaque.path".to_string()),
+                                    "query" => func_name = Some("auto.url_opaque.query".to_string()),
                                     "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
                                     "port" => func_name = Some("auto.url_opaque.port".to_string()),
-                                    "query_pairs" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                                    "query_pairs" | "query_params" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
+                                    "to_string" => func_name = Some("auto.url_opaque.to_string".to_string()),
                                     "join" => func_name = Some("auto.url_opaque.join".to_string()),
                                     "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
                                     _ => {}
@@ -5764,7 +5773,7 @@ impl Codegen {
                         let is_static_method = match obj.as_ref() {
                             Expr::Ident(obj_name) => {
                                 let lower = obj_name.as_ref();
-                                matches!(lower, "env" | "fs" | "json" | "http")
+                                matches!(lower, "env" | "fs" | "json" | "http" | "url")
                                     || self.is_type_name_heuristic(obj_name)
                                     || self.is_type(obj_name)
                             }
@@ -5950,7 +5959,14 @@ impl Codegen {
                         if name.starts_with("print") || name == "write" || name == "say" || name.starts_with("assert") {
                             self.last_expr_type = ObjectType::Void;
                         } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
-                            || name.ends_with(".str") || name == "int_str" {
+                            || name.ends_with(".str") || name == "int_str"
+                            || name.starts_with("auto.url_opaque.scheme")
+                            || name.starts_with("auto.url_opaque.host_str")
+                            || name.starts_with("auto.url_opaque.path")
+                            || name.starts_with("auto.url_opaque.query")
+                            || name.starts_with("auto.url_opaque.fragment")
+                            || name.starts_with("auto.url_opaque.origin")
+                            || name.starts_with("auto.url_opaque.to_string") {
                             self.last_expr_type = ObjectType::String;
                         } else if let Some(ret_ty) = self.fn_return_types.get(name) {
                             self.last_expr_type = match ret_ty {
@@ -7345,6 +7361,11 @@ impl Codegen {
                 if let Expr::Ident(type_name) = obj.as_ref() {
                     let m = method.as_str();
                     if m == "new" || m == "parse" || m == "now" {
+                        // Check stdlib module names (lowercase) directly
+                        match type_name.as_ref() {
+                            "url" => return Some("url".to_string()),
+                            _ => {}
+                        }
                         if let Some((crate_name, _)) = self.rust_native_map.get(type_name.as_str()) {
                             match crate_name.as_str() {
                                 "regex" | "url" | "semver" | "chrono" | "sha2" => return Some(crate_name.clone()),
@@ -7451,7 +7472,9 @@ impl Codegen {
             | "count" | "cmp" | "hash" | "abs" | "size" => ObjectType::Int,
             // Methods returning string (get_str is explicitly string-typed; plain "get" returns unknown)
             "get_str" | "substr" | "trim" | "to_str" | "to_string"
-            | "join" | "format" | "lower" | "upper" | "replace" | "slice" => ObjectType::String,
+            | "join" | "format" | "lower" | "upper" | "replace" | "slice"
+            | "scheme" | "host" | "host_str" | "path" | "query" | "fragment"
+            | "origin" | "username" | "password" => ObjectType::String,
             // Methods returning float/double
             "to_float" | "to_double" | "sqrt" | "sin" | "cos" | "tan" | "pow"
             | "log" | "exp" | "floor" | "ceil" | "round" => ObjectType::Double,

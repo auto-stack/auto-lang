@@ -881,6 +881,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.url_opaque.join", 2507);
     registry.register_with_id("auto.url_opaque.origin", 2508);
     registry.register_with_id("auto.url_opaque.drop", 2509);
+    registry.register_with_id("auto.url_opaque.query", 2510);
+    registry.register_with_id("auto.url_opaque.to_string", 2511);
 
     // Semver opaque struct shims (2600-2609) — Plan 212 Phase 2.2
     registry.register_with_id("auto.semver_opaque.parse", 2600);

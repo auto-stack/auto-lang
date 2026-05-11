@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let url: String = "https://example.com/rust?name=hello&age=20".to_string();
-    let query = Url::query(url);
+    let u = url.parse("https://example.com/rust?name=hello&age=20");
+    let query = u.query();
     println!("Query: {}", query);
 }

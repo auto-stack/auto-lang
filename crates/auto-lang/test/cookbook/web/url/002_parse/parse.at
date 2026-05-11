@@ -1,6 +1,6 @@
 fn main() {
-    let url = "https://user:pass@example.com:8080/path?query=1#frag"
-    print(f"Scheme: ${Url.scheme(url)}")
-    print(f"Host: ${Url.host(url)}")
-    print(f"Port: ${Url.port(url)}")
+    let u = url.parse("https://user:pass@example.com:8080/path?query=1#frag")
+    print(f"Scheme: ${u.scheme()}")
+    print(f"Host: ${u.host()}")
+    print(f"Port: ${u.port()}")
 }

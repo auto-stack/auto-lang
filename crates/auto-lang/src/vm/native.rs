@@ -533,6 +533,8 @@ impl NativeInterface {
         self.register(NATIVE_URL_OPAQUE_FRAGMENT, shim_url_opaque_fragment);
         self.register(NATIVE_URL_OPAQUE_PORT, shim_url_opaque_port);
         self.register(NATIVE_URL_OPAQUE_QUERY_PAIRS, shim_url_opaque_query_pairs);
+        self.register(NATIVE_URL_OPAQUE_QUERY, shim_url_opaque_query);
+        self.register(NATIVE_URL_OPAQUE_TO_STRING, shim_url_opaque_to_string);
         self.register(NATIVE_URL_OPAQUE_JOIN, shim_url_opaque_join);
         self.register(NATIVE_URL_OPAQUE_ORIGIN, shim_url_opaque_origin);
         self.register(NATIVE_URL_OPAQUE_DROP, shim_url_opaque_drop);
@@ -543,9 +545,27 @@ impl NativeInterface {
         self.register_name("auto.url_opaque.fragment", NATIVE_URL_OPAQUE_FRAGMENT);
         self.register_name("auto.url_opaque.port", NATIVE_URL_OPAQUE_PORT);
         self.register_name("auto.url_opaque.query_pairs", NATIVE_URL_OPAQUE_QUERY_PAIRS);
+        self.register_name("auto.url_opaque.query", NATIVE_URL_OPAQUE_QUERY);
+        self.register_name("auto.url_opaque.to_string", NATIVE_URL_OPAQUE_TO_STRING);
         self.register_name("auto.url_opaque.join", NATIVE_URL_OPAQUE_JOIN);
         self.register_name("auto.url_opaque.origin", NATIVE_URL_OPAQUE_ORIGIN);
         self.register_name("auto.url_opaque.drop", NATIVE_URL_OPAQUE_DROP);
+
+        // Register url_opaque names in BIGVM_NATIVES for compile-time resolution
+        {
+            use crate::vm::native_registry::BIGVM_NATIVES;
+            let mut reg = BIGVM_NATIVES.lock().unwrap();
+            for name in &[
+                "auto.url_opaque.parse", "auto.url_opaque.scheme",
+                "auto.url_opaque.host_str", "auto.url_opaque.path",
+                "auto.url_opaque.query", "auto.url_opaque.fragment",
+                "auto.url_opaque.port", "auto.url_opaque.query_pairs",
+                "auto.url_opaque.to_string", "auto.url_opaque.join",
+                "auto.url_opaque.origin", "auto.url_opaque.drop",
+            ] {
+                reg.register(name);
+            }
+        }
 
         // Plan 212 Phase 2.2: Semver opaque struct shims
         self.register(NATIVE_SEMVER_OPAQUE_PARSE, shim_semver_opaque_parse);
@@ -1150,6 +1170,8 @@ pub const NATIVE_URL_OPAQUE_PATH: u16 = 2503;
 pub const NATIVE_URL_OPAQUE_FRAGMENT: u16 = 2504;
 pub const NATIVE_URL_OPAQUE_PORT: u16 = 2505;
 pub const NATIVE_URL_OPAQUE_QUERY_PAIRS: u16 = 2506;
+pub const NATIVE_URL_OPAQUE_QUERY: u16 = 2510;
+pub const NATIVE_URL_OPAQUE_TO_STRING: u16 = 2511;
 pub const NATIVE_URL_OPAQUE_JOIN: u16 = 2507;
 pub const NATIVE_URL_OPAQUE_ORIGIN: u16 = 2508;
 pub const NATIVE_URL_OPAQUE_DROP: u16 = 2509;
@@ -5274,6 +5296,46 @@ pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(
     let obj = RustStdlibObject::new("List<i32>", std::sync::Mutex::new(list));
     let id = vm.insert_heap_object(obj);
     task.ram.push_i32(id as i32);
+    Ok(())
+}
+
+/// url.query() → raw query string (without ?)
+/// Stack: [handle_i32] -> [query_str]
+pub fn shim_url_opaque_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let s = url.lock().unwrap().query().unwrap_or("").to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.to_string() → full URL string
+/// Stack: [handle_i32] -> [url_str]
+pub fn shim_url_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = task.ram.pop_i32() as u64;
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let s = url.lock().unwrap().to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
     Ok(())
 }
 

@@ -1,8 +1,8 @@
 fn main() {
-    let url = "https://example.com/path?query=1"
-    let encoded = Url.encode("hello world")
-    let decoded = Url.decode("hello%20world")
-    print(f"Scheme: ${Url.scheme(url)}")
+    let u = url.parse("https://example.com/path?query=1")
+    let encoded = url.encode("hello world")
+    let decoded = url.decode("hello%20world")
+    print(f"Scheme: ${u.scheme()}")
     print(f"Encoded: $encoded")
     print(f"Decoded: $decoded")
 }
