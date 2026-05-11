@@ -12,6 +12,7 @@ use crate::diagnostics;
 use crate::hover_info;
 use crate::goto_def;
 use crate::workspace;
+use crate::signature_help;
 
 /// Document state stored by the LSP
 #[derive(Debug, Clone)]
@@ -151,6 +152,11 @@ impl LanguageServer for Backend {
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    retrigger_characters: None,
+                    work_done_progress_options: Default::default(),
+                }),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -313,6 +319,26 @@ impl LanguageServer for Backend {
 
         // Provide hover information
         Ok(hover_info::hover(&content, position, &uri))
+    }
+
+    /// Provide signature help
+    async fn signature_help(
+        &self,
+        params: SignatureHelpParams,
+    ) -> Result<Option<SignatureHelp>> {
+        let uri = params
+            .text_document_position_params
+            .text_document
+            .uri
+            .to_string();
+        let position = params.text_document_position_params.position;
+
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
+
+        Ok(signature_help::get_signature_help(&content, position))
     }
 
     /// Go to definition
@@ -598,17 +624,66 @@ impl LanguageServer for Backend {
         params: CodeActionParams,
     ) -> Result<Option<CodeActionResponse>> {
         let uri = params.text_document.uri.to_string();
+        let range = params.range;
 
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("Code action requested for: {}", uri),
-            )
-            .await;
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
 
-        // TODO: Provide code actions for diagnostics
-        // For now, return None
-        Ok(None)
+        let mut actions = Vec::new();
+
+        // Build workspace state for auto-import suggestions
+        if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
+            if let Ok(store) = ws_state.type_store.read() {
+                // Get the word at the start of the range
+                let lines: Vec<&str> = content.lines().collect();
+                if let Some(line) = lines.get(range.start.line as usize) {
+                    if let Some(word) = get_word_at_position(line, range.start.character as usize) {
+                        // Check if the word exists in workspace TypeStore
+                        if store.lookup_fn_decl_str(&word).is_some()
+                            || store.lookup_type_decl_str(&word).is_some()
+                            || store.lookup_spec_decl_str(&word).is_some()
+                        {
+                            // Suggest auto-import
+                            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                                title: format!("Auto-import '{}'", word),
+                                kind: Some(CodeActionKind::QUICKFIX),
+                                diagnostics: None,
+                                edit: Some(WorkspaceEdit {
+                                    changes: Some({
+                                        let mut changes = std::collections::HashMap::new();
+                                        changes.insert(
+                                            uri.parse().unwrap(),
+                                            vec![TextEdit {
+                                                range: Range {
+                                                    start: Position { line: 0, character: 0 },
+                                                    end: Position { line: 0, character: 0 },
+                                                },
+                                                new_text: format!("use {}\n", word),
+                                            }],
+                                        );
+                                        changes
+                                    }),
+                                    document_changes: None,
+                                    change_annotations: None,
+                                }),
+                                command: None,
+                                is_preferred: Some(false),
+                                disabled: None,
+                                data: None,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        if actions.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(actions))
+        }
     }
 }
 
