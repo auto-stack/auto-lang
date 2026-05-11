@@ -127,6 +127,78 @@ fn find_definition_in_ast(content: &str, name: &str) -> Option<auto_lang::Symbol
     None
 }
 
+/// Find definition using workspace state (cross-file aware)
+pub fn find_definition_workspace(
+    content: &str,
+    position: Position,
+    uri: &str,
+    ws_state: &crate::workspace::WorkspaceState,
+) -> Option<GotoDefinitionResponse> {
+    let lines: Vec<&str> = content.lines().collect();
+    let line = lines.get(position.line as usize)?;
+    let word = get_word_at_position(line, position.character as usize)?;
+
+    let db = &ws_state.db;
+
+    // Check for qualified name (Type.member)
+    if word.contains('.') {
+        let parts: Vec<&str> = word.split('.').collect();
+        if parts.len() == 2 {
+            let type_name = parts[0];
+            let member_name = parts[1];
+
+            if let Ok(store) = ws_state.type_store.read() {
+                if let Some(type_decl) = store.lookup_type_decl_str(type_name) {
+                    // Check methods
+                    for method in &type_decl.methods {
+                        if method.name.as_str() == member_name {
+                            // Return location in current file (type is in current file)
+                            return create_location(uri, &auto_lang::SymbolLocation::new(0, 0, 0));
+                        }
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
+    // Search all fragments across the workspace for the symbol
+    for frag_id in db.all_fragment_ids() {
+        if let Some(meta) = db.get_fragment_meta(&frag_id) {
+            if meta.name.as_str() == word {
+                // Get the file path for this fragment
+                let file_path = db.get_file_path(meta.file_id)
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| uri.to_string());
+
+                let target_uri = if file_path.starts_with("file://") {
+                    file_path.parse().ok()?
+                } else {
+                    format!("file://{}", file_path).parse().ok()?
+                };
+
+                let location = Location {
+                    uri: target_uri,
+                    range: Range {
+                        start: Position {
+                            line: meta.span.line.saturating_sub(1) as u32,
+                            character: meta.span.column.saturating_sub(1) as u32,
+                        },
+                        end: Position {
+                            line: meta.span.line.saturating_sub(1) as u32,
+                            character: meta.span.column.saturating_sub(1) as u32,
+                        },
+                    },
+                };
+
+                return Some(GotoDefinitionResponse::Scalar(location));
+            }
+        }
+    }
+
+    None
+}
+
 /// Create an LSP Location from a SymbolLocation
 fn create_location(uri: &str, loc: &auto_lang::SymbolLocation) -> Option<GotoDefinitionResponse> {
     let uri_parsed: Uri = uri.parse().ok()?;

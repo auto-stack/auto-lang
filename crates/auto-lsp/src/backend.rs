@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -10,6 +11,7 @@ use crate::completion;
 use crate::diagnostics;
 use crate::hover_info;
 use crate::goto_def;
+use crate::workspace;
 
 /// Document state stored by the LSP
 #[derive(Debug, Clone)]
@@ -26,6 +28,10 @@ pub struct Backend {
     /// Debounce handles to prevent excessive parsing
     /// Maps URI to the handle of the scheduled parse task
     debounce_handles: Arc<RwLock<HashMap<String, tokio::task::JoinHandle<()>>>>,
+    /// Workspace root directory (detected from initialize params)
+    workspace_root: Arc<RwLock<Option<PathBuf>>>,
+    /// Filesystem resolver for cross-file module resolution
+    resolver: Arc<RwLock<Option<auto_lang::resolver::FilesystemResolver>>>,
 }
 
 /// Clone implementation for debounced tasks
@@ -35,6 +41,8 @@ impl Clone for Backend {
             client: self.client.clone(),
             documents: self.documents.clone(),
             debounce_handles: self.debounce_handles.clone(),
+            workspace_root: self.workspace_root.clone(),
+            resolver: self.resolver.clone(),
         }
     }
 }
@@ -46,6 +54,8 @@ impl Backend {
             client,
             documents: Arc::new(RwLock::new(HashMap::new())),
             debounce_handles: Arc::new(RwLock::new(HashMap::new())),
+            workspace_root: Arc::new(RwLock::new(None)),
+            resolver: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -79,6 +89,13 @@ impl Backend {
         let mut docs = self.documents.write().await;
         docs.remove(&uri);
     }
+
+    /// Build workspace state for a document, resolving its imports
+    async fn build_workspace_state(&self, uri: &str, content: &str) -> Option<workspace::WorkspaceState> {
+        let resolver = self.resolver.read().await.clone()?;
+        let document_path = std::path::PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri));
+        Some(workspace::build_workspace_state(content, &document_path, &resolver))
+    }
 }
 
 impl LanguageServer for Backend {
@@ -90,6 +107,28 @@ impl LanguageServer for Backend {
                 format!("AutoLang LSP initializing with workspace: {:?}", params.root_uri),
             )
             .await;
+
+        // Detect workspace root and create resolver
+        if let Some(root_uri) = params.root_uri {
+            if let Some(root_path) = root_uri.to_file_path() {
+                let root_path = root_path.into_owned();
+                let mut workspace_root = self.workspace_root.write().await;
+                *workspace_root = Some(root_path.clone());
+                drop(workspace_root);
+
+                let resolver = workspace::create_resolver(&root_path);
+                let mut resolver_lock = self.resolver.write().await;
+                *resolver_lock = Some(resolver);
+                drop(resolver_lock);
+
+                self.client
+                    .log_message(
+                        MessageType::INFO,
+                        format!("Workspace root set to: {:?}", root_path),
+                    )
+                    .await;
+            }
+        }
 
         Ok(InitializeResult {
             offset_encoding: None,
@@ -294,7 +333,14 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        // Find the definition
+        // Try workspace-aware goto-definition first
+        if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
+            if let Some(result) = goto_def::find_definition_workspace(&content, position, &uri, &ws_state) {
+                return Ok(Some(result));
+            }
+        }
+
+        // Fall back to single-file goto-definition
         Ok(goto_def::find_definition(&content, position, &uri))
     }
 
@@ -305,17 +351,90 @@ impl LanguageServer for Backend {
             .text_document
             .uri
             .to_string();
+        let position = params.text_document_position.position;
 
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("Find references requested in: {}", uri),
-            )
-            .await;
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
 
-        // TODO: Implement actual find references from AST/symbol table
-        // For now, return None
-        Ok(None)
+        // Get the word at the cursor position
+        let lines: Vec<&str> = content.lines().collect();
+        let line = match lines.get(position.line as usize) {
+            Some(l) => l,
+            None => return Ok(None),
+        };
+        let word = match get_word_at_position(line, position.character as usize) {
+            Some(w) => w,
+            None => return Ok(None),
+        };
+
+        let mut locations = Vec::new();
+
+        // Search workspace for definitions of this symbol
+        if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
+            let db = &ws_state.db;
+            for frag_id in db.all_fragment_ids() {
+                if let Some(meta) = db.get_fragment_meta(&frag_id) {
+                    if meta.name.as_str() == word {
+                        let file_path = db.get_file_path(meta.file_id)
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| uri.clone());
+
+                        let target_uri: Uri = if file_path.starts_with("file://") {
+                            file_path.parse().unwrap_or_else(|_| uri.parse().unwrap())
+                        } else {
+                            format!("file://{}", file_path).parse().unwrap_or_else(|_| uri.parse().unwrap())
+                        };
+
+                        locations.push(Location {
+                            uri: target_uri,
+                            range: Range {
+                                start: Position {
+                                    line: meta.span.line.saturating_sub(1) as u32,
+                                    character: meta.span.column.saturating_sub(1) as u32,
+                                },
+                                end: Position {
+                                    line: meta.span.line.saturating_sub(1) as u32,
+                                    character: meta.span.column.saturating_sub(1) as u32,
+                                },
+                            },
+                        });
+                    }
+                }
+            }
+        }
+
+        // Also find all occurrences in the current file by simple text search
+        for (line_num, line_str) in content.lines().enumerate() {
+            for (offset, _) in line_str.match_indices(&word) {
+                // Skip if this is the definition (already added above)
+                let is_definition = locations.iter().any(|loc| {
+                    loc.uri.to_string() == uri && loc.range.start.line == line_num as u32
+                });
+                if !is_definition {
+                    locations.push(Location {
+                        uri: uri.parse().unwrap(),
+                        range: Range {
+                            start: Position {
+                                line: line_num as u32,
+                                character: offset as u32,
+                            },
+                            end: Position {
+                                line: line_num as u32,
+                                character: (offset + word.len()) as u32,
+                            },
+                        },
+                    });
+                }
+            }
+        }
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(locations))
+        }
     }
 
     /// Document symbols (outline view)
@@ -349,9 +468,69 @@ impl LanguageServer for Backend {
             )
             .await;
 
-        // TODO: Search across all documents
-        // For now, return None
-        Ok(None)
+        let query = params.query.to_lowercase();
+        let mut symbols = Vec::new();
+
+        // Search across all open documents
+        let docs = self.documents.read().await;
+        for (uri, doc) in docs.iter() {
+            if let Some(ws_state) = self.build_workspace_state(uri, &doc.content).await {
+                let db = &ws_state.db;
+                for frag_id in db.all_fragment_ids() {
+                    if let Some(meta) = db.get_fragment_meta(&frag_id) {
+                        let name = meta.name.as_str();
+                        if query.is_empty() || name.to_lowercase().contains(&query) {
+                            let kind = match meta.kind {
+                                auto_lang::database::FragKind::Function => SymbolKind::FUNCTION,
+                                auto_lang::database::FragKind::Struct => SymbolKind::STRUCT,
+                                auto_lang::database::FragKind::Enum => SymbolKind::ENUM,
+                                auto_lang::database::FragKind::Const => SymbolKind::CONSTANT,
+                                auto_lang::database::FragKind::Spec => SymbolKind::INTERFACE,
+                                auto_lang::database::FragKind::Impl => SymbolKind::METHOD,
+                            };
+
+                            let file_path = db.get_file_path(meta.file_id)
+                                .map(|p| p.to_string())
+                                .unwrap_or_else(|| uri.clone());
+
+                            let target_uri = if file_path.starts_with("file://") {
+                                file_path.parse().unwrap_or_else(|_| uri.parse().unwrap())
+                            } else {
+                                format!("file://{}", file_path).parse().unwrap_or_else(|_| uri.parse().unwrap())
+                            };
+
+                            symbols.push(WorkspaceSymbol {
+                                name: name.to_string(),
+                                kind,
+                                location: OneOf::Left(Location {
+                                    uri: target_uri,
+                                    range: Range {
+                                        start: Position {
+                                            line: meta.span.line.saturating_sub(1) as u32,
+                                            character: meta.span.column.saturating_sub(1) as u32,
+                                        },
+                                        end: Position {
+                                            line: meta.span.line.saturating_sub(1) as u32,
+                                            character: meta.span.column.saturating_sub(1) as u32,
+                                        },
+                                    },
+                                }),
+                                container_name: None,
+                                data: None,
+                                tags: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        drop(docs);
+
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(WorkspaceSymbolResponse::Nested(symbols)))
+        }
     }
 
     /// Rename symbol
@@ -361,18 +540,56 @@ impl LanguageServer for Backend {
             .text_document
             .uri
             .to_string();
+        let position = params.text_document_position.position;
         let new_name = params.new_name;
 
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("Rename requested in {}: new_name = {}", uri, new_name),
-            )
-            .await;
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
 
-        // TODO: Implement actual rename
-        // For now, return None
-        Ok(None)
+        // Get the word at the cursor position
+        let lines: Vec<&str> = content.lines().collect();
+        let line = match lines.get(position.line as usize) {
+            Some(l) => l,
+            None => return Ok(None),
+        };
+        let word = match get_word_at_position(line, position.character as usize) {
+            Some(w) => w,
+            None => return Ok(None),
+        };
+
+        // Build text edits for all occurrences in the current file
+        let mut text_edits = Vec::new();
+        for (line_num, line_str) in content.lines().enumerate() {
+            for (offset, _) in line_str.match_indices(&word) {
+                text_edits.push(TextEdit {
+                    range: Range {
+                        start: Position {
+                            line: line_num as u32,
+                            character: offset as u32,
+                        },
+                        end: Position {
+                            line: line_num as u32,
+                            character: (offset + word.len()) as u32,
+                        },
+                    },
+                    new_text: new_name.clone(),
+                });
+            }
+        }
+
+        if text_edits.is_empty() {
+            Ok(None)
+        } else {
+            let mut changes = std::collections::HashMap::new();
+            changes.insert(uri.parse().unwrap(), text_edits);
+            Ok(Some(WorkspaceEdit {
+                changes: Some(changes),
+                document_changes: None,
+                change_annotations: None,
+            }))
+        }
     }
 
     /// Code actions (quick fixes)
@@ -545,6 +762,38 @@ fn extract_document_symbols(content: &str) -> Vec<DocumentSymbol> {
     }
 
     symbols
+}
+
+/// Get the word at the given cursor position
+fn get_word_at_position(line: &str, cursor: usize) -> Option<String> {
+    let chars: Vec<char> = line.chars().collect();
+
+    if cursor > chars.len() {
+        return None;
+    }
+
+    // Find the start of the word
+    let mut start = cursor;
+    while start > 0 && is_identifier_char(chars[start - 1]) {
+        start -= 1;
+    }
+
+    // Find the end of the word
+    let mut end = cursor;
+    while end < chars.len() && is_identifier_char(chars[end]) {
+        end += 1;
+    }
+
+    if start < end {
+        Some(chars[start..end].iter().collect())
+    } else {
+        None
+    }
+}
+
+/// Check if a character is part of an identifier
+fn is_identifier_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
 }
 
 /// Apply a text change to content at the given range
