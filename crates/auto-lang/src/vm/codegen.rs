@@ -5419,8 +5419,6 @@ impl Codegen {
                             ("json", "decode") => Some("auto.json.decode".to_string()),
                             ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
                             ("json", "has_key") => Some("auto.json.has_key".to_string()),
-                            ("http", "post") => Some("auto.http.post".to_string()),
-                            ("http", "post_bearer") => Some("auto.http.post_bearer".to_string()),
                             _ => None,
                         };
                         if routed.is_some() {
@@ -6504,10 +6502,42 @@ impl Codegen {
             }
             // Plan 124: Await expression - expr.await
             Expr::Await { expr } => {
+                // Check if the inner expression is a synchronous native call
+                // that doesn't return a Future (e.g., http.post_sync, http.post_bearer)
+                let mut skip_await = false;
+                match expr.as_ref() {
+                    Expr::Dot(obj, method) => {
+                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                            if obj_name.as_str() == "http"
+                                && (method.as_str() == "post_sync" || method.as_str() == "post_bearer")
+                            {
+                                skip_await = true;
+                            }
+                        }
+                    }
+                    Expr::Call(call_expr) => {
+                        if let Expr::Dot(obj, method) = call_expr.name.as_ref() {
+                            if let Expr::Ident(obj_name) = obj.as_ref() {
+                                if obj_name.as_str() == "http"
+                                    && (method.as_str() == "post_sync" || method.as_str() == "post_bearer")
+                                {
+                                    skip_await = true;
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
                 // Compile the inner expression (should evaluate to a Future)
                 self.compile_expr(expr)?;
-                // Emit AWAIT_FUTURE to wait for the future's completion
-                self.emit(OpCode::AWAIT_FUTURE);
+
+                if skip_await {
+                    // Synchronous native — already pushed the result, no await needed
+                } else {
+                    // Emit AWAIT_FUTURE to wait for the future's completion
+                    self.emit(OpCode::AWAIT_FUTURE);
+                }
                 // Unwrap the inner type from Future<T> for type-aware dispatch
                 if let Type::GenericInstance(ref inst) = self.infer_expr_type(expr) {
                     if inst.base_name.as_ref() == "Future" {

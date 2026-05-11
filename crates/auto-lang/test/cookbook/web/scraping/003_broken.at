@@ -7,7 +7,7 @@ fn main() {
     urls.push("https://httpbin.org/status/500")
 
     for url in urls {
-        let handle = Http.get(url)
+        let handle = http.get(url)
         let status = Response.status_code(handle)
         if status == 200 {
             print(f"OK: ${url} (${status})")

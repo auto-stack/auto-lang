@@ -4,7 +4,7 @@ fn main() {
     // httpbin.org /basic-auth returns 401 without credentials
     let url = "https://httpbin.org/basic-auth/user/pass"
 
-    let handle = Http.get(url)
+    let handle = http.get(url)
     let status = Response.status_code(handle)
     print(f"Status: ${status}")
 

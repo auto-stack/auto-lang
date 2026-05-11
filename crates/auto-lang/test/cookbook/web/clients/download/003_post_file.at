@@ -3,7 +3,7 @@
 fn main() {
     let url = "https://httpbin.org/post"
     let content = "file content here - hello from AutoLang"
-    let handle = Http.post(url, content)
+    let handle = http.post(url, content)
     let status = Response.status_code(handle)
     print(f"Upload status: ${status}")
 

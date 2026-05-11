@@ -2,7 +2,7 @@
 
 fn main() {
     let url = "https://httpbin.org/bytes/4096"
-    let handle = Http.get(url)
+    let handle = http.get(url)
     let status = Response.status_code(handle)
     print(f"Status: ${status}")
 

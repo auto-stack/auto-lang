@@ -3412,31 +3412,31 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout);
 
     // HTTP server functions (manual shims — heap objects for server state)
-    natives.register_shim_by_name("Http.server", shim_http_server);
-    natives.register_shim_by_name("Http.server_get", shim_http_server_get);
-    natives.register_shim_by_name("Http.server_post", shim_http_server_post);
-    natives.register_shim_by_name("Http.server_put", shim_http_server_put);
-    natives.register_shim_by_name("Http.server_delete", shim_http_server_delete);
-    natives.register_shim_by_name("Http.server_static", shim_http_server_static);
-    natives.register_shim_by_name("Http.server_listen", shim_http_server_listen);
-    natives.register_shim_by_name("Http.response", shim_http_response);
-    natives.register_shim_by_name("Http.response_status", shim_http_response_status);
-    natives.register_shim_by_name("Http.response_header", shim_http_response_header);
-    natives.register_shim_by_name("Http.response_text", shim_http_response_text);
-    natives.register_shim_by_name("Http.response_html", shim_http_response_html);
-    natives.register_shim_by_name("Http.response_bytes", shim_http_response_bytes);
+    natives.register_shim_by_name("auto.http.server", shim_http_server);
+    natives.register_shim_by_name("auto.http.server_get", shim_http_server_get);
+    natives.register_shim_by_name("auto.http.server_post", shim_http_server_post);
+    natives.register_shim_by_name("auto.http.server_put", shim_http_server_put);
+    natives.register_shim_by_name("auto.http.server_delete", shim_http_server_delete);
+    natives.register_shim_by_name("auto.http.server_static", shim_http_server_static);
+    natives.register_shim_by_name("auto.http.server_listen", shim_http_server_listen);
+    natives.register_shim_by_name("auto.http.response", shim_http_response);
+    natives.register_shim_by_name("auto.http.response_status", shim_http_response_status);
+    natives.register_shim_by_name("auto.http.response_header", shim_http_response_header);
+    natives.register_shim_by_name("auto.http.response_text", shim_http_response_text);
+    natives.register_shim_by_name("auto.http.response_html", shim_http_response_html);
+    natives.register_shim_by_name("auto.http.response_bytes", shim_http_response_bytes);
 
     // HTTP client functions (manual shims — heap objects for request/response)
-    natives.register_shim_by_name("Http.get", shim_http_get);
-    natives.register_shim_by_name("Http.post", shim_http_post);
-    natives.register_shim_by_name("Http.put", shim_http_put);
-    natives.register_shim_by_name("Http.delete", shim_http_delete);
-    natives.register_shim_by_name("Http.request", shim_http_request);
-    natives.register_shim_by_name("Http.request_builder_header", shim_request_builder_header);
-    natives.register_shim_by_name("Http.request_builder_body", shim_request_builder_body);
-    natives.register_shim_by_name("Http.request_builder_timeout", shim_request_builder_timeout);
-    natives.register_shim_by_name("Http.request_builder_json", shim_request_builder_json);
-    natives.register_shim_by_name("Http.request_builder_send", shim_request_builder_send);
+    natives.register_shim_by_name("auto.http.get", shim_http_get);
+    natives.register_shim_by_name("auto.http.post", shim_http_post);
+    natives.register_shim_by_name("auto.http.put", shim_http_put);
+    natives.register_shim_by_name("auto.http.delete", shim_http_delete);
+    natives.register_shim_by_name("auto.http.request", shim_http_request);
+    natives.register_shim_by_name("auto.http.request_builder_header", shim_request_builder_header);
+    natives.register_shim_by_name("auto.http.request_builder_body", shim_request_builder_body);
+    natives.register_shim_by_name("auto.http.request_builder_timeout", shim_request_builder_timeout);
+    natives.register_shim_by_name("auto.http.request_builder_json", shim_request_builder_json);
+    natives.register_shim_by_name("auto.http.request_builder_send", shim_request_builder_send);
 
     // RequestBuilder method aliases for CALL_SPEC dispatch
     // When CALL_SPEC detects type "RequestBuilder", it looks up "RequestBuilder.method"
@@ -3456,7 +3456,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http_stream.stream_next", shim_http_stream_next);
     natives.register_shim_by_name("auto.http_stream.stream_is_done", shim_http_stream_is_done);
     natives.register_shim_by_name("auto.http_stream.stream_close", shim_http_stream_close);
-    natives.register_shim_by_name("Http.post_stream_with_headers", shim_http_post_stream_with_headers);
+    natives.register_shim_by_name("auto.http.post_stream_with_headers", shim_http_post_stream_with_headers);
 
     // HTTP client sync with auth (for Anthropic API from AutoVM)
     natives.register_shim_by_name("auto.http.post_sync", shim_http_post_sync);

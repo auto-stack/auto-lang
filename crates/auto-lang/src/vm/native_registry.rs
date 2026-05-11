@@ -60,7 +60,6 @@ pub const TYPE_CANONICAL_MAP: &[(&str, &str)] = &[
     ("Result.Err", "auto.result"),
     ("Result", "auto.result"),
     ("Response", "auto.http.response"),
-    ("Http", "auto.http"),
     ("Option", "auto.option"),
     ("String", "auto.str"),
     ("Str", "auto.str"),
@@ -984,12 +983,6 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Str.split_once", 1518);
     registry.register_with_id("Str.match_count", 1519);
     registry.register_with_id("Str.replace_first", 1520);
-
-    registry.register_with_id("Http.ok", 2220);
-    registry.register_with_id("Http.created", 2221);
-    registry.register_with_id("Http.bad_request", 2222);
-    registry.register_with_id("Http.not_found", 2223);
-    registry.register_with_id("Http.internal_error", 2224);
 
     registry.register_with_id("Task.spawn", 2300);
     registry.register_with_id("TaskHandle.send", 2301);

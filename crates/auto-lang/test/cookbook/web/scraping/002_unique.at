@@ -9,7 +9,7 @@ fn main() {
     // Visit each URL and print basic info
     var visited = 0
     for url in urls {
-        let handle = Http.get(url)
+        let handle = http.get(url)
         let status = Response.status_code(handle)
         let body = Response.body(handle)
         print(f"${url} => status ${status}, length ${body.len()}")

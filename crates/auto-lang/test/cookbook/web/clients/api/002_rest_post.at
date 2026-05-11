@@ -3,7 +3,7 @@
 fn main() {
     let url = "https://httpbin.org/post"
     let json_body = "{\"key\":\"value\"}"
-    let handle = Http.post(url, json_body)
+    let handle = http.post(url, json_body)
     let status = Response.status_code(handle)
     print(f"Status: ${status}")
 
