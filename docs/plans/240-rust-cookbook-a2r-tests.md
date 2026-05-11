@@ -1,8 +1,8 @@
 # Plan 240: Rust Cookbook a2r 测试集
 
-**日期**: 2026-05-08
-**状态**: Phase 6 已完成
-**目标**: 利用 Rust Cookbook 的真实示例建立系统化的 a2r 测试集，通过对比 a2r 输出与 Rust 原始代码来发现和修复 a2r 的问题
+**日期**: 2026-05-08（更新于 2026-05-11）
+**状态**: Phase 6 已完成，Phase 7 开始
+**目标**: 利用 Rust Cookbook 的真实示例建立系统化的 a2r 测试集，通过对比 a2r 输出与 Rust 原始代码来发现和修复 a2r 的问题；对 Tier C 模拟桩逐步去桩化。
 
 ## 1. 概述
 
@@ -228,86 +228,49 @@ test/a2r/cookbook/
 
 所有 109 个 B-tier 示例已实现，无剩余。原先标记为"未实现"的 68 个示例已在 Phase 5 中完成。
 
-## 5. Tier C — 暂不可行（42 个）
+## 5. Tier C — 已创建 .at 文件，含模拟桩（42 个）
 
-涉及 async/await、tokio、网络编程、unsafe、数据库驱动、FFI、web framework 等，a2r 当前不支持。
+Tier C 示例涉及 async/await、tokio、网络编程、数据库、FFI 等。所有 42 个已创建为 `.at` 文件并通过 a2r transpile 测试，但 AutoVM 运行时有 **38 个是模拟桩**（只 `print()` 固定字符串，不执行真实操作）。
 
-### 5.1 async/tokio（12 个）
+### 5.1 模拟桩根因分析
 
-```
-asynchronous/channel/bounded.md          — Bounded Channels (async, tokio)
-asynchronous/channel/unbounded.md        — Unbounded Channels (async, tokio)
-asynchronous/fs/create.md                — Async create files (async, tokio)
-asynchronous/fs/read.md                  — Async read files (async, tokio)
-asynchronous/fs/remove.md                — Async remove files (async, tokio)
-asynchronous/fs/rw_traits.md             — AsyncRead/AsyncWrite (async, tokio)
-asynchronous/fs/write.md                 — Async write files (async, tokio)
-asynchronous/ftc/ctrl_c.md               — Ctrl+C handling (async, tokio)
-asynchronous/join.md                     — Structured concurrency (async, tokio)
-asynchronous/rt/tokio-rt-builder.md      — Tokio runtime builder (async, tokio)
-asynchronous/rt/tokio-rt-macro.md        — Tokio macro (async, tokio)
-asynchronous/timeout.md                  — Async timeout (async, tokio)
-```
+38 个模拟桩按根因分为 8 类：
 
-### 5.2 高级并发（2 个）
+| 类别 | 文件数 | 根因 |
+|------|--------|------|
+| **VM 无 async 执行器** | 5 | VM 无法驱动 `~T` Future，无事件循环 |
+| **VM 无网络栈** | 14 | 无 TCP/HTTP client，无 HTML/MIME parser |
+| **VM 文件 I/O 是 TODO** | 5 | `file.rs` 中的 builtin 返回空字符串/Nil |
+| **需第三方 crate: 数据库** | 6 | rusqlite, tokio-postgres（需 FFI 桥接） |
+| **需第三方 crate: C/C++ 构建** | 3 | cc crate（需 build-time codegen） |
+| **VM 无 mmap** | 1 | memmap2 crate + raw pointer 支持 |
+| **Auto 语法缺失: 位运算符** | 1 | 无 `&` `\|` 按位运算 |
+| **Channel 未暴露** | 2 | 内部 `AutoChannel` 无 user-facing API |
+| **无 MIME 解析** | 1 | 缺失 MIME stdlib 或 `dep mime` |
 
-```
-concurrency/actor/actor-pattern.md       — Actor pattern with Tokio (async, tokio)
-concurrency/custom_future/custom-future.md — Custom Future impl (Pin, Waker)
-```
+### 5.2 短期可修复（Auto 语言/VM 层面，4-8 个文件）
 
-### 5.3 数据库（6 个）
+| 优先级 | 问题 | 影响文件 | 修复方案 |
+|--------|------|----------|----------|
+| P0 | **文件 I/O 是 TODO** | 5（fs/001_create ~ 005_write） | `libs/file.rs` 实现真实 std::fs 操作 |
+| P1 | **缺少位运算符 `&` `\|`** | 1（data_structures/001_bitfield） | Parser 添加 `&`/`\|` 运算符 + VM BIT_AND/BIT_OR opcode |
+| P2 | **Channel 未暴露** | 2（channel/001_bounded, 002_unbounded） | 将 `AutoChannel` 注册为 builtin 类型 |
 
-```
-database/postgres/aggregate_data.md      — Aggregate data (postgres)
-database/postgres/create_tables.md       — Create tables (postgres)
-database/postgres/insert_query_data.md   — Insert/query data (postgres)
-database/sqlite/initialization.md        — SQLite init (rusqlite)
-database/sqlite/insert_select.md         — SQLite insert/select (rusqlite)
-database/sqlite/transactions.md          — SQLite transactions (rusqlite)
-```
+### 5.3 中期（需 stdlib 扩展或 `dep` + FFI 桥接，24+ 个文件）
 
-### 5.4 unsafe/低级（4 个）
+| 问题 | 文件数 | 修复方案 |
+|------|--------|----------|
+| **无网络栈** | 14 | 完成 `dep` + `use.rust` FFI 桥接 (Plan 092)，让 `dep reqwest`/`dep scraper` 可用 |
+| **无数据库** | 6 | FFI 桥接后通过 `dep rusqlite` 调用 |
+| **无 mmap** | 1 | `dep memmap2` 或 builtin |
+| **无 MIME** | 1 | `dep mime` + FFI |
 
-```
-file/read-write/memmap.md                — Memory-mapped file (unsafe, memmap)
-net/server/listen-unused.md              — TCP listen (TcpListener)
-safety_critical/no_panic/no-panic.md     — No-panic guarantee (no-panic proc macro)
-data_structures/bitfield/bitfield.md     — Bitfield type (bitflags, no_std)
-```
+### 5.4 长期（VM 架构级改动，5+ 个文件）
 
-### 5.5 FFI/构建工具（3 个）
-
-```
-development_tools/build_tools/cc-bundled-cpp.md    — Compile and link bundled C++ library (cc)
-development_tools/build_tools/cc-bundled-static.md  — Compile and link bundled C static library (cc)
-development_tools/build_tools/cc-defines.md         — Define C compiler flags (cc)
-```
-
-### 5.6 async 网络/reqwest（14 个）
-
-```
-web/mime/request.md                      — MIME from HTTP (async, reqwest)
-web/scraping/broken.md                   — Broken link check (async, reqwest)
-web/scraping/extract-links.md            — Extract links (async, reqwest)
-web/scraping/unique.md                   — Unique links (async, reqwest)
-web/clients/api/paginated.md             — Paginated RESTful API (async, reqwest, serde)
-web/clients/api/rest-get.md              — Query GitHub API (async, reqwest, serde)
-web/clients/api/rest-head.md             — Check API resource (async, reqwest)
-web/clients/api/rest-post.md             — Create/delete Gist (async, reqwest, serde, anyhow)
-web/clients/authentication/basic.md      — Basic auth (async, reqwest)
-web/clients/download/basic.md            — Download file (async, reqwest, anyhow, tempfile)
-web/clients/download/partial.md          — Partial download (async, reqwest, anyhow)
-web/clients/download/post-file.md        — POST file (async, reqwest, anyhow, ring)
-web/clients/requests/get.md              — HTTP GET (async, reqwest, anyhow, ring)
-web/clients/requests/header.md           — Custom headers (async, reqwest, serde, url, anyhow)
-```
-
-### 5.7 Web framework（1 个）
-
-```
-web/leptos.md                            — Full stack web with Leptos framework
-```
+| 问题 | 文件数 | 修复方案 |
+|------|--------|----------|
+| **无 async 执行器** | 5 | VM 内嵌 tokio runtime 或实现 async scheduler |
+| **无 C/C++ 构建** | 3 | 需要 build-time codegen（非 VM 层面） |
 
 ## 6. 执行步骤
 
@@ -400,12 +363,14 @@ web/leptos.md                            — Full stack web with Leptos framewor
 
 ## 8. 统计
 
-| 层次 | Cookbook 总数 | 已实现 | 状态 |
-|------|-------------|--------|------|
-| Tier A | 15 | 15 | ✅ 全部完成 |
-| Tier B | 109 | 109 | ✅ 全部完成 |
-| Tier C | 42 | 0 | 暂不处理（需 async/unsafe/FFI 支持） |
-| **总计** | **166** | **124** | **75% 覆盖** |
+| 层次 | Cookbook 总数 | a2r 通过 | AutoVM 通过 | 状态 |
+|------|-------------|----------|-------------|------|
+| Tier A | 15 | 15 | 15 | ✅ 全部完成 |
+| Tier B | 109 | 109 | 109 | ✅ 全部完成（含 dep 声明） |
+| Tier C | 42 | 42 | 42 | ✅ .at 文件全部创建，但 38 个是模拟桩 |
+| **总计** | **166** | **166** | **166** | **100% 覆盖（a2r + AutoVM）** |
+
+注：Tier C 的 AutoVM 通过是"模拟通过"（print 固定字符串），未执行真实 I/O/网络/数据库操作。
 
 ## 9. AAVM（AutoVM）问题分析
 
@@ -450,11 +415,19 @@ web/leptos.md                            — Full stack web with Leptos framewor
 2. 创建简化版的 B-tier VM 测试（不含外部依赖）
 3. 标记为 a2r-only 测试（仅验证转译输出正确性）
 
-## 10. 下一步
+## 10. 下一步：Tier C 去桩化
 
-1. ~~按优先级逐个修复 M1→M2→M3→T1→T4→... 的问题~~ ✅ 已完成
-2. ~~每修复一个问题，更新对应测试的 `.expected.rs`~~ ✅ 已完成
-3. ✅ 所有 288 个 a2r 测试通过（包括 124 cookbook + 其他）
-4. 修复 VM-1~VM-4 高影响问题（f64 数学、List.sort、Unary Op、Stack Overflow）
-5. 评估 C-tier 可行性
-6. 讨论 MISSING_DEP 解决方案
+### Phase 7: 短期修复（当前）
+
+1. **文件 I/O 实现** — `libs/file.rs` 实现真实 std::fs 操作（5 个 fs/*.at 去桩化）
+2. **位运算符 `&` `|`** — Parser + VM 添加按位 AND/OR（1 个 bitfield.at 去桩化）
+3. **Channel 暴露** — 将 `AutoChannel` 注册为 builtin 类型（2 个 channel/*.at 去桩化）
+
+### Phase 8: 中期（需 FFI 桥接）
+
+4. **`dep` + `use.rust` FFI 桥接** (Plan 092) — 批量解锁 24 个文件（网络、数据库、MIME、mmap）
+
+### Phase 9: 长期（VM 架构）
+
+5. **Async 执行器** — VM 内嵌 tokio runtime（5 个 async 文件去桩化）
+6. **C/C++ 构建支持** — build-time codegen（3 个 cc/*.at 去桩化）
