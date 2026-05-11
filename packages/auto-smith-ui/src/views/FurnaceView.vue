@@ -1,7 +1,7 @@
 <template>
   <div class="furnace-view">
     <div class="furnace-header">
-      <h2>The Furnace · 熔炉</h2>
+      <h2>The Furnace · 丹炉</h2>
       <span class="session-badge" :class="sessionStatus">
         {{ sessionStatus }}
       </span>

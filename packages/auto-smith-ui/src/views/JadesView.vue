@@ -1,19 +1,19 @@
 <template>
-  <div class="jade-tabs-view">
-    <div class="jade-tabs-header">
-      <h2>The Jade Tabs · 玉简</h2>
-      <div class="jade-tabs-actions">
-        <button class="jade-tabs-btn" @click="triggerDriftCheck">
+  <div class="jades-view">
+    <div class="jades-header">
+      <h2>The Jades · 玉简</h2>
+      <div class="jades-actions">
+        <button class="jades-btn" @click="triggerDriftCheck">
           <RefreshCw :size="14" />
           Drift Check
         </button>
-        <button class="jade-tabs-btn" @click="aiEnrich">
+        <button class="jades-btn" @click="aiEnrich">
           <Sparkles :size="14" />
           AI Enrich
         </button>
       </div>
     </div>
-    <div class="jade-tabs-body">
+    <div class="jades-body">
       <div class="section-nav">
         <div
           v-for="section in sections"
@@ -148,13 +148,13 @@ function saveSection() {
 </script>
 
 <style scoped>
-.jade-tabs-view {
+.jades-view {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.jade-tabs-header {
+.jades-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -164,18 +164,18 @@ function saveSection() {
   flex-shrink: 0;
 }
 
-.jade-tabs-header h2 {
+.jades-header h2 {
   font-size: 1rem;
   font-weight: 600;
   color: #94e2d5;
 }
 
-.jade-tabs-actions {
+.jades-actions {
   display: flex;
   gap: 0.5rem;
 }
 
-.jade-tabs-btn {
+.jades-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -189,11 +189,11 @@ function saveSection() {
   transition: all 0.15s;
 }
 
-.jade-tabs-btn:hover {
+.jades-btn:hover {
   background: #45475a;
 }
 
-.jade-tabs-body {
+.jades-body {
   display: flex;
   flex: 1;
   min-height: 0;

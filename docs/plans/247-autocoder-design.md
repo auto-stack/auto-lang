@@ -127,7 +127,7 @@ AutoForge UI presents three primary views, toggled via a top navigation rail. Ea
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### View 1: The Furnace · 熔炉 — Chat & AI Loop
+### View 1: The Furnace · 丹炉 — Chat & AI Loop
 
 **Purpose**: The primary interaction surface. Like Claude Code + Cursor Composer, but web-native.
 
@@ -143,7 +143,7 @@ AutoForge UI presents three primary views, toggled via a top navigation rail. Ea
 
 **Key difference from existing tools**: The chat is *aware of the Ledger*. When an agent proposes a spec change, it's rendered as a "Spec Delta Card" that the user can approve, modify, or reject — before any code is written. This shifts the human-in-the-loop from *code review* to *spec review*, dramatically reducing rework.
 
-### View 2: The Jade Tabs · 玉简 — Living Knowledge
+### View 2: The Jades · 玉简 — Living Knowledge
 
 **Purpose**: The single source of truth for project knowledge. AutoDown-native, bidirectional, versioned.
 
@@ -216,7 +216,7 @@ $Review(id: "REV-1", status: "pending", reviewer: "human") {
 - **Drift detection**: The system periodically checks if code has diverged from specs. A spec marked `[LIVE]` is auto-updated when code changes. A spec marked `[DRIFT]` means code has changed but the spec hasn't been updated.
 - **Bidirectional links**: Clicking a spec reference in the Forge jumps to the Ledger. Code comments referencing spec IDs (e.g., `// spec:R1.1`) are hyperlinked.
 - **AI enrichment**: "AI, analyze the current codebase and update the Analysis section." The AI reads code, updates the Ledger, and presents a diff for human approval.
-- **AutoDown rendering**: Uses the existing Typst/HTML transpilers. The Jade Tabs · 玉简 can be exported as a PDF report or published as HTML documentation.
+- **AutoDown rendering**: Uses the existing Typst/HTML transpilers. The Jades · 玉简 can be exported as a PDF report or published as HTML documentation.
 
 ### View 3: The Order · 法阵 — Agent Monitoring & Administration
 
@@ -538,7 +538,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 - Integrate with `auto-playground` server (mount routes)
 - Basic three-view navigation shell
 
-### Phase 1: The Furnace · 熔炉 — Chat & Loop (4 weeks)
+### Phase 1: The Furnace · 丹炉 — Chat & Loop (4 weeks)
 - Implement Forge session + streaming SSE
 - Port AutoLab's AIChatBar + streaming to Forge
 - Build tool system: read_file, write_file, edit_file, shell, search
@@ -546,7 +546,7 @@ Reuse AutoLab's Catppuccin Mocha theme but extend with:
 - Live diff panel for file changes
 - Approve/reject gates for spec changes
 
-### Phase 2: The Jade Tabs · 玉简 — Knowledge (3 weeks)
+### Phase 2: The Jades · 玉简 — Knowledge (3 weeks)
 - AutoDown Ledger parser (frontend + backend)
 - Section tree navigator with status badges
 - Drift detection engine
