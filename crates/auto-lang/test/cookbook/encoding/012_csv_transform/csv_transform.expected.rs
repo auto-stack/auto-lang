@@ -5,22 +5,17 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use csv::Reader;
-use csv::Writer;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let data: String = "name,age\nAlice,30\nBob,25".to_string();
-    let mut reader = Reader::from_reader(data.as_bytes());
-    let mut writer = Writer::from_writer(Vec::new());
-    writer.write_record(vec!["name", "age", "decade"])?;
-    for result in reader.records() {
-        let record: i32 = result?;
-        let name = record.get(0).cloned().unwrap();
-        let age = record.get(1).cloned().unwrap();
-        let age_int = age.parse().unwrap();
-        let decade: i32 = age_int / 10 * 10;
-        writer.write_record(vec![name, age, format!("{}", decade)])?;
+fn main() {
+    let mut names = List::new();
+    names.push("Alice");
+    names.push("Bob");
+    names.push("Charlie");
+    let mut ages = List::new();
+    ages.push(30);
+    ages.push(25);
+    ages.push(35);
+    for i in 0..names.len() as i32 {
+        let age = ages.get(i).cloned();
+        println!("{},{},{}s", names.get(i).cloned(), age, age / 10 * 10);
     }
-    let output = String::from_utf8(writer.into_inner()?)?;
-    println!("{}", output);
-    Ok(())
 }
