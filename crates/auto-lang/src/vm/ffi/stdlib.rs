@@ -2114,7 +2114,7 @@ pub fn shim_http_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // Simple HTTP GET implementation
     let response_handle = simple_http_request("GET", &url, None);
 
-    task.ram.push_i64(response_handle);
+    task.ram.push_i32(response_handle as i32);
     Ok(())
 }
 
@@ -2127,7 +2127,7 @@ pub fn shim_http_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 
     let response_handle = simple_http_request("POST", &url, Some(&body));
 
-    task.ram.push_i64(response_handle);
+    task.ram.push_i32(response_handle as i32);
     Ok(())
 }
 
@@ -2140,7 +2140,7 @@ pub fn shim_http_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
     let response_handle = simple_http_request("PUT", &url, Some(&body));
 
-    task.ram.push_i64(response_handle);
+    task.ram.push_i32(response_handle as i32);
     Ok(())
 }
 
@@ -2151,7 +2151,7 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
     let response_handle = simple_http_request("DELETE", &url, None);
 
-    task.ram.push_i64(response_handle);
+    task.ram.push_i32(response_handle as i32);
     Ok(())
 }
 
@@ -2267,7 +2267,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
         builder_data.body.as_deref(),
     );
 
-    task.ram.push_i64(response_handle);
+    task.ram.push_i32(response_handle as i32);
     Ok(())
 }
 
@@ -2278,13 +2278,13 @@ pub fn shim_request_builder_send(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 /// Get status code from Response handle
 /// response_status_code(res_handle) -> int
 pub fn shim_response_status_code(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = task.ram.pop_i64();
+    let res_handle: i64 = task.ram.pop_i32() as i64;
 
     let status = HTTP_RESPONSES.with(|r| {
-        r.borrow().get(&(res_handle as u64)).map(|res| res.status as i64)
+        r.borrow().get(&(res_handle as u64)).map(|res| res.status as i32)
     }).unwrap_or(0);
 
-    task.ram.push_i64(status);
+    task.ram.push_i32(status);
     Ok(())
 }
 
@@ -2293,7 +2293,7 @@ pub fn shim_response_status_code(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 pub fn shim_response_header_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let key: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i64();
+    let res_handle: i64 = task.ram.pop_i32() as i64;
 
     let value = HTTP_RESPONSES.with(|r| {
         let responses = r.borrow();
@@ -2310,7 +2310,7 @@ pub fn shim_response_header_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
 /// Get raw body bytes from Response handle
 /// response_body(res_handle) -> []byte
 pub fn shim_response_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = task.ram.pop_i64();
+    let res_handle: i64 = task.ram.pop_i32() as i64;
 
     let body_bytes = HTTP_RESPONSES.with(|r| {
         r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
@@ -2327,14 +2327,16 @@ pub fn shim_response_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 // ============================================================================
 
 /// 创建流式 HTTP GET 请求
-/// 使用 reqwest::blocking 发起请求，将 Response 存入流式句柄
+/// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
 pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let response = reqwest::blocking::Client::new()
-        .get(&url)
-        .send()
+    let url_clone = url.clone();
+    let response = std::thread::spawn(move || {
+        reqwest::blocking::Client::new().get(&url_clone).send()
+    }).join()
+        .map_err(|_| VMError::RuntimeError("HTTP GET stream thread panicked".to_string()))?
         .map_err(|e| VMError::RuntimeError(format!("HTTP GET stream failed: {}", e)))?;
 
     let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -2348,17 +2350,22 @@ pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 }
 
 /// 创建流式 HTTP POST 请求
+/// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
 pub fn shim_http_post_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let response = reqwest::blocking::Client::new()
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send()
+    let url_clone = url.clone();
+    let response = std::thread::spawn(move || {
+        reqwest::blocking::Client::new()
+            .post(&url_clone)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+    }).join()
+        .map_err(|_| VMError::RuntimeError("HTTP POST stream thread panicked".to_string()))?
         .map_err(|e| VMError::RuntimeError(format!("HTTP POST stream failed: {}", e)))?;
 
     let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -2473,16 +2480,17 @@ pub fn shim_http_post_stream_with_headers(
     let headers_map: std::collections::HashMap<String, String> =
         serde_json::from_str(&headers_json).unwrap_or_default();
 
-    let mut request = reqwest::blocking::Client::new()
-        .post(&url)
-        .body(body);
-
-    for (key, value) in &headers_map {
-        request = request.header(key.as_str(), value.as_str());
-    }
-
-    let response = request
-        .send()
+    let url_clone = url.clone();
+    let response = std::thread::spawn(move || {
+        let mut request = reqwest::blocking::Client::new()
+            .post(&url_clone)
+            .body(body);
+        for (key, value) in &headers_map {
+            request = request.header(key.as_str(), value.as_str());
+        }
+        request.send()
+    }).join()
+        .map_err(|_| VMError::RuntimeError("HTTP POST stream thread panicked".to_string()))?
         .map_err(|e| VMError::RuntimeError(format!("HTTP POST stream with headers failed: {}", e)))?;
 
     let stream_handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -2619,46 +2627,135 @@ pub fn shim_sse_parse(chunk: String) -> Vec<String> {
 }
 
 /// HTTP request using reqwest::blocking
+/// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
 fn simple_http_request(method: &str, url: &str, body: Option<&str>) -> i64 {
-    let client = reqwest::blocking::Client::new();
-    let mut builder = match method {
-        "POST" => client.post(url),
-        "PUT" => client.put(url),
-        "DELETE" => client.delete(url),
-        _ => client.get(url),
-    };
+    let method = method.to_string();
+    let url = url.to_string();
+    let body = body.map(|s| s.to_string());
 
-    if let Some(b) = body {
-        builder = builder
-            .header("Content-Type", "application/json")
-            .body(b.to_string());
-    }
+    let result = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let mut builder = match method.as_str() {
+            "POST" => client.post(&url),
+            "PUT" => client.put(&url),
+            "DELETE" => client.delete(&url),
+            _ => client.get(&url),
+        };
 
-    match builder.send() {
-        Ok(response) => {
+        if let Some(b) = body {
+            builder = builder.header("Content-Type", "application/json").body(b);
+        }
+
+        builder.send().map(|response| {
             let status = response.status().as_u16();
             let headers: Vec<(String, String)> = response
-                .headers()
-                .iter()
+                .headers().iter()
                 .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
                 .collect();
             let body_bytes = response.bytes().unwrap_or_default().to_vec();
+            (status, headers, body_bytes)
+        }).map_err(|e| e.to_string())
+    }).join();
 
+    match result {
+        Ok(Ok((status, headers, body_bytes))) => {
             let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-            let resp_data = HttpResponseData {
-                status,
-                headers,
-                body: body_bytes,
-            };
-
-            HTTP_RESPONSES.with(|r| {
-                r.borrow_mut().insert(handle, resp_data);
-            });
-
+            HTTP_RESPONSES.with(|r| { r.borrow_mut().insert(handle, HttpResponseData { status, headers, body: body_bytes }); });
             handle as i64
         }
-        Err(e) => shim_http_internal_error(format!("HTTP {} failed: {}", method, e)),
+        Ok(Err(e)) => shim_http_internal_error(format!("HTTP failed: {}", e)),
+        Err(_) => shim_http_internal_error("HTTP thread panicked".to_string()),
     }
+}
+
+/// Synchronous HTTP POST with auth headers (for Anthropic API calls from AutoVM).
+/// Returns response body as string and stores status code in thread-local.
+/// Uses std::thread::spawn to avoid tokio runtime conflict with reqwest::blocking.
+fn simple_http_request_with_auth(
+    method: &str,
+    url: &str,
+    body: Option<&str>,
+    api_key: Option<&str>,
+) -> (i32, String) {
+    let method = method.to_string();
+    let url = url.to_string();
+    let body = body.map(|s| s.to_string());
+    let api_key = api_key.map(|s| s.to_string());
+
+    let result = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        let mut builder = match method.as_str() {
+            "POST" => client.post(&url),
+            "PUT" => client.put(&url),
+            "DELETE" => client.delete(&url),
+            _ => client.get(&url),
+        };
+
+        builder = builder
+            .header("Content-Type", "application/json")
+            .header("anthropic-version", "2023-06-01");
+
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                builder = builder.header("x-api-key", key);
+            }
+        }
+
+        if let Some(b) = body {
+            builder = builder.body(b);
+        }
+
+        match builder.send() {
+            Ok(response) => {
+                let status = response.status().as_u16() as i32;
+                let body_text = response.text().unwrap_or_default();
+                Ok((status, body_text))
+            }
+            Err(e) => Err(format!("HTTP error: {}", e)),
+        }
+    })
+    .join();
+
+    match result {
+        Ok(Ok((status, body_text))) => (status, body_text),
+        Ok(Err(e)) => (0, e),
+        Err(_) => (0, "HTTP thread panicked".to_string()),
+    }
+}
+
+thread_local! {
+    static LAST_HTTP_STATUS: std::cell::Cell<i32> = std::cell::Cell::new(0);
+}
+
+/// HTTP POST with auth — returns body string directly, stores status code.
+/// Stack: [url, body, api_key] -> [response_body_str]
+pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let api_key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let key_opt = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key.as_str())
+    };
+    let (status, resp_body) = simple_http_request_with_auth("POST", &url, Some(&body), key_opt);
+
+    LAST_HTTP_STATUS.with(|s| s.set(status));
+
+    resp_body.push_to_stack(task, vm)?;
+    Ok(())
+}
+
+/// Return the status code from the last HTTP request.
+/// Stack: [] -> [status_i32]
+pub fn shim_http_last_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let status = LAST_HTTP_STATUS.with(|s| s.get());
+    task.ram.push_i32(status);
+    Ok(())
 }
 
 // ============================================================================
@@ -3250,6 +3347,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http_stream.stream_is_done", shim_http_stream_is_done);
     natives.register_shim_by_name("auto.http_stream.stream_close", shim_http_stream_close);
     natives.register_shim_by_name("Http.post_stream_with_headers", shim_http_post_stream_with_headers);
+
+    // HTTP client sync with auth (for Anthropic API from AutoVM)
+    natives.register_shim_by_name("auto.http.post_sync", shim_http_post_sync);
+    natives.register_shim_by_name("auto.http.last_status", shim_http_last_status);
 
     // Regex (manual shim — heap objects for compiled regex)
     natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);
