@@ -1,7 +1,10 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::{sse::Event, sse::KeepAlive, Sse};
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
+use futures::stream::{self, Stream};
 
 use crate::error::AppError;
 use crate::notebook::ai::{AIProviderState, AIRequest, AIResponse, AiProvider};
@@ -151,4 +154,52 @@ pub async fn ai_handler(
 ) -> Result<Json<AIResponse>, AppError> {
     let response = ai.chat(req).await;
     Ok(Json(response))
+}
+
+/// POST /api/notebook/{sid}/ai/stream — AI chat streaming (SSE)
+pub async fn ai_stream_handler(
+    State(ai): State<AIProviderState>,
+    Path(_sid): Path<String>,
+    Json(req): Json<AIRequest>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
+
+    tokio::spawn(async move {
+        let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel::<crate::notebook::ai::AIStreamDelta>();
+
+        let ai_clone = ai.clone();
+        let stream_handle = tokio::spawn(async move {
+            ai_clone.chat_stream(req, delta_tx).await
+        });
+
+        while let Some(delta) = delta_rx.recv().await {
+            let _ = event_tx.send(Event::default().data(
+                serde_json::json!({"type": "delta", "text": delta.text}).to_string()
+            ));
+        }
+
+        match stream_handle.await {
+            Ok(Some(err)) => {
+                let _ = event_tx.send(Event::default().data(
+                    serde_json::json!({"type": "error", "message": err}).to_string()
+                ));
+            }
+            Ok(None) => {
+                let _ = event_tx.send(Event::default().data(
+                    serde_json::json!({"type": "done"}).to_string()
+                ));
+            }
+            Err(e) => {
+                let _ = event_tx.send(Event::default().data(
+                    serde_json::json!({"type": "error", "message": format!("Task panicked: {}", e)}).to_string()
+                ));
+            }
+        }
+    });
+
+    let sse_stream = stream::unfold(event_rx, |mut rx| async move {
+        rx.recv().await.map(|event| (Ok::<Event, Infallible>(event), rx))
+    });
+
+    Sse::new(sse_stream).keep_alive(KeepAlive::default())
 }

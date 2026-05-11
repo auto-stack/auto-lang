@@ -3,6 +3,7 @@
 //! Calls Claude API (Anthropic) for code generation and explanation.
 //! Falls back gracefully if no API key is configured.
 
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::env;
 
@@ -16,11 +17,17 @@ pub struct AIRequest {
     pub context: Option<String>,
 }
 
-/// Response returned to the frontend
+/// Response returned to the frontend (blocking mode)
 #[derive(Debug, Serialize)]
 pub struct AIResponse {
     pub content: String,
     pub error: Option<String>,
+}
+
+/// A single text delta for streaming
+#[derive(Debug, Serialize)]
+pub struct AIStreamDelta {
+    pub text: String,
 }
 
 /// Trait for AI providers (allows future OpenAI/Gemini support)
@@ -45,17 +52,16 @@ impl ClaudeProvider {
     pub fn is_available(&self) -> bool {
         self.api_key.is_some()
     }
-}
 
-impl AiProvider for ClaudeProvider {
-    async fn chat(&self, request: AIRequest) -> AIResponse {
+    /// Stream chat response as text deltas.
+    /// Sends each chunk via `tx` and returns final error (if any).
+    pub async fn chat_stream(
+        &self,
+        request: AIRequest,
+        tx: tokio::sync::mpsc::UnboundedSender<AIStreamDelta>,
+    ) -> Option<String> {
         let Some(api_key) = &self.api_key else {
-            return AIResponse {
-                content: String::new(),
-                error: Some(
-                    "ANTHROPIC_API_KEY not set. Please configure your API key.".to_string(),
-                ),
-            };
+            return Some("ANTHROPIC_API_KEY not set. Please configure your API key.".to_string());
         };
 
         let system_prompt = build_system_prompt();
@@ -71,10 +77,11 @@ impl AiProvider for ClaudeProvider {
             "system": system_prompt,
             "messages": [
                 {"role": "user", "content": user_prompt}
-            ]
+            ],
+            "stream": true
         });
 
-        let result = self
+        let resp = match self
             .client
             .post(CLAUDE_API_URL)
             .header("x-api-key", api_key)
@@ -82,40 +89,78 @@ impl AiProvider for ClaudeProvider {
             .header("content-type", "application/json")
             .json(&body)
             .send()
-            .await;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Some(format!("Request failed: {}", e)),
+        };
 
-        match result {
-            Ok(resp) => {
-                let status = resp.status();
-                let text = match resp.text().await {
-                    Ok(t) => t,
-                    Err(e) => {
-                        return AIResponse {
-                            content: String::new(),
-                            error: Some(format!("Failed to read response: {}", e)),
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Some(format!("Claude API error ({}): {}", status, text));
+        }
+
+        let mut stream = resp.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            let bytes = match chunk_result {
+                Ok(b) => b,
+                Err(e) => return Some(format!("Stream error: {}", e)),
+            };
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            // Parse SSE events from buffer
+            while let Some(pos) = buffer.find("\n\n") {
+                let event_text = buffer[..pos].to_string();
+                buffer = buffer[pos + 2..].to_string();
+
+                let mut event_type = String::new();
+                let mut data_line = String::new();
+                for line in event_text.lines() {
+                    if line.starts_with("event: ") {
+                        event_type = line["event: ".len()..].to_string();
+                    } else if line.starts_with("data: ") {
+                        data_line = line["data: ".len()..].to_string();
+                    }
+                }
+
+                if event_type == "content_block_delta" {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data_line) {
+                        if let Some(text) = json
+                            .get("delta")
+                            .and_then(|d| d.get("text"))
+                            .and_then(|t| t.as_str())
+                        {
+                            let _ = tx.send(AIStreamDelta { text: text.to_string() });
                         }
                     }
-                };
-
-                if !status.is_success() {
-                    return AIResponse {
-                        content: String::new(),
-                        error: Some(format!("Claude API error ({}): {}", status, text)),
-                    };
-                }
-
-                match extract_content(&text) {
-                    Ok(content) => AIResponse { content, error: None },
-                    Err(e) => AIResponse {
-                        content: String::new(),
-                        error: Some(format!("Failed to parse response: {}", e)),
-                    },
                 }
             }
-            Err(e) => AIResponse {
-                content: String::new(),
-                error: Some(format!("Request failed: {}", e)),
-            },
+        }
+
+        None
+    }
+}
+
+impl AiProvider for ClaudeProvider {
+    async fn chat(&self, request: AIRequest) -> AIResponse {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AIStreamDelta>();
+        let error = self.chat_stream(request, tx).await;
+
+        let mut content = String::new();
+        while let Some(delta) = rx.recv().await {
+            content.push_str(&delta.text);
+        }
+
+        if let Some(err) = error {
+            AIResponse {
+                content,
+                error: Some(err),
+            }
+        } else {
+            AIResponse { content, error: None }
         }
     }
 }

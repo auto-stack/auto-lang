@@ -42,6 +42,14 @@
       <button class="icon-btn run-btn" title="Run cell" @click="$emit('execute')">
         <Play :size="14" />
       </button>
+      <button
+        v-if="cell.type === 'ai'"
+        class="icon-btn"
+        title="Extract code block as new cell"
+        @click="$emit('extract-code')"
+      >
+        <Code2 :size="14" />
+      </button>
       <button class="icon-btn" title="Add cell after" @click="$emit('add-after')">
         <Plus :size="14" />
       </button>
@@ -56,7 +64,7 @@
 import {
   Play, ChevronUp, ChevronDown, Trash2, Plus,
   PanelTopClose, PanelTopOpen,
-  Code, FileText, Bot, BarChart3, Table,
+  Code, FileText, Bot, BarChart3, Table, Code2,
 } from 'lucide-vue-next'
 import { computed } from 'vue'
 import type { Cell } from '@/types/cell'
@@ -74,6 +82,7 @@ defineEmits<{
   (e: 'toggle-collapse'): void
   (e: 'change-type', type: string): void
   (e: 'add-after'): void
+  (e: 'extract-code'): void
 }>()
 
 const typeIcon = computed(() => {

@@ -186,6 +186,7 @@ GET    /api/notebook/{sid}/variables   → Get current variable list
 POST   /api/notebook/{sid}/transpile   → Reuse existing transpile pipeline
 DELETE /api/notebook/{sid}             → Destroy session
 POST   /api/notebook/{sid}/ai          → AI request (code generation / explanation)
+POST   /api/notebook/{sid}/ai-stream   → AI streaming request (SSE, real-time token output)
 ```
 
 ---
@@ -482,6 +483,16 @@ d:\autostack\auto-lang\
 | 4.1 | Error diagnostics enhancement (compile errors mapped to specific cells) | ✅ Done | `CellOutput` | `diagnostics: Diagnostic[]` with line extraction + error line highlight in CodeEditor |
 | 4.2 | Session suspend/resume (idle VM → variable snapshot → rebuild) | ✅ Done (simplified) | `session.rs` | `SessionStatus` enum (Active/Idle/Closed), `GET /api/notebook/{sid}/status`, 30s frontend polling |
 | 4.3 | Deploy to playground server (add Nginx routing) | ✅ Done | `deploy/` | `/lab` route in nginx + backend `nest_service("/lab", ...)` for auto-lab-ui dist |
+
+---
+
+### Phase 5: Quality + AI Experience ✅ COMPLETE
+
+| # | Task | Status | Input | Output |
+|---|------|--------|-------|--------|
+| 5.1 | Add test coverage (backend notebook + frontend composables) | ✅ Done | Existing code | `cargo test` (11 tests in `notebook/mod.rs`), Vitest (14 tests in `useNotebook.spec.ts`) |
+| 5.2 | AI streaming output (SSE instead of blocking JSON) | ✅ Done | `ClaudeProvider` | `/api/notebook/{sid}/ai-stream` SSE endpoint + frontend `askAIStream()` via EventSource |
+| 5.3 | One-click code extraction (AI response → executable code cell) | ✅ Done | AI Cell UI | `extractCodeFromAI()` in `useNotebook.ts` + "Extract code" toolbar button in `CellToolbar.vue` |
 
 ---
 

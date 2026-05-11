@@ -10,6 +10,7 @@
       @toggle-collapse="emit('update', { id: cell.id, patch: { collapsed: !cell.collapsed } })"
       @change-type="(t) => emit('update', { id: cell.id, patch: { type: t as CellType, source: defaultSourceFor(t as CellType) } })"
       @add-after="emit('add-after', cell.id)"
+      @extract-code="emit('extract-code', cell.id)"
     />
     <div v-if="!cell.collapsed" class="cell-body">
       <CellEditor
@@ -44,6 +45,7 @@ const emit = defineEmits<{
   move: [payload: { id: string; direction: 'up' | 'down' }]
   update: [payload: { id: string; patch: Partial<Cell> }]
   'add-after': [id: string]
+  'extract-code': [id: string]
 }>()
 
 function defaultSourceFor(type: CellType): string {

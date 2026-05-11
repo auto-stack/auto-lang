@@ -14,6 +14,7 @@
         @move="onMove"
         @update="onUpdate"
         @add-after="onAddAfter"
+        @extract-code="onExtractCode"
       />
     </div>
     <button class="add-cell-btn" @click="onAdd">
@@ -38,6 +39,7 @@ const emit = defineEmits<{
   'delete-cell': [id: string]
   'move-cell': [payload: { id: string; direction: 'up' | 'down' }]
   'update-cell': [payload: { id: string; patch: Partial<Cell> }]
+  'extract-code': [id: string]
 }>()
 
 function onExecute(cell: Cell) { emit('execute', cell) }
@@ -45,6 +47,7 @@ function onDelete(id: string) { emit('delete-cell', id) }
 function onMove(payload: { id: string; direction: 'up' | 'down' }) { emit('move-cell', payload) }
 function onUpdate(payload: { id: string; patch: Partial<Cell> }) { emit('update-cell', payload) }
 function onAddAfter(id: string) { emit('add-cell', 'code', id) }
+function onExtractCode(id: string) { emit('extract-code', id) }
 function onAdd() { emit('add-cell', 'code') }
 </script>
 

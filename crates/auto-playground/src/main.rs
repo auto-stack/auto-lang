@@ -90,6 +90,7 @@ async fn main() {
         .route("/api/notebook/{sid}/transpile", post(routes::notebook::transpile_handler))
         .route("/api/notebook/{sid}", delete(routes::notebook::delete_session_handler))
         .route("/api/notebook/{sid}/ai", post(routes::notebook::ai_handler))
+        .route("/api/notebook/{sid}/ai/stream", post(routes::notebook::ai_stream_handler))
         .route("/api/debug/ws", get(debug_ws_handler))
         .route("/api/agent-debug/start", post(routes::agent_debug::start_handler))
         .route("/api/agent-debug/sessions", get(routes::agent_debug::sessions_handler))

@@ -125,6 +125,27 @@ export function useNotebook() {
     }
   }
 
+  function extractCodeFromAI(cellId: string): string | null {
+    const cell = cells.value.find((c) => c.id === cellId)
+    if (!cell || cell.type !== 'ai') return null
+
+    // Extract code blocks from markdown
+    const source = cell.source
+    const codeBlockRegex = /```(?:auto)?\s*\n([\s\S]*?)\n```/
+    const match = source.match(codeBlockRegex)
+    if (match && match[1]) {
+      const code = match[1].trim()
+      // Insert new code cell after this AI cell
+      const newId = addCell('code', cellId)
+      const newCell = cells.value.find((c) => c.id === newId)
+      if (newCell) {
+        newCell.source = code
+      }
+      return newId
+    }
+    return null
+  }
+
   async function getSessionStatus(): Promise<string> {
     if (!sessionId.value) return 'closed'
     try {
@@ -194,13 +215,14 @@ export function useNotebook() {
     const lines = source.split('\n')
     const newCells: Cell[] = []
     let currentSource: string[] = []
-    let currentType: CellType = 'code'
+    let currentType: CellType = 'markdown'
     let currentId = nextCellId()
     let currentDepends: string[] = []
 
     function flushCell() {
-      if (currentSource.length > 0 || newCells.length === 0) {
-        const src = currentSource.join('\n').trim()
+      const src = currentSource.join('\n').trim()
+      // Only create a cell if there is actual source content
+      if (src.length > 0) {
         newCells.push({
           id: currentId,
           type: currentType,
@@ -309,6 +331,80 @@ export function useNotebook() {
     }
   }
 
+  async function askAIStream(
+    prompt: string,
+    onDelta: (text: string) => void,
+    onDone: () => void,
+    onError: (msg: string) => void,
+  ) {
+    await ensureSession()
+    if (!sessionId.value) {
+      onError('No session')
+      return
+    }
+
+    const context = cells.value
+      .filter((c) => c.type === 'code' && c.source.trim())
+      .map((c) => `// Cell ${c.id}\n${c.source}`)
+      .join('\n\n')
+
+    try {
+      const res = await fetch(`${API_BASE}/${sessionId.value}/ai/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, context }),
+      })
+
+      if (!res.ok || !res.body) {
+        onError(`HTTP ${res.status}`)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE events
+        while (true) {
+          const pos = buffer.indexOf('\n\n')
+          if (pos < 0) break
+          const eventText = buffer.slice(0, pos)
+          buffer = buffer.slice(pos + 2)
+
+          let dataLine = ''
+          for (const line of eventText.split('\n')) {
+            if (line.startsWith('data: ')) {
+              dataLine = line.slice('data: '.length)
+            }
+          }
+
+          if (!dataLine) continue
+          try {
+            const json = JSON.parse(dataLine)
+            if (json.type === 'delta' && json.text) {
+              onDelta(json.text)
+            } else if (json.type === 'error') {
+              onError(json.message || 'Unknown error')
+            } else if (json.type === 'done') {
+              onDone()
+            }
+          } catch {
+            // ignore malformed JSON
+          }
+        }
+      }
+
+      onDone()
+    } catch (e: any) {
+      onError(e.message)
+    }
+  }
+
   return {
     sessionId,
     cells,
@@ -325,11 +421,14 @@ export function useNotebook() {
     deleteCell,
     moveCell,
     runAll,
+    isDirty,
     loadFromAd,
     serializeToAd,
     saveToFile,
     loadFromFile,
     askAI,
+    askAIStream,
+    extractCodeFromAI,
     getSessionStatus,
   }
 }

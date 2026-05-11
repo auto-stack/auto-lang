@@ -418,6 +418,144 @@ impl NotebookActor {
 /// Shared notebook state across requests
 pub type NotebookState = NotebookActor;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_diagnostics_with_line() {
+        let err = "error at line 5: unexpected token\nline 10: another error";
+        let diags = extract_diagnostics(err);
+        assert_eq!(diags.len(), 2);
+        assert_eq!(diags[0].line, Some(5));
+        assert_eq!(diags[0].message, "error at line 5: unexpected token");
+        assert_eq!(diags[1].line, Some(10));
+    }
+
+    #[test]
+    fn test_extract_diagnostics_without_line() {
+        let err = "Something went wrong\nUnknown symbol 'foo'";
+        let diags = extract_diagnostics(err);
+        assert_eq!(diags.len(), 2);
+        assert_eq!(diags[0].line, None);
+        assert_eq!(diags[0].message, "Something went wrong");
+    }
+
+    #[test]
+    fn test_extract_diagnostics_empty() {
+        let diags = extract_diagnostics("");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].message, "");
+    }
+
+    #[tokio::test]
+    async fn test_notebook_actor_create_session() {
+        let actor = NotebookActor::new();
+        let sid = actor.create_session().await;
+        assert!(!sid.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_notebook_actor_execute_and_result() {
+        let actor = NotebookActor::new();
+        let sid = actor.create_session().await;
+
+        // Pure expression should return result via format_last_result
+        let output = actor.execute(sid.clone(), "c1".to_string(), "42".to_string(), None).await;
+        assert!(output.stderr.is_empty(), "stderr: {}", output.stderr);
+        assert_eq!(output.result, "42", "expected result 42, got: {}", output.result);
+    }
+
+    #[tokio::test]
+    async fn test_notebook_actor_functions() {
+        let actor = NotebookActor::new();
+        let sid = actor.create_session().await;
+
+        // Define a function
+        let out = actor.execute(sid.clone(), "c1".to_string(), "fn add(a int, b int) int { a + b }".to_string(), None).await;
+        assert!(out.stderr.is_empty(), "stderr: {}", out.stderr);
+
+        let vars = actor.variables(sid).await;
+        assert!(vars.iter().any(|v| v.name == "add" && v.kind == "function"), "expected function 'add', got: {:?}", vars);
+    }
+
+    #[test]
+    fn test_build_execution_queue_dirty_upstream() {
+        let mut session = NotebookSession::new();
+        session.cells = vec![
+            Cell { cell_id: "c1".to_string(), source: "v1".to_string(), output: None, depends_on: vec![] },
+            Cell { cell_id: "c2".to_string(), source: "v2".to_string(), output: None, depends_on: vec!["c1".to_string()] },
+        ];
+        session.cell_snapshots.insert("c1".to_string(), "v1".to_string());
+        session.cell_snapshots.insert("c2".to_string(), "v2".to_string());
+
+        // Modify c1 source
+        session.cells[0].source = "v1_new".to_string();
+
+        let queue = session.build_execution_queue("c2", "v2");
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue[0].0, "c1");
+        assert_eq!(queue[0].1, "v1_new");
+        assert_eq!(queue[1].0, "c2");
+    }
+
+    #[test]
+    fn test_build_execution_queue_no_dirty() {
+        let mut session = NotebookSession::new();
+        session.cells = vec![
+            Cell { cell_id: "c1".to_string(), source: "v1".to_string(), output: None, depends_on: vec![] },
+            Cell { cell_id: "c2".to_string(), source: "v2".to_string(), output: None, depends_on: vec![] },
+        ];
+        session.cell_snapshots.insert("c1".to_string(), "v1".to_string());
+        session.cell_snapshots.insert("c2".to_string(), "v2".to_string());
+
+        // Nothing modified — only target should be in queue
+        let queue = session.build_execution_queue("c2", "v2");
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].0, "c2");
+    }
+
+    #[test]
+    fn test_build_execution_queue_cascade_dirty() {
+        let mut session = NotebookSession::new();
+        session.cells = vec![
+            Cell { cell_id: "c1".to_string(), source: "v1".to_string(), output: None, depends_on: vec![] },
+            Cell { cell_id: "c2".to_string(), source: "v2".to_string(), output: None, depends_on: vec!["c1".to_string()] },
+            Cell { cell_id: "c3".to_string(), source: "v3".to_string(), output: None, depends_on: vec!["c2".to_string()] },
+        ];
+        session.cell_snapshots.insert("c1".to_string(), "v1".to_string());
+        session.cell_snapshots.insert("c2".to_string(), "v2".to_string());
+        session.cell_snapshots.insert("c3".to_string(), "v3".to_string());
+
+        // Modify c1 — should cascade dirty to c2 and c3
+        session.cells[0].source = "v1_new".to_string();
+
+        let queue = session.build_execution_queue("c3", "v3");
+        assert_eq!(queue.len(), 3);
+        assert_eq!(queue[0].0, "c1");
+        assert_eq!(queue[1].0, "c2");
+        assert_eq!(queue[2].0, "c3");
+    }
+
+    #[tokio::test]
+    async fn test_notebook_actor_status() {
+        let actor = NotebookActor::new();
+        let sid = actor.create_session().await;
+        let status = actor.status(sid).await;
+        assert!(matches!(status, SessionStatus::Active));
+    }
+
+    #[tokio::test]
+    async fn test_notebook_actor_destroy() {
+        let actor = NotebookActor::new();
+        let sid = actor.create_session().await;
+        actor.destroy(sid.clone());
+        // After destroy, variables should be empty
+        let vars = actor.variables(sid).await;
+        assert!(vars.is_empty());
+    }
+}
+
 /// Try to extract structured diagnostics from a raw error string.
 /// Falls back to a single diagnostic with the full message if no line info is found.
 fn extract_diagnostics(err: &str) -> Vec<Diagnostic> {

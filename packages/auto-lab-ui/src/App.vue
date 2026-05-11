@@ -18,6 +18,7 @@
           @delete-cell="deleteCell"
           @move-cell="(p) => moveCell(p.id, p.direction)"
           @update-cell="(p) => updateCell(p.id, p.patch)"
+          @extract-code="onExtractCode"
         />
         <AIChatBar @submit="onAIChatSubmit" />
       </main>
@@ -48,7 +49,7 @@ import type { Cell, CellType } from './types/cell'
 const {
   cells, variables, filePath, unsaved,
   executeCell, addCell, deleteCell, moveCell, runAll,
-  loadFromAd, serializeToAd, saveToFile, loadFromFile, askAI, getSessionStatus,
+  loadFromAd, serializeToAd, saveToFile, loadFromFile, askAIStream, extractCodeFromAI, getSessionStatus,
 } = useNotebook()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -110,6 +111,13 @@ function updateCell(id: string, patch: Partial<Cell>) {
   }
 }
 
+function onExtractCode(id: string) {
+  const newId = extractCodeFromAI(id)
+  if (!newId) {
+    alert('No code block found in this AI response.')
+  }
+}
+
 async function onAIChatSubmit(content: string) {
   // Add user AI request cell
   const userCellId = addCell('ai')
@@ -122,16 +130,30 @@ async function onAIChatSubmit(content: string) {
   const assistantCellId = addCell('ai')
   const assistantCell = cells.value.find((c) => c.id === assistantCellId)
   if (assistantCell) {
-    assistantCell.source = '> Thinking...'
+    assistantCell.source = ''
     assistantCell.status = 'running'
   }
 
-  // Call backend AI endpoint
-  const response = await askAI(content)
-  if (assistantCell) {
-    assistantCell.source = response
-    assistantCell.status = 'success'
-  }
+  // Stream AI response
+  await askAIStream(
+    content,
+    (delta) => {
+      if (assistantCell) {
+        assistantCell.source += delta
+      }
+    },
+    () => {
+      if (assistantCell) {
+        assistantCell.status = 'success'
+      }
+    },
+    (msg) => {
+      if (assistantCell) {
+        assistantCell.source += `\n\nError: ${msg}`
+        assistantCell.status = 'error'
+      }
+    },
+  )
 }
 </script>
 
