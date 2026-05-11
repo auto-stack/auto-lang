@@ -311,8 +311,7 @@ impl VMConvertible for Vec<String> {
 
         let guard = obj.read().unwrap();
 
-        // Try to downcast to ListData<auto_val::Value>
-        // String lists are stored as ListData<Value::String>
+        // Try ListData<auto_val::Value> first (legacy path)
         if let Some(list_data) = guard
             .as_any()
             .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
@@ -326,19 +325,47 @@ impl VMConvertible for Vec<String> {
             return Ok(result);
         }
 
+        // Try ListData<i32> — strings stored as negative indices (matching push_str_idx encoding)
+        if let Some(list_data) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<i32>>()
+        {
+            let mut result = Vec::new();
+            let strings = vm.strings.read().unwrap();
+            for i in 0..list_data.len() {
+                if let Some(&val) = list_data.get(i) {
+                    if val < 0 {
+                        let str_idx = (-val - 1) as usize;
+                        if let Some(bytes) = strings.get(str_idx) {
+                            result.push(String::from_utf8_lossy(bytes).to_string());
+                        }
+                    }
+                }
+            }
+            return Ok(result);
+        }
+
         Err(FFIError::InvalidListId(list_id))
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
         use crate::vm::types::ListData;
 
-        // Create a new list of Values
-        let mut list: ListData<auto_val::Value> = ListData::new();
+        // Create a ListData<i32> — the same type used by List.new/List.len/List.get.
+        // Each string is registered in vm.strings and stored as a negative i32 index.
+        let mut list: ListData<i32> = ListData::new();
 
-        // Push all elements as String values
         for s in self.iter() {
-            let val = auto_val::Value::Str(auto_val::AutoStr::from(s.as_str()));
-            list.push(val);
+            // Register string in the string table
+            let strings = vm.strings.read().unwrap();
+            let len = strings.len();
+            drop(strings);
+            {
+                let mut strings = vm.strings.write().unwrap();
+                strings.push(s.as_bytes().to_vec());
+            }
+            // Encode as string index (negative i32), matching push_str_idx encoding
+            list.push(-(len as i32) - 1);
         }
 
         // Register list in heap
