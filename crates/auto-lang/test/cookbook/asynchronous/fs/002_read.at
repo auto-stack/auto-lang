@@ -1,13 +1,7 @@
-// Async file reading demo (simulated)
-
-fn process_data(data str) {
-    print(f"Data Length: ${data.len()}")
-}
-
-fn main() {
-    let content = "Hello from data.txt"
-    process_data(content)
-
-    let str_content = "More text data"
-    print(f"Text: ${str_content}")
+// File reading demo
+fn main() ! {
+    let _ = File.write_text("data.txt", "Hello Auto!").?
+    let bytes = File.read_bytes("data.txt").?
+    print(f"Read ${bytes.len()} bytes")
+    let _ = File.delete("data.txt").?
 }

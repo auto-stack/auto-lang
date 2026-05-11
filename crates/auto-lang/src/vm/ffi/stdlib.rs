@@ -300,6 +300,18 @@ pub fn shim_file_create_dir(path: String) -> Result<(), String> {
     fs::create_dir_all(&path).map_err(|e| format!("File.create_dir failed: {} - {}", path, e))
 }
 
+/// Remove an empty directory
+#[auto_macros::rust_fn("File.remove_dir")]
+pub fn shim_file_remove_dir(path: String) -> Result<(), String> {
+    fs::remove_dir(&path).map_err(|e| format!("File.remove_dir failed: {} - {}", path, e))
+}
+
+/// Remove a directory and all its contents recursively
+#[auto_macros::rust_fn("File.remove_dir_all")]
+pub fn shim_file_remove_dir_all(path: String) -> Result<(), String> {
+    fs::remove_dir_all(&path).map_err(|e| format!("File.remove_dir_all failed: {} - {}", path, e))
+}
+
 /// Read file contents as bytes
 #[auto_macros::rust_fn("File.read_bytes")]
 pub fn shim_file_read_bytes(path: String) -> Result<Vec<i32>, String> {

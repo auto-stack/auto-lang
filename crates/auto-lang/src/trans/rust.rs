@@ -2080,10 +2080,13 @@ impl RustTrans {
             }
         }
 
-        // Special case for print function
+        // Special case for print / write function
         if let Expr::Ident(name) = call.name.as_ref() {
             if name == "print" {
-                return self.print_call(call, out);
+                return self.output_call(call, out, true);
+            }
+            if name == "write" {
+                return self.output_call(call, out, false);
             }
             // Convert printf(fmt, args...) -> print!(fmt, args...)
             if name == "printf" {
@@ -3310,22 +3313,23 @@ impl RustTrans {
         Ok(())
     }
 
-    fn print_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
-        // print("hello") -> println!("hello")
-        // print(value) -> println!("{}", value)
-        // print(f"...") -> println!("...", args)
-        // print("text:", value) -> println!("text: {}", value)
+    fn output_call(&mut self, call: &Call, out: &mut impl Write, newline: bool) -> AutoResult<()> {
+        // print("hello") / write("hello") -> println!("hello") / print!("hello")
+        // print(value) / write(value)   -> println!("{}", value) / print!("{}", value)
+        // print(f"...") / write(f"...") -> println!("...", args) / print!("...", args)
+        // print("text:", value) / write("text:", value) -> println!("text: {}", value) / print!("text: {}", value)
+
+        let macro_name = if newline { "println" } else { "print" };
 
         if call.args.args.is_empty() {
-            write!(out, "println!()")?;
+            write!(out, "{}!()", macro_name)?;
             return Ok(());
         }
 
         // Check if first argument is an f-string
         if let Arg::Pos(first_arg) = &call.args.args[0] {
             if let Expr::FStr(fstr) = first_arg {
-                // Generate println! with f-string format
-                write!(out, "println!(\"")?;
+                write!(out, "{}!(\"", macro_name)?;
 
                 // Build format string from f-string parts
                 for part in &fstr.parts {
@@ -3374,12 +3378,12 @@ impl RustTrans {
             if let Arg::Pos(expr) = &call.args.args[0] {
                 match expr {
                     Expr::Str(s) | Expr::CStr(s) => {
-                        write!(out, "println!(\"{}\")", s)?;
+                        write!(out, "{}!(\"{}\")", macro_name, s)?;
                         return Ok(());
                     }
                     _ => {
                         // Single non-string argument: use format string
-                        write!(out, "println!(\"{{}}\", ")?;
+                        write!(out, "{}!(\"{{}}\", ", macro_name)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
                         return Ok(());
@@ -3399,7 +3403,7 @@ impl RustTrans {
                     format_string.push_str(" {}");
                 }
 
-                write!(out, "println!(\"{}\"", format_string)?;
+                write!(out, "{}!(\"{}\"", macro_name, format_string)?;
 
                 // Add remaining args
                 for arg in call.args.args.iter().skip(1) {
@@ -3412,7 +3416,7 @@ impl RustTrans {
         }
 
         // Fallback: generic format string with placeholders
-        write!(out, "println!(\"")?;
+        write!(out, "{}!(\"", macro_name)?;
         for (i, _arg) in call.args.args.iter().enumerate() {
             if i > 0 {
                 write!(out, " ")?;
@@ -5957,7 +5961,7 @@ impl RustTrans {
                     // Void function calls are not returnable
                     Expr::Call(call) => {
                         if let Expr::Ident(name) = call.name.as_ref() {
-                            if name == "print" || name == "println" {
+                            if name == "print" || name == "println" || name == "write" {
                                 return false;
                             }
                         }

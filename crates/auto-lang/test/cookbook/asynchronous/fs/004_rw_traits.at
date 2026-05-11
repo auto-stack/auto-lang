@@ -1,15 +1,7 @@
-// Async read/write traits demo (simulated)
-
-fn write_data(path str, data str) {
-    print(f"Wrote ${data.len()} bytes to ${path}")
-}
-
-fn read_data(path str) str {
-    return "file contents here"
-}
-
-fn main() {
-    write_data("data.txt", "Generated Data!")
-    let contents = read_data("data.txt")
-    print(f"Data Length: ${contents.len()}")
+// Read/write demo
+fn main() ! {
+    let _ = File.write_text("data.txt", "Hello AutoLang!").?
+    let bytes = File.read_bytes("data.txt").?
+    print(f"Read ${bytes.len()} bytes")
+    let _ = File.delete("data.txt").?
 }

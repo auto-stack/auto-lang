@@ -1,6 +1,8 @@
-// Async file write demo (simulated)
-
-fn main() {
+// Write content to file
+fn main() ! {
     let data = "Generic data from program!"
-    print(f"Wrote ${data.len()} bytes to data.txt")
+    let _ = File.write_text("output.txt", data).?
+    let bytes = File.read_bytes("output.txt").?
+    print(f"Read ${bytes.len()} bytes")
+    let _ = File.delete("output.txt").?
 }

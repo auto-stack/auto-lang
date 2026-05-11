@@ -1,13 +1,15 @@
+// Bitfield flag operations using Auto's bitwise methods
 fn main() {
     let flag_a = 1
     let flag_b = 2
     let flag_c = 4
+
     var flags = 0
-    flags = flags + flag_a
-    flags = flags + flag_b
+    flags = flags.or(flag_a)
+    flags = flags.or(flag_b)
     print(f"Flags: ${flags}")
-    print(f"Has A: ${(flags % 2) == 1}")
-    print(f"Has C: ${flags >= flag_c}")
-    flags = flags - flag_a
+    print(f"Has A: ${flags.and(flag_a) != 0}")
+    print(f"Has C: ${flags.and(flag_c) != 0}")
+    flags = flags.and(flag_a.not())
     print(f"After clear A: ${flags}")
 }

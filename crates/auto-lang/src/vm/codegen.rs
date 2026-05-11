@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_RUNTIME_PANIC};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 // Plan 076 Phase 1: Generic type support
@@ -283,6 +283,7 @@ impl Codegen {
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
+        intrinsics.insert("write".to_string(), NATIVE_WRITE_STR);
         intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
@@ -394,6 +395,7 @@ impl Codegen {
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
+        intrinsics.insert("write".to_string(), NATIVE_WRITE_STR);
         intrinsics.insert("assert".to_string(), NATIVE_ASSERT);
         intrinsics.insert("assert_eq".to_string(), NATIVE_ASSERT_EQ);
         intrinsics.insert("assert_ne".to_string(), NATIVE_ASSERT_NE);
@@ -5378,6 +5380,8 @@ impl Codegen {
                             ("fs", "copy") => Some("File.copy".to_string()),
                             ("fs", "exists") => Some("File.exists".to_string()),
                             ("fs", "remove_file") | ("fs", "delete") => Some("File.delete".to_string()),
+                            ("fs", "remove_dir") => Some("File.remove_dir".to_string()),
+                            ("fs", "remove_dir_all") => Some("File.remove_dir_all".to_string()),
                             ("fs", "metadata") => Some("File.size".to_string()),
                             ("fs", "is_dir") => Some("File.is_dir".to_string()),
                             _ => None,
@@ -5895,7 +5899,7 @@ impl Codegen {
 
                     // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
                     if let Some(ref name) = func_name {
-                        if name.starts_with("print") || name == "say" || name.starts_with("assert") {
+                        if name.starts_with("print") || name == "write" || name == "say" || name.starts_with("assert") {
                             self.last_expr_type = ObjectType::Void;
                         } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
                             || name.ends_with(".str") || name == "int_str" {
@@ -7369,7 +7373,7 @@ impl Codegen {
             "keys" | "values" | "entries" | "split" | "lines" | "chars" => ObjectType::NestedObject,
             // Methods returning void
             "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
-            | "sort" | "reverse" | "print" | "println" => ObjectType::Void,
+            | "sort" | "reverse" | "print" | "println" | "write" => ObjectType::Void,
             // Default: preserve current last_expr_type to avoid regressions
             _ => self.last_expr_type,
         }

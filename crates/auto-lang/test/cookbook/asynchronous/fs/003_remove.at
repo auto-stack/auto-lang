@@ -1,10 +1,9 @@
-// Async file removal demo (simulated)
-
-fn remove_file(name str) str {
-    return f"removed ${name}"
-}
-
-fn main() {
-    print(remove_file("data.txt"))
-    print(remove_file("my_dir"))
+// File and directory removal
+fn main() ! {
+    let _ = File.write_text("data.txt", "hello").?
+    let _ = File.delete("data.txt").?
+    let _ = File.create_dir("my_dir").?
+    let _ = File.create_dir("my_dir/sub_dir").?
+    let _ = File.remove_dir_all("my_dir").?
+    print("Files and directories removed")
 }

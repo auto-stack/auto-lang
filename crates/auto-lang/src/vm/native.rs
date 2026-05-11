@@ -263,6 +263,7 @@ impl NativeInterface {
         self.register(NATIVE_PRINT_F32, shim_print_f32);
         self.register(NATIVE_PRINT_F64, shim_print_f64);
         self.register(NATIVE_PRINT_STR, shim_print_str);
+        self.register(NATIVE_WRITE_STR, shim_write_str);
 
         // Assert functions
         self.register(NATIVE_ASSERT, shim_assert);
@@ -687,6 +688,7 @@ pub const NATIVE_PRINT_I32: u16 = 1;
 pub const NATIVE_PRINT_F32: u16 = 2;
 pub const NATIVE_PRINT_F64: u16 = 4;
 pub const NATIVE_PRINT_STR: u16 = 3;
+pub const NATIVE_WRITE_STR: u16 = 2900;
 pub const NATIVE_ASSERT: u16 = 4;
 pub const NATIVE_ASSERT_EQ: u16 = 5;
 pub const NATIVE_ASSERT_NE: u16 = 6;
@@ -1203,6 +1205,16 @@ fn vm_print(vm: &AutoVM, s: &str) {
     }
 }
 
+/// Helper for write() — same as vm_print but without trailing newline
+fn vm_write(vm: &AutoVM, s: &str) {
+    if let Some(ref buf) = vm.output_buffer {
+        let mut guard = buf.write().unwrap();
+        guard.push_str(s);
+    } else {
+        print!("{}", s);
+    }
+}
+
 /// Generic print that handles any value type.
 /// If the value is a tagged string index (negative), prints the string.
 /// Otherwise prints as an integer.
@@ -1385,6 +1397,65 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 }
             } else {
                 vm_print(vm, &val.to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Write a string without trailing newline (write() in Auto).
+/// Same logic as shim_print_str but uses vm_write instead of vm_print.
+pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    #[cfg(not(feature = "nanbox"))]
+    {
+        let tagged = task.ram.pop_i32();
+        let str_index = if tagged < 0 {
+            ((-tagged) - 1) as u16
+        } else {
+            tagged as u16
+        };
+        if tagged < 0 {
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_write(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_write(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else {
+            let handle = tagged as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_write(vm, &format_rust_stdlib_obj(rust_obj));
+                } else {
+                    vm_write(vm, &tagged.to_string());
+                }
+            } else {
+                vm_write(vm, &tagged.to_string());
+            }
+        }
+    }
+    #[cfg(feature = "nanbox")]
+    {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv) as u16;
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_write(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_write(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else {
+            let val = auto_val::decode_i32(nv);
+            let handle = val as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_write(vm, &format_rust_stdlib_obj(rust_obj));
+                } else {
+                    vm_write(vm, &val.to_string());
+                }
+            } else {
+                vm_write(vm, &val.to_string());
             }
         }
     }

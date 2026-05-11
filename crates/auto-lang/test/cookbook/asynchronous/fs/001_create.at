@@ -1,11 +1,7 @@
-// Async file creation demo (simulated)
-
-fn create_file(name str) str {
-    return f"created ${name}"
-}
-
-fn main() {
-    print(create_file("data.txt"))
-    print(create_file("my_dir"))
-    print(create_file("my_dir/sub_dir/inner"))
+// File and directory creation
+fn main() ! {
+    let _ = File.write_text("data.txt", "hello").?
+    let _ = File.create_dir("my_dir").?
+    let _ = File.create_dir("my_dir/sub_dir/inner").?
+    print("Files and directories created")
 }

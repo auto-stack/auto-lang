@@ -609,6 +609,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.file.walk", 1010);
     registry.register_with_id("auto.file.append_text", 1011);
     registry.register_with_id("auto.file.read_lines", 1012);
+    registry.register_with_id("auto.file.remove_dir", 1014);
+    registry.register_with_id("auto.file.remove_dir_all", 1015);
 
     // fs module aliases
     registry.register_with_id("auto.fs.read_text", 1000);
@@ -620,6 +622,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id("auto.fs.exists", 1002);
     registry.register_with_id("auto.fs.delete", 1003);
     registry.register_with_id("auto.fs.create_dir", 1004);
+    registry.register_with_id("auto.fs.remove_dir", 1014);
+    registry.register_with_id("auto.fs.remove_dir_all", 1015);
     registry.register_with_id("auto.fs.read_bytes", 1005);
     registry.register_with_id("auto.fs.write_bytes", 1006);
     registry.register_with_id("auto.fs.copy", 1007);
@@ -938,6 +942,8 @@ pub fn register_builtin_natives() {
     registry.register_with_id("File.size", 1008);
     registry.register_with_id("File.is_dir", 1009);
     registry.register_with_id("File.append_text", 1011);
+    registry.register_with_id("File.remove_dir", 1014);
+    registry.register_with_id("File.remove_dir_all", 1015);
 
     registry.register_with_id("Str.len", 1500);
     registry.register_with_id("Str.is_empty", 1501);
