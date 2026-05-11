@@ -12,9 +12,11 @@
   "dependencies": {
     "auto-playground-vue": "file:../auto-playground-vue",
     "lucide-vue-next": "^0.460.0",
+    "marked": "^18.0.3",
     "vue": "^3.5.32"
   },
   "devDependencies": {
+    "@types/marked": "^5.0.2",
     "@types/node": "^25.6.2",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/test-utils": "^2.4.10",

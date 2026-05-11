@@ -19,7 +19,8 @@
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
           </div>
           <div class="message-content">
-            <div v-if="msg.content">{{ msg.content }}</div>
+            <MarkdownRenderer v-if="msg.role === 'assistant' || msg.role === 'system'" :source="msg.content" />
+            <div v-else-if="msg.content">{{ msg.content }}</div>
           </div>
           <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
             <div
@@ -87,6 +88,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { Send, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useForge } from '@/composables/useForge'
+import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 
 const {
   messages,
