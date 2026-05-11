@@ -2,6 +2,7 @@
 
 // a2r Standard Library (from crate)
 #[allow(unused_imports)]
+use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn add_values() -> Option<i32> {
