@@ -12,12 +12,15 @@ use axum::{
 };
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::convert::Infallible;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
-use crate::notebook::ai::{AIProviderState, AIRequest, AIStreamDelta};
+use crate::notebook::ai::AIProviderState;
 
-// Re-export handler functions so they can be mounted in main.rs
+mod ai;
+mod tools;
+
 pub use self::handlers::*;
 
 // ─── Forge Session Store (in-memory; replace with persistent store later) ─────
@@ -53,6 +56,17 @@ pub struct ForgeMessage {
     pub role: String,
     pub content: String,
     pub timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallInfo>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallInfo {
+    pub id: String,
+    pub name: String,
+    pub arguments: Value,
+    pub result: Option<String>,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +91,17 @@ pub struct ForgeMessageResponse {
 pub enum ForgeStreamEvent {
     #[serde(rename = "delta")]
     Delta { text: String },
+    #[serde(rename = "tool_call")]
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        id: String,
+        result: String,
+    },
     #[serde(rename = "done")]
     Done,
     #[serde(rename = "error")]
@@ -107,6 +132,8 @@ pub struct LedgerSection {
 
 mod handlers {
     use super::*;
+    use crate::smith::ai::{ChatMessage, ContentBlock, ToolChatEvent, ToolChatRequest, ToolClaudeProvider};
+    use crate::smith::tools::ToolRegistry;
 
     pub async fn create_forge_session(
         Json(req): Json<CreateForgeSessionRequest>,
@@ -126,6 +153,7 @@ mod handlers {
                      proposing specs, and generating code.",
                 ),
                 timestamp: now_secs(),
+                tool_calls: None,
             }],
         };
 
@@ -142,9 +170,9 @@ mod handlers {
             role: String::from("user"),
             content: req.content,
             timestamp: now_secs(),
+            tool_calls: None,
         };
 
-        // Store user message in session
         if let Ok(mut sessions) = forge_sessions().lock() {
             if let Some(session) = sessions.get_mut(&sid) {
                 session.messages.push(user_msg.clone());
@@ -152,12 +180,12 @@ mod handlers {
             }
         }
 
-        // Return placeholder; content streams via SSE
         let assistant_msg = ForgeMessage {
             id: format!("m-{}", uuid::Uuid::new_v4()),
             role: String::from("assistant"),
             content: String::new(),
             timestamp: now_secs(),
+            tool_calls: None,
         };
 
         Json(ForgeMessageResponse { message: assistant_msg })
@@ -167,47 +195,190 @@ mod handlers {
         Path(sid): Path<String>,
         State(ai): State<AIProviderState>,
     ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-        let (event_tx, mut event_rx) =
+        let (event_tx, event_rx) =
             tokio::sync::mpsc::unbounded_channel::<Result<Event, Infallible>>();
 
         tokio::spawn(async move {
-            // Build AI request from session history
-            let request = build_ai_request(&sid);
+            let registry = ToolRegistry::new();
+            let ai_for_turns = ai.clone();
+            let provider = ToolClaudeProvider::new(ai);
 
-            let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel::<AIStreamDelta>();
-
-            // Spawn the AI streaming call
-            let ai_clone = ai.clone();
-            let ai_task = tokio::spawn(async move {
-                let error = ai_clone.chat_stream(request, delta_tx).await;
-                error
-            });
-
-            // Bridge AI deltas → SSE events
-            while let Some(delta) = delta_rx.recv().await {
-                let event = Event::default().data(
-                    serde_json::to_string(&ForgeStreamEvent::Delta { text: delta.text }).unwrap(),
-                );
-                let _ = event_tx.send(Ok(event));
+            // Build conversation messages from session history
+            let mut chat_messages = Vec::new();
+            {
+                let sessions = forge_sessions().lock().unwrap();
+                if let Some(session) = sessions.get(&sid) {
+                    for msg in &session.messages {
+                        match msg.role.as_str() {
+                            "system" => {
+                                // System prompt is handled separately; skip here
+                            }
+                            "user" => {
+                                chat_messages.push(ChatMessage::user(&msg.content));
+                            }
+                            "assistant" => {
+                                if let Some(ref calls) = msg.tool_calls {
+                                    // Assistant message with tool calls
+                                    let mut blocks = vec![ContentBlock::text(&msg.content)];
+                                    for call in calls {
+                                        blocks.push(ContentBlock::ToolUse {
+                                            id: call.id.clone(),
+                                            name: call.name.clone(),
+                                            input: call.arguments.clone(),
+                                        });
+                                    }
+                                    chat_messages.push(ChatMessage {
+                                        role: "assistant".to_string(),
+                                        content: blocks,
+                                    });
+                                } else {
+                                    chat_messages.push(ChatMessage::assistant_text(&msg.content));
+                                }
+                            }
+                            "tool" => {
+                                // Tool results are sent as user messages with tool_result blocks
+                                if let Some(ref calls) = msg.tool_calls {
+                                    for call in calls {
+                                        if let Some(ref result) = call.result {
+                                            chat_messages.push(ChatMessage::tool_result(
+                                                &call.id, result,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
 
-            // Wait for AI task to finish and check for errors
-            match ai_task.await {
-                Ok(Some(err)) => {
+            // ReAct loop: chat → tool_use → execute → tool_result → chat → ...
+            let mut turn_count = 0;
+            let max_turns = 5;
+            let mut accumulated_text = String::new();
+            let mut pending_tool_calls: Vec<ToolCallInfo> = Vec::new();
+
+            while turn_count < max_turns {
+                turn_count += 1;
+
+                let request = ToolChatRequest {
+                    messages: chat_messages.clone(),
+                    tools: registry.definitions(),
+                    system_prompt: None,
+                };
+
+                let (turn_tx, mut turn_rx) = tokio::sync::mpsc::unbounded_channel::<ToolChatEvent>();
+                let provider_clone = ToolClaudeProvider::new(ai_for_turns.clone());
+
+                let turn_task = tokio::spawn(async move {
+                    provider_clone.chat_turn(request, turn_tx).await
+                });
+
+                let mut got_tool_use = false;
+
+                while let Some(event) = turn_rx.recv().await {
+                    match event {
+                        ToolChatEvent::TextDelta { text } => {
+                            accumulated_text.push_str(&text);
+                            let event = Event::default().data(
+                                serde_json::to_string(&ForgeStreamEvent::Delta {
+                                    text: text.clone(),
+                                })
+                                .unwrap(),
+                            );
+                            let _ = event_tx.send(Ok(event));
+                        }
+                        ToolChatEvent::ToolUse { id, name, input } => {
+                            got_tool_use = true;
+                            pending_tool_calls.push(ToolCallInfo {
+                                id: id.clone(),
+                                name: name.clone(),
+                                arguments: input.clone(),
+                                result: None,
+                                status: "pending".to_string(),
+                            });
+
+                            // Notify frontend about the tool call
+                            let event = Event::default().data(
+                                serde_json::to_string(&ForgeStreamEvent::ToolCall {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    arguments: input.clone(),
+                                })
+                                .unwrap(),
+                            );
+                            let _ = event_tx.send(Ok(event));
+
+                            // Execute the tool
+                            if let Some(tool) = registry.get(&name) {
+                                let result = tool.execute(input);
+                                let result_str = match result {
+                                    Ok(r) => r,
+                                    Err(e) => format!("Error: {}", e),
+                                };
+
+                                // Update pending call with result
+                                if let Some(call) = pending_tool_calls.iter_mut().find(|c| c.id == id) {
+                                    call.result = Some(result_str.clone());
+                                    call.status = "success".to_string();
+                                }
+
+                                // Notify frontend about the result
+                                let event = Event::default().data(
+                                    serde_json::to_string(&ForgeStreamEvent::ToolResult {
+                                        id: id.clone(),
+                                        result: result_str.clone(),
+                                    })
+                                    .unwrap(),
+                                );
+                                let _ = event_tx.send(Ok(event));
+
+                                // Add tool result to conversation for next turn
+                                chat_messages.push(ChatMessage::tool_result(&id, &result_str));
+                            }
+                        }
+                        ToolChatEvent::Done => break,
+                        ToolChatEvent::Error { message } => {
+                            let event = Event::default().data(
+                                serde_json::to_string(&ForgeStreamEvent::Error { message })
+                                    .unwrap(),
+                            );
+                            let _ = event_tx.send(Ok(event));
+                            break;
+                        }
+                    }
+                }
+
+                // Check for turn errors
+                if let Ok(Some(err)) = turn_task.await {
                     let event = Event::default().data(
                         serde_json::to_string(&ForgeStreamEvent::Error { message: err }).unwrap(),
                     );
                     let _ = event_tx.send(Ok(event));
+                    break;
                 }
-                _ => {
-                    let event = Event::default().data(
-                        serde_json::to_string(&ForgeStreamEvent::Done).unwrap(),
-                    );
-                    let _ = event_tx.send(Ok(event));
+
+                // If no tool_use was requested, we're done
+                if !got_tool_use {
+                    break;
+                }
+
+                // Otherwise, add the assistant's text response (if any) to conversation
+                // and loop for another turn with the tool results
+                if !accumulated_text.is_empty() {
+                    chat_messages.push(ChatMessage::assistant_text(&accumulated_text));
+                    accumulated_text.clear();
                 }
             }
 
-            // Mark session as idle
+            // Final done event
+            let event = Event::default().data(
+                serde_json::to_string(&ForgeStreamEvent::Done).unwrap(),
+            );
+            let _ = event_tx.send(Ok(event));
+
+            // Update session
             if let Ok(mut sessions) = forge_sessions().lock() {
                 if let Some(session) = sessions.get_mut(&sid) {
                     session.status = ForgeStatus::Idle;
@@ -294,44 +465,6 @@ mod handlers {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs()
-    }
-
-    fn build_ai_request(sid: &str) -> AIRequest {
-        let sessions = forge_sessions().lock().unwrap();
-        let session = match sessions.get(sid) {
-            Some(s) => s,
-            None => {
-                return AIRequest {
-                    prompt: String::from("Hello."),
-                    context: None,
-                };
-            }
-        };
-
-        // Build conversation context from message history
-        let mut context = String::new();
-        for msg in &session.messages {
-            match msg.role.as_str() {
-                "system" => context.push_str(&format!("System: {}\n", msg.content)),
-                "user" => context.push_str(&format!("User: {}\n", msg.content)),
-                "assistant" => context.push_str(&format!("Assistant: {}\n", msg.content)),
-                _ => {}
-            }
-        }
-
-        // The last message is the user's prompt; everything before is context
-        let prompt = session
-            .messages
-            .iter()
-            .rev()
-            .find(|m| m.role == "user")
-            .map(|m| m.content.clone())
-            .unwrap_or_else(|| String::from("Continue."));
-
-        AIRequest {
-            prompt,
-            context: if context.is_empty() { None } else { Some(context) },
-        }
     }
 }
 

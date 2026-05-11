@@ -19,8 +19,33 @@
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
           </div>
           <div class="message-content">
-            <pre v-if="msg.role === 'tool'">{{ msg.content }}</pre>
-            <div v-else>{{ msg.content }}</div>
+            <div v-if="msg.content">{{ msg.content }}</div>
+          </div>
+          <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
+            <div
+              v-for="tc in msg.tool_calls"
+              :key="tc.id"
+              class="tool-card"
+              :class="tc.status"
+            >
+              <div class="tool-header" @click="tc._expanded = !tc._expanded">
+                <span class="tool-icon">🔧</span>
+                <span class="tool-name">{{ tc.name }}</span>
+                <span class="tool-status" :class="tc.status">{{ tc.status }}</span>
+                <ChevronDown v-if="!tc._expanded" :size="14" class="tool-chevron" />
+                <ChevronUp v-else :size="14" class="tool-chevron" />
+              </div>
+              <div v-if="tc._expanded" class="tool-body">
+                <div class="tool-section">
+                  <div class="tool-section-title">Arguments</div>
+                  <pre class="tool-code">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+                </div>
+                <div v-if="tc.result" class="tool-section">
+                  <div class="tool-section-title">Result</div>
+                  <pre class="tool-code result">{{ tc.result }}</pre>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div v-if="isLoading && !hasPendingAssistant" class="message assistant pending">
@@ -60,7 +85,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { Send } from 'lucide-vue-next'
+import { Send, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useForge } from '@/composables/useForge'
 
 const {
@@ -76,7 +101,7 @@ const inputText = ref('')
 const chatRef = ref<HTMLDivElement>()
 
 const hasPendingAssistant = computed(() => {
-  return messages.value.some((m) => m.role === 'assistant' && m.content === '')
+  return messages.value.some((m) => m.role === 'assistant' && m.content === '' && !m.tool_calls?.length)
 })
 
 function formatTime(ts: number): string {
@@ -143,6 +168,11 @@ onMounted(async () => {
 .session-badge.thinking {
   background: #f9e2af22;
   color: #f9e2af;
+}
+
+.session-badge.tool_call {
+  background: #89b4fa22;
+  color: #89b4fa;
 }
 
 .session-badge.waiting_approval {
@@ -259,6 +289,128 @@ onMounted(async () => {
   border-color: #313244;
   font-style: italic;
   color: #a6adc8;
+}
+
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.tool-card {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tool-card.pending {
+  border-color: #f9e2af44;
+}
+
+.tool-card.running {
+  border-color: #89b4fa44;
+}
+
+.tool-card.success {
+  border-color: #a6e3a144;
+}
+
+.tool-card.error {
+  border-color: #f38ba844;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-header:hover {
+  background: #1e1e2e;
+}
+
+.tool-icon {
+  font-size: 0.9rem;
+}
+
+.tool-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #f9e2af;
+  flex: 1;
+}
+
+.tool-status {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.tool-status.pending {
+  background: #f9e2af22;
+  color: #f9e2af;
+}
+
+.tool-status.running {
+  background: #89b4fa22;
+  color: #89b4fa;
+}
+
+.tool-status.success {
+  background: #a6e3a122;
+  color: #a6e3a1;
+}
+
+.tool-status.error {
+  background: #f38ba822;
+  color: #f38ba8;
+}
+
+.tool-chevron {
+  color: #6c7086;
+}
+
+.tool-body {
+  border-top: 1px solid #313244;
+  padding: 0.5rem 0.75rem;
+}
+
+.tool-section {
+  margin-bottom: 0.5rem;
+}
+
+.tool-section:last-child {
+  margin-bottom: 0;
+}
+
+.tool-section-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6c7086;
+  margin-bottom: 0.25rem;
+}
+
+.tool-code {
+  font-size: 0.75rem;
+  color: #a6adc8;
+  background: #0f0f14;
+  padding: 0.4rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-code.result {
+  color: #a6e3a1;
 }
 
 .typing {

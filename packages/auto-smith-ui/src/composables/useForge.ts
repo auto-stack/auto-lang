@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
-import type { ForgeMessage, ForgeSession } from '@/types/forge'
+import type { ForgeMessage, ForgeSession, ForgeStreamEvent } from '@/types/forge'
+import type { ToolCallInfo } from '@/types/tool'
 
 const API_BASE = '/api/smith'
 
@@ -34,7 +35,6 @@ export function useForge() {
   async function sendMessage(content: string) {
     if (!sessionId.value || isLoading.value) return
 
-    // Add user message locally
     const userMsg: ForgeMessage = {
       id: `u-${Date.now()}`,
       role: 'user',
@@ -46,7 +46,6 @@ export function useForge() {
     error.value = null
 
     try {
-      // Send to backend
       const resp = await fetch(`${API_BASE}/forge/${sessionId.value}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,7 +53,6 @@ export function useForge() {
       })
       if (!resp.ok) throw new Error(`Failed to send message: ${resp.status}`)
 
-      // Open SSE stream for AI response
       await streamResponse()
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -70,6 +68,7 @@ export function useForge() {
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
+      tool_calls: [],
     }
     messages.value.push(assistantMsg)
 
@@ -78,9 +77,25 @@ export function useForge() {
 
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data)
-          if (data.type === 'delta') {
+          const data: ForgeStreamEvent = JSON.parse(event.data)
+
+          if (data.type === 'delta' && data.text) {
             assistantMsg.content += data.text
+          } else if (data.type === 'tool_call') {
+            const call: ToolCallInfo = {
+              id: data.id ?? `tc-${Date.now()}`,
+              name: data.name ?? 'unknown',
+              arguments: (data.arguments as Record<string, unknown>) ?? {},
+              status: 'running',
+            }
+            assistantMsg.tool_calls = assistantMsg.tool_calls ?? []
+            assistantMsg.tool_calls.push(call)
+          } else if (data.type === 'tool_result') {
+            const call = assistantMsg.tool_calls?.find((c) => c.id === data.id)
+            if (call) {
+              call.result = data.result ?? ''
+              call.status = 'success'
+            }
           } else if (data.type === 'done') {
             eventSource.close()
             isLoading.value = false

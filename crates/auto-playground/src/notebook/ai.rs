@@ -37,8 +37,8 @@ pub trait AiProvider: Send + Sync {
 
 /// Anthropic Claude provider
 pub struct ClaudeProvider {
-    client: reqwest::Client,
-    api_key: Option<String>,
+    pub(crate) client: reqwest::Client,
+    pub(crate) api_key: Option<String>,
 }
 
 impl ClaudeProvider {
