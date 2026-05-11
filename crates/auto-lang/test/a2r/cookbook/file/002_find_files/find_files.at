@@ -1,3 +1,4 @@
+dep walkdir
 use.rust walkdir::WalkDir
 
 fn main() {

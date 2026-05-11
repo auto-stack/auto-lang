@@ -1,3 +1,5 @@
+dep walkdir
+dep num_cpus
 use.rust walkdir::WalkDir
 use.rust std::thread
 

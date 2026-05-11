@@ -1,3 +1,4 @@
+dep rand
 use.rust rand::Rng
 use.rust rand::distributions::{Distribution, Standard}
 use.rust rand::thread_rng

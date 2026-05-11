@@ -1,3 +1,5 @@
+dep serde
+dep serde_json
 use.rust serde::Serialize
 use.rust serde::Deserialize
 use.rust serde_json

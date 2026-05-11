@@ -1,3 +1,4 @@
+dep anyhow
 use.rust anyhow::Context
 
 fn read_config() ! {

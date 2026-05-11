@@ -1,3 +1,4 @@
+dep unicode_segmentation
 use.rust unicode_segmentation::UnicodeSegmentation
 
 fn main() {

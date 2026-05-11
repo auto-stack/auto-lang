@@ -1,3 +1,5 @@
+dep flate2
+dep tar
 use.rust std::fs::File
 use.rust flate2::write::GzEncoder
 use.rust flate2::Compression

@@ -1,3 +1,5 @@
+dep serde
+dep toml
 use.rust serde::Deserialize
 use.rust toml
 

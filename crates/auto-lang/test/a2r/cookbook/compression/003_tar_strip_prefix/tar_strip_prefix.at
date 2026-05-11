@@ -1,3 +1,5 @@
+dep flate2
+dep tar
 use.rust flate2::read::GzDecoder
 use.rust tar::Archive
 

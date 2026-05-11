@@ -1,3 +1,4 @@
+dep mime
 use.rust mime::Mime
 
 fn main() {
