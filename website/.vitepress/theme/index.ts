@@ -8,7 +8,7 @@ import OSHero from './components/OSHero.vue'
 import FeatureCard from './components/FeatureCard.vue'
 import StatCard from './components/StatCard.vue'
 import ShowcaseSection from './components/ShowcaseSection.vue'
-import AutoPlayground from './components/AutoPlayground.vue'
+import { AutoPlayground } from 'auto-playground-vue'
 import CodeView from './components/CodeView.vue'
 
 export default {

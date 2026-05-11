@@ -14,19 +14,7 @@ const isLoading = ref(true)
     <p>Write, run, and transpile Auto code in your browser. Requires a running playground server.</p>
   </div>
 
-  <div class="iframe-wrapper" style="position: relative;">
-    <div v-if="isLoading" class="iframe-loading">
-      <span class="loading-spinner"></span>
-      <p>Loading playground...</p>
-    </div>
-    <iframe
-      src="/playground/index.html"
-      title="Auto Playground"
-      frameborder="0"
-      loading="lazy"
-      @load="isLoading = false"
-    />
-  </div>
+  <AutoPlayground api-url="" height="700px" />
 
   <div class="playground-note">
     <p>
@@ -67,49 +55,6 @@ const isLoading = ref(true)
   margin: 0;
 }
 
-.iframe-wrapper {
-  border: 1px solid hsl(var(--border));
-  border-radius: calc(var(--radius) + 4px);
-  overflow: hidden;
-  background: hsl(var(--card));
-  height: 800px;
-  position: relative;
-}
-
-.iframe-wrapper iframe {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
-}
-
-.iframe-loading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  background: hsl(var(--card));
-  z-index: 1;
-}
-
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid hsl(var(--border));
-  border-top-color: hsl(var(--primary));
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .playground-note {
   margin-top: 1.5rem;
   padding: 1rem 1.25rem;
@@ -139,11 +84,5 @@ const isLoading = ref(true)
 .playground-note code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.8125rem;
-}
-
-@media (max-width: 768px) {
-  .iframe-wrapper {
-    height: 600px;
-  }
 }
 </style>

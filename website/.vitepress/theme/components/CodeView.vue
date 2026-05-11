@@ -43,7 +43,7 @@ import { rust } from '@codemirror/lang-rust'
 import { cpp } from '@codemirror/lang-cpp'
 import { javascript } from '@codemirror/lang-javascript'
 import { python } from '@codemirror/lang-python'
-import { autoLanguage } from '../composables/autoLang'
+import { autoLanguage } from 'auto-playground-vue'
 import { Play, Loader2 } from 'lucide-vue-next'
 
 const props = defineProps<{

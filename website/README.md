@@ -51,8 +51,7 @@ website/
 │   │   ├── style.css          # Tailwind + custom styles
 │   │   └── components/
 │   │       ├── HomeHero.vue   # Animated hero section
-│   │       ├── FeatureCard.vue
-│   │       └── AutoPlayground.vue
+│   │       └── FeatureCard.vue
 │   └── tailwind.config.js
 ├── docs/                      # Generated from ../../docs/
 ├── books/                     # Generated from ../../../book/
@@ -101,7 +100,7 @@ The output is generated in `website/.vitepress/dist/`.
 
 **Important — Playground API URL:**
 
-The `AutoPlayground.vue` component uses `apiUrl` prop with a default of empty string (`''`). This makes the frontend call `/api/run` and `/api/trans` as **same-origin requests**, which are then reverse-proxied by nginx to the backend.
+The `<AutoPlayground>` component from `auto-playground-vue` uses `apiUrl` prop with a default of empty string (`''`). This makes the frontend call `/api/run` and `/api/trans` as **same-origin requests**, which are then reverse-proxied by nginx to the backend.
 
 If you need to point to a different backend during development, pass the prop:
 
@@ -137,7 +136,7 @@ print('fixed')
 \""
 ```
 
-> Note: The exact filename under `assets/chunks/` will vary with each build (hash changes). Find it with `grep -r "localhost:3030" /home/visus/auto-website/`. This is a temporary workaround — always fix the source (`AutoPlayground.vue`) and rebuild for the next deployment.
+> Note: The exact filename under `assets/chunks/` will vary with each build (hash changes). Find it with `grep -r "localhost:3030" /home/visus/auto-website/`. This is a temporary workaround — always fix the source (`packages/auto-playground-vue/src/AutoPlayground.vue`) and rebuild for the next deployment.
 
 ### 2. Build the Backend (Cross-Compilation)
 

@@ -1,9 +1,3 @@
-/**
- * Auto Language CodeMirror 6 mode using StreamLanguage
- *
- * Based on Auto Language Specification v0.2
- */
-
 import { StreamLanguage } from '@codemirror/language'
 import type { StringStream } from '@codemirror/language'
 
@@ -36,11 +30,8 @@ const types = new Set([
   'int', 'uint', 'byte', 'i8', 'i16', 'i64', 'u8', 'u16', 'u64',
   'usize', 'float', 'double', 'bool', 'char', 'void', 'str',
   'String', 'cstr', 'Handle', 'linear',
-])
-
-// Compile-time directives
-const directives = new Set([
-  '#if', '#for', '#is',
+  'List', 'Map', 'Set', 'Option', 'Result',
+  'Link',
 ])
 
 function isDigit(ch: string): boolean {
@@ -112,9 +103,6 @@ export const autoLanguage = StreamLanguage.define<AutoState>({
 
     // Comments: //, ///, /*
     if (ch === '/' && stream.match('//')) {
-      if (stream.match('/')) {
-        // Doc comment ///
-      }
       stream.skipToEnd()
       return 'comment'
     }
@@ -140,7 +128,7 @@ export const autoLanguage = StreamLanguage.define<AutoState>({
       if (stream.peek() === "'") {
         stream.next()
       }
-      return 'character'
+      return 'string'
     }
 
     // C string c"..."
@@ -213,11 +201,14 @@ export const autoLanguage = StreamLanguage.define<AutoState>({
       return tokenIdentifier(stream)
     }
 
-    // Hash directives #if, #for, #is, #{
+    // Hash directives #if, #for, #is, #[, #{
     if (ch === '#') {
       stream.next()
       if (stream.match('if') || stream.match('for') || stream.match('is')) {
-        return 'macroName'
+        return 'keyword'
+      }
+      if (stream.match('[')) {
+        return 'meta'
       }
       if (stream.match('{')) {
         return 'macroName'
@@ -262,6 +253,10 @@ export const autoLanguage = StreamLanguage.define<AutoState>({
     // Unknown character
     stream.next()
     return null
+  },
+
+  languageData: {
+    commentTokens: { line: '//', block: { open: '/*', close: '*/' } },
   },
 })
 
