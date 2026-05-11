@@ -1,5 +1,8 @@
 /// VM function declarations for URL operations
 /// These are implemented in Rust using url and urlencoding crates
+///
+/// Note: Url instance methods (scheme, host, port, path, query, etc.)
+/// are declared in url.at via `ext Url { #[vm] fn ... }` — not duplicated here.
 
 // ═══════════════════════════════════════════════════════════
 // URL Encoding/Decoding
@@ -42,56 +45,12 @@ fn decode_query(query str) Map[str, str]
 fn parse_form(body str) Map[str, str]
 
 // ═══════════════════════════════════════════════════════════
-// URL Parsing
+// URL Parsing (module-level)
 // ═══════════════════════════════════════════════════════════
 
-/// Parse a URL string
+/// Parse a URL string into Url opaque object
 #[vm]
 fn url_parse(url str) Url
-
-/// Get URL scheme
-#[vm]
-fn url_scheme(url Url) str
-
-/// Get URL host
-#[vm]
-fn url_host(url Url) str
-
-/// Get URL port
-#[vm]
-fn url_port(url Url) int
-
-/// Get URL path
-#[vm]
-fn url_path(url Url) str
-
-/// Get URL query string
-#[vm]
-fn url_query(url Url) str
-
-/// Get URL fragment
-#[vm]
-fn url_fragment(url Url) str
-
-/// Get URL username
-#[vm]
-fn url_username(url Url) str
-
-/// Get URL password
-#[vm]
-fn url_password(url Url) str
-
-/// Get query params as map
-#[vm]
-fn url_query_params(url Url) Map[str, str]
-
-/// Get specific query param
-#[vm]
-fn url_query_param(url Url, key str) str
-
-/// Convert URL to string
-#[vm]
-fn url_to_string(url Url) str
 
 // ═══════════════════════════════════════════════════════════
 // URL Building

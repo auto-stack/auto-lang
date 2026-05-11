@@ -57,44 +57,61 @@ type Url
 /// Example: let u = parse("https://example.com/path?q=1")
 pub fn parse(url str) Url?;
 
-/// Get the scheme (protocol)
-/// Example: "https"
-pub fn Url.scheme(self Url) str;
+// ═══════════════════════════════════════════════════════════
+// URL Instance Methods
+// ═══════════════════════════════════════════════════════════
 
-/// Get the host (domain)
-/// Example: "example.com"
-pub fn Url.host(self Url) str;
+ext Url {
+    /// Get the scheme (protocol)
+    /// Example: "https"
+    #[vm]
+    fn scheme() str
 
-/// Get the port number
-/// Returns 0 if not specified
-pub fn Url.port(self Url) int;
+    /// Get the host (domain)
+    /// Example: "example.com"
+    #[vm]
+    fn host() str
 
-/// Get the path
-/// Example: "/path/to/resource"
-pub fn Url.path(self Url) str;
+    /// Get the port number
+    /// Returns 0 if not specified
+    #[vm]
+    fn port() int
 
-/// Get the query string (without ?)
-/// Example: "q=1&page=2"
-pub fn Url.query(self Url) str;
+    /// Get the path
+    /// Example: "/path/to/resource"
+    #[vm]
+    fn path() str
 
-/// Get the fragment (hash, without #)
-/// Example: "section-1"
-pub fn Url.fragment(self Url) str;
+    /// Get the query string (without ?)
+    /// Example: "q=1&page=2"
+    #[vm]
+    fn query() str
 
-/// Get the username (for URLs with credentials)
-pub fn Url.username(self Url) str;
+    /// Get the fragment (hash, without #)
+    /// Example: "section-1"
+    #[vm]
+    fn fragment() str
 
-/// Get the password (for URLs with credentials)
-pub fn Url.password(self Url) str;
+    /// Get the username (for URLs with credentials)
+    #[vm]
+    fn username() str
 
-/// Get query parameters as a map
-pub fn Url.query_params(self Url) Map[str, str];
+    /// Get the password (for URLs with credentials)
+    #[vm]
+    fn password() str
 
-/// Get a specific query parameter
-pub fn Url.query_param(self Url, key str) str;
+    /// Get query parameters as a map
+    #[vm]
+    fn query_params() Map[str, str]
 
-/// Reconstruct the full URL string
-pub fn Url.to_string(self Url) str;
+    /// Get a specific query parameter
+    #[vm]
+    fn query_param(key str) str
+
+    /// Reconstruct the full URL string
+    #[vm]
+    fn to_string() str
+}
 
 // ═══════════════════════════════════════════════════════════
 // URL Building
