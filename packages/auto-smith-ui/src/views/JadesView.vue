@@ -47,6 +47,9 @@
             <button class="save-btn" @click="saveSection">Save</button>
           </div>
         </div>
+        <div v-else-if="isLoading" class="editor-empty">
+          <span class="loading">Loading Jades…</span>
+        </div>
         <div v-else class="editor-empty">
           <BookOpen :size="32" />
           <p>Select a section from the sidebar</p>
@@ -57,94 +60,54 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RefreshCw, Sparkles, BookOpen } from 'lucide-vue-next'
+import { useLedger } from '@/composables/useLedger'
 import type { LedgerSection } from '@/types/ledger'
 
-const sections = ref<LedgerSection[]>([
-  {
-    id: 'goals',
-    type: 'goals',
-    title: '📋 Goals',
-    status: 'in_progress',
-    content: '- Implement user authentication system\n- Add JWT token flow\n- Support OAuth2 providers',
-    last_modified: Date.now(),
-  },
-  {
-    id: 'requirements',
-    type: 'requirements',
-    title: '📐 Requirements',
-    status: 'drift',
-    content: 'R1.1: Sessions must support create → active → idle → closed states.\nR1.2: Max idle time: 5 minutes.\nR2.1: Use JWT instead of session cookies.',
-    last_modified: Date.now() - 86400000,
-    last_verified: Date.now() - 172800000,
-  },
-  {
-    id: 'analysis',
-    type: 'analysis',
-    title: '🔍 Analysis',
-    status: 'draft',
-    content: 'The AutovmReplSession holds VM state across cell executions.\nStack overflow risk on deep expressions in test mode.\nMitigation: limit recursion depth in tests.',
-    last_modified: Date.now(),
-  },
-  {
-    id: 'plans',
-    type: 'plans',
-    title: '📅 Plans',
-    status: 'approved',
-    content: 'Phase 5: Quality + AI Experience\n- 5.1: Test coverage\n- 5.2: AI streaming (SSE)\n- 5.3: One-click code extraction',
-    last_modified: Date.now(),
-  },
-  {
-    id: 'todos',
-    type: 'todos',
-    title: '✅ Todos',
-    status: 'in_progress',
-    content: '- [x] Add backend unit tests (11 passing)\n- [x] Add frontend Vitest (14 passing)\n- [ ] Add e2e tests for AI streaming',
-    last_modified: Date.now(),
-  },
-  {
-    id: 'reports',
-    type: 'reports',
-    title: '📊 Reports',
-    status: 'draft',
-    content: 'Coverage Report (2026-05-11):\nnotebook/mod.rs: 87%\nnotebook/ai.rs: 62%\nroutes/notebook.rs: 45%',
-    last_modified: Date.now(),
-  },
-  {
-    id: 'reviews',
-    type: 'reviews',
-    title: '📝 Reviews',
-    status: 'draft',
-    content: 'REV-1: Security review required\nThe dirty-cell re-execution queue may skip edge cases where upstream cells have side effects.',
-    last_modified: Date.now(),
-  },
-])
+const { document, isLoading, error, loadDocument, saveSection: saveLedgerSection } = useLedger()
 
 const activeSection = ref<string>('goals')
+const project = ref('.')
+
+const sections = computed(() => document.value?.sections ?? [])
 
 const currentSection = computed(() =>
-  sections.value.find((s) => s.id === activeSection.value)
+  document.value?.sections.find((s) => s.id === activeSection.value) ?? null
 )
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
-function triggerDriftCheck() {
-  alert('Drift check: In the full implementation, this would compare code against specs and flag divergences.')
+async function triggerDriftCheck() {
+  try {
+    const resp = await fetch(`/api/smith/ledger/${encodeURIComponent(project.value)}/drift-check`, {
+      method: 'POST',
+    })
+    const data = await resp.json()
+    alert(`Drift check: ${data.drift_detected ? 'DRIFT DETECTED' : 'No drift detected'} (${data.sections_checked} sections checked)`)
+  } catch {
+    alert('Drift check failed.')
+  }
 }
 
 function aiEnrich() {
   alert('AI Enrich: In the full implementation, the AI would analyze the codebase and propose Ledger updates.')
 }
 
-function saveSection() {
-  if (currentSection.value) {
-    currentSection.value.last_modified = Date.now()
-    alert('Section saved (mock).')
+async function saveSection() {
+  const section = currentSection.value
+  if (!section) return
+  await saveLedgerSection(project.value, section)
+  if (error.value) {
+    alert('Save failed: ' + error.value)
   }
 }
+
+onMounted(() => {
+  loadDocument(project.value)
+})
 </script>
 
 <style scoped>
@@ -359,5 +322,10 @@ function saveSection() {
   gap: 0.75rem;
   color: var(--af-muted);
   flex: 1;
+}
+
+.loading {
+  font-size: 0.9rem;
+  color: var(--af-muted);
 }
 </style>

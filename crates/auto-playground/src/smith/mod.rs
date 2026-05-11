@@ -223,6 +223,7 @@ pub enum ForgeStreamEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerDocument {
     pub project: String,
+    pub version: u64,
     pub sections: Vec<LedgerSection>,
 }
 
@@ -236,6 +237,118 @@ pub struct LedgerSection {
     pub depends_on: Vec<String>,
     pub last_modified: u64,
     pub last_verified: Option<u64>,
+}
+
+// ─── Persistent Ledger Store ─────────────────────────────────────────────────
+
+struct LedgerStore {
+    projects: std::collections::HashMap<String, LedgerDocument>,
+    data_dir: PathBuf,
+}
+
+impl LedgerStore {
+    fn new() -> Self {
+        let data_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("autoforge")
+            .join("ledgers");
+        let _ = std::fs::create_dir_all(&data_dir);
+
+        let mut store = Self {
+            projects: std::collections::HashMap::new(),
+            data_dir,
+        };
+        store.load_all();
+        store
+    }
+
+    fn load_all(&mut self) {
+        let Ok(entries) = std::fs::read_dir(&self.data_dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension() != Some("json".as_ref()) {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+            let Ok(doc) = serde_json::from_str::<LedgerDocument>(&content) else { continue };
+            self.projects.insert(doc.project.clone(), doc);
+        }
+        tracing::info!("Loaded {} persistent Ledger documents", self.projects.len());
+    }
+
+    fn get(&self, project: &str) -> Option<&LedgerDocument> {
+        self.projects.get(project)
+    }
+
+    fn get_or_default(&mut self, project: &str) -> &mut LedgerDocument {
+        if !self.projects.contains_key(project) {
+            let doc = default_ledger(project);
+            self.save(&doc);
+            self.projects.insert(project.to_string(), doc);
+        }
+        self.projects.get_mut(project).unwrap()
+    }
+
+    fn update_section(&mut self, project: &str, section_id: &str, content: String, status: String) -> Result<(), String> {
+        let doc = self.get_or_default(project);
+        if let Some(section) = doc.sections.iter_mut().find(|s| s.id == section_id) {
+            section.content = content;
+            section.status = status;
+            section.last_modified = now_secs();
+            doc.version += 1;
+            let doc_clone = doc.clone();
+            self.save(&doc_clone);
+            Ok(())
+        } else {
+            Err(format!("Section '{}' not found", section_id))
+        }
+    }
+
+    fn update_full(&mut self, incoming: LedgerDocument) -> Result<LedgerDocument, String> {
+        let project = incoming.project.clone();
+        let doc = self.get_or_default(&project);
+        // Simple optimistic concurrency: just overwrite for now
+        // (version check can be added later)
+        *doc = incoming;
+        doc.version += 1;
+        let doc_clone = doc.clone();
+        self.save(&doc_clone);
+        Ok(doc_clone)
+    }
+
+    fn save(&self, doc: &LedgerDocument) {
+        let filename = sanitize_filename(&doc.project);
+        let path = self.data_dir.join(format!("{}.json", filename));
+        if let Ok(json) = serde_json::to_string_pretty(doc) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+fn default_ledger(project: &str) -> LedgerDocument {
+    let now = now_secs();
+    LedgerDocument {
+        project: project.to_string(),
+        version: 1,
+        sections: vec![
+            LedgerSection { id: String::from("goals"), section_type: String::from("goals"), title: String::from("📋 Goals"), status: String::from("draft"), content: String::from("- Define project goals\n- Set success criteria"), depends_on: vec![], last_modified: now, last_verified: None },
+            LedgerSection { id: String::from("requirements"), section_type: String::from("requirements"), title: String::from("📐 Requirements"), status: String::from("draft"), content: String::from("R1.1: Define functional requirements\nR1.2: Define non-functional requirements"), depends_on: vec![], last_modified: now, last_verified: None },
+            LedgerSection { id: String::from("analysis"), section_type: String::from("analysis"), title: String::from("🔍 Analysis"), status: String::from("draft"), content: String::from("Technical approach and trade-offs."), depends_on: vec![], last_modified: now, last_verified: None },
+            LedgerSection { id: String::from("plans"), section_type: String::from("plans"), title: String::from("📅 Plans"), status: String::from("draft"), content: String::from("Phase 1: Foundation\nPhase 2: Implementation\nPhase 3: Verification"), depends_on: vec![], last_modified: now, last_verified: None },
+            LedgerSection { id: String::from("todos"), section_type: String::from("todos"), title: String::from("✅ Todos"), status: String::from("draft"), content: String::from("- [ ] Initial setup\n- [ ] Core implementation\n- [ ] Testing and review"), depends_on: vec![], last_modified: now, last_verified: None },
+            LedgerSection { id: String::from("reports"), section_type: String::from("reports"), title: String::from("📊 Reports"), status: String::from("draft"), content: String::from("Coverage and quality reports."), depends_on: vec![], last_modified: now, last_verified: None },
+            LedgerSection { id: String::from("reviews"), section_type: String::from("reviews"), title: String::from("📝 Reviews"), status: String::from("draft"), content: String::from("Code review notes and security audits."), depends_on: vec![], last_modified: now, last_verified: None },
+        ],
+    }
+}
+
+fn sanitize_filename(name: &str) -> String {
+    name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
+}
+
+fn ledgers() -> &'static Mutex<LedgerStore> {
+    static STORE: OnceLock<Mutex<LedgerStore>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(LedgerStore::new()))
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -614,27 +727,59 @@ mod handlers {
 
     // ─── Ledger Handlers ─────────────────────────────────────────────────
 
-    pub async fn get_ledger() -> Json<LedgerDocument> {
-        Json(LedgerDocument {
-            project: String::from("auto-playground"),
-            sections: vec![LedgerSection {
-                id: String::from("goals"),
-                section_type: String::from("goals"),
-                title: String::from("Goals"),
-                status: String::from("in_progress"),
-                content: String::from("- Implement user authentication\n- Add JWT token flow"),
-                depends_on: vec![],
-                last_modified: 0,
-                last_verified: None,
-            }],
-        })
+    pub async fn get_ledger(Path(project): Path<String>) -> Json<LedgerDocument> {
+        let mut store = ledgers().lock().unwrap();
+        let doc = store.get_or_default(&project).clone();
+        Json(doc)
     }
 
-    pub async fn update_ledger(Json(_doc): Json<LedgerDocument>) -> Json<LedgerDocument> {
-        get_ledger().await
+    pub async fn update_ledger(
+        Path(project): Path<String>,
+        Json(doc): Json<LedgerDocument>,
+    ) -> Result<Json<LedgerDocument>, String> {
+        let mut store = ledgers().lock().unwrap();
+        // Ensure the project matches the URL
+        if doc.project != project {
+            return Err("Project mismatch".to_string());
+        }
+        let updated = store.update_full(doc)?;
+        Ok(Json(updated))
     }
 
-    pub async fn trigger_drift_check() -> Json<serde_json::Value> {
+    pub async fn get_ledger_section(
+        Path((project, section_id)): Path<(String, String)>,
+    ) -> Json<Option<LedgerSection>> {
+        let store = ledgers().lock().unwrap();
+        let section = store
+            .get(&project)
+            .and_then(|d| d.sections.iter().find(|s| s.id == section_id).cloned());
+        Json(section)
+    }
+
+    pub async fn update_ledger_section(
+        Path((project, section_id)): Path<(String, String)>,
+        Json(body): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, String> {
+        let content = body
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("draft")
+            .to_string();
+
+        let mut store = ledgers().lock().unwrap();
+        store.update_section(&project, &section_id, content, status)?;
+        Ok(Json(serde_json::json!({"status": "ok"})))
+    }
+
+    pub async fn trigger_drift_check(Path(project): Path<String>) -> Json<serde_json::Value> {
+        // TODO: real drift check in Phase E
+        let mut store = ledgers().lock().unwrap();
+        let _ = store.get_or_default(&project);
         Json(serde_json::json!({
             "status": "ok",
             "drift_detected": false,
@@ -678,6 +823,13 @@ mod handlers {
     }
 }
 
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
 // Non-generic route builder — caller must provide state that can produce AIProviderState
 pub fn routes() -> Router<crate::AppState> {
     Router::new()
@@ -688,9 +840,10 @@ pub fn routes() -> Router<crate::AppState> {
         .route("/api/smith/forge/{sid}/message", post(handlers::send_forge_message))
         .route("/api/smith/forge/{sid}/stream", get(handlers::forge_stream))
         .route("/api/smith/forge/{sid}/history", get(handlers::forge_history))
-        // Ledger
-        .route("/api/smith/ledger", get(handlers::get_ledger).put(handlers::update_ledger))
-        .route("/api/smith/ledger/drift-check", post(handlers::trigger_drift_check))
+        // Ledger (more specific routes FIRST)
+        .route("/api/smith/ledger/{project}/drift-check", post(handlers::trigger_drift_check))
+        .route("/api/smith/ledger/{project}/{section_id}", get(handlers::get_ledger_section).put(handlers::update_ledger_section))
+        .route("/api/smith/ledger/{project}", get(handlers::get_ledger).put(handlers::update_ledger))
         // Relay
         .route("/api/smith/relay/run", post(handlers::start_run))
         .route("/api/smith/relay/runs", get(handlers::list_runs))
