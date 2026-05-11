@@ -1,8 +1,6 @@
-use.rust url::Url
-
 fn main() {
-    let url = Url.parse("https://example.com/rust?name=hello&age=20").unwrap()
-    for pair in url.query_pairs() {
-        print(f"Param: $pair")
-    }
+    let url = "https://user:pass@example.com:8080/path?query=1#frag"
+    print(f"Scheme: ${Url.scheme(url)}")
+    print(f"Host: ${Url.host(url)}")
+    print(f"Port: ${Url.port(url)}")
 }

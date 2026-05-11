@@ -1,8 +1,6 @@
-use.rust url::Url
-
 fn main() {
-    let parsed = Url.parse("https://example.com/path?query=1").unwrap()
-    print(f"Scheme: ${parsed.scheme()}")
-    print(f"Host: ${parsed.host_str()}")
-    print(f"Path: ${parsed.path()}")
+    let url = "https://example.com/path?query=1"
+    print(f"Scheme: ${Url.scheme(url)}")
+    print(f"Host: ${Url.host(url)}")
+    print(f"Path: ${Url.path(url)}")
 }

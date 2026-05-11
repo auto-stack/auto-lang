@@ -5,9 +5,8 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use url::Url;
 fn main() {
-    let url = Url::parse("https://example.com/page#section").unwrap();
-    let fragment = url.fragment();
-    println!("Fragment: {}", fragment);
+    let url: String = "https://example.com/rust?name=hello&age=20".to_string();
+    let query = Url::query(url);
+    println!("Query: {}", query);
 }

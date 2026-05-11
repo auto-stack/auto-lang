@@ -1,7 +1,8 @@
-// TCP listener demo (simulated)
+// TCP listener: bind to OS-assigned port
 
 fn main() {
-    let addr = "127.0.0.1:8080"
-    print(f"Listening on ${addr}")
-    print("Ready to accept connections")
+    let listener = Net.tcp_bind("127.0.0.1:0")
+    let addr = Net.tcp_listener_local_addr(listener)
+    print(f"Listening on $addr")
+    Net.tcp_listener_close(listener)
 }

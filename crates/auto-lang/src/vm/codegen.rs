@@ -5436,9 +5436,14 @@ impl Codegen {
                     let fname_owned = func_name.clone();
                     if let Some(ref fname) = fname_owned {
                         let method = fname.rsplit('.').next().unwrap_or("").to_string();
-                        let has_regex = fname.contains("Regex") || fname.contains("regex");
-                        let has_url = fname.contains("Url") || fname.contains("url");
-                        let has_version = fname.contains("Version") && !fname.contains("VersionReq");
+                        let receiver = fname.rsplit('.').nth(1).unwrap_or("");
+                        // Module-level calls (Url.scheme, Regex.new, Version.parse) use native
+                        // dispatch via TYPE_CANONICAL_MAP. Only route to opaque when receiver
+                        // is a variable name (lowercase start) or an opaque-tracked var.
+                        let is_module_call = receiver == "Url" || receiver == "Regex" || receiver == "Version";
+                        let has_regex = !is_module_call && (fname.contains("Regex") || fname.contains("regex"));
+                        let has_url = !is_module_call && (fname.contains("Url") || fname.contains("url"));
+                        let has_version = !is_module_call && fname.contains("Version") && !fname.contains("VersionReq");
                         // Regex methods
                         if has_regex {
                             match method.as_str() {

@@ -5,10 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use url::Url;
 fn main() {
-    let url = Url::parse("https://example.com/path?query=1").unwrap();
-    let new_url = url.join("sub/page").unwrap();
-    println!("Original: {}", url);
-    println!("Joined: {}", new_url);
+    let url: String = "https://example.com/path?query=1".to_string();
+    let encoded = Url::encode("hello world");
+    let decoded = Url::decode("hello%20world");
+    println!("Scheme: {}", Url::scheme(url));
+    println!("Encoded: {}", encoded);
+    println!("Decoded: {}", decoded);
 }

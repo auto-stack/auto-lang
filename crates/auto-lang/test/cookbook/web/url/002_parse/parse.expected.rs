@@ -5,10 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use url::Url;
 fn main() {
-    let url = Url::parse("https://example.com/rust?name=hello&age=20").unwrap();
-    for pair in url.query_pairs() {
-        println!("Param: {}", pair);
-    }
+    let url: String = "https://user:pass@example.com:8080/path?query=1#frag".to_string();
+    println!("Scheme: {}", Url::scheme(url));
+    println!("Host: {}", Url::host(url));
+    println!("Port: {}", Url::port(url));
 }

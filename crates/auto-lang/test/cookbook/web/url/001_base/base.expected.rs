@@ -5,10 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use url::Url;
 fn main() {
-    let parsed = Url::parse("https://example.com/path?query=1").unwrap();
-    println!("Scheme: {}", parsed.scheme());
-    println!("Host: {}", parsed.host_str());
-    println!("Path: {}", parsed.path());
+    let url: String = "https://example.com/path?query=1".to_string();
+    println!("Scheme: {}", Url::scheme(url));
+    println!("Host: {}", Url::host(url));
+    println!("Path: {}", Url::path(url));
 }
