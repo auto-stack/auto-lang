@@ -105,7 +105,11 @@ impl LanguageServer for Backend {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("AutoLang LSP initializing with workspace: {:?}", params.root_uri),
+                format!(
+                    "AutoLang LSP v{} initializing with workspace: {:?}",
+                    env!("CARGO_PKG_VERSION"),
+                    params.root_uri
+                ),
             )
             .await;
 
@@ -169,14 +173,20 @@ impl LanguageServer for Backend {
     /// Called after initialization is complete
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "AutoLang LSP initialized!")
+            .log_message(
+                MessageType::INFO,
+                format!("AutoLang LSP v{} initialized!", env!("CARGO_PKG_VERSION")),
+            )
             .await;
     }
 
     /// Handle shutdown request
     async fn shutdown(&self) -> Result<()> {
         self.client
-            .log_message(MessageType::INFO, "AutoLang LSP shutting down")
+            .log_message(
+                MessageType::INFO,
+                format!("AutoLang LSP v{} shutting down", env!("CARGO_PKG_VERSION")),
+            )
             .await;
         Ok(())
     }
