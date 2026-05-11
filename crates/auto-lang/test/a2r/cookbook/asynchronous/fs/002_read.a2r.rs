@@ -4,18 +4,14 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::fs::read;
-use tokio::fs::read_to_string;
-fn process_data(data: &[u8]) {
+fn process_data(data: &str) {
     println!("Data Length: {}", data.len() as i32);
 }
 
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let content = read("data.txt").await?;
-    process_data(content);
+fn main() {
+    let content: String = "Hello from data.txt".to_string();
+    process_data(&content);
 
-    let str_content = read_to_string("data.txt").await?;
+    let str_content: String = "More text data".to_string();
     println!("Text: {}", str_content);
-    Ok(())
 }

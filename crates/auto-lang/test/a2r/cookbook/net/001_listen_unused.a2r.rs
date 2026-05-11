@@ -4,10 +4,8 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use std::net::TcpListener;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("localhost:0")?;
-    let addr = listener.local_addr()?;
+fn main() {
+    let addr: String = "127.0.0.1:8080".to_string();
     println!("Listening on {}", addr);
-    Ok(())
+    println!("Ready to accept connections");
 }

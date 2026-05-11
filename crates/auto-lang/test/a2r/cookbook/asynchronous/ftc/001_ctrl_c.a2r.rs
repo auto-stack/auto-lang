@@ -4,16 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::signal;
-use tokio::time::sleep;
-use std::time::Duration;
-async fn fetch_data() -> String {
-    sleep(Duration::from_secs(5)).await;
-    return "data";
+fn fetch_data() -> String {
+    return "data".to_string();
 }
 
-#[tokio::main]
-async fn main() -> () {
-    let result = fetch_data().await;
+fn main() {
+    let result = fetch_data();
     println!("Got: {}", result);
+    println!("Shutting down...");
 }

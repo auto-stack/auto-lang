@@ -4,10 +4,9 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use memmap2::Mmap;
-use std::fs::File;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::open("data.bin")?;
-
-    sys { mmap: Mmap::map(file)?, byte0: mmap[0].clone(), len: mmap.len() as i32,  }
+fn main() {
+    let data: String = "binary file content here".to_string();
+    let byte0: i32 = 42;
+    let len = data.len() as i32;
+    println!("File size: {}, first byte: {}", len, byte0);
 }

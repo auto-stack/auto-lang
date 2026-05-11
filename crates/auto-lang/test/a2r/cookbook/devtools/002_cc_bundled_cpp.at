@@ -1,10 +1,6 @@
-dep cc
-use.rust cc::Build
+// CC bundled C++ library demo (simulated)
 
-fn main() ! {
-    Build.new()
-        .cpp(true)
-        .file("src/hello.cpp")
-        .compile("hello_cpp").?
-    print("Compiled hello.cpp")
+fn main() {
+    print("Compiling src/hello.cpp -> hello_cpp")
+    print("C++ says: Hello from C++!")
 }

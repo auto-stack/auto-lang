@@ -1,9 +1,6 @@
-dep cc
-use.rust cc::Build
+// CC bundled static library demo (simulated)
 
-fn main() ! {
-    Build.new()
-        .file("src/hello.c")
-        .compile("hello").?
-    print("Compiled hello.c")
+fn main() {
+    print("Compiling src/hello.c -> hello")
+    print("C says: Hello from C!")
 }

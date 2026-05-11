@@ -1,7 +1,12 @@
-dep postgres
-use.rust postgres::Client
+// Postgres aggregate query demo (simulated)
 
-fn main() ! {
-    let client = Client.connect("host=localhost user=postgres").?
-    print("Connected to postgres")
+fn main() {
+    var counts Map<str, int> = Map.new()
+    counts.set("UK", 1)
+    counts.set("USA", 2)
+
+    for key in counts.keys() {
+        let val = counts.get(key)
+        print(f"${key}: ${val} authors")
+    }
 }

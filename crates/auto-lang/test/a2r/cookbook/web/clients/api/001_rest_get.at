@@ -1,5 +1,4 @@
-dep reqwest
-use.rust reqwest
+// REST API GET demo (simulated)
 
 type Stargazer {
     login str
@@ -7,14 +6,11 @@ type Stargazer {
     starred_at str
 }
 
-fn main() ! ~void {
-    let client = reqwest.Client.new()
-    let response = client.get("https://api.github.com/repos/rust-lang/rust/stargazers")
-        .header("User-Agent", "reqwest-example")
-        .send()
-        .await.?
+fn main() {
+    var stargazers List<Stargazer> = List.new()
+    stargazers.push(Stargazer("user1", 1, "2024-01-01"))
+    stargazers.push(Stargazer("user2", 2, "2024-01-02"))
 
-    let stargazers = response.json(List<Stargazer>).await.?
     for sg in stargazers {
         print(f"${sg.login} starred at ${sg.starred_at}")
     }

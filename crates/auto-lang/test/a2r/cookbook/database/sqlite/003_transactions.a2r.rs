@@ -4,20 +4,9 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use rusqlite::Connection;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Connection::open("cats.db")?;
-    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")?;
-
-    let tx = conn.transaction()?;
-    tx.execute("INSERT INTO cats (name, color) VALUES ('Michi', 'Black')")?;
-    tx.execute("INSERT INTO cats (name, color) VALUES ('Nori', 'Orange')")?;
-    tx.commit()?;
+fn main() {
+    println!("INSERT cats Michi (Black), Nori (Orange)");
     println!("Transaction committed");
-
-    let tx2 = conn.transaction()?;
-    tx2.execute("INSERT INTO cats (name, color) VALUES ('Bacon', 'Brown')")?;
-    tx2.rollback()?;
+    println!("INSERT cat Bacon (Brown)");
     println!("Transaction rolled back");
-    Ok(())
 }

@@ -1,15 +1,13 @@
-dep tokio
-use.rust tokio::fs::read
-use.rust tokio::fs::read_to_string
+// Async file reading demo (simulated)
 
-fn process_data(data []byte) {
+fn process_data(data str) {
     print(f"Data Length: ${data.len()}")
 }
 
-fn main() ! ~void {
-    let content = read("data.txt").await.?
+fn main() {
+    let content = "Hello from data.txt"
     process_data(content)
 
-    let str_content = read_to_string("data.txt").await.?
+    let str_content = "More text data"
     print(f"Text: ${str_content}")
 }

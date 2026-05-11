@@ -4,7 +4,6 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::sync::mpsc::unbounded_channel;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Message {
     from: String,
@@ -17,17 +16,12 @@ impl Message {
     }
 }
 
-async fn main() -> () {
-    let ch = unbounded_channel();
-    let sender = ch.sender;
-    let receiver = ch.receiver;
+fn main() {
+    let mut inbox: Vec<Message> = List::new();
+    inbox.push(Message::new("Alice", "Meeting postponed"));
+    inbox.push(Message::new("Bob", "Secret Leaked"));
 
-    sender.send(Message::new("Alice", "Meeting postponed"));
-    sender.send(Message::new("Bob", "Secret Leaked"));
-
-    println!("Sent 2 messages");
-
-    for msg in vec!["Meeting postponed", "Secret Leaked"] {
-        println!("Message: {}", msg);
+    for msg in inbox {
+        println!("{} says: {}", msg.from, msg.text);
     }
 }

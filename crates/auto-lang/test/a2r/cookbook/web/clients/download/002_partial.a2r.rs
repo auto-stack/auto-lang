@@ -4,31 +4,16 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-use std::fs::File;
-use std::io::Write;
-const CHUNK_SIZE: i32 = 1024;
-
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let client = reqwest.Client.new();
-    let url: String = "https://example.com/large-file.zip".to_string();
-    let total_size: i32 = client.head(url).send().await?.content_length().unwrap_or(0);
-
+fn main() {
+    let total: i32 = 10000;
+    let chunk_size: i32 = 1024;
     let mut downloaded: i32 = 0;
-    let mut start: i32 = 0;
 
-    while start < total_size {
-        let end: i32 = start + CHUNK_SIZE - 1;
-        let response = client.get(url).cloned().header("Range", format!("bytes={}-{}", start, end)).send().await?;
-        
-        let chunk = response.bytes().await?;
-        let mut: file = File::open("large-file.zip")?;
-        file.write_all(chunk)?;
-        
-        downloaded += chunk.len() as i32;
-        start = end + 1;
-        println!("Downloaded {}/{}", downloaded, total_size);
+    for i in 0..10 {
+        downloaded = downloaded + chunk_size;
+        if downloaded > total {
+            downloaded = total
+        }
+        println!("Downloaded {}/{}", downloaded, total);
     }
-    Ok(())
 }

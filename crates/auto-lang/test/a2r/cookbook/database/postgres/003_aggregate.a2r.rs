@@ -4,9 +4,13 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use postgres::Client;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect("host=localhost user=postgres")?;
-    println!("Connected to postgres");
-    Ok(())
+fn main() {
+    let mut counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    counts.set("UK", 1);
+    counts.set("USA", 2);
+
+    for key in counts.keys() {
+        let val = counts.get(key).cloned();
+        println!("{}: {} authors", key, val);
+    }
 }

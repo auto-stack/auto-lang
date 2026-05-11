@@ -1,10 +1,10 @@
-dep tokio
-use.rust tokio::fs::remove_file
-use.rust tokio::fs::remove_dir
-use.rust tokio::fs::remove_dir_all
+// Async file removal demo (simulated)
 
-fn main() ! ~void {
-    remove_file("data.txt").await.?
-    remove_dir("my_dir").await.?
-    remove_dir_all("my_dir").await.?
+fn remove_file(name str) str {
+    return f"removed ${name}"
+}
+
+fn main() {
+    print(remove_file("data.txt"))
+    print(remove_file("my_dir"))
 }

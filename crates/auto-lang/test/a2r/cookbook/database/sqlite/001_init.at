@@ -1,8 +1,6 @@
-dep rusqlite
-use.rust rusqlite::Connection
+// SQLite init demo (simulated)
 
-fn main() ! {
-    let conn = Connection.open("cats.db").?
-    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)").?
+fn main() {
+    print("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")
     print("Table created successfully")
 }

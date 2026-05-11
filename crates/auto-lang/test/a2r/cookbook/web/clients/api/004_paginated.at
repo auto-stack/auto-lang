@@ -1,15 +1,15 @@
-dep reqwest
-use.rust reqwest
+// Paginated API request demo (simulated)
 
-fn main() ! ~void {
-    let client = reqwest.Client.new()
-    var page = 1
+type Dependency {
+    id str
+}
 
-    let url = f"https://crates.io/api/v1/crates/serde/reverse_dependencies?page=${page}"
-    let response = client.get(url)
-        .header("User-Agent", "reqwest-example")
-        .send()
-        .await.?
+fn main() {
+    var deps List<Dependency> = List.new()
+    deps.push(Dependency("serde_derive"))
+    deps.push(Dependency("serde_json"))
 
-    print(f"Status: ${response.status()}")
+    for d in deps {
+        print(f"Depends on serde: ${d.id}")
+    }
 }

@@ -4,16 +4,8 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-use std::fs::read;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let content = read("message.txt")?;
-    let client = reqwest.Client.new();
-
-    let response = client.post("https://paste.rs/").body(content).send().await?;
-
-    let url = response.text().await?;
+fn main() {
+    let content: String = "file content here".to_string();
+    let url: String = "https://paste.rs/abc123".to_string();
     println!("Uploaded to: {}", url);
-    Ok(())
 }

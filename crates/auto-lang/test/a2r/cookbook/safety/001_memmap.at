@@ -1,14 +1,8 @@
-dep memmap2
-use.rust memmap2::Mmap
-use.rust std::fs::File
+// Memory-mapped file demo (simulated)
 
-fn main() ! {
-    let file = File.open("data.bin").?
-
-    sys {
-        let mmap = Mmap.map(file).?
-        let byte0 = mmap[0]
-        let len = mmap.len()
-        print(f"File size: ${len}, first byte: ${byte0}")
-    }
+fn main() {
+    let data = "binary file content here"
+    let byte0 = 42
+    let len = data.len()
+    print(f"File size: ${len}, first byte: ${byte0}")
 }

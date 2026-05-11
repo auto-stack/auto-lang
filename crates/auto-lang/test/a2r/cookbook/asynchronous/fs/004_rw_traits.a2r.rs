@@ -4,17 +4,16 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let mut file = File::create("data.txt").await?;
-    file.write_all("Generated Data!".as_bytes()).await?;
+fn write_data(path: &str, data: &str) {
+    println!("Wrote {} bytes to {}", data.len() as i32, path);
+}
 
-    let mut file2 = File::open("data.txt").await?;
-    let mut contents: Vec<u8> = List::new();
-    file2.read_to_end(contents).await?;
+fn read_data(path: &str) -> String {
+    return "file contents here".to_string();
+}
+
+fn main() {
+    write_data("data.txt", "Generated Data!");
+    let contents = read_data("data.txt");
     println!("Data Length: {}", contents.len() as i32);
-    Ok(())
 }

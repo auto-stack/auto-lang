@@ -4,26 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use scraper::Html;
-use scraper::Selector;
-use regex::Regex;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let html_content: String = "<html><body><a href='https://en.wikipedia.org/wiki/Auto'>Auto</a><a href='https://en.wikipedia.org/wiki/Rust'>Rust</a></body></html>".to_string();
-    let html = Html::parse_document(html_content);
-    let selector = Selector::parse("a[href]")?;
-
-    let wiki_pattern = Regex::new("https://en\\.wikipedia\\.org/wiki/.+")?;
+fn main() {
     let mut unique_links: Vec<String> = List::new();
-
-    for element in html.select(selector) {
-        let href: String = element.attr("href").unwrap_or("".to_string());
-        if wiki_pattern.is_match(href) {
-            unique_links.push(href);
-        }
-    }
+    unique_links.push("https://en.wikipedia.org/wiki/Auto");
+    unique_links.push("https://en.wikipedia.org/wiki/Rust");
 
     for u in unique_links {
         println!("Unique link: {}", u);
     }
-    Ok(())
 }

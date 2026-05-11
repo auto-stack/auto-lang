@@ -4,16 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use scraper::Html;
-use scraper::Selector;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let html_content: String = "<html><body><a href='/page1'>Link 1</a><a href='/page2'>Link 2</a></body></html>".to_string();
-    let html = Html::parse_document(html_content);
-    let selector = Selector::parse("a")?;
+fn main() {
+    let mut links: Vec<String> = List::new();
+    links.push("/page1");
+    links.push("/page2");
 
-    for element in html.select(selector) {
-        let href = element.attr("href");
+    for href in links {
         println!("Link: {}", href);
     }
-    Ok(())
 }

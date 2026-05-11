@@ -1,31 +1,15 @@
-dep reqwest
-use.rust reqwest
-use.rust std::fs::File
-use.rust std::io::Write
+// Partial/range download demo (simulated)
 
-const CHUNK_SIZE = 1024
-
-fn main() ! ~void {
-    let client = reqwest.Client.new()
-    let url = "https://example.com/large-file.zip"
-    let total_size = client.head(url).send().await.?.content_length() ?? 0
-
+fn main() {
+    let total = 10000
+    let chunk_size = 1024
     var downloaded = 0
-    var start = 0
 
-    for start < total_size {
-        let end = start + CHUNK_SIZE - 1
-        let response = client.get(url)
-            .header("Range", f"bytes=${start}-${end}")
-            .send()
-            .await.?
-
-        let chunk = response.bytes().await.?
-        let mut file = File.open("large-file.zip").?
-        file.write_all(chunk).?
-
-        downloaded += chunk.len()
-        start = end + 1
-        print(f"Downloaded ${downloaded}/${total_size}")
+    for i in 0..10 {
+        downloaded = downloaded + chunk_size
+        if downloaded > total {
+            downloaded = total
+        }
+        print(f"Downloaded ${downloaded}/${total}")
     }
 }

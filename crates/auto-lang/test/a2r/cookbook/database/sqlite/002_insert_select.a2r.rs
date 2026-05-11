@@ -4,7 +4,6 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use rusqlite::Connection;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Cat {
     id: i32,
@@ -12,19 +11,13 @@ struct Cat {
     color: String,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Connection::open("cats.db")?;
-    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")?;
-
-    conn.execute("INSERT INTO cats (name, color) VALUES ('Michi', 'Black')")?;
-    conn.execute("INSERT INTO cats (name, color) VALUES ('Nori', 'Orange')")?;
-    conn.execute("INSERT INTO cats (name, color) VALUES ('Bacon', 'Brown')")?;
-
-    let stmt = conn.prepare("SELECT id, name, color FROM cats")?;
-    let cats = stmt.query_map(|row| { return Cat { id: row.get(0).cloned(), name: row.get(1).cloned(), color: row.get(2).cloned() }; })?;
+fn main() {
+    let mut cats: Vec<Cat> = List::new();
+    cats.push(Cat { id: 1, name: "Michi".to_string(), color: "Black".to_string() });
+    cats.push(Cat { id: 2, name: "Nori".to_string(), color: "Orange".to_string() });
+    cats.push(Cat { id: 3, name: "Bacon".to_string(), color: "Brown".to_string() });
 
     for cat in cats {
         println!("Found cat {} ({}) with id {}", cat.name, cat.color, cat.id);
     }
-    Ok(())
 }

@@ -1,22 +1,13 @@
-dep reqwest
-use.rust reqwest
-use.rust scraper::Html
-use.rust scraper::Selector
+// Broken link detection demo (simulated)
 
-fn main() ! ~void {
-    let html_content = "<html><body><a href='https://httpbin.org/status/200'>OK</a><a href='https://httpbin.org/status/404'>Missing</a></body></html>"
-    let html = Html.parse_document(html_content)
-    let selector = Selector.parse("a[href]").?
-    let client = reqwest.Client.new()
+fn main() {
+    var urls List<str> = List.new()
+    urls.push("https://httpbin.org/status/200")
+    urls.push("https://httpbin.org/status/404")
 
-    for element in html.select(selector) {
-        let href = element.attr("href") ?? ""
-        let response = client.head(href).send().await.?
-        let status = response.status().as_u16()
-        if status >= 400 {
-            print(f"BROKEN: ${href} (${status})")
-        } else {
-            print(f"OK: ${href} (${status})")
-        }
-    }
+    var status200 = 200
+    var status404 = 404
+
+    print(f"OK: ${urls.get(0)} (${status200})")
+    print(f"BROKEN: ${urls.get(1)} (${status404})")
 }

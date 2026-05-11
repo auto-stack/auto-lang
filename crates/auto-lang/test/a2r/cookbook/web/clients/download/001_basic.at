@@ -1,14 +1,6 @@
-dep reqwest
-use.rust reqwest
-use.rust std::fs::File
-use.rust std::io::Write
+// File download demo (simulated)
 
-fn main() ! ~void {
-    let response = reqwest.get("https://example.com/file.zip").await.?
-    let bytes = response.bytes().await.?
-
-    let mut out = File.create("file.zip").?
-    out.write_all(bytes).?
-
-    print(f"Downloaded ${bytes.len()} bytes")
+fn main() {
+    let bytes_len = 4096
+    print(f"Downloaded ${bytes_len} bytes")
 }

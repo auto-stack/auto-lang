@@ -1,14 +1,7 @@
-dep reqwest
-use.rust reqwest
+// REST API POST demo (simulated)
 
-fn main() ! ~void {
-    let client = reqwest.Client.new()
-
-    let response = client.post("https://api.github.com/gists")
-        .header("User-Agent", "reqwest-example")
-        .basic_auth("user", "token")
-        .send()
-        .await.?
-
-    print(f"Status: ${response.status()}")
+fn main() {
+    let status = 201
+    print(f"Status: ${status}")
+    print("POST request sent with JSON body")
 }

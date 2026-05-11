@@ -4,11 +4,8 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use postgres::Client;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect("host=localhost user=postgres")?;
-    client.batch_execute("CREATE TABLE IF NOT EXISTS author (id SERIAL PRIMARY KEY, name VARCHAR NOT NULL, nationality VARCHAR)")?;
-    client.batch_execute("CREATE TABLE IF NOT EXISTS book (id SERIAL PRIMARY KEY, title VARCHAR NOT NULL, author_id INTEGER REFERENCES author(id))")?;
+fn main() {
+    println!("CREATE TABLE author (id SERIAL PRIMARY KEY, name VARCHAR NOT NULL, nationality VARCHAR)");
+    println!("CREATE TABLE book (id SERIAL PRIMARY KEY, title VARCHAR NOT NULL, author_id INTEGER REFERENCES author(id))");
     println!("Tables created successfully");
-    Ok(())
 }

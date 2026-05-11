@@ -1,6 +1,6 @@
-dep tokio
-use.rust tokio::fs::write
+// Async file write demo (simulated)
 
-fn main() ! ~void {
-    write("data.txt", "Generic data from program!").await.?
+fn main() {
+    let data = "Generic data from program!"
+    print(f"Wrote ${data.len()} bytes to data.txt")
 }

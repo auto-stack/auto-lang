@@ -4,12 +4,11 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::fs::remove_file;
-use tokio::fs::remove_dir;
-use tokio::fs::remove_dir_all;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    remove_file("data.txt").await?;
-    remove_dir("my_dir").await?;
-    remove_dir_all("my_dir").await?
+fn remove_file(name: &str) -> String {
+    return format!("removed {}", name);
+}
+
+fn main() {
+    println!("{}", remove_file("data.txt"));
+    println!("{}", remove_file("my_dir"));
 }

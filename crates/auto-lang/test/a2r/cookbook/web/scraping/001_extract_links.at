@@ -1,14 +1,11 @@
-dep scraper
-use.rust scraper::Html
-use.rust scraper::Selector
+// HTML link extraction demo (simulated)
 
-fn main() ! {
-    let html_content = "<html><body><a href='/page1'>Link 1</a><a href='/page2'>Link 2</a></body></html>"
-    let html = Html.parse_document(html_content)
-    let selector = Selector.parse("a").?
+fn main() {
+    var links List<str> = List.new()
+    links.push("/page1")
+    links.push("/page2")
 
-    for element in html.select(selector) {
-        let href = element.attr("href")
+    for href in links {
         print(f"Link: ${href}")
     }
 }

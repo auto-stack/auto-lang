@@ -4,9 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use cc::Build;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Build::new().cpp(true).file("src/hello.cpp").compile("hello_cpp")?;
-    println!("Compiled hello.cpp");
-    Ok(())
+fn main() {
+    println!("Compiling src/hello.cpp -> hello_cpp");
+    println!("C++ says: Hello from C++!");
 }

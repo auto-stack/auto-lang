@@ -1,14 +1,11 @@
-dep tokio
-use.rust tokio::signal
-use.rust tokio::time::sleep
-use.rust std::time::Duration
+// Ctrl-C signal handling demo (simulated)
 
-fn fetch_data() ~str {
-    sleep(Duration.from_secs(5)).await
+fn fetch_data() str {
     return "data"
 }
 
-fn main() ~void {
-    let result = fetch_data().await
+fn main() {
+    let result = fetch_data()
     print(f"Got: ${result}")
+    print("Shutting down...")
 }

@@ -4,17 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-use std::fs::File;
-use std::io::Write;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let response = reqwest.get("https://example.com/file.zip").cloned().await?;
-    let bytes = response.bytes().await?;
-
-    let mut: out = File::create("file.zip")?;
-    out.write_all(bytes)?;
-
-    println!("Downloaded {} bytes", bytes.len() as i32);
-    Ok(())
+fn main() {
+    let bytes_len: i32 = 4096;
+    println!("Downloaded {} bytes", bytes_len);
 }

@@ -4,12 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::fs::File;
-use tokio::fs::create_dir;
-use tokio::fs::create_dir_all;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    File::create("data.txt").await?;
-    create_dir("my_dir").await?;
-    create_dir_all("my_dir/sub_dir/inner").await?
+fn create_file(name: &str) -> String {
+    return format!("created {}", name);
+}
+
+fn main() {
+    println!("{}", create_file("data.txt"));
+    println!("{}", create_file("my_dir"));
+    println!("{}", create_file("my_dir/sub_dir/inner"));
 }

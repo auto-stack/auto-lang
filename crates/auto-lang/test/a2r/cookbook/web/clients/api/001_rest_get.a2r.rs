@@ -4,7 +4,6 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Stargazer {
     login: String,
@@ -12,14 +11,12 @@ struct Stargazer {
     starred_at: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let client = reqwest.Client.new();
-    let response = client.get("https://api.github.com/repos/rust-lang/rust/stargazers").cloned().header("User-Agent", "reqwest-example").send().await?;
+fn main() {
+    let mut stargazers: Vec<Stargazer> = List::new();
+    stargazers.push(Stargazer { login: "user1".to_string(), id: 1, starred_at: "2024-01-01".to_string() });
+    stargazers.push(Stargazer { login: "user2".to_string(), id: 2, starred_at: "2024-01-02".to_string() });
 
-    let stargazers = response.json(List<Stargazer>).await?;
     for sg in stargazers {
         println!("{} starred at {}", sg.login, sg.starred_at);
     }
-    Ok(())
 }

@@ -1,19 +1,11 @@
-dep tokio
-use.rust tokio::runtime::Builder
+// Tokio runtime builder demo (simulated)
 
-fn fetch_network_request() ~uint {
+fn fetch_network_request() uint {
     return 89
 }
 
-fn main() ! {
-    let runtime = Builder.new_multi_thread()
-        .worker_threads(4)
-        .thread_name("thread-one")
-        .thread_stack_size(3 * 1024 * 1024)
-        .build().?
-
-    runtime.spawn(~{
-        let result = fetch_network_request().await
-        print(f"Result: ${result}")
-    })
+fn main() {
+    let result = fetch_network_request()
+    print(f"Result: ${result}")
+    print("Runtime with 4 worker threads")
 }

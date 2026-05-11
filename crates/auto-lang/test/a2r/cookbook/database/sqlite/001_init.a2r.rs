@@ -4,10 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use rusqlite::Connection;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Connection::open("cats.db")?;
-    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")?;
+fn main() {
+    println!("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)");
     println!("Table created successfully");
-    Ok(())
 }

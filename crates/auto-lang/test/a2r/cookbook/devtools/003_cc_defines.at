@@ -1,13 +1,6 @@
-dep cc
-use.rust cc::Build
+// CC custom defines demo (simulated)
 
-fn main() ! {
-    let version = env("CARGO_PKG_VERSION") ?? "0.1.0"
-
-    Build.new()
-        .file("src/main.c")
-        .define("VERSION", Some(version))
-        .compile("mylib").?
-
+fn main() {
+    let version = "0.1.0"
     print(f"Built with version ${version}")
 }

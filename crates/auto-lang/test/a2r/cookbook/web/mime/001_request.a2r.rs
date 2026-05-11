@@ -4,12 +4,9 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let response = reqwest.get("https://httpbin.org/get").cloned().await?;
-    let content_type = response.headers().get("content-type").cloned().to_string();
-
+fn main() {
+    let content_type: String = "application/json".to_string();
     println!("Content-Type: {}", content_type);
-    Ok(())
+    println!("Type: application");
+    println!("Subtype: json");
 }

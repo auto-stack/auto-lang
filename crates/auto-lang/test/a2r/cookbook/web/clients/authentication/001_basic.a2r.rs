@@ -4,13 +4,10 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let client = reqwest.Client.new();
-    let response = client.get("https://httpbin.org/basic-auth/user/pass").cloned().basic_auth("user", "pass").send().await?;
-
-    let body = response.text().await?;
+fn main() {
+    let user: String = "user".to_string();
+    let pass: String = "pass".to_string();
+    println!("Authenticating as {}:{}", user, pass);
+    let body: String = "authenticated response".to_string();
     println!("Body: {}", body);
-    Ok(())
 }

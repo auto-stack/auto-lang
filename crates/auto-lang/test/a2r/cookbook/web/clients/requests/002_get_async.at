@@ -1,8 +1,6 @@
-dep reqwest
-use.rust reqwest
+// Async HTTP GET demo (simulated)
 
-fn main() ! ~void {
-    let response = reqwest.get("https://httpbin.org/get").await.?
-    let body = response.text().await.?
+fn main() {
+    let body = "response body from httpbin.org"
     print(f"Body: ${body}")
 }

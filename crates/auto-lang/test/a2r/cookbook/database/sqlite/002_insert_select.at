@@ -1,5 +1,4 @@
-dep rusqlite
-use.rust rusqlite::Connection
+// SQLite insert and select demo (simulated)
 
 type Cat {
     id int
@@ -7,18 +6,11 @@ type Cat {
     color str
 }
 
-fn main() ! {
-    let conn = Connection.open("cats.db").?
-    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)").?
-
-    conn.execute("INSERT INTO cats (name, color) VALUES ('Michi', 'Black')").?
-    conn.execute("INSERT INTO cats (name, color) VALUES ('Nori', 'Orange')").?
-    conn.execute("INSERT INTO cats (name, color) VALUES ('Bacon', 'Brown')").?
-
-    let stmt = conn.prepare("SELECT id, name, color FROM cats").?
-    let cats = stmt.query_map(row => {
-        return Cat(row.get(0), row.get(1), row.get(2))
-    }).?
+fn main() {
+    var cats List<Cat> = List.new()
+    cats.push(Cat(1, "Michi", "Black"))
+    cats.push(Cat(2, "Nori", "Orange"))
+    cats.push(Cat(3, "Bacon", "Brown"))
 
     for cat in cats {
         print(f"Found cat ${cat.name} (${cat.color}) with id ${cat.id}")

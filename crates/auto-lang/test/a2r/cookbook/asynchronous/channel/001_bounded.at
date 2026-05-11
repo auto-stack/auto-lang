@@ -1,5 +1,4 @@
-dep tokio
-use.rust tokio::sync::mpsc::channel
+// Bounded channel pattern demo using List
 
 type Book {
     title str
@@ -11,17 +10,12 @@ ext Book {
     }
 }
 
-fn main() ~void {
-    let ch = channel(5)
-    let sender = ch.sender
-    let receiver = ch.receiver
+fn main() {
+    var shelf List<Book> = List.new()
+    shelf.push(Book.new("Shawshank Redemption"))
+    shelf.push(Book.new("Secret Recipe"))
 
-    sender.send(Book.new("Shawshank Redemption")).await
-    sender.send(Book.new("Secret Recipe")).await
-
-    print(f"Sent 2 books")
-
-    for book in ["Shawshank Redemption", "Secret Recipe"] {
-        print(f"Title: ${book}")
+    for book in shelf {
+        print(f"Title: ${book.title}")
     }
 }

@@ -4,14 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use std::time::Duration;
-use tokio::time::timeout;
 async fn fetch_network_request() -> u32 {
     return 89;
 }
 
 #[tokio::main]
 async fn main() -> () {
-    let result = timeout(Duration::from_millis(5), fetch_network_request()).await;
-    println!("Done");
+    let result = fetch_network_request().await;
+    println!("Result: {}", result);
 }

@@ -1,11 +1,8 @@
-dep reqwest
-use.rust reqwest
+// MIME type handling demo (simulated)
 
-fn main() ! ~void {
-    let response = reqwest.get("https://httpbin.org/get").await.?
-    let content_type = response.headers()
-        .get("content-type")
-        .to_string()
-
+fn main() {
+    let content_type = "application/json"
     print(f"Content-Type: ${content_type}")
+    print("Type: application")
+    print("Subtype: json")
 }

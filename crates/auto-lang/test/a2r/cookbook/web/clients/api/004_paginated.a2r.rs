@@ -4,14 +4,17 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let client = reqwest.Client.new();
-    let mut page: i32 = 1;
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Dependency {
+    id: String,
+}
 
-    let url: String = format!("https://crates.io/api/v1/crates/serde/reverse_dependencies?page={}", page);
-    let response = client.get(url).cloned().header("User-Agent", "reqwest-example").send().await?;
+fn main() {
+    let mut deps: Vec<Dependency> = List::new();
+    deps.push(Dependency { id: "serde_derive".to_string() });
+    deps.push(Dependency { id: "serde_json".to_string() });
 
-    println!("Status: {}", response.status());
-    Ok(())
+    for d in deps {
+        println!("Depends on serde: {}", d.id);
+    }
 }

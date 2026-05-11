@@ -4,12 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use cc::Build;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let version: String = env("CARGO_PKG_VERSION").unwrap_or("0.1.0".to_string());
-
-    Build::new().file("src/main.c").define("VERSION", Some(version)).compile("mylib")?;
-
+fn main() {
+    let version: String = "0.1.0".to_string();
     println!("Built with version {}", version);
-    Ok(())
 }

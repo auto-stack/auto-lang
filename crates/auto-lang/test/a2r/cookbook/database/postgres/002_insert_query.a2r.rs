@@ -4,17 +4,18 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use postgres::Client;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect("host=localhost user=postgres")?;
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Author {
+    name: String,
+    nationality: String,
+}
 
-    let authors = std::collections::HashMap::new();
-    authors.set("J.G. Ballard", "UK");
-    authors.set("George R.R. Martin", "USA");
+fn main() {
+    let mut authors: Vec<Author> = List::new();
+    authors.push(Author { name: "J.G. Ballard".to_string(), nationality: "UK".to_string() });
+    authors.push(Author { name: "George R.R. Martin".to_string(), nationality: "USA".to_string() });
 
-    for name in authors.keys() {
-        let nationality = authors.get(name).cloned();
-        println!("Author: {} from {}", name, nationality);
+    for author in authors {
+        println!("{} ({})", author.name, author.nationality);
     }
-    Ok(())
 }

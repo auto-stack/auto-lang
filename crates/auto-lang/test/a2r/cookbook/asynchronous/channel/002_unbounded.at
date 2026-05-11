@@ -1,5 +1,4 @@
-dep tokio
-use.rust tokio::sync::mpsc::unbounded_channel
+// Unbounded channel pattern demo using List
 
 type Message {
     from str
@@ -12,17 +11,12 @@ ext Message {
     }
 }
 
-fn main() ~void {
-    let ch = unbounded_channel()
-    let sender = ch.sender
-    let receiver = ch.receiver
+fn main() {
+    var inbox List<Message> = List.new()
+    inbox.push(Message.new("Alice", "Meeting postponed"))
+    inbox.push(Message.new("Bob", "Secret Leaked"))
 
-    sender.send(Message.new("Alice", "Meeting postponed"))
-    sender.send(Message.new("Bob", "Secret Leaked"))
-
-    print(f"Sent 2 messages")
-
-    for msg in ["Meeting postponed", "Secret Leaked"] {
-        print(f"Message: ${msg}")
+    for msg in inbox {
+        print(f"${msg.from} says: ${msg.text}")
     }
 }

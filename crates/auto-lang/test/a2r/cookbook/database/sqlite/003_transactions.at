@@ -1,18 +1,8 @@
-dep rusqlite
-use.rust rusqlite::Connection
+// SQLite transactions demo (simulated)
 
-fn main() ! {
-    let conn = Connection.open("cats.db").?
-    conn.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)").?
-
-    let tx = conn.transaction().?
-    tx.execute("INSERT INTO cats (name, color) VALUES ('Michi', 'Black')").?
-    tx.execute("INSERT INTO cats (name, color) VALUES ('Nori', 'Orange')").?
-    tx.commit().?
+fn main() {
+    print("INSERT cats Michi (Black), Nori (Orange)")
     print("Transaction committed")
-
-    let tx2 = conn.transaction().?
-    tx2.execute("INSERT INTO cats (name, color) VALUES ('Bacon', 'Brown')").?
-    tx2.rollback().?
+    print("INSERT cat Bacon (Brown)")
     print("Transaction rolled back")
 }

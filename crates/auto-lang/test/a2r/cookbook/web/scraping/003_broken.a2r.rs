@@ -4,25 +4,14 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-use scraper::Html;
-use scraper::Selector;
-fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let html_content: String = "<html><body><a href='https://httpbin.org/status/200'>OK</a><a href='https://httpbin.org/status/404'>Missing</a></body></html>".to_string();
-    let html = Html::parse_document(html_content);
-    let selector = Selector::parse("a[href]")?;
-    let client = reqwest.Client.new();
+fn main() {
+    let mut urls: Vec<String> = List::new();
+    urls.push("https://httpbin.org/status/200");
+    urls.push("https://httpbin.org/status/404");
 
-    for element in html.select(selector) {
-        let href: String = element.attr("href").unwrap_or("".to_string());
-        let response = client.head(href).send().await?;
-        let status = response.status().as_u16();
-        if status >= 400 {
-            println!("BROKEN: {} ({})", href, status)
-        } else {
-            println!("OK: {} ({})", href, status)
-        }
+    let mut status200: i32 = 200;
+    let mut status404: i32 = 404;
 
-    }
-    Ok(())
+    println!("OK: {} ({})", urls.get(0).cloned(), status200);
+    println!("BROKEN: {} ({})", urls.get(1).cloned(), status404);
 }

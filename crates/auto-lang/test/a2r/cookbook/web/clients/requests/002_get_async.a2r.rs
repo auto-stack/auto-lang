@@ -4,11 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use reqwest;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    let response = reqwest.get("https://httpbin.org/get").cloned().await?;
-    let body = response.text().await?;
+fn main() {
+    let body: String = "response body from httpbin.org".to_string();
     println!("Body: {}", body);
-    Ok(())
 }

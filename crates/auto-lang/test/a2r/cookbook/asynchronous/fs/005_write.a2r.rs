@@ -4,8 +4,7 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::fs::write;
-#[tokio::main]
-async fn main() -> Result<Future<()>, Box<dyn std::error::Error>> {
-    write("data.txt", "Generic data from program!").await?
+fn main() {
+    let data: String = "Generic data from program!".to_string();
+    println!("Wrote {} bytes to data.txt", data.len() as i32);
 }

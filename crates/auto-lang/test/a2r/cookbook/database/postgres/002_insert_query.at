@@ -1,15 +1,16 @@
-dep postgres
-use.rust postgres::Client
+// Postgres insert and query demo (simulated)
 
-fn main() ! {
-    let client = Client.connect("host=localhost user=postgres").?
+type Author {
+    name str
+    nationality str
+}
 
-    let authors = Map.new()
-    authors.set("J.G. Ballard", "UK")
-    authors.set("George R.R. Martin", "USA")
+fn main() {
+    var authors List<Author> = List.new()
+    authors.push(Author("J.G. Ballard", "UK"))
+    authors.push(Author("George R.R. Martin", "USA"))
 
-    for name in authors.keys() {
-        let nationality = authors.get(name)
-        print(f"Author: ${name} from ${nationality}")
+    for author in authors {
+        print(f"${author.name} (${author.nationality})")
     }
 }

@@ -4,7 +4,6 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-use tokio::sync::mpsc::channel;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Book {
     title: String,
@@ -16,18 +15,12 @@ impl Book {
     }
 }
 
-#[tokio::main]
-async fn main() -> () {
-    let ch = channel(5);
-    let sender = ch.sender;
-    let receiver = ch.receiver;
+fn main() {
+    let mut shelf: Vec<Book> = List::new();
+    shelf.push(Book::new("Shawshank Redemption"));
+    shelf.push(Book::new("Secret Recipe"));
 
-    sender.send(Book::new("Shawshank Redemption")).await;
-    sender.send(Book::new("Secret Recipe")).await;
-
-    println!("Sent 2 books");
-
-    for book in vec!["Shawshank Redemption", "Secret Recipe"] {
-        println!("Title: {}", book);
+    for book in shelf {
+        println!("Title: {}", book.title);
     }
 }
