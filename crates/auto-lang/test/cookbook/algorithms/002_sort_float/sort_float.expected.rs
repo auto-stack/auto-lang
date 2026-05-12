@@ -9,5 +9,5 @@ use std::vec::Vec;
 fn main() {
     let mut vec: Vec<f64> = vec![1.1, 1.15, 5.5, 1.123, 2.0];
     vec.sort_by(|a, b| a.total_cmp(b));
-    println!("{}", vec);
+    println!("{:?}", vec);
 }

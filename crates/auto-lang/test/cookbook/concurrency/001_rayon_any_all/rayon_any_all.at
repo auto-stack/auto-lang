@@ -1,16 +1,9 @@
-// Parallel any/all test demo
+dep rayon
+use.rust rayon::prelude
+
 fn main() {
-    var data = List.new()
-    data.push(1)
-    data.push(5)
-    data.push(10)
-    data.push(2)
-    var all_gt_0 = true
-    var any_gt_5 = false
-    for val in data {
-        if val <= 0 { all_gt_0 = false }
-        if val > 5 { any_gt_5 = true }
-    }
-    print(f"All > 0: ${all_gt_0}")
-    print(f"Any > 5: ${any_gt_5}")
+    let v = [1, 2, 3, 4, 5]
+    let has_even = v.par_iter().any(x => x % 2 == 0)
+    let all_positive = v.par_iter().all(x => x > 0)
+    print(f"Has even: ${has_even}, All positive: ${all_positive}")
 }

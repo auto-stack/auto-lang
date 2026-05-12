@@ -7,8 +7,9 @@ use auto_lang::a2r_std::*;
 
 use log::info;
 use chrono::Local;
+use env_logger::Builder;
 fn main() {
-    let now = Local::now();
-    println!("[{}] application started", now);
-    info!("with timestamp logging");
+    Builder::new().format(|buf, record| { buf.writeln(format!("[{}] {} - {}", Local::now().format("%Y-%m-%d %H:%M:%S"), record.level(), record.args())); }).init();
+    info("application started");
+    info("with timestamp logging");
 }

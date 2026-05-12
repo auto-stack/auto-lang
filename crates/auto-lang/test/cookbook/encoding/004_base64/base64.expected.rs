@@ -5,11 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+use base64;
 fn main() {
-    let encoded = STANDARD::encode(b { content: "hello world".to_string() });
+    let encoded = base64.encode("hello world");
     println!("Encoded: {}", encoded);
-    let decoded = STANDARD::decode(encoded.as_bytes()).unwrap();
-    println!("Decoded: {} bytes", decoded.len());
+    let decoded = base64.decode(encoded);
+    println!("Decoded: {}", decoded);
 }

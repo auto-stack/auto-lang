@@ -9,7 +9,7 @@ fn main() {
     let v: Vec<f64> = vec![3.0, 4.0];
     let mut sum_sq: f64 = 0.0;
     for i in 0..2 {
-        sum_sq = sum_sq + v[(i) as usize] * v[(i) as usize];
+        sum_sq = sum_sq + v[(i) as usize].clone() * v[(i) as usize].clone();
     }
     let norm = sum_sq.sqrt();
     println!("L2 norm: {}", norm);

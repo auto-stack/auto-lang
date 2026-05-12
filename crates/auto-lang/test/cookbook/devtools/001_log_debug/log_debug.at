@@ -1,7 +1,11 @@
-// Debug logging demo
+dep env_logger
+use.rust log::debug
+use.rust log::info
+
 fn main() {
-    print("DEBUG: Starting application")
-    let config = "loaded"
-    print(f"INFO: Config ${config}")
-    print("ERROR: Something went wrong")
+    env_logger.init()
+    debug("starting operation")
+    let value = 42
+    debug(f"value = ${value}")
+    print("done")
 }

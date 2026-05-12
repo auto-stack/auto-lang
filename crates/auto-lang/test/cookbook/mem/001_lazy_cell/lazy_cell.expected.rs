@@ -11,7 +11,7 @@ fn main() {
     let has_none = cell.get().cloned().is_none();
     println!("Is none: {}", has_none);
 
-    cell.set("Hello, World!");
+    cell.insert("Hello, World!");
     let value = cell.get().cloned();
     println!("Value: {}", value);
     let exists = cell.get().cloned().is_some();

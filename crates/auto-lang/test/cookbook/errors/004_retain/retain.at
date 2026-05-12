@@ -1,9 +1,18 @@
 use.rust std::error::Error
 
+fn inner() !str {
+    Err("inner error")
+}
+
+fn outer() !str {
+    let result = inner().?
+    Ok(result)
+}
+
 fn main() {
-    let result = Err("inner error")
+    let result = outer()
     is result {
-        Ok(val) -> print(f"Success: $val")
-        Err(e) -> print(f"Error: $e")
+        Ok(val) -> print(f"Success: ${val}"),
+        Err(e) -> print(f"Error: ${e}")
     }
 }

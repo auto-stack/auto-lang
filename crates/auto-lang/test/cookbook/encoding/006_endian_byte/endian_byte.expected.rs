@@ -6,11 +6,11 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let value: u16 = 4660;
+    let value: i32 = 4660;
     let bytes = value.to_be_bytes();
-    println!("BE bytes: {}, {}", bytes[0], bytes[1]);
+    println!("BE bytes: {}, {}", bytes[0].clone(), bytes[1].clone());
     let le_bytes = value.to_le_bytes();
-    println!("LE bytes: {}, {}", le_bytes[0], le_bytes[1]);
+    println!("LE bytes: {}, {}", le_bytes[0].clone(), le_bytes[1].clone());
     let from_be = u16::from_be_bytes(bytes);
     println!("From BE: {}", from_be);
 }

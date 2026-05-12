@@ -6,15 +6,15 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use flate2::read::GzDecoder;
+use std::fs::File;
 use tar::Archive;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = std.fs.open("archive.tar.gz")?;
+fn main() {
+    let file = File::open("archive.tar.gz").unwrap();
     let gz = GzDecoder::new(file);
     let mut archive = Archive::new(gz);
     archive.set_prefix_strip(3);
-    for entry in archive.entries()? {
-        let entry: i32 = entry?;
-        println!("Extracted: {}", entry.path()?.display());
+    for entry in archive.entries().unwrap() {
+        let entry = entry.unwrap();
+        println!("Extracted: {:?}", entry.path().unwrap().display());
     }
-    Ok(())
 }

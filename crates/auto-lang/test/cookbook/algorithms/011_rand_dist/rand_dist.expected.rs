@@ -5,14 +5,17 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::Rng;
-fn main() {
-    let mut rng = thread_rng();
-    let mut sum: i32 = 0;
-    for i in 0..1000 {
-        let val = rng.gen_range(1..7);
+use rand;
+use rand_distr;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut rng = rand.thread_rng();
+    let mut normal = Normal::new(0.0, 1.0)?;
+    let mut sum: f64 = 0.0;
+    for _ in 0..1000 {
+        let val: f64 = normal.sample(rng);
         sum = sum + val;
     }
-    let avg: i32 = sum / 1000;
-    println!("Average dice roll: {}", avg);
+    let avg: f64 = sum / 1000.0;
+    println!("Average of 1000 normal samples: {}", avg);
+    Ok(())
 }

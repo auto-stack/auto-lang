@@ -5,11 +5,13 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use heapless::Vec;
 fn main() {
-    let mut buf: Vec<i32> = vec![0, 0, 0, 0, 0];
-    let data: Vec<i32> = vec![104, 101, 108, 108, 111];
-    for i in 0..5 {
-        buf[(i) as usize] = data[(i) as usize];
+
+    let mut buf = Vec::new();
+    let data = "hello".as_bytes();
+    for byte in data {
+        buf.push(byte).unwrap();
     }
-    println!("Buffer: {} bytes", buf.len());
+    println!("Buffer: {} bytes", (buf.len() as i32));
 }

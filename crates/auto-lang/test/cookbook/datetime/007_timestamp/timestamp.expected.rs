@@ -6,7 +6,6 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use chrono::Utc;
-use chrono::TimeZone;
 fn main() {
     let dt = Utc::timestamp_opt(1700000000, 0).single().unwrap();
     println!("From timestamp: {}", dt);

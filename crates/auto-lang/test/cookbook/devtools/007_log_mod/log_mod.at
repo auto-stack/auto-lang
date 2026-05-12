@@ -1,14 +1,25 @@
+dep env_logger
 use.rust log::info
 use.rust log::debug
 
+mod network {
+    use.rust log::debug
+
+    pub fn connect() {
+        debug("connecting to server")
+    }
+}
+
 fn process() {
-    #debug("processing step 1")
-    #debug("processing step 2")
-    #info("processing complete")
+    debug("processing step 1")
+    debug("processing step 2")
+    info("processing complete")
 }
 
 fn main() {
-    #info("app started")
+    env_logger.init()
+    info("app started")
+    network.connect()
     process()
     print("done")
 }

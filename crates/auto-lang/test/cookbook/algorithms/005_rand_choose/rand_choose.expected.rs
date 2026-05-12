@@ -5,12 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::seq::IteratorRandom;
-use rand::Rng;
-use rand::thread_rng;
+use rand;
 fn main() {
-    let mut rng = thread_rng();
-    let choices: Vec<String> = vec!["a", "b", "c", "d", "e"];
-    let choice: String = choices[(rng.gen_range(0..choices.len())) as usize];
+    let mut rng = rand.thread_rng();
+    let mut choices: Vec<String> = vec!["a", "b", "c", "d", "e"];
+    let choice: String = choices[(rng.gen_range(0..(choices.len() as i32))) as usize].clone();
     println!("Chose: {}", choice);
 }

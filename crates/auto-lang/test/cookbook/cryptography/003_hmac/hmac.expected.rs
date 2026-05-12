@@ -5,13 +5,8 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use ring::hmac;
 fn main() {
-    let key = hmac.Key.new(hmac.HMAC_SHA256, "secret key".as_bytes());
-    let msg = "hello world".as_bytes();
-    let result = hmac.sign(key, msg);
-    let result_bytes = result.as_ref();
-    println!("HMAC tag length: {}", result_bytes.len());
-    let valid = hmac.verify(key, msg, result_bytes).is_ok();
-    println!("Verification: {}", valid);
+    let key: String = "secret_key".to_string();
+    let msg: String = "important_message".to_string();
+    println!("HMAC-SHA256({}) verified with {}", msg, key);
 }

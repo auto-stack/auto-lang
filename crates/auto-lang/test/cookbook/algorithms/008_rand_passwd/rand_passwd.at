@@ -1,9 +1,13 @@
 // Password generation demo
+use.rust rand
+
 fn main() {
-    var charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    var pwd = ""
-    for i in 0..16 {
-        pwd = pwd + charset.char_at((i * 7 + 3) % charset.len())
+    var rng = rand.thread_rng()
+    let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
+    var password = ""
+    for _ in 0..16 {
+        let idx = rng.gen_range(0..charset.len())
+        password = password + charset.char_at(idx)
     }
-    print(f"Password: ${pwd}")
+    print(f"Password: $password")
 }

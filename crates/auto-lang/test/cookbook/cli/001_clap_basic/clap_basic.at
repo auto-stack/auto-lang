@@ -1,16 +1,14 @@
-// CLI argument parsing demo
-type Args {
-    pattern str
-    path str
-}
+dep clap
+use.rust clap::Parser
 
-ext Args {
-    static fn parse() Args {
-        return Args("hello", "input.txt")
-    }
+type Args {
+    name str
+    count int
 }
 
 fn main() {
     let args = Args.parse()
-    print(f"Pattern: ${args.pattern}, Path: ${args.path}")
+    for _ in 0..args.count {
+        print(f"Hello, ${args.name}!")
+    }
 }

@@ -1,14 +1,11 @@
-// Same file detection demo
+dep same_file
+use.rust same_file
+use.rust std::path::Path
+
 fn main() {
-    var files = List.new()
-    files.push("src/main.at")
-    files.push("src/lib.rs")
-    files.push(".gitignore")
-    files.push("README.md")
-    print(f"Total files: ${files.len()}")
-    for f in files {
-        if !f.starts_with(".") {
-            print(f"  ${f}")
-        }
+    let path1 = Path.new("a.txt")
+    let path2 = Path.new("a.txt")
+    if same_file.is_same_file(path1, path2).unwrap() {
+        print("Same file, skipping copy")
     }
 }

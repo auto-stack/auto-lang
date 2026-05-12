@@ -7,12 +7,12 @@ use auto_lang::a2r_std::*;
 
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = fs.read_dir(".")?;
-    for entry in dir {
+    let entries = fs.read_dir(".")?;
+    for entry in entries {
         let entry: i32 = entry?;
         let name = entry.file_name();
         let name_str = name.to_str().unwrap().to_lowercase();
-        if name_str.ends_with(".txt") {
+        if a2r_std::str_ends_with(name_str.as_str(), ".txt") {
             println!("Text file: {}", name_str);
         }
     }

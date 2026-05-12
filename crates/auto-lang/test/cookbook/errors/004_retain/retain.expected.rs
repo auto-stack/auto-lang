@@ -6,8 +6,17 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use std::error::Error;
+fn inner() -> Result<String, Box<dyn std::error::Error>> {
+    Err("inner error".into())
+}
+
+fn outer() -> Result<String, Box<dyn std::error::Error>> {
+    let result = inner()?;
+    Ok(result)
+}
+
 fn main() {
-    let result = Err("inner error".into());
+    let result = outer();
     match result {
         Ok(val) => println!("Success: {}", val),
         Err(e) => println!("Error: {}", e),

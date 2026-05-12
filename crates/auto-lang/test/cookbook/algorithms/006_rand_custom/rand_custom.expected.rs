@@ -5,9 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::Rng;
-use rand::distributions::{Distribution, Standard};
-use rand::thread_rng;
+use rand;
 #[derive(Clone, Debug, PartialEq)]
 enum Pet {
     Dog = 0,
@@ -25,8 +23,17 @@ impl std::fmt::Display for Pet {
     }
 }
 
+fn random_pet(rng: i32) -> Pet {
+    let n = rng.gen_range(0..3);
+    match n {
+        0 => Pet::Dog,
+        1 => Pet::Cat,
+        _ => Pet::Bird,
+    }
+}
+
 fn main() {
-    let mut rng = thread_rng();
-    let pet: Pet = rng.gen();
+    let mut rng = rand.thread_rng();
+    let pet: Pet = random_pet(rng);
     println!("Got a pet!");
 }

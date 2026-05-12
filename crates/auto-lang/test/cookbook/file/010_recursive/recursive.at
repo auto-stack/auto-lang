@@ -1,11 +1,9 @@
-// Recursive directory walk demo
+dep walkdir
+use.rust walkdir
+
 fn main() {
-    var paths = List.new()
-    paths.push("src/main.at")
-    paths.push("src/lib.at")
-    paths.push("src/sub/deep.at")
-    for p in paths {
-        var parts = p.split("/")
-        print(f"Depth ${parts.len()}: ${p}")
+    for entry in walkdir.WalkDir.new(".") {
+        let entry = entry.unwrap()
+        print(entry.path().display().to_string())
     }
 }

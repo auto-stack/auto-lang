@@ -1,13 +1,23 @@
-// Custom random value demo
+// Custom random distribution for Pet enum
+use.rust rand
+
 enum Pet {
-    Dog int
-    Cat int
+    Dog
+    Cat
+    Bird
+}
+
+fn random_pet(rng) Pet {
+    let n = rng.gen_range(0..3)
+    is n {
+        0 -> Pet.Dog,
+        1 -> Pet.Cat,
+        else -> Pet.Bird
+    }
 }
 
 fn main() {
-    let pet = Pet.Dog(3)
-    is pet {
-        Pet.Dog(n) -> print(f"Dog: ${n}"),
-        Pet.Cat(n) -> print(f"Cat: ${n}")
-    }
+    var rng = rand.thread_rng()
+    let pet Pet = random_pet(rng)
+    print("Got a pet!")
 }

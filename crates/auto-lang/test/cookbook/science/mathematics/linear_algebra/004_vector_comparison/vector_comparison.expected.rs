@@ -10,7 +10,7 @@ fn main() {
     let b: Vec<f64> = vec![1.0, 2.0, 3.0];
     let mut equal: bool = true;
     for i in 0..3 {
-        if a[(i) as usize] != b[(i) as usize] {
+        if a[(i) as usize].clone() != b[(i) as usize].clone() {
             equal = false
         }
     }

@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn mean(data: &[i32]) -> Option<f64> {
-    let count = data.len();
+    let count = (data.len() as i32);
     if count == 0 {
         return None;
     }

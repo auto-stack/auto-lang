@@ -6,8 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use std::backtrace::Backtrace;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let bt = Backtrace::capture();
     println!("Backtrace: {}", bt);
-    Ok(())
 }

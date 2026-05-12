@@ -5,9 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use percent_encoding::percent_encode;
 use percent_encoding;
 fn main() {
     let input: String = "hello world! foo@bar.com".to_string();
-    let encoded = percent_encoding.percent_encode(input.as_bytes(), percent_encoding.NON_ALPHANUMERIC);
+    let encoded = percent_encode(input.as_bytes(), percent_encoding.NON_ALPHANUMERIC).to_string();
     println!("Encoded: {}", encoded);
 }

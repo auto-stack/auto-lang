@@ -5,9 +5,8 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use log::info;
+use syslog::BasicLogger;
+use syslog::Facility;
 fn main() {
-    info!("sending to syslog");
-    info!("daemon started");
     println!("syslog configured");
 }

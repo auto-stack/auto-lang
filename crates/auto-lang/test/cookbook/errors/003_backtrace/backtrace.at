@@ -1,8 +1,6 @@
-// Error handling demo
+use.rust std::backtrace::Backtrace
+
 fn main() {
-    let result = Err("something went wrong")
-    is result {
-        Ok(val) -> print(f"OK: ${val}"),
-        Err(e) -> print(f"Error: ${e}")
-    }
+    let bt = Backtrace.capture()
+    print(f"Backtrace: ${bt}")
 }

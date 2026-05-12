@@ -1,12 +1,15 @@
-// Distribution demo with averaging
-fn main() {
-    var samples = List.new()
-    for i in 0..10 {
-        samples.push((i * 3 + 1) % 7)
+// Normal distribution averaging demo
+use.rust rand
+use.rust rand_distr
+
+fn main() ! {
+    var rng = rand.thread_rng()
+    var normal = Normal.new(0.0, 1.0).?
+    var sum = 0.0
+    for _ in 0..1000 {
+        let val f64 = normal.sample(rng)
+        sum = sum + val
     }
-    var sum = 0
-    for v in samples {
-        sum = sum + v
-    }
-    print(f"Average: ${sum / samples.len()}")
+    let avg = sum / 1000.0
+    print(f"Average of 1000 normal samples: $avg")
 }

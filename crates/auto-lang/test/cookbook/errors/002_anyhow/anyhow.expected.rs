@@ -6,14 +6,16 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use anyhow::Context;
-fn read_config() -> Result<(), Box<dyn std::error::Error>> {
-    let path: String = "config.toml".to_string();
-    let result = read_to_string(path);
-    let content = result.context("Failed to read config")?;
+use anyhow::Result;
+fn read_config() -> Result<String, Box<dyn std::error::Error>> {
+    let content = std.fs.read_to_string("config.toml").context("Failed to read config")?;
     Ok(content)
 }
 
 fn main() {
     let result = read_config();
-    println!("Config result: {}", result);
+    match result {
+        Ok(val) => println!("Config result: {}", val),
+        Err(e) => println!("Config result: Err({})", e),
+    }
 }

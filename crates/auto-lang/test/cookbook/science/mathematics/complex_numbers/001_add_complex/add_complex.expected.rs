@@ -5,10 +5,15 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use num::Complex;
+#[derive(Clone, Debug, PartialEq)]
+struct Complex {
+    real: f64,
+    imag: f64,
+}
+
 fn main() {
-    let a = Complex::new(1.0, 2.0);
-    let b = Complex::new(3.0, 4.0);
-    let sum = a + b;
-    println!("Sum: {}", sum);
+    let a = Complex { real: 1.0, imag: 2.0 };
+    let b = Complex { real: 3.0, imag: 4.0 };
+    let sum = Complex { real: a.real + b.real, imag: a.imag + b.imag };
+    println!("Sum: {} + {}i", sum.real, sum.imag);
 }

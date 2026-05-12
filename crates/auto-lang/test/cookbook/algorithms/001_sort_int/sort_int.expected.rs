@@ -9,5 +9,5 @@ use std::vec::Vec;
 fn main() {
     let mut vec: Vec<i32> = vec![1, 5, 10, 2, 15];
     vec.sort();
-    println!("{}", vec);
+    println!("{:?}", vec);
 }

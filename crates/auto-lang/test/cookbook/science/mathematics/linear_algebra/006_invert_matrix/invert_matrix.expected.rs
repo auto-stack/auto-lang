@@ -5,14 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use ndarray::arr2;
+use ndarray_linalg::Inverse;
 fn main() {
-    let a: Vec<Vec<f64>> = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
-    let det: f64 = a[0][0] * a[1][1] - a[0][1] * a[1][0];
-    let mut inv: Vec<Vec<f64>> = vec![vec![0.0, 0.0], vec![0.0, 0.0]];
-    inv[0][0] = a[1][1] / det;
-    inv[0][1] = -a[0][1] / det;
-    inv[1][0] = -a[1][0] / det;
-    inv[1][1] = a[0][0] / det;
-    println!("Inverse: {} {}", inv[0][0], inv[0][1]);
-    println!("         {} {}", inv[1][0], inv[1][1]);
+    let a = arr2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+    let inv = a.inv().unwrap();
+    println!("Inverse: {} {}", inv[(vec![0, 0]) as usize].clone(), inv[(vec![0, 1]) as usize].clone());
+    println!("         {} {}", inv[(vec![1, 0]) as usize].clone(), inv[(vec![1, 1]) as usize].clone());
 }

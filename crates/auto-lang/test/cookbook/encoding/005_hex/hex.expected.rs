@@ -5,10 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use data_encoding::HEXLOWER;
+use hex;
 fn main() {
-    let encoded = HEXLOWER::encode(b { content: "hello world".to_string() });
+    let text: String = "hello world".to_string();
+    let encoded = hex.encode(text);
     println!("Hex: {}", encoded);
-    let decoded = HEXLOWER::decode(encoded.as_bytes()).unwrap();
-    println!("Decoded: {} bytes", decoded.len());
+    let decoded = hex.decode(encoded);
+    println!("Decoded: {}", decoded);
 }

@@ -5,13 +5,16 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rayon::prelude;
+use rayon::prelude::*;
 use rand::seq::SliceRandom;
+use rand::Rng;
 use rand::thread_rng;
 fn main() {
-    let mut v = vec![0..100].collect();
-    let mut rng = thread_rng();
-    v.shuffle(&mut rng);
+    let mut v = vec![];
+    for i in 0..100 {
+        v.push(i);
+    }
+    v.shuffle(thread_rng());
     v.par_sort();
-    println!("Sorted first: {}, last: {}", v[0], v[99]);
+    println!("Sorted first: {}, last: {}", v[0].clone(), v[99].clone());
 }

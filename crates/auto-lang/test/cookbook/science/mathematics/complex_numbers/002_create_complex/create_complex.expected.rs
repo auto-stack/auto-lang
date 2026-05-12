@@ -5,11 +5,14 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use num::Complex;
+#[derive(Clone, Debug, PartialEq)]
+struct Complex {
+    real: f64,
+    imag: f64,
+}
+
 fn main() {
-    let z = Complex::new(3.0, 4.0);
-    let re = z.re;
-    let im = z.im;
-    let norm = z.norm();
-    println!("z = {} + {}i, |z| = {}", re, im, norm);
+    let c = Complex { real: 3.0, imag: 4.0 };
+    let norm = c.real * c.real + c.imag * c.imag;
+    println!("Norm squared: {}", norm);
 }

@@ -1,7 +1,9 @@
 // Random range demo
+use.rust rand
+
 fn main() {
-    for i in 0..5 {
-        let n = (i * 7 + 3) % 10
-        print(f"Random in 0..10: ${n}")
-    }
+    var rng = rand.thread_rng()
+    let x int = rng.gen_range(0..5)
+    let y int = rng.gen_range(10..20)
+    print(f"x = $x, y = $y")
 }

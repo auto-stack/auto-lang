@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn mean(data: &[i32]) -> Option<f64> {
-    let count = data.len();
+    let count = (data.len() as i32);
     if count == 0 {
         return None;
     }
@@ -19,7 +19,7 @@ fn mean(data: &[i32]) -> Option<f64> {
 
 fn std_deviation(data: &[i32]) -> Option<f64> {
     let data_mean = mean(data)?;
-    let count = data.len();
+    let count = (data.len() as i32);
     let mut variance: f64 = 0.0;
     for val in data {
         let diff: f64 = data_mean - (val as f64);

@@ -1,6 +1,13 @@
+dep url
+use.rust url::Url
+
 fn main() {
-    let u = url.parse("https://user:pass@example.com:8080/path?query=1#frag")
-    print(f"Scheme: ${u.scheme()}")
-    print(f"Host: ${u.host()}")
-    print(f"Port: ${u.port()}")
+    let url = Url.parse("https://example.com/rust?name=hello&age=20").unwrap()
+    // query_pairs() returns tuple iterator; use query() for raw string in Auto
+    let query = url.query()
+    print(f"Query string: ${query}")
+    // Demonstrate pair iteration via query_pairs()
+    for pair in url.query_pairs() {
+        print(f"Param: ${pair}")
+    }
 }

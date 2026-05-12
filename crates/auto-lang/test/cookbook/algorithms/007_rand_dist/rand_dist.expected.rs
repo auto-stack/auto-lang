@@ -5,12 +5,12 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::Rng;
-use rand::thread_rng;
-fn main() {
-    let mut rng = thread_rng();
-    let n1 = rng.gen_range(0..100);
-    let n2 = rng.gen_range(0..100);
-    let avg: i32 = n1 + n2 / 2;
-    println!("Two random numbers: {}, {}, average: {}", n1, n2, avg);
+use rand;
+use rand_distr;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut rng = rand.thread_rng();
+    let mut normal = Normal::new(2.0, 3.0)?;
+    let v: f64 = normal.sample(rng);
+    println!("Random from Normal(2, 3): {}", v);
+    Ok(())
 }

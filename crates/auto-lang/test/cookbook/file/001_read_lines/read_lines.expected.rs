@@ -5,19 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path: String = "lines.txt".to_string();
-
-    let mut output = File::create(path)?;
-    output.write("Rust\nFun\nAuto");
-
-    let input = File::open(path)?;
-    let buffered = BufReader::new(input);
-
-    for line in buffered.lines() {
-        println!("{}", line?);
-    }
+    let _ = File::write_text("lines.txt", "Rust\nFun\nAuto")?;
+    let data = File::read_bytes("lines.txt")?;
+    println!("Read {} bytes", (data.len() as i32));
+    let _ = File::delete("lines.txt")?;
     Ok(())
 }

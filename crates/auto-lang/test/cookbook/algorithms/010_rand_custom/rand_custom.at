@@ -1,20 +1,33 @@
-// Custom enum demo
+// Custom random distribution for Color enum
+use.rust rand
+
 enum Color {
-    Red int
-    Green int
-    Blue int
+    Red
+    Green
+    Blue
+}
+
+fn random_color(rng) Color {
+    let n = rng.gen_range(0..3)
+    is n {
+        0 -> Color.Red,
+        1 -> Color.Green,
+        else -> Color.Blue
+    }
+}
+
+ext Color {
+    fn debug_str() str {
+        is self {
+            Color.Red -> "Red",
+            Color.Green -> "Green",
+            Color.Blue -> "Blue"
+        }
+    }
 }
 
 fn main() {
-    var colors = List.new()
-    colors.push(Color.Red(0))
-    colors.push(Color.Green(1))
-    colors.push(Color.Blue(2))
-    for c in colors {
-        is c {
-            Color.Red(n) -> print("Red"),
-            Color.Green(n) -> print("Green"),
-            Color.Blue(n) -> print("Blue")
-        }
-    }
+    var rng = rand.thread_rng()
+    let color Color = random_color(rng)
+    print(f"Random color: ${color.debug_str()}")
 }

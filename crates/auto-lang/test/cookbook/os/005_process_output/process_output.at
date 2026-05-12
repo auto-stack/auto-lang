@@ -1,7 +1,10 @@
-// Process output demo
+use.rust std::process::Command
+
 fn main() {
-    var outputs = List.new()
-    outputs.push("stdout: Hello")
-    outputs.push("stderr: Warning")
-    for out in outputs { print(out) }
+    let output = Command.new("ls")
+        .args(["-la"])
+        .output().unwrap()
+    print(f"Exit code: ${output.status}")
+    let stdout = String.from_utf8(output.stdout).unwrap()
+    print(f"Stdout: ${stdout}")
 }

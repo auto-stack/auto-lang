@@ -1,13 +1,9 @@
-// MIME type from filename demo
+dep mime_guess
+use.rust mime_guess
+
 fn main() {
-    let filename = "document.pdf"
-    var mime_type = "application/octet-stream"
-    if filename.ends_with(".pdf") {
-        mime_type = "application/pdf"
-    } else if filename.ends_with(".html") {
-        mime_type = "text/html"
-    } else if filename.ends_with(".png") {
-        mime_type = "image/png"
-    }
-    print(f"File: ${filename}, MIME: ${mime_type}")
+    let mime = mime_guess.from_path("document.pdf").first_or_octet_stream()
+    print(f"MIME type: ${mime}")
+    let img_mime = mime_guess.from_path("image.png").first_or_octet_stream()
+    print(f"Image MIME: ${img_mime}")
 }

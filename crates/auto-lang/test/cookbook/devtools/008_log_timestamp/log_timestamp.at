@@ -1,9 +1,16 @@
+dep env_logger
 dep chrono
+dep log
 use.rust log::info
 use.rust chrono::Local
+use.rust env_logger::Builder
 
 fn main() {
-    let now = Local.now()
-    print(f"[${now}] application started")
-    #info("with timestamp logging")
+    Builder.new()
+        .format((buf, record) => {
+            buf.writeln(f"[${Local.now().format("%Y-%m-%d %H:%M:%S")}] ${record.level()} - ${record.args()}")
+        })
+        .init()
+    info("application started")
+    info("with timestamp logging")
 }

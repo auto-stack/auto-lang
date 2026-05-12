@@ -5,7 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::Rng;
+use rand;
 #[derive(Clone, Debug, PartialEq)]
 enum Color {
     Red = 0,
@@ -23,14 +23,27 @@ impl std::fmt::Display for Color {
     }
 }
 
-fn main() {
-    let mut rng = thread_rng();
-    let colors = vec![Color::Red, Color::Green, Color::Blue];
-    let idx = rng.gen_range(0..3);
-    let color = colors[(idx) as usize];
-    match color {
-        Color::Red => println!("Red"),
-        Color::Green => println!("Green"),
-        Color::Blue => println!("Blue"),
+fn random_color(rng: i32) -> Color {
+    let n = rng.gen_range(0..3);
+    match n {
+        0 => Color::Red,
+        1 => Color::Green,
+        _ => Color::Blue,
     }
+}
+
+impl Color {
+    fn debug_str(&self) -> String {
+        match self {
+            Color::Red => "Red".to_string(),
+            Color::Green => "Green".to_string(),
+            Color::Blue => "Blue".to_string(),
+        }
+    }
+}
+
+fn main() {
+    let mut rng = rand.thread_rng();
+    let color: Color = random_color(rng);
+    println!("Random color: {}", color.debug_str());
 }

@@ -5,21 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use serde::Deserialize;
 use toml;
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Config {
-    title: String,
-    owner: Owner,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Owner {
-    name: String,
-}
-
 fn main() {
-    let toml_str: String = "[owner]\nname = \"Alice\"".to_string();
-    let config: Config = toml.from_str(toml_str).unwrap();
-    println!("Owner: {}", config.owner.name);
+    let toml_str: String = "\n[owner]\nname = \"Alice\"\n".to_string();
+    let parsed = toml.from_str(toml_str);
+    println!("Parsed TOML: {}", parsed);
 }

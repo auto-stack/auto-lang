@@ -1,9 +1,13 @@
-// Parallel search demo
+dep rayon
+use.rust rayon::prelude
+
 fn main() {
-    var data = List.new()
-    data.push(1); data.push(5); data.push(10); data.push(2)
-    var target = 10
-    var found = false
-    for val in data { if val == target { found = true } }
-    print(f"Found ${target}: ${found}")
+    var v = []
+    for i in 1..=10 { v.push(i) }
+    let target = 7
+    let found = v.par_iter().find_any(x => x == target)
+    is found {
+        Some(val) -> print(f"Found: ${val}"),
+        None -> print("Not found")
+    }
 }

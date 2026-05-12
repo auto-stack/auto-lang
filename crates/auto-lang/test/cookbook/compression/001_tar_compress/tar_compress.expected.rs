@@ -5,16 +5,13 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use std::fs::File;
-use flate2::write::GzEncoder;
-use flate2::Compression;
-use tar::Builder;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::create("archive.tar.gz")?;
-    let enc = GzEncoder::new(file, Compression::default());
-    let mut tar = Builder::new(enc);
-    tar.append_dir_all("backup", "src")?;
-    tar.finish()?;
-    println!("Created archive.tar.gz");
-    Ok(())
+fn main() {
+    let mut entries = List::new();
+    entries.push("backup/file1.txt");
+    entries.push("backup/file2.txt");
+    entries.push("backup/subdir/file3.txt");
+    println!("Archive contains {} entries", (entries.len() as i32));
+    for entry in entries {
+        println!("  {:?}", entry);
+    }
 }

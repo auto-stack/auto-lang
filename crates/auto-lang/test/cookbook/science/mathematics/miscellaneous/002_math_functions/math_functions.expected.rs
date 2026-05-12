@@ -14,5 +14,5 @@ fn main() {
     let abs_result = abs_val.abs();
     println!("2^3 = {}", power);
     println!("sqrt(2) = {}", sqrt_val);
-    println!("abs(-5) = {}", abs_result);
+    println!("abs(-5) = {:?}", abs_result);
 }

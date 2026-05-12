@@ -1,8 +1,11 @@
-// Hashtag extraction demo
+dep regex
+use.rust regex::Regex
+
 fn main() {
-    let tweet = "Learning #AutoLang and #RustLang today!"
-    var words = tweet.split(" ")
-    for w in words {
-        if w.starts_with("#") { print(f"Hashtag: ${w}") }
+    // r"..." raw string literal approximation — AutoLang uses regular strings
+    let re = Regex.new("#\\w+").unwrap()
+    let text = "Love #rust and #programming!"
+    for cap in re.captures_iter(text) {
+        print(f"Hashtag: ${cap[0]}")
     }
 }

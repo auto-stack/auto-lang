@@ -12,7 +12,7 @@ fn main() {
     for line in log.lines() {
         let caps = re.captures(line);
         match caps {
-            Some(ref c) => {
+            Some(c) => {
                 let msg = c.get(1).cloned().unwrap().as_str();
                 println!("Error: {}", msg);
             },

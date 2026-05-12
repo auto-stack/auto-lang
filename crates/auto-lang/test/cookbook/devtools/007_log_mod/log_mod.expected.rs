@@ -8,13 +8,15 @@ use auto_lang::a2r_std::*;
 use log::info;
 use log::debug;
 fn process() {
-    debug!("processing step 1");
-    debug!("processing step 2");
-    info!("processing complete");
+    debug("processing step 1");
+    debug("processing step 2");
+    info("processing complete");
 }
 
 fn main() {
-    info!("app started");
+    env_logger.init();
+    info("app started");
+    network.connect();
     process();
     println!("done");
 }

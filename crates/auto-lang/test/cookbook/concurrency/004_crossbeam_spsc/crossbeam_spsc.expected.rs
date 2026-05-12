@@ -5,12 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use crossbeam::channel::unbounded;
 fn main() {
-    let ch = unbounded();
-    let tx = ch.sender;
-    let rx = ch.receiver;
-    tx.send(42).unwrap();
-    let received = rx.recv().unwrap();
-    println!("Received: {}", received);
+    let mut channel = List::new();
+    channel.push("msg1");
+    channel.push("msg2");
+    for msg in channel {
+        println!("Received: {}", msg);
+    }
 }

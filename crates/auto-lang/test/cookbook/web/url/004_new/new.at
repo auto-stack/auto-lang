@@ -1,8 +1,9 @@
+dep url
+use.rust url::Url
+
 fn main() {
-    let u = url.parse("https://example.com/path?query=1")
-    let encoded = url.encode("hello world")
-    let decoded = url.decode("hello%20world")
-    print(f"Scheme: ${u.scheme()}")
-    print(f"Encoded: $encoded")
-    print(f"Decoded: $decoded")
+    let url = Url.parse("https://example.com/path?query=1").unwrap()
+    let new_url = url.join("sub/page").unwrap()
+    print(f"Original: ${url}")
+    print(f"Joined: ${new_url}")
 }

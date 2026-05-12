@@ -5,9 +5,33 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use log;
+use log::info;
+use log::LevelFilter;
+use log::Log;
+use log::Metadata;
+use log::Record;
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct SimpleLogger {}
+
+impl SimpleLogger {
+    fn new() -> SimpleLogger {
+        SimpleLogger {}
+    }
+    fn enabled(&self, metadata: Metadata) -> bool {
+        metadata.level() <= log.Level.Debug
+    }
+    fn log(&self, record: Record) {
+        if self.enabled(record.metadata()) {
+            println!("{} - {}", record.level(), record.args());
+        }
+    }
+    fn flush(&self) {
+    }
+}
+
 fn main() {
-    log.set_max_level(log.LevelFilter.Debug);
-    log.info("custom logger active");
+    log.set_boxed_logger(Box::new(SimpleLogger::new())).unwrap();
+    log.set_max_level(LevelFilter::Debug);
+    info("custom logger active");
     println!("done");
 }

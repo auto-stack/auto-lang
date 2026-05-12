@@ -5,18 +5,18 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use std::path::PathBuf;
 use std::collections::HashSet;
-fn visit(path: PathBuf, visited: /* unknown */) {
-    if !(visited.contains(path)) {
-        visited.insert(path.to_string());
+use std::path::PathBuf;
+fn visit(path: PathBuf, visited: HashSet<PathBuf>) {
+    if !(visited.contains(&path)) {
+        visited.insert(path.clone().to_string())
     } else {
-        println!("Loop detected: {}", path.display());
+        println!("Loop detected: {}", path.display())
     }
 
 }
 
 fn main() {
-    let mut visited = HashSet::new();
+    let mut visited: HashSet<PathBuf> = HashSet::new();
     visit(PathBuf::from("."), visited);
 }

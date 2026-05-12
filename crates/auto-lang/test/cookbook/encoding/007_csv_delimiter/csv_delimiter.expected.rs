@@ -8,10 +8,9 @@ use auto_lang::a2r_std::*;
 use csv::ReaderBuilder;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data: String = "name;age\nAlice;30\nBob;25".to_string();
-    let mut reader = ReaderBuilder::new().delimiter(b { content: ';' }).from_reader(data.as_bytes());
+    let mut reader = ReaderBuilder::new().delimiter(59).from_reader(data.as_bytes());
     for result in reader.records() {
         let record: i32 = result?;
-        println!("Name: {}, Age: {}", record.get(0).cloned(), record.get(1).cloned());
+        println!("Name: {}, Age: {}", record.get(0).cloned()?, record.get(1).cloned()?);
     }
-    Ok(())
 }

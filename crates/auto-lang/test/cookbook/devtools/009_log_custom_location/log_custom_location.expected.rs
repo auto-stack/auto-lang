@@ -6,9 +6,12 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use log::info;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = std.fs.create("app.log")?;
-    info!("logging to custom file");
+use simplelog::WriteLogger;
+use simplelog::LevelFilter;
+use simplelog::Config;
+fn main() {
+    let file = File::create("app.log").unwrap();
+    WriteLogger::init(LevelFilter::Info, Config::default(), file).unwrap();
+    info("logging to custom file");
     println!("log written to app.log");
-    Ok(())
 }

@@ -5,18 +5,12 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader};
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let stdout = Command::new("echo").arg("hello world").arg("usb device found").stdout(Stdio::piped()).spawn()?.stdout?;
-
-    let reader = BufReader::new(stdout);
-
-    for line in reader.lines() {
-        let l: i32 = line?;
-        if l.contains("usb") {
-            println!("{}", l);
-        }
+fn main() {
+    let mut output = List::new();
+    output.push("Starting...");
+    output.push("Processing...");
+    output.push("Done");
+    for line in output {
+        println!("{}", line);
     }
-    Ok(())
 }

@@ -5,13 +5,13 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use walkdir::WalkDir;
-use std::thread;
 fn main() {
-    let mut count: i32 = 0;
-    for entry in WalkDir::new(".") {
-        let entry = entry.unwrap();
-        count = count + 1;
+    let mut dirs = List::new();
+    dirs.push("src/");
+    dirs.push("docs/");
+    dirs.push("test/");
+    for d in dirs {
+        println!("Walking: {}", d);
     }
-    println!("Total entries: {}", count);
+    println!("Walked {} directories", (dirs.len() as i32));
 }

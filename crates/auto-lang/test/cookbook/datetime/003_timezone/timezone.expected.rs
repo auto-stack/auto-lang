@@ -5,9 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use chrono::Utc;
-use chrono::Local;
-use chrono::TimeZone;
+use chrono::{Utc, Local};
 fn main() {
     let utc_time = Utc::now();
     let local_time = Local::now();

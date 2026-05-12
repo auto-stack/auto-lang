@@ -1,8 +1,7 @@
-// Date parsing demo
+dep chrono
+use.rust chrono::NaiveDateTime
+
 fn main() {
-    let date_str = "2024-01-15 10:30:00"
-    var parts = date_str.split(" ")
-    let date_part = parts.get(0)
-    let time_part = parts.get(1)
-    print(f"Date: ${date_part}, Time: ${time_part}")
+    let dt = NaiveDateTime.parse_from_str("2024-01-15 10:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+    print(f"Parsed: $dt")
 }

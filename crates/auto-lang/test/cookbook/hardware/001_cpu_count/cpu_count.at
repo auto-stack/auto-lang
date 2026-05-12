@@ -1,5 +1,8 @@
-// CPU count demo
+use.rust std::thread
+
 fn main() {
-    let cores = 8
-    print(f"Available parallelism: ${cores} cores")
+    let cores = thread.available_parallelism()
+        .map(n => n.get())
+        .unwrap_or(1)
+    print(f"CPU cores: ${cores}")
 }

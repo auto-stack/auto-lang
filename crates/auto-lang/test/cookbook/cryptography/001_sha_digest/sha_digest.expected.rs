@@ -7,6 +7,7 @@ use auto_lang::a2r_std::*;
 
 use sha2::Sha256;
 use sha2::Digest;
+
 fn main() {
     let mut hasher = Sha256::new();
     hasher.update(b { content: "hello world".to_string() });

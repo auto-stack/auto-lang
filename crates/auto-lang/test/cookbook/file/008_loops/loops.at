@@ -1,14 +1,15 @@
-// Directory loops demo
-fn main() {
-    var files = List.new()
-    files.push("src/main.at")
-    files.push("src/lib.rs")
-    files.push(".gitignore")
-    files.push("README.md")
-    print(f"Total files: ${files.len()}")
-    for f in files {
-        if !f.starts_with(".") {
-            print(f"  ${f}")
-        }
+use.rust std::collections::HashSet
+use.rust std::path::PathBuf
+
+fn visit(path PathBuf, visited HashSet<PathBuf>) {
+    if !visited.contains(path) {
+        visited.insert(path.clone())
+    } else {
+        print(f"Loop detected: ${path.display()}")
     }
+}
+
+fn main() {
+    var visited HashSet<PathBuf> = HashSet.new()
+    visit(PathBuf.from("."), visited)
 }

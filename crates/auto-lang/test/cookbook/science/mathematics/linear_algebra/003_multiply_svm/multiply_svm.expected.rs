@@ -10,7 +10,7 @@ fn main() {
     let v: Vec<i32> = vec![1, 2, 3];
     let mut result: Vec<i32> = vec![0, 0, 0];
     for i in 0..3 {
-        result[(i) as usize] = scalar * v[(i) as usize];
+        result[(i) as usize].clone() = scalar * v[(i) as usize].clone();
     }
-    println!("Scaled vector: {}, {}, {}", result[0], result[1], result[2]);
+    println!("Scaled vector: {}, {}, {}", result[0].clone(), result[1].clone(), result[2].clone());
 }

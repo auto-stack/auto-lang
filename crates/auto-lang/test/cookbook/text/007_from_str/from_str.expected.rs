@@ -13,7 +13,7 @@ struct Point {
 
 fn parse_point(s: &str) -> Point {
     let parts = s.split(",");
-    Point { x: parts[0], y: parts[1] };
+    Point { x: parts[0].clone(), y: parts[1].clone() }
 }
 
 fn main() {

@@ -1,10 +1,13 @@
-// Custom log location demo
+dep simplelog
+dep log
+use.rust log::info
+use.rust simplelog::WriteLogger
+use.rust simplelog::LevelFilter
+use.rust simplelog::Config
+
 fn main() {
-    var logs = List.new()
-    logs.push("INFO: Application started")
-    logs.push("DEBUG: Processing request")
-    logs.push("INFO: Request completed")
-    for log in logs {
-        print(log)
-    }
+    let file = File.create("app.log").unwrap()
+    WriteLogger.init(LevelFilter.Info, Config.default(), file).unwrap()
+    info("logging to custom file")
+    print("log written to app.log")
 }

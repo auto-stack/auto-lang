@@ -1,9 +1,9 @@
-// Endian byte operations demo
 fn main() {
-    let val = 0x1234
-    let hi = val / 256
-    let lo = val % 256
-    print(f"Value: ${val}")
-    print(f"Big-endian bytes: [${hi}, ${lo}]")
-    print(f"Little-endian bytes: [${lo}, ${hi}]")
+    let value = 0x1234
+    let bytes = value.to_be_bytes()
+    print(f"BE bytes: ${bytes[0]}, ${bytes[1]}")
+    let le_bytes = value.to_le_bytes()
+    print(f"LE bytes: ${le_bytes[0]}, ${le_bytes[1]}")
+    let from_be = u16.from_be_bytes(bytes)
+    print(f"From BE: ${from_be}")
 }

@@ -7,9 +7,10 @@ use auto_lang::a2r_std::*;
 
 use regex::Regex;
 fn main() {
-    let re = Regex::new(r { content: "#\\w+".to_string() }).unwrap();
+
+    let re = Regex::new("#\\w+").unwrap();
     let text: String = "Love #rust and #programming!".to_string();
     for cap in re.captures_iter(text) {
-        println!("Hashtag: {}", cap.get(0).cloned());
+        println!("Hashtag: {}", cap[0].clone());
     }
 }

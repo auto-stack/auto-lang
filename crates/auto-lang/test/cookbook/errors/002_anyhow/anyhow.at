@@ -1,12 +1,16 @@
-// Error handling with context demo
-fn read_config(path str) !str {
-    if path == "" {
-        return Err("empty path")
-    }
-    Ok("config data here")
+dep anyhow
+use.rust anyhow::Context
+use.rust anyhow::Result
+
+fn read_config() !str {
+    let content = std.fs.read_to_string("config.toml").context("Failed to read config").?
+    Ok(content)
 }
 
-fn main() ! {
-    let config = read_config("config.toml").?
-    print(f"Config: ${config}")
+fn main() {
+    let result = read_config()
+    is result {
+        Ok(val) -> print(f"Config result: ${val}"),
+        Err(e) -> print(f"Config result: Err(${e})")
+    }
 }

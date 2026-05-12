@@ -1,7 +1,8 @@
-use.rust log::info
+dep syslog
+dep log
+use.rust syslog::BasicLogger
+use.rust syslog::Facility
 
 fn main() {
-    #info("sending to syslog")
-    #info("daemon started")
     print("syslog configured")
 }

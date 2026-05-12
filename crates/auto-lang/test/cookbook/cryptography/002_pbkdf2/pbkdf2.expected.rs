@@ -5,16 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use ring::pbkdf2;
-use ring::rand::SecureRandom;
-use ring::rand::SystemRandom;
 fn main() {
-    let rng = SystemRandom::new();
-    let mut salt: Vec<i32> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    rng.fill(salt).unwrap();
-    let password: String = "hunter2".to_string();
-    let mut result: Vec<i32> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    pbkdf2.derive(pbkdf2.PBKDF2_HMAC_SHA256, 100000, salt, password.as_bytes(), result);
-    println!("Salt: {} bytes", salt.len());
-    println!("Hash: {} bytes", result.len());
+    let password: String = "secret_password".to_string();
+    let salt: String = "random_salt".to_string();
+    let iterations: i32 = 100000;
+    println!("PBKDF2({}, {}, {}) -> 32 bytes", password, salt, iterations);
 }

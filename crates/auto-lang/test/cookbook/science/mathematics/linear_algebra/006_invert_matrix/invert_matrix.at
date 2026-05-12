@@ -1,6 +1,11 @@
-// Matrix determinant demo
+dep ndarray
+dep ndarray_linalg
+use.rust ndarray::arr2
+use.rust ndarray_linalg::Inverse
+
 fn main() {
-    let a = 4.0; let b = 7.0; let c = 2.0; let d = 6.0
-    let det = a * d - b * c
-    print(f"Determinant of [[${a},${b}],[${c},${d}]] = ${det}")
+    let a = arr2([[1.0, 2.0], [3.0, 4.0]])
+    let inv = a.inv().unwrap()
+    print(f"Inverse: ${inv[[0, 0]]} ${inv[[0, 1]]}")
+    print(f"         ${inv[[1, 0]]} ${inv[[1, 1]]}")
 }

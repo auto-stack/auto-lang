@@ -5,13 +5,10 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use ndarray::arr2;
+use serde_json;
 fn main() {
-    let data: Vec<Vec<i32>> = vec![vec![1, 2, 3], vec![4, 5, 6]];
-    let mut flat = vec![];
-    for i in 0..2 {
-        for j in 0..3 {
-            flat.push(data[(i) as usize][(j) as usize]);
-        }
-    }
-    println!("Flat: {}", flat);
+    let json: String = "[[1,2,3],[4,5,6]]".to_string();
+    let matrix = serde_json.from_str(json).unwrap();
+    println!("Matrix: {}", matrix);
 }

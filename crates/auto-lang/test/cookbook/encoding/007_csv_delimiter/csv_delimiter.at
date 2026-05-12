@@ -1,13 +1,11 @@
-// CSV with custom delimiter demo
+dep csv
+use.rust csv::ReaderBuilder
+
 fn main() {
-    var rows = List.new()
-    rows.push("name;age")
-    rows.push("Alice;30")
-    rows.push("Bob;25")
-    print(f"Header: ${rows.get(0)}")
-    for i in 1..rows.len() {
-        let row = rows.get(i)
-        var cols = row.split(";")
-        print(f"Name: ${cols.get(0)}, Age: ${cols.get(1)}")
+    let data = "name;age\nAlice;30\nBob;25"
+    var reader = ReaderBuilder.new().delimiter(59).from_reader(data.as_bytes())
+    for result in reader.records() {
+        let record = result.?
+        print(f"Name: ${record.get(0).?}, Age: ${record.get(1).?}")
     }
 }

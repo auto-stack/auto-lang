@@ -1,7 +1,8 @@
 // Random number generation demo
+use.rust rand
+
 fn main() {
-    var n = 42
-    print(f"Random-ish number: ${n}")
-    var r = (n * 13 + 7) % 100
-    print(f"Another: ${r}")
+    var rng = rand.thread_rng()
+    let n int = rng.gen_range(0..100)
+    print(f"Random number: $n")
 }

@@ -8,17 +8,18 @@ use auto_lang::a2r_std::*;
 use std::collections::HashMap;
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = fs.read_dir(".")?;
-    let mut seen = HashMap::new();
-    for entry in dir {
+    let mut seen: HashMap<String, bool> = HashMap::new();
+    let entries = fs.read_dir(".")?;
+    for entry in entries {
         let entry: i32 = entry?;
         let name = entry.file_name();
         let name_str = name.to_str().unwrap();
-        let existing = seen.get(name_str).cloned();
-        match existing {
-            Some(ref _) => println!("Duplicate: {}", name_str),
-            None => seen.insert(name_str.to_string(), true),
+        if seen.contains_key(name_str) {
+            println!("Duplicate: {}", name_str)
+        } else {
+            seen.insert(name_str.to_string().to_string(), true)
         }
+
     }
     Ok(())
 }

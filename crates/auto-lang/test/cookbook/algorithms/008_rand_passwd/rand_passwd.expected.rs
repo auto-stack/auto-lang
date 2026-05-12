@@ -5,16 +5,14 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::Rng;
-use rand::thread_rng;
+use rand;
 fn main() {
-    let mut rng = thread_rng();
-    let charset: String = "abcdefghijklmnopqrstuvwxyz".to_string();
+    let mut rng = rand.thread_rng();
+    let charset: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()".to_string();
     let mut password: String = "".to_string();
     for _ in 0..16 {
-        let idx = rng.gen_range(0..charset.len());
-        let ch = charset.chars().nth(idx).unwrap();
-        password = password + ch.to_string();
+        let idx = rng.gen_range(0..(charset.len() as i32));
+        password = format!("{}{}", password, charset.chars().nth(idx as usize).unwrap_or('\0'));
     }
     println!("Password: {}", password);
 }

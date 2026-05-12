@@ -5,9 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use chrono::DateTime;
-use chrono::Duration;
-use chrono::Utc;
+use chrono::{Utc, Duration};
 fn main() {
     let now = Utc::now();
     println!("Current time: {}", now);

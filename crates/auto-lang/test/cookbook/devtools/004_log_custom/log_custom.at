@@ -1,7 +1,31 @@
-use.rust log
+dep log
+use.rust log::info
+use.rust log::LevelFilter
+use.rust log::Log
+use.rust log::Metadata
+use.rust log::Record
+
+// Custom logger struct with Log trait implementation
+type SimpleLogger {}
+
+ext SimpleLogger {
+    static fn new() SimpleLogger {
+        SimpleLogger()
+    }
+    fn enabled(self, metadata Metadata) bool {
+        metadata.level() <= log.Level.Debug
+    }
+    fn log(self, record Record) {
+        if self.enabled(record.metadata()) {
+            print(f"${record.level()} - ${record.args()}")
+        }
+    }
+    fn flush(self) {}
+}
 
 fn main() {
-    log.set_max_level(log.LevelFilter.Debug)
-    log.info("custom logger active")
+    log.set_boxed_logger(Box.new(SimpleLogger.new())).unwrap()
+    log.set_max_level(LevelFilter.Debug)
+    info("custom logger active")
     print("done")
 }

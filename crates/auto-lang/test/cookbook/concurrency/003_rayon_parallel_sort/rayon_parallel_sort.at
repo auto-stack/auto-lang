@@ -1,11 +1,13 @@
-// Parallel sort demo
+dep rayon
+dep rand
+use.rust rayon::prelude
+use.rust rand::seq::SliceRandom
+use.rust rand::thread_rng
+
 fn main() {
-    var data = List.new()
-    data.push(5)
-    data.push(3)
-    data.push(1)
-    data.push(4)
-    data.push(2)
-    data.sort()
-    for val in data { print(f"  ${val}") }
+    var v = []
+    for i in 0..100 { v.push(i) }
+    v.shuffle(thread_rng())
+    v.par_sort()
+    print(f"Sorted first: ${v[0]}, last: ${v[99]}")
 }

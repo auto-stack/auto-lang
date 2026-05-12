@@ -5,9 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rand::Rng;
+use rand;
 fn main() {
-    let mut rng = thread_rng();
-    let n = rng.gen_range(0..100);
+    let mut rng = rand.thread_rng();
+    let n: i32 = rng.gen_range(0..100);
     println!("Random number: {}", n);
 }

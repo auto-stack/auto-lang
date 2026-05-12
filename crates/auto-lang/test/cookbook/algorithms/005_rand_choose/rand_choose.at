@@ -1,9 +1,9 @@
 // Random choice demo
+use.rust rand
+
 fn main() {
-    var choices = List.new()
-    choices.push("apple")
-    choices.push("banana")
-    choices.push("cherry")
-    let idx = 42 % choices.len()
-    print(f"Selected: ${choices.get(idx)}")
+    var rng = rand.thread_rng()
+    var choices = ["a", "b", "c", "d", "e"]
+    let choice = choices[rng.gen_range(0..choices.len())]
+    print(f"Chose: $choice")
 }

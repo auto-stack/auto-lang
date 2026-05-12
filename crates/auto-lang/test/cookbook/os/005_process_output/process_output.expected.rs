@@ -6,10 +6,10 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use std::process::Command;
-use std::string::String;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let output = Command::new("ls").args(vec!["-la"]).output()?;
+fn main() {
+    let output = Command::new("ls").args(vec!["-la"]);
+    self.output().unwrap();
     println!("Exit code: {}", output.status);
-    println!("Stdout: {}", String::from_utf8(output.stdout)?);
-    Ok(())
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    println!("Stdout: {}", stdout);
 }

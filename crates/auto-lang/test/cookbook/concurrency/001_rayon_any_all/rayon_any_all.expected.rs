@@ -5,7 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use rayon::prelude;
+use rayon::prelude::*;
 fn main() {
     let v: Vec<i32> = vec![1, 2, 3, 4, 5];
     let has_even = v.par_iter().any(|x| x % 2 == 0);

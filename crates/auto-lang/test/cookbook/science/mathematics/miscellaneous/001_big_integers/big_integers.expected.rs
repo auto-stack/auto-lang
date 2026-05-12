@@ -5,7 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use num::BigInt;
+use num::bigint::BigInt;
 fn main() {
     let a = BigInt::from(100);
     let b = BigInt::from(200);

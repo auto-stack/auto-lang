@@ -7,12 +7,12 @@ use auto_lang::a2r_std::*;
 
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = fs.read_dir(".")?;
-    let mut total: i32 = 0;
-    for entry in dir {
+    let mut total: u32 = 0;
+    let entries = fs.read_dir(".")?;
+    for entry in entries {
         let entry: i32 = entry?;
         let meta = entry.metadata()?;
-        total = total + meta.len();
+        total = total + (meta.len() as i32);
     }
     println!("Total size: {} bytes", total);
     Ok(())

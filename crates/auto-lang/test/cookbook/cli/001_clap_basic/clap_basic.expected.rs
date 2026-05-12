@@ -13,8 +13,8 @@ struct Args {
 }
 
 fn main() {
-    let args = Parser::parse();
+    let args = Args::parse();
     for _ in 0..args.count() {
-        println!("Hello, {}.name!", args);
+        println!("Hello, {}!", args.name);
     }
 }

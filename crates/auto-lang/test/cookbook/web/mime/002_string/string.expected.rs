@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 
 use mime::Mime;
 fn main() {
-    let mime: Mime = "text/html".parse().unwrap();
+    let mime = "text/html".parse().unwrap();
     println!("MIME: {}", mime);
-    let is_text: bool = mime.type_() == "text";
+    let is_text: bool = mime.type_() == mime.TEXT;
     println!("Is text: {}", is_text);
 }

@@ -5,12 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use ansi_term::Colour::Red;
+use ansi_term::Colour::Green;
+use ansi_term::Colour::Yellow;
 fn main() {
-    let red: String = "\\x1b[31m".to_string();
-    let green: String = "\\x1b[32m".to_string();
-    let yellow: String = "\\x1b[33m".to_string();
-    let reset: String = "\\x1b[0m".to_string();
-    println!("{}", format!("{}{}", format!("{}{}", format!("{}", red), "Error: something went wrong"), "$reset"));
-    println!("{}", format!("{}{}", format!("{}{}", format!("{}", green), "Success: operation completed"), "$reset"));
-    println!("{}", format!("{}{}", format!("{}{}", format!("{}", yellow), "Warning: check your input"), "$reset"));
+    println!("{}", Red::paint("Error: something went wrong"));
+    println!("{}", Green::paint("Success: operation completed"));
+    println!("{}", Yellow::paint("Warning: check your input"));
 }

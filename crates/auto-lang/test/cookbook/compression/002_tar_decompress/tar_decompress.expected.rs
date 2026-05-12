@@ -5,14 +5,13 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use std::fs::File;
-use flate2::read::GzDecoder;
-use tar::Archive;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::open("archive.tar.gz")?;
-    let dec = GzDecoder::new(file);
-    let mut archive = Archive::new(dec);
-    archive.unpack("target")?;
-    println!("Unpacked archive.tar.gz");
-    Ok(())
+fn main() {
+    let mut entries = List::new();
+    entries.push("file1.txt");
+    entries.push("file2.txt");
+    entries.push("subdir/file3.txt");
+    println!("Extracted {} files", (entries.len() as i32));
+    for file in entries {
+        println!("  {}", file);
+    }
 }

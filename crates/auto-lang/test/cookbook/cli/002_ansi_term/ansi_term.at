@@ -1,9 +1,10 @@
+dep ansi_term
+use.rust ansi_term::Colour::Red
+use.rust ansi_term::Colour::Green
+use.rust ansi_term::Colour::Yellow
+
 fn main() {
-    let red = "\x1b[31m"
-    let green = "\x1b[32m"
-    let yellow = "\x1b[33m"
-    let reset = "\x1b[0m"
-    print(f"$red" + "Error: something went wrong" + "$reset")
-    print(f"$green" + "Success: operation completed" + "$reset")
-    print(f"$yellow" + "Warning: check your input" + "$reset")
+    print(Red.paint("Error: something went wrong"))
+    print(Green.paint("Success: operation completed"))
+    print(Yellow.paint("Warning: check your input"))
 }

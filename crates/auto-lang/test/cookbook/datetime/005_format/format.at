@@ -1,7 +1,8 @@
-// Date formatting demo
+dep chrono
+use.rust chrono::Local
+
 fn main() {
-    let year = 2024
-    let month = 1
-    let day = 15
-    print(f"${year}-${month}-${day}")
+    let now = Local.now()
+    let formatted = now.format("%Y-%m-%d %H:%M:%S")
+    print(f"Formatted: $formatted")
 }

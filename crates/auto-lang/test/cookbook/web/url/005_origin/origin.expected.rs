@@ -5,8 +5,11 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
+use url::Url;
 fn main() {
-    let u = url.parse("https://example.com/page#section");
-    let fragment = u.fragment();
-    println!("Fragment: {}", fragment);
+    let url = Url::parse("https://user:pass@example.com:8080/path?query=1#frag").unwrap();
+    println!("Scheme: {}", url.scheme());
+    println!("Host: {}", url.host_str());
+    println!("Port: {}", url.port());
+    println!("Origin: {}", url.origin());
 }

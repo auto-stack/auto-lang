@@ -5,15 +5,15 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use walkdir::WalkDir;
+use walkdir;
 use std::fs;
 fn main() {
-    let mut total_size: i32 = 0;
-    for entry in WalkDir::new("src") {
+    let mut total_size: u32 = 0;
+    for entry in walkdir.WalkDir.new("src") {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             let meta = fs.metadata(entry.path()).unwrap();
-            total_size += meta.len()
+            total_size = total_size + (meta.len() as i32)
         }
     }
     println!("Total size: {} bytes", total_size);

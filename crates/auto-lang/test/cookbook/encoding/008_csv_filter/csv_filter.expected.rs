@@ -11,10 +11,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = Reader::from_reader(data.as_bytes());
     for result in reader.records() {
         let record: i32 = result?;
-        let age = record.get(1).cloned().unwrap().parse().unwrap();
+        let age = record.get(1).cloned()?.parse()?;
         if age > 28 {
-            println!("Name: {}, Age: {}", record.get(0).cloned(), record.get(1).cloned());
+            println!("Name: {}, Age: {}", record.get(0).cloned()?, record.get(1).cloned()?);
         }
     }
-    Ok(())
 }
