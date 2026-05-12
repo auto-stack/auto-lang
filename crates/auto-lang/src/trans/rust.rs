@@ -884,9 +884,19 @@ impl RustTrans {
                                     false
                                 };
 
-                                if matches!(lhs.as_ref(), Expr::Ident(_))
-                                    && (is_enum_variant || is_type_name)
-                                {
+                                // Check if lhs is a type-like expression (identifier or module.Type chain)
+                                let lhs_is_type = if matches!(lhs.as_ref(), Expr::Ident(_)) {
+                                    is_enum_variant || is_type_name
+                                } else if let Expr::Dot(il, _ir) = lhs.as_ref() {
+                                    matches!(il.as_ref(), Expr::Ident(_))
+                                } else if let Expr::Bina(il, Op::Dot, _ir) = lhs.as_ref() {
+                                    // module.Type or module.module.Type chain (nested Dot via Bina)
+                                    matches!(il.as_ref(), Expr::Ident(_))
+                                } else {
+                                    false
+                                };
+
+                                if lhs_is_type {
                                     // Type::Variant or Type::method()
                                     self.expr(lhs, out)?;
                                     write!(out, "::")?;
@@ -1882,6 +1892,7 @@ impl RustTrans {
 
                 // Check if this is an enum access or static method: Enum.Value -> Enum::Value
                 // Use heuristic: if object is an identifier starting with uppercase or a known module
+                // Also handle module.Type.method() where object is a nested Dot chain
                 if let Expr::Ident(type_name) = object.as_ref() {
                     let is_type_name = type_name
                         .chars()
@@ -1896,6 +1907,18 @@ impl RustTrans {
                     if is_type_name {
                         // Type::Variant (enum) or Type::method (static method)
                         write!(out, "{}::{}", type_name, field)?;
+                        return Ok(());
+                    }
+                } else if let Expr::Bina(_, Op::Dot, _) = object.as_ref() {
+                    // module.Type.method() — the object is a Dot chain, treat as type-like
+                    self.expr(object, out)?;
+                    write!(out, "::{}", field)?;
+                    return Ok(());
+                } else if let Expr::Dot(il, _) = object.as_ref() {
+                    // module.Type.method() via Expr::Dot variant
+                    if matches!(il.as_ref(), Expr::Ident(_)) {
+                        self.expr(object, out)?;
+                        write!(out, "::{}", field)?;
                         return Ok(());
                     }
                 }
@@ -2333,6 +2356,10 @@ impl RustTrans {
                                     write!(out, "a2r_std::env::get(")?;
                                     if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("env", "args") => {
+                                    write!(out, "a2r_std::env::args()")?;
                                     return Ok(());
                                 }
                                 ("io", "read_line") => {
@@ -3637,6 +3664,10 @@ impl RustTrans {
                         write!(out, "a2r_std::io::read_line()")?;
                         return Ok(());
                     }
+                    ("env", "args") => {
+                        write!(out, "a2r_std::env::args()")?;
+                        return Ok(());
+                    }
                     ("env", "get_or") => {
                         write!(out, "a2r_std::env::get_or(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
@@ -3848,6 +3879,13 @@ impl RustTrans {
                 }
             }
 
+            // Check if object is a type-like chain (module.Type) — use :: for static method calls
+            let obj_is_type_chain = matches!(object.as_ref(),
+                Expr::Dot(il, _) if matches!(il.as_ref(), Expr::Ident(_))
+            ) || matches!(object.as_ref(),
+                Expr::Bina(il, Op::Dot, _) if matches!(il.as_ref(), Expr::Ident(_))
+            );
+
             // Regular method call: object.method(args)
             let is_get = method_name.as_str() == "get";
             let is_insert = method_name.as_str() == "insert";
@@ -3860,7 +3898,7 @@ impl RustTrans {
             if obj_needs_parens { write!(out, "(")?; }
             self.expr(object, out)?;
             if obj_needs_parens { write!(out, ")")?; }
-            write!(out, ".{}(", method_name)?;
+            write!(out, "{}{}(", if obj_is_type_chain { "::" } else { "." }, method_name)?;
             for (i, arg) in call.args.args.iter().enumerate() {
                 match arg {
                     Arg::Pos(expr) => {
@@ -4114,7 +4152,7 @@ impl RustTrans {
                                     | ("fs", "read_text") | ("fs", "read_to_string")
                                     | ("fs", "walk") | ("shell", "exec")
                                     | ("regex", "find_all")
-                                    | ("io", "read_line") | ("env", "get") => {
+                                    | ("io", "read_line") | ("env", "args") | ("env", "get") => {
                                         return Type::StrOwned;
                                     }
                                     _ => {}
