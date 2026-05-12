@@ -113,7 +113,37 @@
       <div v-if="needsApproval" class="approval-gate">
         <div class="approval-message">
           <span class="approval-icon">📋</span>
-          <span>Spec drafted. Review the changes above and approve to proceed with execution.</span>
+          <span>Spec drafted. Review the proposed Jades changes below.</span>
+        </div>
+        <div v-if="pendingSpecChanges.length > 0" class="approval-diff-list">
+          <div
+            v-for="change in pendingSpecChanges"
+            :key="change.section_id"
+            class="diff-card"
+          >
+            <div class="diff-header" @click="toggleDiff(change.section_id)">
+              <span class="diff-title">{{ change.section_id }}</span>
+              <span class="diff-status" :class="change.new_status">
+                {{ change.old_status }} → {{ change.new_status }}
+              </span>
+              <ChevronDown v-if="!expandedDiffs.has(change.section_id)" :size="14" class="diff-chevron" />
+              <ChevronUp v-else :size="14" class="diff-chevron" />
+            </div>
+            <div v-if="expandedDiffs.has(change.section_id)" class="diff-body">
+              <div class="diff-side">
+                <div class="diff-label">Before</div>
+                <pre class="diff-content old">{{ change.old_content }}</pre>
+              </div>
+              <div class="diff-side">
+                <div class="diff-label">After</div>
+                <textarea
+                  v-model="editedSpecs[change.section_id]"
+                  class="diff-editor"
+                  rows="6"
+                />
+              </div>
+            </div>
+          </div>
         </div>
         <div class="approval-actions">
           <button class="approve-btn" @click="handleApprove">
@@ -162,6 +192,7 @@ const {
   sessionStatus,
   sessionPhase,
   needsApproval,
+  pendingSpecChanges,
   resume,
   switchSession,
   clearSession,
@@ -171,6 +202,26 @@ const {
   approveSpec,
   rejectSpec,
 } = useForge()
+
+const expandedDiffs = ref<Set<string>>(new Set())
+const editedSpecs = ref<Record<string, string>>({})
+
+function toggleDiff(sectionId: string) {
+  if (expandedDiffs.value.has(sectionId)) {
+    expandedDiffs.value.delete(sectionId)
+  } else {
+    expandedDiffs.value.add(sectionId)
+  }
+}
+
+// Initialize edited specs when pending changes arrive
+watch(pendingSpecChanges, (changes) => {
+  for (const change of changes) {
+    if (!(change.section_id in editedSpecs.value)) {
+      editedSpecs.value[change.section_id] = change.new_content
+    }
+  }
+}, { immediate: true })
 
 const inputText = ref('')
 const chatRef = ref<HTMLDivElement>()
@@ -214,6 +265,8 @@ async function sendMessage() {
 }
 
 async function handleApprove() {
+  // TODO: send editedSpecs to backend before approving
+  // For now, just approve as-is
   await approveSpec()
   // After approval, trigger execution stream
   await streamResponse()
@@ -852,5 +905,120 @@ onMounted(async () => {
 .approve-btn:hover,
 .reject-btn:hover {
   opacity: 0.9;
+}
+
+/* ─── Approval Diff View ──────────────────────────────────────────────────── */
+
+.approval-diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.diff-card {
+  border: 1px solid var(--af-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--af-bg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-header:hover {
+  background: var(--af-secondary);
+}
+
+.diff-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--af-fg);
+  text-transform: capitalize;
+  flex: 1;
+}
+
+.diff-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: hsl(var(--af-warning) / 0.15);
+  color: hsl(var(--af-warning));
+}
+
+.diff-status.approved {
+  background: hsl(var(--af-success) / 0.15);
+  color: hsl(var(--af-success));
+}
+
+.diff-chevron {
+  color: var(--af-muted);
+}
+
+.diff-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--af-card);
+  border-top: 1px solid var(--af-border);
+}
+
+.diff-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.diff-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--af-muted);
+}
+
+.diff-content {
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  background: var(--af-bg);
+  border: 1px solid var(--af-border);
+  border-radius: 4px;
+  padding: 0.4rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--af-fg);
+  margin: 0;
+}
+
+.diff-content.old {
+  color: var(--af-muted);
+}
+
+.diff-editor {
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  background: var(--af-bg);
+  border: 1px solid var(--af-border);
+  border-radius: 4px;
+  padding: 0.4rem;
+  color: var(--af-fg);
+  resize: vertical;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.diff-editor:focus {
+  border-color: hsl(var(--af-furnace));
 }
 </style>

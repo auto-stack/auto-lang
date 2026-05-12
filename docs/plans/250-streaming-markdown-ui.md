@@ -60,68 +60,107 @@ Replace `MarkdownRenderer.vue` with `markstream-vue`:
 
 **Dependencies**: add `markstream-vue` to `packages/auto-smith-ui/package.json`.
 
-### Phase 2: Streaming Component Protocol (SCP)
+### Phase 2: Streaming Component Protocol (SCP) — JSON Code Blocks
 
-Inspired by Tiptap's `streamTool`, design a lightweight Vue-native protocol:
-
-**Concept**: The AI output is a stream of **directives**, not just text. Each directive targets a typed node in a document tree.
+**Implemented:** The AI outputs standard JSON inside markdown code blocks. The frontend detects ` ```json ` blocks, parses partial/incomplete JSON using a recovery parser, and renders recognized component types.
 
 ```
-Directives are embedded in the AI's text stream as special tokens:
-
-[[NODE:chart id="revenue" type="bar"]]
-[[PATCH:revenue data.labels=["Q1","Q2"]]]
-[[PATCH:revenue data.datasets.0.data+=[120]]]
-[[CLOSE:revenue]]
-```
-
-The Furnace renderer maintains a `document: Map<string, StreamingNode>`:
-- `[[NODE:type id="x" ...props]]` → create/update a node
-- `[[PATCH:id path value]]` → incremental property update
-- `[[CLOSE:id]]` → finalize node (disable loading state)
-
-**Vue integration**: A `<StreamingDocument :directives="directives">` component renders nodes as dynamic Vue components:
-```vue
-<component
-  v-for="node in nodes"
-  :is="nodeRegistry[node.type]"
-  v-bind="node.props"
-  :streaming="!node.final"
-/>
-```
-
-**Registry**: `nodeRegistry` maps type names to Vue components:
-- `markdown` → `MarkdownRender` (markstream-vue)
-- `chart` → `VueChart` (chart library wrapper)
-- `table` → `DataTable`
-- Any AutoUI widget → generated Vue SFC
-
-### Phase 3: AutoUI Integration
-
-Extend the Auto language with a `stream` block or `#[streaming]` annotation:
-
-```auto
-widget LiveDashboard {
-    model {
-        revenue_chart = #[streaming] ChartWidget { ... }
-    }
-    view {
-        col {
-            // This component receives PATCH directives from the AI
-            .revenue_chart
-        }
-    }
+Here is the user list:
+```json
+{
+  "type": "table",
+  "columns": ["Name", "Email"],
+  "rows": [
+    {"Name": "Alice", "Email": "alice@example.com"}
+  ]
 }
 ```
+```
 
-The `a2vue` generator emits a wrapper that registers the component with the Streaming Component Protocol registry and handles `v-bind:streaming-props`.
+**Frontend parsing:**
+- `findJSONBlocks()` scans streaming text for ` ```json ` fences
+- `parsePartialJSON()` completes open braces/brackets/strings so `JSON.parse()` succeeds on incomplete data
+- If JSON has a recognized `type` field (e.g., `"table"`), it renders as a live component
+- Otherwise, it falls back to a normal markdown code block
+
+**Registry:** `nodeRegistry` maps type names to Vue components:
+- `table` → `StreamingTable`
+- Future: `chart` → `StreamingChart`, `form` → `StreamingForm`, etc.
+
+### Phase 3: AutoUI Integration — Future Direction (Auto Code)
+
+**Long-term goal:** The AI outputs **Auto code** (`.at` widgets) directly, not JSON. Auto is the native language of the ecosystem — JSON is a temporary bridge.
+
+**Layered architecture:**
+
+```
+┌─────────────────────────────────────────┐
+│  AI Output Format (evolves over time)   │
+│  • Now: JSON code blocks                │
+│  • Next: Auto code → server transpiler  │
+│  • Future: Auto code → browser parser   │
+├─────────────────────────────────────────┤
+│  Incremental Parser                     │
+│  • parsePartialJSON()    ← today        │
+│  • Auto → AURA IR transpiler ← next     │
+│  • parsePartialAuto()    ← future       │
+├─────────────────────────────────────────┤
+│  Common Intermediate: AURA IR           │
+│  • AuraNode tree (Element, Text,        │
+│    ForLoop, Conditional, Component)     │
+│  • State definitions                    │
+│  • Handler bindings                     │
+├─────────────────────────────────────────┤
+│  Vue Runtime Renderer                   │
+│  • Maps AuraNode → Vue <component :is>  │
+│  • Binds state via Vue reactivity       │
+│  • Handles events → VM / callbacks      │
+└─────────────────────────────────────────┘
+```
+
+**Evolution path:**
+
+| Phase | AI Output | Parser | Renderer |
+|-------|-----------|--------|----------|
+| **Now** | ` ```json {"type":"table",...} ` | `parsePartialJSON()` | Component registry (`StreamingTable`) |
+| **Next** | ` ```auto widget X { view {...} } ` | Server-side transpiler (Auto → AURA IR JSON) | AURA runtime renderer |
+| **Future** | Raw Auto code inline with text | Incremental Auto parser in browser | Full AURA runtime renderer |
+
+**Why AURA IR is the common language:**
+- AURA IR is already ~80% framework-agnostic (view tree is pure; handlers carry Vue bias)
+- The `WidgetRegistry` already maps tags to multi-backend components
+- `LogicPayload::Bytecode` was designed for dynamic execution but is currently unused
+- A runtime renderer for AURA IR would support Vue today and React/Svelte tomorrow
+
+**Phase Next implementation:**
+1. AI writes Auto code in a code block
+2. Backend transpiles it to AURA IR JSON (reuses existing `extract.rs` → serialize)
+3. AURA IR JSON is streamed to frontend
+4. Frontend `A2UIRuntimeRenderer` interprets `AuraNode` tree directly
+
+**AURA Runtime Renderer sketch:**
+```vue
+<template>
+  <component
+    v-for="node in auraTree"
+    :is="nodeTypeToVueComponent(node)"
+    v-bind="extractProps(node)"
+  >
+    <A2UIRuntimeRenderer v-if="node.children" :nodes="node.children" />
+  </component>
+</template>
+```
+
+This renderer understands `AuraNode::Element`, `AuraNode::ForLoop`, `AuraNode::Conditional`, `AuraNode::Text`, etc. — the same structures the `a2vue` generator consumes today.
 
 ### Phase 4: Furnace Tool Integration
 
-Extend the Forge backend tools to emit SCP directives:
-- `write_component(type, id, props)` → emit `[[NODE:...]]`
-- `patch_component(id, path, value)` → emit `[[PATCH:...]]`
-- This lets the AI stream live charts, tables, and forms directly into the chat.
+Extend the Forge backend tools for structured output:
+- **Now:** `write_table(columns, rows)` → backend formats JSON code block
+- **Next:** `write_widget(autoCode)` → backend transpiles to AURA IR, streams JSON
+- **Future:** Direct Auto code streaming with no tool boundary
+
+The tool layer stays thin — it's just a translator between AI intent and the frontend protocol.
 
 ## Files to Touch (Phase 1 only)
 

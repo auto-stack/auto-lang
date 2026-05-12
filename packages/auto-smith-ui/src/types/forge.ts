@@ -8,6 +8,14 @@ export interface ForgeMessage {
   tool_calls?: ToolCallInfo[]
 }
 
+export interface SpecChange {
+  section_id: string
+  old_content: string
+  new_content: string
+  old_status: string
+  new_status: string
+}
+
 export interface ForgeSession {
   id: string
   notebook_sid?: string
@@ -15,6 +23,8 @@ export interface ForgeSession {
   status: 'idle' | 'thinking' | 'tool_call' | 'waiting_approval' | 'error'
   phase: 'intake' | 'spec_draft' | 'spec_review' | 'execution' | 'verification'
   messages: ForgeMessage[]
+  pending_spec_changes?: SpecChange[]
+  current_todo_index?: number | null
 }
 
 export interface ForgeStreamEvent {

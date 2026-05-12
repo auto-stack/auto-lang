@@ -23,6 +23,7 @@ export function useForge() {
   const sessionStatus = computed(() => session.value?.status ?? 'idle')
   const sessionPhase = computed(() => session.value?.phase ?? 'intake')
   const needsApproval = computed(() => sessionStatus.value === 'waiting_approval' && sessionPhase.value === 'spec_review')
+  const pendingSpecChanges = computed(() => session.value?.pending_spec_changes ?? [])
 
   /** Create a brand-new Forge session */
   async function createSession(notebookSid?: string, projectPath?: string) {
@@ -265,6 +266,7 @@ export function useForge() {
     sessionStatus,
     sessionPhase,
     needsApproval,
+    pendingSpecChanges,
     createSession,
     restoreSession,
     switchSession,
