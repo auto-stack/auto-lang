@@ -227,7 +227,7 @@ impl NativeInterface {
         use crate::vm::ffi::StaticFFIRegistration;
         for entry in inventory::iter::<StaticFFIRegistration> {
             use crate::vm::native_registry::BIGVM_NATIVES;
-            let natives = BIGVM_NATIVES.lock().unwrap();
+            let mut natives = BIGVM_NATIVES.lock().unwrap();
             let id = natives
                 .resolve_qualified(entry.name)
                 .unwrap_or_else(|| panic!("build_from_inventory: '{}' not found in BIGVM_NATIVES", entry.name));

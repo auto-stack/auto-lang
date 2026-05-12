@@ -23,7 +23,7 @@
 //! ```
 use std::collections::HashMap;
 use std::sync::Mutex;
-use crate::for_each_bigvm_native;
+use crate::vm::native_catalog::NATIVE_ID_ENTRIES;
 
 /// Lightweight return type for native functions (Send + Sync safe).
 /// Codegen converts these to full `Type` values during initialization.
@@ -179,7 +179,8 @@ impl AutoVMNativeRegistry {
     /// Lookup order:
     /// 1. Direct lookup in unified registry
     /// 2. Canonical normalization (e.g., "List.push" → "auto.list.push")
-    pub fn resolve_qualified(&self, path: &str) -> Option<u16> {
+    /// 3. Plan 250: Lazy registration from NATIVE_NAME_SET whitelist
+    pub fn resolve_qualified(&mut self, path: &str) -> Option<u16> {
         // Direct lookup in unified registry
         if let Some(id) = self.registry.get(path).copied() {
             return Some(id);
@@ -188,7 +189,29 @@ impl AutoVMNativeRegistry {
         // "str.len" → "auto.str.len", "List.push" → "auto.list.push"
         if !path.starts_with("auto.") && !path.starts_with("rust.") && !path.starts_with("py.") {
             if let Some(canonical) = Self::to_canonical(path) {
-                return self.registry.get(&canonical).copied();
+                if let Some(id) = self.registry.get(&canonical).copied() {
+                    return Some(id);
+                }
+            }
+        }
+        // Plan 250: Lazy registration — check name→ID map and register with fixed ID.
+        // Try the path as-is first, then try canonical normalization.
+        if let Some(&fixed_id) = NATIVE_ID_MAP.get(path) {
+            self.registry.insert(path.to_string(), fixed_id);
+            if fixed_id >= self.next_id {
+                self.next_id = fixed_id + 1;
+            }
+            return Some(fixed_id);
+        }
+        if !path.starts_with("auto.") && !path.starts_with("rust.") && !path.starts_with("py.") {
+            if let Some(canonical) = Self::to_canonical(path) {
+                if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
+                    self.registry.insert(path.to_string(), fixed_id);
+                    if fixed_id >= self.next_id {
+                        self.next_id = fixed_id + 1;
+                    }
+                    return Some(fixed_id);
+                }
             }
         }
         None
@@ -402,63 +425,26 @@ lazy_static::lazy_static! {
     // Plan 198 Phase 2: Track whether enrich_from_type_store has been called
     pub static ref NATIVE_REGISTRY_ENRICHED: std::sync::atomic::AtomicBool =
         std::sync::atomic::AtomicBool::new(false);
+    // Plan 250: Known native names → fixed IDs for lazy registration
+    pub static ref NATIVE_ID_MAP: HashMap<&'static str, u16> =
+        NATIVE_ID_ENTRIES.iter().copied().collect();
 }
 
 /// Register all built-in native functions.
 ///
-/// This should be called during VM initialization to register
-/// all standard library functions that have native implementations.
+/// Plan 250: Only registers stdlib #[vm] declarations at startup.
+/// All other native functions are lazily registered by resolve_qualified()
+/// on first use during codegen, using NATIVE_NAME_SET as whitelist.
 pub fn register_builtin_natives() {
     let mut registry = BIGVM_NATIVES.lock().unwrap();
 
     // Plan 198 Problem B: Auto-scan stdlib .vm.at files for #[vm] declarations.
-    // This registers functions NOT already covered by hardcoded IDs below.
-    // Hardcoded IDs take precedence (shims are bound to specific IDs).
+    // These get fixed IDs from next_id counter (starting at 100).
     registry.register_vm_declarations();
 
-    // =========================================================================
-    // Plan 249 Phase 3: All native function registrations from catalog macro.
-    // Each entry: ("name", id, ret_type_tag).
-    // ret_type_tag: Void → register_with_id; others → register_with_id_and_type.
-    // =========================================================================
-    {
-        macro_rules! __register_bigvm {
-            (($name:expr, $id:expr, Void) $(, $rest:tt)*) => {
-                registry.register_with_id($name, $id);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, List) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::List);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, Bool) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::Bool);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, Int) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::Int);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, I64) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::I64);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, String) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::String);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, Float) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::Float);
-                __register_bigvm!($($rest),*);
-            };
-            (($name:expr, $id:expr, Map) $(, $rest:tt)*) => {
-                registry.register_with_id_and_type($name, $id, NativeRetType::Map);
-                __register_bigvm!($($rest),*);
-            };
-            () => {};
-        }
-        for_each_bigvm_native!(__register_bigvm);
-    }
+    // Plan 250: No longer eager-registering 491 catalog entries.
+    // They are lazily registered by resolve_qualified() when first referenced
+    // during codegen. NATIVE_NAME_SET acts as the whitelist.
 }
 
 /// Known methods for each Rust stdlib type.

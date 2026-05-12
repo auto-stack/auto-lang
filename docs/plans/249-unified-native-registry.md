@@ -1,4 +1,4 @@
-# Plan: Unify Dual Registry — Single-Registration Architecture
+# Plan: Unify Dual Registry — Single-Registration Architecture ✅ COMPLETE
 
 ## Context
 
@@ -14,105 +14,40 @@ Auto VM 有两套独立的 native 函数注册系统：
 
 ## 方案：Callback 宏 + 统一 Catalog
 
-### 新文件：`native_catalog.rs`
+### 最终实现
 
-定义一个 `for_each_native!` 回调宏，包含所有 ~360 个 native 函数的完整元数据：
+两个 catalog 宏，各自驱动消费者：
 
-```rust
-macro_rules! for_each_native {
-    ($mac:ident) => {
-        $mac! {
-            // (id, canonical_name, shim_fn, ret_type, aliases)
-            (100, "auto.print", shim_print, Unit, &["auto.lang.print"]),
-            (101, "auto.println", shim_println, Unit, &[]),
-            // ... ~360 entries
-            (2200, "auto.list.len", shim_list_len, Int, &[]),
-            // ...
-        }
-    };
-}
-```
+**`for_each_native!`** (222 entries, 4-tuple): `(ID, CONST_NAME, shim_fn, "canonical.name")`
+- `gen_native_constants!` → 生成 `pub const NATIVE_*: u16 = N;`
+- `__register_shims` → 生成 `self.register($name, $fn);`（本地宏，绑定 shim 函数）
+- `__register_names` → 生成 `self.register_name($canonical, $name);`（本地宏，注册 name→ID 映射）
 
-### 三个消费者宏
+**`for_each_bigvm_native!`** (~477 entries, 3-tuple): `("name", id, ret_type_tag)`
+- `__register_bigvm` → 生成 `registry.register_with_id` 或 `register_with_id_and_type`（本地宏）
 
-**1. `gen_constants!`** — 替换 ~233 个 `NATIVE_*` 常量：
-```rust
-macro_rules! gen_constants {
-    (($id:expr, $name:expr, $fn:expr, $ret:expr, $aliases:expr) $(, $rest:tt)*) => {
-        pub const NATIVE_FUNC: u16 = $id;
-        gen_constants!($($rest),*);
-    };
-    () => {};
-}
-for_each_native!(gen_constants);
-```
+### Opaque Dispatch Table
 
-**2. `gen_registry!`** — 替换 `register_builtin_natives()` 中 ~505 次调用：
-```rust
-macro_rules! gen_registry {
-    (($id:expr, $name:expr, $fn:expr, $ret:expr, $aliases:expr) $(, $rest:tt)*) => {
-        registry.register_with_id_and_type($name, $id, $ret);
-        $(&registry.register_with_id($aliases, $id);)*
-        gen_registry!($($rest),*);
-    };
-    () => {};
-}
-```
-
-**3. `gen_shims!`** — 替换 `register_std_shims()` 中 ~222+140 次调用：
-```rust
-macro_rules! gen_shims {
-    (($id:expr, $name:expr, $fn:expr, $ret:expr, $aliases:expr) $(, $rest:tt)*) => {
-        iface.register($id, $fn);
-        iface.register_name($name, $id);
-        $(&iface.register_name($alias, $id);)*
-        gen_shims!($($rest),*);
-    };
-    () => {};
-}
-```
-
-### Opaque Dispatch Table 合并
-
-将 `codegen.rs` 中 4 处 + `engine.rs` 中 1 处的 opaque 方法 dispatch match 块合并为一个静态查找表：
-
-```rust
-// native_catalog.rs
-pub static OPAQUE_DISPATCH: &[(&str, &str)] = &[
-    ("auto.url_opaque", &[
-        ("scheme", "auto.url_opaque.scheme"),
-        ("host", "auto.url_opaque.host_str"),
-        ("path", "auto.url_opaque.path"),
-        // ...
-    ]),
-    ("auto.http.response", &[
-        ("status_code", "auto.http.response_status_code"),
-        // ...
-    ]),
-];
-```
-
-codegen.rs 和 engine.rs 中各保留一个 `lookup_opaque_dispatch(type_name, method)` 函数调用此表。
+8 个静态常量表 (`OPAQUE_DISPATCH_REGEX/URL/SEMVER/CHRONO/BASE64/HEX/SHA2/MIME`) + 2 个查找函数。
 
 ## 改动文件
 
 | 文件 | 改动 |
 |------|------|
-| `vm/native_catalog.rs` | **新建**：`for_each_native!` 宏 + `OPAQUE_DISPATCH` 表 |
-| `vm/native.rs` | 删除 ~233 常量，删除 `register_std_shims` 中 ~362 次调用，改为 `gen_constants!` + `gen_shims!` |
-| `vm/native_registry.rs` | 删除 `register_builtin_natives` 中 ~505 次调用，改为 `gen_registry!` |
-| `vm/codegen.rs` | 4 处 opaque dispatch match 块替换为 `OPAQUE_DISPATCH` 查找 |
-| `vm/engine.rs` | 1 处 opaque dispatch match 块替换为 `OPAQUE_DISPATCH` 查找 |
-| `vm/mod.rs` | 添加 `mod native_catalog` |
+| `vm/native_catalog.rs` | **新建**：`for_each_native!` + `for_each_bigvm_native!` + `OPAQUE_DISPATCH` 表 |
+| `vm/native.rs` | 删除 ~233 常量，`register_std_shims` 改为 3 个宏调用 + 8 条手动别名 |
+| `vm/native_registry.rs` | `register_builtin_natives` 改为 1 个宏调用 |
+| `vm/codegen.rs` | 2 处 opaque dispatch match 块替换为 `lookup_opaque_dispatch()` |
+| `vm/engine.rs` | 1 处 opaque dispatch match 块替换为 `lookup_opaque_dispatch_by_type()` |
 
-## 其他模块的重复注册问题
+## 成果量化
 
-| 模块 | 重复情况 | 严重程度 |
-|------|---------|---------|
-| Opaque method dispatch | codegen.rs x4 + engine.rs x1 = 5 份 | 高 — 本次合并 |
-| Type canonical map | `native_registry.rs` TYPE_CANONICAL_MAP | 低 — 仅 5 条映射，保持现状 |
-| Return type tracking | `native_registry.rs` NativeRetType + `codegen.rs` infer_call_spec_return_type | 中 — catalog 宏会统一 ret_type 字段 |
-| Codegen stdlib module list | `codegen.rs` 两处 `matches!(obj_name, "env"\|"fs"\|...)` | 低 — 仅 2 处，可提取为常量 |
+| 指标 | 改动前 | 改动后 |
+|------|--------|--------|
+| `native_registry.rs` 行数 | ~1180 | ~470 |
+| 手动注册调用总数 | ~950 | ~8（仅别名） |
+| 定义点数量（每个函数的注册次数） | 最多 7 处 | 最多 2 处（catalog 定义 + 宏消费） |
+| Opaque dispatch 表副本 | 5 份 | 1 份 |
 
 ## 迁移策略：按类别分批
 

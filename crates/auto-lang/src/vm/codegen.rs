@@ -1213,7 +1213,7 @@ impl Codegen {
                         // No initializer - allocate zeroed array
                         self.compile_expr(&rta.size_expr)?;
                         self.emit(OpCode::CALL_NAT);
-                        self.code.extend_from_slice(&190u16.to_le_bytes());
+                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.alloc.array").unwrap());
                     } else {
                         // Has initializer - compile the expression
                         self.compile_expr(&store.expr)?;
@@ -1224,7 +1224,7 @@ impl Codegen {
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(arr.len as i32);
                         self.emit(OpCode::CALL_NAT);
-                        self.code.extend_from_slice(&190u16.to_le_bytes());
+                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.alloc.array").unwrap());
                     } else {
                         // Has initializer (e.g., [1, 2, 3]) - compile the expression
                         self.compile_expr(&store.expr)?;
@@ -2227,9 +2227,9 @@ impl Codegen {
                         self.emit_load_loc(map_ref_index);
                         // Stack: [map_id]
 
-                        // Emit CALL_NAT for auto.hashmap.keys (ID 1292)
+                        // Emit CALL_NAT for auto.hashmap.keys
                         self.emit(OpCode::CALL_NAT);
-                        self.emit_u16(1292u16);
+                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.hashmap.keys").unwrap());
                         // Stack: [keys_list_id]
 
                         // Get keys list length
@@ -2287,10 +2287,10 @@ impl Codegen {
                         self.emit_load_loc(map_ref_index);
                         self.emit_load_loc(key_var_index);
                         // CALL_SPEC: dispatch "get" on HashMap type
-                        // Simpler: use CALL_NAT with auto.hashmap.get (ID 122)
+                        // Simpler: use CALL_NAT with auto.hashmap.get
                         // The shim expects: push map_id, push key_str_idx
                         self.emit(OpCode::CALL_NAT);
-                        self.emit_u16(122u16);
+                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.hashmap.get").unwrap());
                         // Stack: [value (as Option-encoded)]
 
                         // Store value to val variable
@@ -3018,7 +3018,7 @@ impl Codegen {
                     self.emit_u16(id);
                 } else {
                     // Fallback: try BIGVM_NATIVES
-                    let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+                    let mut reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
                     if let Some(native_id) = reg.resolve_qualified(routed_name) {
                         drop(reg);
                         self.emit(OpCode::CALL_NAT);
@@ -5343,7 +5343,7 @@ impl Codegen {
                     ];
                     if MATH_METHODS.contains(&method) && !fname.starts_with("auto.math.") {
                         let new_name = format!("auto.math.{}", method);
-                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if reg.resolve_qualified(&new_name).is_some() {
                             vm_debug!("DEBUG: Routing float method {} -> {}", fname, new_name);
                             func_name = Some(new_name);
@@ -5556,7 +5556,7 @@ impl Codegen {
                     // Plan 212b: Check rust_native_map FIRST (before BIGVM_NATIVES lock)
                     else if self.rust_native_map.contains_key(name) {
                         let qualified = format!("rust.{}", name);
-                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if let Some(id) = reg.resolve_qualified(&qualified) {
                             drop(reg);
                             Some(id)
@@ -5569,7 +5569,7 @@ impl Codegen {
                     // Plan 214: Check py_native_map for Python FFI functions
                     else if self.py_native_map.contains_key(name) {
                         let qualified = format!("py.{}", name);
-                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        let mut reg = BIGVM_NATIVES.lock().unwrap();
                         if let Some(id) = reg.resolve_qualified(&qualified) {
                             drop(reg);
                             Some(id)
@@ -5588,7 +5588,7 @@ impl Codegen {
                     // end of the entire if-else chain, causing deadlock.
                     else {
                         let natives_id = {
-                            let reg = BIGVM_NATIVES.lock().unwrap();
+                            let mut reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified(name)
                         }; // guard dropped here
                         if let Some(id) = natives_id {
@@ -5822,7 +5822,7 @@ impl Codegen {
                             self.compile_expr(obj)?;
                             // Call str.len to get the string length as the end index
                             self.emit(OpCode::CALL_NAT);
-                            self.code.extend_from_slice(&1500u16.to_le_bytes()); // NATIVE_STR_LEN = 1500
+                            self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.str.len").unwrap());
                         }
                     }
 
@@ -8739,7 +8739,7 @@ impl Codegen {
     /// calls, trying qualified names first then falling back to short names.
     #[allow(dead_code)]
     fn resolve_method(&self, receiver_type: &str, method_name: &str) -> Option<u16> {
-        let reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+        let mut reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
 
         // Try lowercase qualified: "auto.{type_lower}.{method}"
         let type_lower = receiver_type.to_lowercase();
