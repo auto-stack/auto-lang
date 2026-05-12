@@ -7,12 +7,12 @@ fn main() {
     let counter = Arc.new(AtomicUsize.new(0))
     let c1 = counter.clone()
     let c2 = counter.clone()
-    let t1 = thread.spawn(_ => {
+    let t1 = thread.spawn(() => {
         for i in 0..100 {
             c1.fetch_add(1, Ordering.SeqCst)
         }
     })
-    let t2 = thread.spawn(_ => {
+    let t2 = thread.spawn(() => {
         for i in 0..100 {
             c2.fetch_add(1, Ordering.SeqCst)
         }

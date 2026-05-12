@@ -2,7 +2,8 @@ dep toml
 use.rust toml
 
 fn main() {
-    let toml_str = "\n[owner]\nname = \"Alice\"\n"
-    let parsed = toml.from_str(toml_str)
-    print(f"Parsed TOML: ${parsed}")
+    let toml_str = "name = Alice"
+    let parsed = toml.from_str(toml_str).unwrap()
+    let name = parsed.get("name")
+    print(f"Parsed: ${name}")
 }
