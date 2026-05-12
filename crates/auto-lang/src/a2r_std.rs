@@ -246,6 +246,13 @@ pub mod json {
     pub fn to_string(val: &Value) -> String {
         serde_json::to_string(val).unwrap_or_default()
     }
+
+    pub fn keys(val: &Value) -> Vec<String> {
+        match val {
+            Value::Object(map) => map.keys().cloned().collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 // =============================================================================
@@ -312,6 +319,45 @@ pub mod fs {
 
     pub fn create_dir(path: &str) -> bool {
         std::fs::create_dir_all(path).is_ok()
+    }
+
+    pub fn write_text(path: &str, content: &str) -> bool {
+        std::fs::write(path, content).is_ok()
+    }
+
+    pub fn is_dir(path: &str) -> i32 {
+        if std::path::Path::new(path).is_dir() { 1 } else { 0 }
+    }
+
+    pub fn is_binary(path: &str) -> i32 {
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                if bytes.windows(2).any(|w| w == [0, 0]) { 1 } else { 0 }
+            }
+            Err(_) => 0,
+        }
+    }
+
+    pub fn walk(dir: &str) -> String {
+        fn do_walk(dir: &str, entries: &mut Vec<String>) {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let path = entry.path();
+                    let path_str = path.to_string_lossy().replace("\\", "/");
+                    entries.push(format!("\"{}\"", path_str));
+                    if path.is_dir() {
+                        do_walk(path_str.as_str(), entries);
+                    }
+                }
+            }
+        }
+        let mut entries: Vec<String> = Vec::new();
+        do_walk(dir, &mut entries);
+        if entries.is_empty() {
+            "[]".to_string()
+        } else {
+            format!("[{}]", entries.join(","))
+        }
     }
 }
 
@@ -422,6 +468,130 @@ pub mod http {
 /// Backward-compat: delegates to http::post
 pub async fn http_post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
     http::post(url, body, api_key).await
+}
+
+// =============================================================================
+// Shell module for a2r transpiler
+// =============================================================================
+
+#[allow(non_snake_case)]
+pub mod shell {
+    fn json_escape(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
+    }
+
+    pub fn exec(cmd: &str, timeout_ms: i32) -> String {
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+
+        fn make_cmd(c: &str) -> Command {
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                let mut cmd = Command::new("cmd");
+                cmd.args(["/C", c]).creation_flags(0x08000000);
+                cmd
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut cmd = Command::new("sh");
+                cmd.arg("-c").arg(c);
+                cmd
+            }
+        }
+
+        let result = if timeout_ms > 0 {
+            let mut child = make_cmd(cmd)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+            match child {
+                Ok(ref mut child) => {
+                    let deadline = Instant::now() + Duration::from_millis(timeout_ms as u64);
+                    loop {
+                        match child.try_wait() {
+                            Ok(Some(status)) => {
+                                let mut stdout_buf = Vec::new();
+                                let mut stderr_buf = Vec::new();
+                                if let Some(mut out) = child.stdout.take() {
+                                    let _ = std::io::Read::read_to_end(&mut out, &mut stdout_buf);
+                                }
+                                if let Some(mut err) = child.stderr.take() {
+                                    let _ = std::io::Read::read_to_end(&mut err, &mut stderr_buf);
+                                }
+                                let stdout = String::from_utf8_lossy(&stdout_buf);
+                                let stderr = String::from_utf8_lossy(&stderr_buf);
+                                let code = status.code().unwrap_or(-1);
+                                return format!(
+                                    r#"{{"exit_code":{},"stdout":"{}","stderr":"{}"}}"#,
+                                    code, json_escape(&stdout), json_escape(&stderr)
+                                );
+                            }
+                            Ok(None) => {
+                                if Instant::now() >= deadline {
+                                    let _ = child.kill();
+                                    return r#"{"exit_code":-1,"stdout":"","stderr":"timeout"}"#.to_string();
+                                }
+                                std::thread::sleep(Duration::from_millis(50));
+                            }
+                            Err(e) => {
+                                return format!(
+                                    r#"{{"exit_code":-1,"stdout":"","stderr":"{}"}}"#,
+                                    json_escape(&e.to_string())
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => format!(
+                    r#"{{"exit_code":-1,"stdout":"","stderr":"{}"}}"#,
+                    json_escape(&e.to_string())
+                ),
+            }
+        } else {
+            let output = make_cmd(cmd).output();
+            match output {
+                Ok(o) => {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    let stderr = String::from_utf8_lossy(&o.stderr);
+                    let code = o.status.code().unwrap_or(-1);
+                    format!(
+                        r#"{{"exit_code":{},"stdout":"{}","stderr":"{}"}}"#,
+                        code, json_escape(&stdout), json_escape(&stderr)
+                    )
+                }
+                Err(e) => format!(
+                    r#"{{"exit_code":-1,"stdout":"","stderr":"{}"}}"#,
+                    json_escape(&e.to_string())
+                ),
+            }
+        };
+        result
+    }
+}
+
+// =============================================================================
+// Regex module for a2r transpiler
+// =============================================================================
+
+#[allow(non_snake_case)]
+pub mod regex {
+    pub fn r#match(pattern: &str, text: &str) -> i32 {
+        match ::regex::Regex::new(pattern) {
+            Ok(re) => if re.is_match(text) { 1 } else { 0 },
+            Err(_) => 0,
+        }
+    }
+
+    pub fn find_all(pattern: &str, text: &str) -> String {
+        match ::regex::Regex::new(pattern) {
+            Ok(re) => {
+                let matches: Vec<String> = re.find_iter(text).map(|m| format!("\"{}\"", m.as_str())).collect();
+                if matches.is_empty() { "[]".to_string() } else { format!("[{}]", matches.join(",")) }
+            }
+            Err(_) => "[]".to_string(),
+        }
+    }
 }
 
 #[cfg(test)]

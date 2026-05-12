@@ -332,3 +332,7 @@ name = "async_fn"
 path = "test/a2r/16_interop/001_async_fn/async_fn.expected.rs"
 
 # Total: 55 examples (73 disabled - not standalone-compilable)
+
+[[example]]
+name = "a2r_step02"
+path = "examples/a2r_step02.rs"

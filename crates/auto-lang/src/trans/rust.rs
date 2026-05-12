@@ -2452,6 +2452,40 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "create_dir" => {
+                                write!(out, "a2r_std::fs::create_dir(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "write_text" => {
+                                write!(out, "a2r_std::fs::write_text(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if i == 1 { write!(out, "&")?; }
+                                    self.arg(arg, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "is_dir" => {
+                                write!(out, "a2r_std::fs::is_dir(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "is_binary" => {
+                                write!(out, "a2r_std::fs::is_binary(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "walk" => {
+                                write!(out, "a2r_std::fs::walk(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             _ => {}
                         },
                         "Json" => match method.as_str() {
@@ -2569,6 +2603,38 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "get_at" => {
+                                write!(out, "a2r_std::json::get_at(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; write!(out, " as usize")?; }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "keys" => {
+                                write!(out, "a2r_std::json::keys(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "len" => {
+                                write!(out, "a2r_std::json::len(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "has_key" => {
+                                write!(out, "a2r_std::json::has_key(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             _ => {}
                         },
                         "http" => match method.as_str() {
@@ -2626,6 +2692,34 @@ impl RustTrans {
                                     }
                                 }
                                 write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        "shell" => match method.as_str() {
+                            "exec" => {
+                                write!(out, "a2r_std::shell::exec(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        "regex" => match method.as_str() {
+                            "match" => {
+                                write!(out, "a2r_std::regex::r#match(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr(expr, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             _ => {}
