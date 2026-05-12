@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use regex::Regex;
 fn main() {
-    let re = Regex::new(r { content: "ERROR: (.+)".to_string() }).unwrap();
+    let re = Regex::new(r"ERROR: (.+)").unwrap();
     let log: String = "INFO: started\nERROR: file not found\nWARN: retrying\nERROR: disk full".to_string();
     for line in log.lines() {
         let caps = re.captures(line);

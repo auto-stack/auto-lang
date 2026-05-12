@@ -766,7 +766,7 @@ impl RustTrans {
             }
             .map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
-            Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
+            Expr::CStr(s) => write!(out, "r\"{}\"", s).map_err(Into::into),
             Expr::Ident(name) => {
                 // Plan 151: Global variable access - add .lock().unwrap() pattern
                 if self.is_global_var(name) {
@@ -2559,6 +2559,18 @@ impl RustTrans {
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
+                                ("json", "as_int") => {
+                                    write!(out, "a2r_std::json::as_int(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ") as i32")?;
+                                    return Ok(());
+                                }
+                                ("json", "is_null") => {
+                                    write!(out, "a2r_std::json::is_null(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
                                 _ => {}
                             }
                         }
@@ -2729,6 +2741,24 @@ impl RustTrans {
                                 write!(out, ")")?;
                                 return Ok(());
                             }
+                            "as_int" => {
+                                // Json.as_int(val) -> a2r_std::json::as_int(&val) as i32
+                                write!(out, "a2r_std::json::as_int(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ") as i32")?;
+                                return Ok(());
+                            }
+                            "is_null" => {
+                                // Json.is_null(val) -> a2r_std::json::is_null(&val)
+                                write!(out, "a2r_std::json::is_null(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             _ => {}
                         },
                         "json" => match method.as_str() {
@@ -2821,6 +2851,18 @@ impl RustTrans {
                                 if call.args.args.len() > 1 {
                                     if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                                 }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "as_int" => {
+                                write!(out, "a2r_std::json::as_int(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ") as i32")?;
+                                return Ok(());
+                            }
+                            "is_null" => {
+                                write!(out, "a2r_std::json::is_null(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -3617,6 +3659,18 @@ impl RustTrans {
                         }
                         return Ok(());
                     }
+                    ("json", "as_int") => {
+                        write!(out, "a2r_std::json::as_int(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ") as i32")?;
+                        return Ok(());
+                    }
+                    ("json", "is_null") => {
+                        write!(out, "a2r_std::json::is_null(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("shell", "exec") => {
                         write!(out, "a2r_std::shell::exec(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
@@ -3969,6 +4023,12 @@ impl RustTrans {
                     // Static method: Type::method(args)
                     write!(out, "{}::{}", qualified_type, method_name)?;
                     write!(out, "(")?;
+                    // Add `move` for thread::spawn closures (captured locals need 'static)
+                    if method_name == "spawn"
+                        && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
+                    {
+                        write!(out, "move ")?;
+                    }
                     // Prefer qualified key "Type.method" for accurate lookup
                     let qualified_key: AutoStr = format!("{}.{}", type_name, method_name).into();
                     let static_str_flags = self.fn_str_param_indices.get(&qualified_key)
@@ -4065,6 +4125,12 @@ impl RustTrans {
             self.expr(object, out)?;
             if obj_needs_parens { write!(out, ")")?; }
             write!(out, "{}{}(", if obj_is_type_chain { "::" } else { "." }, method_name)?;
+            // Add `move` for thread::spawn closures (captured locals need 'static)
+            if obj_is_type_chain && method_name == "spawn"
+                && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
+            {
+                write!(out, "move ")?;
+            }
             for (i, arg) in call.args.args.iter().enumerate() {
                 match arg {
                     Arg::Pos(expr) => {
@@ -5231,7 +5297,7 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "model: msg[\"model\"].as_str().unwrap_or(\"\").to_string(),\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "usage: Usage {{ input_tokens: msg[\"usage\"][\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: msg[\"usage\"][\"output_tokens\"].as_u64().unwrap_or(0) as u32 }},\n")?;
+                write!(sink.body, "usage: Usage {{ input_tokens: msg[\"usage\"][\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: msg[\"usage\"][\"output_tokens\"].as_u64().unwrap_or(0) as u32, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }},\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}})\n")?;
@@ -5300,7 +5366,7 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "let u = &val[\"usage\"];\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "StreamEvent::MessageDelta(MessageDeltaData {{ stop_reason: delta[\"stop_reason\"].as_str().map(|s| s.to_string()), stop_sequence: delta[\"stop_sequence\"].as_str().map(|s| s.to_string()) }}, Usage {{ output_tokens: u[\"output_tokens\"].as_u64().unwrap_or(0) as u32, input_tokens: 0 }})\n")?;
+                write!(sink.body, "StreamEvent::MessageDelta(MessageDeltaData {{ stop_reason: delta[\"stop_reason\"].as_str().map(|s| s.to_string()), stop_sequence: delta[\"stop_sequence\"].as_str().map(|s| s.to_string()) }}, Usage {{ output_tokens: u[\"output_tokens\"].as_u64().unwrap_or(0) as u32, input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }})\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}},\n")?;
@@ -5352,7 +5418,7 @@ impl RustTrans {
                 write!(sink.body, "{{\n")?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "ApiResponse {{ id: String::new(), kind: String::new(), role: String::new(), content: vec![], model: String::new(), stop_reason: None, stop_sequence: None, usage: Usage {{ input_tokens: 0, output_tokens: 0 }} }}\n")?;
+                write!(sink.body, "ApiResponse {{ id: String::new(), kind: String::new(), role: String::new(), content: vec![], model: String::new(), stop_reason: None, stop_sequence: None, usage: Usage {{ input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }} }}\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}}")?;
@@ -5362,9 +5428,9 @@ impl RustTrans {
                 write!(sink.body, "{{\n")?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "let val: serde_json::Value = serde_json::from_str(usage_str).unwrap_or_default();\n")?;
+                write!(sink.body, "let val = a2r_std::json::parse(usage_str);\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "Usage {{ input_tokens: val[\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: val[\"output_tokens\"].as_u64().unwrap_or(0) as u32 }}\n")?;
+                write!(sink.body, "Usage {{ input_tokens: a2r_std::value_to_int(&a2r_std::json::get(&val, \"input_tokens\")) as u32, output_tokens: a2r_std::value_to_int(&a2r_std::json::get(&val, \"output_tokens\")) as u32, cache_creation_input_tokens: a2r_std::value_to_int(&a2r_std::json::get(&val, \"cache_creation_input_tokens\")) as u32, cache_read_input_tokens: a2r_std::value_to_int(&a2r_std::json::get(&val, \"cache_read_input_tokens\")) as u32 }}\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}}")?;
@@ -5374,19 +5440,45 @@ impl RustTrans {
                 write!(sink.body, "{{\n")?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "let val: serde_json::Value = serde_json::from_str(block_str).unwrap_or_default();\n")?;
+                write!(sink.body, "let val = a2r_std::json::parse(block_str);\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "match val[\"type\"].as_str().unwrap_or(\"\") {{\n")?;
+                write!(sink.body, "let block_type = a2r_std::json::as_string(a2r_std::json::get(&val, \"type\"));\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if block_type == \"text\" {{\n")?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "\"text\" => OutputContentBlock::Text(val[\"text\"].as_str().unwrap_or(\"\").to_string()),\n")?;
+                write!(sink.body, "let text = a2r_std::json::as_string(a2r_std::json::get(&val, \"text\"));\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "\"tool_use\" => OutputContentBlock::ToolUse(val[\"id\"].as_str().unwrap_or(\"\").to_string(), val[\"name\"].as_str().unwrap_or(\"\").to_string(), val[\"input\"].to_string()),\n")?;
-                self.print_indent(&mut sink.body)?;
-                write!(sink.body, "_ => OutputContentBlock::Text(String::new()),\n")?;
+                write!(sink.body, "return OutputContentBlock::Text(text);\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if block_type == \"tool_use\" {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let id = a2r_std::json::as_string(a2r_std::json::get(&val, \"id\"));\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let name = a2r_std::json::as_string(a2r_std::json::get(&val, \"name\"));\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let input = a2r_std::json::get(&val, \"input\");\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "return OutputContentBlock::ToolUse(id, name, a2r_std::json::to_string(&input));\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "if block_type == \"thinking\" {{\n")?;
+                self.indent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "let thinking = a2r_std::json::as_string(a2r_std::json::get(&val, \"thinking\"));\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "return OutputContentBlock::Thinking(thinking);\n")?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "}}\n")?;
+                self.print_indent(&mut sink.body)?;
+                write!(sink.body, "return OutputContentBlock::Text(String::new());\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}}")?;
@@ -5472,7 +5564,7 @@ impl RustTrans {
                 write!(sink.body, "{{\n")?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "let val: serde_json::Value = match serde_json::from_str(body) {{ Ok(v) => v, Err(_) => return ApiResponse {{ id: String::new(), kind: String::new(), role: String::new(), content: vec![], model: String::new(), stop_reason: None, stop_sequence: None, usage: Usage {{ input_tokens: 0, output_tokens: 0 }} }} }};\n")?;
+                write!(sink.body, "let val: serde_json::Value = match serde_json::from_str(body) {{ Ok(v) => v, Err(_) => return ApiResponse {{ id: String::new(), kind: String::new(), role: String::new(), content: vec![], model: String::new(), stop_reason: None, stop_sequence: None, usage: Usage {{ input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }} }} }};\n")?;
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "let mut content = Vec::new();\n")?;
                 self.print_indent(&mut sink.body)?;
@@ -5519,7 +5611,7 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "stop_sequence: val[\"stop_sequence\"].as_str().map(|s| s.to_string()),\n")?;
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "usage: Usage {{ input_tokens: val[\"usage\"][\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: val[\"usage\"][\"output_tokens\"].as_u64().unwrap_or(0) as u32 }},\n")?;
+                write!(sink.body, "usage: Usage {{ input_tokens: val[\"usage\"][\"input_tokens\"].as_u64().unwrap_or(0) as u32, output_tokens: val[\"usage\"][\"output_tokens\"].as_u64().unwrap_or(0) as u32, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }},\n")?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 write!(sink.body, "}}\n")?;
@@ -8091,6 +8183,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     // This allows cross-file type references (e.g., Usage{...} in json_helpers.at
     // when Usage is defined in types.at) to be resolved during parsing.
     let shared_type_store = Arc::new(RwLock::new(TypeStore::new()));
+    let mut all_enum_names: HashSet<AutoStr> = HashSet::new();
     {
         let mut store = shared_type_store.write().unwrap();
         for module in &modules {
@@ -8099,13 +8192,13 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             for line in source.lines() {
                 let trimmed = line.trim();
                 let (prefix, rest) = if trimmed.starts_with("pub type ") {
-                    ("pub type ", trimmed)
+                    ("pub type ", &trimmed[9..])
                 } else if trimmed.starts_with("pub enum ") {
-                    ("pub enum ", trimmed)
+                    ("pub enum ", &trimmed[9..])
                 } else if trimmed.starts_with("type ") {
-                    ("type ", trimmed)
+                    ("type ", &trimmed[5..])
                 } else if trimmed.starts_with("enum ") {
-                    ("enum ", trimmed)
+                    ("enum ", &trimmed[5..])
                 } else {
                     continue;
                 };
@@ -8140,6 +8233,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         is_pub: prefix.starts_with("pub"),
                     };
                     store.register_enum_decl(enum_decl);
+                    all_enum_names.insert(AutoStr::from(name));
                 }
             }
         }
@@ -8165,6 +8259,9 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     for (module, ast) in &parsed_modules {
         let sink = multi_sink.add(&module.output_name);
         let mut transpiler = RustTrans::new(AutoStr::from(&module.output_name));
+
+        // Pre-populate tag_types with all known enum names for Err boxing detection
+        transpiler.tag_types = all_enum_names.clone();
 
         // Plan 167: Populate local_modules for mod declarations.
         // In Rust, `mod X;` can only appear in the parent module that owns X.

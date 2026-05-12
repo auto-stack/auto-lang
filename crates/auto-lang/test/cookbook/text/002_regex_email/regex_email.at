@@ -1,7 +1,7 @@
 use.rust regex::Regex
 
 fn main() {
-    let re = Regex.new(r"[a-z]+@[a-z]+\.[a-z]+").unwrap()
+    let re = Regex.new(c"[a-z]+@[a-z]+\.[a-z]+").unwrap()
     let text = "Contact user@example.com for info"
     let matched = re.is_match(text)
     print(f"Has email: $matched")

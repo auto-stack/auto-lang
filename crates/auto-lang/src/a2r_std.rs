@@ -312,10 +312,10 @@ pub fn str_contains(s: &str, needle: &str) -> bool {
     s.contains(needle)
 }
 
-/// String ends with check. Returns i32 for Auto compat.
+/// String ends with check. Returns bool for Rust compat.
 /// In AutoLang: s.ends_with(suffix)
-pub fn str_ends_with(s: &str, suffix: &str) -> i32 {
-    if s.ends_with(suffix) { 1 } else { 0 }
+pub fn str_ends_with(s: &str, suffix: &str) -> bool {
+    s.ends_with(suffix)
 }
 
 /// Get string length
