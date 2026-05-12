@@ -265,9 +265,7 @@ async function sendMessage() {
 }
 
 async function handleApprove() {
-  // TODO: send editedSpecs to backend before approving
-  // For now, just approve as-is
-  await approveSpec()
+  await approveSpec(editedSpecs.value)
   // After approval, trigger execution stream
   await streamResponse()
 }

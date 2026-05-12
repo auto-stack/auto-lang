@@ -1048,9 +1048,18 @@ After verification, summarize the results."#
 
     // ─── Approval Gate Handlers ──────────────────────────────────────────
 
-    pub async fn approve_spec(Path(sid): Path<String>) -> Json<serde_json::Value> {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ApproveSpecRequest {
+        #[serde(default)]
+        pub edited_specs: std::collections::HashMap<String, String>,
+    }
+
+    pub async fn approve_spec(
+        Path(sid): Path<String>,
+        Json(body): Json<ApproveSpecRequest>,
+    ) -> Json<serde_json::Value> {
         // 1. Capture pending changes and project path
-        let (project, changes) = {
+        let (project, mut changes) = {
             let store = forge_sessions().lock().unwrap();
             let session = store.get(&sid).cloned().unwrap_or_else(|| ForgeSession {
                 id: sid.clone(),
@@ -1065,7 +1074,16 @@ After verification, summarize the results."#
             (session.project_path.clone(), session.pending_spec_changes.clone())
         };
 
-        // 2. Apply pending changes to Ledger
+        // 2. Override with user-edited specs if provided
+        if !body.edited_specs.is_empty() {
+            for change in &mut changes {
+                if let Some(edited) = body.edited_specs.get(&change.section_id) {
+                    change.new_content = edited.clone();
+                }
+            }
+        }
+
+        // 3. Apply pending (possibly edited) changes to Ledger
         if !project.is_empty() && !changes.is_empty() {
             let mut ledger = ledgers().lock().unwrap();
             for change in &changes {

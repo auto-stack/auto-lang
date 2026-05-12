@@ -222,11 +222,13 @@ export function useForge() {
     }
   }
 
-  async function approveSpec() {
+  async function approveSpec(editedSpecs?: Record<string, string>) {
     if (!sessionId.value) return
     try {
       const resp = await fetch(`${API_BASE}/forge/${sessionId.value}/approve`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edited_specs: editedSpecs ?? {} }),
       })
       if (!resp.ok) throw new Error(`Failed to approve: ${resp.status}`)
       const data = await resp.json()
