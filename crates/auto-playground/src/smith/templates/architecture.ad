@@ -1,0 +1,17 @@
+# Architecture
+
+## System Components
+
+- **Frontend** — Vue 3 + markstream-vue for streaming markdown rendering
+- **Backend** — Rust (axum) serving REST API + WebSocket for chat streaming
+- **AI Bridge** — Modular provider interface (OpenAI, Anthropic, local models)
+- **Spec Engine** — AutoDown parser + validator + drift detector
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | Vue 3, Vite, TypeScript, Tailwind CSS |
+| Backend | Rust, axum, tokio |
+| AI | OpenAI API, Anthropic API, Ollama |
+| Specs | AutoDown (markdown extension) |

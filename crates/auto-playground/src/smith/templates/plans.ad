@@ -1,0 +1,31 @@
+# Plans
+
+## Phase 1: Foundation (v0.1)
+
+- [x] Chat interface with streaming
+- [x] Session management (create, list, delete)
+- [x] Spec viewer with markstream-vue
+- [x] View/Edit toggle for specs
+- [ ] Drift check engine
+- [ ] AI Enrich action
+
+## Phase 2: Intelligence (v0.2)
+
+- [ ] Tool calling framework
+- [ ] Multi-provider model switching
+- [ ] Spec-to-code generation
+- [ ] Agent workflows
+
+## Phase 3: Scale (v0.3)
+
+- [ ] Team collaboration (shared projects)
+- [ ] Versioned spec history
+- [ ] CI/CD integration
+- [ ] Self-hosting package
+
+## Phase 4: Production (v1.0)
+
+- [ ] Security audit
+- [ ] Performance optimization
+- [ ] Documentation completeness
+- [ ] Community plugins

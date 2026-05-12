@@ -6,6 +6,7 @@
 
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
     routing::{get, post},
     Json, Router,
@@ -40,6 +41,8 @@ pub struct ForgeSession {
     pub status: ForgeStatus,
     pub phase: ForgePhase,
     pub messages: Vec<ForgeMessage>,
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub pending_spec_changes: Vec<SpecChange>,
     #[serde(default)]
@@ -237,6 +240,25 @@ impl SessionStore {
         let sid = self.project_locks.get(project_path)?;
         self.sessions.get(sid)
     }
+
+    fn rename(&mut self, sid: &str, name: String) -> bool {
+        let Some(session) = self.sessions.get_mut(sid) else { return false };
+        session.name = Some(name);
+        let clone = session.clone();
+        self.save(&clone);
+        true
+    }
+
+    fn remove(&mut self, sid: &str) -> bool {
+        let existed = self.sessions.remove(sid).is_some();
+        if existed {
+            let path = self.data_dir.join(format!("{}.json", sid));
+            let _ = std::fs::remove_file(path);
+            // Also remove any project lock held by this session
+            self.project_locks.retain(|_, v| v != sid);
+        }
+        existed
+    }
 }
 
 fn forge_sessions() -> &'static Mutex<SessionStore> {
@@ -313,7 +335,18 @@ pub struct LedgerSection {
 struct LedgerStore {
     projects: std::collections::HashMap<String, LedgerDocument>,
     data_dir: PathBuf,
+    templates_dir: PathBuf,
 }
+
+// ─── Embedded Default Templates ──────────────────────────────────────────────
+
+const TMPL_GOALS: &str = include_str!("templates/goals.ad");
+const TMPL_ARCHITECTURE: &str = include_str!("templates/architecture.ad");
+const TMPL_DESIGNS: &str = include_str!("templates/designs.ad");
+const TMPL_PLANS: &str = include_str!("templates/plans.ad");
+const TMPL_REVIEWS: &str = include_str!("templates/reviews.ad");
+const TMPL_REPORTS: &str = include_str!("templates/reports.ad");
+const TMPL_APIS: &str = include_str!("templates/apis.ad");
 
 impl LedgerStore {
     fn new() -> Self {
@@ -322,13 +355,53 @@ impl LedgerStore {
             .join("autoforge")
             .join("ledgers");
         let _ = std::fs::create_dir_all(&data_dir);
+        let templates_dir = data_dir.join("templates");
+        let _ = std::fs::create_dir_all(&templates_dir);
 
         let mut store = Self {
             projects: std::collections::HashMap::new(),
             data_dir,
+            templates_dir,
         };
+        store.extract_embedded_templates();
         store.load_all();
         store
+    }
+
+    fn extract_embedded_templates(&self) {
+        let templates: [(&str, &str); 7] = [
+            ("goals", TMPL_GOALS),
+            ("architecture", TMPL_ARCHITECTURE),
+            ("designs", TMPL_DESIGNS),
+            ("plans", TMPL_PLANS),
+            ("reviews", TMPL_REVIEWS),
+            ("reports", TMPL_REPORTS),
+            ("apis", TMPL_APIS),
+        ];
+        for (name, content) in templates {
+            let path = self.templates_dir.join(format!("{}.ad", name));
+            if !path.exists() {
+                let _ = std::fs::write(&path, content);
+            }
+        }
+        tracing::info!("Templates directory: {:?}", self.templates_dir);
+    }
+
+    fn load_template(&self, name: &str) -> String {
+        let path = self.templates_dir.join(format!("{}.ad", name));
+        std::fs::read_to_string(&path).unwrap_or_else(|_| {
+            tracing::warn!("Template file not found: {:?}, using embedded fallback", path);
+            match name {
+                "goals" => TMPL_GOALS.to_string(),
+                "architecture" => TMPL_ARCHITECTURE.to_string(),
+                "designs" => TMPL_DESIGNS.to_string(),
+                "plans" => TMPL_PLANS.to_string(),
+                "reviews" => TMPL_REVIEWS.to_string(),
+                "reports" => TMPL_REPORTS.to_string(),
+                "apis" => TMPL_APIS.to_string(),
+                _ => String::new(),
+            }
+        })
     }
 
     fn load_all(&mut self) {
@@ -351,11 +424,28 @@ impl LedgerStore {
 
     fn get_or_default(&mut self, project: &str) -> &mut LedgerDocument {
         if !self.projects.contains_key(project) {
-            let doc = default_ledger(project);
+            let doc = self.default_ledger(project);
             self.save(&doc);
             self.projects.insert(project.to_string(), doc);
         }
         self.projects.get_mut(project).unwrap()
+    }
+
+    fn default_ledger(&self, project: &str) -> LedgerDocument {
+        let now = now_secs();
+        LedgerDocument {
+            project: project.to_string(),
+            version: 1,
+            sections: vec![
+                LedgerSection { id: String::from("goals"), section_type: String::from("goals"), title: String::from("🎯 Goals"), status: String::from("draft"), content: self.load_template("goals"), depends_on: vec![], last_modified: now, last_verified: None },
+                LedgerSection { id: String::from("architecture"), section_type: String::from("architecture"), title: String::from("🏗️ Architecture"), status: String::from("draft"), content: self.load_template("architecture"), depends_on: vec![], last_modified: now, last_verified: None },
+                LedgerSection { id: String::from("designs"), section_type: String::from("designs"), title: String::from("🎨 Designs"), status: String::from("draft"), content: self.load_template("designs"), depends_on: vec![], last_modified: now, last_verified: None },
+                LedgerSection { id: String::from("plans"), section_type: String::from("plans"), title: String::from("📅 Plans"), status: String::from("draft"), content: self.load_template("plans"), depends_on: vec![], last_modified: now, last_verified: None },
+                LedgerSection { id: String::from("reviews"), section_type: String::from("reviews"), title: String::from("📝 Reviews"), status: String::from("draft"), content: self.load_template("reviews"), depends_on: vec![], last_modified: now, last_verified: None },
+                LedgerSection { id: String::from("reports"), section_type: String::from("reports"), title: String::from("📊 Reports"), status: String::from("draft"), content: self.load_template("reports"), depends_on: vec![], last_modified: now, last_verified: None },
+                LedgerSection { id: String::from("apis"), section_type: String::from("apis"), title: String::from("🔌 APIs"), status: String::from("draft"), content: self.load_template("apis"), depends_on: vec![], last_modified: now, last_verified: None },
+            ],
+        }
     }
 
     fn update_section(&mut self, project: &str, section_id: &str, content: String, status: String) -> Result<(), String> {
@@ -394,22 +484,7 @@ impl LedgerStore {
     }
 }
 
-fn default_ledger(project: &str) -> LedgerDocument {
-    let now = now_secs();
-    LedgerDocument {
-        project: project.to_string(),
-        version: 1,
-        sections: vec![
-            LedgerSection { id: String::from("goals"), section_type: String::from("goals"), title: String::from("📋 Goals"), status: String::from("draft"), content: String::from("- Define project goals\n- Set success criteria"), depends_on: vec![], last_modified: now, last_verified: None },
-            LedgerSection { id: String::from("requirements"), section_type: String::from("requirements"), title: String::from("📐 Requirements"), status: String::from("draft"), content: String::from("R1.1: Define functional requirements\nR1.2: Define non-functional requirements"), depends_on: vec![], last_modified: now, last_verified: None },
-            LedgerSection { id: String::from("analysis"), section_type: String::from("analysis"), title: String::from("🔍 Analysis"), status: String::from("draft"), content: String::from("Technical approach and trade-offs."), depends_on: vec![], last_modified: now, last_verified: None },
-            LedgerSection { id: String::from("plans"), section_type: String::from("plans"), title: String::from("📅 Plans"), status: String::from("draft"), content: String::from("Phase 1: Foundation\nPhase 2: Implementation\nPhase 3: Verification"), depends_on: vec![], last_modified: now, last_verified: None },
-            LedgerSection { id: String::from("todos"), section_type: String::from("todos"), title: String::from("✅ Todos"), status: String::from("draft"), content: String::from("- [ ] Initial setup\n- [ ] Core implementation\n- [ ] Testing and review"), depends_on: vec![], last_modified: now, last_verified: None },
-            LedgerSection { id: String::from("reports"), section_type: String::from("reports"), title: String::from("📊 Reports"), status: String::from("draft"), content: String::from("Coverage and quality reports."), depends_on: vec![], last_modified: now, last_verified: None },
-            LedgerSection { id: String::from("reviews"), section_type: String::from("reviews"), title: String::from("📝 Reviews"), status: String::from("draft"), content: String::from("Code review notes and security audits."), depends_on: vec![], last_modified: now, last_verified: None },
-        ],
-    }
-}
+
 
 fn sanitize_filename(name: &str) -> String {
     name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
@@ -556,6 +631,7 @@ After verification, summarize the results."#
             project_path: req.project_path.unwrap_or_else(|| String::from(".")),
             status: ForgeStatus::Idle,
             phase: ForgePhase::Intake,
+            name: None,
             pending_spec_changes: vec![],
             current_todo_index: None,
             phase_history: vec![PhaseHistoryEntry {
@@ -934,9 +1010,36 @@ After verification, summarize the results."#
         pub id: String,
         pub status: ForgeStatus,
         pub phase: ForgePhase,
+        pub name: Option<String>,
         pub preview: String,
         pub message_count: usize,
         pub last_activity: u64,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    pub struct RenameForgeSessionRequest {
+        pub name: String,
+    }
+
+    pub async fn rename_forge_session(
+        Path(sid): Path<String>,
+        Json(req): Json<RenameForgeSessionRequest>,
+    ) -> StatusCode {
+        let mut store = forge_sessions().lock().unwrap();
+        if store.rename(&sid, req.name) {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::NOT_FOUND
+        }
+    }
+
+    pub async fn delete_forge_session(Path(sid): Path<String>) -> StatusCode {
+        let mut store = forge_sessions().lock().unwrap();
+        if store.remove(&sid) {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::NOT_FOUND
+        }
     }
 
     pub async fn list_forge_sessions() -> Json<Vec<ForgeSessionSummary>> {
@@ -969,6 +1072,7 @@ After verification, summarize the results."#
                     id: s.id.clone(),
                     status: s.status.clone(),
                     phase: s.phase.clone(),
+                    name: s.name.clone(),
                     preview,
                     message_count: s.messages.len(),
                     last_activity,
@@ -1182,6 +1286,7 @@ If no requirement IDs exist, number them sequentially."#,
                 project_path: String::new(),
                 status: ForgeStatus::Idle,
                 phase: ForgePhase::Intake,
+                name: None,
                 messages: vec![],
                 pending_spec_changes: vec![],
                 current_todo_index: None,
@@ -1261,8 +1366,8 @@ pub fn routes() -> Router<crate::AppState> {
     Router::new()
         // Forge
         .route("/api/smith/forge/session", post(handlers::create_forge_session))
-        .route("/api/smith/forge/session/{sid}", get(handlers::get_forge_session))
         .route("/api/smith/forge/sessions", get(handlers::list_forge_sessions))
+        .route("/api/smith/forge/session/{sid}", get(handlers::get_forge_session).patch(handlers::rename_forge_session).delete(handlers::delete_forge_session))
         .route("/api/smith/forge/{sid}/message", post(handlers::send_forge_message))
         .route("/api/smith/forge/{sid}/stream", get(handlers::forge_stream))
         .route("/api/smith/forge/{sid}/history", get(handlers::forge_history))

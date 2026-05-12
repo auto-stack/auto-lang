@@ -1,11 +1,14 @@
 export type SectionType =
   | 'goals'
+  | 'architecture'
+  | 'designs'
+  | 'plans'
+  | 'reviews'
+  | 'reports'
+  | 'apis'
   | 'requirements'
   | 'analysis'
-  | 'plans'
   | 'todos'
-  | 'reports'
-  | 'reviews'
 
 export type StatusBadge =
   | 'draft'

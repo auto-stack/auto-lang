@@ -4,6 +4,7 @@
       <div class="rail-brand">
         <Flame :size="18" />
         <span class="brand-text">AutoForge</span>
+        <span class="version">v0.1.0</span>
       </div>
       <div class="rail-tabs">
         <button
@@ -13,7 +14,7 @@
           :class="{ active: currentView === tab.id }"
           @click="currentView = tab.id"
         >
-          <component :is="tab.icon" :size="16" />
+          <component :is="tab.icon" :size="16" class="tab-icon" />
           <span class="tab-label">{{ tab.label }}</span>
         </button>
       </div>
@@ -78,7 +79,6 @@
           </transition>
         </div>
 
-        <span class="version">v0.1.0</span>
       </div>
     </nav>
     <main class="view-main">
@@ -221,6 +221,11 @@ html, body, #app {
   background: hsl(var(--primary) / 0.08);
   color: var(--af-primary);
   font-weight: 500;
+}
+
+.rail-tab.active .tab-icon {
+  color: var(--af-primary);
+  stroke: var(--af-primary);
 }
 
 .tab-label {
@@ -394,8 +399,10 @@ html, body, #app {
 }
 
 .version {
-  font-size: 0.7rem;
-  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--af-muted);
+  font-weight: 400;
+  margin-left: 0.35rem;
 }
 
 .view-main {

@@ -19,11 +19,36 @@
           :class="{ active: sessionId === s.id }"
           @click="switchSession(s.id)"
         >
-          <div class="session-preview">{{ s.preview || 'New session' }}</div>
+          <div v-if="editingSessionId !== s.id" class="session-preview">{{ s.name || s.preview || 'New session' }}</div>
+          <input
+            v-else
+            :data-rename-input="s.id"
+            v-model="editingName"
+            class="session-rename-input"
+            @keydown.enter="commitRename"
+            @keydown.escape="cancelRename"
+            @blur="commitRename"
+            @click.stop
+          />
           <div class="session-meta">
             <span class="session-count">{{ s.message_count }} msgs</span>
             <span class="session-phase" :class="s.phase">{{ s.phase }}</span>
             <span class="session-status" :class="s.status">{{ s.status }}</span>
+            <button
+              v-if="editingSessionId !== s.id"
+              class="session-rename-btn"
+              title="Rename session"
+              @click.stop="startRename(s)"
+            >
+              <Pencil :size="11" />
+            </button>
+            <button
+              class="session-delete-btn"
+              title="Delete session"
+              @click.stop="confirmDelete(s.id)"
+            >
+              <Trash2 :size="12" />
+            </button>
           </div>
         </div>
         <div v-if="sessionList.length === 0" class="session-empty">
@@ -35,11 +60,25 @@
     <!-- Main Chat Area -->
     <div class="furnace-body">
       <div class="furnace-header">
-        <h2>Chat</h2>
-        <div class="header-actions">
+        <div class="header-title-row">
           <button v-if="sidebarCollapsed" class="sidebar-toggle-btn" @click="sidebarCollapsed = false" title="Show sessions">
             <PanelLeft :size="16" />
           </button>
+          <h2>Chat</h2>
+        </div>
+        <div class="header-center">
+          <div v-if="projectName" class="header-project">{{ projectName }}</div>
+          <div class="header-search">
+            <Search :size="13" />
+            <input
+              v-model="chatSearch"
+              type="text"
+              class="search-input"
+              placeholder="Search messages..."
+            />
+          </div>
+        </div>
+        <div class="header-actions">
           <span class="session-badge phase" :class="sessionPhase">
             {{ sessionPhase }}
           </span>
@@ -49,63 +88,83 @@
         </div>
       </div>
       <div class="chat-canvas" ref="chatRef">
-        <div
-          v-for="msg in messages"
-          :key="msg.id"
-          class="message"
-          :class="msg.role"
-        >
-          <div class="message-header">
-            <span class="role-badge" :class="msg.role">{{ msg.role }}</span>
-            <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
-          </div>
-          <div class="message-content">
-            <StreamingRenderer
-              v-if="msg.role === 'assistant' || msg.role === 'system'"
-              :source="msg.content"
-              :streaming="isStreamingMessage(msg)"
-            />
-            <div v-else-if="msg.content">{{ msg.content }}</div>
-          </div>
-          <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
-            <div
-              v-for="tc in msg.tool_calls"
-              :key="tc.id"
-              class="tool-card"
-              :class="tc.status"
-            >
-              <div class="tool-header" @click="tc._expanded = !tc._expanded">
-                <span class="tool-icon">🔧</span>
-                <span class="tool-name">{{ tc.name }}</span>
-                <span class="tool-status" :class="tc.status">{{ tc.status }}</span>
-                <ChevronDown v-if="!tc._expanded" :size="14" class="tool-chevron" />
-                <ChevronUp v-else :size="14" class="tool-chevron" />
+        <div class="chat-inner">
+          <div
+            v-for="msg in filteredMessages"
+            :key="msg.id"
+            class="message"
+            :class="msg.role"
+          >
+            <div class="message-header">
+              <span class="role-badge" :class="msg.role">{{ msg.role }}</span>
+              <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
+            </div>
+            <div class="message-content" :class="{ 'has-border': msg.role === 'assistant' && msg.content.length > 200 }">
+              <StreamingRenderer
+                v-if="msg.role === 'assistant'"
+                :source="msg.content"
+                :streaming="isStreamingMessage(msg)"
+              />
+              <div v-else-if="msg.role === 'system'" class="system-welcome">
+                <span class="welcome-icon">👋</span>
+                <span>Hi! I'm <strong>AutoForge</strong>, a spec-driven AI coding assistant. I'm glad to help you build your next great project!</span>
               </div>
-              <div v-if="tc._expanded" class="tool-body">
-                <div class="tool-section">
-                  <div class="tool-section-title">Arguments</div>
-                  <pre class="tool-code">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+              <div v-else-if="msg.content">{{ msg.content }}</div>
+            </div>
+            <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
+              <div
+                v-for="tc in msg.tool_calls"
+                :key="tc.id"
+                class="tool-card"
+                :class="tc.status"
+              >
+                <div class="tool-header" @click="tc._expanded = !tc._expanded">
+                  <span class="tool-icon">🔧</span>
+                  <span class="tool-name">{{ tc.name }}</span>
+                  <span class="tool-status" :class="tc.status">{{ tc.status }}</span>
+                  <ChevronDown v-if="!tc._expanded" :size="14" class="tool-chevron" />
+                  <ChevronUp v-else :size="14" class="tool-chevron" />
                 </div>
-                <div v-if="tc.result" class="tool-section">
-                  <div class="tool-section-title">Result</div>
-                  <pre class="tool-code result">{{ tc.result }}</pre>
+                <div v-if="tc._expanded" class="tool-body">
+                  <div class="tool-section">
+                    <div class="tool-section-title">Arguments</div>
+                    <pre class="tool-code">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+                  </div>
+                  <div v-if="tc.result" class="tool-section">
+                    <div class="tool-section-title">Result</div>
+                    <pre class="tool-code result">{{ tc.result }}</pre>
+                  </div>
                 </div>
               </div>
             </div>
+            <!-- Message toolbar -->
+            <div v-if="msg.role === 'user'" class="message-toolbar">
+              <button class="toolbar-btn" title="Copy" @click="copyText(msg.content)">
+                <Clipboard :size="13" />
+              </button>
+            </div>
+            <div v-else-if="msg.role === 'assistant'" class="message-toolbar">
+              <button class="toolbar-btn" title="Copy" @click="copyText(msg.content)">
+                <Clipboard :size="13" />
+              </button>
+              <button class="toolbar-btn" title="Regenerate" @click="regenerate(msg)">
+                <RefreshCw :size="13" />
+              </button>
+            </div>
           </div>
-        </div>
-        <div v-if="isLoading && !hasPendingAssistant" class="message assistant pending">
-          <div class="message-header">
-            <span class="role-badge assistant">assistant</span>
+          <div v-if="isLoading && !hasPendingAssistant" class="message assistant pending">
+            <div class="message-header">
+              <span class="role-badge assistant">assistant</span>
+            </div>
+            <div class="message-content">
+              <span class="typing">Thinking</span>
+              <span class="typing-dots">...</span>
+            </div>
           </div>
-          <div class="message-content">
-            <span class="typing">Thinking</span>
-            <span class="typing-dots">...</span>
-          </div>
-        </div>
-        <div v-if="error" class="message error">
-          <div class="message-content error">
-            {{ error }}
+          <div v-if="error" class="message error">
+            <div class="message-content error">
+              {{ error }}
+            </div>
           </div>
         </div>
       </div>
@@ -157,20 +216,41 @@
         </div>
       </div>
       <div v-else class="furnace-input-bar">
-        <textarea
-          v-model="inputText"
-          class="furnace-input"
-          placeholder="Describe what you want to build... (Shift+Enter to send)"
-          :disabled="isLoading"
-          @keydown.shift.enter.prevent="sendMessage"
-        />
-        <button
-          class="send-btn"
-          :disabled="!inputText.trim() || isLoading"
-          @click="sendMessage"
-        >
-          <Send :size="16" />
-        </button>
+        <div class="input-inner">
+          <div class="input-row">
+            <textarea
+              v-model="inputText"
+              class="furnace-input"
+              placeholder="Describe what you want to build... (Shift+Enter to send)"
+              :disabled="isLoading"
+              @keydown.shift.enter.prevent="sendMessage"
+            />
+            <button
+              class="send-btn"
+              :disabled="!inputText.trim() || isLoading"
+              @click="sendMessage"
+            >
+              <Send :size="16" />
+            </button>
+          </div>
+          <div class="input-extras">
+            <div class="model-select-wrap">
+              <Cpu :size="12" />
+              <select v-model="selectedModel" class="model-select" title="Model">
+                <option v-for="m in modelOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
+            <button
+              class="thinking-toggle"
+              :class="{ active: thinkingMode }"
+              @click="thinkingMode = !thinkingMode"
+              title="Toggle thinking mode"
+            >
+              <Lightbulb :size="12" />
+              <span>Thinking</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -178,7 +258,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { Send, ChevronDown, ChevronUp, Plus, PanelLeft, Check, X } from 'lucide-vue-next'
+import {
+  Send, ChevronDown, ChevronUp, Plus, PanelLeft,
+  Check, X, Clipboard, RefreshCw, Lightbulb, Cpu, Search, Trash2, Pencil,
+} from 'lucide-vue-next'
 import { useForge } from '@/composables/useForge'
 import StreamingRenderer from '@/components/StreamingRenderer.vue'
 
@@ -201,10 +284,38 @@ const {
   streamResponse,
   approveSpec,
   rejectSpec,
+  renameSession,
+  deleteSession,
 } = useForge()
 
 const expandedDiffs = ref<Set<string>>(new Set())
 const editedSpecs = ref<Record<string, string>>({})
+const chatSearch = ref('')
+const thinkingMode = ref(false)
+
+const projectName = computed(() => {
+  const path = session.value?.project_path
+  if (!path || path === '.') return null
+  // Extract last dir name from path
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
+  return parts.length > 0 ? parts[parts.length - 1] : null
+})
+const selectedModel = ref('glm-5')
+
+const filteredMessages = computed(() => {
+  const q = chatSearch.value.trim().toLowerCase()
+  if (!q) return messages.value
+  return messages.value.filter((m) =>
+    m.content.toLowerCase().includes(q) ||
+    m.role.toLowerCase().includes(q)
+  )
+})
+const modelOptions = [
+  { value: 'glm-5', label: 'GLM-5' },
+  { value: 'glm-5.1', label: 'GLM-5.1' },
+  { value: 'glm-5-turbo', label: 'GLM-5 Turbo' },
+  { value: 'glm-4.7', label: 'GLM-4.7' },
+]
 
 function toggleDiff(sectionId: string) {
   if (expandedDiffs.value.has(sectionId)) {
@@ -214,7 +325,6 @@ function toggleDiff(sectionId: string) {
   }
 }
 
-// Initialize edited specs when pending changes arrive
 watch(pendingSpecChanges, (changes) => {
   for (const change of changes) {
     if (!(change.section_id in editedSpecs.value)) {
@@ -223,9 +333,15 @@ watch(pendingSpecChanges, (changes) => {
   }
 }, { immediate: true })
 
+const CHAT_SIDEBAR_KEY = 'autoforge-chat-sidebar-collapsed'
+
 const inputText = ref('')
 const chatRef = ref<HTMLDivElement>()
-const sidebarCollapsed = ref(false)
+const sidebarCollapsed = ref(localStorage.getItem(CHAT_SIDEBAR_KEY) === 'true')
+
+watch(sidebarCollapsed, (v) => {
+  localStorage.setItem(CHAT_SIDEBAR_KEY, String(v))
+})
 
 const hasPendingAssistant = computed(() => {
   return messages.value.some((m) => m.role === 'assistant' && m.content === '' && !m.tool_calls?.length)
@@ -266,12 +382,65 @@ async function sendMessage() {
 
 async function handleApprove() {
   await approveSpec(editedSpecs.value)
-  // After approval, trigger execution stream
   await streamResponse()
 }
 
 async function handleReject() {
   await rejectSpec()
+}
+
+const editingSessionId = ref<string | null>(null)
+const editingName = ref('')
+
+function startRename(s: { id: string; name?: string; preview: string }) {
+  editingSessionId.value = s.id
+  editingName.value = s.name || s.preview
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>(`[data-rename-input="${s.id}"]`)
+    el?.focus()
+    el?.select()
+  })
+}
+
+async function commitRename() {
+  const sid = editingSessionId.value
+  if (!sid) return
+  const name = editingName.value.trim()
+  if (name) {
+    await renameSession(sid, name)
+  }
+  editingSessionId.value = null
+  editingName.value = ''
+}
+
+function cancelRename() {
+  editingSessionId.value = null
+  editingName.value = ''
+}
+
+async function confirmDelete(sid: string) {
+  const ok = confirm('Delete this session? All messages and memory will be lost.')
+  if (!ok) return
+  await deleteSession(sid)
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // fallback
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
+}
+
+function regenerate(_msg: typeof messages.value[number]) {
+  // TODO: wire up to backend regenerate endpoint
+  alert('Regenerate: not yet implemented')
 }
 
 onMounted(async () => {
@@ -314,6 +483,7 @@ onMounted(async () => {
   gap: 0.35rem;
   padding: 0.75rem 1rem;
   flex-shrink: 0;
+  height: 48px;
 }
 
 .sidebar-title {
@@ -323,6 +493,7 @@ onMounted(async () => {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   flex: 1;
+  line-height: 1;
 }
 
 .sidebar-new-btn,
@@ -392,6 +563,55 @@ onMounted(async () => {
   margin-top: 0.2rem;
 }
 
+.session-rename-btn,
+.session-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--af-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.session-rename-btn {
+  margin-left: auto;
+}
+
+.session-item:hover .session-rename-btn,
+.session-item:hover .session-delete-btn {
+  opacity: 1;
+}
+
+.session-rename-btn:hover {
+  background: hsl(var(--muted-foreground) / 0.08);
+  color: var(--af-fg);
+}
+
+.session-delete-btn:hover {
+  background: hsl(var(--af-error) / 0.1);
+  color: hsl(var(--af-error));
+}
+
+.session-rename-input {
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--af-fg);
+  background: hsl(var(--muted-foreground) / 0.06);
+  border: 1px solid hsl(var(--primary) / 0.35);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  outline: none;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
 .session-count {
   font-size: 0.65rem;
   color: var(--af-muted);
@@ -436,14 +656,77 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 1.25rem;
+  padding: 0.75rem 1rem;
   flex-shrink: 0;
+  height: 48px;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  width: 80px;
 }
 
 .furnace-header h2 {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 500;
+  color: var(--af-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.header-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  flex: 1;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.header-project {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--af-primary);
+  line-height: 1;
+}
+
+.header-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0.75rem;
+  background: hsl(var(--muted-foreground) / 0.06);
+  border: 1px solid hsl(var(--muted-foreground) / 0.12);
+  border-radius: 6px;
+  color: var(--af-muted);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.header-search:focus-within {
+  border-color: hsl(var(--primary) / 0.35);
+  background: hsl(var(--muted-foreground) / 0.04);
+}
+
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
   color: var(--af-fg);
+  font-size: 0.85rem;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.search-input::placeholder {
+  color: var(--af-muted);
+  font-size: 0.8rem;
 }
 
 .header-actions {
@@ -467,21 +750,29 @@ onMounted(async () => {
 .chat-canvas {
   flex: 1;
   overflow-y: auto;
-  padding: 0.75rem 1.25rem;
+  padding: 0.75rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+}
+
+.chat-inner {
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .message {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  max-width: 85%;
 }
 
 .message.user {
   align-self: flex-end;
+  max-width: 85%;
 }
 
 .message.assistant,
@@ -527,6 +818,52 @@ onMounted(async () => {
   padding: 0.25rem 0;
 }
 
+/* Override markstream-vue heading sizes to match body text scale */
+.message-content :deep(.markstream-vue) {
+  --ms-text-body: 0.9rem;
+}
+
+.message-content :deep(h1),
+.message-content :deep(h2),
+.message-content :deep(h3),
+.message-content :deep(h4) {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+  line-height: 1.4;
+}
+
+.message-content :deep(p) {
+  margin: 0.35rem 0;
+}
+
+.message-content :deep(ul),
+.message-content :deep(ol) {
+  margin: 0.35rem 0;
+  padding-left: 1.25rem;
+}
+
+.message-content :deep(li) {
+  margin: 0.15rem 0;
+}
+
+.message-content :deep(pre) {
+  margin: 0.5rem 0;
+}
+
+.message-content :deep(hr) {
+  margin: 0.75rem 0;
+  border: none;
+  border-top: 1px solid var(--af-border);
+}
+
+.message-content.has-border {
+  border-top: 1px solid var(--af-border);
+  border-bottom: 1px solid var(--af-border);
+  padding: 0.5rem 0;
+  margin: 0.25rem 0;
+}
+
 .message-content.error {
   color: hsl(var(--af-error));
   font-size: 0.85rem;
@@ -537,12 +874,58 @@ onMounted(async () => {
   border-radius: 12px;
   padding: 0.6rem 0.9rem;
   max-width: 100%;
+  font-size: 0.9rem;
 }
 
 .message.system .message-content {
-  font-style: italic;
-  color: var(--af-muted);
   font-size: 0.85rem;
+}
+
+.system-welcome {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--af-muted);
+  line-height: 1.5;
+}
+
+.welcome-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+/* ─── Message Toolbar ─────────────────────────────────────────────────────── */
+
+.message-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.1rem 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.message:hover .message-toolbar {
+  opacity: 1;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--af-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toolbar-btn:hover {
+  background: hsl(var(--muted-foreground) / 0.08);
+  color: var(--af-fg);
 }
 
 /* ─── Tool Cards ──────────────────────────────────────────────────────────── */
@@ -552,7 +935,6 @@ onMounted(async () => {
   flex-direction: column;
   gap: 0.35rem;
   margin-top: 0.15rem;
-  padding-left: 0;
 }
 
 .tool-card {
@@ -656,10 +1038,24 @@ onMounted(async () => {
 
 .furnace-input-bar {
   display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
-  padding: 0.6rem 1.25rem 0.9rem;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.6rem 1rem 0.75rem;
   flex-shrink: 0;
+}
+
+.input-inner {
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .furnace-input {
@@ -671,8 +1067,8 @@ onMounted(async () => {
   color: var(--af-fg);
   font-size: 0.9rem;
   resize: none;
-  min-height: 40px;
-  max-height: 120px;
+  min-height: 80px;
+  max-height: 180px;
   outline: none;
   font-family: inherit;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
@@ -718,6 +1114,70 @@ onMounted(async () => {
 .send-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.input-extras {
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+}
+
+.thinking-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--af-border);
+  border-radius: 12px;
+  color: var(--af-muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.thinking-toggle:hover {
+  background: hsl(var(--muted-foreground) / 0.05);
+  color: var(--af-fg);
+}
+
+.thinking-toggle.active {
+  background: hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary) / 0.25);
+  color: var(--af-primary);
+}
+
+.model-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--af-border);
+  border-radius: 12px;
+  color: var(--af-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.model-select-wrap:hover {
+  background: hsl(var(--muted-foreground) / 0.05);
+  color: var(--af-fg);
+}
+
+.model-select {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  padding-right: 0.2rem;
 }
 
 /* ─── Phase Badge ─────────────────────────────────────────────────────────── */

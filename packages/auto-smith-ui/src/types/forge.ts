@@ -48,6 +48,7 @@ export interface ForgeSessionSummary {
   id: string
   status: 'idle' | 'thinking' | 'tool_call' | 'waiting_approval' | 'error'
   phase: 'intake' | 'spec_draft' | 'spec_review' | 'execution' | 'verification'
+  name?: string
   preview: string
   message_count: number
   last_activity: number

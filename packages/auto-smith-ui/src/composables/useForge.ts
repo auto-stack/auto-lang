@@ -276,6 +276,42 @@ export function useForge() {
     }
   }
 
+  async function renameSession(sid: string, name: string) {
+    try {
+      const resp = await fetch(`${API_BASE}/forge/session/${sid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!resp.ok) throw new Error(`Failed to rename session: ${resp.status}`)
+      await loadSessionList()
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      return false
+    }
+  }
+
+  async function deleteSession(sid: string) {
+    try {
+      const resp = await fetch(`${API_BASE}/forge/session/${sid}`, {
+        method: 'DELETE',
+      })
+      if (!resp.ok) throw new Error(`Failed to delete session: ${resp.status}`)
+      // If we deleted the current session, clear local state
+      if (sessionId.value === sid) {
+        session.value = null
+        messages.value = []
+        localStorage.removeItem(STORAGE_KEY)
+      }
+      await loadSessionList()
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      return false
+    }
+  }
+
   return {
     session,
     messages,
@@ -298,5 +334,7 @@ export function useForge() {
     streamResponse,
     approveSpec,
     rejectSpec,
+    renameSession,
+    deleteSession,
   }
 }
