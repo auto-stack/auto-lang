@@ -11,7 +11,7 @@ fn main() {
     let ch = unbounded();
     let tx = ch.sender;
     let rx = ch.receiver;
-    thread::spawn(|_| { tx.send("hello").unwrap(); tx.send("world").unwrap(); });
+    thread::spawn(move |_| { tx.send("hello").unwrap(); tx.send("world").unwrap(); });
     for msg in rx {
         println!("Received: {}", msg);
         if msg == "world" {

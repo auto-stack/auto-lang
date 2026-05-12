@@ -5,11 +5,8 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use std::env;
-use std::fs;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let config_path = a2r_std::env::get_or("CONFIG", "/etc/myapp/config");
-    let config = a2r_std::fs::read_to_string(config_path.as_str())?;
+    let config = File::read_text(config_path);
     println!("Config: {}", config);
-    Ok(())
 }

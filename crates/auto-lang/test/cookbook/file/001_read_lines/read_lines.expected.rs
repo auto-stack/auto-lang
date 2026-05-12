@@ -5,10 +5,9 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = File::write_text("lines.txt", "Rust\nFun\nAuto")?;
-    let data = File::read_bytes("lines.txt")?;
-    println!("Read {} bytes", (data.len() as i32));
-    let _ = File::delete("lines.txt")?;
-    Ok(())
+fn main() {
+    File::write_text("lines.txt", "Rust\nFun\nAuto");
+    let data = File::read_text("lines.txt");
+    println!("Read {} chars", (data.len() as i32));
+    File::delete("lines.txt");
 }

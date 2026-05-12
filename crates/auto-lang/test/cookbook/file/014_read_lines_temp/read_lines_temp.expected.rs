@@ -6,13 +6,13 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use std::fs;
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let content: String = "line1\nline2\nline3".to_string();
     let path: String = "test_temp.txt".to_string();
-    a2r_std::fs::write(path.as_str(), content.as_str())?;
-    let lines = a2r_std::fs::read_to_string(path.as_str())?;
+    File::write_text(path.as_str(), content.as_str());
+    let lines = File::read_text(path.as_str());
     for line in lines.lines() {
         println!("Line: {}", line);
     }
-    fs::remove_file(path.as_str())?
+    File::delete(path.as_str());
 }
