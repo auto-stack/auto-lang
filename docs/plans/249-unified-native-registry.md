@@ -149,9 +149,14 @@ codegen.rs 和 engine.rs 中各保留一个 `lookup_opaque_dispatch(type_name, m
 - 将 `register_in_bigvm!` 接入 `register_builtin_natives()`
 - 替换 ~505 次 `register_with_id()` / `register_with_id_and_type()` 调用
 
-### Phase 4: Opaque Dispatch 合并（待做）
-- 提取 `OPAQUE_DISPATCH` 静态表
-- 替换 codegen.rs 中 4 处 + engine.rs 中 1 处 match 块
+### Phase 4: Opaque Dispatch 合并 ✅ DONE
+- ✅ 在 `native_catalog.rs` 中提取 `OPAQUE_DISPATCH_*` 静态常量表（regex/url/semver/chrono/base64/hex/sha2/mime）
+- ✅ 实现 `lookup_opaque_dispatch(type_key, method)` 函数 — codegen 编译时查找
+- ✅ 实现 `lookup_opaque_dispatch_by_type(type_name, method)` 函数 — engine 运行时查找（按类型名子串匹配，仅实例方法）
+- ✅ 替换 codegen.rs 中 2 处 dispatch match 块（has_regex/has_url/has_version + fallback crate_name）
+- ✅ 替换 engine.rs 中 1 处 dispatch match 块（50+ 行 → 1 行函数调用）
+- ✅ `cargo build --bin auto` 编译通过
+- ✅ `cargo test -p auto-lang --lib -- vm::` — 320 passed
 
 ### Phase 5: 清理（待做）
 - 将 alias `register_name()` 调用迁入 catalog

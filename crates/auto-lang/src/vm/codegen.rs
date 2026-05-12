@@ -5459,45 +5459,21 @@ impl Codegen {
                         let has_regex = !is_module_call && (fname.contains("Regex") || fname.contains("regex"));
                         let has_url = !is_module_call && (fname.contains("Url") || fname.contains("url"));
                         let has_version = !is_module_call && fname.contains("Version") && !fname.contains("VersionReq");
-                        // Regex methods
+                        // Plan 249 Phase 4: Unified opaque dispatch via native_catalog
+                        use crate::vm::native_catalog::lookup_opaque_dispatch;
                         if has_regex {
-                            match method.as_str() {
-                                "new" => func_name = Some("auto.re_opaque.new".to_string()),
-                                "is_match" => func_name = Some("auto.re_opaque.is_match".to_string()),
-                                "find" => func_name = Some("auto.re_opaque.find".to_string()),
-                                "find_iter" | "find_all" => func_name = Some("auto.re_opaque.find_all".to_string()),
-                                "replace_all" => func_name = Some("auto.re_opaque.replace_all".to_string()),
-                                "captures" => func_name = Some("auto.re_opaque.captures".to_string()),
-                                _ => {}
+                            if let Some(native) = lookup_opaque_dispatch("regex", method.as_str()) {
+                                func_name = Some(native.to_string());
                             }
                         }
-                        // Url methods
                         if has_url {
-                            match method.as_str() {
-                                "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
-                                "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
-                                "host" | "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
-                                "path" => func_name = Some("auto.url_opaque.path".to_string()),
-                                "query" => func_name = Some("auto.url_opaque.query".to_string()),
-                                "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
-                                "port" => func_name = Some("auto.url_opaque.port".to_string()),
-                                "query_pairs" | "query_params" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
-                                "to_string" => func_name = Some("auto.url_opaque.to_string".to_string()),
-                                "join" => func_name = Some("auto.url_opaque.join".to_string()),
-                                "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
-                                _ => {}
+                            if let Some(native) = lookup_opaque_dispatch("url", method.as_str()) {
+                                func_name = Some(native.to_string());
                             }
                         }
-                        // Version methods
                         if has_version {
-                            match method.as_str() {
-                                "parse" => func_name = Some("auto.semver_opaque.parse".to_string()),
-                                "major" => func_name = Some("auto.semver_opaque.major".to_string()),
-                                "minor" => func_name = Some("auto.semver_opaque.minor".to_string()),
-                                "patch" => func_name = Some("auto.semver_opaque.patch".to_string()),
-                                "pre" => func_name = Some("auto.semver_opaque.pre".to_string()),
-                                "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
-                                _ => {}
+                            if let Some(native) = lookup_opaque_dispatch("semver", method.as_str()) {
+                                func_name = Some(native.to_string());
                             }
                         }
                         // Fallback: var.method where var was assigned from an opaque constructor
@@ -5511,76 +5487,12 @@ impl Codegen {
                                         .map(|(cn, _)| cn.as_str())
                                 })
                                 .unwrap_or("");
-                            match crate_name {
-                                "regex" => match method.as_str() {
-                                    "new" => func_name = Some("auto.re_opaque.new".to_string()),
-                                    "is_match" => func_name = Some("auto.re_opaque.is_match".to_string()),
-                                    "find" => func_name = Some("auto.re_opaque.find".to_string()),
-                                    "replace_all" => func_name = Some("auto.re_opaque.replace_all".to_string()),
-                                    "captures" => func_name = Some("auto.re_opaque.captures".to_string()),
-                                    _ => {}
-                                },
-                                "url" => match method.as_str() {
-                                    "parse" => func_name = Some("auto.url_opaque.parse".to_string()),
-                                    "scheme" => func_name = Some("auto.url_opaque.scheme".to_string()),
-                                    "host" | "host_str" => func_name = Some("auto.url_opaque.host_str".to_string()),
-                                    "path" => func_name = Some("auto.url_opaque.path".to_string()),
-                                    "query" => func_name = Some("auto.url_opaque.query".to_string()),
-                                    "fragment" => func_name = Some("auto.url_opaque.fragment".to_string()),
-                                    "port" => func_name = Some("auto.url_opaque.port".to_string()),
-                                    "query_pairs" | "query_params" => func_name = Some("auto.url_opaque.query_pairs".to_string()),
-                                    "to_string" => func_name = Some("auto.url_opaque.to_string".to_string()),
-                                    "join" => func_name = Some("auto.url_opaque.join".to_string()),
-                                    "origin" => func_name = Some("auto.url_opaque.origin".to_string()),
-                                    _ => {}
-                                },
-                                "semver" => match method.as_str() {
-                                    "parse" => func_name = Some("auto.semver_opaque.parse".to_string()),
-                                    "major" => func_name = Some("auto.semver_opaque.major".to_string()),
-                                    "minor" => func_name = Some("auto.semver_opaque.minor".to_string()),
-                                    "patch" => func_name = Some("auto.semver_opaque.patch".to_string()),
-                                    "pre" => func_name = Some("auto.semver_opaque.pre".to_string()),
-                                    "to_string" => func_name = Some("auto.semver_opaque.to_string".to_string()),
-                                    _ => {}
-                                },
-                                "chrono" => match method.as_str() {
-                                    "now" => func_name = Some("auto.chrono_opaque.local_now".to_string()),
-                                    "year" => func_name = Some("auto.chrono_opaque.year".to_string()),
-                                    "month" => func_name = Some("auto.chrono_opaque.month".to_string()),
-                                    "day" => func_name = Some("auto.chrono_opaque.day".to_string()),
-                                    "hour" => func_name = Some("auto.chrono_opaque.hour".to_string()),
-                                    "minute" => func_name = Some("auto.chrono_opaque.minute".to_string()),
-                                    "second" => func_name = Some("auto.chrono_opaque.second".to_string()),
-                                    "timestamp" => func_name = Some("auto.chrono_opaque.timestamp".to_string()),
-                                    "format" => func_name = Some("auto.chrono_opaque.format".to_string()),
-                                    _ => {}
-                                },
-                                "base64" => match method.as_str() {
-                                    "encode" => func_name = Some("auto.base64.encode".to_string()),
-                                    "decode" => func_name = Some("auto.base64.decode".to_string()),
-                                    _ => {}
-                                },
-                                "hex" => match method.as_str() {
-                                    "encode" => func_name = Some("auto.hex.encode".to_string()),
-                                    "decode" => func_name = Some("auto.hex.decode".to_string()),
-                                    _ => {}
-                                },
-                                "sha2" => match method.as_str() {
-                                    "new" => func_name = Some("auto.sha2_opaque.sha256_new".to_string()),
-                                    "update" => func_name = Some("auto.sha2_opaque.update".to_string()),
-                                    "finalize" => func_name = Some("auto.sha2_opaque.finalize".to_string()),
-                                    _ => {}
-                                },
-                                "mime_guess" => match method.as_str() {
-                                    "from_path" => func_name = Some("auto.mime.from_path".to_string()),
-                                    _ => {}
-                                },
-                                // Plan 240: std::time::Instant + std::cell::OnceCell + std::fs::File methods
-                                "std" => match method.as_str() {
+                            // Plan 249 Phase 4: Unified opaque dispatch
+                            if crate_name == "std" {
+                                match method.as_str() {
                                     "now" => func_name = Some("auto.time.instant_now".to_string()),
                                     "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
                                     "new" => {
-                                        // Disambiguate: OnceCell.new vs Instant.new vs other std types
                                         if fname.starts_with("OnceCell") {
                                             func_name = Some("auto.cell.once_new".to_string());
                                         }
@@ -5592,13 +5504,13 @@ impl Codegen {
                                     "write" => func_name = Some("auto.file.write_handle".to_string()),
                                     "try_clone" => func_name = Some("auto.file.try_clone".to_string()),
                                     _ => {}
-                                },
-                                _ => {
-                                    // Plan 240: Fallback routing by method name for known stdlib patterns
-                                    match method.as_str() {
-                                        "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
-                                        _ => {}
-                                    }
+                                }
+                            } else if let Some(native) = lookup_opaque_dispatch(crate_name, method.as_str()) {
+                                func_name = Some(native.to_string());
+                            } else {
+                                match method.as_str() {
+                                    "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
+                                    _ => {}
                                 }
                             }
                         }

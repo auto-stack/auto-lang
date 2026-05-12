@@ -4087,60 +4087,8 @@ impl AutoVM {
                     // (constructors already handle errors by raising VMError)
                     let is_identity_unwrap = method_name == "unwrap" || method_name == "expect";
 
-                    // Plan 212 Phase 2.2: Route opaque type methods to native shims
-                    // Regex::is_match -> auto.re_opaque.is_match, etc.
-                    let opaque_native_name = if type_name.contains("regex::Regex") || type_name.contains("Regex") {
-                        match method_name.as_str() {
-                            "is_match" => Some("auto.re_opaque.is_match"),
-                            "find" => Some("auto.re_opaque.find"),
-                            "find_iter" | "find_all" => Some("auto.re_opaque.find_all"),
-                            "replace_all" => Some("auto.re_opaque.replace_all"),
-                            "captures" => Some("auto.re_opaque.captures"),
-                            _ => None,
-                        }
-                    } else if type_name.contains("url::Url") || type_name.contains("Url") {
-                        match method_name.as_str() {
-                            "scheme" => Some("auto.url_opaque.scheme"),
-                            "host" | "host_str" => Some("auto.url_opaque.host_str"),
-                            "path" => Some("auto.url_opaque.path"),
-                            "query" => Some("auto.url_opaque.query"),
-                            "fragment" => Some("auto.url_opaque.fragment"),
-                            "port" => Some("auto.url_opaque.port"),
-                            "query_pairs" | "query_params" => Some("auto.url_opaque.query_pairs"),
-                            "join" => Some("auto.url_opaque.join"),
-                            "origin" => Some("auto.url_opaque.origin"),
-                            "to_string" => Some("auto.url_opaque.to_string"),
-                            _ => None,
-                        }
-                    } else if type_name.contains("semver::Version") || (type_name.contains("Version") && !type_name.contains("VersionReq")) {
-                        match method_name.as_str() {
-                            "major" => Some("auto.semver_opaque.major"),
-                            "minor" => Some("auto.semver_opaque.minor"),
-                            "patch" => Some("auto.semver_opaque.patch"),
-                            "pre" => Some("auto.semver_opaque.pre"),
-                            "to_string" => Some("auto.semver_opaque.to_string"),
-                            _ => None,
-                        }
-                    } else if type_name.contains("Instant") || type_name.contains("std::time::Instant") {
-                        match method_name.as_str() {
-                            "elapsed" => Some("auto.time.instant_elapsed"),
-                            _ => None,
-                        }
-                    } else if type_name.contains("OnceCell") || type_name.contains("std::cell::OnceCell") {
-                        match method_name.as_str() {
-                            "get" => Some("auto.cell.once_get"),
-                            "set" => Some("auto.cell.once_set"),
-                            _ => None,
-                        }
-                    } else if type_name.contains("std::fs::File") || type_name.contains("FileWriter") {
-                        match method_name.as_str() {
-                            "write" => Some("auto.file.write_handle"),
-                            "try_clone" => Some("auto.file.try_clone"),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    };
+                    // Plan 249 Phase 4: Unified opaque dispatch via native_catalog
+                    let opaque_native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name.as_str(), method_name.as_str());
 
                     // Resolve opaque native shim
                     let opaque_native_id = opaque_native_name

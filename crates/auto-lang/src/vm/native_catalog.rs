@@ -314,3 +314,161 @@ macro_rules! bind_shims {
     };
     () => {};
 }
+
+// Plan 249 Phase 4: Unified opaque method dispatch table.
+// Each entry: (method_name, canonical_native_name).
+// Used by both codegen.rs (compile-time) and engine.rs (runtime).
+// Constructors (new, parse, now) are included — callers decide whether to filter.
+
+/// Returns the canonical native function name for an opaque type + method,
+/// or None if not found.
+/// `type_key` is the crate/module name: "regex", "url", "semver", "chrono",
+/// "base64", "hex", "sha2", "mime_guess", "std".
+pub fn lookup_opaque_dispatch(type_key: &str, method: &str) -> Option<&'static str> {
+    let entries = match type_key {
+        "regex" => &OPAQUE_DISPATCH_REGEX[..],
+        "url" => &OPAQUE_DISPATCH_URL[..],
+        "semver" => &OPAQUE_DISPATCH_SEMVER[..],
+        "chrono" => &OPAQUE_DISPATCH_CHRONO[..],
+        "base64" => &OPAQUE_DISPATCH_BASE64[..],
+        "hex" => &OPAQUE_DISPATCH_HEX[..],
+        "sha2" => &OPAQUE_DISPATCH_SHA2[..],
+        "mime_guess" => &OPAQUE_DISPATCH_MIME[..],
+        _ => return None,
+    };
+    for &(m, native) in entries {
+        if m == method {
+            return Some(native);
+        }
+    }
+    None
+}
+
+/// Runtime opaque dispatch by heap object type name.
+/// Matches substrings in the type name (e.g., "regex::Regex", "Url").
+/// Returns only instance methods (no constructors).
+pub fn lookup_opaque_dispatch_by_type(type_name: &str, method: &str) -> Option<&'static str> {
+    let entries: &[(&[&str], &[(&str, &str)])] = &[
+        (&["regex::Regex", "Regex"], &OPAQUE_DISPATCH_REGEX_METHODS),
+        (&["url::Url", "Url"], &OPAQUE_DISPATCH_URL_METHODS),
+        (&["semver::Version"], &OPAQUE_DISPATCH_SEMVER_METHODS),
+        (&["Instant", "std::time::Instant"], &[("elapsed", "auto.time.instant_elapsed")]),
+        (&["OnceCell", "std::cell::OnceCell"], &[("get", "auto.cell.once_get"), ("set", "auto.cell.once_set")]),
+        (&["std::fs::File", "FileWriter"], &[("write", "auto.file.write_handle"), ("try_clone", "auto.file.try_clone")]),
+    ];
+    for &(type_patterns, methods) in entries {
+        if type_patterns.iter().any(|p| type_name.contains(p)) {
+            for &(m, native) in methods {
+                if m == method {
+                    return Some(native);
+                }
+            }
+        }
+    }
+    None
+}
+
+// Per-type dispatch tables: (method_name, canonical_native_name)
+// Includes both constructors and methods — callers filter as needed.
+
+const OPAQUE_DISPATCH_REGEX: &[(&str, &str)] = &[
+    ("new", "auto.re_opaque.new"),
+    ("is_match", "auto.re_opaque.is_match"),
+    ("find", "auto.re_opaque.find"),
+    ("find_iter", "auto.re_opaque.find_all"),
+    ("find_all", "auto.re_opaque.find_all"),
+    ("replace_all", "auto.re_opaque.replace_all"),
+    ("captures", "auto.re_opaque.captures"),
+];
+
+/// Regex instance methods only (no constructors) — for runtime dispatch.
+const OPAQUE_DISPATCH_REGEX_METHODS: &[(&str, &str)] = &[
+    ("is_match", "auto.re_opaque.is_match"),
+    ("find", "auto.re_opaque.find"),
+    ("find_iter", "auto.re_opaque.find_all"),
+    ("find_all", "auto.re_opaque.find_all"),
+    ("replace_all", "auto.re_opaque.replace_all"),
+    ("captures", "auto.re_opaque.captures"),
+];
+
+const OPAQUE_DISPATCH_URL: &[(&str, &str)] = &[
+    ("parse", "auto.url_opaque.parse"),
+    ("scheme", "auto.url_opaque.scheme"),
+    ("host", "auto.url_opaque.host_str"),
+    ("host_str", "auto.url_opaque.host_str"),
+    ("path", "auto.url_opaque.path"),
+    ("query", "auto.url_opaque.query"),
+    ("fragment", "auto.url_opaque.fragment"),
+    ("port", "auto.url_opaque.port"),
+    ("query_pairs", "auto.url_opaque.query_pairs"),
+    ("query_params", "auto.url_opaque.query_pairs"),
+    ("to_string", "auto.url_opaque.to_string"),
+    ("join", "auto.url_opaque.join"),
+    ("origin", "auto.url_opaque.origin"),
+];
+
+/// URL instance methods only (no constructors) — for runtime dispatch.
+const OPAQUE_DISPATCH_URL_METHODS: &[(&str, &str)] = &[
+    ("scheme", "auto.url_opaque.scheme"),
+    ("host", "auto.url_opaque.host_str"),
+    ("host_str", "auto.url_opaque.host_str"),
+    ("path", "auto.url_opaque.path"),
+    ("query", "auto.url_opaque.query"),
+    ("fragment", "auto.url_opaque.fragment"),
+    ("port", "auto.url_opaque.port"),
+    ("query_pairs", "auto.url_opaque.query_pairs"),
+    ("query_params", "auto.url_opaque.query_pairs"),
+    ("join", "auto.url_opaque.join"),
+    ("origin", "auto.url_opaque.origin"),
+    ("to_string", "auto.url_opaque.to_string"),
+];
+
+const OPAQUE_DISPATCH_SEMVER: &[(&str, &str)] = &[
+    ("parse", "auto.semver_opaque.parse"),
+    ("major", "auto.semver_opaque.major"),
+    ("minor", "auto.semver_opaque.minor"),
+    ("patch", "auto.semver_opaque.patch"),
+    ("pre", "auto.semver_opaque.pre"),
+    ("to_string", "auto.semver_opaque.to_string"),
+];
+
+/// Semver instance methods only — for runtime dispatch.
+const OPAQUE_DISPATCH_SEMVER_METHODS: &[(&str, &str)] = &[
+    ("major", "auto.semver_opaque.major"),
+    ("minor", "auto.semver_opaque.minor"),
+    ("patch", "auto.semver_opaque.patch"),
+    ("pre", "auto.semver_opaque.pre"),
+    ("to_string", "auto.semver_opaque.to_string"),
+];
+
+const OPAQUE_DISPATCH_CHRONO: &[(&str, &str)] = &[
+    ("now", "auto.chrono_opaque.local_now"),
+    ("year", "auto.chrono_opaque.year"),
+    ("month", "auto.chrono_opaque.month"),
+    ("day", "auto.chrono_opaque.day"),
+    ("hour", "auto.chrono_opaque.hour"),
+    ("minute", "auto.chrono_opaque.minute"),
+    ("second", "auto.chrono_opaque.second"),
+    ("timestamp", "auto.chrono_opaque.timestamp"),
+    ("format", "auto.chrono_opaque.format"),
+];
+
+const OPAQUE_DISPATCH_BASE64: &[(&str, &str)] = &[
+    ("encode", "auto.base64.encode"),
+    ("decode", "auto.base64.decode"),
+];
+
+const OPAQUE_DISPATCH_HEX: &[(&str, &str)] = &[
+    ("encode", "auto.hex.encode"),
+    ("decode", "auto.hex.decode"),
+];
+
+const OPAQUE_DISPATCH_SHA2: &[(&str, &str)] = &[
+    ("new", "auto.sha2_opaque.sha256_new"),
+    ("update", "auto.sha2_opaque.update"),
+    ("finalize", "auto.sha2_opaque.finalize"),
+];
+
+const OPAQUE_DISPATCH_MIME: &[(&str, &str)] = &[
+    ("from_path", "auto.mime.from_path"),
+];
