@@ -60,7 +60,7 @@
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
           </div>
           <div class="message-content">
-            <MarkdownRenderer
+            <StreamingRenderer
               v-if="msg.role === 'assistant' || msg.role === 'system'"
               :source="msg.content"
               :streaming="isStreamingMessage(msg)"
@@ -150,7 +150,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { Send, ChevronDown, ChevronUp, Plus, PanelLeft, Check, X } from 'lucide-vue-next'
 import { useForge } from '@/composables/useForge'
-import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
+import StreamingRenderer from '@/components/StreamingRenderer.vue'
 
 const {
   session,
