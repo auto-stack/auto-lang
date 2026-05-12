@@ -165,9 +165,16 @@ codegen.rs 和 engine.rs 中各保留一个 `lookup_opaque_dispatch(type_name, m
 - ✅ `cargo build --bin auto` 编译通过
 - ✅ `cargo test -p auto-lang --lib -- vm::` — 320 passed
 
-### Phase 5: 清理（待做）
-- 将 alias `register_name()` 调用迁入 catalog
-- 删除不再需要的手动注册代码
+### Phase 5: 清理 ✅ DONE
+- ✅ 扩展 `for_each_native!` entry 格式为四元组：`(ID, CONST_NAME, shim_fn, "canonical.name")`
+- ✅ 更新 `gen_native_constants!` 和 `bind_shims!` 消费者宏适配新格式
+- ✅ 添加 `__register_names` 本地宏，自动生成 `register_name()` 调用
+- ✅ 替换 ~120 条手动 `register_name()` 调用为单行 `for_each_native!(__register_names)`
+- ✅ 仅保留 8 条别名映射（1-to-N 关系）为手动
+- ✅ 删除冗余的 url_opaque BIGVM 手动注册块
+- ✅ `cargo build --bin auto` — 0 errors
+- ✅ `cargo test -p auto-lang --lib -- vm::` — 320 passed
+- ✅ Cookbook E2E 冒烟测试通过（JSON/Base64/Hex/Regex/URL/Semver/Chrono）
 
 ## Verification
 

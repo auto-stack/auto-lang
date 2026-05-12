@@ -265,7 +265,7 @@ impl NativeInterface {
         // We define a local macro to consume for_each_native! because #[macro_export]
         // macros cannot use `self` (hygiene restriction). Local macros have no such issue.
         macro_rules! __register_shims {
-            (($id:expr, $name:ident, $fn:ident) $(, $rest:tt)*) => {
+            (($id:expr, $name:ident, $fn:ident, $canonical:expr) $(, $rest:tt)*) => {
                 self.register($name, $fn);
                 __register_shims!($($rest),*);
             };
@@ -273,194 +273,28 @@ impl NativeInterface {
         }
         for_each_native!(__register_shims);
 
-        // --- Canonical name aliases for CALL_SPEC fallback ---
-        // These remain manual: alias mappings have complex 1-to-N relationships
-        // that don't fit the simple 1-to-1 catalog entry format.
+        // Plan 249 Phase 5: Canonical name → ID mappings for CALL_SPEC fallback.
+        // Generated from the same catalog as shim bindings (4th field = canonical name).
+        {
+            macro_rules! __register_names {
+                (($id:expr, $name:ident, $fn:ident, $canonical:expr) $(, $rest:tt)*) => {
+                    self.register_name($canonical, $name);
+                    __register_names!($($rest),*);
+                };
+                () => {};
+            }
+            for_each_native!(__register_names);
+        }
 
-        // Result.map_err has multiple aliases for Ok/Err variants
+        // --- Extra aliases (1-to-N mappings, not in catalog) ---
         self.register_name("Result.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Ok.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Err.map_err", NATIVE_RESULT_MAP_ERR);
-
-        // List methods
-        self.register_name("auto.list.new", NATIVE_LIST_NEW);
-        self.register_name("auto.list.push", NATIVE_LIST_PUSH);
-        self.register_name("auto.list.pop", NATIVE_LIST_POP);
-        self.register_name("auto.list.len", NATIVE_LIST_LEN);
-        self.register_name("auto.list.is_empty", NATIVE_LIST_IS_EMPTY);
-        self.register_name("auto.list.clear", NATIVE_LIST_CLEAR);
-        self.register_name("auto.list.get", NATIVE_LIST_GET);
-        self.register_name("auto.list.set", NATIVE_LIST_SET);
-        self.register_name("auto.list.insert", NATIVE_LIST_INSERT);
-        self.register_name("auto.list.remove", NATIVE_LIST_REMOVE);
-        self.register_name("auto.list.drop", NATIVE_LIST_DROP);
-        self.register_name("auto.list.reserve", NATIVE_LIST_RESERVE);
-        self.register_name("auto.list.capacity", NATIVE_LIST_CAPACITY);
-        self.register_name("auto.list.map", NATIVE_LIST_MAP);
-        self.register_name("auto.list.filter", NATIVE_LIST_FILTER);
-        self.register_name("auto.list.for_each", NATIVE_LIST_FOREACH);
-        self.register_name("auto.list.find", NATIVE_LIST_FIND);
-        self.register_name("auto.list.any", NATIVE_LIST_ANY);
-        self.register_name("auto.list.all", NATIVE_LIST_ALL);
-        self.register_name("auto.list.reduce", NATIVE_LIST_REDUCE);
-        self.register_name("auto.list.sort", NATIVE_LIST_SORT);
-        self.register_name("auto.list.sort_by", NATIVE_LIST_SORT_BY);
-        self.register_name("auto.list.iter", NATIVE_LIST_ITER);
-        self.register_name("auto.list.join", NATIVE_LIST_JOIN);
-        self.register_name("auto.list.contains", NATIVE_LIST_CONTAINS);
-
-        // HashMap methods (note: set is alias for insert_str)
-        self.register_name("auto.hashmap.new", NATIVE_HASHMAP_NEW);
         self.register_name("auto.hashmap.insert", NATIVE_HASHMAP_INSERT_STR);
         self.register_name("auto.hashmap.set", NATIVE_HASHMAP_INSERT_STR);
-        self.register_name("auto.hashmap.insert_str", NATIVE_HASHMAP_INSERT_STR);
-        self.register_name("auto.hashmap.insert_int", NATIVE_HASHMAP_INSERT_INT);
         self.register_name("auto.hashmap.get", NATIVE_HASHMAP_GET_STR);
-        self.register_name("auto.hashmap.get_str", NATIVE_HASHMAP_GET_STR);
-        self.register_name("auto.hashmap.get_int", NATIVE_HASHMAP_GET_INT);
-        self.register_name("auto.hashmap.contains", NATIVE_HASHMAP_CONTAINS);
         self.register_name("auto.hashmap.contains_key", NATIVE_HASHMAP_CONTAINS);
-        self.register_name("auto.hashmap.remove", NATIVE_HASHMAP_REMOVE);
-        self.register_name("auto.hashmap.size", NATIVE_HASHMAP_SIZE);
         self.register_name("auto.hashmap.len", NATIVE_HASHMAP_SIZE);
-        self.register_name("auto.hashmap.clear", NATIVE_HASHMAP_CLEAR);
-        self.register_name("auto.hashmap.drop", NATIVE_HASHMAP_DROP);
-        self.register_name("auto.hashmap.is_empty", NATIVE_HASHMAP_IS_EMPTY);
-        self.register_name("auto.hashmap.get_or", NATIVE_HASHMAP_GET_OR);
-        self.register_name("auto.hashmap.keys", NATIVE_HASHMAP_KEYS);
-
-        // String methods (includes manual constants not in catalog)
-        self.register_name("auto.str.len", NATIVE_STR_LEN);
-        self.register_name("auto.str.contains", NATIVE_STR_CONTAINS);
-        self.register_name("auto.str.starts_with", NATIVE_STR_STARTS_WITH);
-        self.register_name("auto.str.ends_with", NATIVE_STR_ENDS_WITH);
-
-        // Rand
-        self.register_name("auto.rand.thread_rng", NATIVE_RAND_THREAD_RNG);
-        self.register_name("auto.rand.random", NATIVE_RAND_RANDOM);
-        self.register_name("auto.rng.gen_range", NATIVE_RNG_GEN_RANGE);
-        self.register_name("auto.rng.gen", NATIVE_RNG_GEN);
-        self.register_name("auto.rng.drop", NATIVE_RNG_DROP);
-
-        // Log
-        self.register_name("auto.log.noop", NATIVE_LOG_NOOP);
-
-        // Regex opaque
-        self.register_name("auto.re_opaque.new", NATIVE_RE_OPAQUE_NEW);
-        self.register_name("auto.re_opaque.is_match", NATIVE_RE_OPAQUE_IS_MATCH);
-        self.register_name("auto.re_opaque.find", NATIVE_RE_OPAQUE_FIND);
-        self.register_name("auto.re_opaque.find_all", NATIVE_RE_OPAQUE_FIND_ALL);
-        self.register_name("auto.re_opaque.replace_all", NATIVE_RE_OPAQUE_REPLACE_ALL);
-        self.register_name("auto.re_opaque.captures", NATIVE_RE_OPAQUE_CAPTURES);
-        self.register_name("auto.re_opaque.drop", NATIVE_RE_OPAQUE_DROP);
-
-        // Url opaque
-        self.register_name("auto.url_opaque.parse", NATIVE_URL_OPAQUE_PARSE);
-        self.register_name("auto.url_opaque.scheme", NATIVE_URL_OPAQUE_SCHEME);
-        self.register_name("auto.url_opaque.host_str", NATIVE_URL_OPAQUE_HOST_STR);
-        self.register_name("auto.url_opaque.path", NATIVE_URL_OPAQUE_PATH);
-        self.register_name("auto.url_opaque.fragment", NATIVE_URL_OPAQUE_FRAGMENT);
-        self.register_name("auto.url_opaque.port", NATIVE_URL_OPAQUE_PORT);
-        self.register_name("auto.url_opaque.query_pairs", NATIVE_URL_OPAQUE_QUERY_PAIRS);
-        self.register_name("auto.url_opaque.query", NATIVE_URL_OPAQUE_QUERY);
-        self.register_name("auto.url_opaque.to_string", NATIVE_URL_OPAQUE_TO_STRING);
-        self.register_name("auto.url_opaque.join", NATIVE_URL_OPAQUE_JOIN);
-        self.register_name("auto.url_opaque.origin", NATIVE_URL_OPAQUE_ORIGIN);
-        self.register_name("auto.url_opaque.drop", NATIVE_URL_OPAQUE_DROP);
-
-        // Register url_opaque names in BIGVM_NATIVES for compile-time resolution
-        {
-            use crate::vm::native_registry::BIGVM_NATIVES;
-            let mut reg = BIGVM_NATIVES.lock().unwrap();
-            for name in &[
-                "auto.url_opaque.parse", "auto.url_opaque.scheme",
-                "auto.url_opaque.host_str", "auto.url_opaque.path",
-                "auto.url_opaque.query", "auto.url_opaque.fragment",
-                "auto.url_opaque.port", "auto.url_opaque.query_pairs",
-                "auto.url_opaque.to_string", "auto.url_opaque.join",
-                "auto.url_opaque.origin", "auto.url_opaque.drop",
-            ] {
-                reg.register(name);
-            }
-        }
-
-        // Semver opaque
-        self.register_name("auto.semver_opaque.parse", NATIVE_SEMVER_OPAQUE_PARSE);
-        self.register_name("auto.semver_opaque.major", NATIVE_SEMVER_OPAQUE_MAJOR);
-        self.register_name("auto.semver_opaque.minor", NATIVE_SEMVER_OPAQUE_MINOR);
-        self.register_name("auto.semver_opaque.patch", NATIVE_SEMVER_OPAQUE_PATCH);
-        self.register_name("auto.semver_opaque.pre", NATIVE_SEMVER_OPAQUE_PRE);
-        self.register_name("auto.semver_opaque.to_string", NATIVE_SEMVER_OPAQUE_TO_STRING);
-        self.register_name("auto.semver_opaque.cmp_gt", NATIVE_SEMVER_OPAQUE_CMP_GT);
-        self.register_name("auto.semver_opaque.drop", NATIVE_SEMVER_OPAQUE_DROP);
-
-        // Chrono opaque
-        self.register_name("auto.chrono_opaque.local_now", NATIVE_CHRONO_LOCAL_NOW);
-        self.register_name("auto.chrono_opaque.year", NATIVE_CHRONO_YEAR);
-        self.register_name("auto.chrono_opaque.month", NATIVE_CHRONO_MONTH);
-        self.register_name("auto.chrono_opaque.day", NATIVE_CHRONO_DAY);
-        self.register_name("auto.chrono_opaque.hour", NATIVE_CHRONO_HOUR);
-        self.register_name("auto.chrono_opaque.minute", NATIVE_CHRONO_MINUTE);
-        self.register_name("auto.chrono_opaque.second", NATIVE_CHRONO_SECOND);
-        self.register_name("auto.chrono_opaque.timestamp", NATIVE_CHRONO_TIMESTAMP);
-        self.register_name("auto.chrono_opaque.format", NATIVE_CHRONO_FORMAT);
-        self.register_name("auto.chrono_opaque.drop", NATIVE_CHRONO_DROP);
-
-        // Base64
-        self.register_name("auto.base64.encode", NATIVE_BASE64_ENCODE);
-        self.register_name("auto.base64.decode", NATIVE_BASE64_DECODE);
-
-        // Hex
-        self.register_name("auto.hex.encode", NATIVE_HEX_ENCODE);
-        self.register_name("auto.hex.decode", NATIVE_HEX_DECODE);
-
-        // SHA2 opaque
-        self.register_name("auto.sha2_opaque.sha256_new", NATIVE_SHA2_SHA256_NEW);
-        self.register_name("auto.sha2_opaque.update", NATIVE_SHA2_UPDATE);
-        self.register_name("auto.sha2_opaque.finalize", NATIVE_SHA2_FINALIZE);
-        self.register_name("auto.sha2_opaque.drop", NATIVE_SHA2_DROP);
-
-        // Mime
-        self.register_name("auto.mime.from_path", NATIVE_MIME_FROM_PATH);
-
-        // Math
-        self.register_name("auto.math.sin", NATIVE_MATH_SIN);
-        self.register_name("auto.math.cos", NATIVE_MATH_COS);
-        self.register_name("auto.math.tan", NATIVE_MATH_TAN);
-        self.register_name("auto.math.sqrt", NATIVE_MATH_SQRT);
-        self.register_name("auto.math.abs_f", NATIVE_MATH_ABS_F);
-        self.register_name("auto.math.floor", NATIVE_MATH_FLOOR);
-        self.register_name("auto.math.ceil", NATIVE_MATH_CEIL);
-        self.register_name("auto.math.round", NATIVE_MATH_ROUND);
-        self.register_name("auto.math.pow", NATIVE_MATH_POW);
-        self.register_name("auto.math.powf", NATIVE_MATH_POWF);
-        self.register_name("auto.math.powi", NATIVE_MATH_POWI);
-        self.register_name("auto.math.exp", NATIVE_MATH_EXP);
-        self.register_name("auto.math.ln", NATIVE_MATH_LN);
-        self.register_name("auto.math.log2", NATIVE_MATH_LOG2);
-        self.register_name("auto.math.log10", NATIVE_MATH_LOG10);
-        self.register_name("auto.math.signum", NATIVE_MATH_SIGNUM);
-        self.register_name("auto.math.asin", NATIVE_MATH_ASIN);
-        self.register_name("auto.math.acos", NATIVE_MATH_ACOS);
-        self.register_name("auto.math.atan", NATIVE_MATH_ATAN);
-        self.register_name("auto.math.atan2", NATIVE_MATH_ATAN2);
-        self.register_name("auto.math.to_radians", NATIVE_MATH_TO_RADIANS);
-        self.register_name("auto.math.to_degrees", NATIVE_MATH_TO_DEGREES);
-
-        // Instant
-        self.register_name("auto.time.instant_now", NATIVE_INSTANT_NOW);
-        self.register_name("auto.time.instant_elapsed", NATIVE_INSTANT_ELAPSED);
-
-        // OnceCell
-        self.register_name("auto.cell.once_new", NATIVE_ONCE_NEW);
-        self.register_name("auto.cell.once_set", NATIVE_ONCE_SET);
-        self.register_name("auto.cell.once_get", NATIVE_ONCE_GET);
-
-        // File I/O
-        self.register_name("auto.file.create_handle", NATIVE_FILE_CREATE_HANDLE);
-        self.register_name("auto.file.open_handle", NATIVE_FILE_OPEN_HANDLE);
-        self.register_name("auto.file.write_handle", NATIVE_FILE_WRITE_HANDLE);
-        self.register_name("auto.file.try_clone", NATIVE_FILE_TRY_CLONE);
     }
 }
 
