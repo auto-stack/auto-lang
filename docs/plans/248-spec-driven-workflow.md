@@ -1,6 +1,6 @@
 # Plan 248: Spec-Driven Workflow for AutoForge
 
-**Status:** Phase A & B Complete → Phase C in Progress  
+**Status:** Phase A & B Complete → Phase C Backend Complete → Phase C Frontend & D/E Pending  
 **Depends on:** Plan 247 (AutoForge foundation)  
 **Estimated effort:** 6–9 days (Phases A–E)  
 **Owner:** AutoForge team
@@ -85,7 +85,7 @@ them after analysis, and executes only against approved specs.
   - Execution: implement approved plan
   - Verification: check against requirements
 - [x] Add per-phase system prompts (5 prompts)
-- [x] Add `read_jade`, `write_jade`, `list_jades` tools
+- [x] Add `read_jade`, `write_jade`, `list_jades` tools (registered in ToolRegistry with context injection)
 - [x] Tool gating: filter tool definitions by phase (AI cannot invoke forbidden tools)
 
 **Frontend:**
@@ -94,9 +94,9 @@ them after analysis, and executes only against approved specs.
 - [x] Approval gate UI when status is `waiting_approval`
 
 **Acceptance:**
-- Ask "How does auth work?" → AI answers, no tools used (QUESTION)
-- Ask "Fix typo" → AI fixes directly, skips spec drafting (DIRECT)
-- Ask "Add OAuth2" → AI enters SpecDraft, proposes Jades updates, stops for approval
+- Ask "How does auth work?" → AI answers, no tools used (QUESTION) ✅
+- Ask "Fix typo" → AI fixes directly, skips spec drafting (DIRECT) ✅
+- Ask "Add OAuth2" → AI enters SpecDraft, proposes Jades updates, stops for approval ✅
 
 ---
 
@@ -106,7 +106,7 @@ them after analysis, and executes only against approved specs.
 - [x] `POST /api/smith/forge/{sid}/approve` → transition to Execution
 - [x] `POST /api/smith/forge/{sid}/reject` → transition back to SpecDraft
 - [x] Store `pending_spec_changes` in session JSON
-- [ ] Apply pending changes to Ledger on approve (currently phase transition only)
+- [x] Apply pending changes to Ledger on approve (applies via `LedgerStore::update_section`)
 
 **Frontend:**
 - [x] SpecReview UI panel in FurnaceView:

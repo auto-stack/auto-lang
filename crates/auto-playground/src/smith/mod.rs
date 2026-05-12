@@ -22,7 +22,7 @@ use crate::notebook::ai::AIProviderState;
 mod ai;
 mod tools;
 
-pub use self::handlers::*;
+
 
 // ─── Persistent Session Store ────────────────────────────────────────────────
 
@@ -613,11 +613,14 @@ After verification, summarize the results."#
             let ai_for_turns = ai.clone();
             let _provider = ToolClaudeProvider::new(ai);
 
-            // Determine current phase from session
-            let current_phase = {
+            // Inject project/session context for Jades tools
+            let (_project_path, current_phase) = {
                 let store = forge_sessions().lock().unwrap();
                 match store.get(&sid) {
-                    Some(session) => session.phase.clone(),
+                    Some(session) => {
+                        crate::smith::tools::set_tool_context(&session.project_path, &sid);
+                        (session.project_path.clone(), session.phase.clone())
+                    }
                     None => {
                         let _ = event_tx.send(Ok(Event::default().data(
                             serde_json::to_string(&ForgeStreamEvent::Error {
@@ -629,6 +632,8 @@ After verification, summarize the results."#
                     }
                 }
             };
+
+            // Phase already loaded above with project_path
 
             // Build conversation messages from session history
             let mut chat_messages = Vec::new();
@@ -685,9 +690,11 @@ After verification, summarize the results."#
             // ReAct loop: chat → tool_use → execute → tool_result → chat → ...
             let mut turn_count = 0;
             let max_turns = 5;
+            let mut last_turn_text = String::new();
 
             while turn_count < max_turns {
                 turn_count += 1;
+                let mut turn_text = String::new();
 
                 let request = ToolChatRequest {
                     messages: chat_messages.clone(),
@@ -703,7 +710,7 @@ After verification, summarize the results."#
                 });
 
                 let mut got_tool_use = false;
-                let mut turn_text = String::new();
+                turn_text.clear();
                 let mut turn_tool_calls: Vec<ToolCallInfo> = Vec::new();
 
                 while let Some(event) = turn_rx.recv().await {
@@ -838,14 +845,28 @@ After verification, summarize the results."#
                     }
                 }
 
+                // Remember the last assistant text for intent classification
+                last_turn_text = turn_text.clone();
+
                 // If no tool_use was requested, we're done
                 if !got_tool_use {
                     break;
                 }
             }
 
-            // Determine next phase based on current phase
-            let (next_phase, next_status) = next_phase_after_turn(&current_phase);
+            // Determine next phase based on current phase and intent classification
+            let (next_phase, next_status) = if current_phase == ForgePhase::Intake {
+                let lower = last_turn_text.to_lowercase();
+                if lower.contains("classification: question") || lower.contains("**classification:** question") {
+                    (ForgePhase::Intake, ForgeStatus::Idle)
+                } else if lower.contains("classification: direct") || lower.contains("**classification:** direct") {
+                    (ForgePhase::Execution, ForgeStatus::Idle)
+                } else {
+                    (ForgePhase::SpecDraft, ForgeStatus::Idle)
+                }
+            } else {
+                next_phase_after_turn(&current_phase)
+            };
 
             // Emit phase change event if transitioning
             if next_phase != current_phase {
@@ -1028,14 +1049,59 @@ After verification, summarize the results."#
     // ─── Approval Gate Handlers ──────────────────────────────────────────
 
     pub async fn approve_spec(Path(sid): Path<String>) -> Json<serde_json::Value> {
-        let mut store = forge_sessions().lock().unwrap();
-        store.update_phase_and_status(&sid, ForgePhase::Execution, ForgeStatus::Idle);
+        // 1. Capture pending changes and project path
+        let (project, changes) = {
+            let store = forge_sessions().lock().unwrap();
+            let session = store.get(&sid).cloned().unwrap_or_else(|| ForgeSession {
+                id: sid.clone(),
+                notebook_sid: None,
+                project_path: String::new(),
+                status: ForgeStatus::Idle,
+                phase: ForgePhase::Intake,
+                messages: vec![],
+                pending_spec_changes: vec![],
+                current_todo_index: None,
+            });
+            (session.project_path.clone(), session.pending_spec_changes.clone())
+        };
+
+        // 2. Apply pending changes to Ledger
+        if !project.is_empty() && !changes.is_empty() {
+            let mut ledger = ledgers().lock().unwrap();
+            for change in &changes {
+                let _ = ledger.update_section(
+                    &project,
+                    &change.section_id,
+                    change.new_content.clone(),
+                    change.new_status.clone(),
+                );
+            }
+        }
+
+        // 3. Clear pending changes and transition phase
+        {
+            let mut store = forge_sessions().lock().unwrap();
+            if let Some(session) = store.get_mut(&sid) {
+                session.pending_spec_changes.clear();
+                let clone = session.clone();
+                store.save(&clone);
+            }
+            store.update_phase_and_status(&sid, ForgePhase::Execution, ForgeStatus::Idle);
+        }
+
         Json(serde_json::json!({"status": "ok", "phase": "execution"}))
     }
 
     pub async fn reject_spec(Path(sid): Path<String>) -> Json<serde_json::Value> {
-        let mut store = forge_sessions().lock().unwrap();
-        store.update_phase_and_status(&sid, ForgePhase::SpecDraft, ForgeStatus::Idle);
+        {
+            let mut store = forge_sessions().lock().unwrap();
+            if let Some(session) = store.get_mut(&sid) {
+                session.pending_spec_changes.clear();
+                let clone = session.clone();
+                store.save(&clone);
+            }
+            store.update_phase_and_status(&sid, ForgePhase::SpecDraft, ForgeStatus::Idle);
+        }
         Json(serde_json::json!({"status": "ok", "phase": "spec_draft"}))
     }
 

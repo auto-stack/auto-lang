@@ -3,10 +3,24 @@
 //! Implements the core tools that the Forge agent can use to interact with
 //! the codebase: read_file, write_file, edit_file, shell, and search.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
+
+// ─── Tool Context (injected by forge_stream handler) ─────────────────────────
+
+thread_local! {
+    static CURRENT_PROJECT: RefCell<String> = RefCell::new(String::new());
+    static CURRENT_SESSION_ID: RefCell<String> = RefCell::new(String::new());
+}
+
+/// Set the project and session context for Jades tools.
+pub fn set_tool_context(project: &str, session_id: &str) {
+    CURRENT_PROJECT.with(|p| *p.borrow_mut() = project.to_string());
+    CURRENT_SESSION_ID.with(|s| *s.borrow_mut() = session_id.to_string());
+}
 
 // ─── Tool Definition ─────────────────────────────────────────────────────────
 
@@ -52,6 +66,9 @@ impl ToolRegistry {
         registry.register(Box::new(EditFileTool));
         registry.register(Box::new(ShellTool));
         registry.register(Box::new(SearchTool));
+        registry.register(Box::new(ReadJadeTool));
+        registry.register(Box::new(WriteJadeTool));
+        registry.register(Box::new(ListJadesTool));
         registry
     }
 
@@ -454,6 +471,246 @@ fn search_file(path: &Path, pattern: &str, results: &mut Vec<String>) -> Result<
     Ok(())
 }
 
+// ─── Jades Tools ─────────────────────────────────────────────────────────────
+
+/// Read a Jades (Ledger) section.
+struct ReadJadeTool;
+
+impl Tool for ReadJadeTool {
+    fn name(&self) -> &'static str {
+        "read_jade"
+    }
+
+    fn description(&self) -> &'static str {
+        "Read the content and status of a Jades (Ledger) section. \
+         Use this to examine the current project specification during Intake or SpecDraft."
+    }
+
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "The section ID to read (e.g., 'goals', 'requirements', 'plans', 'todos')"
+                }
+            },
+            "required": ["section_id"]
+        })
+    }
+
+    fn execute(&self, args: Value) -> Result<String, String> {
+        let project = CURRENT_PROJECT.with(|p| p.borrow().clone());
+        let sid = CURRENT_SESSION_ID.with(|s| s.borrow().clone());
+        let section_id = args
+            .get("section_id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'section_id' argument")?;
+
+        if project.is_empty() {
+            return Err("No project context set".to_string());
+        }
+
+        // Overlay pending spec changes if any
+        let pending = if !sid.is_empty() {
+            super::forge_sessions()
+                .lock()
+                .unwrap()
+                .get(&sid)
+                .and_then(|session| {
+                    session.pending_spec_changes.iter()
+                        .find(|c| c.section_id == section_id)
+                        .map(|c| (c.new_content.clone(), c.new_status.clone()))
+                })
+        } else {
+            None
+        };
+
+        let (content, status) = if let Some((c, s)) = pending {
+            (c, s)
+        } else {
+            let store = super::ledgers().lock().unwrap();
+            match store.get(&project)
+                .and_then(|doc| doc.sections.iter().find(|s| s.id == section_id))
+            {
+                Some(sec) => (sec.content.clone(), sec.status.clone()),
+                None => return Err(format!("Section '{}' not found in project '{}'", section_id, project)),
+            }
+        };
+
+        Ok(format!(
+            "Section: {}\nStatus: {}\n---\n{}",
+            section_id, status, content
+        ))
+    }
+}
+
+/// List all Jades sections.
+struct ListJadesTool;
+
+impl Tool for ListJadesTool {
+    fn name(&self) -> &'static str {
+        "list_jades"
+    }
+
+    fn description(&self) -> &'static str {
+        "List all Jades (Ledger) sections with their titles and statuses. \
+         Use this to get an overview of the project specification."
+    }
+
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
+    fn execute(&self, _args: Value) -> Result<String, String> {
+        let project = CURRENT_PROJECT.with(|p| p.borrow().clone());
+        if project.is_empty() {
+            return Err("No project context set".to_string());
+        }
+
+        let sid = CURRENT_SESSION_ID.with(|s| s.borrow().clone());
+        let pending: HashMap<String, (String, String)> = if !sid.is_empty() {
+            super::forge_sessions()
+                .lock()
+                .unwrap()
+                .get(&sid)
+                .map(|session| {
+                    session.pending_spec_changes.iter()
+                        .map(|c| (c.section_id.clone(), (c.new_content.clone(), c.new_status.clone())))
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        let store = super::ledgers().lock().unwrap();
+        let doc = store.get(&project)
+            .ok_or_else(|| format!("No ledger found for project '{}'", project))?;
+
+        let mut lines = vec![format!("Project: {}", project)];
+        for section in &doc.sections {
+            let has_pending = pending.contains_key(&section.id);
+            let status = if has_pending {
+                &pending.get(&section.id).unwrap().1
+            } else {
+                &section.status
+            };
+            let marker = if has_pending { " [pending changes]" } else { "" };
+            lines.push(format!(
+                "- {}: {} [{}]{}",
+                section.id, section.title, status, marker
+            ));
+        }
+
+        Ok(lines.join("\n"))
+    }
+}
+
+/// Draft a Jades section update (stored in pending_spec_changes until approved).
+struct WriteJadeTool;
+
+impl Tool for WriteJadeTool {
+    fn name(&self) -> &'static str {
+        "write_jade"
+    }
+
+    fn description(&self) -> &'static str {
+        "Draft an update to a Jades (Ledger) section. \
+         The change is queued in pending_spec_changes and applied to the Ledger only after human approval. \
+         Use this during SpecDraft phase to propose updates to goals, requirements, plans, or todos."
+    }
+
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "The section ID to update (e.g., 'goals', 'requirements', 'plans', 'todos')"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The new content for the section"
+                },
+                "status": {
+                    "type": "string",
+                    "description": "The status to set (default: 'draft')",
+                    "enum": ["draft", "in_progress", "approved", "verified", "drift"]
+                }
+            },
+            "required": ["section_id", "content"]
+        })
+    }
+
+    fn execute(&self, args: Value) -> Result<String, String> {
+        let project = CURRENT_PROJECT.with(|p| p.borrow().clone());
+        let sid = CURRENT_SESSION_ID.with(|s| s.borrow().clone());
+
+        if project.is_empty() || sid.is_empty() {
+            return Err("No project or session context set".to_string());
+        }
+
+        let section_id = args
+            .get("section_id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'section_id' argument")?;
+        let content = args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'content' argument")?;
+        let status = args
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("draft");
+
+        // Capture old content from ledger (or from an earlier pending change)
+        let (old_content, old_status) = {
+            let sessions = super::forge_sessions().lock().unwrap();
+            let session = sessions.get(&sid).ok_or("Session not found")?;
+            if let Some(existing) = session.pending_spec_changes.iter().find(|c| c.section_id == section_id) {
+                (existing.old_content.clone(), existing.old_status.clone())
+            } else {
+                let ledger = super::ledgers().lock().unwrap();
+                ledger.get(&project)
+                    .and_then(|doc| doc.sections.iter().find(|s| s.id == section_id))
+                    .map(|s| (s.content.clone(), s.status.clone()))
+                    .unwrap_or_default()
+            }
+        };
+
+        // Queue pending change
+        {
+            let mut sessions = super::forge_sessions().lock().unwrap();
+            let session = sessions.get_mut(&sid).ok_or("Session not found")?;
+
+            if let Some(existing) = session.pending_spec_changes.iter_mut().find(|c| c.section_id == section_id) {
+                existing.new_content = content.to_string();
+                existing.new_status = status.to_string();
+            } else {
+                session.pending_spec_changes.push(super::SpecChange {
+                    section_id: section_id.to_string(),
+                    old_content,
+                    new_content: content.to_string(),
+                    old_status,
+                    new_status: status.to_string(),
+                });
+            }
+
+            let clone = session.clone();
+            sessions.save(&clone);
+        }
+
+        Ok(format!(
+            "Drafted update to section '{}'. Status: {}. Awaiting approval.",
+            section_id, status
+        ))
+    }
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -531,11 +788,14 @@ mod tests {
     fn test_tool_registry() {
         let registry = ToolRegistry::new();
         let defs = registry.definitions();
-        assert_eq!(defs.len(), 5);
+        assert_eq!(defs.len(), 8);
         assert!(registry.get("read_file").is_some());
         assert!(registry.get("write_file").is_some());
         assert!(registry.get("edit_file").is_some());
         assert!(registry.get("shell").is_some());
         assert!(registry.get("search").is_some());
+        assert!(registry.get("read_jade").is_some());
+        assert!(registry.get("write_jade").is_some());
+        assert!(registry.get("list_jades").is_some());
     }
 }
