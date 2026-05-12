@@ -37,6 +37,8 @@ pub mod memory;
 pub mod message_context;
 // Plan 125 Phase 3.5: Pattern matcher for task message routing
 pub mod pattern_matcher;
+// Plan 249: Unified native function catalog (must be before native + native_registry)
+pub mod native_catalog;
 pub mod native;
 pub mod native_registry;
 pub mod opcode;

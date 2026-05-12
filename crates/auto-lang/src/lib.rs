@@ -1,3 +1,6 @@
+// Plan 249: unified native catalog macro expansion needs higher recursion limit
+#![recursion_limit = "512"]
+
 // Global tokio runtime for VM execution
 // Using OnceLock to ensure thread-safe lazy initialization
 use std::sync::OnceLock;

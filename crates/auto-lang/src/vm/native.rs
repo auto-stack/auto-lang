@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 
+use crate::{for_each_native, gen_native_constants};
+
 /// Decode a tagged string index from stack value.
 /// LOAD_STR pushes string indices as negative tagged values: -(str_idx as i32) - 1
 /// This function decodes the tag to get the actual string pool index.
@@ -705,15 +707,10 @@ impl NativeInterface {
     }
 }
 
-pub const NATIVE_PRINT_I32: u16 = 1;
-pub const NATIVE_PRINT_F32: u16 = 2;
-pub const NATIVE_PRINT_F64: u16 = 4;
-pub const NATIVE_PRINT_STR: u16 = 3;
-pub const NATIVE_WRITE_STR: u16 = 2900;
-pub const NATIVE_ASSERT: u16 = 4;
-pub const NATIVE_ASSERT_EQ: u16 = 5;
-pub const NATIVE_ASSERT_NE: u16 = 6;
-pub const NATIVE_RUNTIME_PANIC: u16 = 7;
+
+// Plan 249: Native constants generated from unified catalog
+for_each_native!(gen_native_constants);
+
 
 // ============================================================================
 // Plan 178: Bit Operation Shims
@@ -926,294 +923,22 @@ pub fn shim_math_atan2(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
-// === List Native Function IDs (100+) ===
+// === Manual constants (registered via register_shim_by_name, not in catalog) ===
 
-pub const NATIVE_LIST_NEW: u16 = 100;
-pub const NATIVE_LIST_PUSH: u16 = 101;
-pub const NATIVE_LIST_POP: u16 = 102;
-pub const NATIVE_LIST_LEN: u16 = 103;
-pub const NATIVE_LIST_IS_EMPTY: u16 = 104;
-pub const NATIVE_LIST_CLEAR: u16 = 105;
-pub const NATIVE_LIST_GET: u16 = 106;
-pub const NATIVE_LIST_SET: u16 = 107;
-pub const NATIVE_LIST_INSERT: u16 = 108;
-pub const NATIVE_LIST_REMOVE: u16 = 109;
-pub const NATIVE_LIST_DROP: u16 = 110;
-pub const NATIVE_LIST_RESERVE: u16 = 118;
-
-// List higher-order functions (Plan 206)
-pub const NATIVE_LIST_MAP: u16 = 2060;
-pub const NATIVE_LIST_FILTER: u16 = 2061;
-pub const NATIVE_LIST_FOREACH: u16 = 2062;
-pub const NATIVE_LIST_FIND: u16 = 2063;
-pub const NATIVE_LIST_ANY: u16 = 2064;
-pub const NATIVE_LIST_ALL: u16 = 2065;
-pub const NATIVE_LIST_REDUCE: u16 = 2066;
-pub const NATIVE_LIST_SORT: u16 = 2067;
-pub const NATIVE_LIST_SORT_BY: u16 = 2068;
-pub const NATIVE_LIST_JOIN: u16 = 2080;
-pub const NATIVE_LIST_CONTAINS: u16 = 2069;
-
-// === Result HOF Native Functions ===
-// Plan 200 Task 3.3: .map_err() closure callback
-pub const NATIVE_RESULT_MAP_ERR: u16 = 2070;
-
-// === Iterator Native Functions (111+) ===
-pub const NATIVE_LIST_ITER: u16 = 111;
-pub const NATIVE_ITERATOR_NEXT: u16 = 112;
-pub const NATIVE_ITERATOR_MAP: u16 = 113;
-pub const NATIVE_ITERATOR_FILTER: u16 = 114;
-pub const NATIVE_ITERATOR_COLLECT: u16 = 115;
-pub const NATIVE_ITERATOR_REDUCE: u16 = 116;
-pub const NATIVE_ITERATOR_FIND: u16 = 117;
-pub const NATIVE_ITERATOR_ENUMERATE: u16 = 118;
-
-// === HashMap Native Functions (119+) ===
-pub const NATIVE_HASHMAP_NEW: u16 = 119;
-pub const NATIVE_HASHMAP_INSERT_STR: u16 = 120;
-pub const NATIVE_HASHMAP_INSERT_INT: u16 = 121;
-pub const NATIVE_HASHMAP_GET_STR: u16 = 122;
-pub const NATIVE_HASHMAP_GET_INT: u16 = 123;
-pub const NATIVE_HASHMAP_CONTAINS: u16 = 124;
-pub const NATIVE_HASHMAP_REMOVE: u16 = 125;
-pub const NATIVE_HASHMAP_SIZE: u16 = 126;
-pub const NATIVE_HASHMAP_CLEAR: u16 = 127;
-pub const NATIVE_HASHMAP_DROP: u16 = 128;
-pub const NATIVE_HASHMAP_IS_EMPTY: u16 = 1290;
-pub const NATIVE_HASHMAP_GET_OR: u16 = 1291;
-pub const NATIVE_HASHMAP_KEYS: u16 = 1292;
-
-// === HashSet Native Function IDs (129+) ===
-pub const NATIVE_HASHSET_NEW: u16 = 129;
-pub const NATIVE_HASHSET_INSERT: u16 = 130;
-pub const NATIVE_HASHSET_CONTAINS: u16 = 131;
-pub const NATIVE_HASHSET_REMOVE: u16 = 132;
-pub const NATIVE_HASHSET_SIZE: u16 = 133;
-pub const NATIVE_HASHSET_CLEAR: u16 = 134;
-pub const NATIVE_HASHSET_DROP: u16 = 135;
-
-// === VecDeque Native Function IDs (136+) ===
-pub const NATIVE_VECDEQUE_NEW: u16 = 136;
-pub const NATIVE_VECDEQUE_PUSH_BACK: u16 = 137;
-pub const NATIVE_VECDEQUE_PUSH_FRONT: u16 = 138;
-pub const NATIVE_VECDEQUE_POP_BACK: u16 = 139;
-pub const NATIVE_VECDEQUE_POP_FRONT: u16 = 140;
-pub const NATIVE_VECDEQUE_FRONT: u16 = 141;
-pub const NATIVE_VECDEQUE_BACK: u16 = 142;
-pub const NATIVE_VECDEQUE_SIZE: u16 = 143;
-pub const NATIVE_VECDEQUE_IS_EMPTY: u16 = 144;
-pub const NATIVE_VECDEQUE_CLEAR: u16 = 145;
-pub const NATIVE_VECDEQUE_DROP: u16 = 146;
-
-// === BTreeMap Native Function IDs (147+) ===
-pub const NATIVE_BTREEMAP_NEW: u16 = 147;
-pub const NATIVE_BTREEMAP_INSERT: u16 = 148;
-pub const NATIVE_BTREEMAP_GET: u16 = 149;
-pub const NATIVE_BTREEMAP_CONTAINS: u16 = 150;
-pub const NATIVE_BTREEMAP_REMOVE: u16 = 151;
-pub const NATIVE_BTREEMAP_SIZE: u16 = 152;
-pub const NATIVE_BTREEMAP_IS_EMPTY: u16 = 153;
-pub const NATIVE_BTREEMAP_CLEAR: u16 = 154;
-pub const NATIVE_BTREEMAP_FIRST_KEY: u16 = 155;
-pub const NATIVE_BTREEMAP_LAST_KEY: u16 = 156;
-pub const NATIVE_BTREEMAP_DROP: u16 = 157;
-
-// === StringBuilder Native Function IDs (160+) ===
-pub const NATIVE_STRINGBUILDER_NEW: u16 = 160;
-pub const NATIVE_STRINGBUILDER_APPEND: u16 = 161;
-pub const NATIVE_STRINGBUILDER_APPEND_INT: u16 = 162;
-pub const NATIVE_STRINGBUILDER_APPEND_CHAR: u16 = 163;
-pub const NATIVE_STRINGBUILDER_LEN: u16 = 164;
-pub const NATIVE_STRINGBUILDER_CLEAR: u16 = 165;
-pub const NATIVE_STRINGBUILDER_DROP: u16 = 166;
-pub const NATIVE_STRINGBUILDER_BUILD: u16 = 167;
-
-// === String Native Function IDs (170+) ===
-pub const NATIVE_STR_LEN: u16 = 170;
-pub const NATIVE_STRING_LEN: u16 = 171;
-pub const NATIVE_STR_NEW: u16 = 172;      // Plan 118: String creation with capacity
-pub const NATIVE_STR_APPEND: u16 = 173;   // Plan 118: String append
-pub const NATIVE_INT_STR: u16 = 174;      // Plan 118 Phase 4: int to string
-pub const NATIVE_STR_UPPER: u16 = 175;    // Plan 118 Phase 4: string to uppercase
-pub const NATIVE_STRING_FROM: u16 = 176;  // Plan 155: String.from(str) -> String
-pub const NATIVE_STRING_NEW: u16 = 177;       // String.new() -> sb_id
-pub const NATIVE_STRING_PUSH: u16 = 178;      // s.push(char) -> 0
-pub const NATIVE_STRING_POP: u16 = 179;       // s.pop() -> char_codepoint (0 if empty)
-pub const NATIVE_STRING_GET: u16 = 180;       // s.get(index) -> char_codepoint
-pub const NATIVE_STRING_SET: u16 = 181;       // s.set(index, char) -> 0
-pub const NATIVE_STRING_INSERT: u16 = 182;    // s.insert(index, char) -> 0
-pub const NATIVE_STRING_REMOVE: u16 = 183;    // s.remove(index) -> char_codepoint
-pub const NATIVE_STRING_CLEAR: u16 = 184;     // s.clear() -> 0
-pub const NATIVE_STRING_IS_EMPTY: u16 = 185;  // s.is_empty() -> bool (1/0)
-pub const NATIVE_STRING_RESERVE: u16 = 186;   // s.reserve(n) -> 0
-
-// === Memory Allocation Native IDs (190+) ===
-pub const NATIVE_ALLOC_ARRAY: u16 = 190;
-pub const NATIVE_REALLOC_ARRAY: u16 = 191;
-pub const NATIVE_FREE_ARRAY: u16 = 192;
-
-// === Storage Native IDs (195+) ===
-pub const NATIVE_HEAP_NEW: u16 = 195;
-pub const NATIVE_HEAP_CAPACITY: u16 = 196;
-pub const NATIVE_HEAP_TRY_GROW: u16 = 197;
-pub const NATIVE_HEAP_DROP: u16 = 198;
-pub const NATIVE_INLINE_INT64_NEW: u16 = 199;
-pub const NATIVE_INLINE_INT64_CAPACITY: u16 = 200;
-pub const NATIVE_INLINE_INT64_TRY_GROW: u16 = 201;
-pub const NATIVE_INLINE_INT64_DROP: u16 = 202;
-
-// === List Extra Native IDs (205+) ===
-pub const NATIVE_LIST_CAPACITY: u16 = 205;
-
-// === Bit Operation Native IDs (210+) — Plan 178 ===
-pub const NATIVE_INT_AND: u16 = 210;
-pub const NATIVE_INT_OR: u16 = 211;
-pub const NATIVE_INT_XOR: u16 = 212;
-pub const NATIVE_INT_NOT: u16 = 213;
-pub const NATIVE_INT_SHL: u16 = 214;
-pub const NATIVE_INT_SHR: u16 = 215;
-pub const NATIVE_INT_SAR: u16 = 216;
-pub const NATIVE_INT_ROL: u16 = 217;
-pub const NATIVE_INT_ROR: u16 = 218;
-
-// === Bit Scan Native IDs (220+) — Plan 178 ===
-pub const NATIVE_INT_COUNT_ONES: u16 = 220;
-pub const NATIVE_INT_LEADING_ZEROS: u16 = 221;
-pub const NATIVE_INT_TRAILING_ZEROS: u16 = 222;
-pub const NATIVE_INT_BITREV: u16 = 223;
-
-// Phase 4: Dynamic bitfield views
-pub const NATIVE_INT_BIT_READ: u16 = 230;   // .bits(start, len).read()
-pub const NATIVE_INT_BIT_TEST: u16 = 231;   // .bit(n).test() → bool
-pub const NATIVE_INT_BIT_ON: u16 = 232;     // .bit(n).on() → val | (1 << n)
-pub const NATIVE_INT_BIT_OFF: u16 = 233;    // .bit(n).off() → val & !(1 << n)
-pub const NATIVE_INT_BIT_FLIP: u16 = 234;   // .bit(n).flip() → val ^ (1 << n)
-
-// === String/Uint Extension Native IDs (235+) ===
-pub const NATIVE_STR_BYTES: u16 = 235;    // str.bytes() → iterator of byte values
-pub const NATIVE_UINT_TO_HEX: u16 = 236; // uint.to_hex(pad) → hex string
-
-// === String Method Native IDs (1504+) ===
+// String methods (registered in stdlib.rs via register_shim_by_name)
 pub const NATIVE_STR_CONTAINS: u16 = 1504;
 pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
 pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 pub const NATIVE_STR_TO_INT: u16 = 1516;
 
-// === Math Native IDs (1700+) — Plan 240 VM-1 ===
+// Math functions registered in stdlib.rs via register_shim_by_name
 pub const NATIVE_MATH_ABS: u16 = 1700;
 pub const NATIVE_MATH_MIN: u16 = 1701;
 pub const NATIVE_MATH_MAX: u16 = 1702;
 pub const NATIVE_MATH_SQRT: u16 = 1750;  // Changed from 1703 to avoid conflict
-pub const NATIVE_MATH_FLOOR: u16 = 1710;
-pub const NATIVE_MATH_CEIL: u16 = 1711;
-pub const NATIVE_MATH_ROUND: u16 = 1712;
-pub const NATIVE_MATH_POW: u16 = 1713;
 pub const NATIVE_MATH_MIN_F: u16 = 1714;
 pub const NATIVE_MATH_MAX_F: u16 = 1715;
-pub const NATIVE_MATH_SIN: u16 = 1716;
-pub const NATIVE_MATH_COS: u16 = 1717;
-pub const NATIVE_MATH_TAN: u16 = 1718;
-pub const NATIVE_MATH_EXP: u16 = 1719;
-pub const NATIVE_MATH_LN: u16 = 1720;
-pub const NATIVE_MATH_LOG2: u16 = 1721;
-pub const NATIVE_MATH_LOG10: u16 = 1722;
-pub const NATIVE_MATH_ABS_F: u16 = 1723;
-pub const NATIVE_MATH_SIGNUM: u16 = 1724;
 pub const NATIVE_MATH_CLAMP: u16 = 1725;
-pub const NATIVE_MATH_ASIN: u16 = 1726;
-pub const NATIVE_MATH_ACOS: u16 = 1727;
-pub const NATIVE_MATH_ATAN: u16 = 1728;
-pub const NATIVE_MATH_ATAN2: u16 = 1729;
-pub const NATIVE_MATH_POWI: u16 = 1730;
-pub const NATIVE_MATH_POWF: u16 = 1731;
-pub const NATIVE_MATH_TO_RADIANS: u16 = 1732;
-pub const NATIVE_MATH_TO_DEGREES: u16 = 1733;
-
-// === Instant Native IDs (1203+) — Plan 240 ===
-pub const NATIVE_INSTANT_NOW: u16 = 1203;
-pub const NATIVE_INSTANT_ELAPSED: u16 = 1204;
-
-// === OnceCell Native IDs (2850+) — Plan 240 ===
-pub const NATIVE_ONCE_NEW: u16 = 2850;
-pub const NATIVE_ONCE_SET: u16 = 2851;
-pub const NATIVE_ONCE_GET: u16 = 2852;
-
-// === File I/O Opaque Native IDs (1010+) — Plan 240 ===
-pub const NATIVE_FILE_CREATE_HANDLE: u16 = 1010;
-pub const NATIVE_FILE_OPEN_HANDLE: u16 = 1011;
-pub const NATIVE_FILE_WRITE_HANDLE: u16 = 1012;
-pub const NATIVE_FILE_TRY_CLONE: u16 = 1013;
-
-// === Rand Native IDs (1850+) — Plan 212 Phase 2 ===
-pub const NATIVE_RAND_THREAD_RNG: u16 = 1850; // thread_rng() → opaque Rng handle
-pub const NATIVE_RNG_GEN_RANGE: u16 = 1851;   // rng.gen_range(lo, hi) → i32
-pub const NATIVE_RNG_GEN: u16 = 1852;         // rng.gen() → i32
-pub const NATIVE_RNG_DROP: u16 = 1853;        // drop Rng handle
-pub const NATIVE_RAND_RANDOM: u16 = 1854;     // rand::random() → i32
-
-pub const NATIVE_LOG_NOOP: u16 = 1804;        // no-op for env_logger.init(), etc.
-
-// === Regex Opaque Shims (2450+) — Plan 212 Phase 2.2 ===
-pub const NATIVE_RE_OPAQUE_NEW: u16 = 2450;
-pub const NATIVE_RE_OPAQUE_IS_MATCH: u16 = 2451;
-pub const NATIVE_RE_OPAQUE_FIND: u16 = 2452;
-pub const NATIVE_RE_OPAQUE_FIND_ALL: u16 = 2453;
-pub const NATIVE_RE_OPAQUE_REPLACE_ALL: u16 = 2454;
-pub const NATIVE_RE_OPAQUE_CAPTURES: u16 = 2455;
-pub const NATIVE_RE_OPAQUE_DROP: u16 = 2459;
-
-// === Url Opaque Shims (2500+) — Plan 212 Phase 2.2 ===
-pub const NATIVE_URL_OPAQUE_PARSE: u16 = 2500;
-pub const NATIVE_URL_OPAQUE_SCHEME: u16 = 2501;
-pub const NATIVE_URL_OPAQUE_HOST_STR: u16 = 2502;
-pub const NATIVE_URL_OPAQUE_PATH: u16 = 2503;
-pub const NATIVE_URL_OPAQUE_FRAGMENT: u16 = 2504;
-pub const NATIVE_URL_OPAQUE_PORT: u16 = 2505;
-pub const NATIVE_URL_OPAQUE_QUERY_PAIRS: u16 = 2506;
-pub const NATIVE_URL_OPAQUE_QUERY: u16 = 2510;
-pub const NATIVE_URL_OPAQUE_TO_STRING: u16 = 2511;
-pub const NATIVE_URL_OPAQUE_JOIN: u16 = 2507;
-pub const NATIVE_URL_OPAQUE_ORIGIN: u16 = 2508;
-pub const NATIVE_URL_OPAQUE_DROP: u16 = 2509;
-
-// === Semver Opaque Shims (2600+) — Plan 212 Phase 2.2 ===
-pub const NATIVE_SEMVER_OPAQUE_PARSE: u16 = 2600;
-pub const NATIVE_SEMVER_OPAQUE_MAJOR: u16 = 2601;
-pub const NATIVE_SEMVER_OPAQUE_MINOR: u16 = 2602;
-pub const NATIVE_SEMVER_OPAQUE_PATCH: u16 = 2603;
-pub const NATIVE_SEMVER_OPAQUE_PRE: u16 = 2604;
-pub const NATIVE_SEMVER_OPAQUE_TO_STRING: u16 = 2605;
-pub const NATIVE_SEMVER_OPAQUE_CMP_GT: u16 = 2606;
-pub const NATIVE_SEMVER_OPAQUE_DROP: u16 = 2609;
-
-// Plan 212 Phase 2.3: chrono opaque struct shims (2700-2709)
-pub const NATIVE_CHRONO_LOCAL_NOW: u16 = 2700;
-pub const NATIVE_CHRONO_YEAR: u16 = 2701;
-pub const NATIVE_CHRONO_MONTH: u16 = 2702;
-pub const NATIVE_CHRONO_DAY: u16 = 2703;
-pub const NATIVE_CHRONO_HOUR: u16 = 2704;
-pub const NATIVE_CHRONO_MINUTE: u16 = 2705;
-pub const NATIVE_CHRONO_SECOND: u16 = 2706;
-pub const NATIVE_CHRONO_TIMESTAMP: u16 = 2707;
-pub const NATIVE_CHRONO_FORMAT: u16 = 2708;
-pub const NATIVE_CHRONO_DROP: u16 = 2709;
-
-// Plan 212 Phase 2.3: base64 pure function shims (2710-2719)
-pub const NATIVE_BASE64_ENCODE: u16 = 2710;
-pub const NATIVE_BASE64_DECODE: u16 = 2711;
-
-// Plan 212 Phase 2.3: hex pure function shims (2720-2729)
-pub const NATIVE_HEX_ENCODE: u16 = 2720;
-pub const NATIVE_HEX_DECODE: u16 = 2721;
-
-// Plan 212 Phase 2.3: sha2 opaque struct shims (2730-2739)
-pub const NATIVE_SHA2_SHA256_NEW: u16 = 2730;
-pub const NATIVE_SHA2_UPDATE: u16 = 2731;
-pub const NATIVE_SHA2_FINALIZE: u16 = 2732;
-pub const NATIVE_SHA2_DROP: u16 = 2739;
-
-// Plan 212 Phase 2.3: mime_guess pure function shim (2740-2749)
-pub const NATIVE_MIME_FROM_PATH: u16 = 2740;
 
 // === Standard Shims ===
 
