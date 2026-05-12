@@ -16,8 +16,8 @@ fn main() {
     let mut people = vec![Person { name: "Zoe".to_string(), age: 25 }, Person { name: "Al".to_string(), age: 60 }, Person { name: "John".to_string(), age: 1 }];
 
     people.sort();
-    println!("{}", people);
+    println!("{:?}", people);
 
     people.sort_by(|a, b| b.age.cmp(a.age));
-    println!("{}", people);
+    println!("{:?}", people);
 }

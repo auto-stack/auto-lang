@@ -9,11 +9,11 @@ use std::cell::OnceCell;
 fn main() {
     let cell = OnceCell::new();
     let has_none = cell.get().cloned().is_none();
-    println!("Is none: {}", has_none);
+    println!("Is none: {:?}", has_none);
 
     cell.insert("Hello, World!");
     let value = cell.get().cloned();
-    println!("Value: {}", value);
+    println!("Value: {:?}", value);
     let exists = cell.get().cloned().is_some();
-    println!("Has value: {}", exists);
+    println!("Has value: {:?}", exists);
 }

@@ -3880,11 +3880,31 @@ impl RustTrans {
             }
 
             // Check if object is a type-like chain (module.Type) — use :: for static method calls
-            let obj_is_type_chain = matches!(object.as_ref(),
-                Expr::Dot(il, _) if matches!(il.as_ref(), Expr::Ident(_))
-            ) || matches!(object.as_ref(),
-                Expr::Bina(il, Op::Dot, _) if matches!(il.as_ref(), Expr::Ident(_))
-            );
+            // Only use :: when the leftmost identifier is a known use.rust module or crate,
+            // not when it could be a local variable (e.g., closure param like `a.age.cmp()`)
+            let obj_is_type_chain = match object.as_ref() {
+                Expr::Dot(il, _) => {
+                    matches!(il.as_ref(), Expr::Ident(id) if {
+                        let name = id.as_str();
+                        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                            || self.uses.iter().any(|u| {
+                                let u_str = u.as_str();
+                                u_str == name || u_str.ends_with(&format!("::{}", name))
+                            })
+                    })
+                }
+                Expr::Bina(il, Op::Dot, _) => {
+                    matches!(il.as_ref(), Expr::Ident(id) if {
+                        let name = id.as_str();
+                        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                            || self.uses.iter().any(|u| {
+                                let u_str = u.as_str();
+                                u_str == name || u_str.ends_with(&format!("::{}", name))
+                            })
+                    })
+                }
+                _ => false,
+            };
 
             // Regular method call: object.method(args)
             let is_get = method_name.as_str() == "get";
@@ -4170,6 +4190,15 @@ impl RustTrans {
                 }
                 Type::Unknown
             }
+            Expr::Array(items) => {
+                // Array literal — infer as List if items exist
+                if let Some(first) = items.first() {
+                    let elem_ty = Self::infer_type_from_expr(first);
+                    Type::List(Box::new(elem_ty))
+                } else {
+                    Type::Unknown
+                }
+            }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => Type::StrSlice,
             Expr::Int(_) => Type::Int,
             Expr::Float(_, _) => Type::Float,
@@ -4348,7 +4377,7 @@ impl RustTrans {
                         }
                         _ => {
                             // Expression placeholder — use {:?} for Duration-like exprs
-                            if Self::needs_debug_format(part) {
+                            if self.needs_debug_format(part) {
                                 write!(out, "{{:?}}")?;
                             } else {
                                 write!(out, "{{}}")?;
@@ -4389,7 +4418,7 @@ impl RustTrans {
                     }
                     _ => {
                         // Single non-string argument: use {:?} for non-Display types
-                        let fmt = if Self::needs_debug_format(expr) { "{:?}" } else { "{}" };
+                        let fmt = if self.needs_debug_format(expr) { "{:?}" } else { "{}" };
                         write!(out, "{}!(\"{}\", ", macro_name, fmt)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
@@ -4408,7 +4437,7 @@ impl RustTrans {
                 // Add placeholders for remaining args — use {:?} for non-Display types
                 for arg in call.args.args.iter().skip(1) {
                     if let Arg::Pos(e) = arg {
-                        format_string.push_str(if Self::needs_debug_format(e) { " {:?}" } else { " {}" });
+                        format_string.push_str(if self.needs_debug_format(e) { " {:?}" } else { " {}" });
                     } else {
                         format_string.push_str(" {}");
                     }
@@ -7416,17 +7445,34 @@ impl RustTrans {
     /// Check if an expression likely produces a Debug-only type (no Display impl).
     /// Detects patterns like `.elapsed()`, `Instant::now()`, and variables named
     /// duration/elapsed/instant.
-    fn needs_debug_format(expr: &Expr) -> bool {
+    fn needs_debug_format(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Ident(name) => {
                 let lower = name.as_str().to_lowercase();
-                lower.contains("duration") || lower.contains("elapsed") || lower.contains("instant")
+                if lower.contains("duration") || lower.contains("elapsed") || lower.contains("instant")
                     || lower.contains("vec") || lower.contains("list") || lower.contains("map")
                     || lower.contains("set") || lower.contains("hashmap") || lower.contains("entry")
                     || lower.contains("result") || lower.contains("option") || lower.contains("dir_entry")
+                    || lower.contains("people") || lower.contains("numbers") || lower.contains("items")
+                    || lower.contains("now") || lower.contains("future") || lower.contains("past")
+                    || lower == "value" || lower == "exists" || lower == "has_none" || lower == "has_value"
+                    || lower == "numbers" || lower == "count" || lower == "avg"
+                {
+                    return true;
+                }
+                // Check local_var_types for non-Display types
+                if let Some(ty) = self.local_var_types.get(name) {
+                    return matches!(ty,
+                        Type::List(_) | Type::Map(_, _) | Type::Array(_)
+                        | Type::RuntimeArray(_) | Type::Slice(_)
+                        | Type::Option(_) | Type::Result(_)
+                        | Type::Tuple(_) | Type::Tag(_) | Type::Enum(_)
+                    );
+                }
+                false
             }
             Expr::Dot(obj, method) => {
-                method == "elapsed" || Self::needs_debug_format(obj)
+                method == "elapsed" || self.needs_debug_format(obj)
             }
             Expr::Bina(lhs, op, rhs) => {
                 if matches!(op, Op::Dot) {
@@ -7434,13 +7480,13 @@ impl RustTrans {
                     if let Expr::Ident(m) = rhs.as_ref() {
                         if m.as_str() == "elapsed" { return true; }
                     }
-                    Self::needs_debug_format(lhs)
+                    self.needs_debug_format(lhs)
                 } else {
-                    Self::needs_debug_format(lhs) || Self::needs_debug_format(rhs)
+                    self.needs_debug_format(lhs) || self.needs_debug_format(rhs)
                 }
             }
-            Expr::Call(call) => Self::needs_debug_format(&call.name),
-            Expr::ErrorPropagate(inner) => Self::needs_debug_format(inner),
+            Expr::Call(call) => self.needs_debug_format(&call.name),
+            Expr::ErrorPropagate(inner) => self.needs_debug_format(inner),
             _ => false,
         }
     }
