@@ -1,148 +1,157 @@
 import { computed, ref, type Ref } from 'vue'
 
-export interface StreamingNode {
-  id: string
-  type: string
+export interface MarkdownSegment {
+  type: 'markdown'
+  text: string
+}
+
+export interface ComponentSegment {
+  type: 'component'
+  componentType: string
   props: Record<string, any>
   final: boolean
 }
 
-export type Directive =
-  | { kind: 'NODE'; type: string; id: string; props: Record<string, any> }
-  | { kind: 'PATCH'; id: string; path: string; op: string; value: any }
-  | { kind: 'CLOSE'; id: string }
+export type StreamingSegment = MarkdownSegment | ComponentSegment
 
-function parseDirective(inner: string): Directive | null {
-  // [[NODE type id propsJson]]
-  const nodeMatch = inner.match(/^NODE\s+(\S+)\s+(\S+)\s+(.+)$/)
-  if (nodeMatch) {
-    try {
-      return {
-        kind: 'NODE',
-        type: nodeMatch[1],
-        id: nodeMatch[2],
-        props: JSON.parse(nodeMatch[3]),
-      }
-    } catch {
-      return null
+/**
+ * Attempt to parse partial/incomplete JSON by completing open structures.
+ */
+function parsePartialJSON(text: string): { value: any; valid: boolean } {
+  const trimmed = text.trim()
+  if (!trimmed) return { value: null, valid: false }
+
+  // Try parsing as-is first
+  try {
+    return { value: JSON.parse(trimmed), valid: true }
+  } catch {
+    // Continue to recovery
+  }
+
+  // Recovery: complete open braces, brackets, and strings
+  let inString = false
+  let escape = false
+  const stack: string[] = []
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (ch === '\\') {
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+
+    if (ch === '{' || ch === '[') {
+      stack.push(ch === '{' ? '}' : ']')
+    } else if ((ch === '}' || ch === ']') && stack.length > 0) {
+      stack.pop()
     }
   }
 
-  // [[PATCH id path op valueJson]]
-  const patchMatch = inner.match(/^PATCH\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/)
-  if (patchMatch) {
-    try {
-      return {
-        kind: 'PATCH',
-        id: patchMatch[1],
-        path: patchMatch[2],
-        op: patchMatch[3],
-        value: JSON.parse(patchMatch[4]),
-      }
-    } catch {
-      return null
-    }
+  let completion = ''
+  if (inString) completion += '"'
+  completion += stack.reverse().join('')
+
+  try {
+    return { value: JSON.parse(trimmed + completion), valid: false }
+  } catch {
+    return { value: null, valid: false }
   }
-
-  // [[CLOSE id]]
-  const closeMatch = inner.match(/^CLOSE\s+(\S+)$/)
-  if (closeMatch) {
-    return { kind: 'CLOSE', id: closeMatch[1] }
-  }
-
-  return null
 }
 
-function parseDirectives(text: string): { directives: Directive[]; cleanText: string } {
-  const directives: Directive[] = []
-  const parts: string[] = []
-  let lastIndex = 0
-
-  const regex = /\[\[(.*?)\]\]/g
-  let match: RegExpExecArray | null
-
-  while ((match = regex.exec(text)) !== null) {
-    parts.push(text.slice(lastIndex, match.index))
-    const dir = parseDirective(match[1].trim())
-    if (dir) directives.push(dir)
-    lastIndex = regex.lastIndex
-  }
-  parts.push(text.slice(lastIndex))
-
-  return { directives, cleanText: parts.join('') }
+interface JSONBlock {
+  start: number
+  end: number
+  content: string
+  closed: boolean
 }
 
-function getPath(obj: any, path: string): any {
-  return path.split('.').reduce((o, key) => (o ? o[key] : undefined), obj)
-}
+function findJSONBlocks(text: string): JSONBlock[] {
+  const blocks: JSONBlock[] = []
+  let i = 0
+  while (i < text.length) {
+    const fenceStart = text.indexOf('```json\n', i)
+    if (fenceStart === -1) break
 
-function setPath(obj: any, path: string, value: any) {
-  const keys = path.split('.')
-  const last = keys.pop()!
-  const target = keys.reduce((o, key) => {
-    if (!o[key]) o[key] = {}
-    return o[key]
-  }, obj)
-  target[last] = value
-}
+    const contentStart = fenceStart + 8
+    const fenceEnd = text.indexOf('\n```', contentStart)
 
-function applyDirective(nodes: StreamingNode[], dir: Directive) {
-  if (dir.kind === 'NODE') {
-    const existing = nodes.find((n) => n.id === dir.id)
-    if (existing) {
-      existing.type = dir.type
-      existing.props = { ...existing.props, ...dir.props }
+    if (fenceEnd !== -1) {
+      blocks.push({
+        start: fenceStart,
+        end: fenceEnd + 4,
+        content: text.slice(contentStart, fenceEnd),
+        closed: true,
+      })
+      i = fenceEnd + 4
     } else {
-      nodes.push({ id: dir.id, type: dir.type, props: dir.props, final: false })
+      blocks.push({
+        start: fenceStart,
+        end: text.length,
+        content: text.slice(contentStart),
+        closed: false,
+      })
+      break
     }
-  } else if (dir.kind === 'PATCH') {
-    const node = nodes.find((n) => n.id === dir.id)
-    if (!node) return
-    if (dir.op === 'set') {
-      setPath(node.props, dir.path, dir.value)
-    } else if (dir.op === 'append') {
-      const arr = getPath(node.props, dir.path)
-      if (Array.isArray(arr)) {
-        const values = Array.isArray(dir.value) ? dir.value : [dir.value]
-        arr.push(...values)
-      }
-    } else if (dir.op === 'merge') {
-      const obj = getPath(node.props, dir.path)
-      if (typeof obj === 'object' && obj !== null) {
-        Object.assign(obj, dir.value)
-      }
-    }
-  } else if (dir.kind === 'CLOSE') {
-    const node = nodes.find((n) => n.id === dir.id)
-    if (node) node.final = true
   }
+  return blocks
+}
+
+const COMPONENT_TYPES = new Set(['table']) // extend as needed
+
+function isComponentJSON(value: any): value is { type: string } & Record<string, any> {
+  return value && typeof value === 'object' && typeof value.type === 'string' && COMPONENT_TYPES.has(value.type)
+}
+
+function buildSegments(text: string): StreamingSegment[] {
+  const blocks = findJSONBlocks(text)
+  const segments: StreamingSegment[] = []
+  let cursor = 0
+
+  for (const block of blocks) {
+    // Markdown before this block
+    if (block.start > cursor) {
+      segments.push({ type: 'markdown', text: text.slice(cursor, block.start) })
+    }
+
+    // Try to parse block content as component JSON
+    const { value, valid } = parsePartialJSON(block.content)
+    if (isComponentJSON(value)) {
+      const { type, ...props } = value
+      segments.push({
+        type: 'component',
+        componentType: type,
+        props,
+        final: valid && block.closed,
+      })
+    } else {
+      // Not a recognized component — render as normal markdown code block
+      const fence = block.closed
+        ? text.slice(block.start, block.end)
+        : text.slice(block.start, block.end) + '\n```'
+      segments.push({ type: 'markdown', text: fence })
+    }
+
+    cursor = block.end
+  }
+
+  // Trailing markdown
+  if (cursor < text.length) {
+    segments.push({ type: 'markdown', text: text.slice(cursor) })
+  }
+
+  return segments
 }
 
 export function useStreamingDocument(rawText: Ref<string>) {
-  const nodes = ref<StreamingNode[]>([])
-  const cleanText = ref('')
-  const processed = new Set<string>()
-
-  const update = (text: string) => {
-    const { directives, cleanText: cleaned } = parseDirectives(text)
-    cleanText.value = cleaned
-
-    for (const dir of directives) {
-      const key = JSON.stringify(dir)
-      if (processed.has(key)) continue
-      processed.add(key)
-      applyDirective(nodes.value, dir)
-    }
-  }
-
-  // React to prop changes
-  const reactiveCleanText = computed(() => {
-    update(rawText.value)
-    return cleanText.value
-  })
-
-  // Ensure nodes stay reactive
-  const reactiveNodes = computed(() => nodes.value)
-
-  return { cleanText: reactiveCleanText, nodes: reactiveNodes }
+  const segments = computed(() => buildSegments(rawText.value))
+  return { segments }
 }
