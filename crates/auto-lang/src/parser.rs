@@ -2862,10 +2862,41 @@ impl<'a> Parser<'a> {
                     }
                     self.expect(TokenKind::RBrace)?;
                 } else {
-                    // $Ident
-                    let ident = self.ident()?;
-                    parts.push(ident);
-                    self.expect(TokenKind::Ident)?;
+                    // $Ident or $Ident.field.chain
+                    let ident_expr = self.ident()?;
+                    self.next(); // consume the Ident token
+                    let mut expr = ident_expr;
+                    // Check for field access chain in f-string: $turn_result.iterations
+                    // The .field part may be embedded in the next fstr_part text token
+                    while self.is_kind(TokenKind::Dot) {
+                        self.next();
+                        let field_name = self.ident_name()?;
+                        self.next();
+                        expr = Expr::Dot(Box::new(expr), field_name);
+                    }
+                    // Also check if next token is an fstr_part starting with "."
+                    if self.is_kind(TokenKind::FStrPart) {
+                        let text = self.cur.text.clone();
+                        if text.starts_with('.') {
+                            let rest = &text[1..];
+                            let field_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_');
+                            let (field_name, remaining) = if let Some(pos) = field_end {
+                                (&rest[..pos], &rest[pos..])
+                            } else {
+                                (rest, "")
+                            };
+                            if !field_name.is_empty() && field_name.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_') {
+                                expr = Expr::Dot(Box::new(expr), field_name.into());
+                                if remaining.is_empty() {
+                                    self.next();
+                                } else {
+                                    let new_text: AutoStr = remaining.into();
+                                    self.cur = Token::fstr_part(self.cur.pos, new_text);
+                                }
+                            }
+                        }
+                    }
+                    parts.push(expr);
                 }
             } else {
                 // normal text parts
@@ -4967,8 +4998,12 @@ impl<'a> Parser<'a> {
         let has_new_line = new_lines > 0;
         let mut stmt_index = 0; // Track statement index for is_first_stmt check
 
+        // Track whether each statement started with a `.` token (implicit self)
+        let mut stmt_starts_with_dot: Vec<bool> = Vec::new();
+
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let stmt_line = self.cur.pos.line;
+            let starts_with_dot = self.is_kind(TokenKind::Dot);
             match self.parse_stmt() {
                 Ok(stmt) => {
                     if is_node {
@@ -4985,12 +5020,13 @@ impl<'a> Parser<'a> {
                     }
                     stmts.push(stmt);
                     source_lines.push(stmt_line);
+                    stmt_starts_with_dot.push(starts_with_dot);
 
                     // Method chaining: merge `.method()` lines into previous expression.
-                    // When a line starts with `.` (parsed as `self.method()`), and the
-                    // previous statement has a non-trivial expression, attach it to that.
+                    // Only chain when the current statement STARTS WITH `.` (implicit self),
+                    // NOT when it starts with `self.` (explicit self — a normal method call).
                     let stmts_len = stmts.len();
-                    if stmts_len >= 2 {
+                    if stmts_len >= 2 && *stmt_starts_with_dot.last().unwrap_or(&false) {
                         fn is_dot_self_call(expr: &Expr) -> bool {
                             match expr {
                                 Expr::Dot(obj, _) => {
@@ -5044,6 +5080,7 @@ impl<'a> Parser<'a> {
                                 for _ in 0..chain_count {
                                     if let Some(Stmt::Expr(dot_expr)) = stmts.pop() {
                                         source_lines.pop();
+                                        stmt_starts_with_dot.pop();
                                         let mut replaced = dot_expr;
                                         Self::replace_self_with(&mut replaced, &chained);
                                         chained = replaced;

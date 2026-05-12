@@ -187,19 +187,29 @@ pub mod json {
         serde_json::from_str(s).unwrap_or(Value::Null)
     }
 
-    pub fn get_at(val: &Value, idx: usize) -> Option<Value> {
-        val.get(idx).cloned()
+    pub fn get_at(val: &Value, idx: usize) -> &Value {
+        static NULL_VALUE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+        val.get(idx).unwrap_or_else(|| NULL_VALUE.get_or_init(|| Value::Null))
     }
 
-    pub fn get<'a>(val: &'a Value, key: &str) -> Option<&'a Value> {
-        val.get(key)
+    pub fn get<'a>(val: &'a Value, key: &str) -> &'a Value {
+        static NULL_VALUE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+        val.get(key).unwrap_or_else(|| NULL_VALUE.get_or_init(|| Value::Null))
+    }
+
+    pub fn get_owned(val: &Value, key: &str) -> Value {
+        val.get(key).cloned().unwrap_or(Value::Null)
     }
 
     pub fn get_str(val: &Value, key: &str) -> String {
         val.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_default()
     }
 
-    pub fn as_string(val: Option<Value>) -> String {
+    pub fn as_string(val: &Value) -> String {
+        val.as_str().map(|s| s.to_string()).unwrap_or_default()
+    }
+
+    pub fn as_string_opt(val: Option<&Value>) -> String {
         val.and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default()
     }
 
@@ -323,16 +333,14 @@ pub fn str_append(s: &mut String, other: &str) {
 
 /// Convert a JSON value to i32 (handles both string and number values)
 /// Used by to_int() interceptor when the receiver may be Option<Value>
-pub fn value_to_int(val: &Option<serde_json::Value>) -> i32 {
-    val.as_ref().and_then(|v| {
-        if v.is_i64() || v.is_u64() || v.is_f64() {
-            v.as_i64().map(|n| n as i32)
-        } else if let Some(s) = v.as_str() {
-            s.parse::<i32>().ok()
-        } else {
-            None
-        }
-    }).unwrap_or(0)
+pub fn value_to_int(val: &serde_json::Value) -> i32 {
+    if val.is_i64() || val.is_u64() || val.is_f64() {
+        val.as_i64().map(|n| n as i32)
+    } else if let Some(s) = val.as_str() {
+        s.parse::<i32>().ok()
+    } else {
+        None
+    }.unwrap_or(0)
 }
 
 /// Get the length of a JSON value (string length for strings, 0 for other types)
@@ -354,8 +362,8 @@ pub fn value_len(val: &Option<serde_json::Value>) -> i32 {
 /// AutoLang's env module — thin wrappers around std::env
 #[allow(non_snake_case)]
 pub mod env {
-    pub fn get(key: &str) -> Option<String> {
-        std::env::var(key).ok()
+    pub fn get(key: &str) -> String {
+        std::env::var(key).unwrap_or_default()
     }
 
     pub fn set(key: &str, val: &str) {
@@ -493,6 +501,33 @@ pub mod http {
                 Err(e) => (0, String::new(), e.to_string(), "error".to_string())
             }
         }).await.unwrap_or((0, String::new(), "spawn failed".to_string(), "error".to_string()))
+    }
+
+    /// Synchronous HTTP POST — blocking version for use in non-async contexts.
+    /// Used by Auto's http.post_sync() when transpiled via a2r.
+    pub fn post_sync(url: &str, body: &str, api_key: &str) -> (i32, String) {
+        let url = url.to_string();
+        let body = body.to_string();
+        let api_key = api_key.to_string();
+        let result = std::thread::spawn(move || -> Result<reqwest::blocking::Response, String> {
+            let client = reqwest::blocking::Client::new();
+            client
+                .post(&url)
+                .header("content-type", "application/json")
+                .header("x-api-key", &api_key)
+                .header("anthropic-version", "2023-06-01")
+                .body(body)
+                .send()
+                .map_err(|e| e.to_string())
+        }).join().unwrap_or_else(|_| Err("thread panicked".to_string()));
+        match result {
+            Ok(resp) => {
+                let status = resp.status().as_u16() as i32;
+                let resp_body = resp.text().unwrap_or_default();
+                (status, resp_body)
+            }
+            Err(e) => (0, e),
+        }
     }
 
     /// Async HTTP POST with Bearer token auth (for OpenAI-compatible APIs).

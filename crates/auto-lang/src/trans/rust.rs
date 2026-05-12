@@ -2243,12 +2243,11 @@ impl RustTrans {
             if let Expr::Ident(obj_name) = obj.as_ref() {
                 match (obj_name.as_str(), method.as_str()) {
                     ("http", "post_sync") => {
-                        write!(out, "{{ let __resp = a2r_std::http::post(")?;
+                        write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
-                                // Add .as_str() only for String-typed arguments (not &str literals or &str params)
                                 if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                                     if let Expr::Ident(name) = expr {
                                         if self.local_var_types.get(name)
@@ -2256,13 +2255,12 @@ impl RustTrans {
                                             .unwrap_or(true)
                                         { write!(out, ".as_str()")?; }
                                     } else {
-                                        // For field access like self.api_key, always add .as_str()
                                         write!(out, ".as_str()")?;
                                     }
                                 }
                             }
                         }
-                        write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                         return Ok(());
                     }
                     ("http", "last_status") => {
@@ -2287,7 +2285,7 @@ impl RustTrans {
                                 }
                             }
                         }
-                        write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                         return Ok(());
                     }
                     ("http", "post") => {
@@ -2384,8 +2382,7 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("http", "post_sync") => {
-                                    // http.post_sync(url, body, api_key) → a2r_std::http::post(url, body, api_key).await body (stores status in LAST_HTTP_STATUS)
-                                    write!(out, "{{ let __resp = a2r_std::http::post(")?;
+                                    write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
                                         if i > 0 { write!(out, ", ")?; }
                                         if let Arg::Pos(expr) = arg {
@@ -2400,7 +2397,7 @@ impl RustTrans {
                                             }
                                         }
                                     }
-                                    write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                    write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                                     return Ok(());
                                 }
                                 ("http", "last_status") => {
@@ -2421,7 +2418,7 @@ impl RustTrans {
                                     if call.args.args.len() > 1 {
                                         if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                                     }
-                                    write!(out, ").cloned()")?;
+                                    write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "get_str") => {
@@ -2535,7 +2532,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "get" => {
-                                // Json.get(val, key) -> a2r_std::json::get(&val, key).cloned()
+                                // Json.get(val, key) -> a2r_std::json::get(&val, key)
                                 write!(out, "a2r_std::json::get(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
@@ -2546,7 +2543,7 @@ impl RustTrans {
                                         self.expr(a, out)?;
                                     }
                                 }
-                                write!(out, ").cloned()")?;
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             "get_str" => {
@@ -2620,7 +2617,7 @@ impl RustTrans {
                                 if call.args.args.len() > 1 {
                                     if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                                 }
-                                write!(out, ").cloned()")?;
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             "get_str" => {
@@ -2720,8 +2717,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "post_sync" => {
-                                // http.post_sync(url, body, api_key) → { let __r = a2r_std::http::post(...).await; set_last_status(__r.0); __r.1 }
-                                write!(out, "{{ let __resp = a2r_std::http::post(")?;
+                                write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
@@ -2734,7 +2730,7 @@ impl RustTrans {
                                         }
                                     }
                                 }
-                                write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                                 return Ok(());
                             }
                             "last_status" => {
@@ -2755,7 +2751,7 @@ impl RustTrans {
                                         }
                                     }
                                 }
-                                write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -3300,16 +3296,16 @@ impl RustTrans {
                         self.expr(a, out)?;
                     }
                     if is_string_default {
-                        write!(out, ").map(|s| s.as_str()).unwrap_or(")?;
+                        write!(out, ").map(|s| s.to_string()).unwrap_or_default()")?;
                     } else {
                         write!(out, ").cloned().unwrap_or(")?;
-                    }
-                    if call.args.args.len() > 1 {
-                        if let Arg::Pos(a) = &call.args.args[1] {
-                            self.expr(a, out)?;
+                        if call.args.args.len() > 1 {
+                            if let Arg::Pos(a) = &call.args.args[1] {
+                                self.expr(a, out)?;
+                            }
                         }
+                        write!(out, ")")?;
                     }
-                    write!(out, ")")?;
                     return Ok(());
                 }
                 "to_hex" => {
@@ -3392,7 +3388,7 @@ impl RustTrans {
                         if call.args.args.len() > 1 {
                             if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                         }
-                        write!(out, ").cloned()")?;
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("json", "get_str") => {
@@ -4329,8 +4325,9 @@ impl RustTrans {
                         return Ok(());
                     }
                     _ => {
-                        // Single non-string argument: use format string
-                        write!(out, "{}!(\"{{}}\", ", macro_name)?;
+                        // Single non-string argument: use {:?} for non-Display types
+                        let fmt = if Self::needs_debug_format(expr) { "{:?}" } else { "{}" };
+                        write!(out, "{}!(\"{}\", ", macro_name, fmt)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
                         return Ok(());
@@ -4345,9 +4342,13 @@ impl RustTrans {
                 // First arg is a string - use it as format prefix
                 let mut format_string = s.replace("\"", r##"\""##);
 
-                // Add placeholders for remaining args
-                for _ in call.args.args.iter().skip(1) {
-                    format_string.push_str(" {}");
+                // Add placeholders for remaining args — use {:?} for non-Display types
+                for arg in call.args.args.iter().skip(1) {
+                    if let Arg::Pos(e) = arg {
+                        format_string.push_str(if Self::needs_debug_format(e) { " {:?}" } else { " {}" });
+                    } else {
+                        format_string.push_str(" {}");
+                    }
                 }
 
                 write!(out, "{}!(\"{}\"", macro_name, format_string)?;
@@ -4879,9 +4880,6 @@ impl RustTrans {
         }
         write!(sink.body, ")")?;
 
-        // Plan 232: Track str-type parameter names for .to_string() on return
-        self.current_fn_str_params.clear();
-        self.current_fn_ret_type = Some(fn_decl.ret.clone());
         // Cache which params are str (&str) type for auto-borrow at call sites
         let str_param_flags: Vec<bool> = fn_decl.params.iter()
             .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
@@ -4906,9 +4904,26 @@ impl RustTrans {
             .collect();
         self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
 
+        // Plan 240: If function returns void but body uses .? (ErrorPropagate),
+        // auto-wrap return type as Result<(), Box<dyn std::error::Error>>
+        let fn_body_has_try = matches!(fn_decl.ret, Type::Void)
+            && Self::has_error_propagate(&fn_decl.body.stmts);
+
+        // Plan 232: Track str-type parameter names for .to_string() on return
+        self.current_fn_str_params.clear();
+        // Plan 240: When fn body has .? but declared as void, treat as Result<(), ...>
+        // so that Ok("hello") -> Ok("hello".to_string()) works correctly
+        self.current_fn_ret_type = if fn_body_has_try {
+            Some(Type::Result(Box::new(Type::Void)))
+        } else {
+            Some(fn_decl.ret.clone())
+        };
+
         // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
-        if !matches!(fn_decl.ret, Type::Void) {
+        if fn_body_has_try {
+            write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;
+        } else if !matches!(fn_decl.ret, Type::Void) {
             let ret_str = if is_async_fn {
                 match &fn_decl.ret {
                     Type::Handle { task_type } => self.rust_return_type_name(task_type),
@@ -5981,7 +5996,7 @@ impl RustTrans {
             // Also check nested types: List<EnumType>, Option<EnumType>, etc.
             fn type_contains_enum(ty: &Type) -> bool {
                 match ty {
-                    Type::Tag(_) | Type::Enum(_) => true,
+                    Type::Tag(_) | Type::Enum(_) | Type::User(_) => true,
                     Type::List(inner) | Type::Result(inner) | Type::Option(inner) => type_contains_enum(inner),
                     _ => false,
                 }
@@ -7159,6 +7174,83 @@ impl RustTrans {
         false
     }
 
+    /// Plan 240: Check if statements contain ErrorPropagate (`.?` operator)
+    fn has_error_propagate(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    if Self::expr_has_error_propagate(expr) { return true; }
+                }
+                Stmt::Store(store) => {
+                    if Self::expr_has_error_propagate(&store.expr) { return true; }
+                }
+                Stmt::Return(expr) => {
+                    if Self::expr_has_error_propagate(expr) { return true; }
+                }
+                Stmt::Block(body) => {
+                    if Self::has_error_propagate(&body.stmts) { return true; }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        if Self::has_error_propagate(&branch.body.stmts) { return true; }
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        if Self::has_error_propagate(&else_body.stmts) { return true; }
+                    }
+                }
+                Stmt::For(for_stmt) => {
+                    if Self::has_error_propagate(&for_stmt.body.stmts) { return true; }
+                }
+                Stmt::Is(is_stmt) => {
+                    for branch in &is_stmt.branches {
+                        let body = match branch {
+                            crate::ast::IsBranch::EqBranch(_, body) => body,
+                            crate::ast::IsBranch::IfBranch(_, body) => body,
+                            crate::ast::IsBranch::ElseBranch(body) => body,
+                        };
+                        if Self::has_error_propagate(&body.stmts) { return true; }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Plan 240: Check if an expression contains ErrorPropagate (`.?` operator)
+    fn expr_has_error_propagate(expr: &Expr) -> bool {
+        match expr {
+            Expr::ErrorPropagate(_) => true,
+            Expr::Call(call) => {
+                if Self::expr_has_error_propagate(call.name.as_ref()) { return true; }
+                for arg in &call.args.args {
+                    match arg {
+                        Arg::Pos(e) | Arg::Pair(_, e) => {
+                            if Self::expr_has_error_propagate(e) { return true; }
+                        }
+                        Arg::Name(_) => {}
+                    }
+                }
+                false
+            }
+            Expr::Block(body) => Self::has_error_propagate(&body.stmts),
+            Expr::Bina(left, _, right) => {
+                Self::expr_has_error_propagate(left) || Self::expr_has_error_propagate(right)
+            }
+            Expr::Unary(_, e) => Self::expr_has_error_propagate(e),
+            Expr::Dot(obj, _) => Self::expr_has_error_propagate(obj),
+            Expr::Index(arr, idx) => {
+                Self::expr_has_error_propagate(arr) || Self::expr_has_error_propagate(idx)
+            }
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => {
+                Self::expr_has_error_propagate(e)
+            }
+            Expr::FStr(fstr) => fstr.parts.iter().any(|p| Self::expr_has_error_propagate(p)),
+            Expr::Array(arr) => arr.iter().any(|e| Self::expr_has_error_propagate(e)),
+            _ => false,
+        }
+    }
+
     /// Plan 220 Task 4: Check if an expression needs an `as usize` cast
     /// when used as a slice/array index in Rust.
     ///
@@ -7188,6 +7280,9 @@ impl RustTrans {
             Expr::Ident(name) => {
                 let lower = name.as_str().to_lowercase();
                 lower.contains("duration") || lower.contains("elapsed") || lower.contains("instant")
+                    || lower.contains("vec") || lower.contains("list") || lower.contains("map")
+                    || lower.contains("set") || lower.contains("hashmap") || lower.contains("entry")
+                    || lower.contains("result") || lower.contains("option") || lower.contains("dir_entry")
             }
             Expr::Dot(obj, method) => {
                 method == "elapsed" || Self::needs_debug_format(obj)
