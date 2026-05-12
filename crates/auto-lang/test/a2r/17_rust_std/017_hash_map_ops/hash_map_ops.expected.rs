@@ -12,6 +12,6 @@ fn main() {
     map.insert("b".to_string(), 2);
     let val = map.get("a").cloned();
     let has = map.contains_key("b");
-    let len = map.len();
+    let len = a2r_std::value_len(&map);
     map.remove("a");
 }

@@ -5,7 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use crate::io::*;
+use a2r_std::io::*;
 fn main() {
     say("hello from wildcard");
 }

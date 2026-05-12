@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 
 pub fn check(x: i32) -> String {
     match x {
-        0 => return "zero",
-        1 => return "one",
+        0 => return "zero".to_string(),
+        1 => return "one".to_string(),
     }
-    return "other";
+    return "other".to_string();
 }

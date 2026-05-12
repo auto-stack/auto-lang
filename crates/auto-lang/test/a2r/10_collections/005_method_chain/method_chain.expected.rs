@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 fn main() {
     let s: String = "hello world".to_string();
     let upper = s.to_uppercase();
-    let trimmed = "  hello  ".trim();
+    let trimmed = "  hello  ".trim().to_string();
     let parts = "a,b,c".split(",");
     let x: i32 = 42;
 }

@@ -21,9 +21,9 @@ fn main() {
     let sq = m.square(5);
 
     if sq > 20 {
-        println!("Square is large: {}", sq);
+        println!("Square is large: {}", sq)
     } else {
-        println!("Square is small: {}", sq);
+        println!("Square is small: {}", sq)
     }
 
 

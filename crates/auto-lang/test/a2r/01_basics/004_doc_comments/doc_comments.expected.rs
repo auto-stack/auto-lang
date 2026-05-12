@@ -13,5 +13,5 @@ fn test_func(x: i32) -> i32 {
 
 fn main() {
     let result = test_func(5);
-    println!("{}", result);
+    println!("{:?}", result);
 }

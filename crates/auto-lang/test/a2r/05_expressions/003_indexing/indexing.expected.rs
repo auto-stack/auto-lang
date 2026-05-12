@@ -7,15 +7,15 @@ use auto_lang::a2r_std::*;
 
 fn main() {
     let arr: Vec<i32> = vec![10, 20, 30, 40, 50];
-    let first: i32 = arr[0];
-    let third: i32 = arr[2];
-    let last: i32 = arr[4];
+    let first: i32 = arr[0].clone();
+    let third: i32 = arr[2].clone();
+    let last: i32 = arr[4].clone();
 
     println!("First: {}", first);
     println!("Third: {}", third);
     println!("Last: {}", last);
 
     let matrix: Vec<Vec<i32>> = vec![vec![1, 2], vec![3, 4]];
-    let val: i32 = matrix[0][1];
+    let val: i32 = matrix[0].clone()[1].clone();
     println!("Matrix value: {}", val);
 }

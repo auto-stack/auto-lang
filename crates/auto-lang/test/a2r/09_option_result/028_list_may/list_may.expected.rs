@@ -12,6 +12,6 @@ fn main() {
     list.push(3);
 
 
-    let first = list[0];
-    let second = list[1];
+    let first = list[0].clone();
+    let second = list[1].clone();
 }

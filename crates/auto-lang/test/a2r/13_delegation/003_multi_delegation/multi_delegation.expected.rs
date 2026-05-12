@@ -33,6 +33,6 @@ fn main() {
 
     let result1 = comp.add(5, 3);
     let result2 = comp.multiply(4, 7);
-    println!("{}", result1);
-    println!("{}", result2);
+    println!("{:?}", result1);
+    println!("{:?}", result2);
 }

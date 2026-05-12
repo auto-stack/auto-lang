@@ -9,7 +9,7 @@ fn main() {
     let list = List::new();
 
 
-    let len = list.len();
+    let len = (list.len() as i32);
     let is_empty = list.is_empty();
 
 
@@ -17,5 +17,5 @@ fn main() {
     list.push(20);
     list.push(30);
 
-    let new_len = list.len();
+    let new_len = (list.len() as i32);
 }

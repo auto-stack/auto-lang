@@ -23,7 +23,7 @@ struct InlineInt64 {
     buffer: Vec<i32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq)]
 struct List<T, S> {
     len: u32,
     store: S,
@@ -32,12 +32,12 @@ struct List<T, S> {
 fn main() {
 
     let heap_list = List<int, Heap>.new();
-    let heap_len = heap_list.len();
+    let heap_len = (heap_list.len() as i32);
     let heap_cap = heap_list.capacity();
 
 
     let inline_list = List<int, InlineInt64>.new();
-    let inline_len = inline_list.len();
+    let inline_len = (inline_list.len() as i32);
     let inline_cap = inline_list.capacity();
 
     return 0;

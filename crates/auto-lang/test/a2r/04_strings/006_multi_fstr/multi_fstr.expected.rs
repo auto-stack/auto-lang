@@ -12,5 +12,5 @@ fn main() {
 you are {} years old.", name, age);;
     println!("{}", msg);
     let result: String = format!("Sum: {}", age + 1);;
-    println!("{}", result);
+    println!("{:?}", result);
 }

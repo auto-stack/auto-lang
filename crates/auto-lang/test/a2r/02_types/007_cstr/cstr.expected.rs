@@ -12,6 +12,6 @@ fn println(msg: &str) {
 }
 
 fn main() {
-    let s: String = "Hello!";
-    println(&s);
+    let s: String = "Hello!".to_string();
+    println(s.as_str());
 }

@@ -5,7 +5,7 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     env: std::collections::HashMap<String, String>,
     provider: Option<String>,

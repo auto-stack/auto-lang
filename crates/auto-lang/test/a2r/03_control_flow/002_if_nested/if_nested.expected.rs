@@ -9,12 +9,12 @@ fn main() {
     let x: i32 = 10;
     if x > 5 {
         if x > 8 {
-            println!("large");
+            println!("large")
         } else {
-            println!("medium");
+            println!("medium")
         }
     } else {
-        println!("small");
+        println!("small")
     }
 
 }

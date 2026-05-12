@@ -9,7 +9,7 @@ use std::string::String;
 fn main() {
     let mut s: String = String::from("hello");
     s.push_str(" world");
-    let len = s.len();
-    let trimmed = "  hi  ".trim();
+    let len = a2r_std::value_len(&s);
+    let trimmed = "  hi  ".trim().to_string();
     let replaced = s.replace("world", "auto");
 }

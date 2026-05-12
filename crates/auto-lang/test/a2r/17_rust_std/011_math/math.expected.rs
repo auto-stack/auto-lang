@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use std::cmp::{min, max};
 fn main() {
-    let x = std::cmp::min(3, 7);
-    let y = std::cmp::max(3, 7);
-    let z = std::cmp::min(-1, 1);
+    let x = a2r_std::math::min(3, 7);
+    let y = a2r_std::math::max(3, 7);
+    let z = a2r_std::math::min(-1, 1);
 }

@@ -21,7 +21,7 @@ fn main() {
     let x: i32 = 10;
     let y: i32 = 20;
     let result: String = format!("Result: {}", x + y);
-    println!("{}", result);
+    println!("{:?}", result);
 
 
     let msg: String = format!("The value is {} and {}", x, y * 2);

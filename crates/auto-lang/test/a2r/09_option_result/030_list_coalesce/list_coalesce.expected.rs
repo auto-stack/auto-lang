@@ -11,6 +11,6 @@ fn main() {
     list.push(200);
 
 
-    let val1: i32 = list[0].unwrap_or(0);
-    let val2: i32 = list[5].unwrap_or(999);
+    let val1: i32 = list[0].clone().unwrap_or(0);
+    let val2: i32 = list[5].clone().unwrap_or(999);
 }

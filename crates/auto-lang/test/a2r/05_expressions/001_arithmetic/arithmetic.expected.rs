@@ -14,9 +14,9 @@ fn main() {
     let result2: i32 = x + y * z;
     let result3: i32 = x + y * z - x;
 
-    println!("Result1: {}", result1);
-    println!("Result2: {}", result2);
-    println!("Result3: {}", result3);
+    println!("Result1: {:?}", result1);
+    println!("Result2: {:?}", result2);
+    println!("Result3: {:?}", result3);
 
     let a: i32 = 5;
     let b: i32 = a * 2 + a / 2 - 1;

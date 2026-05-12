@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 
 fn main() {
     let array: Vec<i32> = vec![1, 2, 3, 4, 5];
-    println!("{}", array[1]);
+    println!("{}", array[1].clone());
 
-    let a: i32 = array[0];
+    let a: i32 = array[0].clone();
     println!("{}", a);
 }

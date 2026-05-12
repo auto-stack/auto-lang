@@ -5,8 +5,8 @@
 use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
-use crate::io::{say};
-pub use crate::io::{say};
+use a2r_std::io::{say};
+pub use a2r_std::io::{say};
 fn main() {
     say("hello from pub use");
 }

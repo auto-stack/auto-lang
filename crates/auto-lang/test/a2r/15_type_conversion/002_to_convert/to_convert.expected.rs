@@ -9,7 +9,7 @@ fn main() {
     let x: i32 = 42;
 
 
-    let s: String = x.to_string();
+    let s: String = format!("{:?}", x);
 
 
     let n: i32 = "123".parse::<i32>().unwrap();
