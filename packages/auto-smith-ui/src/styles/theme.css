@@ -1,37 +1,35 @@
 /* ═════════════════════════════════════════════════════════════════════════════
-   AutoForge Theme System
-   Mirrors the website (VitePress) theme for visual consistency.
-   Uses the same CSS variable names and localStorage key so preferences
-   are shared between the website and the Forge app.
+   AutoForge Theme System — BitFun-inspired clean & minimal
    ═════════════════════════════════════════════════════════════════════════════ */
 
 /* ─── Base variables (light mode) ──────────────────────────────────────────── */
 :root {
-  /* VitePress-compatible core palette */
-  --vp-c-brand-1: #6366f1;
-  --vp-c-brand-2: #818cf8;
-  --vp-c-brand-3: #4f46e5;
-  --vp-c-brand-soft: rgba(99, 102, 241, 0.14);
+  /* Muted primary — less saturated, more professional */
+  --vp-c-brand-1: #5558d6;
+  --vp-c-brand-2: #6b6ee0;
+  --vp-c-brand-3: #4346b8;
+  --vp-c-brand-soft: rgba(85, 88, 214, 0.08);
 
   --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  --foreground: 220 15% 20%;
   --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
+  --card-foreground: 220 15% 20%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
-  --primary: 239 84% 67%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 239 84% 67%;
+  --popover-foreground: 220 15% 20%;
+  --primary: 238 55% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 220 15% 20%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+  --accent: 220 14% 96%;
+  --accent-foreground: 220 15% 20%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  /* Very subtle borders — almost invisible */
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 238 55% 58%;
   --radius: 0.5rem;
 
   /* AutoForge semantic aliases */
@@ -44,59 +42,59 @@
   --af-input: hsl(var(--input));
   --af-primary: hsl(var(--primary));
   --af-primary-fg: hsl(var(--primary-foreground));
-  --af-primary-soft: hsl(var(--primary) / 0.14);
+  --af-primary-soft: hsl(var(--primary) / 0.08);
   --af-secondary: hsl(var(--secondary));
   --af-secondary-fg: hsl(var(--secondary-foreground));
   --af-ring: hsl(var(--ring));
   --af-radius: var(--radius);
 
-  /* Status colours */
-  --af-success: 142 71% 45%;
-  --af-warning: 38 92% 50%;
-  --af-error: 0 84% 60%;
-  --af-info: 217 91% 60%;
+  /* Status colours — desaturated */
+  --af-success: 142 60% 42%;
+  --af-warning: 38 85% 48%;
+  --af-error: 0 72% 51%;
+  --af-info: 217 70% 50%;
 
-  /* View accents (subtle, used for headers & badges) */
-  --af-furnace: 25 95% 53%;
-  --af-jades: 160 84% 39%;
-  --af-order: 199 89% 48%;
+  /* View accents — muted */
+  --af-furnace: 25 85% 48%;
+  --af-jades: 160 60% 36%;
+  --af-order: 199 75% 45%;
 }
 
 /* ─── Dark mode ────────────────────────────────────────────────────────────── */
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 6%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 239 84% 67%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 239 84% 67%;
+  --background: 220 15% 8%;
+  --foreground: 220 10% 92%;
+  --card: 220 15% 10%;
+  --card-foreground: 220 10% 92%;
+  --popover: 220 15% 8%;
+  --popover-foreground: 220 10% 92%;
+  --primary: 238 55% 62%;
+  --primary-foreground: 220 15% 8%;
+  --secondary: 220 12% 16%;
+  --secondary-foreground: 220 10% 92%;
+  --muted: 220 12% 16%;
+  --muted-foreground: 220 9% 58%;
+  --accent: 220 12% 16%;
+  --accent-foreground: 220 10% 92%;
+  --destructive: 0 62% 45%;
+  --destructive-foreground: 220 10% 92%;
+  --border: 220 12% 18%;
+  --input: 220 12% 18%;
+  --ring: 238 55% 62%;
 }
 
-/* ─── Scrollbar (matches website) ──────────────────────────────────────────── */
+/* ─── Scrollbar (minimal) ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 4px;
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: hsl(var(--muted-foreground) / 0.35);
 }
