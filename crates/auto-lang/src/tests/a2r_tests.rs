@@ -222,7 +222,7 @@ fn test_14_modules_005_multi_file() {
 
     // Validate api/handlers.rs
     let handlers_rs = String::from_utf8_lossy(&result["api/handlers.rs"]);
-    assert!(handlers_rs.contains("use super::db;"), "api/handlers.rs should have 'use super::db;'");
+    assert!(handlers_rs.contains("use crate::db;"), "api/handlers.rs should have 'use crate::db;'");
     assert!(handlers_rs.contains("fn handle_request"), "api/handlers.rs should have fn handle_request");
 
     // Validate Cargo.toml

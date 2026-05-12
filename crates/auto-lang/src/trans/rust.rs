@@ -46,6 +46,7 @@ use super::{escape_str, Sink, Trans};
 use crate::ast::*;
 use crate::database::Database;
 use crate::parser::Parser;
+use crate::types::TypeStore;
 // Plan 091: Universe removed
 use crate::{AutoError, AutoResult, Rc};
 use auto_val::{shared, Shared};
@@ -117,6 +118,9 @@ pub struct RustTrans {
 
     // Plan 167: Multi-file mode — local module names for mod declarations
     local_modules: HashSet<String>,
+    // Multi-file mode: set of sibling module names (same directory)
+    // Used to generate `use super::X;` instead of `use crate::X;`
+    sibling_modules: HashSet<String>,
 
     // Plan 232: Track current function's str-type parameter names
     // Used to add .to_string() when returning a &str param as String
@@ -169,6 +173,7 @@ impl RustTrans {
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
+            sibling_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
@@ -204,6 +209,7 @@ impl RustTrans {
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
+            sibling_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
@@ -5969,8 +5975,23 @@ impl RustTrans {
                 // Join all path segments into a single Rust path
                 if !use_stmt.paths.is_empty() {
                     let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
+                    // In multi-file mode, bare module names (e.g., "types") that are
+                    // NOT in local_modules → generate correct cross-module reference
+                    let mod_name = use_stmt.paths[0].as_str();
+                    let is_multi_file_bare = (!self.local_modules.is_empty() || !self.sibling_modules.is_empty())
+                        && use_stmt.paths.len() == 1
+                        && !mod_name.contains("::")
+                        && !self.local_modules.contains(mod_name);
                     // Map known Auto stdlib modules to a2r_std
-                    let rust_path = if full_path.starts_with("auto::") {
+                    let rust_path = if is_multi_file_bare {
+                        if self.sibling_modules.contains(mod_name) {
+                            // Same directory → use super::X
+                            format!("super::{}", mod_name)
+                        } else {
+                            // Different directory → use crate::X
+                            format!("crate::{}", mod_name)
+                        }
+                    } else if full_path.starts_with("auto::") {
                         let rest = &full_path[6..];
                         match rest {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
@@ -5981,6 +6002,10 @@ impl RustTrans {
                             }
                             _ => format!("crate::{}", rest),
                         }
+                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty()) {
+                        // In multi-file mode, Auto's `use super.X` means "parent directory's X"
+                        // which maps to crate root's X in Rust (since subdirectories are 1 level deep)
+                        format!("crate::{}", &full_path[7..])
                     } else {
                         full_path.replace("auto::", "crate::")
                     };
@@ -6025,7 +6050,8 @@ impl RustTrans {
                     }
 
                     // Auto-add companion trait imports that methods on this crate require
-                    // Format: (prefix, companion_use_stmt) — empty string means no companion needed
+                    // Always evaluated even if already_emitted, so companion traits are added
+                    // regardless of whether the main import was already in self.uses.
                     let companion_imports: &[(&str, &str)] = &[
                         ("rand", "use rand::Rng;"),
                         ("rand::seq", "use rand::seq::SliceRandom;"),
@@ -6044,6 +6070,10 @@ impl RustTrans {
                         ("urlencoding", "use urlencoding::encode;"),
                         ("hex", "use hex;"),
                     ];
+                    // Ensure the main path is in self.uses for companion dedup checking
+                    if already_emitted {
+                        self.uses.insert(effective_path.to_string().into());
+                    }
                     for (prefix, import_line) in companion_imports {
                         if full_path == *prefix || full_path.starts_with(&format!("{}::", prefix)) {
                             if !import_line.is_empty() && *import_line != format!("use {};", effective_path) {
@@ -6053,9 +6083,14 @@ impl RustTrans {
                                     .unwrap_or("");
                                 let already_imported = self.uses.iter().any(|u| {
                                     let u_str = u.as_str();
-                                    if u_str == companion_path
-                                        || u_str.starts_with(&format!("{}::", companion_path))
-                                        || companion_path.starts_with(&format!("{}::", u_str))
+                                    // Exact match: "rand::Rng" already imported
+                                    if u_str == companion_path {
+                                        return true;
+                                    }
+                                    // Existing import is a wildcard covering the companion:
+                                    // e.g. "rand::*" covers "rand::Rng"
+                                    if u_str.starts_with(&format!("{}::*", companion_path.split("::").next().unwrap_or("")))
+                                        && companion_path.starts_with(&format!("{}::", u_str.trim_end_matches("::*")))
                                     {
                                         return true;
                                     }
@@ -7907,13 +7942,71 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     let mut visited = std::collections::HashSet::new();
     discover_modules(entry_path, entry_dir, &mut modules, &mut visited)?;
 
+    // Phase 1.5: Pre-register all type/enum declarations into shared TypeStore
+    // This allows cross-file type references (e.g., Usage{...} in json_helpers.at
+    // when Usage is defined in types.at) to be resolved during parsing.
+    let shared_type_store = Arc::new(RwLock::new(TypeStore::new()));
+    {
+        let mut store = shared_type_store.write().unwrap();
+        for module in &modules {
+            let source = std::fs::read_to_string(&module.source_path)
+                .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+            for line in source.lines() {
+                let trimmed = line.trim();
+                let (prefix, rest) = if trimmed.starts_with("pub type ") {
+                    ("pub type ", trimmed)
+                } else if trimmed.starts_with("pub enum ") {
+                    ("pub enum ", trimmed)
+                } else if trimmed.starts_with("type ") {
+                    ("type ", trimmed)
+                } else if trimmed.starts_with("enum ") {
+                    ("enum ", trimmed)
+                } else {
+                    continue;
+                };
+                let after_prefix = rest;
+                // Extract name (first token after prefix, possibly with generics)
+                let name = if let Some(angle) = after_prefix.find('<') {
+                    &after_prefix[..angle]
+                } else if let Some(space) = after_prefix.find(' ') {
+                    &after_prefix[..space]
+                } else {
+                    after_prefix
+                };
+                if name.is_empty() {
+                    continue;
+                }
+                // Type names must start with uppercase
+                if !name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    continue;
+                }
+                if prefix.contains("type ") {
+                    let decl = TypeDecl::builtin(name);
+                    store.register_type_decl(&decl);
+                } else if prefix.contains("enum ") {
+                    let enum_decl = EnumDecl {
+                        name: name.into(),
+                        items: Vec::new(),
+                        kind: EnumKind::Heterogeneous {
+                            generic_params: Vec::new(),
+                            methods: Vec::new(),
+                        },
+                        doc: None,
+                        is_pub: prefix.starts_with("pub"),
+                    };
+                    store.register_enum_decl(enum_decl);
+                }
+            }
+        }
+    }
+
     // Phase 2: Parse each module
     let mut parsed_modules = Vec::new();
     for module in &modules {
         let source = std::fs::read_to_string(&module.source_path)
             .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
         let _scope = shared(crate::scope_manager::ScopeManager::new());
-        let mut parser = Parser::from(source.as_str());
+        let mut parser = Parser::new_with_type_store(source.as_str(), shared_type_store.clone());
         parser.set_dest(crate::parser::CompileDest::TransRust);
         parser.skip_check = true; // Plan 167: skip type checking for multi-file mode
         let ast = parser.parse().map_err(|e| {
@@ -7928,39 +8021,62 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         let sink = multi_sink.add(&module.output_name);
         let mut transpiler = RustTrans::new(AutoStr::from(&module.output_name));
 
-        // Plan 167: Populate local_modules with all discovered module names
-        // (excluding self) so that use X → mod X; for local modules
-        for other in &modules {
-            if other.source_path == module.source_path {
-                continue;
+        // Plan 167: Populate local_modules for mod declarations.
+        // In Rust, `mod X;` can only appear in the parent module that owns X.
+        // - crate root (main.rs): can use `mod X;` for all top-level modules
+        // - dir module (mod.rs): pub mod X; emitted separately below
+        // - other files: must use `use crate::X;` or `use super::X;`
+        // We only populate local_modules for the crate root.
+        let is_entry = module.source_path == modules[0].source_path;
+        if is_entry {
+            for other in &modules {
+                if other.source_path == module.source_path {
+                    continue;
+                }
+                let other_name = if other.is_dir_module {
+                    other.source_path.parent().unwrap()
+                        .file_name().unwrap().to_string_lossy().to_string()
+                } else {
+                    other.source_path.file_stem()
+                        .unwrap().to_string_lossy().to_string()
+                };
+                transpiler.local_modules.insert(other_name);
             }
-            // Use the module name as it would appear in use statements
-            let other_name = if other.is_dir_module {
-                // Directory module: use the directory name (e.g., "api" for api/mod.at)
-                other.source_path.parent().unwrap()
-                    .file_name().unwrap().to_string_lossy().to_string()
-            } else {
-                // File module: use the file stem (e.g., "db" for db.at)
-                other.source_path.file_stem()
-                    .unwrap().to_string_lossy().to_string()
-            };
-            transpiler.local_modules.insert(other_name);
+        }
+        // Non-entry modules: local_modules stays empty
+        // → use X will be handled by is_multi_file_bare → use crate::X;
+
+        // Populate sibling_modules: modules in the same directory as the current module
+        // Used to generate `use super::X;` for same-directory references.
+        // Exclude directory modules (mod.rs) since their same-dir files are children, not siblings.
+        if !is_entry && !module.is_dir_module {
+            let module_dir = module.source_path.parent().unwrap();
+            for other in &modules {
+                if other.source_path == module.source_path {
+                    continue;
+                }
+                let other_dir = other.source_path.parent().unwrap();
+                if other_dir == module_dir {
+                    let other_name = other.source_path.file_stem()
+                        .unwrap().to_string_lossy().to_string();
+                    transpiler.sibling_modules.insert(other_name);
+                }
+            }
         }
 
-        // For directory modules (mod.at), emit pub mod declarations for sibling files
+        // For directory modules (mod.at), emit pub mod declarations for discovered sibling files
+        // Only emit for files that were actually discovered by discover_modules (not all .at files on disk)
         if module.is_dir_module {
             let mod_dir = module.source_path.parent().unwrap();
-            // Collect sibling .at files (excluding mod.at itself)
             let mut submodules: Vec<String> = Vec::new();
-            for entry in std::fs::read_dir(mod_dir).map_err(|e| AutoError::Msg(e.to_string()))? {
-                let entry = entry.map_err(|e| AutoError::Msg(e.to_string()))?;
-                let path = entry.path();
-                if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    if let Some(name) = path.file_stem() {
-                        let name_str = name.to_string_lossy().to_string();
-                        if name_str != "mod" {
-                            submodules.push(name_str);
-                        }
+            for other in &modules {
+                if other.source_path == module.source_path {
+                    continue;
+                }
+                let other_dir = other.source_path.parent().unwrap();
+                if other_dir == mod_dir && !other.is_dir_module {
+                    if let Some(name) = other.source_path.file_stem() {
+                        submodules.push(name.to_string_lossy().to_string());
                     }
                 }
             }
