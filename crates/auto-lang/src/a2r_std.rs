@@ -404,6 +404,11 @@ pub mod env {
 // File system module for a2r transpiler
 // =============================================================================
 
+/// Alias: File → fs (AutoLang uses File.xxx() for file operations)
+pub mod File {
+    pub use super::fs::*;
+}
+
 /// AutoLang's fs module — thin wrappers around std::fs
 #[allow(non_snake_case)]
 pub mod fs {
@@ -411,8 +416,8 @@ pub mod fs {
         std::fs::read_to_string(path).unwrap_or_default()
     }
 
-    pub fn read_text(path: &str) -> String {
-        std::fs::read_to_string(path).unwrap_or_default()
+    pub fn read_text<S: AsRef<str>>(path: S) -> String {
+        std::fs::read_to_string(path.as_ref()).unwrap_or_default()
     }
 
     pub fn write(path: &str, content: &str) -> bool {
