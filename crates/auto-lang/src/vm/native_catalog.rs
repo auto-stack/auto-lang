@@ -472,3 +472,659 @@ const OPAQUE_DISPATCH_SHA2: &[(&str, &str)] = &[
 const OPAQUE_DISPATCH_MIME: &[(&str, &str)] = &[
     ("from_path", "auto.mime.from_path"),
 ];
+
+// Plan 249 Phase 3: BIGVM native registry entries — single source of truth.
+// Each entry: (canonical_name, numeric_id, return_type_tag).
+// return_type_tag: Void (default) → register_with_id; others → register_with_id_and_type.
+// Uses numeric IDs directly (not NATIVE_* consts) to avoid cross-module dependency.
+// The IDs must match for_each_native! shim entries — verified by tests.
+#[macro_export]
+macro_rules! for_each_bigvm_native {
+    ($mac:ident) => {
+        $mac! {
+            // === List (100-110, 118, 205) ===
+            ("auto.list.new", 100, Void),
+            ("auto.list.push", 101, Void),
+            ("auto.list.pop", 102, Void),
+            ("auto.list.len", 103, Void),
+            ("auto.list.is_empty", 104, Void),
+            ("auto.list.clear", 105, Void),
+            ("auto.list.get", 106, Void),
+            ("auto.list.set", 107, Void),
+            ("auto.list.insert", 108, Void),
+            ("auto.list.remove", 109, Void),
+            ("auto.list.drop", 110, Void),
+            ("auto.list.reserve", 118, Void),
+            ("auto.list.capacity", 205, Void),
+
+            // === List HOF (2060-2069) ===
+            ("auto.list.map", 2060, List),
+            ("auto.list.filter", 2061, List),
+            ("auto.list.for_each", 2062, Void),
+            ("auto.list.find", 2063, Void),
+            ("auto.list.any", 2064, Bool),
+            ("auto.list.all", 2065, Bool),
+            ("auto.list.reduce", 2066, Void),
+            ("auto.list.sort", 2067, Void),
+            ("auto.list.sort_by", 2068, Void),
+            ("auto.list.contains", 2069, Bool),
+
+            // === Iterator (111-118) ===
+            ("auto.list.iter", 111, Void),
+            ("auto.iterator.next", 112, Void),
+            ("auto.iterator.map", 113, Void),
+            ("auto.iterator.filter", 114, Void),
+            ("auto.iterator.collect", 115, List),
+            ("auto.iterator.reduce", 116, Void),
+            ("auto.iterator.find", 117, Void),
+            ("auto.iterator.enumerate", 118, Void),
+
+            // === HashMap (119-1292) ===
+            ("auto.hashmap.new", 119, Void),
+            ("Map.new", 119, Map),
+            ("HashMap.new", 119, Void),
+            ("auto.hashmap.insert_str", 120, Void),
+            ("auto.hashmap.insert_int", 121, Void),
+            ("auto.hashmap.get_str", 122, Void),
+            ("auto.hashmap.get_int", 123, Void),
+            ("auto.hashmap.contains", 124, Void),
+            ("auto.hashmap.remove", 125, Void),
+            ("auto.hashmap.size", 126, Void),
+            ("auto.hashmap.clear", 127, Void),
+            ("auto.hashmap.drop", 128, Void),
+            ("auto.hashmap.insert", 120, Void),
+            ("auto.hashmap.get", 122, Void),
+            ("auto.hashmap.keys", 1292, Void),
+
+            // === HashSet (129-135) ===
+            ("auto.hashset.new", 129, Void),
+            ("auto.hashset.insert", 130, Void),
+            ("auto.hashset.contains", 131, Void),
+            ("auto.hashset.remove", 132, Void),
+            ("auto.hashset.size", 133, Void),
+            ("auto.hashset.clear", 134, Void),
+            ("auto.hashset.drop", 135, Void),
+
+            // === VecDeque (136-146) ===
+            ("auto.vecdeque.new", 136, Void),
+            ("auto.vecdeque.push_back", 137, Void),
+            ("auto.vecdeque.push_front", 138, Void),
+            ("auto.vecdeque.pop_back", 139, Void),
+            ("auto.vecdeque.pop_front", 140, Void),
+            ("auto.vecdeque.front", 141, Void),
+            ("auto.vecdeque.back", 142, Void),
+            ("auto.vecdeque.size", 143, Void),
+            ("auto.vecdeque.is_empty", 144, Void),
+            ("auto.vecdeque.clear", 145, Void),
+            ("auto.vecdeque.drop", 146, Void),
+
+            // === BTreeMap (147-157) ===
+            ("auto.btreemap.new", 147, Void),
+            ("auto.btreemap.insert", 148, Void),
+            ("auto.btreemap.get", 149, Void),
+            ("auto.btreemap.contains", 150, Void),
+            ("auto.btreemap.remove", 151, Void),
+            ("auto.btreemap.size", 152, Void),
+            ("auto.btreemap.is_empty", 153, Void),
+            ("auto.btreemap.clear", 154, Void),
+            ("auto.btreemap.first_key", 155, Void),
+            ("auto.btreemap.last_key", 156, Void),
+            ("auto.btreemap.drop", 157, Void),
+
+            // === StringBuilder (160-167) ===
+            ("auto.stringbuilder.new", 160, Void),
+            ("auto.stringbuilder.append", 161, Void),
+            ("auto.stringbuilder.append_int", 162, Void),
+            ("auto.stringbuilder.append_char", 163, Void),
+            ("auto.stringbuilder.len", 164, Void),
+            ("auto.stringbuilder.clear", 165, Void),
+            ("auto.stringbuilder.drop", 166, Void),
+            ("auto.stringbuilder.build", 167, Void),
+
+            // === Heap/Storage (190-202) ===
+            ("auto.heap.new", 195, Void),
+            ("auto.heap.capacity", 196, Void),
+            ("auto.heap.try_grow", 197, Void),
+            ("auto.heap.drop", 198, Void),
+            ("auto.inline_int64.new", 199, Void),
+            ("auto.inline_int64.capacity", 200, Void),
+            ("auto.inline_int64.try_grow", 201, Void),
+            ("auto.inline_int64.drop", 202, Void),
+
+            // === Memory Allocation (190-192) ===
+            ("auto.alloc.array", 190, Void),
+            ("auto.realloc.array", 191, Void),
+            ("auto.free.array", 192, Void),
+
+            // === String operations (170-186, 1500-1520) ===
+            ("auto.str.len", 1500, Int),
+            ("auto.str.is_empty", 1501, Bool),
+            ("auto.str.char_at", 1502, Int),
+            ("auto.str.substr", 1503, String),
+            ("auto.str.sub", 1503, Void),
+            ("auto.str.slice", 1503, Void),
+            ("auto.str.contains", 1504, Bool),
+            ("auto.str.starts_with", 1505, Bool),
+            ("auto.str.ends_with", 1506, Bool),
+            ("auto.str.trim", 1507, String),
+            ("auto.str.split", 1508, List),
+            ("auto.str.repeat", 1509, String),
+            ("auto.str.replace", 1510, String),
+            ("auto.str.to_upper", 1511, String),
+            ("auto.str.to_lower", 1512, String),
+            ("auto.str.upper", 175, Void),
+            ("auto.str.lower", 1512, Void),
+            ("auto.str.reverse", 1513, String),
+            ("auto.str.find", 1514, Int),
+            ("auto.str.lines", 1515, List),
+            ("auto.str.parse_int", 1516, Int),
+            ("auto.str.to_int", 1516, Void),
+            ("auto.str.parse_float", 1517, Float),
+            ("auto.str.new", 177, Void),
+            ("auto.str.push", 178, Void),
+            ("auto.str.pop", 179, Void),
+            ("auto.str.get", 180, Void),
+            ("auto.str.set", 181, Void),
+            ("auto.str.insert", 182, Void),
+            ("auto.str.remove", 183, Void),
+            ("auto.str.clear", 184, Void),
+            ("auto.str.reserve", 186, Void),
+            ("auto.str.bytes", 235, Void),
+
+            // === Bit Operations (210-234) ===
+            ("auto.int.and", 210, Void),
+            ("auto.int.or", 211, Void),
+            ("auto.int.xor", 212, Void),
+            ("auto.int.not", 213, Void),
+            ("auto.int.shl", 214, Void),
+            ("auto.int.shr", 215, Void),
+            ("auto.int.sar", 216, Void),
+            ("auto.int.rol", 217, Void),
+            ("auto.int.ror", 218, Void),
+            ("auto.int.count_ones", 220, Void),
+            ("auto.int.leading_zeros", 221, Void),
+            ("auto.int.trailing_zeros", 222, Void),
+            ("auto.int.flip", 223, Void),
+            ("auto.int.bit_read", 230, Void),
+            ("auto.int.bit_test", 231, Void),
+            ("auto.int.bit_on", 232, Void),
+            ("auto.int.bit_off", 233, Void),
+            ("auto.int.bit_flip", 234, Void),
+
+            // === File (1000-1015) ===
+            ("auto.file.read_text", 1000, Void),
+            ("auto.file.write_text", 1001, Void),
+            ("auto.file.exists", 1002, Void),
+            ("auto.file.delete", 1003, Void),
+            ("auto.file.create_dir", 1004, Void),
+            ("auto.file.read_bytes", 1005, Void),
+            ("auto.file.write_bytes", 1006, Void),
+            ("auto.file.copy", 1007, Void),
+            ("auto.file.size", 1008, Void),
+            ("auto.file.is_dir", 1009, Void),
+            ("auto.file.walk", 1010, Void),
+            ("auto.file.append_text", 1011, Void),
+            ("auto.file.read_lines", 1012, Void),
+            ("auto.file.remove_dir", 1014, Void),
+            ("auto.file.remove_dir_all", 1015, Void),
+
+            // === FS module aliases ===
+            ("auto.fs.read_text", 1000, Void),
+            ("auto.fs.read", 1000, Void),
+            ("auto.fs.write_text", 1001, Void),
+            ("auto.fs.write", 1001, Void),
+            ("auto.fs.append_text", 1011, Void),
+            ("auto.fs.append", 1011, Void),
+            ("auto.fs.exists", 1002, Void),
+            ("auto.fs.delete", 1003, Void),
+            ("auto.fs.create_dir", 1004, Void),
+            ("auto.fs.remove_dir", 1014, Void),
+            ("auto.fs.remove_dir_all", 1015, Void),
+            ("auto.fs.read_bytes", 1005, Void),
+            ("auto.fs.write_bytes", 1006, Void),
+            ("auto.fs.copy", 1007, Void),
+            ("auto.fs.size", 1008, Void),
+            ("auto.fs.is_dir", 1009, Void),
+
+            // === File I/O opaque handles (1010-1013) ===
+            ("auto.file.create_handle", 1010, Void),
+            ("auto.file.open_handle", 1011, Void),
+            ("auto.file.write_handle", 1012, Void),
+            ("auto.file.try_clone", 1013, Void),
+
+            // === Env (1100-1103) ===
+            ("auto.env.get", 1100, Void),
+            ("auto.env.set", 1101, Void),
+            ("auto.env.remove", 1102, Void),
+            ("auto.env.get_or", 1103, Void),
+            ("Env.get_or", 1103, Void),
+
+            // === Time (1200-1204) ===
+            ("auto.time.now_ms", 1200, I64),
+            ("auto.time.now_sec", 1201, I64),
+            ("auto.time.sleep_ms", 1202, Void),
+            ("auto.time.instant_now", 1203, Void),
+            ("auto.time.instant_elapsed", 1204, Void),
+
+            // === OnceCell (2850-2852) ===
+            ("auto.cell.once_new", 2850, Void),
+            ("auto.cell.once_set", 2851, Void),
+            ("auto.cell.once_get", 2852, Void),
+
+            // === Process (1300-1305) ===
+            ("auto.process.exit", 1300, Void),
+            ("auto.process.args", 1301, Void),
+            ("auto.process.current_dir", 1302, Void),
+            ("auto.process.set_current_dir", 1303, Void),
+            ("auto.process.spawn", 1304, Void),
+            ("auto.process.spawn_with_output", 1305, Void),
+
+            // === Path (1400-1404) ===
+            ("auto.path.join", 1400, Void),
+            ("auto.path.parent", 1401, Void),
+            ("auto.path.extension", 1402, Void),
+            ("auto.path.filename", 1403, Void),
+            ("auto.path.canonicalize", 1404, Void),
+
+            // === Char (1600-1606) ===
+            ("auto.char.is_alpha", 1600, Void),
+            ("auto.char.is_digit", 1601, Void),
+            ("auto.char.is_alphanum", 1602, Void),
+            ("auto.char.is_whitespace", 1603, Void),
+            ("auto.char.is_ident", 1604, Void),
+            ("auto.char.to_lower", 1605, Void),
+            ("auto.char.to_upper", 1606, Void),
+
+            // === Log (1800-1804) ===
+            ("auto.log.debug", 1800, Void),
+            ("auto.log.info", 1801, Void),
+            ("auto.log.warn", 1802, Void),
+            ("auto.log.error", 1803, Void),
+            ("auto.log.noop", 1804, Void),
+            ("Log.debug", 1800, Void),
+            ("Log.info", 1801, Void),
+            ("Log.warn", 1802, Void),
+            ("Log.error", 1803, Void),
+
+            // === Math (1700-1733) ===
+            ("auto.math.abs", 1700, Int),
+            ("auto.math.min", 1701, Int),
+            ("auto.math.max", 1702, Int),
+            ("auto.math.sqrt", 1750, Void),
+            ("auto.math.floor", 1710, Void),
+            ("auto.math.ceil", 1711, Void),
+            ("auto.math.round", 1712, Void),
+            ("auto.math.pow", 1713, Void),
+            ("auto.math.min_f", 1714, Void),
+            ("auto.math.max_f", 1715, Void),
+            ("auto.math.sin", 1716, Void),
+            ("auto.math.cos", 1717, Void),
+            ("auto.math.tan", 1718, Void),
+            ("auto.math.exp", 1719, Void),
+            ("auto.math.ln", 1720, Void),
+            ("auto.math.log2", 1721, Void),
+            ("auto.math.log10", 1722, Void),
+            ("auto.math.abs_f", 1723, Void),
+            ("auto.math.signum", 1724, Void),
+            ("auto.math.clamp", 1725, Void),
+            ("auto.math.asin", 1726, Void),
+            ("auto.math.acos", 1727, Void),
+            ("auto.math.atan", 1728, Void),
+            ("auto.math.atan2", 1729, Void),
+            ("auto.math.powi", 1730, Void),
+            ("auto.math.powf", 1731, Void),
+            ("auto.math.to_radians", 1732, Void),
+            ("auto.math.to_degrees", 1733, Void),
+
+            // === Rand (1850-1854) ===
+            ("auto.rand.thread_rng", 1850, Void),
+            ("auto.rng.gen_range", 1851, Void),
+            ("auto.rng.gen", 1852, Void),
+            ("auto.rng.drop", 1853, Void),
+            ("auto.rand.random", 1854, Void),
+
+            // === JSON (1900-1917) ===
+            ("auto.json.encode", 1900, Void),
+            ("auto.json.decode", 1901, Void),
+            ("auto.json.parse", 1902, Void),
+            ("auto.json.prettify", 1903, Void),
+            ("auto.json.minify", 1904, Void),
+            ("auto.json.is_valid", 1905, Void),
+            ("auto.json.get", 1906, Void),
+            ("auto.json.get_at", 1907, Void),
+            ("auto.json.len", 1908, Void),
+            ("auto.json.type_of", 1909, Void),
+            ("auto.json.as_string", 1910, Void),
+            ("auto.json.as_number", 1911, Void),
+            ("auto.json.as_int", 1912, Void),
+            ("auto.json.as_bool", 1913, Void),
+            ("auto.json.is_null", 1914, Void),
+            ("auto.json.keys", 1915, Void),
+            ("auto.json.has_key", 1917, Void),
+
+            // === serde_json aliases ===
+            ("auto.serde_json.to_string", 1900, Void),
+            ("auto.serde_json.from_str", 1902, Void),
+
+            // === TOML (2610-2611) ===
+            ("auto.toml.from_str", 2610, Void),
+            ("auto.toml.to_string", 2611, Void),
+
+            // === URL (2000-2015) ===
+            ("auto.url.encode", 2000, Void),
+            ("auto.url.decode", 2001, Void),
+            ("auto.url.encode_query", 2002, Void),
+            ("auto.url.decode_query", 2003, Void),
+            ("auto.url.parse", 2006, Void),
+            ("auto.url.scheme", 2007, Void),
+            ("auto.url.host", 2008, Void),
+            ("auto.url.port", 2009, Void),
+            ("auto.url.path", 2010, Void),
+            ("auto.url.query", 2011, Void),
+            ("auto.url.fragment", 2012, Void),
+            ("auto.url.join_path", 2015, Void),
+
+            // === Net/TCP (2100-2113) ===
+            ("auto.net.tcp_bind", 2100, Void),
+            ("auto.net.tcp_listener_accept", 2101, Void),
+            ("auto.net.tcp_listener_local_addr", 2102, Void),
+            ("auto.net.tcp_listener_close", 2103, Void),
+            ("auto.net.tcp_connect", 2104, Void),
+            ("auto.net.tcp_stream_read", 2105, Void),
+            ("auto.net.tcp_stream_write", 2106, Void),
+            ("auto.net.tcp_stream_read_all", 2107, Void),
+            ("auto.net.tcp_stream_read_line", 2108, Void),
+            ("auto.net.tcp_stream_write_str", 2109, Void),
+            ("auto.net.tcp_stream_close", 2110, Void),
+            ("auto.net.tcp_stream_peer_addr", 2111, Void),
+            ("auto.net.tcp_stream_set_read_timeout", 2112, Void),
+            ("auto.net.tcp_stream_set_write_timeout", 2113, Void),
+
+            // === HTTP server (2200-2215) ===
+            ("auto.http.server", 2200, Void),
+            ("auto.http.server_get", 2201, Void),
+            ("auto.http.server_post", 2202, Void),
+            ("auto.http.server_put", 2203, Void),
+            ("auto.http.server_delete", 2204, Void),
+            ("auto.http.server_static", 2205, Void),
+            ("auto.http.server_listen", 2206, Void),
+            ("auto.http.response", 2210, Void),
+            ("auto.http.response_status", 2211, Void),
+            ("auto.http.response_header", 2212, Void),
+            ("auto.http.response_text", 2213, Void),
+            ("auto.http.response_html", 2214, Void),
+            ("auto.http.response_bytes", 2215, Void),
+
+            // === HTTP response access (2216-2218) ===
+            ("auto.http.response.status_code", 2216, Void),
+            ("auto.http.response.header_get", 2217, Void),
+            ("auto.http.response.body", 2218, Void),
+
+            // === HTTP client helpers (2220-2224) ===
+            ("auto.http.ok", 2220, Void),
+            ("auto.http.created", 2221, Void),
+            ("auto.http.bad_request", 2222, Void),
+            ("auto.http.not_found", 2223, Void),
+            ("auto.http.internal_error", 2224, Void),
+
+            // === HTTP client (2230-2239) ===
+            ("auto.http.get", 2230, Void),
+            ("auto.http.post", 2231, Void),
+            ("auto.http.put", 2232, Void),
+            ("auto.http.delete", 2233, Void),
+            ("auto.http.request", 2234, Void),
+            ("auto.http.request_builder_header", 2235, Void),
+            ("auto.http.request_builder_body", 2236, Void),
+            ("auto.http.request_builder_timeout", 2237, Void),
+            ("auto.http.request_builder_json", 2238, Void),
+            ("auto.http.request_builder_send", 2239, Void),
+
+            // === HTTP streaming (2240-2258) ===
+            ("auto.http_stream.get_stream", 2240, Void),
+            ("auto.http_stream.post_stream", 2241, Void),
+            ("auto.http_stream.stream_next", 2242, Void),
+            ("auto.http_stream.stream_is_done", 2243, Void),
+            ("auto.http_stream.stream_close", 2244, Void),
+            ("auto.http.post_stream_with_headers", 2255, Void),
+            ("auto.http.post_sync", 2256, Void),
+            ("auto.http.last_status", 2257, Void),
+            ("auto.http.post_bearer", 2258, Void),
+
+            // === RequestBuilder chaining (2260-2264) ===
+            ("RequestBuilder.header", 2260, Void),
+            ("RequestBuilder.body", 2261, Void),
+            ("RequestBuilder.timeout", 2262, Void),
+            ("RequestBuilder.json", 2263, Void),
+            ("RequestBuilder.send", 2264, Void),
+
+            // === Task/Msg (2300-2311) ===
+            ("auto.task.spawn", 2300, Void),
+            ("auto.task.send", 2301, Void),
+            ("auto.task.handle_is_null", 2302, Void),
+            ("auto.task.handle_type", 2303, Void),
+            ("auto.task.handle_id", 2304, Void),
+            ("auto.task.send_await", 2308, Void),
+            ("auto.task.ask", 2309, Void),
+            ("auto.ctx.reply", 2310, Void),
+            ("auto.task.singleton_send", 2311, Void),
+
+            // === TaskSystem (2305-2307) ===
+            ("auto.task_system.start", 2305, Void),
+            ("auto.task_system.run", 2306, Void),
+            ("auto.task_system.stop", 2307, Void),
+
+            // === Regex (2400-2410) ===
+            ("auto.regex.is_match", 2400, Void),
+            ("auto.regex.find_all", 2401, Void),
+            ("auto.regex.match", 2410, Void),
+
+            // === System (2420-2430) ===
+            ("auto.sys.exec", 2420, Void),
+            ("auto.fs.is_binary", 2430, Void),
+
+            // === Regex opaque (2450-2459) ===
+            ("auto.re_opaque.new", 2450, Void),
+            ("auto.re_opaque.is_match", 2451, Void),
+            ("auto.re_opaque.find", 2452, Void),
+            ("auto.re_opaque.find_all", 2453, Void),
+            ("auto.re_opaque.replace_all", 2454, Void),
+            ("auto.re_opaque.captures", 2455, Void),
+            ("auto.re_opaque.drop", 2459, Void),
+
+            // === URL opaque (2500-2511) ===
+            ("auto.url_opaque.parse", 2500, Void),
+            ("auto.url_opaque.scheme", 2501, Void),
+            ("auto.url_opaque.host_str", 2502, Void),
+            ("auto.url_opaque.path", 2503, Void),
+            ("auto.url_opaque.fragment", 2504, Void),
+            ("auto.url_opaque.port", 2505, Void),
+            ("auto.url_opaque.query_pairs", 2506, Void),
+            ("auto.url_opaque.join", 2507, Void),
+            ("auto.url_opaque.origin", 2508, Void),
+            ("auto.url_opaque.drop", 2509, Void),
+            ("auto.url_opaque.query", 2510, Void),
+            ("auto.url_opaque.to_string", 2511, Void),
+
+            // === Semver opaque (2600-2609) ===
+            ("auto.semver_opaque.parse", 2600, Void),
+            ("auto.semver_opaque.major", 2601, Void),
+            ("auto.semver_opaque.minor", 2602, Void),
+            ("auto.semver_opaque.patch", 2603, Void),
+            ("auto.semver_opaque.pre", 2604, Void),
+            ("auto.semver_opaque.to_string", 2605, Void),
+            ("auto.semver_opaque.cmp_gt", 2606, Void),
+            ("auto.semver_opaque.drop", 2609, Void),
+
+            // === Chrono opaque (2700-2709) ===
+            ("auto.chrono_opaque.local_now", 2700, Int),
+            ("auto.chrono_opaque.year", 2701, Int),
+            ("auto.chrono_opaque.month", 2702, Int),
+            ("auto.chrono_opaque.day", 2703, Int),
+            ("auto.chrono_opaque.hour", 2704, Int),
+            ("auto.chrono_opaque.minute", 2705, Int),
+            ("auto.chrono_opaque.second", 2706, Int),
+            ("auto.chrono_opaque.timestamp", 2707, I64),
+            ("auto.chrono_opaque.format", 2708, String),
+            ("auto.chrono_opaque.drop", 2709, Void),
+
+            // === Base64 (2710-2711) ===
+            ("auto.base64.encode", 2710, String),
+            ("auto.base64.decode", 2711, String),
+
+            // === Hex (2720-2721) ===
+            ("auto.hex.encode", 2720, String),
+            ("auto.hex.decode", 2721, String),
+
+            // === SHA2 opaque (2730-2739) ===
+            ("auto.sha2_opaque.sha256_new", 2730, Void),
+            ("auto.sha2_opaque.update", 2731, Void),
+            ("auto.sha2_opaque.finalize", 2732, String),
+            ("auto.sha2_opaque.drop", 2739, Void),
+
+            // === Mime (2740) ===
+            ("auto.mime.from_path", 2740, String),
+
+            // === Rust stdlib dispatch (3000) ===
+            ("auto.rust_stdlib.dispatch", 3000, Void),
+
+            // === Bare names (no canonical equivalent) ===
+            ("sleep", 1202, Void),
+            ("parse_sse", 2250, Void),
+            ("str_new", 172, Void),
+            ("str_append", 173, Void),
+            ("int.str", 174, Void),
+            ("uint.to_hex", 236, Void),
+            ("alloc_array", 190, Void),
+            ("realloc_array", 191, Void),
+            ("free_array", 192, Void),
+
+            // === ID-conflicting short names ===
+            ("str.len", 170, Void),
+            ("String.len", 171, Void),
+            ("str.upper", 175, Void),
+            ("String.from", 176, Void),
+            ("String.is_empty", 185, Void),
+
+            // === FFI shim name aliases (#[rust_fn]) ===
+            ("File.read_text", 1000, Void),
+            ("File.write_text", 1001, Void),
+            ("File.exists", 1002, Void),
+            ("File.delete", 1003, Void),
+            ("File.create_dir", 1004, Void),
+            ("File.read_bytes", 1005, Void),
+            ("File.write_bytes", 1006, Void),
+            ("File.copy", 1007, Void),
+            ("File.size", 1008, Void),
+            ("File.is_dir", 1009, Void),
+            ("File.append_text", 1011, Void),
+            ("File.remove_dir", 1014, Void),
+            ("File.remove_dir_all", 1015, Void),
+
+            // === Str.* aliases (#[rust_fn]) ===
+            ("Str.len", 1500, Void),
+            ("Str.is_empty", 1501, Void),
+            ("Str.char_at", 1502, Void),
+            ("Str.substr", 1503, Void),
+            ("Str.contains", 1504, Void),
+            ("Str.starts_with", 1505, Void),
+            ("Str.ends_with", 1506, Void),
+            ("Str.trim", 1507, Void),
+            ("Str.split", 1508, Void),
+            ("Str.repeat", 1509, Void),
+            ("Str.replace", 1510, Void),
+            ("Str.to_upper", 1511, Void),
+            ("Str.to_lower", 1512, Void),
+            ("Str.reverse", 1513, Void),
+            ("Str.find", 1514, Void),
+            ("Str.lines", 1515, Void),
+            ("Str.parse_int", 1516, Void),
+            ("Str.parse_float", 1517, Void),
+            ("Str.split_once", 1518, Void),
+            ("Str.match_count", 1519, Void),
+            ("Str.replace_first", 1520, Void),
+
+            // === Runtime aliases (CALL_SPEC lowercase type) ===
+            ("str.len", 1500, Void),
+            ("str.contains", 1502, Void),
+            ("str.starts_with", 1504, Void),
+            ("str.ends_with", 1506, Void),
+            ("str.trim", 1507, Void),
+            ("str.split", 1508, Void),
+            ("str.repeat", 1509, Void),
+            ("str.replace", 1510, Void),
+            ("str.to_upper", 1511, Void),
+            ("str.to_lower", 1512, Void),
+            ("str.find", 1514, Void),
+            ("str.lines", 1515, Void),
+            ("str.parse_int", 1516, Void),
+            ("str.parse_float", 1517, Void),
+            ("str.is_empty", 1501, Void),
+            ("str.substr", 1503, Void),
+
+            // === Task.* aliases ===
+            ("Task.spawn", 2300, Void),
+            ("TaskHandle.send", 2301, Void),
+            ("Task.singleton_send", 2311, Void),
+            ("TaskHandle.send_await", 2308, Void),
+            ("TaskHandle.ask", 2309, Void),
+            ("TaskHandle.is_null", 2302, Void),
+            ("TaskHandle.task_type", 2303, Void),
+            ("TaskHandle.instance_id", 2304, Void),
+            ("TaskSystem.start", 2305, Void),
+            ("TaskSystem.stop", 2307, Void),
+
+            // === Option/Result ===
+            ("auto.option.or", 1550, Void),
+            ("auto.option.unwrap_or", 1551, Void),
+            ("auto.result.map_err", 2070, Void),
+            ("auto.result.Ok.map_err", 2070, Void),
+            ("auto.result.Err.map_err", 2070, Void),
+
+            // === str.* typed entries ===
+            ("str.split_once", 1518, List),
+            ("str.match_count", 1519, Int),
+            ("str.replace_first", 1520, String)
+        }
+    };
+}
+
+/// Consumer: generates registration calls for each BIGVM entry.
+/// Must be called inside a method that has `registry` in scope (use local macro wrapper).
+/// Entry format: ("name", id, ret_type_tag).
+/// Void → register_with_id; others → register_with_id_and_type.
+#[macro_export]
+macro_rules! register_bigvm {
+    (($name:expr, $id:expr, Void) $(, $rest:tt)*) => {
+        registry.register_with_id($name, $id);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, List) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::List);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, Bool) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::Bool);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, Int) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::Int);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, I64) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::I64);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, String) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::String);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, Float) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::Float);
+        $crate::register_bigvm!($($rest),*);
+    };
+    (($name:expr, $id:expr, Map) $(, $rest:tt)*) => {
+        registry.register_with_id_and_type($name, $id, NativeRetType::Map);
+        $crate::register_bigvm!($($rest),*);
+    };
+    () => {};
+}

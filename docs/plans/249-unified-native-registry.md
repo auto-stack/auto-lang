@@ -144,10 +144,17 @@ codegen.rs 和 engine.rs 中各保留一个 `lookup_opaque_dispatch(type_name, m
 - ✅ `cargo test -p auto-lang --lib -- vm::` — 320 passed
 - ✅ 冒烟测试通过（bitfield cookbook）
 
-### Phase 3: BIGVM 注册自动化（待做）
-- 扩展 catalog entry 格式，加入 `canonical_name` 和 `ret_type`
-- 将 `register_in_bigvm!` 接入 `register_builtin_natives()`
-- 替换 ~505 次 `register_with_id()` / `register_with_id_and_type()` 调用
+### Phase 3: BIGVM 注册自动化 ✅ DONE
+- ✅ 扩展 catalog entry 格式为三元组：`(name, id, ret_type_tag)`
+- ✅ `ret_type_tag` 支持 8 种类型：Void/List/Bool/Int/I64/String/Float/Map
+- ✅ 定义 `register_bigvm!` 消费者宏，根据 ret_type_tag 分发到 `register_with_id` 或 `register_with_id_and_type`
+- ✅ 将 `for_each_bigvm_native!` 扩展到 ~477 个条目（覆盖所有 BIGVM 注册）
+- ✅ 替换 `register_builtin_natives()` 中 ~505 次手动调用为单行 `for_each_bigvm_native!(__register_bigvm);`
+- ✅ 将 21 条 `register_return_type()` 调用合并到对应条目的 `register_with_id_and_type`
+- ✅ `native_registry.rs` 从 ~1180 行减少到 ~470 行（-60%）
+- ✅ `cargo build --bin auto` 编译通过（0 errors）
+- ✅ `cargo test -p auto-lang --lib -- vm::` — 320 passed（与基线一致）
+- ✅ `cargo test -p auto-lang --lib -- vm::native_registry` — 8 passed
 
 ### Phase 4: Opaque Dispatch 合并 ✅ DONE
 - ✅ 在 `native_catalog.rs` 中提取 `OPAQUE_DISPATCH_*` 静态常量表（regex/url/semver/chrono/base64/hex/sha2/mime）
