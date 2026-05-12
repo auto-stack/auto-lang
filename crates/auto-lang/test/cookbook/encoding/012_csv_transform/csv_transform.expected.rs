@@ -14,8 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writer.write_record(vec!["name", "age", "decade"])?;
     for result in reader.records() {
         let record = result?;
-        let name = record.get(0).cloned()?;
-        let age = record.get(1).cloned()?.parse()?;
+        let name = record.get(0)?;
+        let age = record.get(1)?.parse()?;
         let decade: i32 = age / 10 * 10;
         writer.write_record(vec![name, age.to_string(), decade.to_string()])?;
     }

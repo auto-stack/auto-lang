@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut channel = List::new();
+    let mut channel = Vec::new();
     channel.push("msg1");
     channel.push("msg2");
     for msg in channel {

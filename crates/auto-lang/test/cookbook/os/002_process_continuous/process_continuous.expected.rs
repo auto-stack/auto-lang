@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut output = List::new();
+    let mut output = Vec::new();
     output.push("Starting...");
     output.push("Processing...");
     output.push("Done");

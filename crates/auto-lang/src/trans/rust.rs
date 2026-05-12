@@ -121,6 +121,16 @@ pub struct RustTrans {
     // Multi-file mode: set of sibling module names (same directory)
     // Used to generate `use super::X;` instead of `use crate::X;`
     sibling_modules: HashSet<String>,
+    // Multi-file mode: dir children of a directory module (mod.rs/mod.at)
+    // use X for these should be skipped (pub mod X; already emitted)
+    dir_children: HashSet<String>,
+    // Whether current module is a directory module
+    is_dir_module: bool,
+    // Whether we're inside a pub type declaration (methods should be pub)
+    inside_pub_type: bool,
+    // Modules imported via `use X` → `use super::X::*;` in multi-file mode
+    // These should NOT be used as source_crate prefix for type resolution
+    glob_imported_modules: HashSet<String>,
 
     // Plan 232: Track current function's str-type parameter names
     // Used to add .to_string() when returning a &str param as String
@@ -174,6 +184,10 @@ impl RustTrans {
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
+            dir_children: HashSet::new(),
+            is_dir_module: false,
+            inside_pub_type: false,
+            glob_imported_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
@@ -210,6 +224,10 @@ impl RustTrans {
             global_vars: HashSet::new(),
             local_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
+            dir_children: HashSet::new(),
+            is_dir_module: false,
+            inside_pub_type: false,
+            glob_imported_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
@@ -690,6 +708,17 @@ impl RustTrans {
     // is_enum_type() moved to unified helper methods (line 83)
     // Old implementation removed in Phase 066
 
+    /// Map Auto builtin type names to their Rust equivalents.
+    /// Returns Some(rust_name) if the ident is a builtin type, None otherwise.
+    fn auto_type_to_rust(name: &str) -> Option<&'static str> {
+        match name {
+            "List" => Some("Vec"),
+            "Map" => Some("HashMap"),
+            "Set" => Some("HashSet"),
+            _ => None,
+        }
+    }
+
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match expr {
             // Literals
@@ -743,6 +772,8 @@ impl RustTrans {
                 if self.is_global_var(name) {
                     let static_name = self.global_var_static_name(name);
                     write!(out, "{}.lock().unwrap()", static_name)
+                } else if let Some(rust_name) = Self::auto_type_to_rust(name.as_str()) {
+                    write!(out, "{}", rust_name)
                 } else {
                     write!(out, "{}", name)
                 }
@@ -3834,13 +3865,54 @@ impl RustTrans {
                         "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
                         | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
                         | "f32" | "f64" | "bool" | "char" | "str"
-                    );
+                    )
+                    || Self::auto_type_to_rust(type_name.as_str()).is_some();
                 if is_type {
+                    // Map Auto builtin type names to Rust equivalents
+                    let rust_type_name = Self::auto_type_to_rust(type_name.as_str())
+                        .unwrap_or_else(|| type_name.as_str());
+                    // If the type name is not directly in self.uses, try to qualify it
+                    // with an imported crate prefix (e.g., Normal -> rand_distr::Normal)
+                    let type_in_uses = self.uses.iter().any(|u| {
+                        let u_str = u.as_str();
+                        u_str == type_name.as_str()
+                            || u_str.ends_with(&format!("::{}", type_name.as_str()))
+                            // Check brace-expansion: "chrono::{Utc, Duration}" contains "Utc"
+                            || u_str.contains(&format!("{{{}}}", type_name.as_str()))
+                            || u_str.contains(&format!("{}, ", type_name.as_str()))
+                            || u_str.contains(&format!(", {}", type_name.as_str()))
+                    });
+                    let qualified_type = if type_in_uses {
+                        // Type name found in uses (possibly via brace expansion) — use as-is
+                        rust_type_name.to_string()
+                    } else if !self.uses.contains(type_name.as_str()) {
+                        // Type not in uses at all — qualify with the best matching
+                        // external crate. Prefer the most specific (longest named) crate.
+                        let source_crate = self.uses.iter()
+                            .filter(|u| {
+                                let u_str = u.as_str();
+                                !u_str.contains("::") && u_str != "a2r_std"
+                                    && !u_str.starts_with("std")
+                                    && !u_str.starts_with("auto_lang")
+                                    && !Self::auto_type_to_rust(u_str).is_some()
+                                    && !self.glob_imported_modules.contains(u_str)
+                            })
+                            .max_by_key(|u| u.as_str().len())
+                            .map(|u| u.as_str())
+                            .unwrap_or("");
+                        if !source_crate.is_empty() {
+                            format!("{}::{}", source_crate, rust_type_name)
+                        } else {
+                            rust_type_name.to_string()
+                        }
+                    } else {
+                        rust_type_name.to_string()
+                    };
                     // Check for tag construction: Type.Variant(args)
                     if self.tag_types.contains(type_name) {
                         let key = (type_name.clone(), method_name.clone());
                         let struct_fields = self.enum_struct_variants.get(&key).cloned();
-                        write!(out, "{}::{}", type_name, method_name)?;
+                        write!(out, "{}::{}", qualified_type, method_name)?;
                         if let Some(fields) = struct_fields {
                             // Struct variant: Type::Variant { field1: val1, field2: val2 }
                             write!(out, " {{ ")?;
@@ -3895,7 +3967,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     // Static method: Type::method(args)
-                    write!(out, "{}::{}", type_name, method_name)?;
+                    write!(out, "{}::{}", qualified_type, method_name)?;
                     write!(out, "(")?;
                     // Prefer qualified key "Type.method" for accurate lookup
                     let qualified_key: AutoStr = format!("{}.{}", type_name, method_name).into();
@@ -3922,6 +3994,17 @@ impl RustTrans {
                                     write!(out, ".as_str()")?;
                                 }
                             }
+                            // Auto-borrow for external crate type static methods
+                            if !is_str_param {
+                                if let Expr::Ident(name) = expr {
+                                    if self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                                        .unwrap_or(false)
+                                    {
+                                        write!(out, ".as_str()")?;
+                                    }
+                                }
+                            }
                         } else {
                             self.arg(arg, out)?;
                         }
@@ -3940,10 +4023,12 @@ impl RustTrans {
             let obj_is_type_chain = match object.as_ref() {
                 Expr::Ident(id) => {
                     let name = id.as_str();
-                    self.uses.iter().any(|u| {
-                        let u_str = u.as_str();
-                        u_str == name || u_str.ends_with(&format!("::{}", name))
-                    }) || self.dep_crates.contains(id)
+                    Self::auto_type_to_rust(name).is_some()
+                        || self.uses.iter().any(|u| {
+                            let u_str = u.as_str();
+                            u_str == name || u_str.ends_with(&format!("::{}", name))
+                        })
+                        || self.dep_crates.contains(id)
                 }
                 Expr::Dot(il, _) => {
                     matches!(il.as_ref(), Expr::Ident(id) if {
@@ -3969,7 +4054,6 @@ impl RustTrans {
             };
 
             // Regular method call: object.method(args)
-            let is_get = method_name.as_str() == "get";
             let is_insert = method_name.as_str() == "insert";
             // Look up str-param flags for auto-borrow at method call sites
             let method_str_flags = self.fn_str_param_indices.get(method_name.as_str()).cloned();
@@ -4005,13 +4089,28 @@ impl RustTrans {
                         {
                             write!(out, ".as_str()")?;
                         }
+                        // Auto-borrow for external crate calls: when calling crate::method()
+                        // with a String-typed variable, add .as_str() since most Rust
+                        // APIs accept &str rather than String.
+                        if obj_is_type_chain && !is_str_param && !is_str_param_offset {
+                            if let Expr::Ident(name) = expr {
+                                if self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
+                                    .unwrap_or(false)
+                                {
+                                    write!(out, ".as_str()")?;
+                                }
+                            }
+                        }
                     }
                     other => self.arg(other, out)?,
                 }
                 if i < call.args.args.len() - 1 { write!(out, ", ")?; }
             }
             write!(out, ")")?;
-            if is_get { write!(out, ".cloned()")?; }
+            // Don't unconditionally append .cloned() on .get() calls —
+            // external crate .get() methods (e.g., csv::Record::get) return
+            // Option<&str> which doesn't support .cloned() in the same way.
             return Ok(());
         }
 
@@ -4963,7 +5062,8 @@ impl RustTrans {
         }
 
         // Plan 163: Output pub prefix
-        if fn_decl.is_pub {
+        // Methods in pub types inherit pub visibility even if fn_decl.is_pub is false
+        if fn_decl.is_pub || self.inside_pub_type {
             write!(sink.body, "pub ")?;
         }
 
@@ -5958,6 +6058,17 @@ impl RustTrans {
         let pub_kw = if use_stmt.is_pub { "pub " } else { "" };
         match use_stmt.kind {
             UseKind::Auto => {
+                // For dir children — pub mod X; already emitted, but also need
+                // pub use X::*; to re-export child module's pub types
+                if use_stmt.paths.len() == 1
+                    && use_stmt.items.is_empty()
+                    && !use_stmt.is_wildcard
+                    && self.dir_children.contains(use_stmt.paths[0].as_str())
+                {
+                    write!(out, "pub use {}::*;", use_stmt.paths[0].as_str())?;
+                    return Ok(());
+                }
+
                 // Plan 167: In multi-file mode, local module use → mod declaration
                 if !self.local_modules.is_empty()
                     && use_stmt.items.is_empty()
@@ -5985,12 +6096,20 @@ impl RustTrans {
                     // Map known Auto stdlib modules to a2r_std
                     let rust_path = if is_multi_file_bare {
                         if self.sibling_modules.contains(mod_name) {
-                            // Same directory → use super::X
-                            format!("super::{}", mod_name)
+                            // Same directory → use super::X::*
+                            self.glob_imported_modules.insert(mod_name.to_string());
+                            format!("super::{}::*", mod_name)
                         } else {
-                            // Different directory → use crate::X
-                            format!("crate::{}", mod_name)
+                            // Different directory → use crate::X::*
+                            self.glob_imported_modules.insert(mod_name.to_string());
+                            format!("crate::{}::*", mod_name)
                         }
+                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty()) {
+                        // In multi-file mode, Auto's `use super.X` means "parent directory's X"
+                        // which maps to crate root's X in Rust (since subdirectories are 1 level deep)
+                        let crate_mod = &full_path[7..];
+                        self.glob_imported_modules.insert(crate_mod.to_string());
+                        format!("crate::{}::*", crate_mod)
                     } else if full_path.starts_with("auto::") {
                         let rest = &full_path[6..];
                         match rest {
@@ -6002,10 +6121,6 @@ impl RustTrans {
                             }
                             _ => format!("crate::{}", rest),
                         }
-                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty()) {
-                        // In multi-file mode, Auto's `use super.X` means "parent directory's X"
-                        // which maps to crate root's X in Rust (since subdirectories are 1 level deep)
-                        format!("crate::{}", &full_path[7..])
                     } else {
                         full_path.replace("auto::", "crate::")
                     };
@@ -6016,7 +6131,25 @@ impl RustTrans {
                     } else {
                         write!(out, "{}use {};", pub_kw, rust_path)?;
                     }
-                    self.uses.insert(use_stmt.paths.join(".").into());
+                    let full_use = use_stmt.paths.join(".").into();
+                    // For modules imported via ::* in multi-file mode, store only the
+                    // leaf module name so it won't be used as a source_crate prefix
+                    let last_segment = use_stmt.paths.last().map(|s| s.as_str()).unwrap_or("");
+                    if self.glob_imported_modules.contains(last_segment) {
+                        self.uses.insert(AutoStr::from(last_segment));
+                    } else {
+                        self.uses.insert(full_use);
+                    }
+                    // Also track individual items so type resolution can find them
+                    // e.g., "use chrono::{Utc, Duration}" -> also track "Utc", "Duration"
+                    // Also track individual items so type resolution can find them
+                    // e.g., "use chrono::{Utc, Duration}" -> also track "Utc", "Duration"
+                    for item in &use_stmt.items {
+                        self.uses.insert(item.clone());
+                    }
+                    for item in &use_stmt.items {
+                        self.uses.insert(item.clone());
+                    }
                 }
             }
             UseKind::C => {
@@ -6027,38 +6160,10 @@ impl RustTrans {
                 if !use_stmt.paths.is_empty() {
                     let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
 
-                    // Check if this import should be upgraded (e.g., "rayon::prelude" → "rayon::prelude::*")
-                    let upgrade_map: &[(&str, &str)] = &[
-                        ("rayon::prelude", "rayon::prelude::*"),
-                        ("sha2::Digest", "sha2::Digest"),
-                    ];
-                    let effective_path = upgrade_map.iter()
-                        .find(|(k, _)| full_path == *k)
-                        .map(|(_, v)| *v)
-                        .unwrap_or(&full_path);
-
-                    let already_emitted = self.uses.contains(effective_path);
-                    if !already_emitted {
-                        if use_stmt.is_wildcard {
-                            write!(out, "use {}::*;", effective_path)?;
-                        } else if !use_stmt.items.is_empty() {
-                            write!(out, "use {}::{{{}}};", effective_path, use_stmt.items.join(", "))?;
-                        } else {
-                            write!(out, "use {};", effective_path)?;
-                        }
-                        self.uses.insert(effective_path.to_string().into());
-                    }
-
-                    // Auto-add companion trait imports that methods on this crate require
-                    // Always evaluated even if already_emitted, so companion traits are added
-                    // regardless of whether the main import was already in self.uses.
+                    // Companion trait imports that methods on this crate require
                     let companion_imports: &[(&str, &str)] = &[
                         ("rand", "use rand::Rng;"),
                         ("rand::seq", "use rand::seq::SliceRandom;"),
-                        ("rayon::prelude", ""),
-                        ("sha2::Digest", ""),
-                        ("clap::Parser", ""),
-                        ("unicode_segmentation::UnicodeSegmentation", ""),
                         ("rayon", "use rayon::prelude::*;"),
                         ("sha2", "use sha2::Digest;"),
                         ("clap", "use clap::Parser;"),
@@ -6070,13 +6175,44 @@ impl RustTrans {
                         ("urlencoding", "use urlencoding::encode;"),
                         ("hex", "use hex;"),
                     ];
+
+                    let already_emitted = self.uses.contains(full_path.as_str());
+                    if !already_emitted {
+                        // Check if a companion import upgrades this to a wildcard
+                        let companion_wildcard = companion_imports.iter()
+                            .find(|(prefix, _)| full_path == *prefix || full_path.starts_with(&format!("{}::", prefix)))
+                            .and_then(|(_, line)| line.strip_prefix("use ").and_then(|s| s.strip_suffix(';')))
+                            .filter(|companion| {
+                                // Only upgrade for wildcard companions (e.g., rayon::prelude::*)
+                                // Don't upgrade for specific trait imports (e.g., rand::Rng)
+                                companion.ends_with("::*")
+                                    && companion.starts_with(&format!("{}::", full_path))
+                            });
+
+                        if use_stmt.is_wildcard {
+                            write!(out, "use {}::*;", full_path)?;
+                        } else if let Some(wc) = companion_wildcard {
+                            write!(out, "use {};", wc)?;
+                            // Track the wildcard path so companion loop doesn't re-emit it
+                            self.uses.insert(wc.to_string().into());
+                        } else if !use_stmt.items.is_empty() {
+                            write!(out, "use {}::{{{}}};", full_path, use_stmt.items.join(", "))?;
+                        } else {
+                            write!(out, "use {};", full_path)?;
+                        }
+                        self.uses.insert(full_path.to_string().into());
+                        // Also track individual items so type resolution can find them
+                        for item in &use_stmt.items {
+                            self.uses.insert(item.clone());
+                        }
+                    }
                     // Ensure the main path is in self.uses for companion dedup checking
                     if already_emitted {
-                        self.uses.insert(effective_path.to_string().into());
+                        self.uses.insert(full_path.to_string().into());
                     }
                     for (prefix, import_line) in companion_imports {
                         if full_path == *prefix || full_path.starts_with(&format!("{}::", prefix)) {
-                            if !import_line.is_empty() && *import_line != format!("use {};", effective_path) {
+                            if !import_line.is_empty() && *import_line != format!("use {};", full_path) {
                                 let companion_path = import_line
                                     .strip_prefix("use ")
                                     .and_then(|s| s.strip_suffix(';'))
@@ -6287,6 +6423,9 @@ impl RustTrans {
             write!(sink.body, "pub ")?;
         }
 
+        // Track pub type context so methods inherit visibility
+        self.inside_pub_type = type_decl.is_pub;
+
         // Struct definition with generic parameters
         write!(sink.body, "struct {}", type_decl.name)?;
 
@@ -6374,7 +6513,8 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 write!(
                     sink.body,
-                    "{}: {},",
+                    "{}{}: {},",
+                    if type_decl.is_pub { "pub " } else { "" },
                     member.name,
                     self.rust_type_name(&member.ty)
                 )?;
@@ -6643,6 +6783,9 @@ impl RustTrans {
             sink.body.write(b"}\n")?;
         }
 
+        // Reset pub type context
+        self.inside_pub_type = false;
+
         // Generate trait implementations for specs
         if !type_decl.specs.is_empty() {
             // Collect spec declarations: prefer local cache, fallback to database lookup
@@ -6860,6 +7003,7 @@ impl RustTrans {
         if enum_decl.is_pub {
             sink.body.write(b"pub ")?;
         }
+        self.inside_pub_type = enum_decl.is_pub;
 
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
@@ -7021,6 +7165,7 @@ impl RustTrans {
             }
         }
 
+        self.inside_pub_type = false;
         Ok(())
     }
 
@@ -8045,6 +8190,23 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         }
         // Non-entry modules: local_modules stays empty
         // → use X will be handled by is_multi_file_bare → use crate::X;
+
+        // Mark directory modules and populate dir_children
+        if module.is_dir_module {
+            transpiler.is_dir_module = true;
+            let mod_dir = module.source_path.parent().unwrap();
+            for other in &modules {
+                if other.source_path == module.source_path || other.is_dir_module {
+                    continue;
+                }
+                let other_dir = other.source_path.parent().unwrap();
+                if other_dir == mod_dir {
+                    let other_name = other.source_path.file_stem()
+                        .unwrap().to_string_lossy().to_string();
+                    transpiler.dir_children.insert(other_name);
+                }
+            }
+        }
 
         // Populate sibling_modules: modules in the same directory as the current module
         // Used to generate `use super::X;` for same-directory references.

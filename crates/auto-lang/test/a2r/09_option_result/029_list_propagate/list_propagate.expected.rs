@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let list = List::new();
+    let list = Vec::new();
     list.push(10);
     list.push(20);
     list.push(30);
@@ -14,4 +14,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let first = list[0].clone()?;
     let second = list[1].clone()?;
+    Ok(())
 }

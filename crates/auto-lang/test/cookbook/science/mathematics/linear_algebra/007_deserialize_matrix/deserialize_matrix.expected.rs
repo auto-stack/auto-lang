@@ -10,6 +10,6 @@ use serde_json;
 use serde_json::Value;
 fn main() {
     let json: String = "[[1,2,3],[4,5,6]]".to_string();
-    let matrix = serde_json::from_str(json).unwrap();
+    let matrix = serde_json::from_str(json.as_str()).unwrap();
     println!("Matrix: {}", matrix);
 }

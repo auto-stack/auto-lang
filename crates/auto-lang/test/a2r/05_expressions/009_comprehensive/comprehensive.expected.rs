@@ -33,5 +33,5 @@ fn main() {
     }
 
     let arr: Vec<i32> = vec![1, 2, 3];
-    println!("Array: {}", arr);
+    println!("Array: {:?}", arr);
 }

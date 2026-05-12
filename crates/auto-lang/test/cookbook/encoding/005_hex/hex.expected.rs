@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 use hex;
 fn main() {
     let text: String = "hello world".to_string();
-    let encoded = hex::encode(text);
+    let encoded = hex::encode(text.as_str());
     println!("Hex: {}", encoded);
     let decoded = hex::decode(encoded);
     println!("Decoded: {}", decoded);

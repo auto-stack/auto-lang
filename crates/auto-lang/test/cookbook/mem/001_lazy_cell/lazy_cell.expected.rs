@@ -8,12 +8,12 @@ use auto_lang::a2r_std::*;
 use std::cell::OnceCell;
 fn main() {
     let cell = OnceCell::new();
-    let has_none = cell.get().cloned().is_none();
+    let has_none = cell.get().is_none();
     println!("Is none: {:?}", has_none);
 
     cell.insert("Hello, World!");
-    let value = cell.get().cloned();
+    let value = cell.get();
     println!("Value: {:?}", value);
-    let exists = cell.get().cloned().is_some();
+    let exists = cell.get().is_some();
     println!("Has value: {:?}", exists);
 }

@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut dirs = List::new();
+    let mut dirs = Vec::new();
     dirs.push("src/");
     dirs.push("docs/");
     dirs.push("test/");

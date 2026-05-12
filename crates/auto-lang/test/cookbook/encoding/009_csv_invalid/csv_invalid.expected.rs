@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = Reader::from_reader(data.as_bytes());
     for result in reader.records() {
         match result {
-            Ok(record) => println!("Name: {}, Age: {}", record.get(0).cloned()?, record.get(1).cloned()?),
+            Ok(record) => println!("Name: {}, Age: {}", record.get(0)?, record.get(1)?),
             Err(e) => println!("Error reading record: {}", e),
         }
     }

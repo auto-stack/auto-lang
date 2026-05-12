@@ -10,7 +10,7 @@ fn main() {
     let mut map: HashMap<String, i32> = HashMap::new();
     map.insert("a".to_string(), 1);
     map.insert("b".to_string(), 2);
-    let val = map.get("a").cloned();
+    let val = map.get("a");
     let has = map.contains_key("b");
     let len = a2r_std::value_len(&map);
     map.remove("a");

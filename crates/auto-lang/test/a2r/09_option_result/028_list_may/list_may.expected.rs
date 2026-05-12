@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let list = List::new();
+    let list = Vec::new();
     list.push(1);
     list.push(2);
     list.push(3);

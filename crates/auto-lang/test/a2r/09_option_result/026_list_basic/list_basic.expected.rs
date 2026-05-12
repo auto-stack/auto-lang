@@ -7,5 +7,5 @@ use auto_lang::a2r_std::*;
 
 fn main() {
 
-    let list = List::new();
+    let list = Vec::new();
 }

@@ -11,7 +11,7 @@ fn main() {
     v.push(1);
     v.push(2);
     v.push(3);
-    let first = v.get(0).cloned();
+    let first = v.get(0);
     let len = a2r_std::value_len(&v);
     let popped = v.pop();
     v.clear();

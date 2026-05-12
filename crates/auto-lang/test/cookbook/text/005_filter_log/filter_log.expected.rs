@@ -13,7 +13,7 @@ fn main() {
         let caps = re.captures(line);
         match caps {
             Some(c) => {
-                let msg = c.get(1).cloned().unwrap().as_str();
+                let msg = c.get(1).unwrap().as_str();
                 println!("Error: {}", msg);
             },
             None => {},

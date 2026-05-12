@@ -9,7 +9,7 @@ use serde_json;
 use serde_json::Value;
 fn main() {
     let json_str: String = "{\"name\": \"Alice\", \"age\": 30}".to_string();
-    let parsed = serde_json::from_str(json_str);
+    let parsed = serde_json::from_str(json_str.as_str());
     println!("Parsed: {}", parsed);
     let encoded = serde_json.to_string("hello world");
     println!("Encoded: {}", encoded);

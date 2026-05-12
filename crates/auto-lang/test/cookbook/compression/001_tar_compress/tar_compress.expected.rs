@@ -6,7 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let mut entries = List::new();
+    let mut entries = Vec::new();
     entries.push("backup/file1.txt");
     entries.push("backup/file2.txt");
     entries.push("backup/subdir/file3.txt");

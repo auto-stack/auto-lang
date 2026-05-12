@@ -10,7 +10,7 @@ use rand::Rng;
 use rand_distr;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
-    let mut normal = Normal::new(0.0, 1.0)?;
+    let mut normal = rand_distr::Normal::new(0.0, 1.0)?;
     let mut sum: f64 = 0.0;
     for _ in 0..1000 {
         let val: f64 = normal.sample(rng);

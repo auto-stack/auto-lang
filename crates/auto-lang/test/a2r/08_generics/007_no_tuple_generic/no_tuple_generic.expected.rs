@@ -7,11 +7,11 @@ use auto_lang::a2r_std::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Message {
-    role: String,
-    content: String,
+    pub role: String,
+    pub content: String,
 }
 
 pub fn load() -> Result<Vec<Message>, String> {
-    let mut messages = List::new();
+    let mut messages = Vec::new();
     return Ok(messages);
 }

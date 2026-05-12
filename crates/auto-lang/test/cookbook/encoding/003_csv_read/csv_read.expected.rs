@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = Reader::from_reader(csv_str.as_bytes());
     for result in reader.records() {
         let record = result?;
-        println!("Name: {}, Age: {}", record.get(0).cloned()?, record.get(1).cloned()?);
+        println!("Name: {}, Age: {}", record.get(0)?, record.get(1)?);
     }
     Ok(())
 }
