@@ -3,50 +3,48 @@
     <div class="order-header">
       <h2>The Order · 法阵</h2>
       <div class="order-stats">
-        <span class="stat">Active: 1</span>
-        <span class="stat">Completed: 47</span>
-        <span class="stat">Failed: 2</span>
+        <span class="stat">Phase: {{ sessionPhase }}</span>
+        <span class="stat">Status: {{ sessionStatus }}</span>
       </div>
     </div>
     <div class="order-body">
+      <!-- Phase Pipeline -->
       <div class="pipeline-flow">
         <div
-          v-for="(role, idx) in pipeline"
-          :key="role.name"
+          v-for="(phase, idx) in phases"
+          :key="phase.key"
           class="pipeline-node"
-          :class="role.status"
+          :class="phaseStatus(phase.key)"
         >
-          <div class="node-icon">{{ role.icon }}</div>
-          <div class="node-name">{{ role.name }}</div>
-          <div class="node-meta">{{ role.tokens }}k tk</div>
-          <div class="node-meta">{{ role.time }}s</div>
-          <div v-if="idx < pipeline.length - 1" class="node-arrow">→</div>
+          <div class="node-icon">{{ phase.icon }}</div>
+          <div class="node-name">{{ phase.label }}</div>
+          <div v-if="phaseTime(phase.key)" class="node-meta">{{ phaseTime(phase.key) }}s</div>
+          <div v-if="idx < phases.length - 1" class="node-arrow">→</div>
         </div>
       </div>
-      <div class="runs-list">
-        <div class="run-card active">
-          <div class="run-header">
-            <span class="run-id">Run #42</span>
-            <span class="run-badge active">Active</span>
-            <span class="run-budget">150k / 200k tokens</span>
-          </div>
-          <div class="run-title">JWT Auth Implementation</div>
-          <div class="run-actions">
-            <button class="run-btn">Pause</button>
-            <button class="run-btn">Rollback</button>
-            <button class="run-btn">Checkpoint</button>
-          </div>
+
+      <!-- Todo Progress (when in Execution) -->
+      <div v-if="sessionPhase === 'execution'" class="progress-panel">
+        <div class="progress-header">
+          <span class="progress-title">Executing Todos</span>
+          <span class="progress-count">{{ completedTodos }} / {{ totalTodos }}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: todoProgressPercent + '%' }"></div>
         </div>
       </div>
-      <div class="cost-panel">
-        <div class="cost-title">Cost Analytics</div>
-        <div class="cost-row">
-          <span>This session</span>
-          <span class="cost-value">$1.24</span>
-        </div>
-        <div class="cost-row saved">
-          <span>Saved vs parallel</span>
-          <span class="cost-value saved">$8.30</span>
+
+      <!-- Phase History -->
+      <div class="history-panel">
+        <div class="history-title">Phase History</div>
+        <div v-if="phaseHistory.length === 0" class="history-empty">No phase transitions yet</div>
+        <div
+          v-for="entry in phaseHistory"
+          :key="entry.phase + entry.entered_at"
+          class="history-row"
+        >
+          <span class="history-phase">{{ entry.phase }}</span>
+          <span class="history-time">{{ formatTime(entry.entered_at) }}</span>
         </div>
       </div>
     </div>
@@ -54,13 +52,53 @@
 </template>
 
 <script setup lang="ts">
-const pipeline = [
-  { name: 'Planner', icon: '📋', status: 'completed', tokens: 5, time: 3.2 },
-  { name: 'Architect', icon: '📐', status: 'completed', tokens: 15, time: 8.1 },
-  { name: 'Coder', icon: '💻', status: 'active', tokens: 45, time: 14.5 },
-  { name: 'Tester', icon: '🧪', status: 'pending', tokens: 0, time: 0 },
-  { name: 'Reviewer', icon: '👁', status: 'pending', tokens: 0, time: 0 },
+import { computed } from 'vue'
+import { useForge } from '@/composables/useForge'
+
+const { sessionPhase, sessionStatus, session } = useForge()
+
+const phases = [
+  { key: 'intake', label: 'Intake', icon: '📥' },
+  { key: 'spec_draft', label: 'SpecDraft', icon: '📝' },
+  { key: 'spec_review', label: 'SpecReview', icon: '🔍' },
+  { key: 'execution', label: 'Execution', icon: '⚒️' },
+  { key: 'verification', label: 'Verification', icon: '✅' },
 ]
+
+const phaseHistory = computed(() => session.value?.phase_history ?? [])
+
+function phaseStatus(phaseKey: string): string {
+  const current = sessionPhase.value
+  const order = ['intake', 'spec_draft', 'spec_review', 'execution', 'verification']
+  const currentIdx = order.indexOf(current)
+  const phaseIdx = order.indexOf(phaseKey)
+
+  if (phaseIdx < currentIdx) return 'completed'
+  if (phaseIdx === currentIdx) return 'active'
+  return 'pending'
+}
+
+function phaseTime(phaseKey: string): string | null {
+  const entry = phaseHistory.value.find((e) => e.phase === phaseKey)
+  if (!entry) return null
+  // Show duration or entry time
+  return Math.round(entry.entered_at).toString()
+}
+
+// Mock todo progress until backend tracks real todo counts
+const totalTodos = computed(() => 7)
+const completedTodos = computed(() => {
+  const idx = session.value?.current_todo_index
+  return idx !== undefined && idx !== null ? idx + 1 : 0
+})
+const todoProgressPercent = computed(() => {
+  if (totalTodos.value === 0) return 0
+  return Math.round((completedTodos.value / totalTodos.value) * 100)
+})
+
+function formatTime(ts: number): string {
+  return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
 </script>
 
 <style scoped>
@@ -94,6 +132,7 @@ const pipeline = [
 
 .stat {
   color: var(--af-muted);
+  text-transform: capitalize;
 }
 
 .order-body {
@@ -125,6 +164,7 @@ const pipeline = [
   border-radius: 8px;
   min-width: 90px;
   border: 2px solid transparent;
+  transition: all 0.2s;
 }
 
 .pipeline-node.completed {
@@ -170,114 +210,90 @@ const pipeline = [
   margin: 0 0.25rem;
 }
 
-.runs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.run-card {
+/* Progress Panel */
+.progress-panel {
   background: var(--af-card);
   border: 1px solid var(--af-border);
   border-radius: 8px;
   padding: 1rem;
 }
 
-.run-card.active {
-  border-color: hsl(var(--af-order) / 0.3);
-}
-
-.run-header {
+.progress-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
   margin-bottom: 0.5rem;
 }
 
-.run-id {
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-
-.run-badge {
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-}
-
-.run-badge.active {
-  background: hsl(var(--af-order) / 0.15);
-  color: hsl(var(--af-order));
-}
-
-.run-budget {
-  font-size: 0.75rem;
-  color: var(--af-muted);
-  margin-left: auto;
-}
-
-.run-title {
+.progress-title {
   font-size: 0.85rem;
-  color: var(--af-muted);
-  margin-bottom: 0.75rem;
-}
-
-.run-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.run-btn {
-  background: var(--af-secondary);
+  font-weight: 600;
   color: var(--af-fg);
-  border: 1px solid var(--af-border);
+}
+
+.progress-count {
+  font-size: 0.8rem;
+  color: var(--af-muted);
+}
+
+.progress-bar {
+  height: 8px;
+  background: var(--af-secondary);
   border-radius: 4px;
-  padding: 0.3rem 0.6rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s;
+  overflow: hidden;
 }
 
-.run-btn:hover {
-  background: var(--af-input);
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, hsl(var(--af-success)), hsl(var(--af-order)));
+  border-radius: 4px;
+  transition: width 0.3s ease;
 }
 
-.cost-panel {
+/* History Panel */
+.history-panel {
   background: var(--af-card);
   border: 1px solid var(--af-border);
   border-radius: 8px;
   padding: 1rem;
 }
 
-.cost-title {
+.history-title {
   font-size: 0.85rem;
   font-weight: 600;
   margin-bottom: 0.75rem;
   color: var(--af-fg);
 }
 
-.cost-row {
+.history-empty {
+  font-size: 0.8rem;
+  color: var(--af-muted);
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.history-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.85rem;
-  color: var(--af-muted);
-  padding: 0.35rem 0;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--af-border);
 }
 
-.cost-row.saved {
-  border-top: 1px solid var(--af-border);
-  margin-top: 0.35rem;
-  padding-top: 0.7rem;
+.history-row:last-child {
+  border-bottom: none;
 }
 
-.cost-value {
+.history-phase {
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--af-fg);
+  text-transform: capitalize;
 }
 
-.cost-value.saved {
-  color: hsl(var(--af-success));
+.history-time {
+  font-size: 0.75rem;
+  color: var(--af-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 </style>

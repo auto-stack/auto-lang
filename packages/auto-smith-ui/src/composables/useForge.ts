@@ -11,6 +11,7 @@ const _messages = ref<ForgeMessage[]>([])
 const _isLoading = ref(false)
 const _error = ref<string | null>(null)
 const _sessionList = ref<ForgeSessionSummary[]>([])
+const _resuming = ref(false)
 
 export function useForge() {
   const session = _session
@@ -92,12 +93,18 @@ export function useForge() {
    *  3. Fall back to creating a new session if restoration fails
    */
   async function resume() {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const restored = await restoreSession(stored)
-      if (restored) return restored
+    if (_resuming.value) return _session.value?.id ?? null
+    _resuming.value = true
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        const restored = await restoreSession(stored)
+        if (restored) return restored
+      }
+      return await createSession()
+    } finally {
+      _resuming.value = false
     }
-    return createSession()
   }
 
   /** Fetch the list of all sessions from the server */

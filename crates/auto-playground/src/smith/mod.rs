@@ -27,6 +27,12 @@ mod tools;
 // ─── Persistent Session Store ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhaseHistoryEntry {
+    pub phase: String,
+    pub entered_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForgeSession {
     pub id: String,
     pub notebook_sid: Option<String>,
@@ -38,6 +44,8 @@ pub struct ForgeSession {
     pub pending_spec_changes: Vec<SpecChange>,
     #[serde(default)]
     pub current_todo_index: Option<usize>,
+    #[serde(default)]
+    pub phase_history: Vec<PhaseHistoryEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -181,8 +189,16 @@ impl SessionStore {
 
     fn update_phase_and_status(&mut self, sid: &str, phase: ForgePhase, status: ForgeStatus) {
         let Some(session) = self.sessions.get_mut(sid) else { return };
+        let phase_changed = session.phase != phase;
+        let phase_str = phase.as_str().to_string();
         session.phase = phase;
         session.status = status;
+        if phase_changed {
+            session.phase_history.push(PhaseHistoryEntry {
+                phase: phase_str,
+                entered_at: now_secs(),
+            });
+        }
         let session_clone = session.clone();
         self.save(&session_clone);
     }
@@ -408,6 +424,7 @@ fn ledgers() -> &'static Mutex<LedgerStore> {
 
 mod handlers {
     use super::*;
+    use crate::notebook::ai::{AIProviderState, AiProvider};
     use crate::smith::ai::{ChatMessage, ContentBlock, ToolChatEvent, ToolChatRequest, ToolClaudeProvider};
     use crate::smith::tools::ToolRegistry;
 
@@ -541,6 +558,10 @@ After verification, summarize the results."#
             phase: ForgePhase::Intake,
             pending_spec_changes: vec![],
             current_todo_index: None,
+            phase_history: vec![PhaseHistoryEntry {
+                phase: ForgePhase::Intake.as_str().to_string(),
+                entered_at: now_secs(),
+            }],
             messages: vec![ForgeMessage {
                 id: format!("m-{}", uuid::Uuid::new_v4()),
                 role: String::from("system"),
@@ -912,6 +933,7 @@ After verification, summarize the results."#
     pub struct ForgeSessionSummary {
         pub id: String,
         pub status: ForgeStatus,
+        pub phase: ForgePhase,
         pub preview: String,
         pub message_count: usize,
         pub last_activity: u64,
@@ -946,6 +968,7 @@ After verification, summarize the results."#
                 ForgeSessionSummary {
                     id: s.id.clone(),
                     status: s.status.clone(),
+                    phase: s.phase.clone(),
                     preview,
                     message_count: s.messages.len(),
                     last_activity,
@@ -1009,14 +1032,106 @@ After verification, summarize the results."#
         Ok(Json(serde_json::json!({"status": "ok"})))
     }
 
-    pub async fn trigger_drift_check(Path(project): Path<String>) -> Json<serde_json::Value> {
-        // TODO: real drift check in Phase E
-        let mut store = ledgers().lock().unwrap();
-        let _ = store.get_or_default(&project);
+    pub async fn trigger_drift_check(
+        Path(project): Path<String>,
+        State(ai): State<AIProviderState>,
+    ) -> Json<serde_json::Value> {
+        let ledger = {
+            let store = ledgers().lock().unwrap();
+            store.get(&project).cloned()
+        };
+
+        let Some(doc) = ledger else {
+            return Json(serde_json::json!({
+                "status": "ok",
+                "drift_detected": false,
+                "sections_checked": 0,
+                "message": "No ledger found",
+            }));
+        };
+
+        // Find requirements and todos sections
+        let requirements = doc.sections.iter().find(|s| s.id == "requirements").map(|s| s.content.clone()).unwrap_or_default();
+        let todos = doc.sections.iter().find(|s| s.id == "todos").map(|s| s.content.clone()).unwrap_or_default();
+
+        // Extract file paths from todos (simple heuristic: lines mentioning file paths)
+        let mut file_paths = Vec::new();
+        for line in todos.lines() {
+            // Look for patterns like `src/...`, `crates/...`, `.rs`, `.ts`, `.vue`
+            for word in line.split_whitespace() {
+                if word.contains('/') && (word.ends_with(".rs") || word.ends_with(".ts") || word.ends_with(".vue") || word.ends_with(".js")) {
+                    let clean = word.trim_matches(|c| c == '(' || c == ')' || c == '`' || c == '"' || c == ',' || c == '.');
+                    if !clean.is_empty() && !file_paths.contains(&clean.to_string()) {
+                        file_paths.push(clean.to_string());
+                    }
+                }
+            }
+        }
+
+        // Read up to 5 files
+        let mut code_content = String::new();
+        for path in file_paths.iter().take(5) {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                code_content.push_str(&format!("\n--- {} ---\n{}", path, content));
+            }
+        }
+
+        if requirements.is_empty() || code_content.is_empty() {
+            return Json(serde_json::json!({
+                "status": "ok",
+                "drift_detected": false,
+                "sections_checked": 0,
+                "message": "No requirements or code files to compare",
+            }));
+        }
+
+        // Call AI to verify requirements against code
+        let prompt = format!(
+            r#"You are a requirements verifier. Compare the following requirements against the implemented code.
+
+Requirements:
+{}
+
+Implemented code:
+{}
+
+For each requirement, state whether it is:
+- FULLY implemented
+- PARTIALLY implemented
+- NOT implemented
+- UNKNOWN (cannot determine from code)
+
+Format your response as:
+R1: <status> — <brief explanation>
+R2: <status> — <brief explanation>
+...
+
+If no requirement IDs exist, number them sequentially."#,
+            requirements, code_content
+        );
+
+        let request = crate::notebook::ai::AIRequest {
+            prompt,
+            context: None,
+        };
+
+        let response = ai.chat(request).await;
+
+        let drift_detected = response.content.to_lowercase().contains("not implemented")
+            || response.content.to_lowercase().contains("partially implemented");
+
+        // Update ledger: mark requirements section as drift if detected
+        if drift_detected {
+            let mut store = ledgers().lock().unwrap();
+            let _ = store.update_section(&project, "requirements", requirements.clone(), "drift".to_string());
+        }
+
         Json(serde_json::json!({
             "status": "ok",
-            "drift_detected": false,
-            "sections_checked": 7,
+            "drift_detected": drift_detected,
+            "sections_checked": 1,
+            "report": response.content,
+            "error": response.error,
         }))
     }
 
@@ -1070,6 +1185,7 @@ After verification, summarize the results."#
                 messages: vec![],
                 pending_spec_changes: vec![],
                 current_todo_index: None,
+                phase_history: vec![],
             });
             (session.project_path.clone(), session.pending_spec_changes.clone())
         };

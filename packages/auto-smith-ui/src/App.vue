@@ -30,27 +30,30 @@
       <FurnaceView v-if="currentView === 'furnace'" />
       <JadesView v-else-if="currentView === 'jades'" />
       <OrderView v-else-if="currentView === 'order'" />
+      <StreamingDemoView v-else-if="currentView === 'demo'" />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Flame, MessageSquare, Scroll, Orbit, Sun, Moon, Monitor } from 'lucide-vue-next'
+import { Flame, MessageSquare, Scroll, Orbit, Sun, Moon, Monitor, Sparkles } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import FurnaceView from './views/FurnaceView.vue'
 import JadesView from './views/JadesView.vue'
 import OrderView from './views/OrderView.vue'
+import StreamingDemoView from './views/StreamingDemoView.vue'
 
 const { mode, cycle: cycleTheme } = useTheme()
 
-const tabs: { id: 'furnace' | 'jades' | 'order'; label: string; icon: unknown }[] = [
+const tabs: { id: 'furnace' | 'jades' | 'order' | 'demo'; label: string; icon: unknown }[] = [
   { id: 'furnace', label: '丹炉', icon: MessageSquare },
   { id: 'jades', label: '玉简', icon: Scroll },
   { id: 'order', label: '法阵', icon: Orbit },
+  { id: 'demo', label: '演示', icon: Sparkles },
 ]
 
-const currentView = ref<'furnace' | 'jades' | 'order'>('furnace')
+const currentView = ref<'furnace' | 'jades' | 'order' | 'demo'>('furnace')
 </script>
 
 <style>

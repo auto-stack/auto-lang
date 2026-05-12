@@ -16,6 +16,11 @@ export interface SpecChange {
   new_status: string
 }
 
+export interface PhaseHistoryEntry {
+  phase: string
+  entered_at: number
+}
+
 export interface ForgeSession {
   id: string
   notebook_sid?: string
@@ -25,6 +30,7 @@ export interface ForgeSession {
   messages: ForgeMessage[]
   pending_spec_changes?: SpecChange[]
   current_todo_index?: number | null
+  phase_history?: PhaseHistoryEntry[]
 }
 
 export interface ForgeStreamEvent {
