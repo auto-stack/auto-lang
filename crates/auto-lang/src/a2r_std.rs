@@ -388,6 +388,12 @@ pub mod env {
     pub fn set(key: &str, val: &str) {
         std::env::set_var(key, val);
     }
+
+    /// Returns all command-line arguments as a single space-joined string.
+    /// Skips the first argument (program name).
+    pub fn args() -> String {
+        std::env::args().skip(1).collect::<Vec<_>>().join(" ")
+    }
 }
 
 // =============================================================================

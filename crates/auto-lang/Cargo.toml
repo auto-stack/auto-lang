@@ -340,3 +340,7 @@ path = "examples/a2r_step02.rs"
 [[example]]
 name = "a2r_step03"
 path = "examples/a2r_step03.rs"
+
+[[example]]
+name = "a2r_step04"
+path = "examples/a2r_step04.rs"
