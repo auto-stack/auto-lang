@@ -1,7 +1,7 @@
 // Read lines from file demo
-fn main() ! {
-    let _ = File.write_text("lines.txt", "Rust\nFun\nAuto").?
-    let data = File.read_bytes("lines.txt").?
-    print(f"Read ${data.len()} bytes")
-    let _ = File.delete("lines.txt").?
+fn main() {
+    File.write_text("lines.txt", "Rust\nFun\nAuto")
+    let data = File.read_text("lines.txt")
+    print(f"Read ${data.len()} chars")
+    File.delete("lines.txt")
 }

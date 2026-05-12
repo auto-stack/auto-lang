@@ -1,8 +1,5 @@
-use.rust std::env
-use.rust std::fs
-
-fn main() ! {
+fn main() {
     let config_path = env.get_or("CONFIG", "/etc/myapp/config")
-    let config = fs.read_to_string(config_path).?
+    let config = File.read_text(config_path)
     print(f"Config: $config")
 }

@@ -385,6 +385,10 @@ pub mod env {
         std::env::var(key).unwrap_or_default()
     }
 
+    pub fn get_or(key: &str, default: &str) -> String {
+        std::env::var(key).unwrap_or_else(|_| default.to_string())
+    }
+
     pub fn set(key: &str, val: &str) {
         std::env::set_var(key, val);
     }
@@ -425,6 +429,14 @@ pub mod fs {
 
     pub fn write_text(path: &str, content: &str) -> bool {
         std::fs::write(path, content).is_ok()
+    }
+
+    pub fn read_bytes(path: &str) -> Vec<u8> {
+        std::fs::read(path).unwrap_or_default()
+    }
+
+    pub fn delete(path: &str) -> bool {
+        std::fs::remove_file(path).is_ok()
     }
 
     pub fn is_dir(path: &str) -> i32 {
