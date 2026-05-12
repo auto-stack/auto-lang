@@ -9,10 +9,10 @@ use url::Url;
 fn main() {
     let url = Url::parse("https://example.com/rust?name=hello&age=20").unwrap();
 
-    let query = url.query();
+    let query = url::query();
     println!("Query string: {}", query);
 
-    for pair in url.query_pairs() {
+    for pair in url::query_pairs() {
         println!("Param: {}", pair);
     }
 }

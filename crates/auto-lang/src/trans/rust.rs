@@ -63,6 +63,7 @@ pub enum RustEdition {
 pub struct RustTrans {
     indent: usize,
     uses: HashSet<AutoStr>,
+    dep_crates: HashSet<AutoStr>,
 
     // Hybrid: Support both Universe (deprecated) and Database (new)
     // Phase 066: Migrating to Database-based architecture
@@ -151,6 +152,7 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
+            dep_crates: HashSet::new(),
             db: None,
             edition: RustEdition::E2021,
             _current_fn: None,
@@ -185,6 +187,7 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
+            dep_crates: HashSet::new(),
             db: Some(db),
             edition: RustEdition::E2021,
             _current_fn: None,
@@ -2185,6 +2188,52 @@ impl RustTrans {
             }
         }
 
+        // Detect Rust macro calls imported via use.rust (e.g., use.rust log::debug → debug!("..."))
+        // When call.name is Ident("debug") and self.uses contains "log::debug", emit debug!(...)
+        if let Expr::Ident(name) = call.name.as_ref() {
+            let name_str = name.as_str();
+            let is_imported_macro = self.uses.iter().any(|u| {
+                let u_str = u.as_str();
+                u_str.ends_with(&format!("::{}", name_str))
+            });
+            if is_imported_macro && matches!(name_str,
+                "debug" | "info" | "warn" | "error" | "trace"
+                | "println" | "eprintln" | "print" | "eprint"
+                | "format" | "vec" | "write" | "writeln"
+                | "log" | "log_enabled") {
+                write!(out, "{}!(", name)?;
+                for (i, arg) in call.args.args.iter().enumerate() {
+                    if i > 0 { write!(out, ", ")?; }
+                    if let Arg::Pos(Expr::FStr(fstr)) = arg {
+                        // Inline f-string as macro format string
+                        write!(out, "\"")?;
+                        for part in &fstr.parts {
+                            match part {
+                                Expr::Str(s) | Expr::CStr(s) => {
+                                    let escaped = s.replace("\\", "\\\\").replace("\"", r##"\""##)
+                                        .replace("{", "{{").replace("}", "}}");
+                                    write!(out, "{}", escaped)?;
+                                }
+                                Expr::Char(c) => { write!(out, "{}", c)?; }
+                                _ => { write!(out, "{{}}")?; }
+                            }
+                        }
+                        write!(out, "\"")?;
+                        for part in &fstr.parts {
+                            match part {
+                                Expr::Str(_) | Expr::CStr(_) | Expr::Char(_) => {}
+                                _ => { write!(out, ", ")?; self.expr(part, out)?; }
+                            }
+                        }
+                    } else {
+                        self.arg(arg, out)?;
+                    }
+                }
+                write!(out, ")")?;
+                return Ok(());
+            }
+        }
+
         // Plan 204 Phase 1A: Rust assert/assert_eq/assert_ne/panic are macros, need ! suffix
         // Special: when 2nd arg is an f-string, inline it directly (not format!())
         // because Rust assert! expects a string literal as the format arg.
@@ -3888,7 +3937,7 @@ impl RustTrans {
                     self.uses.iter().any(|u| {
                         let u_str = u.as_str();
                         u_str == name || u_str.ends_with(&format!("::{}", name))
-                    })
+                    }) || self.dep_crates.contains(id)
                 }
                 Expr::Dot(il, _) => {
                     matches!(il.as_ref(), Expr::Ident(id) if {
@@ -4622,6 +4671,11 @@ impl RustTrans {
                     self.expr(arg, &mut sink.body)?;
                 }
                 sink.body.write(b");")?;
+                Ok(true)
+            }
+
+            Stmt::Dep(dep) => {
+                self.dep_crates.insert(dep.name.clone());
                 Ok(true)
             }
 
@@ -7690,6 +7744,11 @@ impl Trans for RustTrans {
                         sink.set_source_line(line);
                         self.use_stmt(&use_stmt, &mut sink.body)?;
                         sink.body.write(b"\n")?;
+                    }
+                    Stmt::Dep(dep) => {
+                        // Record dep name so crate.func() → crate::func()
+                        // Use separate set to avoid blocking use.rust import generation
+                        self.dep_crates.insert(dep.name.clone());
                     }
                     _ => {}
                 }

@@ -8,9 +8,9 @@ use auto_lang::a2r_std::*;
 use log::debug;
 use log::info;
 fn main() {
-    env_logger.init();
-    debug("starting operation");
+    env_logger::init();
+    debug!("starting operation");
     let value: i32 = 42;
-    debug(format!("value = {}", value));
+    debug!("value = {}", value);
     println!("done");
 }

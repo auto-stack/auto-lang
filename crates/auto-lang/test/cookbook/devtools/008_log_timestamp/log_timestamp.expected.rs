@@ -10,6 +10,6 @@ use chrono::Local;
 use env_logger::Builder;
 fn main() {
     Builder::new().format(|buf, record| { buf.writeln(format!("[{}] {} - {}", Local::now().format("%Y-%m-%d %H:%M:%S"), record.level(), record.args())); }).init();
-    info("application started");
-    info("with timestamp logging");
+    info!("application started");
+    info!("with timestamp logging");
 }
