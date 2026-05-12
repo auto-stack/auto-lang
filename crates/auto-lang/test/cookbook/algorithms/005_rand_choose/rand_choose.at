@@ -3,7 +3,8 @@ use.rust rand
 
 fn main() {
     var rng = rand.thread_rng()
-    var choices = ["a", "b", "c", "d", "e"]
-    let choice = choices[rng.gen_range(0..choices.len())]
+    let choices = ["a", "b", "c", "d", "e"]
+    let idx = rng.gen_range(0..choices.len())
+    let choice = choices[idx]
     print(f"Chose: $choice")
 }

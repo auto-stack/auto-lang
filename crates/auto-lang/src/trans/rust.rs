@@ -5019,12 +5019,22 @@ impl RustTrans {
             } else {
                 self.expr(&store.expr, out)?;
             }
-        } else if matches!(&store.ty, Type::List(_)) {
-            // List<T> (Vec<T>) with Array literal → vec![...]
+        } else if matches!(&store.ty, Type::List(_) | Type::Array(_)) {
+            // List<T> or Array<T> (Vec<T>) with Array literal → vec![...]
             if let Expr::Array(elems) = &store.expr {
                 write!(out, "vec![")?;
+                // Check if element type is String — need .to_string() on &str literals
+                let elem_ty = match &store.ty {
+                    Type::List(inner) => Some(inner.as_ref() as &Type),
+                    Type::Array(arr) => Some(&arr.elem as &Type),
+                    _ => None,
+                };
+                let elem_is_string = elem_ty.map_or(false, |ty| matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_)));
                 for (i, elem) in elems.iter().enumerate() {
                     self.expr(elem, out)?;
+                    if elem_is_string && matches!(elem, Expr::Str(_) | Expr::CStr(_)) {
+                        write!(out, ".to_string()")?;
+                    }
                     if i < elems.len() - 1 {
                         write!(out, ", ")?;
                     }

@@ -7,7 +7,8 @@ enum Color {
     Blue
 }
 
-fn random_color(rng) Color {
+fn random_color() Color {
+    var rng = rand.thread_rng()
     let n = rng.gen_range(0..3)
     is n {
         0 -> Color.Red,
@@ -27,7 +28,6 @@ ext Color {
 }
 
 fn main() {
-    var rng = rand.thread_rng()
-    let color Color = random_color(rng)
+    let color Color = random_color()
     print(f"Random color: ${color.debug_str()}")
 }

@@ -11,6 +11,6 @@ fn main() {
     people.sort()
     print(people)
 
-    people.sort_by((a, b) => b.age.cmp(a.age))
+    people.sort_by_key((p) => p.age)
     print(people)
 }

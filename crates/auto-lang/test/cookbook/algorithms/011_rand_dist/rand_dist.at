@@ -7,7 +7,7 @@ fn main() ! {
     var normal = Normal.new(0.0, 1.0).?
     var sum = 0.0
     for _ in 0..1000 {
-        let val f64 = normal.sample(rng)
+        let val f64 = rng.sample(normal)
         sum = sum + val
     }
     let avg = sum / 1000.0

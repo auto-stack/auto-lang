@@ -5,6 +5,6 @@ use.rust rand_distr
 fn main() ! {
     var rng = rand.thread_rng()
     var normal = Normal.new(2.0, 3.0).?
-    let v f64 = normal.sample(rng)
+    let v f64 = rng.sample(normal)
     print(f"Random from Normal(2, 3): $v")
 }
