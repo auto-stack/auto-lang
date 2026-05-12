@@ -43,7 +43,7 @@ impl Color {
 }
 
 fn main() {
-    let mut rng = rand.thread_rng();
+    let mut rng = rand::thread_rng();
     let color: Color = random_color(rng);
     println!("Random color: {}", color.debug_str());
 }

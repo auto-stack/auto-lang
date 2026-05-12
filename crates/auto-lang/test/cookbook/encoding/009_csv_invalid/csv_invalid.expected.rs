@@ -15,4 +15,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => println!("Error reading record: {}", e),
         }
     }
+    Ok(())
 }

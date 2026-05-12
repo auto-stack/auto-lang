@@ -1,7 +1,7 @@
 # Plan 240: Rust Cookbook a2r 测试集
 
 **日期**: 2026-05-08（更新于 2026-05-12）
-**状态**: Phase 1-9, 11 完成；Phase 10/12/13 暂停（需 VM 架构改动）；cookbook 测试 124/124 pass；61 个 SIMPLIFIED .at 已去桩化；独立编译 13/100 pass（87 fail），A1 `::` 语法已修复
+**状态**: Phase 1-9, 11 完成；Phase 10/12/13 暂停（需 VM 架构改动）；cookbook 测试 124/124 pass；61 个 SIMPLIFIED .at 已去桩化；独立编译 26/100 pass（74 fail），C1+A1+A2+A5+A6 已修复
 **目标**: 利用 Rust Cookbook 的真实示例建立系统化的 a2r 测试集，通过对比 a2r 输出与 Rust 原始代码来发现和修复 a2r 的问题；对 Tier C 模拟桩逐步去桩化。
 
 ## 1. 概述
@@ -415,80 +415,93 @@ VM 内嵌 tokio runtime，一次性解锁 13 个 async/database 文件。
 
 build-time codegen 支持 `dep cc` + `memmap2` FFI 桥接，解锁 4 个文件。
 
-## 11. 独立编译验证 v3（2026-05-12 最终）
+## 11. 独立编译验证 v4（2026-05-12）
 
-修复 BUG-A/B/C + A1(crate 名 `::` 语法) 后，重新运行 batch compilation。
+修复 C1 + A1 + A5 + A2 + A6 后，重新运行 batch compilation。
 
 ### 结果
 
-| 指标 | v1(初始) | v2(BUG-A/B/C) | v3(+A1) |
-|------|----------|---------------|---------|
-| 通过 | 10/100 | 36/100 | **13/100** |
-| 失败 | 90/100 | 64/100 | **87/100** |
-| E0252 重复定义 | 3 | 0 | **0** |
-| a2r 测试 | — | 288/288 pass | **288/288 pass** |
+| 指标 | v3(基准) | v4(+C1+A5+A2+A6) |
+|------|----------|-------------------|
+| 通过 | 13/100 | **26/100** |
+| 失败 | 87/100 | **74/100** |
+| E0432 | 25 | **0** |
+| E0423 | 22 | **16** |
+| E0308 | 21 | **27** |
+| E0599 | 18 | **31** |
+| E0277 | 7 | **11** |
+| a2r 测试 | 124/124 pass | **124/124 pass** |
 
-> **注**：v3 通过数下降是因为 batch_compile.sh 脚本清理重建了所有 crate（`rm -rf`），v2 的 36 OK 可能包含上次运行残留的中间状态。v3 是干净的基准。
+### v4 已完成的修复
 
-### 87 个失败错误码分布
+| 修复 | 描述 | 影响数 | 代码变更 |
+|------|------|--------|----------|
+| C1 | batch_compile.sh dep 映射补全（+use.rust 提取） | -25 E0432 | batch_compile.sh |
+| A1 | crate 名 `::` 语法（`walkdir.WalkDir::new`） | -5 E0423 | rust.rs: `obj_is_type_chain` |
+| A5 | Display trait（`{:?}` 替代 `{}`） | -2 E0277 | rust.rs: `needs_debug_format` |
+| A2 | 错误传播类型标注（`let x: i32 = expr?` → `let x = expr?`） | -4 E0308 | rust.rs: `is_error_propagate` |
+| A6 | crate-level 函数调用（`rand.thread_rng` → `rand::thread_rng`） | -31 E0423 | rust.rs: `Expr::Ident` arm in `obj_is_type_chain` |
+| Ok(()) | Result void 函数追加 `Ok(())` | -1 E0308 | rust.rs: `effective_ret_type` |
+
+### 74 个失败错误码分布
 
 | 错误码 | 含义 | 数量 |
 |--------|------|------|
-| E0432 | unresolved import（crate 未安装） | 25 |
-| E0423 | expected value, found module | 22 |
-| E0308 | type mismatch | 21 |
-| E0599 | method not found | 18 |
-| E0433 | unresolved type/variable | 12 |
-| E0282 | type annotation needed | 9 |
-| E0277 | trait not implemented | 7 |
+| E0599 | method not found | 31 |
+| E0308 | type mismatch | 27 |
+| E0423 | expected value, found module | 16 |
+| E0433 | unresolved type/variable | 14 |
+| E0277 | trait not implemented | 11 |
 | E0422 | unresolved struct/function | 6 |
 | E0425 | unresolved name | 5 |
-| E0424 | expected value, found module (self::) | 4 |
-| E0615 | no field on type | 3 |
+| E0424 | expected value, found module (self::) | 5 |
+| E0615 | no field on type | 4 |
+| E0593 | closure as fn pointer | 3 |
+| E0658 | unstable feature | 2 |
+| E0609 | no field on type | 2 |
+| E0608 | cannot borrow mut in pattern | 2 |
 | E0283 | ambiguous associated type | 2 |
-| E0608 | cannot borrow mut in pattern | 1 |
 | E0369 | binary operation trait missing | 1 |
 | E0284 | expected type parameter | 1 |
+| E0282 | type annotation needed | 1 |
 
-### 87 个失败根因分类
+### 74 个失败根因分类（v4）
 
-#### 类别 A：a2r Transpiler 可修复（~45 个，52%）
+#### 类别 A：a2r Transpiler 可修复（~40 个，54%）
 
-| # | 根因 | 错误码 | 数量 | 典型案例 | 修复难度 |
-|---|------|--------|------|----------|----------|
-| A1 | ✅ crate 名 `::` 语法 | E0423 | ~~15~~ 0 | — | ✅ 已修复 |
-| A2 | `for` 迭代器元素类型错误（i32 代替 DirEntry） | E0599+E0423 | ~12 | file/005-014 `file_name() on i32` | 中 |
-| A3 | 类型不匹配（i32 代替复杂类型） | E0308 | ~12 | encoding/003-014, errors/001, concurrency/001-003 | 高 |
-| A4 | 闭包参数类型标注缺失 | E0282 | ~9 | file/002-004, concurrency/008, text/004-006, hardware/001 | 中 |
-| A5 | Display trait 遗漏（println! 格式） | E0277 | ~7 | datetime/002, concurrency/005-006, mem/001, file/014, os/001 | 低 |
-| A6 | 方法调用 vs 函数调用混淆 | E0423+E0599 | ~5 | encoding/001, devtools/004,008, concurrency/007,009 | 中 |
+| # | 根因 | 状态 | 错误码 | 数量 |
+|---|------|------|--------|------|
+| A1 | crate 名 `::` 语法 | ✅ 已修复 | E0423 | 0 |
+| A2 | `let x: i32 = expr?` 错误传播类型标注 | ✅ 已修复 | E0308 | 0 |
+| A3 | 类型不匹配（i32 代替复杂类型） | 部分修复 | E0308+E0599 | ~15 |
+| A4 | 闭包参数类型标注缺失 | 待修复 | E0282+E0593 | ~8 |
+| A5 | Display trait 遗漏 | ✅ 已修复 | E0277 | 0 |
+| A6 | 方法调用 vs 函数调用混淆 | ✅ 已修复 | E0423 | 0 |
+| A7 | `dep` 导出的 crate 名未加入 `self.uses` | 待修复 | E0423 | ~8 |
+| A8 | 宏调用缺少 `!`（`debug("msg")` → `debug!("msg")`） | 待修复 | E0423 | ~10 |
 
-#### 类别 B：Parser 限制（~12 个，14%）
+#### 类别 B：Parser 限制（~15 个，20%）
 
-| # | 根因 | 错误码 | 数量 | 典型案例 | 修复难度 |
-|---|------|--------|------|----------|----------|
-| B1 | 方法链断裂（`.method()` → `self.method()`） | E0424+E0615 | ~7 | os/003-006 | 高（需 parser 改动） |
-| B2 | regex 字面量语法 `r"..."` 未转译 | E0422 | ~5 | text/001-002,005-006 `cannot find struct r` | 中 |
-| B3 | byte 字面量语法 `b"..."` 未转译 | E0422 | ~2 | os/006, cryptography/001 `cannot find struct b` | 中 |
-| B4 | 泛型参数/const generic | E0284+E0608 | ~3 | safety/001 (heapless::Vec<i32,32>), text/007 | 高 |
+| # | 根因 | 错误码 | 数量 |
+|---|------|--------|------|
+| B1 | 方法链断裂（`.method()` → `self.method()`） | E0424+E0615 | ~7 |
+| B2 | regex 字面量 `r"..."` 未转译 | E0422 | ~5 |
+| B3 | byte 字面量 `b"..."` 未转译 | E0422 | ~2 |
+| B4 | 泛型参数/const generic | E0284+E0608 | ~3 |
 
-#### 类别 C：基础设施/Mock 限制（~30 个，34%）
+#### 类别 C：基础设施/Mock 限制（~19 个，26%）
 
-| # | 根因 | 错误码 | 数量 | 典型案例 | 说明 |
-|---|------|--------|------|----------|------|
-| C1 | 外部 crate 未安装 | E0432 | ~12 | log(7), rand(6), semver(4), toml/base64/hex | batch_compile.sh Cargo.toml 不完整 |
-| C2 | Auto 类型未映射（`List`/`File`/`Normal`） | E0433 | ~12 | compression(3), concurrency(2), file(5), cli/os | Auto 类型未映射到 Rust 等价物 |
-| C3 | a2r_std mock 缺少函数 | E0425+E0433 | ~6 | file/006-009 (str_ends_with, get_or) | mock stdlib 不完整 |
+| # | 根因 | 错误码 | 数量 |
+|---|------|--------|------|
+| C2 | Auto 类型未映射（`List`/`File`/`Normal`） | E0433 | ~12 |
+| C3 | a2r_std mock 缺少函数 | E0425+E0433 | ~6 |
 
-> **注**：C1 中的 E0432 错误并非 a2r bug — batch_compile.sh 未在 Cargo.toml 中包含所有依赖。使用真实 Cargo.toml 后这些错误会消失，但会暴露更深层的类型映射问题。C2 中的 `List`/`File` 等类型需要 a2r 将其映射为 `Vec`/`std::fs::File` 等 Rust 类型。
+### 推荐修复优先级（v4）
 
-### 推荐修复优先级
-
-| 优先级 | 根因 | 影响数 | 难度 | 预期效果 |
-|--------|------|--------|------|----------|
-| 1 | C1: 补全 batch_compile.sh 的 dep 映射 | ~12 | 低 | 消除 E0432，暴露真实问题 |
-| 2 | A5: Display trait（`{:?}` 替代 `{}`） | ~7 | 低 | 快速修复 |
-| 3 | B2/B3: `r"..."`/`b"..."` 字面量转译 | ~7 | 中 | parser 改动 |
-| 4 | A2: 迭代器元素类型推断 | ~12 | 中 | for 循环类型标注 |
-| 5 | A4: 闭包参数类型标注 | ~9 | 中 | 自动推断或标注 |
-| 6 | C2: Auto 类型 → Rust 类型映射 | ~12 | 高 | 需类型系统支持 |
+| 优先级 | 根因 | 影响数 | 难度 |
+|--------|------|--------|------|
+| 1 | A8: 宏调用 `!` 语法 | ~10 | 中 |
+| 2 | A7: `dep` crate 名加入 `self.uses` | ~8 | 低 |
+| 3 | A4: 闭包参数类型标注 | ~8 | 中 |
+| 4 | A3: 深层类型不匹配 | ~15 | 高 |
+| 5 | C2: Auto 类型映射 | ~12 | 高 |

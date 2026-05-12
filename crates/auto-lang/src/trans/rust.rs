@@ -3879,10 +3879,17 @@ impl RustTrans {
                 }
             }
 
-            // Check if object is a type-like chain (module.Type) — use :: for static method calls
+            // Check if object is a type-like chain (module.Type or crate) — use :: for static calls
             // Only use :: when the leftmost identifier is a known use.rust module or crate,
             // not when it could be a local variable (e.g., closure param like `a.age.cmp()`)
             let obj_is_type_chain = match object.as_ref() {
+                Expr::Ident(id) => {
+                    let name = id.as_str();
+                    self.uses.iter().any(|u| {
+                        let u_str = u.as_str();
+                        u_str == name || u_str.ends_with(&format!("::{}", name))
+                    })
+                }
                 Expr::Dot(il, _) => {
                     matches!(il.as_ref(), Expr::Ident(id) if {
                         let name = id.as_str();
@@ -4703,7 +4710,9 @@ impl RustTrans {
         // Plan 204 Phase 1E: Also skip type annotation when the rendered type
         // contains "/* unknown */" (e.g., Option</* unknown */>, [/* unknown */; N])
         let ty_name = self.rust_type_name(&store.ty);
-        let has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */");
+        // Skip type annotation for: Unknown types, error propagation (?), closures, or unknown placeholders
+        let is_error_propagate = matches!(&store.expr, Expr::ErrorPropagate(_));
+        let has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */") || is_error_propagate;
 
         // Check if the expression is a closure - closures should not have explicit type annotations
         // because Rust infers closure types automatically
@@ -5005,11 +5014,12 @@ impl RustTrans {
         self.current_fn_str_params.clear();
         // Plan 240: When fn body has .? but declared as void, treat as Result<(), ...>
         // so that Ok("hello") -> Ok("hello".to_string()) works correctly
-        self.current_fn_ret_type = if fn_body_has_try {
-            Some(Type::Result(Box::new(Type::Void)))
+        let effective_ret_type = if fn_body_has_try {
+            Type::Result(Box::new(Type::Void))
         } else {
-            Some(fn_decl.ret.clone())
+            fn_decl.ret.clone()
         };
+        self.current_fn_ret_type = Some(effective_ret_type.clone());
 
         // Return type - unwrap Future/Handle for async fn (Rust's async fn wraps implicitly)
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
@@ -5362,7 +5372,7 @@ impl RustTrans {
         }
 
         // Plan 091: scope removed
-        self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
+        self.body(&fn_decl.body, sink, &effective_ret_type, "")?;
         // Plan 091: scope removed
 
         Ok(())

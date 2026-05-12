@@ -13,4 +13,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writer.write_record(vec!["Bob", "25"])?;
     let output = String::from_utf8(writer.into_inner()?)?;
     println!("{}", output);
+    Ok(())
 }

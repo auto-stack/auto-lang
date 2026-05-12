@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut seen: HashMap<String, bool> = HashMap::new();
-    let entries = fs.read_dir(".")?;
+    let entries = fs::read_dir(".")?;
     for entry in entries {
-        let entry: i32 = entry?;
+        let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_str().unwrap();
         if seen.contains_key(name_str) {

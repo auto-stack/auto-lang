@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 use serde_json;
 fn main() {
     let json_str: String = "{\"name\": \"Alice\", \"age\": 30}".to_string();
-    let parsed = serde_json.from_str(json_str);
+    let parsed = serde_json::from_str(json_str);
     println!("Parsed: {}", parsed);
     let encoded = serde_json.to_string("hello world");
     println!("Encoded: {}", encoded);

@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use walkdir;
 fn main() {
-    for entry in walkdir::WalkDir.new("src") {
+    for entry in walkdir::WalkDir::new("src") {
         let entry = entry.unwrap();
         println!("Found: {:?}", entry.path().display());
     }

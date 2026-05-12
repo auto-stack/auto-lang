@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use rand;
 fn main() {
-    let mut rng = rand.thread_rng();
+    let mut rng = rand::thread_rng();
     let charset: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()".to_string();
     let mut password: String = "".to_string();
     for _ in 0..16 {

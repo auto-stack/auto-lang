@@ -7,7 +7,7 @@ use auto_lang::a2r_std::*;
 
 use rand;
 fn main() {
-    let mut rng = rand.thread_rng();
+    let mut rng = rand::thread_rng();
     let n: i32 = rng.gen_range(0..100);
     println!("Random number: {}", n);
 }

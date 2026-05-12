@@ -18,7 +18,7 @@ impl SimpleLogger {
         SimpleLogger {}
     }
     fn enabled(&self, metadata: Metadata) -> bool {
-        metadata.level() <= log.Level.Debug
+        metadata.level() <= log.Level::Debug
     }
     fn log(&self, record: Record) {
         if self.enabled(record.metadata()) {

@@ -8,6 +8,6 @@ use auto_lang::a2r_std::*;
 use toml;
 fn main() {
     let toml_str: String = "\n[owner]\nname = \"Alice\"\n".to_string();
-    let parsed = toml.from_str(toml_str);
+    let parsed = toml::from_str(toml_str);
     println!("Parsed TOML: {}", parsed);
 }

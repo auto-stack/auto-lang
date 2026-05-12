@@ -14,5 +14,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for line in lines.lines() {
         println!("Line: {}", line);
     }
-    fs.remove_file(path)?
+    fs::remove_file(path)?
 }

@@ -7,8 +7,8 @@ use auto_lang::a2r_std::*;
 
 use base64;
 fn main() {
-    let encoded = base64.encode("hello world");
+    let encoded = base64::encode("hello world");
     println!("Encoded: {}", encoded);
-    let decoded = base64.decode(encoded);
+    let decoded = base64::decode(encoded);
     println!("Decoded: {}", decoded);
 }

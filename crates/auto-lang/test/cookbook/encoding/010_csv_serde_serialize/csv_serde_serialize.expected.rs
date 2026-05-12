@@ -12,4 +12,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writer.serialize({name: "Bob", age: 25})?;
     let output = String::from_utf8(writer.into_inner()?)?;
     println!("{}", output);
+    Ok(())
 }

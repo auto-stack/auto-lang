@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 use rand;
 use rand_distr;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut rng = rand.thread_rng();
+    let mut rng = rand::thread_rng();
     let mut normal = Normal::new(0.0, 1.0)?;
     let mut sum: f64 = 0.0;
     for _ in 0..1000 {
@@ -16,6 +16,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sum = sum + val;
     }
     let avg: f64 = sum / 1000.0;
-    println!("Average of 1000 normal samples: {}", avg);
+    println!("Average of 1000 normal samples: {:?}", avg);
     Ok(())
 }
