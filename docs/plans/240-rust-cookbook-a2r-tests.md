@@ -1,7 +1,7 @@
 # Plan 240: Rust Cookbook a2r 测试集
 
 **日期**: 2026-05-08（更新于 2026-05-13）
-**状态**: Phase 1-9, 11 完成；Phase 10/12/13 暂停（需 VM 架构改动）；cookbook 测试 124/124 pass；a2r 测试 235/235 pass；61 个 SIMPLIFIED .at 已去桩化；独立编译 25/100 pass（75 fail），C1+A1+A2+A5+A6+A7+A8+A9+use.rust+companion-wildcard+type-qual 已修复
+**状态**: Phase 1-9, 11 完成；Phase 10/12/13 暂停（需 VM 架构改动）；cookbook 测试 124/124 pass；a2r 测试 235/235 pass；61 个 SIMPLIFIED .at 已去桩化；独立编译 59/100 pass（41 fail），从 22/100 提升到 59/100
 **目标**: 利用 Rust Cookbook 的真实示例建立系统化的 a2r 测试集，通过对比 a2r 输出与 Rust 原始代码来发现和修复 a2r 的问题；对 Tier C 模拟桩逐步去桩化。
 
 ## 1. 概述
