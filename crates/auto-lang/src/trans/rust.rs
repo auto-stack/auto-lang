@@ -8264,6 +8264,21 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         parsed_modules.push((module, ast));
     }
 
+    // Phase 2.5: Pre-scan all function signatures for cross-module str-param tracking
+    let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    for (_module, ast) in &parsed_modules {
+        for stmt in &ast.stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                let str_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                    .collect();
+                if !str_flags.is_empty() {
+                    global_fn_str_params.insert(fn_decl.name.clone(), str_flags);
+                }
+            }
+        }
+    }
+
     // Phase 3: Transpile each module into its own Sink
     let mut multi_sink = MultiSink::new();
     for (module, ast) in &parsed_modules {
@@ -8272,6 +8287,13 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
         // Pre-populate tag_types with all known enum names for Err boxing detection
         transpiler.tag_types = all_enum_names.clone();
+
+        // Pre-populate fn_str_param_indices with cross-module function signatures
+        for (name, flags) in &global_fn_str_params {
+            if !transpiler.fn_str_param_indices.contains_key(name) {
+                transpiler.fn_str_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
 
         // Plan 167: Populate local_modules for mod declarations.
         // In Rust, `mod X;` can only appear in the parent module that owns X.

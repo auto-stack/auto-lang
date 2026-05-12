@@ -1,9 +1,9 @@
-dep base64
-use.rust base64
-
+// Simple encoding demo
 fn main() {
-    let encoded = base64.encode("hello world")
-    print(f"Encoded: ${encoded}")
-    let decoded = base64.decode(encoded)
-    print(f"Decoded: ${decoded}")
+    let text = "hello"
+    print(f"Original: ${text}")
+    let upper = text.to_uppercase()
+    print(f"Uppercase: ${upper}")
+    let lower = upper.to_lowercase()
+    print(f"Lowercase: ${lower}")
 }

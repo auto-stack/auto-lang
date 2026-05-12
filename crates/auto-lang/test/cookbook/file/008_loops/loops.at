@@ -1,15 +1,14 @@
 use.rust std::collections::HashSet
-use.rust std::path::PathBuf
 
-fn visit(path PathBuf, visited HashSet<PathBuf>) {
+fn visit(path str, visited HashSet<str>) {
     if !visited.contains(path) {
-        visited.insert(path.clone())
+        visited.insert(path)
     } else {
-        print(f"Loop detected: ${path.display()}")
+        print(f"Loop detected: ${path}")
     }
 }
 
 fn main() {
-    var visited HashSet<PathBuf> = HashSet.new()
-    visit(PathBuf.from("."), visited)
+    var visited HashSet<str> = HashSet.new()
+    visit(".", visited)
 }

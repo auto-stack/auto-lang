@@ -1,7 +1,8 @@
 use.rust std::error::Error
 
 fn main() ! {
-    let result = Ok("hello")
+    let msg = "hello"
+    let result = Ok(msg.to_string())
     let val = result.?
     print(val)
 }

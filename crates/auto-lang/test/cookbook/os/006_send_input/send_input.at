@@ -3,7 +3,7 @@ use.rust std::process::Command
 use.rust std::process::Stdio
 
 fn main() {
-    let child = Command.new("cat").stdin(Stdio.piped()).stdout(Stdio.piped()).spawn().unwrap()
+    var child = Command.new("cat").stdin(Stdio.piped()).stdout(Stdio.piped()).spawn().unwrap()
 
     let stdin = child.stdin.as_mut().unwrap()
     stdin.write_all("hello from stdin".as_bytes())

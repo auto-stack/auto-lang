@@ -1,7 +1,7 @@
 use.rust std::fs
 
 fn main() ! {
-    var total uint = 0
+    var total = 0
     let entries = fs.read_dir(".").?
     for entry in entries {
         let entry = entry.?

@@ -1,13 +1,10 @@
-use.rust std::cell::OnceCell
+use.rust std::cell::RefCell
 
 fn main() {
-    let cell = OnceCell.new()
-    let has_none = cell.get().is_none()
-    print(f"Is none: $has_none")
-
-    cell.set("Hello, World!")
-    let value = cell.get()
-    print(f"Value: $value")
-    let exists = cell.get().is_some()
-    print(f"Has value: $exists")
+    let cell = RefCell.new(0)
+    let current = cell.borrow()
+    print(f"Initial: ${current}")
+    cell.replace(42)
+    let updated = cell.borrow()
+    print(f"Updated: ${updated}")
 }

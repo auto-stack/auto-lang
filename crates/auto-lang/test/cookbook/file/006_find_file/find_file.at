@@ -6,8 +6,6 @@ fn main() ! {
         let entry = entry.?
         let name = entry.file_name()
         let name_str = name.to_str().unwrap()
-        if name_str.ends_with(".rs") {
-            print(f"Found Rust file: $name_str")
-        }
+        print(f"Found: $name_str")
     }
 }

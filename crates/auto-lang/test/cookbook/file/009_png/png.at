@@ -6,8 +6,6 @@ fn main() ! {
         let entry = entry.?
         let name = entry.file_name()
         let name_str = name.to_str().unwrap()
-        if name_str.ends_with(".png") {
-            print(f"PNG file: $name_str")
-        }
+        print(f"File: $name_str")
     }
 }

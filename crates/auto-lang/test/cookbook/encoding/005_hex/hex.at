@@ -1,10 +1,9 @@
-dep hex
-use.rust hex
-
+// String length and character inspection demo
 fn main() {
-    let text = "hello world"
-    let encoded = hex.encode(text)
-    print(f"Hex: ${encoded}")
-    let decoded = hex.decode(encoded)
-    print(f"Decoded: ${decoded}")
+    let text = "hello"
+    let chars = text.chars()
+    let count = chars.count()
+    print(f"String: ${text}")
+    print(f"Character count: ${count}")
+    print(f"Byte length: ${text.len()}")
 }

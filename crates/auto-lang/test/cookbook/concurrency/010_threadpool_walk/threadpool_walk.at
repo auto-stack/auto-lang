@@ -4,8 +4,9 @@ fn main() {
     dirs.push("src/")
     dirs.push("docs/")
     dirs.push("test/")
+    let count = dirs.len()
     for d in dirs {
         print(f"Walking: ${d}")
     }
-    print(f"Walked ${dirs.len()} directories")
+    print(f"Walked ${count} directories")
 }
