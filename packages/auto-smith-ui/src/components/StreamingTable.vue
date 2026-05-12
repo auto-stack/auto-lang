@@ -3,15 +3,15 @@
     <table>
       <thead>
         <tr>
-          <th v-for="col in columns" :key="col">{{ col }}</th>
+          <th v-for="col in safeColumns" :key="col">{{ col }}</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(row, idx) in rows" :key="idx">
-          <td v-for="col in columns" :key="col">{{ row[col] ?? '' }}</td>
+        <tr v-for="(row, idx) in safeRows" :key="idx">
+          <td v-for="col in safeColumns" :key="col">{{ row[col] ?? '' }}</td>
         </tr>
         <tr v-if="!final" class="loading-row">
-          <td :colspan="columns.length">
+          <td :colspan="Math.max(1, safeColumns.length)">
             <span class="loading-dots">Loading</span>
           </td>
         </tr>
@@ -21,11 +21,23 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  columns: string[]
-  rows: Record<string, any>[]
-  final?: boolean
-}>()
+import { computed } from 'vue'
+
+const props = withDefaults(
+  defineProps<{
+    columns?: string[]
+    rows?: Record<string, any>[]
+    final?: boolean
+  }>(),
+  {
+    columns: () => [],
+    rows: () => [],
+    final: false,
+  }
+)
+
+const safeColumns = computed(() => props.columns ?? [])
+const safeRows = computed(() => props.rows ?? [])
 </script>
 
 <style scoped>

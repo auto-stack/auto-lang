@@ -90,7 +90,8 @@ export function useForge() {
   /** Attempt to resume on app load:
    *  1. Check localStorage for a previous session ID
    *  2. Try to restore it from the server
-   *  3. Fall back to creating a new session if restoration fails
+   *  3. Reuse an existing idle session if available
+   *  4. Only create a new session as last resort
    */
   async function resume() {
     if (_resuming.value) return _session.value?.id ?? null
@@ -101,6 +102,16 @@ export function useForge() {
         const restored = await restoreSession(stored)
         if (restored) return restored
       }
+
+      // No valid stored session — try to reuse an existing idle one
+      await loadSessionList()
+      const idle = sessionList.value
+        .filter((s) => s.status === 'idle')
+        .sort((a, b) => b.last_activity - a.last_activity)[0]
+      if (idle) {
+        return await restoreSession(idle.id)
+      }
+
       return await createSession()
     } finally {
       _resuming.value = false

@@ -52,7 +52,11 @@ function parsePartialJSON(text: string): { value: any; valid: boolean } {
     if (ch === '{' || ch === '[') {
       stack.push(ch === '{' ? '}' : ']')
     } else if ((ch === '}' || ch === ']') && stack.length > 0) {
-      stack.pop()
+      // Only pop when the closing bracket matches the expected one
+      const expected = stack[stack.length - 1]
+      if (ch === expected) {
+        stack.pop()
+      }
     }
   }
 
@@ -111,12 +115,33 @@ function isComponentJSON(value: any): value is { type: string } & Record<string,
   return value && typeof value === 'object' && typeof value.type === 'string' && COMPONENT_TYPES.has(value.type)
 }
 
+/**
+ * Detect component type from raw (possibly incomplete) JSON text.
+ * Uses prefix matching so `"type": "tabl"` matches `"table"` —
+ * this prevents the segment from flipping between markdown and component
+ * while the type value is still being streamed character by character.
+ */
+function detectComponentType(raw: string): string | null {
+  const m = raw.match(/"type"\s*:\s*"([^"]*)"/)
+  if (!m) return null
+  const partial = m[1]
+  for (const t of COMPONENT_TYPES) {
+    if (t.startsWith(partial) || partial.startsWith(t)) return t
+  }
+  return null
+}
+
+// Sticky props cache: remembers the last successful props for each block position
+// so that a transient parse failure doesn't reset the component to empty state.
+const stickyPropsCache = new Map<string, Record<string, any>>()
+
 function buildSegments(text: string): StreamingSegment[] {
   const blocks = findJSONBlocks(text)
   const segments: StreamingSegment[] = []
   let cursor = 0
 
   for (const block of blocks) {
+    const cacheKey = `${block.start}`
     // Markdown before this block
     if (block.start > cursor) {
       segments.push({ type: 'markdown', text: text.slice(cursor, block.start) })
@@ -124,11 +149,28 @@ function buildSegments(text: string): StreamingSegment[] {
 
     // Try to parse block content as component JSON
     const { value, valid } = parsePartialJSON(block.content)
+    const hintedType = detectComponentType(block.content)
+
     if (isComponentJSON(value)) {
       const { type, ...props } = value
+      stickyPropsCache.set(cacheKey, props)
       segments.push({
         type: 'component',
         componentType: type,
+        props,
+        final: valid && block.closed,
+      })
+    } else if (hintedType) {
+      // Pre-emptively render as component even if JSON is not yet valid.
+      // Prevents markdown→component flicker while the JSON is still streaming.
+      // Use sticky cache so transient parse failures don't reset data.
+      const sticky = stickyPropsCache.get(cacheKey)
+      const defaults = hintedType === 'table' ? { columns: [], rows: [] } : {}
+      const props = value ?? sticky ?? defaults
+      if (value) stickyPropsCache.set(cacheKey, value)
+      segments.push({
+        type: 'component',
+        componentType: hintedType,
         props,
         final: valid && block.closed,
       })

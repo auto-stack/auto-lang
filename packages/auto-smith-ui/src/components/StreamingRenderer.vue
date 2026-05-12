@@ -1,6 +1,6 @@
 <template>
   <div class="streaming-document">
-    <template v-for="(segment, idx) in segments" :key="idx">
+    <template v-for="(segment, idx) in segments" :key="segment.type + '-' + idx">
       <MarkdownRender
         v-if="segment.type === 'markdown'"
         :content="segment.text"
