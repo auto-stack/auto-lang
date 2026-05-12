@@ -178,45 +178,48 @@ function runMixedDemo() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: var(--af-card);
-  border-bottom: 1px solid var(--af-border);
+  padding: 0.6rem 1.25rem;
   flex-shrink: 0;
 }
 
 .demo-header h2 {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .demo-controls {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .demo-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: hsl(var(--af-furnace));
+  background: linear-gradient(135deg, var(--vp-c-brand-1) 0%, var(--vp-c-brand-2) 100%);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
   transition: opacity 0.15s;
 }
 
 .demo-btn.secondary {
-  background: var(--af-secondary);
-  color: var(--af-fg);
+  background: transparent;
+  color: var(--af-muted);
   border: 1px solid var(--af-border);
 }
 
-.demo-btn:hover {
-  opacity: 0.9;
+.demo-btn:hover:not(.secondary) {
+  opacity: 0.85;
+}
+
+.demo-btn.secondary:hover {
+  background: hsl(var(--muted-foreground) / 0.05);
+  color: var(--af-fg);
 }
 
 .demo-stage {
@@ -224,32 +227,32 @@ function runMixedDemo() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  padding: 1rem;
+  padding: 0.5rem 1.25rem;
   overflow: hidden;
   min-height: 0;
 }
 
 .demo-panel {
-  background: var(--af-card);
   border: 1px solid var(--af-border);
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
 .panel-label {
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: 0.65rem;
+  font-weight: 500;
   text-transform: uppercase;
+  letter-spacing: 0.03em;
   color: var(--af-muted);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   flex-shrink: 0;
 }
 
 .demo-panel.raw {
-  background: var(--af-bg);
+  background: hsl(var(--muted-foreground) / 0.02);
 }
 
 .raw-text {
@@ -264,34 +267,33 @@ function runMixedDemo() {
 
 .demo-info {
   flex-shrink: 0;
-  padding: 1rem;
-  background: var(--af-card);
+  padding: 0.75rem 1.25rem;
   border-top: 1px solid var(--af-border);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .demo-info h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
 }
 
 .demo-info ul {
   margin: 0;
   padding-left: 1.25rem;
   color: var(--af-fg);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .demo-info li {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.25rem;
 }
 
 .demo-info code {
-  background: var(--af-secondary);
+  background: hsl(var(--muted-foreground) / 0.06);
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 

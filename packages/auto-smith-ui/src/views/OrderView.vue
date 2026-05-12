@@ -1,7 +1,7 @@
 <template>
   <div class="order-view">
     <div class="order-header">
-      <h2>The Order · 法阵</h2>
+      <h2>Agents</h2>
       <div class="order-stats">
         <span class="stat">Phase: {{ sessionPhase }}</span>
         <span class="stat">Status: {{ sessionStatus }}</span>
@@ -112,16 +112,14 @@ function formatTime(ts: number): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: var(--af-card);
-  border-bottom: 1px solid var(--af-border);
+  padding: 0.6rem 1.25rem;
   flex-shrink: 0;
 }
 
 .order-header h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: hsl(var(--af-order));
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--af-fg);
 }
 
 .order-stats {
@@ -138,10 +136,10 @@ function formatTime(ts: number): string {
 .order-body {
   flex: 1;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 0.75rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .pipeline-flow {
@@ -149,7 +147,6 @@ function formatTime(ts: number): string {
   align-items: center;
   gap: 0.5rem;
   padding: 1rem;
-  background: var(--af-card);
   border: 1px solid var(--af-border);
   border-radius: 8px;
   overflow-x: auto;
@@ -160,42 +157,34 @@ function formatTime(ts: number): string {
   flex-direction: column;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 0.8rem;
   border-radius: 8px;
-  min-width: 90px;
-  border: 2px solid transparent;
+  min-width: 80px;
+  border: 1px solid transparent;
   transition: all 0.2s;
 }
 
 .pipeline-node.completed {
-  border-color: hsl(var(--af-success) / 0.3);
-  background: hsl(var(--af-success) / 0.08);
+  border-color: hsl(var(--af-success) / 0.25);
 }
 
 .pipeline-node.active {
   border-color: hsl(var(--af-order) / 0.3);
-  background: hsl(var(--af-order) / 0.08);
-  animation: pulse 2s infinite;
+  background: hsl(var(--af-order) / 0.04);
 }
 
 .pipeline-node.pending {
-  border-color: var(--af-border);
-  background: var(--af-secondary);
-  opacity: 0.6;
-}
-
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--af-order) / 0.15); }
-  50% { box-shadow: 0 0 0 8px hsl(var(--af-order) / 0); }
+  border-color: transparent;
+  opacity: 0.5;
 }
 
 .node-icon {
-  font-size: 1.25rem;
+  font-size: 1.1rem;
 }
 
 .node-name {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 500;
   color: var(--af-fg);
 }
 
@@ -205,17 +194,16 @@ function formatTime(ts: number): string {
 }
 
 .node-arrow {
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   color: var(--af-border);
-  margin: 0 0.25rem;
+  margin: 0 0.2rem;
 }
 
 /* Progress Panel */
 .progress-panel {
-  background: var(--af-card);
   border: 1px solid var(--af-border);
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
 }
 
 .progress-header {
@@ -226,42 +214,41 @@ function formatTime(ts: number): string {
 }
 
 .progress-title {
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--af-fg);
 }
 
 .progress-count {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--af-muted);
 }
 
 .progress-bar {
-  height: 8px;
-  background: var(--af-secondary);
-  border-radius: 4px;
+  height: 6px;
+  background: hsl(var(--muted-foreground) / 0.1);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, hsl(var(--af-success)), hsl(var(--af-order)));
-  border-radius: 4px;
+  background: hsl(var(--af-success));
+  border-radius: 3px;
   transition: width 0.3s ease;
 }
 
 /* History Panel */
 .history-panel {
-  background: var(--af-card);
   border: 1px solid var(--af-border);
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
 }
 
 .history-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
   color: var(--af-fg);
 }
 
@@ -276,7 +263,7 @@ function formatTime(ts: number): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.4rem 0;
+  padding: 0.35rem 0;
   border-bottom: 1px solid var(--af-border);
 }
 
@@ -286,7 +273,7 @@ function formatTime(ts: number): string {
 
 .history-phase {
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--af-fg);
   text-transform: capitalize;
 }

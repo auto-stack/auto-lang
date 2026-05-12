@@ -1,7 +1,7 @@
 <template>
   <div class="jades-view">
     <div class="jades-header">
-      <h2>The Jades · 玉简</h2>
+      <h2>Specs</h2>
       <div class="jades-actions">
         <button class="jades-btn" @click="triggerDriftCheck">
           <RefreshCw :size="14" />
@@ -48,7 +48,7 @@
           </div>
         </div>
         <div v-else-if="isLoading" class="editor-empty">
-          <span class="loading">Loading Jades…</span>
+          <span class="loading">Loading Specs…</span>
         </div>
         <div v-else class="editor-empty">
           <BookOpen :size="32" />
@@ -121,39 +121,38 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: var(--af-card);
-  border-bottom: 1px solid var(--af-border);
+  padding: 0.6rem 1.25rem;
   flex-shrink: 0;
 }
 
 .jades-header h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: hsl(var(--af-jades));
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--af-fg);
 }
 
 .jades-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .jades-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: var(--af-secondary);
-  color: var(--af-fg);
+  background: transparent;
+  color: var(--af-muted);
   border: 1px solid var(--af-border);
   border-radius: 6px;
-  padding: 0.35rem 0.65rem;
-  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .jades-btn:hover {
-  background: var(--af-input);
+  background: hsl(var(--muted-foreground) / 0.05);
+  color: var(--af-fg);
 }
 
 .jades-body {
@@ -163,10 +162,10 @@ onMounted(() => {
 }
 
 .section-nav {
-  width: 240px;
-  background: var(--af-card);
+  width: 220px;
+  background: transparent;
   border-right: 1px solid var(--af-border);
-  padding: 0.5rem;
+  padding: 0.25rem 0.5rem;
   overflow-y: auto;
   flex-shrink: 0;
 }
@@ -175,21 +174,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--af-fg);
 }
 
 .section-nav-item:hover {
-  background: var(--af-secondary);
+  background: hsl(var(--muted-foreground) / 0.04);
 }
 
 .section-nav-item.active {
-  background: hsl(var(--af-jades) / 0.12);
-  color: hsl(var(--af-jades));
+  background: hsl(var(--primary) / 0.06);
+  color: var(--af-primary);
+  font-weight: 500;
 }
 
 .section-nav-item.drift {
@@ -197,8 +197,8 @@ onMounted(() => {
 }
 
 .nav-status {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -215,16 +215,9 @@ onMounted(() => {
 }
 
 .nav-drift {
-  background: hsl(var(--af-error));
-  color: #fff;
-  font-size: 0.65rem;
-  font-weight: 700;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  color: hsl(var(--af-error));
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .section-editor {
@@ -245,14 +238,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1.25rem;
   border-bottom: 1px solid var(--af-border);
   flex-shrink: 0;
 }
 
 .editor-header h3 {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .editor-badges {
@@ -261,25 +254,23 @@ onMounted(() => {
 }
 
 .badge {
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--af-muted);
 }
 
-.badge.draft { background: hsl(var(--af-muted) / 0.15); color: var(--af-muted); }
-.badge.approved { background: hsl(var(--af-info) / 0.15); color: hsl(var(--af-info)); }
-.badge.in_progress { background: hsl(var(--af-warning) / 0.15); color: hsl(var(--af-warning)); }
-.badge.verified { background: hsl(var(--af-success) / 0.15); color: hsl(var(--af-success)); }
-.badge.drift { background: hsl(var(--af-error) / 0.15); color: hsl(var(--af-error)); }
-.badge.meta { background: var(--af-secondary); color: var(--af-muted); }
+.badge.draft { color: var(--af-muted); }
+.badge.approved { color: hsl(var(--af-info)); }
+.badge.in_progress { color: hsl(var(--af-warning)); }
+.badge.verified { color: hsl(var(--af-success)); }
+.badge.drift { color: hsl(var(--af-error)); }
+.badge.meta { color: var(--af-muted); }
 
 .editor-textarea {
   flex: 1;
   background: var(--af-bg);
   border: none;
-  padding: 1rem;
+  padding: 1rem 1.25rem;
   color: var(--af-fg);
   font-size: 0.9rem;
   line-height: 1.6;
@@ -294,24 +285,25 @@ onMounted(() => {
 .editor-footer {
   display: flex;
   justify-content: flex-end;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1.25rem;
   border-top: 1px solid var(--af-border);
   flex-shrink: 0;
 }
 
 .save-btn {
-  background: hsl(var(--af-jades));
+  background: linear-gradient(135deg, var(--vp-c-brand-1) 0%, var(--vp-c-brand-2) 100%);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 0.4rem 1rem;
-  font-size: 0.85rem;
-  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
+  transition: opacity 0.15s;
 }
 
 .save-btn:hover {
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .editor-empty {

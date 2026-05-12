@@ -83,6 +83,15 @@
   --ring: 238 55% 62%;
 }
 
+/* ─── Global Links ─────────────────────────────────────────────────────────── */
+a {
+  color: var(--af-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
 /* ─── Scrollbar (minimal) ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
