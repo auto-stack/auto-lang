@@ -301,12 +301,16 @@ macro_rules! gen_native_constants {
     () => {};
 }
 
-/// Generate `iface.register(CONST, shim_fn);` for all catalog entries.
+/// Consumer macro for for_each_native! that generates shim bindings.
+/// IMPORTANT: This macro cannot use `self` directly due to #[macro_export] hygiene.
+/// Instead, use it from a local wrapper in native.rs:
+///   macro_rules! __bind_all { ... self.register($name, $fn); ... }
+///   for_each_native!(__bind_all);
 #[macro_export]
 macro_rules! bind_shims {
     (($id:expr, $name:ident, $fn:ident) $(, $rest:tt)*) => {
         self.register($name, $fn);
-        bind_shims!($($rest),*);
+        $crate::bind_shims!($($rest),*);
     };
     () => {};
 }

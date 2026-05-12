@@ -136,9 +136,13 @@ codegen.rs 和 engine.rs 中各保留一个 `lookup_opaque_dispatch(type_name, m
 - NATIVE_MATH_ABS(1700), NATIVE_MATH_MIN(1701), NATIVE_MATH_MAX(1702), NATIVE_MATH_SQRT(1750)
 - NATIVE_MATH_MIN_F(1714), NATIVE_MATH_MAX_F(1715), NATIVE_MATH_CLAMP(1725)
 
-### Phase 2: Shim 绑定自动化（待做）
-- 将 `bind_shims!` 接入 `register_std_shims()` 中，替换 ~222 次 `self.register()` 调用
-- `register_name()` 调用暂保留手动（别名映射复杂度高）
+### Phase 2: Shim 绑定自动化 ✅ DONE
+- ✅ 将 `bind_shims!` 接入 `register_std_shims()` 中，替换 206 次 `self.register()` 调用为单行 `for_each_native!(bind_shims);`
+- ✅ `register_name()` 调用保留手动（~134 条别名映射，含 1-to-N 关系如 Result.map_err）
+- ✅ BIGVM_NATIVES url_opaque 注册块保留手动（不同 registry 对象）
+- ✅ `cargo build --bin auto` 编译通过
+- ✅ `cargo test -p auto-lang --lib -- vm::` — 320 passed
+- ✅ 冒烟测试通过（bitfield cookbook）
 
 ### Phase 3: BIGVM 注册自动化（待做）
 - 扩展 catalog entry 格式，加入 `canonical_name` 和 `ret_type`

@@ -261,189 +261,28 @@ impl NativeInterface {
     }
 
     pub fn register_std_shims(&mut self) {
-        // Print functions
-        self.register(NATIVE_PRINT_I32, shim_print_i32);
-        self.register(NATIVE_PRINT_F32, shim_print_f32);
-        self.register(NATIVE_PRINT_F64, shim_print_f64);
-        self.register(NATIVE_PRINT_STR, shim_print_str);
-        self.register(NATIVE_WRITE_STR, shim_write_str);
+        // Plan 249 Phase 2: All shim bindings generated from unified catalog.
+        // We define a local macro to consume for_each_native! because #[macro_export]
+        // macros cannot use `self` (hygiene restriction). Local macros have no such issue.
+        macro_rules! __register_shims {
+            (($id:expr, $name:ident, $fn:ident) $(, $rest:tt)*) => {
+                self.register($name, $fn);
+                __register_shims!($($rest),*);
+            };
+            () => {};
+        }
+        for_each_native!(__register_shims);
 
-        // Assert functions
-        self.register(NATIVE_ASSERT, shim_assert);
-        self.register(NATIVE_ASSERT_EQ, shim_assert_eq);
-        self.register(NATIVE_ASSERT_NE, shim_assert_ne);
+        // --- Canonical name aliases for CALL_SPEC fallback ---
+        // These remain manual: alias mappings have complex 1-to-N relationships
+        // that don't fit the simple 1-to-1 catalog entry format.
 
-        // Runtime panic (for #[vm] stubs when native not found)
-        self.register(NATIVE_RUNTIME_PANIC, shim_runtime_panic);
-
-        // List functions
-        self.register(NATIVE_LIST_NEW, shim_list_new);
-        self.register(NATIVE_LIST_PUSH, shim_list_push);
-        self.register(NATIVE_LIST_POP, shim_list_pop);
-        self.register(NATIVE_LIST_LEN, shim_list_len);
-        self.register(NATIVE_LIST_IS_EMPTY, shim_list_is_empty);
-        self.register(NATIVE_LIST_CLEAR, shim_list_clear);
-        self.register(NATIVE_LIST_GET, shim_list_get);
-        self.register(NATIVE_LIST_SET, shim_list_set);
-        self.register(NATIVE_LIST_INSERT, shim_list_insert);
-        self.register(NATIVE_LIST_REMOVE, shim_list_remove);
-        self.register(NATIVE_LIST_DROP, shim_list_drop);
-        self.register(NATIVE_LIST_RESERVE, shim_list_reserve);
-
-        // List higher-order functions (Plan 206)
-        self.register(NATIVE_LIST_MAP, shim_list_map);
-        self.register(NATIVE_LIST_FILTER, shim_list_filter);
-        self.register(NATIVE_LIST_FOREACH, shim_list_for_each);
-        self.register(NATIVE_LIST_FIND, shim_list_find);
-        self.register(NATIVE_LIST_ANY, shim_list_any);
-        self.register(NATIVE_LIST_ALL, shim_list_all);
-        self.register(NATIVE_LIST_REDUCE, shim_list_reduce);
-        self.register(NATIVE_LIST_SORT, shim_list_sort);
-        self.register(NATIVE_LIST_SORT_BY, shim_list_sort_by);
-        self.register(NATIVE_LIST_JOIN, shim_list_join);
-        self.register(NATIVE_LIST_CONTAINS, shim_list_contains);
-
-        // Plan 200 Task 3.3: Result.map_err(closure)
-        self.register(NATIVE_RESULT_MAP_ERR, shim_result_map_err);
+        // Result.map_err has multiple aliases for Ok/Err variants
         self.register_name("Result.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Ok.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Err.map_err", NATIVE_RESULT_MAP_ERR);
 
-        // Iterator functions
-        self.register(NATIVE_LIST_ITER, shim_list_iter);
-        self.register(NATIVE_ITERATOR_NEXT, shim_iterator_next);
-        self.register(NATIVE_ITERATOR_MAP, shim_iterator_map);
-        self.register(NATIVE_ITERATOR_FILTER, shim_iterator_filter);
-        self.register(NATIVE_ITERATOR_COLLECT, shim_iterator_collect);
-        self.register(NATIVE_ITERATOR_REDUCE, shim_iterator_reduce);
-        self.register(NATIVE_ITERATOR_FIND, shim_iterator_find);
-        self.register(NATIVE_ITERATOR_ENUMERATE, shim_iterator_enumerate);
-
-        // HashMap functions
-        self.register(NATIVE_HASHMAP_NEW, shim_hashmap_new);
-        self.register(NATIVE_HASHMAP_INSERT_STR, shim_hashmap_insert_str);
-        self.register(NATIVE_HASHMAP_INSERT_INT, shim_hashmap_insert_int);
-        self.register(NATIVE_HASHMAP_GET_STR, shim_hashmap_get_str);
-        self.register(NATIVE_HASHMAP_GET_INT, shim_hashmap_get_int);
-        self.register(NATIVE_HASHMAP_CONTAINS, shim_hashmap_contains);
-        self.register(NATIVE_HASHMAP_REMOVE, shim_hashmap_remove);
-        self.register(NATIVE_HASHMAP_SIZE, shim_hashmap_size);
-        self.register(NATIVE_HASHMAP_CLEAR, shim_hashmap_clear);
-        self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
-        self.register(NATIVE_HASHMAP_IS_EMPTY, shim_hashmap_is_empty);
-        self.register(NATIVE_HASHMAP_GET_OR, shim_hashmap_get_or);
-        self.register(NATIVE_HASHMAP_KEYS, shim_hashmap_keys);
-
-        // HashSet functions
-        self.register(NATIVE_HASHSET_NEW, shim_hashset_new);
-        self.register(NATIVE_HASHSET_INSERT, shim_hashset_insert);
-        self.register(NATIVE_HASHSET_CONTAINS, shim_hashset_contains);
-        self.register(NATIVE_HASHSET_REMOVE, shim_hashset_remove);
-        self.register(NATIVE_HASHSET_SIZE, shim_hashset_size);
-        self.register(NATIVE_HASHSET_CLEAR, shim_hashset_clear);
-        self.register(NATIVE_HASHSET_DROP, shim_hashset_drop);
-
-        // StringBuilder functions
-        self.register(NATIVE_STRINGBUILDER_NEW, shim_stringbuilder_new);
-        self.register(NATIVE_STRINGBUILDER_APPEND, shim_stringbuilder_append);
-        self.register(NATIVE_STRINGBUILDER_APPEND_INT, shim_stringbuilder_append_int);
-        self.register(NATIVE_STRINGBUILDER_APPEND_CHAR, shim_stringbuilder_append_char);
-        self.register(NATIVE_STRINGBUILDER_LEN, shim_stringbuilder_len);
-        self.register(NATIVE_STRINGBUILDER_CLEAR, shim_stringbuilder_clear);
-        self.register(NATIVE_STRINGBUILDER_DROP, shim_stringbuilder_drop);
-        self.register(NATIVE_STRINGBUILDER_BUILD, shim_stringbuilder_build);
-
-        // VecDeque functions
-        self.register(NATIVE_VECDEQUE_NEW, shim_vecdeque_new);
-        self.register(NATIVE_VECDEQUE_PUSH_BACK, shim_vecdeque_push_back);
-        self.register(NATIVE_VECDEQUE_PUSH_FRONT, shim_vecdeque_push_front);
-        self.register(NATIVE_VECDEQUE_POP_BACK, shim_vecdeque_pop_back);
-        self.register(NATIVE_VECDEQUE_POP_FRONT, shim_vecdeque_pop_front);
-        self.register(NATIVE_VECDEQUE_FRONT, shim_vecdeque_front);
-        self.register(NATIVE_VECDEQUE_BACK, shim_vecdeque_back);
-        self.register(NATIVE_VECDEQUE_SIZE, shim_vecdeque_size);
-        self.register(NATIVE_VECDEQUE_IS_EMPTY, shim_vecdeque_is_empty);
-        self.register(NATIVE_VECDEQUE_CLEAR, shim_vecdeque_clear);
-        self.register(NATIVE_VECDEQUE_DROP, shim_vecdeque_drop);
-
-        // BTreeMap functions
-        self.register(NATIVE_BTREEMAP_NEW, shim_btreemap_new);
-        self.register(NATIVE_BTREEMAP_INSERT, shim_btreemap_insert);
-        self.register(NATIVE_BTREEMAP_GET, shim_btreemap_get);
-        self.register(NATIVE_BTREEMAP_CONTAINS, shim_btreemap_contains);
-        self.register(NATIVE_BTREEMAP_REMOVE, shim_btreemap_remove);
-        self.register(NATIVE_BTREEMAP_SIZE, shim_btreemap_size);
-        self.register(NATIVE_BTREEMAP_IS_EMPTY, shim_btreemap_is_empty);
-        self.register(NATIVE_BTREEMAP_CLEAR, shim_btreemap_clear);
-        self.register(NATIVE_BTREEMAP_FIRST_KEY, shim_btreemap_first_key);
-        self.register(NATIVE_BTREEMAP_LAST_KEY, shim_btreemap_last_key);
-        self.register(NATIVE_BTREEMAP_DROP, shim_btreemap_drop);
-
-        // String functions
-        self.register(NATIVE_STR_LEN, shim_str_len);
-        self.register(NATIVE_STRING_LEN, shim_string_len);
-        self.register(NATIVE_STR_NEW, shim_str_new);
-        self.register(NATIVE_STR_APPEND, shim_str_append);
-        self.register(NATIVE_INT_STR, shim_int_str);
-        self.register(NATIVE_STR_UPPER, shim_str_upper);
-        self.register(NATIVE_STRING_FROM, shim_string_from);
-
-        // String/Uint extension functions (235-236)
-        self.register(NATIVE_STR_BYTES, shim_str_bytes);
-        self.register(NATIVE_UINT_TO_HEX, shim_uint_to_hex);
-
-        // Mutable String functions (177-186)
-        self.register(NATIVE_STRING_NEW, shim_string_new);
-        self.register(NATIVE_STRING_PUSH, shim_string_push);
-        self.register(NATIVE_STRING_POP, shim_string_pop);
-        self.register(NATIVE_STRING_GET, shim_string_get);
-        self.register(NATIVE_STRING_SET, shim_string_set);
-        self.register(NATIVE_STRING_INSERT, shim_string_insert);
-        self.register(NATIVE_STRING_REMOVE, shim_string_remove);
-        self.register(NATIVE_STRING_CLEAR, shim_string_clear);
-        self.register(NATIVE_STRING_IS_EMPTY, shim_string_is_empty);
-        self.register(NATIVE_STRING_RESERVE, shim_string_reserve);
-
-        // Memory allocation functions
-        self.register(NATIVE_ALLOC_ARRAY, shim_alloc_array);
-        self.register(NATIVE_REALLOC_ARRAY, shim_realloc_array);
-        self.register(NATIVE_FREE_ARRAY, shim_free_array);
-
-        // Storage functions
-        self.register(NATIVE_HEAP_NEW, shim_heap_new);
-        self.register(NATIVE_HEAP_CAPACITY, shim_heap_capacity);
-        self.register(NATIVE_HEAP_TRY_GROW, shim_heap_try_grow);
-        self.register(NATIVE_HEAP_DROP, shim_heap_drop);
-        self.register(NATIVE_INLINE_INT64_NEW, shim_inline_int64_new);
-        self.register(NATIVE_INLINE_INT64_CAPACITY, shim_inline_int64_capacity);
-        self.register(NATIVE_INLINE_INT64_TRY_GROW, shim_inline_int64_try_grow);
-        self.register(NATIVE_INLINE_INT64_DROP, shim_inline_int64_drop);
-
-        // List extra functions
-        self.register(NATIVE_LIST_CAPACITY, shim_list_capacity);
-
-        // Plan 178: Bit operation shims
-        self.register(NATIVE_INT_AND, shim_int_and);
-        self.register(NATIVE_INT_OR, shim_int_or);
-        self.register(NATIVE_INT_XOR, shim_int_xor);
-        self.register(NATIVE_INT_NOT, shim_int_not);
-        self.register(NATIVE_INT_SHL, shim_int_shl);
-        self.register(NATIVE_INT_SHR, shim_int_shr);
-        self.register(NATIVE_INT_SAR, shim_int_sar);
-        self.register(NATIVE_INT_ROL, shim_int_rol);
-        self.register(NATIVE_INT_ROR, shim_int_ror);
-        self.register(NATIVE_INT_COUNT_ONES, shim_int_count_ones);
-        self.register(NATIVE_INT_LEADING_ZEROS, shim_int_leading_zeros);
-        self.register(NATIVE_INT_TRAILING_ZEROS, shim_int_trailing_zeros);
-        self.register(NATIVE_INT_BITREV, shim_int_bitrev);
-        self.register(NATIVE_INT_BIT_READ, shim_int_bit_read);
-        self.register(NATIVE_INT_BIT_TEST, shim_int_bit_test);
-        self.register(NATIVE_INT_BIT_ON, shim_int_bit_on);
-        self.register(NATIVE_INT_BIT_OFF, shim_int_bit_off);
-        self.register(NATIVE_INT_BIT_FLIP, shim_int_bit_flip);
-
-        // CALL_SPEC fallback: register canonical names for type.method dispatch
-        // These allow CALL_SPEC to resolve "List.push" → canonical "auto.list.push" → ID
+        // List methods
         self.register_name("auto.list.new", NATIVE_LIST_NEW);
         self.register_name("auto.list.push", NATIVE_LIST_PUSH);
         self.register_name("auto.list.pop", NATIVE_LIST_POP);
@@ -470,9 +309,10 @@ impl NativeInterface {
         self.register_name("auto.list.join", NATIVE_LIST_JOIN);
         self.register_name("auto.list.contains", NATIVE_LIST_CONTAINS);
 
+        // HashMap methods (note: set is alias for insert_str)
         self.register_name("auto.hashmap.new", NATIVE_HASHMAP_NEW);
         self.register_name("auto.hashmap.insert", NATIVE_HASHMAP_INSERT_STR);
-        self.register_name("auto.hashmap.set", NATIVE_HASHMAP_INSERT_STR); // Auto syntax: map.set()
+        self.register_name("auto.hashmap.set", NATIVE_HASHMAP_INSERT_STR);
         self.register_name("auto.hashmap.insert_str", NATIVE_HASHMAP_INSERT_STR);
         self.register_name("auto.hashmap.insert_int", NATIVE_HASHMAP_INSERT_INT);
         self.register_name("auto.hashmap.get", NATIVE_HASHMAP_GET_STR);
@@ -489,36 +329,23 @@ impl NativeInterface {
         self.register_name("auto.hashmap.get_or", NATIVE_HASHMAP_GET_OR);
         self.register_name("auto.hashmap.keys", NATIVE_HASHMAP_KEYS);
 
-        // String methods for CALL_SPEC dispatch
+        // String methods (includes manual constants not in catalog)
         self.register_name("auto.str.len", NATIVE_STR_LEN);
         self.register_name("auto.str.contains", NATIVE_STR_CONTAINS);
         self.register_name("auto.str.starts_with", NATIVE_STR_STARTS_WITH);
         self.register_name("auto.str.ends_with", NATIVE_STR_ENDS_WITH);
 
-        // Plan 212 Phase 2: Rand native shims (built-in, no external crate needed)
-        self.register(NATIVE_RAND_THREAD_RNG, shim_rand_thread_rng);
-        self.register(NATIVE_RNG_GEN_RANGE, shim_rng_gen_range);
-        self.register(NATIVE_RNG_GEN, shim_rng_gen);
-        self.register(NATIVE_RNG_DROP, shim_rng_drop);
-        self.register(NATIVE_RAND_RANDOM, shim_rand_random);
+        // Rand
         self.register_name("auto.rand.thread_rng", NATIVE_RAND_THREAD_RNG);
         self.register_name("auto.rand.random", NATIVE_RAND_RANDOM);
         self.register_name("auto.rng.gen_range", NATIVE_RNG_GEN_RANGE);
         self.register_name("auto.rng.gen", NATIVE_RNG_GEN);
         self.register_name("auto.rng.drop", NATIVE_RNG_DROP);
 
-        // Plan 212 Phase 2: Log no-op shim (env_logger.init(), log.set_max_level(), etc.)
-        self.register(NATIVE_LOG_NOOP, shim_log_noop);
+        // Log
         self.register_name("auto.log.noop", NATIVE_LOG_NOOP);
 
-        // Plan 212 Phase 2.2: Regex opaque struct shims
-        self.register(NATIVE_RE_OPAQUE_NEW, shim_re_opaque_new);
-        self.register(NATIVE_RE_OPAQUE_IS_MATCH, shim_re_opaque_is_match);
-        self.register(NATIVE_RE_OPAQUE_FIND, shim_re_opaque_find);
-        self.register(NATIVE_RE_OPAQUE_FIND_ALL, shim_re_opaque_find_all);
-        self.register(NATIVE_RE_OPAQUE_REPLACE_ALL, shim_re_opaque_replace_all);
-        self.register(NATIVE_RE_OPAQUE_CAPTURES, shim_re_opaque_captures);
-        self.register(NATIVE_RE_OPAQUE_DROP, shim_re_opaque_drop);
+        // Regex opaque
         self.register_name("auto.re_opaque.new", NATIVE_RE_OPAQUE_NEW);
         self.register_name("auto.re_opaque.is_match", NATIVE_RE_OPAQUE_IS_MATCH);
         self.register_name("auto.re_opaque.find", NATIVE_RE_OPAQUE_FIND);
@@ -527,19 +354,7 @@ impl NativeInterface {
         self.register_name("auto.re_opaque.captures", NATIVE_RE_OPAQUE_CAPTURES);
         self.register_name("auto.re_opaque.drop", NATIVE_RE_OPAQUE_DROP);
 
-        // Plan 212 Phase 2.2: Url opaque struct shims
-        self.register(NATIVE_URL_OPAQUE_PARSE, shim_url_opaque_parse);
-        self.register(NATIVE_URL_OPAQUE_SCHEME, shim_url_opaque_scheme);
-        self.register(NATIVE_URL_OPAQUE_HOST_STR, shim_url_opaque_host_str);
-        self.register(NATIVE_URL_OPAQUE_PATH, shim_url_opaque_path);
-        self.register(NATIVE_URL_OPAQUE_FRAGMENT, shim_url_opaque_fragment);
-        self.register(NATIVE_URL_OPAQUE_PORT, shim_url_opaque_port);
-        self.register(NATIVE_URL_OPAQUE_QUERY_PAIRS, shim_url_opaque_query_pairs);
-        self.register(NATIVE_URL_OPAQUE_QUERY, shim_url_opaque_query);
-        self.register(NATIVE_URL_OPAQUE_TO_STRING, shim_url_opaque_to_string);
-        self.register(NATIVE_URL_OPAQUE_JOIN, shim_url_opaque_join);
-        self.register(NATIVE_URL_OPAQUE_ORIGIN, shim_url_opaque_origin);
-        self.register(NATIVE_URL_OPAQUE_DROP, shim_url_opaque_drop);
+        // Url opaque
         self.register_name("auto.url_opaque.parse", NATIVE_URL_OPAQUE_PARSE);
         self.register_name("auto.url_opaque.scheme", NATIVE_URL_OPAQUE_SCHEME);
         self.register_name("auto.url_opaque.host_str", NATIVE_URL_OPAQUE_HOST_STR);
@@ -569,15 +384,7 @@ impl NativeInterface {
             }
         }
 
-        // Plan 212 Phase 2.2: Semver opaque struct shims
-        self.register(NATIVE_SEMVER_OPAQUE_PARSE, shim_semver_opaque_parse);
-        self.register(NATIVE_SEMVER_OPAQUE_MAJOR, shim_semver_opaque_major);
-        self.register(NATIVE_SEMVER_OPAQUE_MINOR, shim_semver_opaque_minor);
-        self.register(NATIVE_SEMVER_OPAQUE_PATCH, shim_semver_opaque_patch);
-        self.register(NATIVE_SEMVER_OPAQUE_PRE, shim_semver_opaque_pre);
-        self.register(NATIVE_SEMVER_OPAQUE_TO_STRING, shim_semver_opaque_to_string);
-        self.register(NATIVE_SEMVER_OPAQUE_CMP_GT, shim_semver_opaque_cmp_gt);
-        self.register(NATIVE_SEMVER_OPAQUE_DROP, shim_semver_opaque_drop);
+        // Semver opaque
         self.register_name("auto.semver_opaque.parse", NATIVE_SEMVER_OPAQUE_PARSE);
         self.register_name("auto.semver_opaque.major", NATIVE_SEMVER_OPAQUE_MAJOR);
         self.register_name("auto.semver_opaque.minor", NATIVE_SEMVER_OPAQUE_MINOR);
@@ -587,17 +394,7 @@ impl NativeInterface {
         self.register_name("auto.semver_opaque.cmp_gt", NATIVE_SEMVER_OPAQUE_CMP_GT);
         self.register_name("auto.semver_opaque.drop", NATIVE_SEMVER_OPAQUE_DROP);
 
-        // Plan 212 Phase 2.3: chrono opaque struct shims
-        self.register(NATIVE_CHRONO_LOCAL_NOW, shim_chrono_local_now);
-        self.register(NATIVE_CHRONO_YEAR, shim_chrono_year);
-        self.register(NATIVE_CHRONO_MONTH, shim_chrono_month);
-        self.register(NATIVE_CHRONO_DAY, shim_chrono_day);
-        self.register(NATIVE_CHRONO_HOUR, shim_chrono_hour);
-        self.register(NATIVE_CHRONO_MINUTE, shim_chrono_minute);
-        self.register(NATIVE_CHRONO_SECOND, shim_chrono_second);
-        self.register(NATIVE_CHRONO_TIMESTAMP, shim_chrono_timestamp);
-        self.register(NATIVE_CHRONO_FORMAT, shim_chrono_format);
-        self.register(NATIVE_CHRONO_DROP, shim_chrono_drop);
+        // Chrono opaque
         self.register_name("auto.chrono_opaque.local_now", NATIVE_CHRONO_LOCAL_NOW);
         self.register_name("auto.chrono_opaque.year", NATIVE_CHRONO_YEAR);
         self.register_name("auto.chrono_opaque.month", NATIVE_CHRONO_MONTH);
@@ -609,55 +406,24 @@ impl NativeInterface {
         self.register_name("auto.chrono_opaque.format", NATIVE_CHRONO_FORMAT);
         self.register_name("auto.chrono_opaque.drop", NATIVE_CHRONO_DROP);
 
-        // Plan 212 Phase 2.3: base64 pure function shims
-        self.register(NATIVE_BASE64_ENCODE, shim_base64_encode);
-        self.register(NATIVE_BASE64_DECODE, shim_base64_decode);
+        // Base64
         self.register_name("auto.base64.encode", NATIVE_BASE64_ENCODE);
         self.register_name("auto.base64.decode", NATIVE_BASE64_DECODE);
 
-        // Plan 212 Phase 2.3: hex pure function shims
-        self.register(NATIVE_HEX_ENCODE, shim_hex_encode);
-        self.register(NATIVE_HEX_DECODE, shim_hex_decode);
+        // Hex
         self.register_name("auto.hex.encode", NATIVE_HEX_ENCODE);
         self.register_name("auto.hex.decode", NATIVE_HEX_DECODE);
 
-        // Plan 212 Phase 2.3: sha2 opaque struct shims
-        self.register(NATIVE_SHA2_SHA256_NEW, shim_sha2_sha256_new);
-        self.register(NATIVE_SHA2_UPDATE, shim_sha2_update);
-        self.register(NATIVE_SHA2_FINALIZE, shim_sha2_finalize);
-        self.register(NATIVE_SHA2_DROP, shim_sha2_drop);
+        // SHA2 opaque
         self.register_name("auto.sha2_opaque.sha256_new", NATIVE_SHA2_SHA256_NEW);
         self.register_name("auto.sha2_opaque.update", NATIVE_SHA2_UPDATE);
         self.register_name("auto.sha2_opaque.finalize", NATIVE_SHA2_FINALIZE);
         self.register_name("auto.sha2_opaque.drop", NATIVE_SHA2_DROP);
 
-        // Plan 212 Phase 2.3: mime_guess pure function shim
-        self.register(NATIVE_MIME_FROM_PATH, shim_mime_from_path);
+        // Mime
         self.register_name("auto.mime.from_path", NATIVE_MIME_FROM_PATH);
 
-        // Plan 240 VM-1: Math shims for f64 methods
-        self.register(NATIVE_MATH_SIN, shim_math_sin);
-        self.register(NATIVE_MATH_COS, shim_math_cos);
-        self.register(NATIVE_MATH_TAN, shim_math_tan);
-        // sqrt registered via #[rust_fn("Math.sqrt")] in ffi/stdlib.rs
-        self.register(NATIVE_MATH_ABS_F, shim_math_abs_f);
-        self.register(NATIVE_MATH_FLOOR, shim_math_floor);
-        self.register(NATIVE_MATH_CEIL, shim_math_ceil);
-        self.register(NATIVE_MATH_ROUND, shim_math_round);
-        self.register(NATIVE_MATH_POW, shim_math_pow);
-        self.register(NATIVE_MATH_POWF, shim_math_powf);
-        self.register(NATIVE_MATH_POWI, shim_math_powi);
-        self.register(NATIVE_MATH_EXP, shim_math_exp);
-        self.register(NATIVE_MATH_LN, shim_math_ln);
-        self.register(NATIVE_MATH_LOG2, shim_math_log2);
-        self.register(NATIVE_MATH_LOG10, shim_math_log10);
-        self.register(NATIVE_MATH_SIGNUM, shim_math_signum);
-        self.register(NATIVE_MATH_ASIN, shim_math_asin);
-        self.register(NATIVE_MATH_ACOS, shim_math_acos);
-        self.register(NATIVE_MATH_ATAN, shim_math_atan);
-        self.register(NATIVE_MATH_ATAN2, shim_math_atan2);
-        self.register(NATIVE_MATH_TO_RADIANS, shim_math_to_radians);
-        self.register(NATIVE_MATH_TO_DEGREES, shim_math_to_degrees);
+        // Math
         self.register_name("auto.math.sin", NATIVE_MATH_SIN);
         self.register_name("auto.math.cos", NATIVE_MATH_COS);
         self.register_name("auto.math.tan", NATIVE_MATH_TAN);
@@ -681,25 +447,16 @@ impl NativeInterface {
         self.register_name("auto.math.to_radians", NATIVE_MATH_TO_RADIANS);
         self.register_name("auto.math.to_degrees", NATIVE_MATH_TO_DEGREES);
 
-        // Plan 240: Instant opaque shims
-        self.register(NATIVE_INSTANT_NOW, shim_instant_now);
-        self.register(NATIVE_INSTANT_ELAPSED, shim_instant_elapsed);
+        // Instant
         self.register_name("auto.time.instant_now", NATIVE_INSTANT_NOW);
         self.register_name("auto.time.instant_elapsed", NATIVE_INSTANT_ELAPSED);
 
-        // Plan 240: OnceCell opaque shims
-        self.register(NATIVE_ONCE_NEW, shim_once_new);
-        self.register(NATIVE_ONCE_SET, shim_once_set);
-        self.register(NATIVE_ONCE_GET, shim_once_get);
+        // OnceCell
         self.register_name("auto.cell.once_new", NATIVE_ONCE_NEW);
         self.register_name("auto.cell.once_set", NATIVE_ONCE_SET);
         self.register_name("auto.cell.once_get", NATIVE_ONCE_GET);
 
-        // Plan 240: File I/O opaque shims
-        self.register(NATIVE_FILE_CREATE_HANDLE, shim_file_create_handle);
-        self.register(NATIVE_FILE_OPEN_HANDLE, shim_file_open_handle);
-        self.register(NATIVE_FILE_WRITE_HANDLE, shim_file_write_handle);
-        self.register(NATIVE_FILE_TRY_CLONE, shim_file_try_clone);
+        // File I/O
         self.register_name("auto.file.create_handle", NATIVE_FILE_CREATE_HANDLE);
         self.register_name("auto.file.open_handle", NATIVE_FILE_OPEN_HANDLE);
         self.register_name("auto.file.write_handle", NATIVE_FILE_WRITE_HANDLE);
