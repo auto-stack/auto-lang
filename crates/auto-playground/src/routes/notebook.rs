@@ -7,7 +7,7 @@ use std::convert::Infallible;
 use futures::stream::{self, Stream};
 
 use crate::error::AppError;
-use crate::notebook::ai::{AIProviderState, AIRequest, AIResponse, AiProvider};
+use auto_forge::ai::{AIProviderState, AIRequest, AIResponse, AiProvider};
 use crate::notebook::{Diagnostic, NotebookCellMeta, NotebookState, SessionStatus, VariableInfo};
 use crate::routes::trans;
 
@@ -165,7 +165,7 @@ pub async fn ai_stream_handler(
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
     tokio::spawn(async move {
-        let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel::<crate::notebook::ai::AIStreamDelta>();
+        let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel::<auto_forge::ai::AIStreamDelta>();
 
         let ai_clone = ai.clone();
         let stream_handle = tokio::spawn(async move {

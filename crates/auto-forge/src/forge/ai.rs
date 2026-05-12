@@ -3,8 +3,8 @@
 //! Extends the base ClaudeProvider with native tool-use support
 //! for the Forge ReAct loop.
 
-use crate::notebook::ai::{AIProviderState, AIStreamDelta, ClaudeProvider};
-use crate::smith::tools::ToolDefinition;
+use crate::ai::{AIProviderState, AIStreamDelta, ClaudeProvider};
+use crate::forge::tools::ToolDefinition;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

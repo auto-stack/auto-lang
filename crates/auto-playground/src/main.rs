@@ -4,10 +4,10 @@ mod debugger;
 mod error;
 mod notebook;
 mod routes;
-mod smith;
+
 mod vm_runner;
 
-use notebook::ai::{ClaudeProvider, AIProviderState};
+use auto_forge::ai::{ClaudeProvider, AIProviderState};
 
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::FromRef;
@@ -88,7 +88,7 @@ async fn main() {
     };
 
     let api_routes = Router::new()
-        .merge(smith::routes())
+        .merge(auto_forge::forge::routes())
         .route("/api/run", post(routes::run::run_handler))
         .route("/api/run_abt", post(routes::run_abt::run_abt_handler))
         .route("/api/run_code", post(routes::run_code::run_code_handler))

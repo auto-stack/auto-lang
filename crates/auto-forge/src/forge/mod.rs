@@ -18,10 +18,12 @@ use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
-use crate::notebook::ai::AIProviderState;
+use crate::ai::AIProviderState;
 
 mod ai;
 mod tools;
+
+use axum::extract::FromRef;
 
 
 
@@ -499,9 +501,9 @@ fn ledgers() -> &'static Mutex<LedgerStore> {
 
 mod handlers {
     use super::*;
-    use crate::notebook::ai::{AIProviderState, AiProvider};
-    use crate::smith::ai::{ChatMessage, ContentBlock, ToolChatEvent, ToolChatRequest, ToolClaudeProvider};
-    use crate::smith::tools::ToolRegistry;
+    use crate::ai::{AIProviderState, AiProvider};
+    use crate::forge::ai::{ChatMessage, ContentBlock, ToolChatEvent, ToolChatRequest, ToolClaudeProvider};
+    use crate::forge::tools::ToolRegistry;
 
     // ─── Phase Helpers ───────────────────────────────────────────────────
 
@@ -596,8 +598,8 @@ After verification, summarize the results."#
 
     fn get_phase_tools(
         phase: &ForgePhase,
-        all_tools: Vec<crate::smith::tools::ToolDefinition>,
-    ) -> Vec<crate::smith::tools::ToolDefinition> {
+        all_tools: Vec<crate::forge::tools::ToolDefinition>,
+    ) -> Vec<crate::forge::tools::ToolDefinition> {
         let allowed: &[&str] = match phase {
             ForgePhase::Intake => &["read_file", "read_jade", "list_jades"],
             ForgePhase::SpecDraft => &["read_file", "read_jade", "write_jade", "list_jades"],
@@ -715,7 +717,7 @@ After verification, summarize the results."#
                 let store = forge_sessions().lock().unwrap();
                 match store.get(&sid) {
                     Some(session) => {
-                        crate::smith::tools::set_tool_context(&session.project_path, &sid);
+                        crate::forge::tools::set_tool_context(&session.project_path, &sid);
                         (session.project_path.clone(), session.phase.clone())
                     }
                     None => {
@@ -1214,7 +1216,7 @@ If no requirement IDs exist, number them sequentially."#,
             requirements, code_content
         );
 
-        let request = crate::notebook::ai::AIRequest {
+        let request = crate::ai::AIRequest {
             prompt,
             context: None,
         };
@@ -1362,7 +1364,11 @@ fn now_secs() -> u64 {
 }
 
 // Non-generic route builder — caller must provide state that can produce AIProviderState
-pub fn routes() -> Router<crate::AppState> {
+pub fn routes<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    crate::ai::AIProviderState: FromRef<S>,
+{
     Router::new()
         // Forge
         .route("/api/smith/forge/session", post(handlers::create_forge_session))

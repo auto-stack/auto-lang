@@ -1,4 +1,3 @@
-pub mod ai;
 use auto_lang::autovm_persistent::AutovmReplSession;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
