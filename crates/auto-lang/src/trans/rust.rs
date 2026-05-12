@@ -2106,9 +2106,24 @@ impl RustTrans {
                     if let Expr::Dot(obj, method) = call.name.as_ref() {
                         if let Expr::Ident(obj_name) = obj.as_ref() {
                             let m = method.as_str();
-                            if obj_name.as_str() == "http" && (m == "post_sync" || m == "post_bearer") {
-                                // Already handled with internal .await — just output the expression
-                                return self.call(call, out);
+                            if obj_name.as_str() == "http" && (m == "post_sync" || m == "post_bearer" || m == "post_bearer_sync") {
+                                // http.post_sync/post_bearer/post_bearer_sync with .await: generate with .as_str() for str args
+                                let func_name = format!("a2r_std::http::{}", m);
+                                let needs_await = m == "post_bearer"; // only post_bearer is async
+                                write!(out, "{{ let __resp = {}(", func_name)?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    }
+                                }
+                                if needs_await {
+                                    write!(out, ").await")?;
+                                } else {
+                                    write!(out, ")")?;
+                                }
+                                write!(out, "; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                return Ok(());
                             }
                         }
                     }
@@ -2353,6 +2368,18 @@ impl RustTrans {
                     write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
                     return Ok(());
                 }
+                "simple_hash" => {
+                    write!(out, "a2r_std::simple_hash(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr_as_str(a, out)?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "time_now" => {
+                    write!(out, "a2r_std::time_now()")?;
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -2369,14 +2396,7 @@ impl RustTrans {
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                                 if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                    if let Expr::Ident(name) = expr {
-                                        if self.local_var_types.get(name)
-                                            .map(|ty| !matches!(ty, Type::StrSlice))
-                                            .unwrap_or(true)
-                                        { write!(out, ".as_str()")?; }
-                                    } else {
-                                        write!(out, ".as_str()")?;
-                                    }
+                                    write!(out, ".as_str()")?;
                                 }
                             }
                         }
@@ -2394,14 +2414,21 @@ impl RustTrans {
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                                 if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                    if let Expr::Ident(name) = expr {
-                                        if self.local_var_types.get(name)
-                                            .map(|ty| !matches!(ty, Type::StrSlice))
-                                            .unwrap_or(true)
-                                        { write!(out, ".as_str()")?; }
-                                    } else {
-                                        write!(out, ".as_str()")?;
-                                    }
+                                    write!(out, ".as_str()")?;
+                                }
+                            }
+                        }
+                        write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        return Ok(());
+                    }
+                    ("http", "post_bearer_sync") => {
+                        write!(out, "{{ let __resp = a2r_std::http::post_bearer_sync(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                                if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                    write!(out, ".as_str()")?;
                                 }
                             }
                         }
@@ -2515,13 +2542,8 @@ impl RustTrans {
                                         if i > 0 { write!(out, ", ")?; }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr(expr, out)?;
-                                            if let Expr::Ident(name) = expr {
-                                                if self.local_var_types.get(name)
-                                                    .map(|ty| !matches!(ty, Type::StrSlice))
-                                                    .unwrap_or(true)
-                                                {
-                                                    write!(out, ".as_str()")?;
-                                                }
+                                            if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                                write!(out, ".as_str()")?;
                                             }
                                         }
                                     }
@@ -2535,7 +2557,7 @@ impl RustTrans {
                                 }
                                 ("json", "parse") => {
                                     write!(out, "a2r_std::json::parse(")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
@@ -2562,7 +2584,7 @@ impl RustTrans {
                                 ("json", "as_int") => {
                                     write!(out, "a2r_std::json::as_int(&")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                                    write!(out, ") as i32")?;
+                                    write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "is_null") => {
@@ -4116,7 +4138,23 @@ impl RustTrans {
             // Regular method call: object.method(args)
             let is_insert = method_name.as_str() == "insert";
             // Look up str-param flags for auto-borrow at method call sites
-            let method_str_flags = self.fn_str_param_indices.get(method_name.as_str()).cloned();
+            // Try qualified key "Type.method" first, then bare "method"
+            let method_str_flags = if let Expr::Ident(obj_name) = object.as_ref() {
+                // Try to infer the type from local_var_types
+                let obj_type: String = self.local_var_types.get(obj_name).map(|ty| {
+                    match ty {
+                        Type::User(name) => name.to_string(),
+                        Type::Enum(decl) => decl.borrow().name.to_string(),
+                        _ => String::new(),
+                    }
+                }).unwrap_or_default();
+                let qualified: AutoStr = format!("{}.{}", obj_type, method_name).into();
+                self.fn_str_param_indices.get(&qualified)
+                    .cloned()
+                    .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+            } else {
+                self.fn_str_param_indices.get(method_name.as_str()).cloned()
+            };
             // Parenthesize object if it's a binary op (e.g., (a / b).method())
             let obj_needs_parens = matches!(object.as_ref(),
                 Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
@@ -4430,6 +4468,14 @@ impl RustTrans {
             Expr::Int(_) => Type::Int,
             Expr::Float(_, _) => Type::Float,
             Expr::Bool(_) => Type::Bool,
+            Expr::NullCoalesce(lhs, _rhs) => {
+                // ?? unwraps Option — infer the inner type from lhs
+                let lhs_ty = Self::infer_type_from_expr(lhs);
+                match lhs_ty {
+                    Type::Option(inner_ty) => *inner_ty,
+                    other => other,
+                }
+            }
             _ => Type::Unknown,
         }
     }
@@ -4443,8 +4489,16 @@ impl RustTrans {
         match expr {
             Expr::Ident(name) => {
                 // Function parameters typed as &str are safe (caller passes &str).
-                // All other variables may be String at runtime.
-                !self.fn_param_str_slice.contains(name.as_str())
+                // Variables tracked as StrSlice are also &str.
+                if self.fn_param_str_slice.contains(name.as_str()) {
+                    return false;
+                }
+                if let Some(ty) = self.local_var_types.get(name) {
+                    if matches!(ty, Type::StrSlice) {
+                        return false;
+                    }
+                }
+                true
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false, // literals are already &str
             _ => true, // complex expressions (function calls, etc.) may return String
@@ -5063,6 +5117,24 @@ impl RustTrans {
             self.expr(&store.expr, out)?;
         }
 
+        // Add integer cast when assigning json.as_int() result to int/uint variable
+        // json.as_int() returns i64, but int needs i32 and uint needs u32
+        if matches!(store.ty, Type::Int | Type::Uint) {
+            if let Expr::Call(call) = &store.expr {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if let Expr::Ident(name) = obj.as_ref() {
+                        if name == "json" && method == "as_int" {
+                            if matches!(store.ty, Type::Int) {
+                                write!(out, " as i32")?;
+                            } else {
+                                write!(out, " as u32")?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // When assigning a string literal to a String/Str type, add .to_string()
         // because Rust string literals are &str, but String type needs conversion
         if matches!(store.ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
@@ -5192,9 +5264,15 @@ impl RustTrans {
                 write!(sink.body, ", ")?;
             }
             for (i, param) in params_to_emit.iter().enumerate() {
+                let mut_prefix = if matches!(param.ty, Type::User(_) | Type::Enum(_) | Type::Tag(_)) {
+                    "mut "
+                } else {
+                    ""
+                };
                 write!(
                     sink.body,
-                    "{}: {}",
+                    "{}{}: {}",
+                    mut_prefix,
                     param.name,
                     self.rust_param_type_name(&param.ty)
                 )?;
@@ -5204,9 +5282,15 @@ impl RustTrans {
             }
         } else {
             for (i, param) in fn_decl.params.iter().enumerate() {
+                let mut_prefix = if matches!(param.ty, Type::User(_) | Type::Enum(_) | Type::Tag(_)) {
+                    "mut "
+                } else {
+                    ""
+                };
                 write!(
                     sink.body,
-                    "{}: {}",
+                    "{}{}: {}",
+                    mut_prefix,
                     param.name,
                     self.rust_param_type_name(&param.ty)
                 )?;
@@ -5247,7 +5331,7 @@ impl RustTrans {
             && Self::has_error_propagate(&fn_decl.body.stmts);
 
         // Plan 232: Track str-type parameter names for .to_string() on return
-        self.current_fn_str_params.clear();
+        // (populated above at line 5274-5278)
         // Plan 240: When fn body has .? but declared as void, treat as Result<(), ...>
         // so that Ok("hello") -> Ok("hello".to_string()) works correctly
         let effective_ret_type = if fn_body_has_try {
@@ -7598,6 +7682,8 @@ impl RustTrans {
             Stmt::Node(_) => true,
             // Is (match expression) is returnable
             Stmt::Is(_) => true,
+            // Return statement already provides a value — no tail expression needed
+            Stmt::Return(_) => true,
             _ => false,
         }
     }
@@ -8266,17 +8352,43 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
     // Phase 2.5: Pre-scan all function signatures for cross-module str-param tracking
     let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    for (_module, ast) in &parsed_modules {
-        for stmt in &ast.stmts {
+
+    // Helper: collect Fn declarations from statements, including methods inside TypeDecl
+    fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+        for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 let str_flags: Vec<bool> = fn_decl.params.iter()
                     .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
                     .collect();
                 if !str_flags.is_empty() {
-                    global_fn_str_params.insert(fn_decl.name.clone(), str_flags);
+                    map.insert(fn_decl.name.clone(), str_flags.clone());
+                    // Also store qualified key "TypeName.method_name" for methods
+                    if !type_name.is_empty() || fn_decl.parent.is_some() {
+                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let qualified = format!("{}.{}", parent, fn_decl.name);
+                        map.insert(AutoStr::from(qualified), str_flags);
+                    }
+                }
+            }
+            // Also scan inside type declarations for methods
+            if let Stmt::TypeDecl(type_decl) = stmt {
+                let type_name_str = type_decl.name.to_string();
+                for method in &type_decl.methods {
+                    let str_flags: Vec<bool> = method.params.iter()
+                        .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                        .collect();
+                    if !str_flags.is_empty() {
+                        map.insert(method.name.clone(), str_flags.clone());
+                        let qualified = format!("{}.{}", type_name_str, method.name);
+                        map.insert(AutoStr::from(qualified), str_flags);
+                    }
                 }
             }
         }
+    }
+
+    for (_module, ast) in &parsed_modules {
+        collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
     }
 
     // Phase 3: Transpile each module into its own Sink

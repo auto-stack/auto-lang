@@ -609,11 +609,52 @@ pub mod http {
     pub fn last_status() -> i32 {
         LAST_HTTP_STATUS.with(|s| s.get())
     }
+
+    /// Synchronous HTTP POST with Bearer token auth (blocking, for non-async contexts).
+    pub fn post_bearer_sync(url: &str, body: &str, api_key: &str) -> (i32, String) {
+        let url = url.to_string();
+        let body = body.to_string();
+        let api_key = api_key.to_string();
+        let result = std::thread::spawn(move || {
+            let client = reqwest::blocking::Client::new();
+            client
+                .post(&url)
+                .header("content-type", "application/json")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .body(body)
+                .send()
+                .map_err(|e| e.to_string())
+        }).join().unwrap_or_else(|_| Err("thread panicked".to_string()));
+        match result {
+            Ok(resp) => {
+                let status = resp.status().as_u16() as i32;
+                let resp_body = resp.text().unwrap_or_default();
+                (status, resp_body)
+            }
+            Err(e) => (0, format!("HTTP error: {}", e)),
+        }
+    }
 }
 
 /// Backward-compat: delegates to http::post
 pub async fn http_post(url: &str, body: &str, api_key: &str) -> (i32, String, String, String) {
     http::post(url, body, api_key).await
+}
+
+/// Simple DJB2 hash for string → directory-safe name
+pub fn simple_hash(s: &str) -> String {
+    let mut hash: u64 = 5381;
+    for b in s.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+    }
+    format!("{:x}", hash)
+}
+
+/// Current timestamp as seconds since epoch (for session file naming)
+pub fn time_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    format!("{}", duration.as_secs())
 }
 
 // =============================================================================
