@@ -130,6 +130,10 @@ pub struct RustTrans {
 
     // Track local variable types for string concat detection in Op::Add
     local_var_types: HashMap<AutoStr, Type>,
+    // Track variables assigned from json.get() — need value_to_int/value_len helpers
+    json_value_vars: HashSet<AutoStr>,
+    // Track function params declared as &str (StrSlice) — safe to pass without .as_str()
+    fn_param_str_slice: HashSet<AutoStr>,
 
     // Track which function params are struct/enum types (need .clone() at call sites)
     fn_struct_param_indices: HashMap<AutoStr, Vec<bool>>,
@@ -167,6 +171,8 @@ impl RustTrans {
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
             local_var_types: HashMap::new(),
+            json_value_vars: HashSet::new(),
+            fn_param_str_slice: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
@@ -199,6 +205,8 @@ impl RustTrans {
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
             local_var_types: HashMap::new(),
+            json_value_vars: HashSet::new(),
+            fn_param_str_slice: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
@@ -337,6 +345,8 @@ impl RustTrans {
                     return matches!(ty,
                         Type::StrOwned | Type::StrFixed(_) | Type::StrSlice);
                 }
+                // Unknown type: conservatively assume string if the name
+                // suggests string content (heuristic to catch let-bound vars)
                 false
             }
             Expr::Call(c) => {
@@ -745,6 +755,25 @@ impl RustTrans {
             Expr::Ok(e) => {
                 write!(out, "Ok(")?;
                 self.expr(e, out)?;
+                // When Ok contains a string literal but the function returns Result<String, ...>,
+                // add .to_string() to convert &str -> String
+                if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                    if let Some(ref ret) = self.current_fn_ret_type {
+                        if let Type::Result(inner) = ret {
+                            if matches!(inner.as_ref(), Type::StrSlice | Type::StrOwned | Type::StrFixed(_)) {
+                                write!(out, ".to_string()")?;
+                            }
+                        } else if let Type::GenericInstance(inst) = ret {
+                            if inst.base_name == "Result" {
+                                if let Some(inner) = inst.args.first() {
+                                    if matches!(inner, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)) {
+                                        write!(out, ".to_string()")?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 write!(out, ")").map_err(Into::into)
             }
             Expr::Err(e) => {
@@ -933,6 +962,13 @@ impl RustTrans {
                         };
                         write!(out, " {} ", op_str)?;
                         self.expr(rhs, out)?;
+                        // When assigning &str literal to a variable, add .to_string()
+                        // In Auto, all str variables are String in Rust, so this is always correct
+                        if matches!(op, Op::Asn) && matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                            if let Expr::Ident(_) = lhs.as_ref() {
+                                write!(out, ".to_string()")?;
+                            }
+                        }
                     }
                     Op::Eq | Op::Neq => {
                         // Plan 220 Task 5: When comparing with a single-char string literal,
@@ -2529,8 +2565,8 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "as_string" => {
-                                // Json.as_string(val) -> a2r_std::json::as_string(&val)
-                                write!(out, "a2r_std::json::as_string(&")?;
+                                // Json.as_string(val) -> a2r_std::json::as_string(val)
+                                write!(out, "a2r_std::json::as_string(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -2598,7 +2634,7 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "as_string" => {
-                                write!(out, "a2r_std::json::as_string(&")?;
+                                write!(out, "a2r_std::json::as_string(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
@@ -2614,20 +2650,48 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "keys" => {
-                                write!(out, "a2r_std::json::keys(")?;
+                                write!(out, "a2r_std::json::keys(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "len" => {
-                                write!(out, "a2r_std::json::len(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                // Choose len_str (for &str) or len (for &Value) based on arg type
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    let is_str_type = if let Expr::Ident(name) = expr {
+                                        self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                                            .unwrap_or(true) // default to str for unknown vars
+                                    } else {
+                                        matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                                    };
+                                    if is_str_type {
+                                        write!(out, "a2r_std::json::len_str(")?;
+                                    } else {
+                                        write!(out, "a2r_std::json::len(")?;
+                                    }
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "has_key" => {
-                                write!(out, "a2r_std::json::has_key(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                // Choose has_key (for &Value) or has_key_str (for &str)
+                                if let Some(Arg::Pos(first)) = call.args.args.first() {
+                                    let use_str = if let Expr::Ident(name) = first {
+                                        self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                                            .unwrap_or(true)
+                                    } else {
+                                        matches!(first, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                                    };
+                                    if use_str {
+                                        write!(out, "a2r_std::json::has_key_str(")?;
+                                    } else {
+                                        write!(out, "a2r_std::json::has_key(&")?;
+                                    }
+                                    self.expr(first, out)?;
+                                }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
                                     if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
@@ -2703,6 +2767,9 @@ impl RustTrans {
                                     if i > 0 { write!(out, ", ")?; }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
+                                        if !matches!(expr, Expr::Int(_) | Expr::Float(_, _)) {
+                                            write!(out, ".as_str()")?;
+                                        }
                                     }
                                 }
                                 write!(out, ")")?;
@@ -2776,6 +2843,25 @@ impl RustTrans {
                     // Plan 204 Phase 5: Complex method translations requiring
                     // non-trivial Rust output (not just a name remap).
                     match method_name.as_str() {
+                        "set" => {
+                            // Map.set(key, val) -> HashMap::insert(key, val)
+                            self.expr(lhs, out)?;
+                            write!(out, ".insert(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                self.arg(arg, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        "contains" => {
+                            // Map.contains(key) -> HashMap::contains_key(key)
+                            self.expr(lhs, out)?;
+                            write!(out, ".contains_key(")?;
+                            if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
                         "char_at" => {
                             // s.char_at(i) -> s.chars().nth(i as usize).unwrap_or('\0')
                             self.expr(lhs, out)?;
@@ -2860,11 +2946,13 @@ impl RustTrans {
                             return Ok(());
                         }
                         "find" => {
-                            // s.find(sub) -> s.find(sub) (returns Option<usize>)
+                            // s.find(needle, start_pos?) -> a2r_std::str_find(s, needle, start_pos?)
+                            // Returns i32 (-1 if not found), matching Auto semantics
+                            write!(out, "a2r_std::str_find(")?;
                             self.expr(lhs, out)?;
-                            write!(out, ".find(")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() {
-                                self.expr(a, out)?;
+                            for arg in &call.args.args {
+                                write!(out, ", ")?;
+                                self.arg(arg, out)?;
                             }
                             write!(out, ")")?;
                             return Ok(());
@@ -3050,21 +3138,66 @@ impl RustTrans {
                     write!(out, ")")?;
                     return Ok(());
                 }
-                "find" => {
-                    // Auto: s.find(sub) returns i32 (-1 if not found)
-                    // Rust: s.find(sub) -> Option<usize>
-                    self.expr(object, out)?;
-                    write!(out, ".find(")?;
-                    if let Some(Arg::Pos(a)) = call.args.args.first() {
-                        self.expr(a, out)?;
+                "to_int" => {
+                    // Check if object is json.get() result or known non-string type
+                    let use_value_helper = match object.as_ref() {
+                        Expr::Call(c) => {
+                            if let Expr::Dot(obj, method) = c.name.as_ref() {
+                                if let Expr::Ident(name) = obj.as_ref() {
+                                    name == "json" && (method == "get" || method == "get_at")
+                                } else { false }
+                            } else { false }
+                        }
+                        Expr::Ident(name) => {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_) | Type::Tag(_) | Type::GenericInstance(_) | Type::Void))
+                                .unwrap_or(false)
+                                || self.json_value_vars.contains(name.as_str())
+                        }
+                        _ => false,
+                    };
+                    if use_value_helper {
+                        write!(out, "a2r_std::value_to_int(&")?;
+                        self.expr(object, out)?;
+                        write!(out, ")")?;
+                    } else {
+                        self.expr(object, out)?;
+                        write!(out, ".parse::<i32>().ok()")?;
                     }
-                    write!(out, ")")?;
                     return Ok(());
                 }
-                "to_int" => {
-                    self.expr(object, out)?;
-                    write!(out, ".parse::<i32>().ok()")?;
-                    return Ok(());
+                "len" | "length" => {
+                    // Skip if object is a known stdlib module — handled by Expr::Ident block below
+                    let is_stdlib_module = if let Expr::Ident(name) = object.as_ref() {
+                        matches!(name.as_str(), "json" | "shell" | "fs" | "regex" | "env" | "http")
+                    } else { false };
+
+                    if !is_stdlib_module {
+                        // Check if object is json.get() result or known non-string type variable
+                        let use_value_helper = match object.as_ref() {
+                            Expr::Call(c) => {
+                                if let Expr::Dot(obj, method) = c.name.as_ref() {
+                                    if let Expr::Ident(name) = obj.as_ref() {
+                                        name == "json" && (method == "get" || method == "get_at")
+                                    } else { false }
+                                } else { false }
+                            }
+                            Expr::Ident(name) => {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_) | Type::Tag(_) | Type::GenericInstance(_) | Type::Void))
+                                    .unwrap_or(false)
+                                    || self.json_value_vars.contains(name.as_str())
+                            }
+                            _ => false,
+                        };
+                        if use_value_helper {
+                            write!(out, "a2r_std::value_len(&")?;
+                            self.expr(object, out)?;
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
+                    // Fall through to remap table for normal len()
                 }
                 "match_count" => {
                     // s.match_count(pattern) -> a2r_std::str::match_count(s, pattern)
@@ -3084,6 +3217,58 @@ impl RustTrans {
                     for arg in &call.args.args {
                         write!(out, ", ")?;
                         self.arg(arg, out)?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "substr" => {
+                    // s.substr(start, length) -> a2r_std::str_substr(&s, start, length)
+                    write!(out, "a2r_std::str_substr(")?;
+                    self.expr_as_str(object, out)?;
+                    for arg in &call.args.args {
+                        write!(out, ", ")?;
+                        self.arg(arg, out)?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "contains" => {
+                    // Only intercept for string types; map.contains() falls through to method remap
+                    let obj_is_string = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                            .unwrap_or(false)
+                    } else {
+                        matches!(object.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                    };
+                    if obj_is_string {
+                        // s.contains(needle) -> a2r_std::str_contains(&s, &needle)
+                        write!(out, "a2r_std::str_contains(")?;
+                        self.expr_as_str(object, out)?;
+                        for arg in &call.args.args {
+                            write!(out, ", ")?;
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // For non-string types (e.g., Map), fall through to method remap
+                }
+                "ends_with" => {
+                    // s.ends_with(suffix) -> a2r_std::str_ends_with(&s, &suffix) returns i32
+                    write!(out, "a2r_std::str_ends_with(")?;
+                    self.expr_as_str(object, out)?;
+                    for arg in &call.args.args {
+                        write!(out, ", ")?;
+                        if let Arg::Pos(expr) = arg {
+                            self.expr_as_str(expr, out)?;
+                        } else {
+                            self.arg(arg, out)?;
+                        }
                     }
                     write!(out, ")")?;
                     return Ok(());
@@ -3138,11 +3323,336 @@ impl RustTrans {
                     write!(out, ")")?;
                     return Ok(());
                 }
+                "find" => {
+                    // s.find(needle, start_pos?) -> a2r_std::str_find(&s, &needle, start_pos)
+                    // Auto's .find() is only for strings; always intercept.
+                    write!(out, "a2r_std::str_find(")?;
+                    self.expr_as_str(object, out)?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        write!(out, ", ")?;
+                        if i == 0 {
+                            // needle: string arg needs .as_str()
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        } else {
+                            // start_pos: i32, no conversion
+                            self.arg(arg, out)?;
+                        }
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "set" => {
+                    // Map.set(key, val) -> HashMap::insert(key, val)
+                    // Auto's .set() is only used on Map types, always translate to .insert()
+                    self.expr(object, out)?;
+                    write!(out, ".insert(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 { write!(out, ", ")?; }
+                        self.arg(arg, out)?;
+                        // Auto-borrow: key might be &str, but HashMap<String,V> needs String
+                        if i == 0 {
+                            if let Arg::Pos(Expr::Ident(name)) = arg {
+                                let is_str = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false);
+                                if is_str {
+                                    write!(out, ".to_string()")?;
+                                }
+                            }
+                        }
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
                 _ => {} // fall through to regular method handling
+            }
+
+            // Check for type name / stdlib module BEFORE the remap table.
+            // This ensures json.len(), shell.exec(), etc. are intercepted
+            // instead of falling into the simple name-remap (which would generate
+            // e.g. `json.len()` as a method call on the `json` module).
+            if let Expr::Ident(type_name) = object.as_ref() {
+                match (type_name.as_str(), method_name.as_str()) {
+                    ("json", "parse") => {
+                        write!(out, "a2r_std::json::parse(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr_as_str(a, out)?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "get") => {
+                        write!(out, "a2r_std::json::get(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ", ")?;
+                        if call.args.args.len() > 1 {
+                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                        }
+                        write!(out, ").cloned()")?;
+                        return Ok(());
+                    }
+                    ("json", "get_str") => {
+                        write!(out, "a2r_std::json::get_str(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ", ")?;
+                        if call.args.args.len() > 1 {
+                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "as_string") => {
+                        write!(out, "a2r_std::json::as_string(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "get_at") => {
+                        write!(out, "a2r_std::json::get_at(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ", ")?;
+                        if call.args.args.len() > 1 {
+                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; write!(out, " as usize")?; }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "get_u64") => {
+                        write!(out, "a2r_std::json::get_u64(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ", ")?;
+                        if call.args.args.len() > 1 {
+                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "keys") => {
+                        write!(out, "a2r_std::json::keys(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "len") => {
+                        // Auto's json.len() returns int, but Rust returns usize — cast to i32
+                        if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                            let is_str_type = if let Expr::Ident(name) = expr {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                                    .unwrap_or(true)
+                            } else {
+                                matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                            };
+                            if is_str_type {
+                                write!(out, "(a2r_std::json::len_str(")?;
+                                self.expr_as_str(expr, out)?;
+                                write!(out, ") as i32)")?;
+                            } else {
+                                write!(out, "(a2r_std::json::len(")?;
+                                self.expr(expr, out)?;
+                                write!(out, ") as i32)")?;
+                            }
+                        }
+                        return Ok(());
+                    }
+                    ("json", "has_key") => {
+                        // Auto's json.has_key() returns int (0 or 1), but Rust's returns bool.
+                        // Wrap in if/else to convert bool -> i32.
+                        if let Some(Arg::Pos(first)) = call.args.args.first() {
+                            let use_str = if let Expr::Ident(name) = first {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                                    .unwrap_or(true)
+                            } else {
+                                matches!(first, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                            };
+                            write!(out, "if ")?;
+                            if use_str {
+                                write!(out, "a2r_std::json::has_key_str(")?;
+                                self.expr_as_str(first, out)?;
+                            } else {
+                                write!(out, "a2r_std::json::has_key(&")?;
+                                self.expr(first, out)?;
+                            }
+                            write!(out, ", ")?;
+                            if call.args.args.len() > 1 {
+                                if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                            }
+                            if !use_str { write!(out, ")")?; }
+                            write!(out, ") {{ 1 }} else {{ 0 }}")?;
+                        }
+                        return Ok(());
+                    }
+                    ("shell", "exec") => {
+                        write!(out, "a2r_std::shell::exec(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr(expr, out)?;
+                                if !matches!(expr, Expr::Int(_) | Expr::Float(_, _)) {
+                                    write!(out, ".as_str()")?;
+                                }
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("regex", "match") => {
+                        write!(out, "a2r_std::regex::r#match(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("regex", "find_all") => {
+                        write!(out, "a2r_std::regex::find_all(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "exists") => {
+                        write!(out, "a2r_std::fs::exists(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                            if let Expr::Ident(name) = a {
+                                let needs_as_str = self.local_var_types.get(name)
+                                    .map(|ty| !matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false);
+                                if needs_as_str && !matches!(a, Expr::Str(_) | Expr::CStr(_)) {
+                                    write!(out, ".as_str()")?;
+                                }
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "create_dir") => {
+                        write!(out, "a2r_std::fs::create_dir(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "write_text") => {
+                        write!(out, "a2r_std::fs::write_text(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "is_dir") => {
+                        write!(out, "a2r_std::fs::is_dir(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "is_binary") => {
+                        write!(out, "a2r_std::fs::is_binary(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "walk") => {
+                        write!(out, "a2r_std::fs::walk(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "read_to_string") | ("fs", "read_text") => {
+                        let fn_name = method_name;
+                        write!(out, "a2r_std::fs::{}(", fn_name)?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            let needs_as_str = if let Expr::Ident(name) = a {
+                                !self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false)
+                            } else {
+                                !matches!(a, Expr::Str(_) | Expr::CStr(_))
+                            };
+                            self.expr(a, out)?;
+                            if needs_as_str { write!(out, ".as_str()")?; }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "write") => {
+                        write!(out, "a2r_std::fs::write(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("env", "get") => {
+                        write!(out, "a2r_std::env::get(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("env", "get_or") => {
+                        write!(out, "a2r_std::env::get_or(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            self.arg(arg, out)?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("Map", "new") => {
+                        write!(out, "std::collections::HashMap::new()")?;
+                        return Ok(());
+                    }
+                    _ => {} // fall through to remap table
+                }
             }
 
             // .len() and .length() return usize in Rust, cast to i32 for Auto's int
             let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
+
+            // For "contains", choose between str::contains and map::contains_key
+            // String .contains() is already handled by the early interceptor above.
+            // For Expr::Ident objects: use contains_key for known Map types, contains otherwise
+            // For Expr::Dot objects (e.g., self.field): default to contains_key since
+            // Auto's .contains() on maps maps to HashMap::contains_key
+            let contains_rust = if method_name.as_str() == "contains" {
+                match object.as_ref() {
+                    Expr::Ident(name) => {
+                        let obj_is_map = self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::Map(_, _)))
+                            .unwrap_or(false);
+                        if obj_is_map { Some("contains_key") } else { Some("contains") }
+                    }
+                    Expr::Dot(_, _) => Some("contains_key"), // self.field on a Map
+                    _ => Some("contains"),
+                }
+            } else { None };
 
             let rust_method = match method_name.as_str() {
                 // String methods
@@ -3161,23 +3671,24 @@ impl RustTrans {
                 "pop" => Some("pop"),
                 "clear" => Some("clear"),
                 "to_array" => Some("clone"),
-                "contains" => Some("contains"),
                 "retain" => Some("retain"),
                 // Type conversion
                 "to_string" => Some("to_string"),
-                _ => None,
+                _ => contains_rust,
             };
 
             if let Some(rust_name) = rust_method {
                 let obj_parens = matches!(object.as_ref(),
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
                 );
+                if needs_i32_cast { write!(out, "(")?; }
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
                 if obj_parens { write!(out, ")")?; }
                 write!(out, ".{}(", rust_name)?;
                 // Auto-borrow string args for pattern-matching methods
-                if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with") {
+                // Only add & for actual string methods, not contains_key (which takes &str directly)
+                if matches!(rust_name, "contains" | "starts_with" | "ends_with") {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         write!(out, "&")?;
                         self.arg(arg, out)?;
@@ -3195,7 +3706,7 @@ impl RustTrans {
                 }
                 write!(out, ")")?;
                 if needs_i32_cast {
-                    write!(out, " as i32")?;
+                    write!(out, " as i32)")?;
                 }
                 // trim/trim_start/trim_end return &str, auto-convert to String
                 if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
@@ -3205,68 +3716,8 @@ impl RustTrans {
             }
 
             // Check for type name static method: Type.method(args) -> Type::method(args)
+            // (stdlib modules already handled by the early check above)
             if let Expr::Ident(type_name) = object.as_ref() {
-                // Auto FFI global objects -> Rust stdlib
-                match (type_name.as_str(), method_name.as_str()) {
-                    ("env", "get") => {
-                        // env.get("KEY") -> a2r_std::env::get("KEY")
-                        write!(out, "a2r_std::env::get(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr(a, out)?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("env", "get_or") => {
-                        // env.get_or("KEY", default) -> a2r_std::env::get_or("KEY", default)
-                        write!(out, "a2r_std::env::get_or(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            self.arg(arg, out)?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "read_to_string") | ("fs", "read_text") => {
-                        // fs.read_to_string(path) / fs.read_text(path) -> a2r_std::fs::read_to_string(&path) / a2r_std::fs::read_text(&path)
-                        let fn_name = method_name;
-                        write!(out, "a2r_std::fs::{}(", fn_name)?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            // Auto-borrow: if arg is a String variable, add .as_str()
-                            let needs_as_str = if let Expr::Ident(name) = a {
-                                !self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice))
-                                    .unwrap_or(false)
-                            } else {
-                                !matches!(a, Expr::Str(_) | Expr::CStr(_))
-                            };
-                            self.expr(a, out)?;
-                            if needs_as_str {
-                                write!(out, ".as_str()")?;
-                            }
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "write") => {
-                        // fs.write(path, content) -> a2r_std::fs::write(path, &content)
-                        write!(out, "a2r_std::fs::write(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if i == 1 { write!(out, "&")?; }
-                            self.arg(arg, out)?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("Map", "new") => {
-                        // Map.new() -> std::collections::HashMap::new()
-                        write!(out, "std::collections::HashMap::new()")?;
-                        return Ok(());
-                    }
-                    _ => {}
-                }
-
                 let is_type = type_name
                     .chars()
                     .next()
@@ -3407,7 +3858,10 @@ impl RustTrans {
                             .and_then(|f| f.get(i + 1))
                             .copied()
                             .unwrap_or(false);
-                        if (is_str_param || is_str_param_offset) && !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                        if (is_str_param || is_str_param_offset)
+                            && !matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                            && !Self::is_str_slice_var(arg, &self.local_var_types)
+                        {
                             write!(out, ".as_str()")?;
                         }
                     }
@@ -3556,7 +4010,8 @@ impl RustTrans {
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg);
+            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
+                && !Self::is_str_slice_var(arg, &self.local_var_types);
 
             // Auto-clone when passing a variable to a function that takes a struct param
             let is_struct_param = struct_flags.as_ref()
@@ -3603,6 +4058,91 @@ impl RustTrans {
         } else {
             false
         }
+    }
+
+    /// Check if an arg is a &str variable — already borrowed, no .as_str() needed
+    fn is_str_slice_var(arg: &Arg, local_var_types: &HashMap<AutoStr, Type>) -> bool {
+        if let Arg::Pos(Expr::Ident(name)) = arg {
+            local_var_types.get(name)
+                .map(|ty| matches!(ty, Type::StrSlice))
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
+    /// Infer Rust type from an Auto expression (for let-bound variables without type annotation).
+    fn infer_type_from_expr(expr: &Expr) -> Type {
+        match expr {
+            Expr::Call(call) => {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    // method is AutoStr, obj is Expr
+                    match method.as_str() {
+                        // Methods that return String
+                        "substr" | "sub" | "slice" | "to_lower" | "to_upper"
+                        | "trim" | "trim_left" | "trim_right" | "to_string"
+                        | "replace" | "replace_first" | "repeat" | "char_at" => {
+                            return Type::StrOwned;
+                        }
+                        // stdlib module functions that return String
+                        _ => {
+                            if let Expr::Ident(module) = obj.as_ref() {
+                                match (module.as_str(), method.as_str()) {
+                                    ("json", "as_string") | ("json", "get_str")
+                                    | ("json", "to_string") | ("json", "keys")
+                                    | ("fs", "read_text") | ("fs", "read_to_string")
+                                    | ("fs", "walk") | ("shell", "exec")
+                                    | ("regex", "find_all")
+                                    | ("env", "get") => {
+                                        return Type::StrOwned;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+                // Check for known function calls that return String
+                if let Expr::Ident(fn_name) = call.name.as_ref() {
+                    match fn_name.as_str() {
+                        "json_escape" | "json_to_string" | "format" => return Type::StrOwned,
+                        _ => {}
+                    }
+                }
+                Type::Unknown
+            }
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => Type::StrSlice,
+            Expr::Int(_) => Type::Int,
+            Expr::Float(_, _) => Type::Float,
+            Expr::Bool(_) => Type::Bool,
+            _ => Type::Unknown,
+        }
+    }
+
+    /// Check if an expression likely needs .as_str() to convert String → &str.
+    /// Returns true for Expr::Ident variables that may be String at runtime.
+    /// Note: Auto's `str` type maps to StrSlice but generated code often uses String
+    /// (due to .to_string() on assignment), so we conservatively add .as_str() for all
+    /// variables except those that are clearly function params with &str type.
+    fn needs_as_str(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(name) => {
+                // Function parameters typed as &str are safe (caller passes &str).
+                // All other variables may be String at runtime.
+                !self.fn_param_str_slice.contains(name.as_str())
+            }
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false, // literals are already &str
+            _ => true, // complex expressions (function calls, etc.) may return String
+        }
+    }
+
+    /// Emit an expression with .as_str() appended if needed for &str parameter.
+    fn expr_as_str(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        self.expr(expr, out)?;
+        if self.needs_as_str(expr) {
+            write!(out, ".as_str()")?;
+        }
+        Ok(())
     }
 
     fn struct_init(
@@ -3992,7 +4532,28 @@ impl RustTrans {
     // Variable declaration
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
         // Track local variable type for string concat detection
-        self.local_var_types.insert(store.name.clone(), store.ty.clone());
+        // When type is Unknown, try to infer from the expression
+        let effective_ty = if matches!(store.ty, Type::Unknown) {
+            Self::infer_type_from_expr(&store.expr)
+        } else {
+            store.ty.clone()
+        };
+        self.local_var_types.insert(store.name.clone(), effective_ty);
+
+        // Detect json.get() assignments and mark the variable as JSON value type
+        // so that .to_int() and .len() use value_to_int/value_len helpers
+        if !matches!(store.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_) | Type::CStrLit | Type::List(_) | Type::Int | Type::Float | Type::Bool) {
+            if let Expr::Call(call) = &store.expr {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if let Expr::Ident(name) = obj.as_ref() {
+                        if name == "json" && (method == "get" || method == "get_at") {
+                            self.json_value_vars.insert(store.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
         // Track variable→spec mapping: when expr is a ctor with a spec type,
         // record var_name -> spec_name for later spec array inference
         if let Some(type_name) = Self::extract_tag_or_ctor_type(&store.expr) {
@@ -4194,8 +4755,9 @@ impl RustTrans {
             self.local_var_types.insert(param.name.clone(), param.ty.clone());
         }
 
-        // Plan 204 Phase 3: Track whether current function returns !T (for Err boxing)
-        self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_));
+        // Plan 204 Phase 3: Track whether current function returns !T or Result<T,E> (for Err boxing)
+        self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_))
+            || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Result");
 
         // Infer concrete error type from Err() calls in function body
         self.current_fn_err_type = None;
@@ -4327,6 +4889,7 @@ impl RustTrans {
         for param in &fn_decl.params {
             if matches!(param.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
                 self.current_fn_str_params.insert(param.name.clone());
+                self.fn_param_str_slice.insert(param.name.clone());
             }
         }
         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
@@ -6749,10 +7312,12 @@ impl Trans for RustTrans {
         // Emit a2r standard library (List, May, etc.)
         self.emit_a2r_stdlib(&mut sink.body)?;
 
-        // Plan 204 Phase 3: Pre-scan for !T return types to determine Err trait need
+        // Plan 204 Phase 3: Pre-scan for !T / Result<T,E> return types to determine Err trait need
         for stmt in &ast.stmts {
             if let Stmt::Fn(fn_decl) = stmt {
-                if matches!(fn_decl.ret, Type::Result(_)) {
+                if matches!(fn_decl.ret, Type::Result(_))
+                    || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Result")
+                {
                     self.needs_err_trait = true;
                     break;
                 }

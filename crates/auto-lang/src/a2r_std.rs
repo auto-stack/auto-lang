@@ -123,14 +123,7 @@ impl<T> Default for List<T> {
 impl<T: Clone> std::ops::Index<usize> for List<T> {
     type Output = T;
     fn index(&self, i: usize) -> &Self::Output {
-        // Get the value using get() which returns Option<T>
-        // We clone it and leak it to get a static reference
-        // This is a workaround for RefCell's borrowing limitations
-        // SAFETY: The reference is valid for the lifetime of the program
-        // In practice, this should only be used for short-lived indexing operations
         if let Some(val) = self.get(i) {
-            // Leak the value to get a static reference
-            // This is memory-safe but leaks memory - acceptable for examples
             Box::leak(Box::new(val))
         } else {
             panic!("index out of bounds: the len is {} but the index is {}", self.len(), i);
@@ -140,7 +133,6 @@ impl<T: Clone> std::ops::Index<usize> for List<T> {
 
 impl<T: Clone> std::ops::IndexMut<usize> for List<T> {
     fn index_mut(&mut self, i: usize) -> &mut Self::Output {
-        // With &mut self, we have exclusive access
         self.inner.get_mut().index_mut(i)
     }
 }
@@ -191,8 +183,8 @@ pub mod json {
         serde_json::from_str::<Value>(s).is_ok()
     }
 
-    pub fn parse(s: &str) -> Option<Value> {
-        serde_json::from_str(s).ok()
+    pub fn parse(s: &str) -> Value {
+        serde_json::from_str(s).unwrap_or(Value::Null)
     }
 
     pub fn get_at(val: &Value, idx: usize) -> Option<Value> {
@@ -207,8 +199,8 @@ pub mod json {
         val.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_default()
     }
 
-    pub fn as_string(val: &Value) -> Option<String> {
-        val.as_str().map(|s| s.to_string())
+    pub fn as_string(val: Option<Value>) -> String {
+        val.and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default()
     }
 
     pub fn get_u64(val: &Value, key: &str) -> u64 {
@@ -239,8 +231,23 @@ pub mod json {
         }
     }
 
+    pub fn len_str(s: &str) -> usize {
+        match serde_json::from_str::<Value>(s) {
+            Ok(Value::Array(a)) => a.len(),
+            Ok(Value::Object(o)) => o.len(),
+            _ => 0,
+        }
+    }
+
     pub fn has_key(val: &Value, key: &str) -> bool {
         val.get(key).is_some()
+    }
+
+    pub fn has_key_str(s: &str, key: &str) -> bool {
+        match serde_json::from_str::<Value>(s) {
+            Ok(val) => val.get(key).is_some(),
+            Err(_) => false,
+        }
     }
 
     pub fn to_string(val: &Value) -> String {
@@ -265,6 +272,42 @@ pub fn str_new(s: &str, _capacity: usize) -> String {
     s.to_string()
 }
 
+/// Find substring in string, starting from position.
+/// Returns -1 if not found (matches Auto semantics, not Rust's Option).
+/// In AutoLang: s.find(needle, start_pos)
+pub fn str_find(s: &str, needle: &str, start: i32) -> i32 {
+    if start < 0 || start as usize > s.len() {
+        return -1;
+    }
+    match s[start as usize..].find(needle) {
+        Some(idx) => (start as usize + idx) as i32,
+        None => -1,
+    }
+}
+
+/// Get substring from position with length.
+/// In AutoLang: s.substr(start, length)
+pub fn str_substr(s: &str, start: i32, length: i32) -> String {
+    if start < 0 || length <= 0 || start as usize >= s.len() {
+        return String::new();
+    }
+    let start_usize = start as usize;
+    let end = std::cmp::min(start_usize + length as usize, s.len());
+    s[start_usize..end].to_string()
+}
+
+/// String contains check.
+/// In AutoLang: s.contains(needle)
+pub fn str_contains(s: &str, needle: &str) -> bool {
+    s.contains(needle)
+}
+
+/// String ends with check. Returns i32 for Auto compat.
+/// In AutoLang: s.ends_with(suffix)
+pub fn str_ends_with(s: &str, suffix: &str) -> i32 {
+    if s.ends_with(suffix) { 1 } else { 0 }
+}
+
 /// Get string length
 /// In AutoLang: str_len(s)
 /// Accepts both String and &str for transpiler convenience
@@ -276,6 +319,32 @@ pub fn str_len<S: AsRef<str>>(s: S) -> usize {
 /// In AutoLang: str_append(s, " world")
 pub fn str_append(s: &mut String, other: &str) {
     s.push_str(other);
+}
+
+/// Convert a JSON value to i32 (handles both string and number values)
+/// Used by to_int() interceptor when the receiver may be Option<Value>
+pub fn value_to_int(val: &Option<serde_json::Value>) -> i32 {
+    val.as_ref().and_then(|v| {
+        if v.is_i64() || v.is_u64() || v.is_f64() {
+            v.as_i64().map(|n| n as i32)
+        } else if let Some(s) = v.as_str() {
+            s.parse::<i32>().ok()
+        } else {
+            None
+        }
+    }).unwrap_or(0)
+}
+
+/// Get the length of a JSON value (string length for strings, 0 for other types)
+/// Used by len() interceptor when the receiver may be Option<Value>
+pub fn value_len(val: &Option<serde_json::Value>) -> i32 {
+    val.as_ref().and_then(|v| {
+        if let Some(s) = v.as_str() {
+            Some(s.len() as i32)
+        } else {
+            None
+        }
+    }).unwrap_or(0)
 }
 
 // =============================================================================
@@ -301,20 +370,20 @@ pub mod env {
 /// AutoLang's fs module — thin wrappers around std::fs
 #[allow(non_snake_case)]
 pub mod fs {
-    pub fn read_to_string(path: &str) -> Option<String> {
-        std::fs::read_to_string(path).ok()
+    pub fn read_to_string(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap_or_default()
     }
 
-    pub fn read_text(path: &str) -> Option<String> {
-        std::fs::read_to_string(path).ok()
+    pub fn read_text(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap_or_default()
     }
 
     pub fn write(path: &str, content: &str) -> bool {
         std::fs::write(path, content).is_ok()
     }
 
-    pub fn exists(path: &str) -> bool {
-        std::path::Path::new(path).exists()
+    pub fn exists(path: &str) -> i32 {
+        if std::path::Path::new(path).exists() { 1 } else { 0 }
     }
 
     pub fn create_dir(path: &str) -> bool {
