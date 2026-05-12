@@ -1,5 +1,6 @@
 use auto_lang::trans::rust::transpile_rust;
 use std::fs;
+use std::path::PathBuf;
 
 fn main() {
     // Increase stack size for large transpilation (step-02 is ~560 lines)
@@ -9,7 +10,7 @@ fn main() {
 }
 
 fn run() {
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let src_path = manifest_dir
         .parent().unwrap()       // crates/
         .parent().unwrap()       // auto-lang/
@@ -24,19 +25,29 @@ fn run() {
         std::process::exit(1);
     });
 
+    let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()       // crates/
+        .parent().unwrap()       // auto-lang/
+        .parent().unwrap()       // autostack/
+        .join("auto-code-rs/target/step02_test/src/main.rs");
+
     println!("=== Transpiling step-02-tool-system/main.at ===");
 
     match transpile_rust("step02_tool_system", &code) {
         Ok(sink) => {
+            let mut output = String::new();
             if !sink.header.is_empty() {
-                println!("=== header ===");
-                println!("{}", String::from_utf8_lossy(&sink.header));
+                output.push_str(&String::from_utf8_lossy(&sink.header));
+                output.push('\n');
             }
             if !sink.body.is_empty() {
-                println!("=== body ===");
-                println!("{}", String::from_utf8_lossy(&sink.body));
+                output.push_str(&String::from_utf8_lossy(&sink.body));
             }
-            println!("=== transpilation OK ===");
+            fs::write(&out_path, &output).unwrap_or_else(|e| {
+                eprintln!("Error writing {:?}: {}", out_path, e);
+                std::process::exit(1);
+            });
+            println!("=== transpilation OK -> {:?} ===", out_path);
         }
         Err(e) => {
             eprintln!("a2r transpilation error: {}", e);

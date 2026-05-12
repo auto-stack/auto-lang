@@ -3407,6 +3407,12 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    ("json", "to_string") => {
+                        write!(out, "a2r_std::json::to_string(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("json", "get_at") => {
                         write!(out, "a2r_std::json::get_at(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
@@ -5845,14 +5851,92 @@ impl RustTrans {
                 // Direct Rust imports: join paths with :: to form full Rust path
                 if !use_stmt.paths.is_empty() {
                     let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
-                    if use_stmt.is_wildcard {
-                        write!(out, "use {}::*;", full_path)?;
-                    } else if use_stmt.items.is_empty() {
-                        write!(out, "use {};", full_path)?;
-                    } else {
-                        write!(out, "use {}::{{{}}};", full_path, use_stmt.items.join(", "))?;
+
+                    // Check if this import should be upgraded (e.g., "rayon::prelude" → "rayon::prelude::*")
+                    let upgrade_map: &[(&str, &str)] = &[
+                        ("rayon::prelude", "rayon::prelude::*"),
+                        ("sha2::Digest", "sha2::Digest"),
+                    ];
+                    let effective_path = upgrade_map.iter()
+                        .find(|(k, _)| full_path == *k)
+                        .map(|(_, v)| *v)
+                        .unwrap_or(&full_path);
+
+                    let already_emitted = self.uses.contains(effective_path);
+                    if !already_emitted {
+                        if use_stmt.is_wildcard {
+                            write!(out, "use {}::*;", effective_path)?;
+                        } else if !use_stmt.items.is_empty() {
+                            write!(out, "use {}::{{{}}};", effective_path, use_stmt.items.join(", "))?;
+                        } else {
+                            write!(out, "use {};", effective_path)?;
+                        }
+                        self.uses.insert(effective_path.to_string().into());
                     }
-                    self.uses.insert(full_path.into());
+
+                    // Auto-add companion trait imports that methods on this crate require
+                    // Format: (prefix, companion_use_stmt) — empty string means no companion needed
+                    let companion_imports: &[(&str, &str)] = &[
+                        ("rand", "use rand::Rng;"),
+                        ("rand::seq", "use rand::seq::SliceRandom;"),
+                        ("rayon::prelude", ""),
+                        ("sha2::Digest", ""),
+                        ("clap::Parser", ""),
+                        ("unicode_segmentation::UnicodeSegmentation", ""),
+                        ("rayon", "use rayon::prelude::*;"),
+                        ("sha2", "use sha2::Digest;"),
+                        ("clap", "use clap::Parser;"),
+                        ("serde_json", "use serde_json::Value;"),
+                        ("unicode_segmentation", "use unicode_segmentation::UnicodeSegmentation;"),
+                        ("toml", "use toml::Value;"),
+                        ("mime_guess", "use mime_guess::MimeGuess;"),
+                        ("percent_encoding", "use percent_encoding::{percent_encode, NON_ALPHANUMERIC};"),
+                        ("urlencoding", "use urlencoding::encode;"),
+                        ("hex", "use hex;"),
+                    ];
+                    for (prefix, import_line) in companion_imports {
+                        if full_path == *prefix || full_path.starts_with(&format!("{}::", prefix)) {
+                            if !import_line.is_empty() && *import_line != format!("use {};", effective_path) {
+                                let companion_path = import_line
+                                    .strip_prefix("use ")
+                                    .and_then(|s| s.strip_suffix(';'))
+                                    .unwrap_or("");
+                                let already_imported = self.uses.iter().any(|u| {
+                                    let u_str = u.as_str();
+                                    if u_str == companion_path
+                                        || u_str.starts_with(&format!("{}::", companion_path))
+                                        || companion_path.starts_with(&format!("{}::", u_str))
+                                    {
+                                        return true;
+                                    }
+                                    // Brace-expansion dedup: "crate::{a, b}" vs existing "crate::a"
+                                    if let Some(brace_pos) = companion_path.find("::{") {
+                                        let crate_path = &companion_path[..brace_pos];
+                                        if u_str == crate_path {
+                                            return true;
+                                        }
+                                        if let Some(items_str) = companion_path.strip_prefix(&format!("{}::{{", crate_path)) {
+                                            let items_str = items_str.strip_suffix('}').unwrap_or(items_str);
+                                            let companion_items: Vec<&str> =
+                                                items_str.split(',').map(|s| s.trim()).collect();
+                                            if u_str.starts_with(&format!("{}::", crate_path)) {
+                                                let item_name = u_str.strip_prefix(&format!("{}::", crate_path)).unwrap_or("");
+                                                if companion_items.contains(&item_name) {
+                                                    return true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    false
+                                });
+                                if !already_imported {
+                                    write!(out, "\n{}", import_line)?;
+                                    self.uses.insert(companion_path.to_string().into());
+                                }
+                            }
+                            break;
+                        }
+                    }
                 }
             }
             UseKind::Py => {

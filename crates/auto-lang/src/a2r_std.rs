@@ -344,15 +344,12 @@ pub fn value_to_int(val: &serde_json::Value) -> i32 {
 }
 
 /// Get the length of a JSON value (string length for strings, 0 for other types)
-/// Used by len() interceptor when the receiver may be Option<Value>
-pub fn value_len(val: &Option<serde_json::Value>) -> i32 {
-    val.as_ref().and_then(|v| {
-        if let Some(s) = v.as_str() {
-            Some(s.len() as i32)
-        } else {
-            None
-        }
-    }).unwrap_or(0)
+pub fn value_len(val: &serde_json::Value) -> i32 {
+    if let Some(s) = val.as_str() {
+        s.len() as i32
+    } else {
+        0
+    }
 }
 
 // =============================================================================
