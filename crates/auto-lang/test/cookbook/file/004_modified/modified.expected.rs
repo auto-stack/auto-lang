@@ -8,7 +8,7 @@ use auto_lang::a2r_std::*;
 use walkdir;
 use std::fs;
 fn main() {
-    for entry in walkdir.WalkDir.new("src").into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir.new("src").into_iter().filter_map(|e| e.ok()) {
         if entry.file_type().is_file() {
             let meta = fs.metadata(entry.path()).unwrap();
             let modified = meta.modified().unwrap();

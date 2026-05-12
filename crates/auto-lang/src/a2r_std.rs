@@ -353,6 +353,28 @@ pub fn value_len(val: &serde_json::Value) -> i32 {
 }
 
 // =============================================================================
+// IO module for a2r transpiler
+// =============================================================================
+
+/// AutoLang's io module — stdin/stdout helpers
+#[allow(non_snake_case)]
+pub mod io {
+    /// Read a line from stdin (blocks until user presses Enter).
+    /// Returns the line without trailing newline, or empty string on EOF.
+    pub fn read_line() -> String {
+        use std::io;
+        let mut buf = String::new();
+        match io::stdin().read_line(&mut buf) {
+            Ok(_) => {
+                let trimmed = buf.trim_end_matches('\n').trim_end_matches('\r').to_string();
+                trimmed
+            }
+            Err(_) => String::new(),
+        }
+    }
+}
+
+// =============================================================================
 // Environment module for a2r transpiler
 // =============================================================================
 

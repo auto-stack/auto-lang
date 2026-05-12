@@ -151,7 +151,7 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            db: None, // New (Phase 066)
+            db: None,
             edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
@@ -865,7 +865,8 @@ impl RustTrans {
                                     false
                                 };
 
-                                // Check if lhs is a type name (starts with uppercase or is a Rust primitive)
+                                // Check if lhs is a type name (starts with uppercase, is a Rust primitive,
+                                // or is a known module from use.rust imports)
                                 let is_type_name = if let Expr::Ident(lhs_name) = lhs.as_ref() {
                                     let name = lhs_name.as_str();
                                     name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
@@ -874,6 +875,11 @@ impl RustTrans {
                                             | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
                                             | "f32" | "f64" | "bool" | "char" | "str"
                                         )
+                                        || self.uses.iter().any(|u| {
+                                            let u_str = u.as_str();
+                                            u_str == name
+                                                || u_str.ends_with(&format!("::{}", name))
+                                        })
                                 } else {
                                     false
                                 };
@@ -1875,13 +1881,18 @@ impl RustTrans {
                 }
 
                 // Check if this is an enum access or static method: Enum.Value -> Enum::Value
-                // Use heuristic: if object is an identifier starting with uppercase
+                // Use heuristic: if object is an identifier starting with uppercase or a known module
                 if let Expr::Ident(type_name) = object.as_ref() {
                     let is_type_name = type_name
                         .chars()
                         .next()
                         .map(|c| c.is_uppercase())
-                        .unwrap_or(false);
+                        .unwrap_or(false)
+                        || self.uses.iter().any(|u| {
+                            let u_str = u.as_str();
+                            u_str == type_name
+                                || u_str.ends_with(&format!("::{}", type_name))
+                        });
                     if is_type_name {
                         // Type::Variant (enum) or Type::method (static method)
                         write!(out, "{}::{}", type_name, field)?;
@@ -2322,6 +2333,10 @@ impl RustTrans {
                                     write!(out, "a2r_std::env::get(")?;
                                     if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("io", "read_line") => {
+                                    write!(out, "a2r_std::io::read_line()")?;
                                     return Ok(());
                                 }
                                 ("env", "set") => {
@@ -3618,6 +3633,10 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    ("io", "read_line") => {
+                        write!(out, "a2r_std::io::read_line()")?;
+                        return Ok(());
+                    }
                     ("env", "get_or") => {
                         write!(out, "a2r_std::env::get_or(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
@@ -4095,7 +4114,7 @@ impl RustTrans {
                                     | ("fs", "read_text") | ("fs", "read_to_string")
                                     | ("fs", "walk") | ("shell", "exec")
                                     | ("regex", "find_all")
-                                    | ("env", "get") => {
+                                    | ("io", "read_line") | ("env", "get") => {
                                         return Type::StrOwned;
                                     }
                                     _ => {}

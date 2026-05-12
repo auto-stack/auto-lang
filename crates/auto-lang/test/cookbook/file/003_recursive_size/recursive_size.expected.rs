@@ -9,7 +9,7 @@ use walkdir;
 use std::fs;
 fn main() {
     let mut total_size: u32 = 0;
-    for entry in walkdir.WalkDir.new("src") {
+    for entry in walkdir::WalkDir.new("src") {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             let meta = fs.metadata(entry.path()).unwrap();
