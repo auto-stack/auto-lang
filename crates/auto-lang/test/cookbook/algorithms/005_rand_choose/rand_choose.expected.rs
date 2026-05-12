@@ -6,6 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use rand;
+use rand::Rng;
 fn main() {
     let mut rng = rand::thread_rng();
     let mut choices: Vec<String> = vec!["a", "b", "c", "d", "e"];

@@ -6,6 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use rand;
+use rand::Rng;
 use rand_distr;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();

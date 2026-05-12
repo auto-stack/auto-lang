@@ -6,6 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use mime_guess;
+use mime_guess::MimeGuess;
 fn main() {
     let mime = mime_guess::from_path("document.pdf").first_or_octet_stream();
     println!("MIME type: {}", mime);

@@ -6,6 +6,7 @@ use auto_lang::a2r_std;
 use auto_lang::a2r_std::*;
 
 use rand;
+use rand::Rng;
 #[derive(Clone, Debug, PartialEq)]
 enum Pet {
     Dog = 0,
