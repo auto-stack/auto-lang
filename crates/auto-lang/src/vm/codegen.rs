@@ -5064,7 +5064,7 @@ impl Codegen {
                             Expr::Ident(obj_name) => {
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
-                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url");
+                                let is_stdlib_module = matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex");
                                 if is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -5202,7 +5202,6 @@ impl Codegen {
                                                 if base_name == "List" {
                                                     Some(format!("List.{}", method))
                                                 } else {
-                                                    vm_debug!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
                                                     if let Some(type_name) =
                                                         self.infer_type_from_var(obj_name.as_ref())
                                                     {
@@ -5411,6 +5410,8 @@ impl Codegen {
                             ("fs", "remove_dir_all") => Some("auto.fs.remove_dir_all".to_string()),
                             ("fs", "metadata") => Some("auto.fs.size".to_string()),
                             ("fs", "is_dir") => Some("auto.fs.is_dir".to_string()),
+                            ("fs", "walk") => Some("auto.file.walk".to_string()),
+                            ("fs", "is_binary") => Some("auto.fs.is_binary".to_string()),
                             ("json", "parse") => Some("auto.json.parse".to_string()),
                             ("json", "get") => Some("auto.json.get".to_string()),
                             ("json", "get_str") => Some("auto.json.as_string".to_string()),
@@ -5427,6 +5428,8 @@ impl Codegen {
                             ("json", "type_of") => Some("auto.json.type_of".to_string()),
                             ("json", "get_at") => Some("auto.json.get_at".to_string()),
                             ("json", "keys") => Some("auto.json.keys".to_string()),
+                            ("shell", "exec") => Some("auto.sys.exec".to_string()),
+                            ("regex", "match") => Some("auto.regex.match".to_string()),
                             // URL module → opaque heap object shims
                             ("url", "parse") => Some("auto.url_opaque.parse".to_string()),
                             ("url", "encode") => Some("auto.url.encode".to_string()),
@@ -5773,7 +5776,7 @@ impl Codegen {
                         let is_static_method = match obj.as_ref() {
                             Expr::Ident(obj_name) => {
                                 let lower = obj_name.as_ref();
-                                matches!(lower, "env" | "fs" | "json" | "http" | "url")
+                                matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex")
                                     || self.is_type_name_heuristic(obj_name)
                                     || self.is_type(obj_name)
                             }
@@ -6032,7 +6035,7 @@ impl Codegen {
                     let is_static_method = match obj.as_ref() {
                         Expr::Ident(obj_name) => {
                             let lower = obj_name.as_ref();
-                            matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http")
+                            matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell")
                                 || self.is_type_name_heuristic(obj_name)
                                 || self.is_type(obj_name)
                         }

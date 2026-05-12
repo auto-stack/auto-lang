@@ -860,6 +860,13 @@ pub fn register_builtin_natives() {
     // Regex functions (2400-2401)
     registry.register_with_id("auto.regex.is_match", 2400);
     registry.register_with_id("auto.regex.find_all", 2401);
+    registry.register_with_id("auto.regex.match", 2410);
+
+    // System functions (2420-2429)
+    registry.register_with_id("auto.sys.exec", 2420);
+
+    // File utility functions (2430-2439)
+    registry.register_with_id("auto.fs.is_binary", 2430);
 
     // Regex opaque struct shims (2450-2459) — Plan 212 Phase 2.2
     registry.register_with_id("auto.re_opaque.new", 2450);
@@ -985,6 +992,24 @@ pub fn register_builtin_natives() {
     registry.register_with_id("Str.split_once", 1518);
     registry.register_with_id("Str.match_count", 1519);
     registry.register_with_id("Str.replace_first", 1520);
+
+    // Runtime aliases — CALL_SPEC uses lowercase type name "str" for strings
+    registry.register_with_id("str.len", 1500);
+    registry.register_with_id("str.contains", 1502);
+    registry.register_with_id("str.starts_with", 1504);
+    registry.register_with_id("str.ends_with", 1506);
+    registry.register_with_id("str.trim", 1507);
+    registry.register_with_id("str.split", 1508);
+    registry.register_with_id("str.repeat", 1509);
+    registry.register_with_id("str.replace", 1510);
+    registry.register_with_id("str.to_upper", 1511);
+    registry.register_with_id("str.to_lower", 1512);
+    registry.register_with_id("str.find", 1514);
+    registry.register_with_id("str.lines", 1515);
+    registry.register_with_id("str.parse_int", 1516);
+    registry.register_with_id("str.parse_float", 1517);
+    registry.register_with_id("str.is_empty", 1501);
+    registry.register_with_id("str.substr", 1503);
 
     registry.register_with_id("Task.spawn", 2300);
     registry.register_with_id("TaskHandle.send", 2301);

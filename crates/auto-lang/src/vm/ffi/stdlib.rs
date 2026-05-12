@@ -424,6 +424,21 @@ pub fn shim_file_read_lines(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
     Ok(())
 }
 
+/// Check if a file contains null bytes (binary detection). Returns 1 if binary, 0 if text.
+pub fn shim_fs_is_binary(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let bytes = fs::read(&path)
+        .map_err(|e| VMError::RuntimeError(format!("fs.is_binary failed: {} - {}", path, e)))?;
+
+    let check_len = bytes.len().min(8192);
+    let is_binary = bytes[..check_len].contains(&0);
+    let result: i64 = if is_binary { 1 } else { 0 };
+    result.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
 // ============================================================================
 // Environment Functions
 // ============================================================================
@@ -589,6 +604,48 @@ pub fn shim_process_spawn_with_output(
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
     result_str.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Execute a shell command string, capture stdout+stderr, truncate at 64KB.
+/// Takes: cmd (String), timeout_ms (i32) — timeout currently unused.
+/// Returns: JSON string {"exit_code": N, "stdout": "...", "stderr": "..."}
+pub fn shim_sys_exec(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // Pop timeout as i32 (Auto int = i32, not i64, to avoid nanbox slot mismatch)
+    let timeout_ms: i32 = task.ram.pop_i32();
+    let cmd: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let shell = if cfg!(windows) { "cmd" } else { "sh" };
+    let flag = if cfg!(windows) { "/C" } else { "-c" };
+
+    let output = std::process::Command::new(shell)
+        .arg(flag)
+        .arg(&cmd)
+        .output()
+        .map_err(|e| VMError::RuntimeError(format!("sys.exec failed: {} - {}", cmd, e)))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let exit_code = output.status.code().unwrap_or(-1);
+
+    let stdout_truncated = if stdout.len() > 65536 {
+        format!("{}...(truncated, {} bytes total)", &stdout[..65536], stdout.len())
+    } else {
+        stdout
+    };
+
+    let result_json = serde_json::json!({
+        "exit_code": exit_code,
+        "stdout": stdout_truncated,
+        "stderr": stderr,
+    });
+
+    let result_str = serde_json::to_string(&result_json)
+        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
+
+    result_str.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let _ = timeout_ms;
     Ok(())
 }
 
@@ -765,10 +822,42 @@ pub fn shim_str_reverse(s: String) -> String {
     s.chars().rev().collect()
 }
 
-/// Find first occurrence of substring, returns byte index or -1
-#[auto_macros::rust_fn("Str.find")]
-pub fn shim_str_find(s: String, needle: String) -> i32 {
-    s.find(&needle).map(|i| i as i32).unwrap_or(-1)
+/// Find first occurrence of substring with optional start position.
+/// Stack: [receiver(str), needle(str), start_pos(i32)]
+/// In nanbox mode, strings occupy 2 slots each.
+pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm::engine::AutoVM) -> Result<(), crate::vm::engine::VMError> {
+    use crate::vm::ffi::convert::VMConvertible;
+    // Pop start_pos (i32, top of stack)
+    #[cfg(feature = "nanbox")]
+    let start_pos: i64 = {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_i32(nv) { auto_val::decode_i32(nv) as i64 }
+        else { -1i64 }
+    };
+    #[cfg(not(feature = "nanbox"))]
+    let start_pos: i64 = task.ram.pop_i32() as i64;
+
+    // Pop needle (String)
+    let needle: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
+
+    // Pop receiver (String)
+    let s: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
+
+    let result = if start_pos > 0 && (start_pos as usize) < s.len() {
+        s[start_pos as usize..].find(&needle).map(|i| start_pos as i32 + i as i32).unwrap_or(-1)
+    } else {
+        s.find(&needle).map(|i| i as i32).unwrap_or(-1)
+    };
+
+    // Push result
+    #[cfg(feature = "nanbox")]
+    task.ram.push_nv(auto_val::encode_i32(result));
+    #[cfg(not(feature = "nanbox"))]
+    task.ram.push_i32(result);
+
+    Ok(())
 }
 
 /// Split string into lines
@@ -2575,6 +2664,21 @@ pub fn shim_regex_find_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+/// Check if a regex pattern matches text. Returns 1 if match, 0 if not.
+pub fn shim_regex_match(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let pattern: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let re = regex::Regex::new(&pattern)
+        .map_err(|e| VMError::RuntimeError(format!("regex.match failed: invalid pattern '{}': {}", pattern, e)))?;
+
+    let result: i32 = if re.is_match(&text) { 1 } else { 0 };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
 // ============================================================================
 // Plan 152: SSE Parser Functions
 // ============================================================================
@@ -3383,9 +3487,16 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // File functions (manual shims only)
     natives.register_shim_by_name("auto.file.walk", shim_file_walk);
     natives.register_shim_by_name("auto.file.read_lines", shim_file_read_lines);
+    natives.register_shim_by_name("auto.fs.is_binary", shim_fs_is_binary);
+
+    // String method — manual shim for nanbox compatibility
+    natives.register_shim_by_name("auto.str.find", shim_str_find_manual);
+    natives.register_shim_by_name("Str.find", shim_str_find_manual);
+    natives.register_shim_by_name("str.find", shim_str_find_manual);
 
     // Process functions (manual shims only)
     natives.register_shim_by_name("auto.process.spawn_with_output", shim_process_spawn_with_output);
+    natives.register_shim_by_name("auto.sys.exec", shim_sys_exec);
 
     // Option functions (manual shims only)
     natives.register_shim_by_name("Option.or", shim_option_or);
@@ -3465,6 +3576,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // Regex (manual shim — heap objects for compiled regex)
     natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);
+    natives.register_shim_by_name("auto.regex.match", shim_regex_match);
 
     // Task system (manual shim — VM access for event loop)
     natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);
