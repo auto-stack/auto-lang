@@ -60,7 +60,11 @@
             <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
           </div>
           <div class="message-content">
-            <MarkdownRenderer v-if="msg.role === 'assistant' || msg.role === 'system'" :source="msg.content" />
+            <MarkdownRenderer
+              v-if="msg.role === 'assistant' || msg.role === 'system'"
+              :source="msg.content"
+              :streaming="isStreamingMessage(msg)"
+            />
             <div v-else-if="msg.content">{{ msg.content }}</div>
           </div>
           <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
@@ -175,6 +179,19 @@ const sidebarCollapsed = ref(false)
 const hasPendingAssistant = computed(() => {
   return messages.value.some((m) => m.role === 'assistant' && m.content === '' && !m.tool_calls?.length)
 })
+
+const lastAssistantMessage = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'assistant') {
+      return messages.value[i]
+    }
+  }
+  return null
+})
+
+function isStreamingMessage(msg: typeof messages.value[number]): boolean {
+  return isLoading.value && msg === lastAssistantMessage.value
+}
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

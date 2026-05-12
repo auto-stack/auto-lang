@@ -1,50 +1,54 @@
 <template>
-  <div class="markdown-body" v-html="rendered"></div>
+  <MarkdownRender
+    :content="source"
+    :final="!streaming"
+    :max-live-nodes="streaming ? 0 : 320"
+    :batch-rendering="streaming"
+    :render-batch-size="16"
+    :render-batch-delay="8"
+    :typewriter="streaming"
+    :fade="false"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { marked } from 'marked'
+import { MarkdownRender } from 'markstream-vue'
 
 const props = defineProps<{
   source: string
+  streaming?: boolean
 }>()
-
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-})
-
-const rendered = computed(() => {
-  return marked.parse(props.source || '')
-})
 </script>
 
 <style>
-.markdown-body {
+/* Override markstream-vue container font to match AutoForge theme */
+.markstream-vue {
   font-size: 0.9rem;
   line-height: 1.6;
   color: var(--af-fg);
 }
 
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4 {
+/* Heading colours */
+.markstream-vue h1,
+.markstream-vue h2,
+.markstream-vue h3,
+.markstream-vue h4 {
   color: hsl(var(--af-furnace));
   margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
 
-.markdown-body h1 { font-size: 1.2rem; }
-.markdown-body h2 { font-size: 1.1rem; }
-.markdown-body h3 { font-size: 1rem; }
+.markstream-vue h1 { font-size: 1.2rem; }
+.markstream-vue h2 { font-size: 1.1rem; }
+.markstream-vue h3 { font-size: 1rem; }
 
-.markdown-body p {
+/* Paragraphs */
+.markstream-vue p {
   margin-bottom: 0.75rem;
 }
 
-.markdown-body pre {
+/* Code blocks */
+.markstream-vue pre {
   background: var(--af-bg);
   border: 1px solid var(--af-border);
   border-radius: 6px;
@@ -53,36 +57,39 @@ const rendered = computed(() => {
   margin: 0.5rem 0;
 }
 
-.markdown-body code {
+.markstream-vue code {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.8rem;
 }
 
-.markdown-body pre code {
+.markstream-vue pre code {
   color: var(--af-fg);
   background: transparent;
   padding: 0;
 }
 
-.markdown-body p code,
-.markdown-body li code {
+/* Inline code */
+.markstream-vue p code,
+.markstream-vue li code {
   background: var(--af-secondary);
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
   color: hsl(var(--af-warning));
 }
 
-.markdown-body ul,
-.markdown-body ol {
+/* Lists */
+.markstream-vue ul,
+.markstream-vue ol {
   margin-left: 1.25rem;
   margin-bottom: 0.75rem;
 }
 
-.markdown-body li {
+.markstream-vue li {
   margin-bottom: 0.25rem;
 }
 
-.markdown-body blockquote {
+/* Blockquotes */
+.markstream-vue blockquote {
   border-left: 3px solid var(--af-border);
   padding-left: 0.75rem;
   margin-left: 0;
@@ -90,84 +97,87 @@ const rendered = computed(() => {
   font-style: italic;
 }
 
-.markdown-body hr {
+/* Horizontal rules */
+.markstream-vue hr {
   border: none;
   border-top: 1px solid var(--af-border);
   margin: 1rem 0;
 }
 
-.markdown-body a {
+/* Links */
+.markstream-vue a {
   color: hsl(var(--af-info));
   text-decoration: none;
 }
 
-.markdown-body a:hover {
+.markstream-vue a:hover {
   text-decoration: underline;
 }
 
-.markdown-body table {
+/* Tables */
+.markstream-vue table {
   border-collapse: collapse;
   width: 100%;
   margin: 0.5rem 0;
 }
 
-.markdown-body th,
-.markdown-body td {
+.markstream-vue th,
+.markstream-vue td {
   border: 1px solid var(--af-border);
   padding: 0.4rem 0.6rem;
   text-align: left;
 }
 
-.markdown-body th {
+.markstream-vue th {
   background: var(--af-card);
   font-weight: 600;
 }
 
 /* Syntax highlighting colours (mapped to theme palette) */
-.markdown-body .hljs-keyword,
-.markdown-body .hljs-selector-tag,
-.markdown-body .hljs-literal,
-.markdown-body .hljs-section,
-.markdown-body .hljs-link {
+.markstream-vue .hljs-keyword,
+.markstream-vue .hljs-selector-tag,
+.markstream-vue .hljs-literal,
+.markstream-vue .hljs-section,
+.markstream-vue .hljs-link {
   color: var(--af-primary);
 }
 
-.markdown-body .hljs-string,
-.markdown-body .hljs-title,
-.markdown-body .hljs-name,
-.markdown-body .hljs-type,
-.markdown-body .hljs-attribute,
-.markdown-body .hljs-symbol,
-.markdown-body .hljs-bullet,
-.markdown-body .hljs-addition,
-.markdown-body .hljs-variable,
-.markdown-body .hljs-template-tag,
-.markdown-body .hljs-template-variable {
+.markstream-vue .hljs-string,
+.markstream-vue .hljs-title,
+.markstream-vue .hljs-name,
+.markstream-vue .hljs-type,
+.markstream-vue .hljs-attribute,
+.markstream-vue .hljs-symbol,
+.markstream-vue .hljs-bullet,
+.markstream-vue .hljs-addition,
+.markstream-vue .hljs-variable,
+.markstream-vue .hljs-template-tag,
+.markstream-vue .hljs-template-variable {
   color: hsl(var(--af-success));
 }
 
-.markdown-body .hljs-comment,
-.markdown-body .hljs-quote,
-.markdown-body .hljs-deletion,
-.markdown-body .hljs-meta {
+.markstream-vue .hljs-comment,
+.markstream-vue .hljs-quote,
+.markstream-vue .hljs-deletion,
+.markstream-vue .hljs-meta {
   color: var(--af-muted);
 }
 
-.markdown-body .hljs-number,
-.markdown-body .hljs-regexp,
-.markdown-body .hljs-literal,
-.markdown-body .hljs-built_in,
-.markdown-body .hljs-builtin-name {
+.markstream-vue .hljs-number,
+.markstream-vue .hljs-regexp,
+.markstream-vue .hljs-literal,
+.markstream-vue .hljs-built_in,
+.markstream-vue .hljs-builtin-name {
   color: hsl(var(--af-furnace));
 }
 
-.markdown-body .hljs-function,
-.markdown-body .hljs-params {
+.markstream-vue .hljs-function,
+.markstream-vue .hljs-params {
   color: hsl(var(--af-info));
 }
 
-.markdown-body .hljs-tag,
-.markdown-body .hljs-name {
+.markstream-vue .hljs-tag,
+.markstream-vue .hljs-name {
   color: hsl(var(--af-error));
 }
 </style>
