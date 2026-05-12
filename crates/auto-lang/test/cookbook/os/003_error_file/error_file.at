@@ -5,11 +5,6 @@ use.rust std::process::Stdio
 fn main() {
     let outputs = File.create("out.txt").unwrap()
     let errors = outputs.try_clone().unwrap()
-    Command.new("ls")
-        .args([".", "oops"])
-        .stdout(Stdio.from(outputs))
-        .stderr(Stdio.from(errors))
-        .spawn().unwrap()
-        .wait_with_output().unwrap()
+    let result = Command.new("ls").args([".", "oops"]).stdout(Stdio.from(outputs)).stderr(Stdio.from(errors)).spawn().unwrap().wait_with_output().unwrap()
     print("Output written to out.txt")
 }

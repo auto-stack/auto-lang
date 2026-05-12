@@ -7,8 +7,7 @@ use auto_lang::a2r_std::*;
 
 use std::process::Command;
 fn main() {
-    let output = Command::new("ls").args(vec!["-la"]);
-    self.output().unwrap();
+    let output = Command::new("ls").args(vec!["-la"]).output().unwrap();
     println!("Exit code: {}", output.status);
     let stdout = String::from_utf8(output.stdout).unwrap();
     println!("Stdout: {}", stdout);
