@@ -22,6 +22,7 @@
           <div class="session-preview">{{ s.preview || 'New session' }}</div>
           <div class="session-meta">
             <span class="session-count">{{ s.message_count }} msgs</span>
+            <span class="session-phase" :class="s.phase">{{ s.phase }}</span>
             <span class="session-status" :class="s.status">{{ s.status }}</span>
           </div>
         </div>
@@ -39,6 +40,9 @@
           <button v-if="sidebarCollapsed" class="sidebar-toggle-btn" @click="sidebarCollapsed = false" title="Show sessions">
             <PanelLeft :size="16" />
           </button>
+          <span class="session-badge phase" :class="sessionPhase">
+            {{ sessionPhase }}
+          </span>
           <span class="session-badge" :class="sessionStatus">
             {{ sessionStatus }}
           </span>
@@ -101,7 +105,24 @@
           </div>
         </div>
       </div>
-      <div class="furnace-input-bar">
+      <!-- Approval Gate -->
+      <div v-if="needsApproval" class="approval-gate">
+        <div class="approval-message">
+          <span class="approval-icon">📋</span>
+          <span>Spec drafted. Review the changes above and approve to proceed with execution.</span>
+        </div>
+        <div class="approval-actions">
+          <button class="approve-btn" @click="handleApprove">
+            <Check :size="14" />
+            Approve & Execute
+          </button>
+          <button class="reject-btn" @click="handleReject">
+            <X :size="14" />
+            Reject & Redraft
+          </button>
+        </div>
+      </div>
+      <div v-else class="furnace-input-bar">
         <textarea
           v-model="inputText"
           class="furnace-input"
@@ -123,7 +144,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { Send, ChevronDown, ChevronUp, Plus, PanelLeft } from 'lucide-vue-next'
+import { Send, ChevronDown, ChevronUp, Plus, PanelLeft, Check, X } from 'lucide-vue-next'
 import { useForge } from '@/composables/useForge'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 
@@ -135,11 +156,16 @@ const {
   sessionList,
   sessionId,
   sessionStatus,
+  sessionPhase,
+  needsApproval,
   resume,
   switchSession,
   clearSession,
   loadSessionList,
   sendMessage: forgeSendMessage,
+  streamResponse,
+  approveSpec,
+  rejectSpec,
 } = useForge()
 
 const inputText = ref('')
@@ -168,6 +194,16 @@ async function sendMessage() {
   if (!text) return
   inputText.value = ''
   await forgeSendMessage(text)
+}
+
+async function handleApprove() {
+  await approveSpec()
+  // After approval, trigger execution stream
+  await streamResponse()
+}
+
+async function handleReject() {
+  await rejectSpec()
 }
 
 onMounted(async () => {
@@ -318,6 +354,39 @@ onMounted(async () => {
 .session-status.error {
   background: hsl(var(--af-error) / 0.15);
   color: hsl(var(--af-error));
+}
+
+.session-phase {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+
+.session-phase.intake {
+  background: hsl(var(--af-info) / 0.15);
+  color: hsl(var(--af-info));
+}
+
+.session-phase.spec_draft {
+  background: hsl(var(--af-warning) / 0.15);
+  color: hsl(var(--af-warning));
+}
+
+.session-phase.spec_review {
+  background: hsl(var(--af-furnace) / 0.2);
+  color: hsl(var(--af-furnace));
+}
+
+.session-phase.execution {
+  background: hsl(var(--af-success) / 0.15);
+  color: hsl(var(--af-success));
+}
+
+.session-phase.verification {
+  background: hsl(var(--af-accent) / 0.15);
+  color: hsl(var(--af-accent));
 }
 
 .session-empty {
@@ -675,5 +744,96 @@ onMounted(async () => {
 .send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ─── Phase Badge ─────────────────────────────────────────────────────────── */
+
+.session-badge.phase {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
+.session-badge.phase.intake {
+  background: hsl(var(--af-info) / 0.15);
+  color: hsl(var(--af-info));
+}
+
+.session-badge.phase.spec_draft {
+  background: hsl(var(--af-warning) / 0.15);
+  color: hsl(var(--af-warning));
+}
+
+.session-badge.phase.spec_review {
+  background: hsl(var(--af-furnace) / 0.2);
+  color: hsl(var(--af-furnace));
+}
+
+.session-badge.phase.execution {
+  background: hsl(var(--af-success) / 0.15);
+  color: hsl(var(--af-success));
+}
+
+.session-badge.phase.verification {
+  background: hsl(var(--af-accent) / 0.15);
+  color: hsl(var(--af-accent));
+}
+
+/* ─── Approval Gate ───────────────────────────────────────────────────────── */
+
+.approval-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--af-card);
+  border-top: 1px solid var(--af-border);
+  flex-shrink: 0;
+}
+
+.approval-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--af-fg);
+}
+
+.approval-icon {
+  font-size: 1.2rem;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.approve-btn,
+.reject-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.approve-btn {
+  background: hsl(var(--af-success));
+  color: #fff;
+}
+
+.reject-btn {
+  background: var(--af-secondary);
+  color: var(--af-fg);
+  border: 1px solid var(--af-border);
+}
+
+.approve-btn:hover,
+.reject-btn:hover {
+  opacity: 0.9;
 }
 </style>

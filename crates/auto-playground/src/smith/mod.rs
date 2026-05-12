@@ -32,7 +32,43 @@ pub struct ForgeSession {
     pub notebook_sid: Option<String>,
     pub project_path: String,
     pub status: ForgeStatus,
+    pub phase: ForgePhase,
     pub messages: Vec<ForgeMessage>,
+    #[serde(default)]
+    pub pending_spec_changes: Vec<SpecChange>,
+    #[serde(default)]
+    pub current_todo_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgePhase {
+    Intake,
+    SpecDraft,
+    SpecReview,
+    Execution,
+    Verification,
+}
+
+impl ForgePhase {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ForgePhase::Intake => "intake",
+            ForgePhase::SpecDraft => "spec_draft",
+            ForgePhase::SpecReview => "spec_review",
+            ForgePhase::Execution => "execution",
+            ForgePhase::Verification => "verification",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecChange {
+    pub section_id: String,
+    pub old_content: String,
+    pub new_content: String,
+    pub old_status: String,
+    pub new_status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +172,21 @@ impl SessionStore {
         self.save(&session_clone);
     }
 
+    fn update_phase(&mut self, sid: &str, phase: ForgePhase) {
+        let Some(session) = self.sessions.get_mut(sid) else { return };
+        session.phase = phase;
+        let session_clone = session.clone();
+        self.save(&session_clone);
+    }
+
+    fn update_phase_and_status(&mut self, sid: &str, phase: ForgePhase, status: ForgeStatus) {
+        let Some(session) = self.sessions.get_mut(sid) else { return };
+        session.phase = phase;
+        session.status = status;
+        let session_clone = session.clone();
+        self.save(&session_clone);
+    }
+
     fn save(&self, session: &ForgeSession) {
         let path = self.data_dir.join(format!("{}.json", session.id));
         if let Ok(json) = serde_json::to_string_pretty(session) {
@@ -212,6 +263,8 @@ pub enum ForgeStreamEvent {
         id: String,
         result: String,
     },
+    #[serde(rename = "phase_change")]
+    PhaseChange { phase: String },
     #[serde(rename = "done")]
     Done,
     #[serde(rename = "error")]
@@ -358,6 +411,124 @@ mod handlers {
     use crate::smith::ai::{ChatMessage, ContentBlock, ToolChatEvent, ToolChatRequest, ToolClaudeProvider};
     use crate::smith::tools::ToolRegistry;
 
+    // ─── Phase Helpers ───────────────────────────────────────────────────
+
+    fn get_phase_system_prompt(phase: &ForgePhase) -> String {
+        let base = "You are AutoForge, an expert AI coding assistant.";
+        match phase {
+            ForgePhase::Intake => format!(
+                r#"{base}
+
+PHASE: INTAKE
+Your job is to understand the user's request and classify the intent.
+
+1. Ask clarifying questions if the request is ambiguous.
+2. Classify the intent into one of:
+   - NEW_GOAL: User wants to build something new → acknowledge and say you'll draft a spec
+   - REQ_UPDATE: User wants to change existing requirements → acknowledge and say you'll update the spec
+   - QUESTION: User is asking a question → answer directly, no spec needed
+   - DIRECT: User wants immediate code changes → acknowledge and say you'll proceed to execution
+
+Always explain your reasoning. If this is a new goal or requirement update, say so clearly."#
+            ),
+            ForgePhase::SpecDraft => format!(
+                r#"{base}
+
+PHASE: SPEC_DRAFT
+Your job is to draft or update the project specification using the Jades (Ledger) tools.
+
+Available tools: read_jade, write_jade, list_jades, read_file
+You may NOT use write_file, edit_file, or shell in this phase.
+
+1. Read existing Jades sections using list_jades and read_jade
+2. Draft changes using write_jade to update relevant sections (goals, requirements, plans, todos)
+3. Set status to "draft" for new/changed sections
+4. Explain what you changed and why
+
+Focus on correctness and completeness. Do not implement code yet."#
+            ),
+            ForgePhase::SpecReview => format!(
+                r#"{base}
+
+PHASE: SPEC_REVIEW
+Review the proposed specification changes. This phase is read-only.
+
+Available tools: read_jade, list_jades, read_file
+You may NOT modify any files or Jades in this phase.
+
+1. Read the current spec using list_jades and read_jade
+2. Check for completeness, consistency, and feasibility
+3. Report any issues or concerns
+4. Confirm if the spec is ready for execution
+
+After your review, the human will approve or reject the spec."#
+            ),
+            ForgePhase::Execution => format!(
+                r#"{base}
+
+PHASE: EXECUTION
+Your job is to implement the approved specification.
+
+Available tools: read_file, write_file, edit_file, shell, search
+You may NOT use write_jade in this phase. The spec is locked.
+
+1. Read the spec from Jades to understand requirements
+2. Examine existing code using read_file and search
+3. Implement changes using write_file and edit_file
+4. Run tests or checks using shell when appropriate
+5. Follow the spec precisely. Do not deviate without good reason.
+
+Report progress as you work."#
+            ),
+            ForgePhase::Verification => format!(
+                r#"{base}
+
+PHASE: VERIFICATION
+Your job is to verify that the implementation matches the specification.
+
+Available tools: read_file, read_jade, list_jades, search
+You may NOT modify any files in this phase.
+
+1. Re-read the spec requirements
+2. Examine the implemented code
+3. Check for:
+   - All requirements are met
+   - No unintended changes
+   - Code quality and correctness
+4. Report findings. Flag any drift from the spec.
+
+After verification, summarize the results."#
+            ),
+        }
+    }
+
+    fn get_phase_tools(
+        phase: &ForgePhase,
+        all_tools: Vec<crate::smith::tools::ToolDefinition>,
+    ) -> Vec<crate::smith::tools::ToolDefinition> {
+        let allowed: &[&str] = match phase {
+            ForgePhase::Intake => &["read_file", "read_jade", "list_jades"],
+            ForgePhase::SpecDraft => &["read_file", "read_jade", "write_jade", "list_jades"],
+            ForgePhase::SpecReview => &["read_file", "read_jade", "list_jades"],
+            ForgePhase::Execution => &["read_file", "write_file", "edit_file", "shell", "search"],
+            ForgePhase::Verification => &["read_file", "read_jade", "list_jades", "search"],
+        };
+        all_tools
+            .into_iter()
+            .filter(|t| allowed.contains(&t.name.as_str()))
+            .collect()
+    }
+
+    fn next_phase_after_turn(phase: &ForgePhase) -> (ForgePhase, ForgeStatus) {
+        match phase {
+            ForgePhase::Intake => (ForgePhase::SpecDraft, ForgeStatus::Idle),
+            ForgePhase::SpecDraft => (ForgePhase::SpecReview, ForgeStatus::WaitingApproval),
+            ForgePhase::SpecReview => (ForgePhase::SpecReview, ForgeStatus::WaitingApproval),
+            ForgePhase::Execution => (ForgePhase::Verification, ForgeStatus::Idle),
+            ForgePhase::Verification => (ForgePhase::Intake, ForgeStatus::Idle),
+        }
+    }
+
     pub async fn create_forge_session(
         Json(req): Json<CreateForgeSessionRequest>,
     ) -> Json<ForgeSession> {
@@ -367,6 +538,9 @@ mod handlers {
             notebook_sid: req.notebook_sid,
             project_path: req.project_path.unwrap_or_else(|| String::from(".")),
             status: ForgeStatus::Idle,
+            phase: ForgePhase::Intake,
+            pending_spec_changes: vec![],
+            current_todo_index: None,
             messages: vec![ForgeMessage {
                 id: format!("m-{}", uuid::Uuid::new_v4()),
                 role: String::from("system"),
@@ -437,7 +611,24 @@ mod handlers {
         tokio::spawn(async move {
             let registry = ToolRegistry::new();
             let ai_for_turns = ai.clone();
-            let provider = ToolClaudeProvider::new(ai);
+            let _provider = ToolClaudeProvider::new(ai);
+
+            // Determine current phase from session
+            let current_phase = {
+                let store = forge_sessions().lock().unwrap();
+                match store.get(&sid) {
+                    Some(session) => session.phase.clone(),
+                    None => {
+                        let _ = event_tx.send(Ok(Event::default().data(
+                            serde_json::to_string(&ForgeStreamEvent::Error {
+                                message: "Session not found".to_string(),
+                            })
+                            .unwrap(),
+                        )));
+                        return;
+                    }
+                }
+            };
 
             // Build conversation messages from session history
             let mut chat_messages = Vec::new();
@@ -447,7 +638,7 @@ mod handlers {
                     for msg in &session.messages {
                         match msg.role.as_str() {
                             "system" => {
-                                // System prompt is handled separately; skip here
+                                // System prompt is handled separately via phase prompt
                             }
                             "user" => {
                                 chat_messages.push(ChatMessage::user(&msg.content));
@@ -487,6 +678,10 @@ mod handlers {
                 }
             }
 
+            // Build phase-aware system prompt and tool set
+            let system_prompt = get_phase_system_prompt(&current_phase);
+            let phase_tools = get_phase_tools(&current_phase, registry.definitions());
+
             // ReAct loop: chat → tool_use → execute → tool_result → chat → ...
             let mut turn_count = 0;
             let max_turns = 5;
@@ -496,8 +691,8 @@ mod handlers {
 
                 let request = ToolChatRequest {
                     messages: chat_messages.clone(),
-                    tools: registry.definitions(),
-                    system_prompt: None,
+                    tools: phase_tools.clone(),
+                    system_prompt: Some(system_prompt.clone()),
                 };
 
                 let (turn_tx, mut turn_rx) = tokio::sync::mpsc::unbounded_channel::<ToolChatEvent>();
@@ -649,14 +844,31 @@ mod handlers {
                 }
             }
 
+            // Determine next phase based on current phase
+            let (next_phase, next_status) = next_phase_after_turn(&current_phase);
+
+            // Emit phase change event if transitioning
+            if next_phase != current_phase {
+                let phase_event = Event::default().data(
+                    serde_json::to_string(&ForgeStreamEvent::PhaseChange {
+                        phase: next_phase.as_str().to_string(),
+                    })
+                    .unwrap(),
+                );
+                let _ = event_tx.send(Ok(phase_event));
+            }
+
+            // Update session phase and status
+            {
+                let mut store = forge_sessions().lock().unwrap();
+                store.update_phase_and_status(&sid, next_phase, next_status);
+            }
+
             // Final done event
             let event = Event::default().data(
                 serde_json::to_string(&ForgeStreamEvent::Done).unwrap(),
             );
             let _ = event_tx.send(Ok(event));
-
-            // Update session status back to idle
-            forge_sessions().lock().unwrap().update_status(&sid, ForgeStatus::Idle);
         });
 
         let sse_stream = stream::unfold(event_rx, |mut rx| async move {
@@ -813,6 +1025,20 @@ mod handlers {
         Json(vec![])
     }
 
+    // ─── Approval Gate Handlers ──────────────────────────────────────────
+
+    pub async fn approve_spec(Path(sid): Path<String>) -> Json<serde_json::Value> {
+        let mut store = forge_sessions().lock().unwrap();
+        store.update_phase_and_status(&sid, ForgePhase::Execution, ForgeStatus::Idle);
+        Json(serde_json::json!({"status": "ok", "phase": "execution"}))
+    }
+
+    pub async fn reject_spec(Path(sid): Path<String>) -> Json<serde_json::Value> {
+        let mut store = forge_sessions().lock().unwrap();
+        store.update_phase_and_status(&sid, ForgePhase::SpecDraft, ForgeStatus::Idle);
+        Json(serde_json::json!({"status": "ok", "phase": "spec_draft"}))
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────
 
     fn now_secs() -> u64 {
@@ -840,6 +1066,8 @@ pub fn routes() -> Router<crate::AppState> {
         .route("/api/smith/forge/{sid}/message", post(handlers::send_forge_message))
         .route("/api/smith/forge/{sid}/stream", get(handlers::forge_stream))
         .route("/api/smith/forge/{sid}/history", get(handlers::forge_history))
+        .route("/api/smith/forge/{sid}/approve", post(handlers::approve_spec))
+        .route("/api/smith/forge/{sid}/reject", post(handlers::reject_spec))
         // Ledger (more specific routes FIRST)
         .route("/api/smith/ledger/{project}/drift-check", post(handlers::trigger_drift_check))
         .route("/api/smith/ledger/{project}/{section_id}", get(handlers::get_ledger_section).put(handlers::update_ledger_section))

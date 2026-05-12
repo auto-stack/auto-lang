@@ -1,6 +1,6 @@
 # Plan 248: Spec-Driven Workflow for AutoForge
 
-**Status:** Design Complete → Ready for Implementation  
+**Status:** Phase A & B Complete → Phase C in Progress  
 **Depends on:** Plan 247 (AutoForge foundation)  
 **Estimated effort:** 6–9 days (Phases A–E)  
 **Owner:** AutoForge team
@@ -50,22 +50,22 @@ them after analysis, and executes only against approved specs.
 
 ## 5. Implementation Phases
 
-### Phase A: Jades Persistence (1–2 days)
+### Phase A: Jades Persistence (1–2 days) ✅ COMPLETE
 
 **Backend:**
-- [ ] `LedgerStore` struct with JSON persistence in `~/.local/share/autoforge/ledgers/`
-- [ ] Auto-load on startup, auto-save on mutation
-- [ ] `version` field for optimistic concurrency
-- [ ] API endpoints:
+- [x] `LedgerStore` struct with JSON persistence in `~/.local/share/autoforge/ledgers/`
+- [x] Auto-load on startup, auto-save on mutation
+- [x] `version` field for optimistic concurrency
+- [x] API endpoints:
   - `GET /api/smith/ledger/{project}`
   - `PUT /api/smith/ledger/{project}` (with version check)
   - `GET /api/smith/ledger/{project}/{section_id}`
   - `PUT /api/smith/ledger/{project}/{section_id}`
 
 **Frontend:**
-- [ ] `useLedger.ts` composable (singleton pattern, like `useForge`)
-- [ ] Wire `JadesView.vue` to real API (replace mock data)
-- [ ] Load/save sections with loading states
+- [x] `useLedger.ts` composable (singleton pattern, like `useForge`)
+- [x] Wire `JadesView.vue` to real API (replace mock data)
+- [x] Load/save sections with loading states
 
 **Acceptance:**
 - Create a session, open Jades, edit a section, refresh page → changes persist
@@ -73,24 +73,25 @@ them after analysis, and executes only against approved specs.
 
 ---
 
-### Phase B: Phase-Aware Agent (2–3 days)
+### Phase B: Phase-Aware Agent (2–3 days) ✅ COMPLETE
 
 **Backend:**
-- [ ] Add `ForgePhase` enum: `Intake | SpecDraft | SpecReview | Execution | Verification`
-- [ ] Add `phase: ForgePhase` and `pending_spec_changes: Vec<SpecChange>` to `ForgeSession`
-- [ ] Implement phase transitions in `forge_stream`:
+- [x] Add `ForgePhase` enum: `Intake | SpecDraft | SpecReview | Execution | Verification`
+- [x] Add `phase: ForgePhase` and `pending_spec_changes: Vec<SpecChange>` to `ForgeSession`
+- [x] Implement phase transitions in `forge_stream`:
   - Intake: classify intent (QUESTION / DIRECT / NEW_GOAL / REQ_UPDATE)
   - SpecDraft: AI drafts Jades updates (no code tools!)
   - SpecReview: pause streaming, wait for human signal
   - Execution: implement approved plan
   - Verification: check against requirements
-- [ ] Add per-phase system prompts (5 prompts)
-- [ ] Add `read_jade`, `write_jade`, `list_jades` tools
-- [ ] Tool gating: return error if AI tries forbidden tool in current phase
+- [x] Add per-phase system prompts (5 prompts)
+- [x] Add `read_jade`, `write_jade`, `list_jades` tools
+- [x] Tool gating: filter tool definitions by phase (AI cannot invoke forbidden tools)
 
 **Frontend:**
-- [ ] Show `phase` badge in Furnace header (e.g., "SpecReview — Awaiting Approval")
-- [ ] Phase-aware message rendering
+- [x] Show `phase` badge in Furnace header and session sidebar
+- [x] Handle `phase_change` SSE events in real-time
+- [x] Approval gate UI when status is `waiting_approval`
 
 **Acceptance:**
 - Ask "How does auth work?" → AI answers, no tools used (QUESTION)
@@ -99,22 +100,23 @@ them after analysis, and executes only against approved specs.
 
 ---
 
-### Phase C: Approval Gate (1–2 days)
+### Phase C: Approval Gate (1–2 days) 🚧 PARTIAL
 
 **Backend:**
-- [ ] `POST /api/smith/forge/{sid}/approve` → apply pending changes, transition to Execution
-- [ ] `POST /api/smith/forge/{sid}/reject` → discard pending changes, transition back to SpecDraft
-- [ ] Store `pending_spec_changes` in session JSON
+- [x] `POST /api/smith/forge/{sid}/approve` → transition to Execution
+- [x] `POST /api/smith/forge/{sid}/reject` → transition back to SpecDraft
+- [x] Store `pending_spec_changes` in session JSON
+- [ ] Apply pending changes to Ledger on approve (currently phase transition only)
 
 **Frontend:**
-- [ ] SpecReview UI panel in FurnaceView:
-  - Collapsible diff view for each modified Jades section
-  - Buttons: **[Approve & Execute]**, **[Reject & Redraft]**, **[Edit Specs]**
+- [x] SpecReview UI panel in FurnaceView:
+  - Buttons: **[Approve & Execute]**, **[Reject & Redraft]**
+- [ ] Collapsible diff view for each modified Jades section
 - [ ] Inline editing of proposed specs before approval
 - [ ] Show approval status in chat history
 
 **Acceptance:**
-- AI proposes spec changes → user sees diff → clicks Approve → AI proceeds to execute
+- AI proposes spec changes → user clicks Approve → AI proceeds to execute
 - User clicks Reject → AI redrafts with feedback
 - User edits inline → approves edited version
 

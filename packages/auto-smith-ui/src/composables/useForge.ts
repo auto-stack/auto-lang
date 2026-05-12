@@ -21,6 +21,8 @@ export function useForge() {
 
   const sessionId = computed(() => session.value?.id ?? null)
   const sessionStatus = computed(() => session.value?.status ?? 'idle')
+  const sessionPhase = computed(() => session.value?.phase ?? 'intake')
+  const needsApproval = computed(() => sessionStatus.value === 'waiting_approval' && sessionPhase.value === 'spec_review')
 
   /** Create a brand-new Forge session */
   async function createSession(notebookSid?: string, projectPath?: string) {
@@ -174,9 +176,17 @@ export function useForge() {
               call.result = data.result ?? ''
               call.status = 'success'
             }
+          } else if (data.type === 'phase_change' && data.phase) {
+            if (session.value) {
+              session.value.phase = data.phase as ForgeSession['phase']
+            }
           } else if (data.type === 'done') {
             eventSource.close()
             isLoading.value = false
+            // Refresh session to get updated phase/status from server
+            if (sessionId.value) {
+              restoreSession(sessionId.value)
+            }
             loadSessionList() // refresh list so preview updates
           } else if (data.type === 'error') {
             eventSource.close()
@@ -211,6 +221,40 @@ export function useForge() {
     }
   }
 
+  async function approveSpec() {
+    if (!sessionId.value) return
+    try {
+      const resp = await fetch(`${API_BASE}/forge/${sessionId.value}/approve`, {
+        method: 'POST',
+      })
+      if (!resp.ok) throw new Error(`Failed to approve: ${resp.status}`)
+      const data = await resp.json()
+      if (session.value) {
+        session.value.phase = data.phase
+        session.value.status = 'idle'
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  async function rejectSpec() {
+    if (!sessionId.value) return
+    try {
+      const resp = await fetch(`${API_BASE}/forge/${sessionId.value}/reject`, {
+        method: 'POST',
+      })
+      if (!resp.ok) throw new Error(`Failed to reject: ${resp.status}`)
+      const data = await resp.json()
+      if (session.value) {
+        session.value.phase = data.phase
+        session.value.status = 'idle'
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   return {
     session,
     messages,
@@ -219,6 +263,8 @@ export function useForge() {
     sessionList,
     sessionId,
     sessionStatus,
+    sessionPhase,
+    needsApproval,
     createSession,
     restoreSession,
     switchSession,
@@ -227,5 +273,8 @@ export function useForge() {
     loadSessionList,
     sendMessage,
     loadHistory,
+    streamResponse,
+    approveSpec,
+    rejectSpec,
   }
 }
