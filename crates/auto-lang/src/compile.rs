@@ -375,7 +375,14 @@ impl CompileSession {
                 let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module).to_string();
 
                 // Plan 212 Phase 2.2: Built-in opaque types don't need dep declaration
-                const BUILTIN_OPAQUE_CRATES: &[&str] = &["regex", "url", "semver", "log", "env_logger", "tracing"];
+                const BUILTIN_OPAQUE_CRATES: &[&str] = &[
+                    "regex", "url", "semver", "log", "env_logger", "tracing",
+                    "rand", "rand_distr", "chrono", "csv", "walkdir", "toml",
+                    "serde_json", "percent_encoding", "urlencoding", "base64", "hex",
+                    "sha2", "mime_guess", "same_file", "heapless", "clap",
+                    "ansi_term", "simplelog", "tar", "flate2", "crossbeam",
+                    "anyhow", "serde", "tokio", "num", "ndarray",
+                ];
                 let is_builtin = BUILTIN_OPAQUE_CRATES.contains(&crate_name.as_str());
 
                 if !is_builtin && !self.is_dep_declared(&crate_name) {
