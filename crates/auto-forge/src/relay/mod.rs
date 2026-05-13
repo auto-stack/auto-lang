@@ -14,6 +14,7 @@ pub mod api;
 pub mod budget;
 pub mod checkpoint;
 pub mod flow;
+pub mod flows;
 pub mod handoff;
 pub mod pipeline;
 pub mod profession;

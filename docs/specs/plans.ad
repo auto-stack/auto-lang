@@ -138,7 +138,7 @@
 ---
 
 ### P6 Agents Relay — Integration & Dogfooding
-**Status:** Draft
+**Status:** Done
 **Objective:** G1-G6
 **Estimated Duration:** 2 weeks
 **Owner:** Tooling Team
@@ -147,11 +147,11 @@
 
 | Phase | Task | Owner | Duration | Dependencies | Status |
 |---|---|---|---|---|---|
-| P6.1 | End-to-end flow: Intake → Planner → Architect → Coder → Tester → Reviewer | Tooling | 3 days | P1-P5 | Empty |
-| P6.2 | Migrate Agents module design into Ledger specs | Tooling | 2 days | P6.1 | Empty |
-| P6.3 | Dogfooding: use Forge to implement P1-P5 specs | Tooling | 5 days | P6.2 | Empty |
-| P6.4 | Drift detection on Agents module specs | Tooling | 2 days | P6.3 | Empty |
-| P6.5 | Documentation and tutorial for custom flows | Tooling | 2 days | P6.1 | Empty |
+| P6.1 | End-to-end flow: Intake → Planner → Architect → Coder → Tester → Reviewer | Tooling | 3 days | P1-P5 | Done |
+| P6.2 | Migrate Agents module design into Ledger specs | Tooling | 2 days | P6.1 | Done |
+| P6.3 | Dogfooding: use Forge to implement P1-P5 specs | Tooling | 5 days | P6.2 | Done |
+| P6.4 | Drift detection on Agents module specs | Tooling | 2 days | P6.3 | Done |
+| P6.5 | Documentation and tutorial for custom flows | Tooling | 2 days | P6.1 | Done |
 
 **Risk:** Dogfooding may reveal fundamental workflow issues that require redesign.  
 **Mitigation:** Schedule buffer time in P6 for iteration. Treat dogfooding as a learning exercise, not a deadline.
