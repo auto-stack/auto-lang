@@ -680,6 +680,11 @@ impl SpecsStore {
                 }
             }
         }
+        // Derive statuses for all loaded documents
+        for doc in self.projects.values_mut() {
+            Self::rebuild_relations(doc);
+            Self::derive_statuses(doc);
+        }
         tracing::info!("Loaded {} persistent specs documents", self.projects.len());
     }
 
@@ -741,7 +746,7 @@ impl SpecsStore {
     }
 
     fn parse_status(s: &str) -> Status {
-        match s {
+        match s.to_lowercase().as_str() {
             "empty" => Status::Empty,
             "proposed" => Status::Proposed,
             "draft" => Status::Draft,
@@ -1067,6 +1072,7 @@ impl SpecsStore {
             section.last_modified = now_secs();
             doc.version += 1;
             Self::rebuild_relations(doc);
+            Self::derive_statuses(doc);
             let doc_clone = doc.clone();
             self.save(&doc_clone);
             Ok(())
@@ -1083,6 +1089,7 @@ impl SpecsStore {
         *doc = incoming;
         doc.version += 1;
         Self::rebuild_relations(doc);
+        Self::derive_statuses(doc);
         let doc_clone = doc.clone();
         self.save(&doc_clone);
         Ok(doc_clone)
@@ -1132,6 +1139,137 @@ impl SpecsStore {
                 item.related = links.get(&item.id).cloned().unwrap_or_default();
                 item.related.sort();
                 item.related.dedup();
+            }
+        }
+    }
+
+    /// Derive Goal and section statuses from downstream items.
+    ///
+    /// Rules:
+    /// - Goal → Implemented: when all related Plans are Done (and Goal ≤ InProgress)
+    /// - Goal → Verified: when Goal is Implemented, all related Tests are Done/Verified,
+    ///                    and at least one related Review is Published
+    /// - Plans section → Done: when all Plan items are Done
+    /// - Goals section → Done: when all Goal items are Done
+    fn derive_statuses(doc: &mut SpecsDocument) {
+        // Build lookup: item_id -> (section_type_index, item_index)
+        let mut item_locations: std::collections::HashMap<String, (usize, usize)> = std::collections::HashMap::new();
+        for (si, section) in doc.sections.iter().enumerate() {
+            for (ii, item) in section.items.iter().enumerate() {
+                item_locations.insert(item.id.clone(), (si, ii));
+            }
+        }
+
+        // ─── 1. Derive Goal item statuses ──────────────────────────────────────
+        // Collect needed data first to avoid borrow checker issues
+        let mut goal_updates: Vec<(usize, usize, Status)> = vec![];
+        let goal_section_idx = doc.sections.iter().position(|s| s.section_type == SectionType::Goals);
+        if let Some(gsi) = goal_section_idx {
+            for gi in 0..doc.sections[gsi].items.len() {
+                let goal_status = doc.sections[gsi].items[gi].status.clone();
+                let related = doc.sections[gsi].items[gi].related.clone();
+
+                // Collect statuses of related Plans, Tests, Reviews
+                let mut plan_statuses: Vec<Status> = vec![];
+                let mut test_statuses: Vec<Status> = vec![];
+                let mut review_statuses: Vec<Status> = vec![];
+
+                for ref_id in &related {
+                    if let Some(&(si, ii)) = item_locations.get(ref_id) {
+                        let item = &doc.sections[si].items[ii];
+                        match doc.sections[si].section_type {
+                            SectionType::Plans => plan_statuses.push(item.status.clone()),
+                            SectionType::Tests => test_statuses.push(item.status.clone()),
+                            SectionType::Reviews => review_statuses.push(item.status.clone()),
+                            _ => {}
+                        }
+                    }
+                }
+
+                // Rule 1: Goal → Implemented (if all Plans are Done)
+                let mut new_status = goal_status.clone();
+                if !plan_statuses.is_empty()
+                    && matches!(goal_status, Status::Empty | Status::Proposed | Status::Draft | Status::UnderReview | Status::Approved | Status::InProgress)
+                    && plan_statuses.iter().all(|s| *s == Status::Done)
+                {
+                    new_status = Status::Implemented;
+                }
+
+                // Rule 2: Goal → Verified (if Implemented, all Tests done, ≥1 Review published)
+                if new_status == Status::Implemented {
+                    let tests_passing = test_statuses.is_empty()
+                        || test_statuses.iter().all(|s| matches!(s, Status::Done | Status::Verified));
+                    let has_published_review = review_statuses.iter().any(|s| *s == Status::Published);
+                    if tests_passing && has_published_review {
+                        new_status = Status::Verified;
+                    }
+                }
+
+                if new_status != goal_status {
+                    goal_updates.push((gsi, gi, new_status));
+                }
+            }
+        }
+
+        // Apply Goal updates
+        for (gsi, gi, status) in goal_updates {
+            doc.sections[gsi].items[gi].status = status;
+            doc.sections[gsi].items[gi].modified_at = now_secs();
+        }
+
+        // ─── 2. Derive section statuses from items ─────────────────────────────
+        for section in &mut doc.sections {
+            if section.items.is_empty() {
+                continue;
+            }
+            let derived = match section.section_type {
+                SectionType::Plans => {
+                    if section.items.iter().all(|i| i.status == Status::Done) {
+                        Some(Status::Done)
+                    } else if section.items.iter().any(|i| matches!(i.status, Status::InProgress | Status::Implemented)) {
+                        Some(Status::InProgress)
+                    } else if section.items.iter().all(|i| matches!(i.status, Status::Approved | Status::Done)) {
+                        Some(Status::Approved)
+                    } else {
+                        None
+                    }
+                }
+                SectionType::Goals => {
+                    if section.items.iter().all(|i| i.status == Status::Done) {
+                        Some(Status::Done)
+                    } else if section.items.iter().all(|i| i.status == Status::Verified) {
+                        Some(Status::Verified)
+                    } else if section.items.iter().all(|i| matches!(i.status, Status::Implemented | Status::Verified | Status::Done)) {
+                        Some(Status::Implemented)
+                    } else if section.items.iter().any(|i| matches!(i.status, Status::InProgress | Status::Implemented | Status::Verified | Status::Done)) {
+                        Some(Status::InProgress)
+                    } else {
+                        None
+                    }
+                }
+                SectionType::Tests => {
+                    if section.items.iter().all(|i| matches!(i.status, Status::Done | Status::Verified)) {
+                        Some(Status::Done)
+                    } else if section.items.iter().any(|i| i.status == Status::Blocked) {
+                        Some(Status::Blocked)
+                    } else {
+                        None
+                    }
+                }
+                SectionType::Reviews => {
+                    if section.items.iter().all(|i| i.status == Status::Published) {
+                        Some(Status::Published)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(new_status) = derived {
+                if section.status != new_status {
+                    section.status = new_status;
+                    section.last_modified = now_secs();
+                }
             }
         }
     }
