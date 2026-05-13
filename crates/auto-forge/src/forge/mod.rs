@@ -20,8 +20,8 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::ai::AIProviderState;
 
-mod ai;
-mod tools;
+pub mod ai;
+pub mod tools;
 
 use axum::extract::FromRef;
 

@@ -18,3 +18,4 @@ dirs = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8"
+serde_yaml = "0.9"
